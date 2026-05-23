@@ -3,7 +3,7 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { sidecar, type HardwareInfo, type SecretName } from "../lib/sidecar";
 
-const APP_VERSION = "0.4.8";
+const APP_VERSION = "0.4.9";
 const SUPPORT_EMAIL = "support@jnremployee.com";
 import { syncStatus, backend, type SyncStatus, type PlatformConnection, type ConnectionPlatform } from "../lib/backend";
 import { applyUpdate, checkForUpdate, type UpdateState } from "../lib/updater";
