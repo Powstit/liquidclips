@@ -1,9 +1,9 @@
 "use client";
 
-import { track } from "@/lib/analytics";
+import { track, referralIdFromUrl } from "@/lib/analytics";
 
 export function ShareButtons({ referralUrl, username }: { referralUrl: string; username: string }) {
-  const slug = referralUrl.split("?a=")[1]?.split(/[&#]/)[0];
+  const slug = referralIdFromUrl(referralUrl);
   const fire = (channel: "x" | "email" | "demo_clip") =>
     track("affiliate_link_shared", { affiliate_id: slug, channel });
   const tweet = `Just found Junior — drops a 4-hour podcast in, gets 30 ready-to-post clips out, posts them across the next 2 weeks while you sleep. Free forever for clippers. ${referralUrl}`;
