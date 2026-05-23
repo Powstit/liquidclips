@@ -7,6 +7,7 @@ import { ReferralLink } from "@/components/ReferralLink";
 import { ShareButtons } from "@/components/ShareButtons";
 import { StatTiles } from "@/components/StatTiles";
 import { ReferralQR } from "@/components/ReferralQR";
+import { TrackOnMount } from "@/components/Track";
 
 export const dynamic = "force-dynamic";
 
@@ -95,6 +96,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
 
   return (
     <div className="min-h-screen bg-paper">
+      <TrackOnMount
+        event="partner_dashboard_viewed"
+        properties={{
+          affiliate_id: affiliate?.user?.username ?? null,
+          has_affiliate: !!affiliate,
+        }}
+      />
       <Nav username={session.username ?? session.name} />
 
       <main className="mx-auto max-w-[820px] px-5 py-10 sm:py-14">

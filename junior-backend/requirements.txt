@@ -12,3 +12,4 @@ svix>=1.40
 httpx>=0.28
 apscheduler>=3.10
 resend>=2.4
+posthog>=3.5

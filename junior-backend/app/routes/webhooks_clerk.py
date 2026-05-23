@@ -155,6 +155,28 @@ def _handle_user_created(db: Session, data: dict) -> None:
     first_name = (data.get("first_name") or None) if isinstance(data.get("first_name"), str) else None
     send_welcome(user.email, first_name=first_name)
 
+    # PostHog: signup completed + affiliate attribution locked. We identify
+    # with the Clerk id so the frontend's signup_started (also keyed on
+    # clerk_id) and our server-side signup_completed are on the same person.
+    from app import analytics
+    analytics.identify(
+        user_id=clerk_id,
+        clerk_id=clerk_id,
+        affiliate_id=affiliate_id,
+        tier="free",
+    )
+    analytics.capture(
+        user_id=clerk_id,
+        event="signup_completed",
+        properties={"has_affiliate": bool(affiliate_id)},
+    )
+    if affiliate_id:
+        analytics.capture(
+            user_id=clerk_id,
+            event="affiliate_attribution_locked",
+            properties={"affiliate_id": affiliate_id},
+        )
+
 
 def _handle_user_updated(db: Session, data: dict) -> None:
     clerk_id = data.get("id")
@@ -251,6 +273,14 @@ def _handle_subscription_active(db: Session, data: dict) -> None:
     if period_end:
         user.paid_until = period_end
 
+    from app import analytics
+    analytics.capture(
+        user_id=clerk_id,
+        event="subscription_activated",
+        properties={"tier": user.tier, "via": "clerk"},
+    )
+    analytics.identify(user_id=clerk_id, tier=user.tier)
+
     write_notification(
         db,
         user_id=user.id,
@@ -276,6 +306,13 @@ def _handle_subscription_canceled(db: Session, data: dict) -> None:
     period_end = _parse_period_end(data)
     if period_end:
         user.paid_until = period_end
+
+    from app import analytics
+    analytics.capture(
+        user_id=clerk_id,
+        event="subscription_canceled",
+        properties={"tier": user.tier, "via": "clerk"},
+    )
 
 
 def _handle_subscription_past_due(db: Session, data: dict) -> None:

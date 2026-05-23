@@ -203,6 +203,22 @@ def _handle_membership_valid(db: Session, data: dict) -> None:
     else:
         send_subscription_activated(user.email, tier=tier, first_name=first_name if isinstance(first_name, str) else None)
 
+    # PostHog: paid membership went valid via Whop. Distinct event from the
+    # Clerk-billing subscription_activated so we can compare funnels.
+    if user.clerk_id:
+        from app import analytics
+        analytics.identify(
+            user_id=user.clerk_id,
+            tier=tier,
+            whop_user_id=user.whop_user_id,
+            affiliate_id=user.affiliate_id,
+        )
+        analytics.capture(
+            user_id=user.clerk_id,
+            event="whop_membership_valid",
+            properties={"tier": tier, "founder": bool(founder)},
+        )
+
 
 def _seat_count(db: Session) -> int:
     """Best-effort founder seat counter. Sprint 7+: proper sequence."""

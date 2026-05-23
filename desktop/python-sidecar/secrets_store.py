@@ -10,10 +10,13 @@ the rest of the codebase looks for:
   - OPENAI_API_KEY      (BYOK Free / Solo tiers)
   - ANTHROPIC_API_KEY   (BYOK Solo tier alternative)
   - JUNIOR_LICENSE_JWT  (set by the desktop activation deep link)
-  - JUNIOR_WHOP_TOKEN   (clipper's Whop API key — reads bounties + submissions)
+  - JUNIOR_WHOP_TOKEN   (Whop OAuth access token from the PKCE flow in
+                         whop_client.oauth_complete — reads bounties +
+                         submissions. NOT a hand-pasted API key; we no longer
+                         show a paste box in production builds.)
 
-Per spec §2.4 point 2: user-pasted API keys never leave the machine. Decryption
-is in-memory at call time, never logged, never sent to Railway.
+Per spec §2.4 point 2: secrets never leave the machine. Decryption is
+in-memory at call time, never logged, never sent to Railway.
 """
 
 from __future__ import annotations
