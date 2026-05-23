@@ -52,6 +52,10 @@ export default function App() {
   const [queueOpen, setQueueOpen] = useState(false);
   const [bootChecked, setBootChecked] = useState(false);
   const [updateBanner, setUpdateBanner] = useState<UpdateState>({ kind: "idle" });
+  // Auth indicator. true once we've confirmed the user has a license JWT in
+  // the keychain (i.e. they've activated via account.jnremployee.com). Drives
+  // the top-nav button copy — "Sign in" while null/false, "Account" once true.
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
 
   // Verify sidecar + warm-load whisper. We DON'T force first-run anymore —
   // the app opens straight into the empty/workspace view so the flow is
@@ -64,6 +68,15 @@ export default function App() {
         await sidecar.ping();
         setSidecarStatus("ready");
         sidecar.preloadWhisper().catch(() => undefined);
+        // Check for a license JWT in the keychain. Presence = signed in. We
+        // don't validate the JWT here — that's the backend's job on /sync.
+        // We only need a yes/no signal for the nav button copy.
+        try {
+          const { value } = await sidecar.licenseJwtRead();
+          setSignedIn(!!value);
+        } catch {
+          setSignedIn(false);
+        }
       } catch {
         setSidecarStatus("failed");
       } finally {
@@ -266,7 +279,14 @@ export default function App() {
   if (view.kind === "first-run") {
     return (
       <div className="flex h-full flex-col bg-paper text-ink">
-        <FirstRun onComplete={() => setView({ kind: "empty" })} />
+        <FirstRun
+          onComplete={() => {
+            setView({ kind: "empty" });
+            // Activation usually writes the license JWT during FirstRun.
+            // Re-poll so the nav swaps Sign in → Account without a relaunch.
+            void sidecar.licenseJwtRead().then(({ value }) => setSignedIn(!!value)).catch(() => undefined);
+          }}
+        />
       </div>
     );
   }
@@ -310,13 +330,25 @@ export default function App() {
             Queue
           </button>
           <NotificationBell onOpen={() => setInboxOpen(true)} />
-          <button
-            onClick={() => setView({ kind: "first-run" })}
-            className="rounded-full border border-fuchsia bg-fuchsia-soft/30 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep transition-colors hover:bg-fuchsia hover:text-paper"
-            aria-label="Sign in to Junior"
-          >
-            Sign in
-          </button>
+          {signedIn ? (
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
+              aria-label="Open your account"
+              title="Signed in · open Account in Settings"
+            >
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
+              Account
+            </button>
+          ) : signedIn === false ? (
+            <button
+              onClick={() => setView({ kind: "first-run" })}
+              className="rounded-full border border-fuchsia bg-fuchsia-soft/30 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep transition-colors hover:bg-fuchsia hover:text-paper"
+              aria-label="Sign in to Junior"
+            >
+              Sign in
+            </button>
+          ) : null}
           <button
             onClick={() => setSettingsOpen(true)}
             className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
@@ -531,11 +563,18 @@ export default function App() {
 
       {settingsOpen && (
         <Settings
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => {
+            setSettingsOpen(false);
+            // Settings can change auth state — for example, the user activated
+            // via /connect-desktop in another window or the JWT was rotated
+            // by /sync. Re-poll so the top-nav indicator stays honest.
+            void sidecar.licenseJwtRead().then(({ value }) => setSignedIn(!!value)).catch(() => undefined);
+          }}
           onSignOut={() => {
             // JWT already cleared by Settings; bounce the user back to
             // the first-run welcome surface so they get the polished sign-in
             // flow on next launch.
+            setSignedIn(false);
             setView({ kind: "first-run" });
           }}
         />
