@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { Carousel } from "@/components/Carousel";
 import { PricingCards } from "@/components/PricingCards";
+import { TrackOnMount, TrackedLink } from "@/components/Track";
 
 // Dashboard — carousel of sectioned cards. One thought per card.
 // Tier/usage resolved from Junior Backend in Sprint 4.5; stubbed today.
@@ -32,6 +33,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-[1080px] px-6 py-12 sm:py-16">
+      <TrackOnMount event="dashboard_viewed" properties={{ tier, has_affiliate: !!affiliateId }} />
       <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
         <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
         dashboard
@@ -62,7 +64,13 @@ export default async function DashboardPage() {
             title="Get the app."
             sub="Mac and Windows installers ship Sprint 9. You're already on the waitlist by virtue of being signed in — we'll email you the moment they're ready."
             actions={[
-              { label: "Waitlist status →", href: "/download", primary: true },
+              {
+                label: "Waitlist status →",
+                href: "/download",
+                primary: true,
+                event: "desktop_download_clicked",
+                eventProperties: { source: "dashboard_card_01" },
+              },
             ]}
           />
           {isFree && (
@@ -72,7 +80,13 @@ export default async function DashboardPage() {
               title="Outgrow free."
               sub="Pick a plan below. Founder · £500 is a separate one-time tier on Whop."
               actions={[
-                { label: "See plans ↓", href: "#plans", primary: true },
+                {
+                  label: "See plans ↓",
+                  href: "#plans",
+                  primary: true,
+                  event: "upgrade_viewed",
+                  eventProperties: { source: "dashboard_card_02_unlock" },
+                },
                 { label: "Founder · £500", href: founderUrl, external: true },
               ]}
               accent="fuchsia"
@@ -90,6 +104,21 @@ export default async function DashboardPage() {
           />
           <Card
             num={isFree ? "04" : "03"}
+            eyebrow="connection"
+            title="Connect Whop."
+            sub="Your Junior account is signed in with Google/email. Connect Whop separately to browse Content Rewards and track bounty submissions — done from the desktop Earn tab."
+            actions={[
+              {
+                label: "Open Earn in desktop →",
+                href: "/download",
+                primary: true,
+                event: "whop_connect_clicked",
+                eventProperties: { source: "dashboard_card_whop" },
+              },
+            ]}
+          />
+          <Card
+            num={isFree ? "05" : "04"}
             eyebrow="your files"
             title="On your machine."
             sub="One folder per project · ~/Junior · open in Finder from the app."
@@ -161,7 +190,16 @@ function Stat({
   );
 }
 
-type Action = { label: string; href: string; primary?: boolean; external?: boolean };
+type Action = {
+  label: string;
+  href: string;
+  primary?: boolean;
+  external?: boolean;
+  // Optional PostHog event fired on click. Lets us instrument funnel CTAs
+  // without turning the whole page into a client component.
+  event?: import("@/lib/analytics").AnalyticsEvent;
+  eventProperties?: Record<string, unknown>;
+};
 
 function Card({
   num, eyebrow, title, sub, actions = [], accent = "neutral",
@@ -192,21 +230,39 @@ function Card({
         <p className="font-sans text-[13px] leading-relaxed text-text-secondary">{sub}</p>
         {actions.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {actions.map((a) => (
-              <a
-                key={a.href + a.label}
-                href={a.href}
-                target={a.external ? "_blank" : undefined}
-                rel={a.external ? "noopener noreferrer" : undefined}
-                className={
-                  a.primary
-                    ? "rounded-full bg-ink px-5 py-2.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
-                    : "rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia"
-                }
-              >
-                {a.label}
-              </a>
-            ))}
+            {actions.map((a) => {
+              const cls = a.primary
+                ? "rounded-full bg-ink px-5 py-2.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+                : "rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia";
+              const target = a.external ? "_blank" : undefined;
+              const rel = a.external ? "noopener noreferrer" : undefined;
+              if (a.event) {
+                return (
+                  <TrackedLink
+                    key={a.href + a.label}
+                    event={a.event}
+                    properties={a.eventProperties}
+                    href={a.href}
+                    target={target}
+                    rel={rel}
+                    className={cls}
+                  >
+                    {a.label}
+                  </TrackedLink>
+                );
+              }
+              return (
+                <a
+                  key={a.href + a.label}
+                  href={a.href}
+                  target={target}
+                  rel={rel}
+                  className={cls}
+                >
+                  {a.label}
+                </a>
+              );
+            })}
           </div>
         )}
       </div>

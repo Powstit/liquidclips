@@ -72,6 +72,15 @@ def connect_desktop(
         from app.mailer import send_license_activated
         send_license_activated(user.email)
 
+        # PostHog: this is the desktop install / first-launch funnel point.
+        # Only fires once per user (gated by is_first_activation).
+        from app import analytics
+        analytics.capture(
+            user_id=user.clerk_id,
+            event="desktop_activated",
+            properties={"tier": user.tier, "founder": user.founder_flag},
+        )
+
     return ConnectResponse(
         license_jwt=jwt_str,
         expires_at=expires_at,
