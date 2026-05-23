@@ -1,0 +1,168 @@
+"""ORM models — mirror the schema in oauth-billing.md §4.
+
+Single source of truth for table shapes. Alembic migrations are generated
+from these.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timezone
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db import Base
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    clerk_id: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    whop_user_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True, index=True)
+
+    # Tier — free | solo | channel | autopilot. Founders get tier=channel + founder_flag=true.
+    tier: Mapped[str] = mapped_column(String, nullable=False, default="free")
+    founder_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    # Locked at signup from the jnr_ref cookie. Never overwritten — see oauth-billing.md §6.
+    affiliate_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+
+    # Subscription state — trial | active | expired | refunded | canceled.
+    subscription_status: Mapped[str] = mapped_column(String, nullable=False, default="trial")
+    trial_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    paid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+    licenses: Mapped[list["License"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
+
+class License(Base):
+    __tablename__ = "licenses"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    jwt: Mapped[str] = mapped_column(Text, nullable=False)            # full signed JWT for audit
+    tier_at_issue: Mapped[str] = mapped_column(String, nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    user: Mapped[User] = relationship(back_populates="licenses")
+
+
+class Usage(Base):
+    """Monthly usage bucket — enforces Free-tier 3-vid/mo cap via /usage/video-started."""
+    __tablename__ = "usage"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    period_start: Mapped[datetime] = mapped_column(Date, primary_key=True)
+    videos_processed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class Schedule(Base):
+    """A scheduled post — clip + platform + time. Cron worker fires these."""
+    __tablename__ = "schedules"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    project_slug: Mapped[str] = mapped_column(String, nullable=False)
+    clip_idx: Mapped[int] = mapped_column(Integer, nullable=False)        # 0-based position in project.clips
+    clip_title: Mapped[str] = mapped_column(String, nullable=False)        # snapshot at schedule time
+    vertical_path: Mapped[str] = mapped_column(String, nullable=False)
+
+    platform: Mapped[str] = mapped_column(String, nullable=False)          # youtube | tiktok | x
+    scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+    # status: pending | uploading | scheduled | published | failed | canceled
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending", index=True)
+    postiz_post_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    post_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Retry policy per spec §1.4 — 3x exponential backoff (1min · 5min · 25min).
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class Notification(Base):
+    """Per-user inbox row. See ~/Desktop/jnr/notifications.md for schema rationale."""
+
+    __tablename__ = "notifications"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    category: Mapped[str] = mapped_column(String, nullable=False, index=True)  # one of NOTIFICATION_CATEGORIES
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    priority: Mapped[str] = mapped_column(String, nullable=False, default="medium")  # low | medium | high
+    action_kind: Mapped[str | None] = mapped_column(String, nullable=True)
+    action_data: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+
+    # Dedup webhook-originated rows on retry (Whop / Postiz are at-least-once).
+    external_dedup_key: Mapped[str | None] = mapped_column(String, nullable=True, unique=True, index=True)
+
+
+NOTIFICATION_CATEGORIES = (
+    "system_update",
+    "post_published",
+    "post_failed",
+    "drip_summary",
+    "quota_warning",
+    "billing",
+    "affiliate",
+    "founder",
+    "junior_message",
+    "pipeline_event",
+)
+
+
+class PostizConnection(Base):
+    """A user's Postiz identity — one per Junior user, established once on first
+    Connect-platform action. Holds the pos_* access token used for every
+    subsequent publish + integration call.
+
+    The token never expires until the user revokes from their Postiz
+    settings (per Postiz OAuth2 docs). When a revocation webhook lands we
+    flip `active=False` and require re-auth before next publish.
+    """
+
+    __tablename__ = "postiz_connections"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    postiz_org_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    postiz_stripe_cus: Mapped[str | None] = mapped_column(String, nullable=True)
+    access_token: Mapped[str] = mapped_column(Text, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class WebhookEvent(Base):
+    """Idempotency log for incoming webhooks."""
+    __tablename__ = "webhook_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    provider: Mapped[str] = mapped_column(String, nullable=False)        # 'clerk' | 'whop'
+    external_id: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    event_type: Mapped[str] = mapped_column(String, nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    body_hash: Mapped[str] = mapped_column(String, nullable=False)

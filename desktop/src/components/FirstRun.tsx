@@ -1,0 +1,136 @@
+import { useEffect, useState } from "react";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { sidecar, type HardwareInfo } from "../lib/sidecar";
+import { Logo } from "./Logo";
+
+// First-run flow per spec §3.8 screen 1.
+// Single screen: brand mark → one optional key paste → done.
+// Hardware probe runs silently in the background and surfaces a one-line
+// warning only if something fails (spec §1.8 Sprint 3).
+
+export function FirstRun({ onComplete }: { onComplete: () => void }) {
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hw, setHw] = useState<HardwareInfo | null>(null);
+
+  useEffect(() => {
+    sidecar.hardwareInfo().then(setHw).catch(() => undefined);
+  }, []);
+
+  async function save() {
+    if (!key.trim()) {
+      setError("Paste a key first. Or click 'Sign in with Junior account' to use embedded keys.");
+      return;
+    }
+    if (!key.startsWith("sk-")) {
+      setError("That doesn't look like an OpenAI key. Keys start with 'sk-'. Try again.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await sidecar.secretSet("OPENAI_API_KEY", key.trim());
+      onComplete();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto flex min-h-full w-full max-w-[680px] flex-col px-6 py-10">
+      <div className="flex items-center justify-between">
+        <Logo size={28} />
+        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+          <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
+          first run
+        </div>
+      </div>
+
+      <div className="mt-12 flex flex-1 flex-col">
+        <h1 className="font-display text-[44px] font-semibold leading-[1.03] tracking-[-0.03em] text-ink">
+          Drop a video to start.
+        </h1>
+        <p className="mt-3 max-w-[520px] font-sans text-[17px] leading-relaxed text-text-secondary">
+          Your videos never leave your machine. Junior transcribes locally, picks the best moments,
+          cuts them vertical with captions, and writes everything your video needs to publish.
+        </p>
+
+        <div className="mt-10 rounded-3xl border border-line bg-paper-warm/60 p-7">
+          <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+            01 — paste an OpenAI key
+          </div>
+          <h2 className="mt-2 font-display text-[22px] font-semibold tracking-[-0.015em] text-ink">
+            Free tier — bring your own key.
+          </h2>
+          <p className="mt-1 font-sans text-[13px] text-text-secondary">
+            Stored encrypted in your OS keychain. Never sent anywhere except OpenAI when Junior calls it.
+          </p>
+          <div className="mt-4 flex items-center gap-3">
+            <input
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              value={key}
+              onChange={(e) => {
+                setKey(e.target.value);
+                setError(null);
+              }}
+              placeholder="sk-proj-..."
+              className="flex-1 rounded-full border border-line bg-paper px-5 py-2.5 font-mono text-[13px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
+            />
+            <button
+              onClick={save}
+              disabled={busy}
+              className="rounded-full bg-ink px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50"
+            >
+              {busy ? "Saving…" : "Save & start →"}
+            </button>
+          </div>
+          {error && (
+            <p className="mt-3 font-mono text-[12px] text-[#DC2626]">{error}</p>
+          )}
+          <button
+            onClick={() => void openExternal("https://platform.openai.com/api-keys")}
+            className="mt-4 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia hover:text-fuchsia-deep"
+          >
+            Where do I get a key? →
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-3xl border border-line bg-paper p-7">
+          <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+            02 — or use embedded keys (paid tiers)
+          </div>
+          <h2 className="mt-2 font-display text-[22px] font-semibold tracking-[-0.015em] text-ink">
+            Sign in with your Junior account.
+          </h2>
+          <p className="mt-1 max-w-[440px] font-sans text-[13px] text-text-secondary">
+            Channel + Autopilot tiers ship with embedded LLM credits — you don't need an OpenAI key.
+            Sign in once and Junior activates against your tier.
+          </p>
+          <button
+            onClick={() => void openExternal("https://account.jnremployee.com/sign-in")}
+            className="mt-4 rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink transition-colors hover:border-fuchsia"
+          >
+            Open browser to sign in →
+          </button>
+        </div>
+
+        {hw && hw.warnings.length > 0 && (
+          <div className="mt-6 rounded-xl border border-[#EAB308]/40 bg-[#EAB308]/10 px-4 py-3 font-mono text-[12px] text-[#7A5400]">
+            {hw.warnings.join(" · ")}
+          </div>
+        )}
+      </div>
+
+      <footer className="mt-10 border-t border-line pt-4 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+        {hw
+          ? `${hw.ram_gb} gb ram · ${hw.cpu_count} cpu · ${hw.free_disk_gb} gb free`
+          : "probing hardware…"}
+      </footer>
+    </div>
+  );
+}

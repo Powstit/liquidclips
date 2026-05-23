@@ -1,0 +1,219 @@
+import { redirect } from "next/navigation";
+import { auth, currentUser } from "@clerk/nextjs/server";
+import { Carousel } from "@/components/Carousel";
+import { PricingCards } from "@/components/PricingCards";
+
+// Dashboard — carousel of sectioned cards. One thought per card.
+// Tier/usage resolved from Junior Backend in Sprint 4.5; stubbed today.
+
+export default async function DashboardPage() {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
+
+  const user = await currentUser();
+  if (!user) redirect("/sign-in");
+
+  const affiliateId = (user.unsafeMetadata?.affiliate_id as string | undefined) ?? null;
+  const tier = ((user.publicMetadata?.tier as string | undefined) ?? "free") as
+    | "free" | "solo" | "growth" | "autopilot";
+  const isFree = tier === "free";
+  const greeting =
+    user.firstName ??
+    user.username ??
+    user.primaryEmailAddress?.emailAddress?.split("@")[0] ??
+    "there";
+  const tierDisplay = isFree ? "Free" : capitalise(tier);
+
+  // Founder is a one-time £500 tier, still sold through Whop (Clerk Billing is
+  // recurring-only). Affiliate ID is baked first-touch per oauth-billing.md §6.
+  const founderUrl = affiliateId
+    ? `https://jnremployee.com/founder?a=${encodeURIComponent(affiliateId)}`
+    : "https://jnremployee.com/founder";
+
+  return (
+    <div className="mx-auto max-w-[1080px] px-6 py-12 sm:py-16">
+      <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+        <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
+        dashboard
+      </div>
+
+      <h1 className="mt-3 font-display text-[clamp(36px,5vw,56px)] font-semibold leading-[1.05] tracking-[-0.03em] text-ink">
+        Welcome, {greeting}.
+      </h1>
+
+      <div className="mt-10">
+        <Carousel label="at a glance · swipe">
+          <Stat big={tierDisplay} small="plan" accent={isFree ? "neutral" : "fuchsia"} />
+          <Stat big={isFree ? "0 / 3" : "0"} small="videos this month" />
+          <Stat
+            big={affiliateId ? `${affiliateId.slice(0, 10)}…` : "—"}
+            small={affiliateId ? "referred — locked" : "direct signup"}
+            mono
+          />
+          <Stat big={new Date(user.createdAt).toLocaleDateString()} small="member since" />
+        </Carousel>
+      </div>
+
+      <div className="mt-12">
+        <Carousel label="next moves · swipe">
+          <Card
+            num="01"
+            eyebrow="download"
+            title="Get the app."
+            sub="Mac and Windows installers ship Sprint 9. You're already on the waitlist by virtue of being signed in — we'll email you the moment they're ready."
+            actions={[
+              { label: "Waitlist status →", href: "/download", primary: true },
+            ]}
+          />
+          {isFree && (
+            <Card
+              num="02"
+              eyebrow="unlock"
+              title="Outgrow free."
+              sub="Pick a plan below. Founder · £500 is a separate one-time tier on Whop."
+              actions={[
+                { label: "See plans ↓", href: "#plans", primary: true },
+                { label: "Founder · £500", href: founderUrl, external: true },
+              ]}
+              accent="fuchsia"
+            />
+          )}
+          <Card
+            num={isFree ? "03" : "02"}
+            eyebrow="account"
+            title={user.primaryEmailAddress?.emailAddress ?? "—"}
+            sub={affiliateId ? `Referral · ${affiliateId}` : "Direct signup. No affiliate."}
+            actions={[
+              { label: "Manage plan", href: "#plans", primary: !isFree },
+              { label: "Sign out", href: "/sign-out" },
+            ]}
+          />
+          <Card
+            num={isFree ? "04" : "03"}
+            eyebrow="your files"
+            title="On your machine."
+            sub="One folder per project · ~/Junior · open in Finder from the app."
+          />
+        </Carousel>
+      </div>
+
+      <section id="plans" className="mt-20 scroll-mt-12">
+        <div className="flex items-baseline justify-between gap-4">
+          <div>
+            <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+              {isFree ? "pick a plan" : "your plan"}
+            </div>
+            <h2 className="mt-2 font-display text-[clamp(28px,3.5vw,40px)] font-semibold tracking-[-0.025em] text-ink">
+              {isFree ? "Three months in, you'll know." : "Manage subscription."}
+            </h2>
+          </div>
+          <p className="hidden max-w-[360px] font-sans text-[13px] text-text-secondary sm:block">
+            Card is held by Stripe via Clerk. Cancel or change plan any time — access stays live until the
+            period ends.
+          </p>
+        </div>
+        <div className="mt-8">
+          <PricingCards currentSlug={tier} />
+        </div>
+      </section>
+
+      <footer className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+        <span className="inline-flex items-center gap-2">
+          <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
+          license activation · sprint 4
+        </span>
+        <div className="flex flex-wrap gap-5">
+          <a href="https://jnremployee.com/refunds" className="hover:text-ink">refunds</a>
+          <a href="https://jnremployee.com/privacy" className="hover:text-ink">privacy</a>
+          <a href="https://jnremployee.com/terms" className="hover:text-ink">terms</a>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function Stat({
+  big, small, accent = "neutral", mono = false,
+}: {
+  big: string; small: string; accent?: "neutral" | "fuchsia"; mono?: boolean;
+}) {
+  return (
+    <div
+      className={`flex h-[180px] flex-col justify-between rounded-3xl border bg-paper p-6 ${
+        accent === "fuchsia"
+          ? "border-fuchsia/40 shadow-[0_10px_40px_rgba(255,26,140,0.08)]"
+          : "border-line"
+      }`}
+    >
+      <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+        {small}
+      </div>
+      <div
+        className={`${
+          mono
+            ? "font-mono text-[20px] leading-tight"
+            : "font-display text-[clamp(32px,4vw,44px)] font-bold tracking-[-0.025em] leading-[1.05]"
+        } text-ink`}
+      >
+        {big}
+      </div>
+    </div>
+  );
+}
+
+type Action = { label: string; href: string; primary?: boolean; external?: boolean };
+
+function Card({
+  num, eyebrow, title, sub, actions = [], accent = "neutral",
+}: {
+  num: string; eyebrow: string; title: string; sub: string;
+  actions?: Action[]; accent?: "neutral" | "fuchsia";
+}) {
+  return (
+    <div
+      className={`flex h-[340px] flex-col justify-between rounded-3xl border p-8 ${
+        accent === "fuchsia"
+          ? "border-fuchsia-soft bg-gradient-to-br from-fuchsia-soft/40 to-paper"
+          : "border-line bg-paper-warm/50"
+      }`}
+    >
+      <div className="flex items-start justify-between">
+        <span className="font-display text-[80px] font-bold italic leading-none text-fuchsia">
+          {num}
+        </span>
+        <div className="text-right font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+          {eyebrow}
+        </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <h3 className="font-display text-[26px] font-semibold leading-[1.15] tracking-[-0.02em] text-ink">
+          {title}
+        </h3>
+        <p className="font-sans text-[13px] leading-relaxed text-text-secondary">{sub}</p>
+        {actions.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {actions.map((a) => (
+              <a
+                key={a.href + a.label}
+                href={a.href}
+                target={a.external ? "_blank" : undefined}
+                rel={a.external ? "noopener noreferrer" : undefined}
+                className={
+                  a.primary
+                    ? "rounded-full bg-ink px-5 py-2.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+                    : "rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia"
+                }
+              >
+                {a.label}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function capitalise(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}

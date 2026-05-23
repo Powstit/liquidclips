@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+.env.local
+.junior-keys/
+junior-backend.db
+*.sqlite
+*.sqlite3
+.DS_Store
+.idea/
+.vscode/

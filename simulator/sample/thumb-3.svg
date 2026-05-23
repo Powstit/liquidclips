@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" preserveAspectRatio="xMidYMid slice">
+  <defs><radialGradient id="g3" cx="50%" cy="40%" r="70%"><stop offset="0%" stop-color="#FF1A8C"/><stop offset="60%" stop-color="#5C0F3D"/><stop offset="100%" stop-color="#0F0F12"/></radialGradient></defs>
+  <rect width="1080" height="1920" fill="url(#g3)"/>
+  <text x="60" y="1080" font-family="Geist, system-ui" font-size="100" fill="#F9F4EE" font-weight="700" letter-spacing="-3">The number</text>
+  <text x="60" y="1200" font-family="Geist, system-ui" font-size="100" fill="#F9F4EE" font-weight="700" letter-spacing="-3">nobody talks</text>
+  <text x="60" y="1320" font-family="Geist, system-ui" font-size="100" fill="#FF7AB8" font-weight="700" letter-spacing="-3">about.</text>
+</svg>

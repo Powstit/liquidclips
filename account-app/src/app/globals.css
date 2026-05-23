@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+:root {
+  /* Brand — fuchsia ladder */
+  --fuchsia: #FF1A8C;
+  --fuchsia-bright: #FF3DA5;
+  --fuchsia-deep: #C70066;
+  --fuchsia-soft: #FFD6EC;
+  --fuchsia-glow: #FF66B8;
+  /* Surfaces */
+  --ink: #0A0A0F;
+  --ink-soft: #1A1A24;
+  --paper: #FAF7F2;
+  --paper-warm: #F5EFE7;
+  --line: #E8DFD2;
+  /* Text */
+  --text-secondary: #5A5560;
+  --text-tertiary: #8A8590;
+}
+
+@theme inline {
+  --color-fuchsia: var(--fuchsia);
+  --color-fuchsia-bright: var(--fuchsia-bright);
+  --color-fuchsia-deep: var(--fuchsia-deep);
+  --color-fuchsia-soft: var(--fuchsia-soft);
+  --color-fuchsia-glow: var(--fuchsia-glow);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-paper: var(--paper);
+  --color-paper-warm: var(--paper-warm);
+  --color-line: var(--line);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-geist);
+  --font-mono: var(--font-geist-mono);
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font-geist), system-ui, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.6; transform: scale(1.3); }
+}
+.pulse-dot { animation: pulse-dot 2s infinite; }
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+.blink { animation: blink 1s steps(1) infinite; }
