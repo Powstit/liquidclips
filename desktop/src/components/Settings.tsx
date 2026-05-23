@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { sidecar, type HardwareInfo, type SecretName } from "../lib/sidecar";
+
+const APP_VERSION = "0.4.7";
+const SUPPORT_EMAIL = "support@jnremployee.com";
 import { syncStatus, backend, type SyncStatus, type PlatformConnection, type ConnectionPlatform } from "../lib/backend";
 import { applyUpdate, checkForUpdate, type UpdateState } from "../lib/updater";
 import { PlatformIcon } from "./PlatformIcon";
@@ -225,6 +229,8 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
               </a>
             </div>
           </Section>
+
+          <SupportSection />
 
           <Section eyebrow="sign out" title="Step away cleanly.">
             <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
@@ -557,5 +563,87 @@ function SubscriptionAction({
     >
       {label}
     </button>
+  );
+}
+
+
+// Beta dignity: a place to email support and copy diagnostic info into the
+// clipboard so a user can paste it back into the email. Logs live in
+// ~/Junior/ — the project folder + .progress.json per run — so we point
+// users there for full traces rather than shipping log files to the
+// clipboard (privacy + size).
+function SupportSection() {
+  const [copied, setCopied] = useState(false);
+  const [hw, setHw] = useState<HardwareInfo | null>(null);
+
+  useEffect(() => {
+    void sidecar.hardwareInfo().then(setHw).catch(() => undefined);
+  }, []);
+
+  async function buildDiagnostic(): Promise<string> {
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "n/a";
+    const lines = [
+      `Junior version: ${APP_VERSION}`,
+      `Platform: ${hw?.platform ?? "unknown"}`,
+      `RAM: ${hw?.ram_gb ?? "?"} GB · CPUs: ${hw?.cpu_count ?? "?"} · Free disk: ${hw?.free_disk_gb ?? "?"} GB`,
+      hw?.warnings?.length ? `Warnings: ${hw.warnings.join(", ")}` : "",
+      `Logs folder: ~/Junior/projects/<slug>/.progress.json (per run)`,
+      `User agent: ${ua}`,
+      `Time: ${new Date().toISOString()}`,
+    ].filter(Boolean);
+    return lines.join("\n");
+  }
+
+  async function onCopyDiagnostic() {
+    try {
+      const dump = await buildDiagnostic();
+      await writeText(dump);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* silent — copy failure is non-critical */
+    }
+  }
+
+  async function onReportIssue() {
+    const dump = await buildDiagnostic();
+    const subject = encodeURIComponent(`Junior ${APP_VERSION} — issue report`);
+    const body = encodeURIComponent(
+      "Describe what you were doing when the issue happened:\n\n\n" +
+        "--- diagnostic (please keep) ---\n" +
+        dump +
+        "\n",
+    );
+    const url = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
+    void openExternal(url).catch(() => undefined);
+  }
+
+  return (
+    <Section eyebrow="support" title="Stuck on something? We're here.">
+      <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+        Report an issue and we'll get back to you within a working day.
+        Diagnostic info auto-fills so we can debug without a 20-question thread.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => void onReportIssue()}
+          className="rounded-full bg-ink px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia"
+        >
+          Report an issue →
+        </button>
+        <button
+          onClick={() => void onCopyDiagnostic()}
+          className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
+        >
+          {copied ? "Copied ✓" : "Copy diagnostic"}
+        </button>
+        <a
+          onClick={() => void openExternal(`mailto:${SUPPORT_EMAIL}`)}
+          className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary hover:text-fuchsia-deep"
+        >
+          {SUPPORT_EMAIL}
+        </a>
+      </div>
+    </Section>
   );
 }

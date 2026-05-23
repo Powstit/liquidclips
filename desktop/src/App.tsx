@@ -19,6 +19,7 @@ import { TranscriptResult, LiftingProgress } from "./components/TranscriptResult
 import { IntentPicker } from "./components/IntentPicker";
 import { EarnTab } from "./components/earn/EarnTab";
 import { SourcePastePrompt } from "./components/earn/SourcePastePrompt";
+import { FailureCard } from "./components/FailureCard";
 import type { WhopBounty } from "./lib/sidecar";
 
 type View =
@@ -397,27 +398,16 @@ export default function App() {
         )}
 
         {view.kind === "lift-failed" && (
-          <div className="w-full max-w-[520px]">
-            <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-[#DC2626]">
-              couldn't lift this one
-            </div>
-            <h2 className="mt-2 font-display text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink">
-              That link didn't transcribe.
-            </h2>
-            <p className="mt-1 truncate font-mono text-[11px] text-text-tertiary">{view.url}</p>
-            <pre className="mt-4 max-h-[180px] overflow-auto rounded-xl border border-line bg-paper-warm/40 p-3 font-mono text-[11px] text-text-secondary">
-              {view.error}
-            </pre>
-            <p className="mt-3 font-sans text-[13px] text-text-secondary">
-              Private posts and login-walled videos can't be lifted. Public reels / shorts / posts work.
-            </p>
-            <button
-              onClick={() => setView({ kind: "empty" })}
-              className="mt-5 rounded-full bg-ink px-5 py-2.5 font-sans text-[14px] font-medium text-paper hover:bg-fuchsia"
-            >
-              Back
-            </button>
-          </div>
+          <FailureCard
+            eyebrow="couldn't lift this one"
+            heading="That link didn't transcribe."
+            url={view.url}
+            error={view.error}
+            note="Private posts and login-walled videos can't be lifted. Public reels / shorts / posts work."
+            onRetry={() => void onPasteUrl(view.url, "")}
+            onDismiss={() => setView({ kind: "empty" })}
+            subject={`Junior — lift failed for ${view.url}`}
+          />
         )}
 
         {view.kind === "downloading" && (
@@ -466,30 +456,18 @@ export default function App() {
         )}
 
         {view.kind === "failed" && (
-          <div className="w-full max-w-[720px]">
-            <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-[#DC2626]">Pipeline failed</div>
-            <h2 className="mt-2 font-display text-[28px] font-semibold tracking-[-0.02em]">{view.project.source_filename}</h2>
-            <pre className="mt-6 max-h-[300px] overflow-auto rounded-2xl border border-line bg-paper-warm p-4 font-mono text-[12px] text-ink">
-              {view.error}
-            </pre>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <button
-                onClick={() => void runRemainingStages(view.project)}
-                className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper hover:bg-ink"
-              >
-                Retry from failed stage
-              </button>
-              <button
-                onClick={() => setView({ kind: "empty" })}
-                className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia"
-              >
-                Drop another
-              </button>
-            </div>
-            <p className="mt-3 font-mono text-[11px] text-text-tertiary">
-              Cached audio + transcript on disk skip instantly — only the failed stage re-runs.
-            </p>
-          </div>
+          <FailureCard
+            eyebrow="Pipeline failed"
+            heading={view.project.source_filename}
+            error={view.error}
+            note="Cached audio + transcript on disk skip instantly — only the failed stage re-runs."
+            logHint={`Logs: ${view.project.root}/.progress.json`}
+            onRetry={() => void runRemainingStages(view.project)}
+            retryLabel="Retry from failed stage"
+            onDismiss={() => setView({ kind: "empty" })}
+            dismissLabel="Drop another"
+            subject={`Junior — pipeline failed on ${view.project.source_filename}`}
+          />
         )}
 
         {view.kind === "canceled" && (
