@@ -1,0 +1,76 @@
+# Junior mono-repo — root gitignore. Per-project .gitignores layer on top.
+# This file's job is the universal stuff: secrets, build artefacts, OS dust.
+
+# --- Secrets (NEVER commit) -------------------------------------------------
+.env
+.env.*
+!.env.example
+*.env
+!*.env.example
+.envrc
+
+# Keychain / credentials stores from this machine that may exist alongside.
+.claude-credentials/
+.claude/
+
+# License signing keys generated locally on first backend boot.
+.junior-keys/
+
+# --- Node / Vite ------------------------------------------------------------
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+out/
+.vercel/
+
+# --- Rust / Tauri (the 11 GB beast) -----------------------------------------
+target/
+**/src-tauri/gen/
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- ML models bundled at build time (75 MB faster-whisper) -----------------
+# Pull these from the build script — don't commit the binaries.
+desktop/python-sidecar/models/
+desktop/python-sidecar/bin/ffmpeg
+desktop/python-sidecar/bin/ffprobe
+
+# --- Tauri build outputs ----------------------------------------------------
+*.dmg
+*.app.tar.gz
+*.app.tar.gz.sig
+
+# --- IDE / OS noise ---------------------------------------------------------
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.swp
+*.swo
+Thumbs.db
+
+# --- Local logs + sqlite ----------------------------------------------------
+*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# --- Project-specific local state -------------------------------------------
+junior-backend/junior.db
+junior-backend/.junior-keys/
+
+# Cache from the desktop's user-data area in case anyone symlinks it in.
+desktop/.cache/

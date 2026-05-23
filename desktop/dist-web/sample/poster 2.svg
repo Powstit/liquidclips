@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F0F12"/>
+      <stop offset="100%" stop-color="#1A0F1F"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="30%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#FF1A8C" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#FF1A8C" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#g)"/>
+  <rect width="1920" height="1080" fill="url(#glow)"/>
+  <text x="120" y="540" font-family="Geist, system-ui" font-size="56" fill="#F9F4EE" font-weight="600" letter-spacing="-2">Sample podcast — episode 42</text>
+  <text x="120" y="610" font-family="ui-monospace, monospace" font-size="22" fill="#A8A0AA" letter-spacing="2">PREVIEW MODE · 30:20 · 1920×1080</text>
+  <circle cx="1680" cy="940" r="14" fill="#FF1A8C"/>
+</svg>

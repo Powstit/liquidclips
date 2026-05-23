@@ -1,0 +1,9 @@
+faster-whisper>=1.1.0
+opencv-python>=4.10
+openai>=1.50
+pydantic>=2.9
+yt-dlp>=2026.1.0
+keyring>=25
+psutil>=6.0
+# Anthropic added later when an Anthropic key is provisioned for the project.
+# anthropic>=0.40

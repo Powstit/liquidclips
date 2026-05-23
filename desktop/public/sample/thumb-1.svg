@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" preserveAspectRatio="xMidYMid slice">
+  <defs><linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FF1A8C"/><stop offset="100%" stop-color="#3D0E2A"/></linearGradient></defs>
+  <rect width="1080" height="1920" fill="url(#g1)"/>
+  <text x="60" y="960" font-family="Geist, system-ui" font-size="84" fill="#F9F4EE" font-weight="700" letter-spacing="-3">Wait —</text>
+  <text x="60" y="1060" font-family="Geist, system-ui" font-size="84" fill="#F9F4EE" font-weight="700" letter-spacing="-3">did he just</text>
+  <text x="60" y="1160" font-family="Geist, system-ui" font-size="84" fill="#F9F4EE" font-weight="700" letter-spacing="-3">say that?</text>
+</svg>

@@ -1,0 +1,1984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>junior/employee — Your AI editor. Works while you sleep.</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23FF1A8C'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='monospace' font-weight='700' font-size='22' fill='%23FAF7F2'%3E/%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800;9..144,900&family=Geist+Mono:wght@400;500&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --fuchsia: #FF1A8C;
+    --fuchsia-bright: #FF3DA5;
+    --fuchsia-deep: #C70066;
+    --fuchsia-soft: #FFD6EC;
+    --fuchsia-glow: #FF66B8;
+    --ink: #0A0A0F;
+    --ink-soft: #1A1A24;
+    --paper: #FAF7F2;
+    --paper-warm: #F5EFE7;
+    --line: #E8DFD2;
+    --text-secondary: #5A5560;
+    --text-tertiary: #8A8590;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Geist', system-ui, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.5;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .container {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 0 32px;
+  }
+
+  /* ============ NAV ============ */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(250, 247, 242, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--line);
+    padding: 18px 0;
+  }
+  .nav-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .logo {
+    font-family: 'Geist Mono', monospace;
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: -0.01em;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    background: var(--fuchsia);
+    color: var(--paper);
+    padding: 9px 14px 9px 9px;
+    border-radius: 9px;
+    line-height: 1;
+    gap: 8px;
+    transition: all 0.2s;
+  }
+  .logo:hover {
+    background: var(--ink);
+  }
+  .logo .slash {
+    color: var(--ink);
+    opacity: 0.9;
+    margin: 0 1px;
+    font-weight: 700;
+  }
+  .logo:hover .slash {
+    color: var(--fuchsia-bright);
+    opacity: 1;
+  }
+  .logo-icon-tile {
+    width: 26px;
+    height: 26px;
+    background: var(--paper);
+    color: var(--fuchsia);
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Geist Mono', monospace;
+    font-weight: 700;
+    font-size: 15px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .logo:hover .logo-icon-tile {
+    background: var(--fuchsia);
+    color: var(--paper);
+  }
+  .nav-links {
+    display: flex;
+    gap: 36px;
+    align-items: center;
+  }
+  .nav-links a {
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+  }
+  .nav-links a:hover { opacity: 1; }
+  .nav-cta {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 10px 20px;
+    border-radius: 100px;
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background 0.2s;
+  }
+  .nav-cta:hover { background: var(--fuchsia); }
+  .mobile-only { display: none; }
+
+  /* ============ HERO ============ */
+  .hero {
+    padding: 80px 0 60px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -200px;
+    right: -200px;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, var(--fuchsia-soft) 0%, transparent 70%);
+    border-radius: 50%;
+    z-index: 0;
+  }
+  .hero-content { position: relative; z-index: 1; }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 6px 14px;
+    border-radius: 100px;
+    font-size: 12px;
+    font-family: 'Geist Mono', monospace;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+  }
+  .eyebrow-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--fuchsia-bright);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.3); }
+  }
+
+  h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 700;
+    font-size: clamp(48px, 7.5vw, 104px);
+    line-height: 0.95;
+    letter-spacing: -0.045em;
+    color: var(--ink);
+    margin-bottom: 28px;
+    max-width: 900px;
+  }
+  h1 .ink-out {
+    color: var(--fuchsia);
+    font-style: italic;
+    font-weight: 800;
+  }
+  .hero-sub {
+    font-size: 22px;
+    line-height: 1.45;
+    color: var(--text-secondary);
+    max-width: 580px;
+    margin-bottom: 44px;
+  }
+  .hero-sub strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .hero-ctas {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .btn-primary {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 18px 32px;
+    border-radius: 100px;
+    font-size: 16px;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.2s;
+    border: none;
+    cursor: pointer;
+  }
+  .btn-primary:hover {
+    background: var(--fuchsia);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(255, 26, 140, 0.3);
+  }
+  .btn-secondary {
+    background: transparent;
+    color: var(--ink);
+    padding: 18px 28px;
+    border-radius: 100px;
+    font-size: 16px;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    border: 1.5px solid var(--ink);
+    transition: all 0.2s;
+  }
+  .btn-secondary:hover { background: var(--ink); color: var(--paper); }
+  .meta-line {
+    font-size: 13px;
+    color: var(--text-tertiary);
+    font-family: 'Geist Mono', monospace;
+    margin-top: 8px;
+  }
+
+  /* ============ ASK JUNIOR CHAT ============ */
+  .ask-junior {
+    margin-top: 56px;
+    max-width: 620px;
+  }
+  .ask-junior-label {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ask-junior-label::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--fuchsia-bright);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+  .chat-window {
+    background: var(--ink);
+    border-radius: 18px;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .chat-window::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 26, 140, 0.6), transparent);
+  }
+  .chat-message {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    opacity: 0;
+    animation: chatFadeIn 0.5s ease-out forwards;
+  }
+  .chat-avatar {
+    width: 32px;
+    height: 32px;
+    background: var(--fuchsia);
+    color: var(--paper);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Geist Mono', monospace;
+    font-weight: 700;
+    font-size: 16px;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+  .chat-bubble {
+    flex: 1;
+    min-width: 0;
+  }
+  .chat-meta {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .chat-name {
+    color: var(--paper);
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .chat-name .slash { color: var(--fuchsia-bright); }
+  .chat-time {
+    color: rgba(250, 247, 242, 0.4);
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+  }
+  .chat-text {
+    color: rgba(250, 247, 242, 0.92);
+    font-size: 15px;
+    line-height: 1.5;
+    font-family: 'Geist', system-ui, sans-serif;
+  }
+  .chat-text .code-path {
+    background: rgba(255, 26, 140, 0.15);
+    color: var(--fuchsia-bright);
+    padding: 2px 8px;
+    border-radius: 5px;
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .chat-text strong { color: var(--paper); font-weight: 600; }
+  @keyframes chatFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .chat-rotator {
+    position: relative;
+  }
+  .chat-rotator .chat-message {
+    display: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .chat-rotator .chat-message.active {
+    display: flex;
+    opacity: 1;
+  }
+
+  /* ============ TWO CLICKS DIAGRAM ============ */
+  .two-clicks {
+    padding: 80px 0;
+    background: var(--paper-warm);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    position: relative;
+  }
+  .two-clicks h2 {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: clamp(34px, 4.5vw, 56px);
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    margin-bottom: 16px;
+  }
+  .two-clicks h2 em {
+    color: var(--fuchsia);
+    font-style: italic;
+    font-weight: 700;
+  }
+  .section-sub {
+    font-size: 19px;
+    color: var(--text-secondary);
+    max-width: 620px;
+    margin-bottom: 64px;
+  }
+
+  .click-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin-bottom: 48px;
+  }
+  .click-card {
+    background: var(--paper);
+    border-radius: 24px;
+    padding: 40px;
+    position: relative;
+    border: 1px solid var(--line);
+  }
+  .click-num {
+    font-family: 'Fraunces', serif;
+    font-weight: 800;
+    font-style: italic;
+    font-size: 120px;
+    line-height: 0.8;
+    color: var(--fuchsia);
+    margin-bottom: 24px;
+    letter-spacing: -0.05em;
+  }
+  .click-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 32px;
+    letter-spacing: -0.025em;
+    margin-bottom: 12px;
+  }
+  .click-desc {
+    color: var(--text-secondary);
+    font-size: 16px;
+    line-height: 1.55;
+    margin-bottom: 24px;
+  }
+  .click-mock {
+    background: var(--ink);
+    color: var(--paper);
+    border-radius: 12px;
+    padding: 20px;
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+  }
+  .click-mock .file-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+  }
+  .check { color: var(--fuchsia-bright); }
+  .pending { color: var(--text-tertiary); }
+  .working { color: var(--fuchsia-bright); }
+  .working::after {
+    content: '_';
+    animation: blink 1s infinite;
+  }
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  .between-clicks {
+    text-align: center;
+    color: var(--text-tertiary);
+    font-family: 'Geist Mono', monospace;
+    font-size: 12px;
+    margin: -16px 0 0;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  /* ============ ICON SHOWCASE ============ */
+  .icon-showcase {
+    padding: 120px 0;
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+  }
+  .icon-showcase-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 80px;
+    align-items: center;
+  }
+  .icon-h2 {
+    font-family: 'Geist Mono', monospace;
+    font-weight: 700;
+    font-size: clamp(28px, 4vw, 52px);
+    letter-spacing: -0.03em;
+    line-height: 1;
+    margin-bottom: 24px;
+  }
+  .code-inline {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 6px 16px 8px;
+    border-radius: 10px;
+    display: inline-block;
+  }
+  .code-inline::selection { background: var(--fuchsia); }
+  .icon-sub {
+    font-size: 19px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 48px;
+    max-width: 440px;
+  }
+  .icon-spec-row {
+    display: grid;
+    grid-template-columns: auto auto auto;
+    gap: 32px;
+    align-items: end;
+  }
+  .spec-cell {}
+  .spec-label {
+    font-family: 'Geist Mono', monospace;
+    font-size: 10px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.1em;
+    margin-bottom: 12px;
+    font-weight: 500;
+  }
+  .spec-demo {
+    display: flex;
+    align-items: end;
+  }
+  .dock-icon-favicon {
+    width: 28px;
+    height: 28px;
+    background: var(--fuchsia);
+    color: var(--paper);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Geist Mono', monospace;
+    font-weight: 700;
+    font-size: 16px;
+  }
+  .dock-icon-medium {
+    width: 56px;
+    height: 56px;
+    background: var(--fuchsia);
+    color: var(--paper);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Geist Mono', monospace;
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: -0.02em;
+  }
+  .slash-mid { color: var(--ink); margin: 0 1px; }
+  .dock-icon-large {
+    background: var(--fuchsia);
+    color: var(--paper);
+    border-radius: 18px;
+    padding: 30px 24px;
+    font-family: 'Geist Mono', monospace;
+    font-weight: 700;
+    font-size: 17px;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .slash-large { color: var(--ink); }
+
+  .icon-showcase-hero {
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+    align-items: center;
+  }
+  .hero-app-icon {
+    position: relative;
+    width: 280px;
+    height: 280px;
+  }
+  .hero-app-icon-inner {
+    width: 100%;
+    height: 100%;
+    background: var(--fuchsia);
+    color: var(--paper);
+    border-radius: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    font-family: 'Geist Mono', monospace;
+    font-weight: 700;
+    font-size: 32px;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    text-align: center;
+    position: relative;
+    z-index: 2;
+    box-shadow: 0 30px 60px -20px rgba(255, 26, 140, 0.4);
+  }
+  .hero-app-icon-inner span:first-child,
+  .hero-app-icon-inner span:last-child {
+    display: block;
+  }
+  .slash-mega {
+    color: var(--ink);
+    font-size: 56px;
+    line-height: 0.6;
+    margin: 6px 0;
+    font-weight: 700;
+  }
+  .hero-app-icon-shadow {
+    position: absolute;
+    inset: 20px 0 -20px 0;
+    background: var(--fuchsia-soft);
+    border-radius: 60px;
+    z-index: 1;
+    opacity: 0.5;
+  }
+
+  .dock-mockup {
+    background: rgba(20, 20, 30, 0.04);
+    backdrop-filter: blur(20px);
+    border-radius: 20px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    width: 100%;
+    max-width: 380px;
+  }
+  .dock-mockup-inner {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 0;
+  }
+  .dock-app {
+    width: 54px;
+    height: 54px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    flex-shrink: 0;
+  }
+  .dock-app-finder { background: linear-gradient(135deg, #4A90E2, #357ABD); }
+  .dock-app-junior {
+    background: var(--fuchsia);
+    color: var(--paper);
+    font-family: 'Geist Mono', monospace;
+    font-weight: 700;
+    font-size: 20px;
+    letter-spacing: -0.02em;
+    box-shadow: 0 8px 20px -5px rgba(255, 26, 140, 0.5);
+    transform: translateY(-4px);
+  }
+  .slash-tiny { color: var(--ink); margin: 0 1px; }
+  .dock-app-other { background: linear-gradient(135deg, #2D3748, #1A202C); }
+  .dock-caption {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-align: center;
+    margin-top: 16px;
+    letter-spacing: 0.02em;
+  }
+
+  /* ============ MOAT SECTION ============ */
+  .moat {
+    padding: 120px 0;
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .moat h2 {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: clamp(36px, 5.5vw, 72px);
+    letter-spacing: -0.035em;
+    line-height: 1;
+    margin-bottom: 24px;
+    max-width: 980px;
+  }
+  .moat h2 em {
+    font-style: italic;
+    color: var(--fuchsia-glow);
+    font-weight: 700;
+  }
+  .moat-sub {
+    font-size: 20px;
+    color: rgba(250, 247, 242, 0.65);
+    max-width: 620px;
+    margin-bottom: 80px;
+  }
+  .moat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    border-top: 1px solid rgba(250, 247, 242, 0.1);
+  }
+  .moat-cell {
+    padding: 48px 32px;
+    border-right: 1px solid rgba(250, 247, 242, 0.1);
+    border-bottom: 1px solid rgba(250, 247, 242, 0.1);
+  }
+  .moat-cell:nth-child(3n) { border-right: none; }
+  .moat-num {
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    color: var(--fuchsia-bright);
+    margin-bottom: 16px;
+    letter-spacing: 0.05em;
+  }
+  .moat-title {
+    font-family: 'Fraunces', serif;
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
+    line-height: 1.15;
+  }
+  .moat-desc {
+    color: rgba(250, 247, 242, 0.6);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  /* ============ DRIP CALENDAR ============ */
+  .drip {
+    padding: 120px 0;
+    background: var(--paper);
+  }
+  .drip-header {
+    text-align: center;
+    max-width: 760px;
+    margin: 0 auto 64px;
+  }
+  .drip-eyebrow {
+    color: var(--fuchsia);
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 20px;
+    font-weight: 500;
+  }
+  .drip-header h2 {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: clamp(36px, 5vw, 64px);
+    letter-spacing: -0.035em;
+    line-height: 1.05;
+    margin-bottom: 20px;
+  }
+  .drip-header h2 em {
+    font-style: italic;
+    color: var(--fuchsia);
+    font-weight: 700;
+  }
+  .drip-header p {
+    font-size: 19px;
+    color: var(--text-secondary);
+  }
+
+  .calendar {
+    background: var(--paper-warm);
+    border-radius: 24px;
+    padding: 40px;
+    border: 1px solid var(--line);
+    max-width: 940px;
+    margin: 0 auto;
+  }
+  .cal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .cal-title {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 600;
+  }
+  .cal-badge {
+    background: var(--fuchsia);
+    color: white;
+    padding: 6px 14px;
+    border-radius: 100px;
+    font-size: 12px;
+    font-family: 'Geist Mono', monospace;
+    font-weight: 500;
+  }
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+  }
+  .cal-day {
+    aspect-ratio: 1;
+    background: var(--paper);
+    border-radius: 10px;
+    padding: 10px;
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    border: 1px solid var(--line);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .cal-day .day-num { font-weight: 500; margin-bottom: auto; }
+  .cal-day.has-post {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+  .cal-day.has-post .day-num { color: var(--fuchsia-bright); }
+  .cal-day .post-pill {
+    background: var(--fuchsia);
+    color: white;
+    font-size: 9px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    margin-top: 4px;
+    text-align: center;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .cal-day .post-pill.yt { background: var(--fuchsia); }
+  .cal-day .post-pill.tt { background: var(--fuchsia-bright); }
+  .cal-day .post-pill.x { background: var(--fuchsia-deep); }
+
+  /* ============ COMPARISON ============ */
+  .comparison {
+    padding: 120px 0;
+    background: var(--paper-warm);
+  }
+  .comparison-header {
+    text-align: center;
+    max-width: 720px;
+    margin: 0 auto 64px;
+  }
+  .comparison-header h2 {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: clamp(36px, 5vw, 64px);
+    letter-spacing: -0.035em;
+    line-height: 1.05;
+    margin-bottom: 20px;
+  }
+  .comparison-header p {
+    font-size: 19px;
+    color: var(--text-secondary);
+  }
+  .comp-table {
+    background: var(--paper);
+    border-radius: 24px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    max-width: 940px;
+    margin: 0 auto;
+  }
+  .comp-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--line);
+    align-items: center;
+  }
+  .comp-row:last-child { border-bottom: none; }
+  .comp-row.header {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 22px 28px;
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .comp-row.header .junior-col { color: var(--fuchsia-bright); }
+  .comp-task {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .comp-cell {
+    text-align: center;
+    font-size: 14px;
+  }
+  .comp-yes {
+    color: var(--fuchsia);
+    font-weight: 600;
+    font-size: 18px;
+  }
+  .comp-no {
+    color: var(--text-tertiary);
+    font-size: 16px;
+  }
+  .comp-row .junior-col {
+    background: rgba(255, 26, 140, 0.04);
+    margin: -18px 0;
+    padding: 18px 0;
+  }
+  .comp-row.header .junior-col {
+    background: var(--fuchsia);
+    color: var(--paper);
+    margin: -22px 0;
+    padding: 22px 0;
+  }
+
+  /* ============ PRICING ============ */
+  .pricing {
+    padding: 120px 0;
+    background: var(--paper);
+  }
+  .pricing-header {
+    text-align: center;
+    max-width: 720px;
+    margin: 0 auto 72px;
+  }
+  .pricing-header h2 {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: clamp(36px, 5vw, 64px);
+    letter-spacing: -0.035em;
+    line-height: 1.05;
+    margin-bottom: 20px;
+  }
+  .pricing-header h2 em {
+    color: var(--fuchsia);
+    font-style: italic;
+    font-weight: 700;
+  }
+  .pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    margin-bottom: 40px;
+  }
+  .price-card {
+    background: var(--paper-warm);
+    border-radius: 20px;
+    padding: 32px 28px;
+    border: 1px solid var(--line);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .price-card.flagship {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+  .price-card.flagship .price-tier { color: var(--fuchsia-bright); }
+  .price-tier {
+    font-family: 'Geist Mono', monospace;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--fuchsia);
+    margin-bottom: 16px;
+    font-weight: 500;
+  }
+  .price-name {
+    font-family: 'Fraunces', serif;
+    font-size: 32px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+  }
+  .price-amount {
+    font-family: 'Fraunces', serif;
+    font-size: 48px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    margin-bottom: 4px;
+    line-height: 1;
+  }
+  .price-period {
+    font-size: 13px;
+    color: var(--text-tertiary);
+    margin-bottom: 24px;
+    font-family: 'Geist Mono', monospace;
+  }
+  .price-card.flagship .price-period { color: rgba(250, 247, 242, 0.5); }
+  .price-features {
+    list-style: none;
+    margin-bottom: 28px;
+    flex-grow: 1;
+  }
+  .price-features li {
+    font-size: 14px;
+    padding: 8px 0;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    line-height: 1.4;
+  }
+  .price-card.flagship .price-features li { color: rgba(250, 247, 242, 0.75); }
+  .price-features li::before {
+    content: '→';
+    color: var(--fuchsia);
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .price-cta {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 14px 20px;
+    border-radius: 100px;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    text-align: center;
+    display: block;
+    transition: background 0.2s;
+  }
+  .price-cta:hover { background: var(--fuchsia); }
+  .price-card.flagship .price-cta {
+    background: var(--fuchsia);
+  }
+  .price-card.flagship .price-cta:hover { background: var(--fuchsia-bright); }
+
+  .founder-banner {
+    background: linear-gradient(135deg, var(--fuchsia) 0%, var(--fuchsia-deep) 100%);
+    border-radius: 20px;
+    padding: 40px;
+    color: white;
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 32px;
+    align-items: center;
+    margin-top: 24px;
+  }
+  .founder-eyebrow {
+    font-family: 'Geist Mono', monospace;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    opacity: 0.85;
+    margin-bottom: 12px;
+  }
+  .founder-title {
+    font-family: 'Fraunces', serif;
+    font-size: 32px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+    line-height: 1.1;
+  }
+  .founder-desc {
+    opacity: 0.9;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  .founder-price-block {
+    text-align: right;
+  }
+  .founder-price {
+    font-family: 'Fraunces', serif;
+    font-size: 56px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .founder-once {
+    font-size: 13px;
+    opacity: 0.8;
+    font-family: 'Geist Mono', monospace;
+    margin-top: 4px;
+  }
+
+  /* ============ AFFILIATE ============ */
+  .affiliate {
+    padding: 120px 0;
+    background: var(--paper-warm);
+  }
+  .affiliate-inner {
+    background: var(--ink);
+    color: var(--paper);
+    border-radius: 32px;
+    padding: 72px;
+    position: relative;
+    overflow: hidden;
+  }
+  .affiliate-inner::before {
+    content: '';
+    position: absolute;
+    bottom: -300px;
+    right: -200px;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, var(--fuchsia) 0%, transparent 70%);
+    opacity: 0.3;
+    border-radius: 50%;
+  }
+  .affiliate-content { position: relative; z-index: 1; max-width: 680px; }
+  .affiliate-eyebrow {
+    color: var(--fuchsia-bright);
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 24px;
+    font-weight: 500;
+  }
+  .affiliate h2 {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: clamp(36px, 5vw, 60px);
+    letter-spacing: -0.035em;
+    line-height: 1.05;
+    margin-bottom: 24px;
+  }
+  .affiliate h2 em {
+    font-style: italic;
+    color: var(--fuchsia-glow);
+    font-weight: 700;
+  }
+  .affiliate p {
+    font-size: 18px;
+    color: rgba(250, 247, 242, 0.75);
+    margin-bottom: 32px;
+    line-height: 1.55;
+  }
+  .affiliate-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 32px;
+    margin-top: 40px;
+    padding-top: 40px;
+    border-top: 1px solid rgba(250, 247, 242, 0.15);
+  }
+  .stat-num {
+    font-family: 'Fraunces', serif;
+    font-size: 48px;
+    font-weight: 700;
+    color: var(--fuchsia-bright);
+    letter-spacing: -0.03em;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .stat-label {
+    font-size: 13px;
+    color: rgba(250, 247, 242, 0.6);
+    font-family: 'Geist Mono', monospace;
+  }
+
+  /* ============ FAQ ============ */
+  .faq {
+    padding: 120px 0;
+    background: var(--paper);
+  }
+  .faq-header {
+    text-align: center;
+    margin-bottom: 64px;
+  }
+  .faq-header h2 {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: clamp(36px, 5vw, 56px);
+    letter-spacing: -0.035em;
+  }
+  .faq-list {
+    max-width: 760px;
+    margin: 0 auto;
+  }
+  .faq-item {
+    border-bottom: 1px solid var(--line);
+    padding: 28px 0;
+    cursor: pointer;
+  }
+  .faq-q {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+  }
+  .faq-q::after {
+    content: '+';
+    color: var(--fuchsia);
+    font-size: 28px;
+    font-weight: 300;
+    transition: transform 0.2s;
+  }
+  .faq-item.open .faq-q::after { transform: rotate(45deg); }
+  .faq-a {
+    display: none;
+    margin-top: 16px;
+    color: var(--text-secondary);
+    font-size: 16px;
+    line-height: 1.6;
+    max-width: 620px;
+  }
+  .faq-item.open .faq-a { display: block; }
+
+  /* ============ FINAL CTA ============ */
+  .final-cta {
+    padding: 140px 0;
+    text-align: center;
+    background: var(--ink);
+    color: var(--paper);
+    position: relative;
+    overflow: hidden;
+  }
+  .final-cta::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 100%, var(--fuchsia) 0%, transparent 50%);
+    opacity: 0.2;
+  }
+  .final-cta-content { position: relative; z-index: 1; }
+  .final-cta h2 {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: clamp(48px, 7vw, 96px);
+    letter-spacing: -0.04em;
+    line-height: 0.95;
+    margin-bottom: 24px;
+  }
+  .final-cta h2 em {
+    font-style: italic;
+    color: var(--fuchsia-glow);
+    font-weight: 700;
+  }
+  .final-cta p {
+    font-size: 22px;
+    color: rgba(250, 247, 242, 0.7);
+    margin-bottom: 48px;
+    max-width: 580px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .final-cta .btn-primary {
+    background: var(--fuchsia);
+    font-size: 18px;
+    padding: 22px 40px;
+  }
+  .final-cta .btn-primary:hover {
+    background: var(--fuchsia-bright);
+  }
+  .final-meta {
+    margin-top: 32px;
+    color: rgba(250, 247, 242, 0.4);
+    font-size: 13px;
+    font-family: 'Geist Mono', monospace;
+  }
+
+  /* ============ FOOTER ============ */
+  footer {
+    padding: 48px 0;
+    background: var(--paper-warm);
+    border-top: 1px solid var(--line);
+  }
+  .footer-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 24px;
+  }
+  .footer-links {
+    display: flex;
+    gap: 24px;
+    font-size: 13px;
+  }
+  .footer-links a {
+    color: var(--text-tertiary);
+    text-decoration: none;
+  }
+  .footer-links a:hover { color: var(--fuchsia); }
+  .footer-copy {
+    font-size: 13px;
+    color: var(--text-tertiary);
+    font-family: 'Geist Mono', monospace;
+  }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 900px) {
+    .container { padding: 0 20px; }
+    .nav-links { gap: 20px; }
+    .nav-links a:not(.nav-cta) { display: none; }
+    .click-grid { grid-template-columns: 1fr; }
+    .moat-grid { grid-template-columns: 1fr; }
+    .moat-cell { border-right: none !important; }
+    .pricing-grid { grid-template-columns: 1fr 1fr; }
+    .founder-banner { grid-template-columns: 1fr; text-align: left; }
+    .founder-price-block { text-align: left; }
+    .affiliate-inner { padding: 40px 32px; }
+    .affiliate-stats { grid-template-columns: 1fr; gap: 24px; }
+    .comp-row { grid-template-columns: 1.5fr 1fr 1fr 1fr; padding: 14px 16px; font-size: 13px; }
+    .comp-row.header { padding: 18px 16px; font-size: 11px; }
+    .calendar { padding: 24px; }
+    .cal-grid { gap: 4px; }
+    .cal-day { padding: 6px; font-size: 9px; }
+    .cal-day .post-pill { font-size: 7px; padding: 2px 4px; }
+    .icon-showcase-grid { grid-template-columns: 1fr; gap: 48px; }
+    .icon-spec-row { gap: 20px; }
+    .hero-app-icon { width: 220px; height: 220px; }
+    .hero-app-icon-inner { font-size: 24px; border-radius: 48px; }
+    .slash-mega { font-size: 44px; }
+    .dock-icon-large { font-size: 14px; padding: 22px 18px; }
+  }
+  @media (max-width: 600px) {
+    .pricing-grid { grid-template-columns: 1fr; }
+  }
+</style>
+<meta property="og:title" content="junior/employee — One podcast in. Two weeks of posts out.">
+<meta property="og:description" content="Drop a recording. Get clips, metadata, thumbnails, and a fortnight of scheduled posts. Local-first, no upload, no watermark.">
+<meta property="og:image" content="https://jnremployee.com/og-product.png">
+<meta property="og:url" content="https://jnremployee.com">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://jnremployee.com/og-product.png">
+<meta name="twitter:title" content="junior/employee — One podcast in. Two weeks of posts out.">
+<meta name="twitter:description" content="Drop a recording. Get clips, metadata, thumbnails, and a fortnight of scheduled posts.">
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="container nav-inner">
+    <a href="#" class="logo">
+      <span class="logo-icon-tile">/</span>
+      <span>junior<span class="slash">/</span>employee</span>
+    </a>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="https://app.jnremployee.com" target="_blank" rel="noopener">Demo</a>
+      <a href="/affiliates">Affiliates</a>
+      <a href="#download" class="nav-cta">Download</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="container hero-content">
+    <div class="eyebrow">
+      <span class="eyebrow-dot"></span>
+      Two clicks. No upload. Works while you sleep.
+    </div>
+    <h1>Your AI editor. <span class="ink-out">Lives on your computer.</span></h1>
+    <p class="hero-sub">Drop a 4-hour podcast. Get <strong>15 clips, chapters, descriptions, thumbnails, and a fortnight of scheduled posts</strong> across YouTube, TikTok, and X. Before your coffee finishes brewing.</p>
+    <div class="hero-ctas">
+      <a href="#download" class="btn-primary">Download for Mac →</a>
+      <a href="#download" class="btn-secondary">Download for Windows</a>
+    </div>
+    <div class="meta-line">Free · No card required · 3 videos a month, forever</div>
+
+    <div class="ask-junior">
+      <div class="ask-junior-label">Junior, just now</div>
+      <div class="chat-window">
+        <div class="chat-rotator" id="chat-rotator">
+          <div class="chat-message active">
+            <div class="chat-avatar">/</div>
+            <div class="chat-bubble">
+              <div class="chat-meta">
+                <span class="chat-name">junior<span class="slash">/</span>employee</span>
+                <span class="chat-time">06:42</span>
+              </div>
+              <div class="chat-text">Morning. Finished the <strong>90GB</strong> podcast you dropped in last night — <strong>30 clips ready</strong>, captioned, with thumbnails. Saved to <span class="code-path">~/Downloads/junior/ep-47</span>. Scheduled the first six for today.</div>
+            </div>
+          </div>
+
+          <div class="chat-message">
+            <div class="chat-avatar">/</div>
+            <div class="chat-bubble">
+              <div class="chat-meta">
+                <span class="chat-name">junior<span class="slash">/</span>employee</span>
+                <span class="chat-time">09:14</span>
+              </div>
+              <div class="chat-text">Posted clip 04 to YouTube and TikTok. <strong>2,400 views</strong> on the Short already — the one about the dad. I marked it <span class="code-path">/promote</span> so I'll run a tweet thread off it at 6pm.</div>
+            </div>
+          </div>
+
+          <div class="chat-message">
+            <div class="chat-avatar">/</div>
+            <div class="chat-bubble">
+              <div class="chat-meta">
+                <span class="chat-name">junior<span class="slash">/</span>employee</span>
+                <span class="chat-time">23:51</span>
+              </div>
+              <div class="chat-text">You went to bed at 11. I'm still here. Cut the 4-hour interview into <strong>18 clips</strong>, wrote three title variants for each, queued them across the next 12 days. Files in <span class="code-path">~/junior/projects/</span>. Sleep well.</div>
+            </div>
+          </div>
+
+          <div class="chat-message">
+            <div class="chat-avatar">/</div>
+            <div class="chat-bubble">
+              <div class="chat-meta">
+                <span class="chat-name">junior<span class="slash">/</span>employee</span>
+                <span class="chat-time">14:08</span>
+              </div>
+              <div class="chat-text">TikTok rejected clip 11 — said it was too long. Trimmed it to 58s, re-uploaded, accepted. Didn't want to bother you with it. Everything else is on schedule.</div>
+            </div>
+          </div>
+
+          <div class="chat-message">
+            <div class="chat-avatar">/</div>
+            <div class="chat-bubble">
+              <div class="chat-meta">
+                <span class="chat-name">junior<span class="slash">/</span>employee</span>
+                <span class="chat-time">07:30</span>
+              </div>
+              <div class="chat-text">Three of your clips outperformed your channel average this week. The <em>"six years wrong"</em> moment hit <strong>47k views</strong>. I'll lean into that hook style for the next batch.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TWO CLICKS -->
+<section class="two-clicks" id="how">
+  <div class="container">
+    <h2>Two clicks. <em>That's the whole job.</em></h2>
+    <p class="section-sub">Every other AI clipping tool makes you upload, wait, log in, manage credits, and copy-paste descriptions between five tabs. Junior is two clicks.</p>
+
+    <div class="click-grid">
+      <div class="click-card">
+        <div class="click-num">01</div>
+        <div class="click-title">Drop the video.</div>
+        <div class="click-desc">Drag your raw recording into Junior. It never uploads. It never leaves your machine. Junior transcribes locally, picks the best moments, cuts them vertical with captions, and writes everything your video needs to publish.</div>
+        <div class="click-mock">
+          <div class="file-row"><span class="check">✓</span> Transcribed audio · 1m 12s</div>
+          <div class="file-row"><span class="check">✓</span> Picked 14 best moments</div>
+          <div class="file-row"><span class="check">✓</span> Cut clips with face tracking</div>
+          <div class="file-row"><span class="working">Writing chapters &amp; descriptions</span></div>
+          <div class="file-row"><span class="pending">○</span> Generating thumbnails</div>
+        </div>
+      </div>
+
+      <div class="click-card">
+        <div class="click-num">02</div>
+        <div class="click-title">Drip across 2 weeks.</div>
+        <div class="click-desc">One button. Junior spreads your 15 clips across YouTube Shorts, TikTok, and X — at the right times for each platform. Then publishes them on autopilot while you're recording next week's episode.</div>
+        <div class="click-mock">
+          <div class="file-row"><span class="check">→</span> Mon 6:00 PM · YouTube · Clip 01</div>
+          <div class="file-row"><span class="check">→</span> Mon 8:00 PM · TikTok · Clip 02</div>
+          <div class="file-row"><span class="check">→</span> Tue 9:00 AM · X thread</div>
+          <div class="file-row"><span class="check">→</span> Tue 6:00 PM · YouTube · Clip 03</div>
+          <div class="file-row"><span class="pending">+ 11 more across 14 days</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="between-clicks">— That's it. Close the laptop. —</div>
+  </div>
+</section>
+
+<!-- ICON SHOWCASE -->
+<section class="icon-showcase">
+  <div class="container">
+    <div class="icon-showcase-grid">
+      <div class="icon-showcase-text">
+        <div class="drip-eyebrow">The mark</div>
+        <h2 class="icon-h2"><span class="code-inline">junior/employee</span></h2>
+        <p class="icon-sub">Reads as a file path. As a Slack command. As a job title. The slash matters — it implies hierarchy, file structure, and "press to begin" all at once.</p>
+        <div class="icon-spec-row">
+          <div class="spec-cell">
+            <div class="spec-label">FAVICON · 16PX</div>
+            <div class="spec-demo">
+              <div class="dock-icon-favicon">/</div>
+            </div>
+          </div>
+          <div class="spec-cell">
+            <div class="spec-label">DOCK · 64PX</div>
+            <div class="spec-demo">
+              <div class="dock-icon-medium">j<span class="slash-mid">/</span>e</div>
+            </div>
+          </div>
+          <div class="spec-cell">
+            <div class="spec-label">RETINA · 256PX</div>
+            <div class="spec-demo">
+              <div class="dock-icon-large">junior<span class="slash-large">/</span>employee</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="icon-showcase-hero">
+        <div class="hero-app-icon">
+          <div class="hero-app-icon-inner">
+            <span>junior</span><span class="slash-mega">/</span><span>employee</span>
+          </div>
+          <div class="hero-app-icon-shadow"></div>
+        </div>
+        <div class="dock-mockup">
+          <div class="dock-mockup-inner">
+            <div class="dock-app dock-app-finder">📁</div>
+            <div class="dock-app dock-app-junior">
+              <span>j<span class="slash-tiny">/</span>e</span>
+            </div>
+            <div class="dock-app dock-app-other">🎬</div>
+            <div class="dock-app dock-app-other">✏️</div>
+            <div class="dock-app dock-app-other">💬</div>
+          </div>
+          <div class="dock-caption">In your dock. Where everything else screams. Junior whispers.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- /ICON SHOWCASE -->
+
+<section class="moat">
+  <div class="container">
+    <h2>Anyone can clip a TikTok.<br><em>Junior runs your whole channel.</em></h2>
+    <p class="moat-sub">One weekly recording becomes three weeks of automated content. While you sleep. While you record the next one. While your competitors are still uploading to a cloud.</p>
+
+    <div class="moat-grid">
+      <div class="moat-cell">
+        <div class="moat-num">01 · LOCAL</div>
+        <div class="moat-title">No upload. Ever.</div>
+        <div class="moat-desc">Your 4K podcast is 15GB. Opus Clip makes you wait 40 minutes to upload it. Junior reads it from your drive instantly. Your raw footage never leaves your machine.</div>
+      </div>
+      <div class="moat-cell">
+        <div class="moat-num">02 · UNLIMITED</div>
+        <div class="moat-title">No credits. No limits.</div>
+        <div class="moat-desc">Your machine does the work, not someone's GPU farm. So we don't meter you by the minute. Process a 6-hour livestream. Then another. We don't care.</div>
+      </div>
+      <div class="moat-cell">
+        <div class="moat-num">03 · AUTOPILOT</div>
+        <div class="moat-title">Works while you sleep.</div>
+        <div class="moat-desc">Junior schedules your clips, spaces them optimally per platform, and publishes them at the right times. Even when your laptop is closed. Even when you forget.</div>
+      </div>
+      <div class="moat-cell">
+        <div class="moat-num">04 · COMPLETE</div>
+        <div class="moat-title">The whole post-production stack.</div>
+        <div class="moat-desc">Clips, captions, chapters, descriptions, titles, tags, thumbnails, tweet threads, LinkedIn posts. One drop. Zero copy-pasting between ChatGPT and YouTube Studio.</div>
+      </div>
+      <div class="moat-cell">
+        <div class="moat-num">05 · YOURS</div>
+        <div class="moat-title">Your files. Your folder.</div>
+        <div class="moat-desc">Every clip, every thumbnail, every script sits in a folder on your hard drive. Named, organised, yours forever. No black box. No "log into our dashboard."</div>
+      </div>
+      <div class="moat-cell">
+        <div class="moat-num">06 · ONE-OFF</div>
+        <div class="moat-title">Pay once. Hire forever.</div>
+        <div class="moat-desc">First 2,000 founding customers get Pro tier locked at £500 once. No subscription. No price hikes. Junior shows up to work every day for the rest of your career.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- DRIP -->
+<section class="drip">
+  <div class="container">
+    <div class="drip-header">
+      <div class="drip-eyebrow">The killer feature</div>
+      <h2>One podcast in.<br><em>Two weeks of posts out.</em></h2>
+      <p>Junior takes your 15 clips and drips them across the optimal posting windows for each platform. You record once. Junior keeps you visible for a fortnight.</p>
+    </div>
+
+    <div class="calendar">
+      <div class="cal-header">
+        <div class="cal-title">Episode 47 — Drip across 2 weeks</div>
+        <div class="cal-badge">15 posts scheduled</div>
+      </div>
+      <div class="cal-grid">
+        <div class="cal-day has-post"><span class="day-num">M 1</span><div class="post-pill yt">YT 6PM</div></div>
+        <div class="cal-day has-post"><span class="day-num">T 2</span><div class="post-pill tt">TT 8PM</div></div>
+        <div class="cal-day has-post"><span class="day-num">W 3</span><div class="post-pill x">X 9AM</div></div>
+        <div class="cal-day has-post"><span class="day-num">T 4</span><div class="post-pill yt">YT 6PM</div></div>
+        <div class="cal-day has-post"><span class="day-num">F 5</span><div class="post-pill tt">TT 8PM</div></div>
+        <div class="cal-day"><span class="day-num">S 6</span></div>
+        <div class="cal-day has-post"><span class="day-num">S 7</span><div class="post-pill yt">YT 6PM</div></div>
+        <div class="cal-day has-post"><span class="day-num">M 8</span><div class="post-pill tt">TT 8PM</div></div>
+        <div class="cal-day has-post"><span class="day-num">T 9</span><div class="post-pill x">X 9AM</div></div>
+        <div class="cal-day has-post"><span class="day-num">W 10</span><div class="post-pill yt">YT 6PM</div></div>
+        <div class="cal-day has-post"><span class="day-num">T 11</span><div class="post-pill tt">TT 8PM</div></div>
+        <div class="cal-day has-post"><span class="day-num">F 12</span><div class="post-pill yt">YT 6PM</div></div>
+        <div class="cal-day"><span class="day-num">S 13</span></div>
+        <div class="cal-day has-post"><span class="day-num">S 14</span><div class="post-pill tt">TT 8PM</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- COMPARISON -->
+<section class="comparison" id="compare">
+  <div class="container">
+    <div class="comparison-header">
+      <h2>The whole YouTube team. In one app.</h2>
+      <p>What you'd otherwise pay £800–£2,500/month in tools and freelancers to do.</p>
+    </div>
+
+    <div class="comp-table">
+      <div class="comp-row header">
+        <div>The job</div>
+        <div class="comp-cell">Reelify</div>
+        <div class="comp-cell">Opus Clip</div>
+        <div class="comp-cell junior-col">Junior</div>
+      </div>
+      <div class="comp-row">
+        <div class="comp-task">Cut clips from long-form video</div>
+        <div class="comp-cell comp-yes">●</div>
+        <div class="comp-cell comp-yes">●</div>
+        <div class="comp-cell junior-col comp-yes">●</div>
+      </div>
+      <div class="comp-row">
+        <div class="comp-task">Vertical reframe with face tracking</div>
+        <div class="comp-cell comp-yes">●</div>
+        <div class="comp-cell comp-yes">●</div>
+        <div class="comp-cell junior-col comp-yes">●</div>
+      </div>
+      <div class="comp-row">
+        <div class="comp-task">Burned-in animated captions</div>
+        <div class="comp-cell comp-yes">●</div>
+        <div class="comp-cell comp-yes">●</div>
+        <div class="comp-cell junior-col comp-yes">●</div>
+      </div>
+      <div class="comp-row">
+        <div class="comp-task">No upload required (local)</div>
+        <div class="comp-cell comp-yes">●</div>
+        <div class="comp-cell comp-no">—</div>
+        <div class="comp-cell junior-col comp-yes">●</div>
+      </div>
+      <div class="comp-row">
+        <div class="comp-task">Generate YouTube chapters</div>
+        <div class="comp-cell comp-no">—</div>
+        <div class="comp-cell comp-no">—</div>
+        <div class="comp-cell junior-col comp-yes">●</div>
+      </div>
+      <div class="comp-row">
+        <div class="comp-task">SEO-optimised descriptions</div>
+        <div class="comp-cell comp-no">—</div>
+        <div class="comp-cell comp-no">—</div>
+        <div class="comp-cell junior-col comp-yes">●</div>
+      </div>
+      <div class="comp-row">
+        <div class="comp-task">AI-generated thumbnails</div>
+        <div class="comp-cell comp-no">—</div>
+        <div class="comp-cell comp-no">—</div>
+        <div class="comp-cell junior-col comp-yes">●</div>
+      </div>
+      <div class="comp-row">
+        <div class="comp-task">Tweet threads from video</div>
+        <div class="comp-cell comp-no">—</div>
+        <div class="comp-cell comp-no">—</div>
+        <div class="comp-cell junior-col comp-yes">●</div>
+      </div>
+      <div class="comp-row">
+        <div class="comp-task">Auto-publish to YouTube/TikTok/X</div>
+        <div class="comp-cell comp-no">—</div>
+        <div class="comp-cell comp-yes">●</div>
+        <div class="comp-cell junior-col comp-yes">●</div>
+      </div>
+      <div class="comp-row">
+        <div class="comp-task">Drip a podcast across 2 weeks</div>
+        <div class="comp-cell comp-no">—</div>
+        <div class="comp-cell comp-no">—</div>
+        <div class="comp-cell junior-col comp-yes">●</div>
+      </div>
+      <div class="comp-row">
+        <div class="comp-task">Pay once, own forever</div>
+        <div class="comp-cell comp-no">—</div>
+        <div class="comp-cell comp-no">—</div>
+        <div class="comp-cell junior-col comp-yes">●</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="pricing" id="pricing">
+  <div class="container">
+    <div class="pricing-header">
+      <h2>Cheaper than your <em>cheapest</em> freelancer.</h2>
+    </div>
+
+    <div class="pricing-grid">
+      <div class="price-card">
+        <div class="price-tier">FREE FOREVER</div>
+        <div class="price-name">Try</div>
+        <div class="price-amount">£0</div>
+        <div class="price-period">3 videos / month · bring your own keys</div>
+        <ul class="price-features">
+          <li>3 videos per month</li>
+          <li>Multi-ratio export (9:16, 1:1, 4:5)</li>
+          <li>B-roll overlay + hook burn-in</li>
+          <li>No watermark</li>
+          <li>Manual publish only</li>
+        </ul>
+        <a href="https://account.jnremployee.com/sign-up" class="price-cta">Start free</a>
+      </div>
+
+      <div class="price-card">
+        <div class="price-tier">STARTER</div>
+        <div class="price-name">Solo</div>
+        <div class="price-amount">£19.99</div>
+        <div class="price-period">/ month · unlimited videos</div>
+        <ul class="price-features">
+          <li>Unlimited videos per month</li>
+          <li>Local-only processing · your machine, your keys</li>
+          <li>Multi-ratio + b-roll overlay</li>
+          <li>One platform connection</li>
+          <li>All output bundles</li>
+        </ul>
+        <a href="https://account.jnremployee.com/sign-up?plan=solo" class="price-cta">Start Solo</a>
+      </div>
+
+      <div class="price-card">
+        <div class="price-tier">MOST POPULAR</div>
+        <div class="price-name">Growth</div>
+        <div class="price-amount">£49</div>
+        <div class="price-period">/ month · nothing to plug in</div>
+        <ul class="price-features">
+          <li>Everything in Solo</li>
+          <li>Hosted transcribe · no Whisper download</li>
+          <li>Hosted LLM · no OpenAI key needed</li>
+          <li>All three platforms (YouTube, TikTok, X)</li>
+          <li>Priority support</li>
+        </ul>
+        <a href="https://account.jnremployee.com/sign-up?plan=growth" class="price-cta">Start Growth</a>
+      </div>
+
+      <div class="price-card flagship">
+        <div class="price-tier">JUNIOR</div>
+        <div class="price-name">Autopilot</div>
+        <div class="price-amount">£149</div>
+        <div class="price-period">/ month · the whole team</div>
+        <ul class="price-features">
+          <li>Everything in Growth</li>
+          <li>14-day auto-drip scheduling</li>
+          <li>Project memory · learns your voice</li>
+          <li>Cross-platform smart timing</li>
+          <li>Founder community access</li>
+        </ul>
+        <a href="https://account.jnremployee.com/sign-up?plan=autopilot" class="price-cta">Hire Junior</a>
+      </div>
+    </div>
+
+    <p style="text-align:center;margin:2rem auto 0;max-width:640px;font-family:monospace;font-size:11px;color:#7a7280;letter-spacing:0.02em;">
+      Billed in USD at today's rate via Stripe. Your bank converts at their card-network rate.
+      Already on Whop? <a href="https://whop.com/orders" style="color:inherit;text-decoration:underline;">Manage on Whop →</a>
+    </p>
+
+    <div class="founder-banner">
+      <div>
+        <div class="founder-eyebrow">FOUNDER TIER · 2,000 SEATS · LOCKED FOREVER</div>
+        <div class="founder-title">Pay Junior once. Keep him for life.</div>
+        <div class="founder-desc">After 20 videos, eligible users unlock <strong>Autopilot tier</strong> locked at one payment, forever. Drip-mode, project memory, every future Autopilot perk — yours the moment they ship. No subscription. No price hikes. No "we got acquired and shut down."</div>
+        <a href="https://whop.com/jnremployee" style="display:inline-block;margin-top:1.5rem;padding:0.875rem 1.75rem;background:#0F0F12;color:#F9F4EE;font-family:'Geist',sans-serif;font-size:15px;font-weight:500;text-decoration:none;border-radius:9999px;transition:all 0.2s;">Reserve a Founder seat →</a>
+      </div>
+      <div class="founder-price-block">
+        <div class="founder-price">£500</div>
+        <div class="founder-once">ONCE · 2,000 SPOTS</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- AFFILIATE -->
+<section class="affiliate">
+  <div class="container">
+    <div class="affiliate-inner">
+      <div class="affiliate-content">
+        <div class="affiliate-eyebrow">FOR CREATORS WITH AUDIENCE</div>
+        <h2>Send Junior to a friend.<br><em>Keep 50% forever.</em></h2>
+        <p>Real money. Real recurring. Real lifetime. Refer 10 creators on Pro, that's £245/month in your pocket. Refer 10 on Junior tier, that's £745/month. Forever. Managed by Whop. Paid in 170+ countries.</p>
+        <a href="https://partner.jnremployee.com/auth/whop/start" class="btn-primary" style="background: var(--fuchsia);">Become an affiliate →</a>
+      </div>
+      <div class="affiliate-stats">
+        <div>
+          <div class="stat-num">50%</div>
+          <div class="stat-label">Lifetime recurring</div>
+        </div>
+        <div>
+          <div class="stat-num">£74.50</div>
+          <div class="stat-label">Per Junior tier referral / mo</div>
+        </div>
+        <div>
+          <div class="stat-num">170+</div>
+          <div class="stat-label">Countries paid via Whop</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="faq">
+  <div class="container">
+    <div class="faq-header">
+      <h2>Common questions.</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item">
+        <div class="faq-q">Does Junior really run locally?</div>
+        <div class="faq-a">Yes. Transcription, clipping, captions, vertical reframe — all happen on your computer. Your raw video never uploads to any cloud. The only time anything leaves your machine is when you explicitly hit "publish" — then the finished, ready-to-be-public clip goes to YouTube/TikTok/X directly, like any normal upload.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">What machines does it work on?</div>
+        <div class="faq-a">Any Mac with Apple Silicon (M1 or newer) and any Windows machine with 16GB RAM. Junior runs faster on better hardware — a 1-hour podcast takes 3 minutes on an M2 Pro, about 8 minutes on a 2020 Intel laptop. We probe your hardware on first launch and tell you what to expect.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">How is this different from Opus Clip?</div>
+        <div class="faq-a">Opus Clip is cloud. You upload, wait, pay per source-minute. Junior is local. No upload, no credit anxiety, unlimited videos. Plus Junior generates everything Opus Clip doesn't — chapters, descriptions, thumbnails, tweet threads, LinkedIn posts — and drips them across weeks on autopilot.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">How does scheduling work if my laptop is closed?</div>
+        <div class="faq-a">When you schedule a drip, Junior uploads the finished clips to a small holding service immediately. The schedule fires from there at the right time. So even if your laptop is closed, your Tuesday 9am post goes live on Tuesday at 9am. Your raw footage and any unpublished content still never leaves your machine.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Do I need to pay for OpenAI / Claude separately?</div>
+        <div class="faq-a">On the Free tier, yes — you paste your own API key and pay your own usage (typically £2–5/month for moderate use). On Pro and Junior tiers, we include API costs up to your tier's allowance. You'll see exactly what's being used in settings.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">What if I cancel?</div>
+        <div class="faq-a">You go to Free tier. Your existing clips stay on your hard drive forever — we never had them in the first place. No "your work disappears when your subscription does" trap. Cancel any time in your Whop account.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="final-cta" id="download">
+  <div class="container final-cta-content">
+    <h2>Hire Junior.<br><em>Sleep in tomorrow.</em></h2>
+    <p>Download free. Three videos a month, no card, no time limit. Decide if Junior is the cheapest hire you ever made.</p>
+    <a href="#" class="btn-primary">Download for Mac →</a>
+    <div class="final-meta">Also for Windows · Free forever · macOS 13+ / Windows 10+</div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<style>
+  footer.site-footer {
+    padding: 64px 0 32px;
+    background: var(--paper-warm);
+    border-top: 1px solid var(--line);
+    color: var(--ink);
+  }
+  .footer-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 40px;
+    margin-bottom: 40px;
+  }
+  .footer-col h4 {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-tertiary);
+    margin-bottom: 18px;
+    font-weight: 500;
+  }
+  .footer-col a {
+    display: block;
+    padding: 6px 0;
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 14px;
+    transition: color 150ms ease;
+  }
+  .footer-col a:hover { color: var(--fuchsia); }
+  .footer-brand {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .footer-brand p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    max-width: 240px;
+  }
+  .footer-bottom {
+    border-top: 1px solid var(--line);
+    padding-top: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .footer-bottom-copy {
+    font-family: 'Geist Mono', monospace;
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+  .footer-bottom-socials {
+    display: flex;
+    gap: 16px;
+    font-size: 13px;
+  }
+  .footer-bottom-socials a {
+    color: var(--text-tertiary);
+    text-decoration: none;
+  }
+  .footer-bottom-socials a:hover { color: var(--fuchsia); }
+  @media (max-width: 900px) {
+    .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; }
+  }
+  @media (max-width: 560px) {
+    .footer-grid { grid-template-columns: 1fr; }
+  }
+</style>
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <h4>Product</h4>
+        <a href="/#how">How it works</a>
+        <a href="/#pricing">Pricing</a>
+        <a href="/#compare">Compare</a>
+        <a href="/#download">Download</a>
+        <a href="https://app.jnremployee.com" target="_blank" rel="noopener">Demo</a>
+        <a href="/founder">Founder offer</a>
+        <a href="/changelog">Changelog</a>
+      </div>
+      <div class="footer-col">
+        <h4>Earn</h4>
+        <a href="/affiliates">Affiliate program</a>
+        <a href="/affiliate">For Whop clippers</a>
+        <a href="https://partner.jnremployee.com" target="_blank" rel="noopener">Affiliate sign in</a>
+      </div>
+      <div class="footer-col">
+        <h4>Trust</h4>
+        <a href="/security">Security</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="/refunds">Refunds</a>
+        <a href="mailto:support@jnremployee.com">Support</a>
+      </div>
+      <div class="footer-col footer-brand">
+        <a href="/" class="logo" style="align-self: flex-start;">
+          <span class="logo-icon-tile">/</span>
+          <span>junior<span class="slash">/</span>employee</span>
+        </a>
+        <p>Made for creators who'd rather record.</p>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="footer-bottom-copy">© 2026 junior/employee · All rights reserved</div>
+      <div class="footer-bottom-socials">
+        <a href="https://x.com/jnremployee" target="_blank" rel="noopener">X</a>
+        <a href="https://www.youtube.com/@jnremployee" target="_blank" rel="noopener">YouTube</a>
+        <a href="https://www.tiktok.com/@jnremployee" target="_blank" rel="noopener">TikTok</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // FAQ toggle
+  document.querySelectorAll('.faq-item').forEach(item => {
+    item.addEventListener('click', () => item.classList.toggle('open'));
+  });
+
+  // Ask Junior — rotate through status messages
+  (function() {
+    const messages = document.querySelectorAll('#chat-rotator .chat-message');
+    if (messages.length < 2) return;
+    let current = 0;
+    setInterval(() => {
+      const next = (current + 1) % messages.length;
+      messages[current].style.opacity = '0';
+      setTimeout(() => {
+        messages[current].classList.remove('active');
+        messages[next].classList.add('active');
+        messages[next].style.opacity = '0';
+        // Force reflow then fade in
+        void messages[next].offsetWidth;
+        messages[next].style.opacity = '1';
+        current = next;
+      }, 400);
+    }, 5000);
+  })();
+</script>
+
+<script src="/ref-capture.js" defer></script>
+</body>
+</html>

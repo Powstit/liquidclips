@@ -1,0 +1,4044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>junior/employee — App Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,700;1,9..144,800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --fuchsia: #FF1A8C;
+    --fuchsia-bright: #FF3DA5;
+    --fuchsia-deep: #C70066;
+    --fuchsia-soft: #FFD6EC;
+    --fuchsia-glow: #FF66B8;
+    --ink: #0A0A0F;
+    --ink-soft: #1A1A24;
+    --ink-mid: #2A2A36;
+    --paper: #FAF7F2;
+    --paper-warm: #F5EFE7;
+    --paper-dim: #EFE8DC;
+    --line: #E8DFD2;
+    --line-strong: #D4C8B5;
+    --text-secondary: #5A5560;
+    --text-tertiary: #8A8590;
+    --money: #00A86B;
+    --warning: #D97706;
+    --danger: #DC2626;
+    --serif: 'Fraunces', Georgia, serif;
+    --sans: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+    --mono: 'Geist Mono', 'SF Mono', Menlo, monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    background: #2A2A36;
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* ============================================================
+     SIMULATOR CHROME — the page that holds the app windows
+     ============================================================ */
+
+  .sim-header {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--ink-mid);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .sim-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .sim-brand-tile {
+    width: 28px;
+    height: 28px;
+    background: var(--fuchsia);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--paper);
+    font-weight: 700;
+    font-size: 16px;
+  }
+
+  .sim-brand-tile::before { content: "/"; }
+
+  .sim-brand-text .slash { color: var(--fuchsia); }
+
+  .sim-meta {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .sim-meta-tag {
+    padding: 4px 10px;
+    border: 1px solid var(--ink-mid);
+    border-radius: 100px;
+    color: var(--paper);
+  }
+
+  .sim-meta-tag.live {
+    background: var(--fuchsia);
+    border-color: var(--fuchsia);
+    color: var(--paper);
+  }
+
+  /* ============================================================
+     NAV — bottom of screen, scrolls horizontally through screens
+     ============================================================ */
+
+  .sim-nav {
+    background: var(--ink);
+    color: var(--paper);
+    border-top: 1px solid var(--ink-mid);
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+  }
+
+  .sim-nav-pages {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    flex: 1;
+    scrollbar-width: none;
+  }
+
+  .sim-nav-pages::-webkit-scrollbar { display: none; }
+
+  .sim-nav-page {
+    background: var(--ink-mid);
+    color: var(--paper);
+    border: 1px solid var(--ink-mid);
+    padding: 6px 12px;
+    border-radius: 100px;
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 150ms ease;
+  }
+
+  .sim-nav-page:hover {
+    background: var(--ink-soft);
+    border-color: var(--text-tertiary);
+  }
+
+  .sim-nav-page.active {
+    background: var(--fuchsia);
+    border-color: var(--fuchsia);
+    color: var(--paper);
+  }
+
+  .sim-nav-arrows {
+    display: flex;
+    gap: 8px;
+  }
+
+  .sim-arrow {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--ink-mid);
+    color: var(--paper);
+    border: 1px solid var(--ink-mid);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: all 150ms ease;
+  }
+
+  .sim-arrow:hover {
+    background: var(--fuchsia);
+    border-color: var(--fuchsia);
+  }
+
+  /* ============================================================
+     STAGE — the area that holds the app window
+     ============================================================ */
+
+  .sim-stage {
+    min-height: calc(100vh - 80px);
+    padding: 40px 32px 100px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .sim-screen-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--paper);
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+  }
+
+  .sim-screen-number {
+    background: var(--fuchsia);
+    color: var(--paper);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+
+  .sim-screen-sprint {
+    color: var(--text-tertiary);
+    padding: 4px 10px;
+    border: 1px solid var(--ink-mid);
+    border-radius: 4px;
+  }
+
+  .sim-screen-title {
+    color: var(--paper);
+    font-family: var(--serif);
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+  }
+
+  .sim-screen-note {
+    color: var(--text-tertiary);
+    font-family: var(--mono);
+    font-size: 11px;
+    max-width: 720px;
+    text-align: center;
+    margin-bottom: 16px;
+    line-height: 1.6;
+  }
+
+  /* ============================================================
+     APP WINDOW — the macOS/Windows style window chrome
+     ============================================================ */
+
+  .app-window {
+    width: 1180px;
+    max-width: calc(100vw - 64px);
+    height: 760px;
+    background: var(--paper);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .app-titlebar {
+    background: var(--paper-warm);
+    border-bottom: 1px solid var(--line);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+
+  .app-traffic {
+    display: flex;
+    gap: 6px;
+  }
+
+  .app-traffic-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+  }
+
+  .app-traffic-dot.red    { background: #FF5F57; }
+  .app-traffic-dot.yellow { background: #FEBC2E; }
+  .app-traffic-dot.green  { background: #28C840; }
+
+  .app-titlebar-label {
+    flex: 1;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.04em;
+  }
+
+  .app-titlebar-spacer { width: 60px; }
+
+  .app-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ============================================================
+     APP STATUS BAR (bottom of window)
+     ============================================================ */
+
+  .app-statusbar {
+    background: var(--paper-warm);
+    border-top: 1px solid var(--line);
+    padding: 8px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+
+  .app-statusbar-left,
+  .app-statusbar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .app-statusbar-tier {
+    color: var(--fuchsia);
+    font-weight: 600;
+  }
+
+  .app-statusbar-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--fuchsia);
+    display: inline-block;
+  }
+
+  .app-statusbar-dot.off { background: var(--line-strong); }
+
+  /* ============================================================
+     COMMON COMPONENTS
+     ============================================================ */
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: 100px;
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 200ms ease;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .btn-primary {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .btn-primary:hover {
+    background: var(--fuchsia);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(255, 26, 140, 0.3);
+  }
+
+  .btn-fuchsia {
+    background: var(--fuchsia);
+    color: var(--paper);
+  }
+
+  .btn-fuchsia:hover {
+    background: var(--fuchsia-deep);
+    box-shadow: 0 8px 20px rgba(255, 26, 140, 0.4);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    border-color: var(--line-strong);
+    color: var(--ink);
+  }
+
+  .btn-ghost:hover {
+    border-color: var(--ink);
+    background: var(--paper-warm);
+  }
+
+  .btn-small {
+    padding: 8px 16px;
+    font-size: 12px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--fuchsia);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .eyebrow-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--fuchsia);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.3); }
+  }
+
+  /* ============================================================
+     SCREEN HOLDERS
+     ============================================================ */
+
+  .screen {
+    display: none;
+    height: 100%;
+    width: 100%;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .screen.active {
+    display: flex;
+  }
+
+  /* =============================================================
+     SCREEN 1 — FIRST RUN WELCOME
+     ============================================================= */
+
+  .first-run {
+    flex: 1;
+    background: var(--paper);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px;
+    text-align: center;
+    position: relative;
+  }
+
+  .first-run-mark {
+    width: 96px;
+    height: 96px;
+    background: var(--fuchsia);
+    border-radius: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--paper);
+    font-family: var(--mono);
+    font-size: 56px;
+    font-weight: 700;
+    margin-bottom: 40px;
+    box-shadow: 0 20px 40px rgba(255, 26, 140, 0.25);
+  }
+
+  .first-run-mark::before { content: "/"; line-height: 1; margin-top: -8px; }
+
+  .first-run-wordmark {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    letter-spacing: -0.01em;
+  }
+
+  .first-run-wordmark .slash { color: var(--fuchsia); }
+
+  .first-run-title {
+    font-family: var(--serif);
+    font-size: 56px;
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.04em;
+    margin-bottom: 16px;
+    max-width: 620px;
+  }
+
+  .first-run-title em {
+    font-style: italic;
+    color: var(--fuchsia);
+    font-weight: 800;
+  }
+
+  .first-run-sub {
+    font-size: 17px;
+    color: var(--text-secondary);
+    max-width: 480px;
+    margin-bottom: 40px;
+    line-height: 1.55;
+  }
+
+  .first-run-promises {
+    display: flex;
+    gap: 32px;
+    margin-bottom: 48px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .first-run-promise {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .first-run-promise::before {
+    content: "—";
+    color: var(--fuchsia);
+  }
+
+  /* =============================================================
+     SCREEN 2 — LICENSE / KEY PASTE
+     ============================================================= */
+
+  .activate {
+    flex: 1;
+    background: var(--paper);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 60px;
+  }
+
+  .activate-card {
+    width: 100%;
+    max-width: 520px;
+  }
+
+  .activate-eyebrow {
+    margin-bottom: 16px;
+  }
+
+  .activate-title {
+    font-family: var(--serif);
+    font-size: 38px;
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    margin-bottom: 12px;
+  }
+
+  .activate-sub {
+    color: var(--text-secondary);
+    font-size: 15px;
+    margin-bottom: 32px;
+    line-height: 1.55;
+  }
+
+  .activate-tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--paper-warm);
+    padding: 4px;
+    border-radius: 100px;
+    margin-bottom: 24px;
+    width: fit-content;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .activate-tab {
+    padding: 8px 16px;
+    border-radius: 100px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-tertiary);
+    transition: all 150ms ease;
+  }
+
+  .activate-tab.active {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .activate-field {
+    margin-bottom: 16px;
+  }
+
+  .activate-label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+
+  .activate-input {
+    width: 100%;
+    padding: 16px 18px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink);
+    transition: all 150ms ease;
+  }
+
+  .activate-input:focus {
+    outline: none;
+    border-color: var(--fuchsia);
+    background: var(--paper);
+  }
+
+  .activate-input.has-value {
+    border-color: var(--fuchsia);
+    background: var(--paper);
+  }
+
+  .activate-validation {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--money);
+    margin-top: 8px;
+    padding-left: 4px;
+  }
+
+  .activate-validation::before {
+    content: "✓";
+    font-size: 14px;
+  }
+
+  .activate-cta {
+    margin-top: 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .activate-link {
+    color: var(--text-secondary);
+    font-size: 12px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+
+  /* =============================================================
+     SCREEN 3 — EMPTY WORKSPACE
+     ============================================================= */
+
+  .workspace {
+    flex: 1;
+    background: var(--paper);
+    display: flex;
+    flex-direction: column;
+    padding: 48px 60px;
+    overflow: hidden;
+  }
+
+  .workspace-top {
+    margin-bottom: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .workspace-greeting {
+    font-family: var(--serif);
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+
+  .workspace-greeting em {
+    font-style: italic;
+    color: var(--fuchsia);
+  }
+
+  .workspace-time {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .dropzone {
+    flex: 1;
+    border: 2px dashed var(--line-strong);
+    border-radius: 16px;
+    background: var(--paper-warm);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    transition: all 200ms ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .dropzone:hover {
+    border-color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+  }
+
+  .dropzone-icon {
+    width: 80px;
+    height: 80px;
+    border-radius: 20px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
+    font-family: var(--mono);
+    font-size: 32px;
+    color: var(--fuchsia);
+    transition: all 200ms ease;
+  }
+
+  .dropzone:hover .dropzone-icon {
+    background: var(--fuchsia);
+    color: var(--paper);
+    border-color: var(--fuchsia);
+    transform: rotate(-3deg) scale(1.05);
+  }
+
+  .dropzone-title {
+    font-family: var(--serif);
+    font-size: 32px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+  }
+
+  .dropzone-sub {
+    color: var(--text-secondary);
+    font-size: 15px;
+    margin-bottom: 24px;
+  }
+
+  .dropzone-or {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    margin-bottom: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .dropzone-url {
+    display: flex;
+    gap: 8px;
+    width: 420px;
+    max-width: 80%;
+  }
+
+  .dropzone-url-input {
+    flex: 1;
+    padding: 12px 16px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 100px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink);
+  }
+
+  .dropzone-url-input::placeholder {
+    color: var(--text-tertiary);
+  }
+
+  .dropzone-formats {
+    margin-top: 28px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .recent-rail {
+    margin-top: 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+  }
+
+  .recent-rail-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+  }
+
+  .recent-rail-items {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    flex: 1;
+  }
+
+  .recent-item {
+    padding: 8px 14px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: 100px;
+    font-size: 12px;
+    color: var(--ink);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 150ms ease;
+  }
+
+  .recent-item:hover {
+    border-color: var(--fuchsia);
+    color: var(--fuchsia);
+  }
+
+  .recent-item .recent-meta {
+    color: var(--text-tertiary);
+    font-family: var(--mono);
+    font-size: 10px;
+    margin-left: 8px;
+  }
+
+  /* =============================================================
+     SCREEN 4 — HOVERING WITH FILE (drop-zone in active state)
+     ============================================================= */
+
+  .dropzone.dragging {
+    border: 2px solid var(--fuchsia);
+    background: var(--fuchsia-soft);
+    transform: scale(1.01);
+  }
+
+  .dropzone.dragging .dropzone-icon {
+    background: var(--fuchsia);
+    color: var(--paper);
+    border-color: var(--fuchsia);
+    transform: rotate(-6deg) scale(1.1);
+    animation: bounceIcon 0.6s ease infinite alternate;
+  }
+
+  @keyframes bounceIcon {
+    from { transform: rotate(-6deg) scale(1.1); }
+    to { transform: rotate(-3deg) scale(1.15); }
+  }
+
+  .dropzone-file-preview {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--paper);
+    padding: 12px 20px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+  }
+
+  .dropzone-file-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--fuchsia);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .dropzone-file-text {
+    text-align: left;
+  }
+
+  .dropzone-file-name {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 2px;
+  }
+
+  .dropzone-file-meta {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  /* =============================================================
+     SCREEN 5 — BRIEF PANEL
+     ============================================================= */
+
+  .brief {
+    flex: 1;
+    background: var(--paper);
+    display: flex;
+    overflow: hidden;
+  }
+
+  .brief-left {
+    flex: 1;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 60px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .brief-video-meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--fuchsia);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 16px;
+  }
+
+  .brief-video-title {
+    font-family: var(--serif);
+    font-size: 36px;
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    margin-bottom: 24px;
+  }
+
+  .brief-video-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .brief-stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+  }
+
+  .brief-stat-value {
+    font-family: var(--serif);
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--paper);
+  }
+
+  .brief-stat-value .unit {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-tertiary);
+    font-weight: 400;
+    margin-left: 4px;
+  }
+
+  .brief-right {
+    flex: 1.1;
+    padding: 60px;
+    overflow-y: auto;
+  }
+
+  .brief-section {
+    margin-bottom: 32px;
+  }
+
+  .brief-section-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    margin-bottom: 12px;
+  }
+
+  .brief-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .brief-chip {
+    padding: 10px 18px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: 100px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 150ms ease;
+  }
+
+  .brief-chip:hover {
+    border-color: var(--fuchsia);
+    color: var(--fuchsia);
+  }
+
+  .brief-chip.selected {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+
+  .brief-textarea {
+    width: 100%;
+    min-height: 96px;
+    padding: 16px 18px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink);
+    resize: vertical;
+  }
+
+  .brief-textarea:focus {
+    outline: none;
+    border-color: var(--fuchsia);
+    background: var(--paper);
+  }
+
+  .brief-textarea::placeholder {
+    color: var(--text-tertiary);
+  }
+
+  .brief-memory {
+    background: var(--fuchsia-soft);
+    border: 1px solid var(--fuchsia-glow);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-top: 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .brief-memory-tag {
+    background: var(--fuchsia);
+    color: var(--paper);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    flex-shrink: 0;
+  }
+
+  .brief-bottom {
+    margin-top: 40px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .brief-skip {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  /* =============================================================
+     SCREEN 6 — WORKING STATE STAGE 1
+     ============================================================= */
+
+  .working {
+    flex: 1;
+    background: var(--paper);
+    display: flex;
+    flex-direction: column;
+    padding: 60px;
+    overflow: hidden;
+  }
+
+  .working-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 48px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .working-file {
+    flex: 1;
+  }
+
+  .working-file-name {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+
+  .working-file-title {
+    font-family: var(--serif);
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .working-timer {
+    text-align: right;
+  }
+
+  .working-timer-elapsed {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+  }
+
+  .working-timer-value {
+    font-family: var(--serif);
+    font-size: 32px;
+    font-weight: 700;
+    font-style: italic;
+    color: var(--fuchsia);
+    letter-spacing: -0.02em;
+  }
+
+  .working-stages {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .working-stage {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    border-radius: 12px;
+    font-family: var(--mono);
+    font-size: 14px;
+    transition: all 200ms ease;
+  }
+
+  .working-stage-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .working-stage.done {
+    color: var(--text-secondary);
+  }
+
+  .working-stage.done .working-stage-icon {
+    background: var(--fuchsia);
+    color: var(--paper);
+  }
+
+  .working-stage.done .working-stage-icon::before { content: "✓"; }
+
+  .working-stage.active {
+    background: var(--paper-warm);
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  .working-stage.active .working-stage-icon {
+    background: var(--ink);
+    color: var(--fuchsia);
+    animation: spin 2s linear infinite;
+  }
+
+  .working-stage.active .working-stage-icon::before {
+    content: "◐";
+    display: inline-block;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .working-stage.pending {
+    color: var(--text-tertiary);
+  }
+
+  .working-stage.pending .working-stage-icon {
+    background: transparent;
+    border: 1px solid var(--line-strong);
+  }
+
+  .working-stage-text {
+    flex: 1;
+  }
+
+  .working-stage-time {
+    color: var(--text-tertiary);
+    font-size: 12px;
+  }
+
+  .working-stage.active .working-stage-cursor::after {
+    content: "_";
+    color: var(--fuchsia);
+    animation: blink 0.8s steps(2) infinite;
+    margin-left: 2px;
+  }
+
+  @keyframes blink {
+    to { opacity: 0; }
+  }
+
+  .working-bottom {
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .working-eta {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .working-eta .est {
+    color: var(--fuchsia);
+    font-weight: 600;
+  }
+
+  .working-promise {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--money);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .working-promise::before {
+    content: "●";
+    color: var(--money);
+  }
+
+  /* =============================================================
+     SCREEN 8 — RESULTS / CLIPS
+     ============================================================= */
+
+  .results {
+    flex: 1;
+    background: var(--paper);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .results-header {
+    padding: 32px 48px 24px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 32px;
+  }
+
+  .results-title-block {
+    flex: 1;
+  }
+
+  .results-eyebrow {
+    margin-bottom: 12px;
+  }
+
+  .results-title {
+    font-family: var(--serif);
+    font-size: 32px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin-bottom: 8px;
+  }
+
+  .results-meta {
+    display: flex;
+    gap: 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .results-meta .highlight {
+    color: var(--fuchsia);
+    font-weight: 600;
+  }
+
+  .results-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .results-tabs {
+    display: flex;
+    gap: 0;
+    padding: 0 48px;
+    border-bottom: 1px solid var(--line);
+    background: var(--paper);
+    flex-shrink: 0;
+  }
+
+  .results-tab {
+    padding: 14px 20px;
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 150ms ease;
+    position: relative;
+  }
+
+  .results-tab:hover {
+    color: var(--ink);
+  }
+
+  .results-tab.active {
+    color: var(--fuchsia);
+    border-bottom-color: var(--fuchsia);
+    font-weight: 600;
+  }
+
+  .results-tab-count {
+    margin-left: 6px;
+    padding: 2px 6px;
+    background: var(--paper-warm);
+    border-radius: 100px;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .results-tab.active .results-tab-count {
+    background: var(--fuchsia-soft);
+    color: var(--fuchsia);
+  }
+
+  .results-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px 48px;
+  }
+
+  .clips-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 20px;
+  }
+
+  .clip-card {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 200ms ease;
+    position: relative;
+  }
+
+  .clip-card:hover {
+    border-color: var(--fuchsia);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(255, 26, 140, 0.15);
+  }
+
+  .clip-thumb {
+    aspect-ratio: 9 / 16;
+    background: linear-gradient(135deg, var(--ink-mid), var(--ink));
+    position: relative;
+    overflow: hidden;
+  }
+
+  .clip-thumb::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 30% 20%, rgba(255, 26, 140, 0.3), transparent 50%),
+      radial-gradient(circle at 70% 80%, rgba(255, 102, 184, 0.2), transparent 50%);
+  }
+
+  .clip-thumb-caption {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    color: var(--paper);
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+    text-shadow: 1px 1px 0 var(--ink), -1px -1px 0 var(--ink), 1px -1px 0 var(--ink), -1px 1px 0 var(--ink);
+    z-index: 2;
+  }
+
+  .clip-score {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: var(--fuchsia);
+    color: var(--paper);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 4px;
+    z-index: 3;
+  }
+
+  .clip-score.bright { background: var(--fuchsia-bright); }
+  .clip-score.glow { background: var(--fuchsia-glow); color: var(--ink); }
+
+  .clip-play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 44px;
+    height: 44px;
+    background: rgba(250, 247, 242, 0.95);
+    color: var(--ink);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3;
+    font-size: 14px;
+    padding-left: 3px;
+    opacity: 0;
+    transition: opacity 200ms ease;
+  }
+
+  .clip-card:hover .clip-play {
+    opacity: 1;
+  }
+
+  .clip-info {
+    padding: 12px;
+  }
+
+  .clip-info-time {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    letter-spacing: 0.05em;
+  }
+
+  .clip-info-title {
+    font-size: 13px;
+    line-height: 1.3;
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  /* Autopilot nudge card */
+
+  .autopilot-nudge {
+    margin-top: 32px;
+    background: var(--fuchsia-soft);
+    border: 1px solid var(--fuchsia-glow);
+    border-radius: 18px;
+    padding: 28px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .autopilot-nudge::before {
+    content: "";
+    position: absolute;
+    top: -40px;
+    right: -40px;
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, var(--fuchsia) 0%, transparent 70%);
+    opacity: 0.15;
+  }
+
+  .autopilot-text {
+    flex: 1;
+    position: relative;
+    z-index: 1;
+  }
+
+  .autopilot-eyebrow {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--fuchsia-deep);
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .autopilot-title {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin-bottom: 6px;
+  }
+
+  .autopilot-title em {
+    font-style: italic;
+    color: var(--fuchsia-deep);
+  }
+
+  .autopilot-sub {
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+
+  .autopilot-actions {
+    display: flex;
+    gap: 8px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .autopilot-dismiss {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 8px 12px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  /* =============================================================
+     SCREEN 9 — CLIP PREVIEW MODAL
+     ============================================================= */
+
+  .preview-screen {
+    flex: 1;
+    background: var(--paper);
+    display: flex;
+    overflow: hidden;
+  }
+
+  .preview-video-pane {
+    flex: 1.2;
+    background: var(--ink);
+    display: flex;
+    flex-direction: column;
+    padding: 40px;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  .preview-video {
+    width: 280px;
+    aspect-ratio: 9 / 16;
+    background: linear-gradient(135deg, var(--ink-mid), var(--ink));
+    border-radius: 16px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.4);
+  }
+
+  .preview-video::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 30% 30%, rgba(255, 26, 140, 0.35), transparent 50%),
+      radial-gradient(circle at 70% 70%, rgba(255, 102, 184, 0.25), transparent 50%);
+  }
+
+  .preview-video-caption {
+    position: absolute;
+    bottom: 60px;
+    left: 16px;
+    right: 16px;
+    color: var(--paper);
+    font-family: var(--sans);
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: center;
+    text-shadow: 2px 2px 0 var(--ink), -2px -2px 0 var(--ink), 2px -2px 0 var(--ink), -2px 2px 0 var(--ink);
+    z-index: 2;
+  }
+
+  .preview-video-play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 64px;
+    height: 64px;
+    background: var(--fuchsia);
+    color: var(--paper);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    padding-left: 4px;
+    z-index: 3;
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(255, 26, 140, 0.5);
+  }
+
+  .preview-scrubber {
+    width: 280px;
+    margin-top: 24px;
+  }
+
+  .preview-scrubber-bar {
+    height: 4px;
+    background: var(--ink-mid);
+    border-radius: 100px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .preview-scrubber-progress {
+    position: absolute;
+    left: 12%;
+    width: 28%;
+    top: 0;
+    bottom: 0;
+    background: var(--fuchsia);
+    border-radius: 100px;
+  }
+
+  .preview-scrubber-times {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+  }
+
+  .preview-info-pane {
+    flex: 1;
+    padding: 40px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .preview-clip-meta {
+    margin-bottom: 24px;
+  }
+
+  .preview-clip-num {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--fuchsia);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+
+  .preview-clip-title {
+    font-family: var(--serif);
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin-bottom: 16px;
+  }
+
+  .preview-score-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .preview-score-pill {
+    background: var(--fuchsia);
+    color: var(--paper);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-weight: 700;
+  }
+
+  .preview-section {
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+  }
+
+  .preview-section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+    margin-bottom: 12px;
+  }
+
+  .preview-range {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+
+  .preview-range-input {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    width: 90px;
+    text-align: center;
+  }
+
+  .preview-actions {
+    margin-top: auto;
+    display: flex;
+    gap: 8px;
+    padding-top: 32px;
+    border-top: 1px solid var(--line);
+  }
+
+  .preview-actions .btn { flex: 1; }
+
+  /* =============================================================
+     SCREEN 10 — DRIP MODE SETUP
+     ============================================================= */
+
+  .drip {
+    flex: 1;
+    background: var(--paper);
+    display: flex;
+    overflow: hidden;
+  }
+
+  .drip-left {
+    flex: 0 0 380px;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    overflow-y: auto;
+  }
+
+  .drip-eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--fuchsia);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .drip-title {
+    font-family: var(--serif);
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+  }
+
+  .drip-title em {
+    font-style: italic;
+    color: var(--fuchsia);
+  }
+
+  .drip-section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+    margin-bottom: 12px;
+  }
+
+  .drip-duration {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .drip-duration-option {
+    padding: 14px 16px;
+    background: transparent;
+    border: 1px solid var(--ink-mid);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 150ms ease;
+    text-align: left;
+  }
+
+  .drip-duration-option:hover {
+    border-color: var(--fuchsia);
+  }
+
+  .drip-duration-option.selected {
+    background: var(--fuchsia);
+    border-color: var(--fuchsia);
+  }
+
+  .drip-duration-label {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--paper);
+  }
+
+  .drip-duration-meta {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .drip-duration-option.selected .drip-duration-meta {
+    color: var(--paper);
+    opacity: 0.9;
+  }
+
+  .drip-platforms {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .drip-platform {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--ink-mid);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 150ms ease;
+  }
+
+  .drip-platform:hover {
+    background: var(--ink-soft);
+  }
+
+  .drip-platform-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .drip-platform-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--fuchsia);
+  }
+
+  .drip-platform.off .drip-platform-dot {
+    background: var(--text-tertiary);
+  }
+
+  .drip-platform-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .drip-platform-time {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .drip-bottom {
+    margin-top: auto;
+    padding-top: 24px;
+    border-top: 1px solid var(--ink-mid);
+  }
+
+  .drip-summary {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    line-height: 1.6;
+    margin-bottom: 16px;
+  }
+
+  .drip-summary .highlight {
+    color: var(--fuchsia);
+    font-weight: 600;
+  }
+
+  .drip-right {
+    flex: 1;
+    padding: 48px;
+    overflow-y: auto;
+  }
+
+  .drip-calendar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+
+  .drip-calendar-title {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .drip-calendar-meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .drip-calendar {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+  }
+
+  .drip-day {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--paper-warm);
+    padding: 10px 8px;
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .drip-day-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+  }
+
+  .drip-day-num {
+    font-family: var(--serif);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .drip-day.weekend .drip-day-num { color: var(--text-tertiary); }
+
+  .drip-post {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+  }
+
+  .drip-post.yt { background: var(--fuchsia); }
+  .drip-post.tt { background: var(--fuchsia-bright); }
+  .drip-post.x  { background: var(--ink); }
+
+  .drip-post-platform {
+    font-weight: 700;
+  }
+
+  .drip-post-time {
+    opacity: 0.8;
+    font-size: 8px;
+  }
+
+  /* =============================================================
+     SCREEN 11 — DRIP CONFIRMATION
+     ============================================================= */
+
+  .drip-confirm {
+    flex: 1;
+    background: var(--paper);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .drip-confirm-header {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 32px 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .drip-confirm-eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--fuchsia);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+  }
+
+  .drip-confirm-title {
+    font-family: var(--serif);
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
+
+  .drip-confirm-title em { font-style: italic; color: var(--fuchsia); }
+
+  .drip-confirm-stats {
+    display: flex;
+    gap: 32px;
+  }
+
+  .drip-stat {
+    text-align: right;
+  }
+
+  .drip-stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+  }
+
+  .drip-stat-value {
+    font-family: var(--serif);
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--paper);
+  }
+
+  .drip-confirm-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px 48px;
+    background: var(--paper-warm);
+  }
+
+  .drip-confirm-callout {
+    background: var(--paper);
+    border: 1px solid var(--fuchsia-glow);
+    border-radius: 14px;
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .drip-confirm-callout-icon {
+    width: 44px;
+    height: 44px;
+    background: var(--fuchsia);
+    border-radius: 50%;
+    color: var(--paper);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 18px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .drip-confirm-callout-icon::before { content: "/"; }
+
+  .drip-confirm-callout-text {
+    flex: 1;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .drip-confirm-callout-text strong {
+    color: var(--fuchsia-deep);
+    font-weight: 600;
+  }
+
+  .drip-confirm-footer {
+    padding: 24px 48px;
+    border-top: 1px solid var(--line);
+    background: var(--paper);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .drip-confirm-footer-text {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  /* =============================================================
+     SCREEN 12 — SETTINGS
+     ============================================================= */
+
+  .settings {
+    flex: 1;
+    background: var(--paper);
+    display: flex;
+    overflow: hidden;
+  }
+
+  .settings-sidebar {
+    flex: 0 0 220px;
+    border-right: 1px solid var(--line);
+    padding: 32px 0;
+    background: var(--paper-warm);
+  }
+
+  .settings-sidebar-header {
+    padding: 0 24px;
+    margin-bottom: 16px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .settings-nav-item {
+    display: block;
+    padding: 10px 24px;
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--ink);
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: all 150ms ease;
+  }
+
+  .settings-nav-item:hover {
+    background: var(--paper);
+  }
+
+  .settings-nav-item.active {
+    color: var(--fuchsia);
+    border-left-color: var(--fuchsia);
+    font-weight: 500;
+    background: var(--paper);
+  }
+
+  .settings-main {
+    flex: 1;
+    padding: 48px 56px;
+    overflow-y: auto;
+  }
+
+  .settings-section {
+    margin-bottom: 48px;
+  }
+
+  .settings-section-eyebrow {
+    margin-bottom: 8px;
+  }
+
+  .settings-section-title {
+    font-family: var(--serif);
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+  }
+
+  .settings-section-sub {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-bottom: 24px;
+  }
+
+  .settings-card {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 24px;
+    background: var(--paper);
+  }
+
+  .settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .settings-row:last-child { border-bottom: none; }
+
+  .settings-row-label {
+    font-size: 13px;
+    color: var(--ink);
+  }
+
+  .settings-row-label .meta {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+  }
+
+  .settings-row-value {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .settings-pill {
+    padding: 4px 10px;
+    border-radius: 100px;
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+
+  .settings-pill.active {
+    background: var(--fuchsia);
+    color: var(--paper);
+  }
+
+  .settings-pill.off {
+    background: var(--paper-warm);
+    color: var(--text-tertiary);
+    border: 1px solid var(--line);
+  }
+
+  .settings-link {
+    color: var(--fuchsia);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+
+  /* =============================================================
+     ERROR STATE — TikTok rejection toast
+     ============================================================= */
+
+  .error-toast {
+    position: absolute;
+    top: 24px;
+    right: 24px;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 16px 20px;
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    max-width: 360px;
+    border-left: 3px solid var(--warning);
+    z-index: 10;
+  }
+
+  .error-toast-icon {
+    width: 24px;
+    height: 24px;
+    background: var(--warning);
+    color: var(--ink);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+
+  .error-toast-content {
+    flex: 1;
+  }
+
+  .error-toast-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--warning);
+    margin-bottom: 4px;
+  }
+
+  .error-toast-body {
+    font-size: 13px;
+    color: var(--paper);
+    line-height: 1.4;
+  }
+
+  .error-toast-action {
+    margin-top: 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--fuchsia);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+
+  /* License expired banner */
+
+  .license-banner {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--danger);
+  }
+
+  .license-banner-text {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .license-banner-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--danger);
+    animation: pulse 1.5s infinite;
+  }
+
+  .license-banner-action {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--fuchsia);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* =============================================================
+     RESPONSIVE
+     ============================================================= */
+
+  @media (max-width: 1240px) {
+    .app-window {
+      max-width: calc(100vw - 32px);
+      height: 80vh;
+    }
+    .sim-stage { padding: 24px 16px 100px; }
+  }
+
+  @media (max-width: 768px) {
+    .app-window { height: 70vh; }
+    .clips-grid { grid-template-columns: repeat(2, 1fr); }
+    .brief, .preview-screen, .drip, .settings { flex-direction: column; }
+    .brief-left, .preview-video-pane, .drip-left, .settings-sidebar { flex: none; width: 100%; }
+    .sim-screen-title { font-size: 18px; }
+    .first-run-title { font-size: 36px; }
+    .results-header { flex-direction: column; padding: 24px; }
+  }
+
+
+/* === REAL VIDEO CLIPS + INTERACTIVITY === */
+.clip-thumb { position: relative; overflow: hidden; background: #000; }
+.clip-thumb-video {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  display: block;
+  background: #000;
+}
+.clip-thumb .clip-score,
+.clip-thumb .clip-play,
+.clip-thumb .clip-thumb-caption { z-index: 2; position: relative; }
+.clip-thumb::before {
+  z-index: 1 !important;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 26, 140, 0.12), transparent 55%),
+    radial-gradient(circle at 70% 80%, rgba(255, 102, 184, 0.08), transparent 55%) !important;
+  pointer-events: none;
+}
+.clip-card { cursor: pointer; }
+.clip-card:hover .clip-thumb-video { transform: scale(1.04); transition: transform 320ms ease; }
+
+.preview-video {
+  position: relative;
+  overflow: hidden;
+  background: #000;
+  aspect-ratio: 9/16;
+  max-height: 70vh;
+}
+.preview-video-el {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  background: #000;
+  display: block;
+}
+
+/* First-run demo video */
+.first-run-demo {
+  margin-top: 32px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  max-width: 300px;
+}
+.first-run-demo-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-tertiary);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.first-run-demo-label .inline-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--fuchsia-bright); animation: pulse-dot 1.6s infinite;
+}
+.first-run-demo-video {
+  width: 220px;
+  border-radius: 14px;
+  aspect-ratio: 9/16;
+  object-fit: cover;
+  background: #000;
+  box-shadow: 0 18px 50px rgba(10, 10, 15, 0.18);
+  cursor: pointer;
+}
+.first-run-demo-caption {
+  font-size: 12px; color: var(--text-tertiary); text-align: center;
+}
+
+/* Drop zone "dropping" state */
+.dropzone {
+  transition: border-color 200ms ease, background 200ms ease, transform 200ms ease;
+}
+.dropzone.dropping {
+  border-color: var(--fuchsia) !important;
+  background: var(--fuchsia-soft) !important;
+  transform: scale(0.99);
+}
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+  background: var(--ink); color: var(--paper);
+  padding: 12px 20px; border-radius: 100px;
+  font-size: 13px; font-weight: 500;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.18);
+  opacity: 0; pointer-events: none;
+  transition: opacity 220ms ease, transform 220ms ease;
+  z-index: 9999;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+.toast-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--fuchsia-bright); margin-right: 8px; vertical-align: middle; animation: pulse-dot 1.6s infinite; }
+@keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+.spinner {
+  display: inline-block; width: 12px; height: 12px;
+  border: 1.5px solid currentColor; border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -1px; margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.recent-item { cursor: pointer; transition: color 150ms ease; }
+.recent-item:hover { color: var(--fuchsia); }
+
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     SIMULATOR HEADER
+     ============================================================ -->
+
+<div class="sim-header">
+  <div class="sim-brand">
+    <span class="sim-brand-tile"></span>
+    <span class="sim-brand-text">junior<span class="slash">/</span>employee · app simulator</span>
+  </div>
+  <div class="sim-meta">
+    <span class="sim-meta-tag live">v1.0 spec</span>
+    <span>screen <strong id="current-screen-num" style="color: var(--paper)">01</strong> / 12</span>
+    <span class="sim-meta-tag">use ← → keys</span>
+  </div>
+</div>
+
+<!-- ============================================================
+     STAGE
+     ============================================================ -->
+
+<div class="sim-stage">
+
+  <!-- Screen meta strip (updates per screen) -->
+  <div class="sim-screen-meta">
+    <span class="sim-screen-number" id="screen-num">01</span>
+    <span id="screen-name">First run · welcome</span>
+    <span class="sim-screen-sprint" id="screen-sprint">Sprint 5 · onboarding</span>
+  </div>
+  <div class="sim-screen-title" id="screen-title">A new user opens Junior for the first time.</div>
+  <div class="sim-screen-note" id="screen-note">No account. No login. Just the brand mark, the promise, and one button. Either start free with your own key, or paste a license you bought from Whop.</div>
+
+  <!-- App window -->
+  <div class="app-window">
+
+    <div class="app-titlebar">
+      <div class="app-traffic">
+        <span class="app-traffic-dot red"></span>
+        <span class="app-traffic-dot yellow"></span>
+        <span class="app-traffic-dot green"></span>
+      </div>
+      <div class="app-titlebar-label">junior/employee</div>
+      <div class="app-titlebar-spacer"></div>
+    </div>
+
+    <div class="app-body">
+
+      <!-- ============================================================
+           SCREEN 1 — FIRST RUN
+           ============================================================ -->
+
+      <div class="screen active" data-screen="1">
+        <div class="first-run">
+          <div class="first-run-mark"></div>
+          <div class="first-run-wordmark">junior<span class="slash">/</span>employee</div>
+          <h1 class="first-run-title">Your AI editor. <em>Lives on your computer.</em></h1>
+          <p class="first-run-sub">Drop a video. Get 30+ clips, descriptions, thumbnails, and a fortnight of scheduled posts. Before your coffee finishes brewing.</p>
+
+          <div class="first-run-promises">
+            <span class="first-run-promise">Local processing</span>
+            <span class="first-run-promise">Zero watermarks</span>
+            <span class="first-run-promise">Unlimited videos</span>
+          </div>
+
+          <div style="display: flex; gap: 12px;">
+            <button class="btn btn-primary" onclick="goNext()">Get started</button>
+            <button class="btn btn-ghost" onclick="goToScreen(8)">See a demo →</button>
+          </div>
+
+          <div class="first-run-demo">
+            <div class="first-run-demo-label"><span class="inline-dot"></span>Live preview — your video clipped</div>
+            <video class="first-run-demo-video" src="clips/clip-featured.mp4" muted loop playsinline autoplay preload="metadata"></video>
+            <div class="first-run-demo-caption">Tap the video to unmute · or hit <strong>See a demo →</strong> to skip to the results</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================
+           SCREEN 2 — KEY PASTE / ACTIVATION
+           ============================================================ -->
+
+      <div class="screen" data-screen="2">
+        <div class="activate">
+          <div class="activate-card">
+            <div class="eyebrow activate-eyebrow">
+              <span class="eyebrow-dot"></span>
+              <span>Step 01 of 01</span>
+            </div>
+
+            <h2 class="activate-title">Connect a key, <em style="font-style: italic; color: var(--fuchsia);">we'll do the rest.</em></h2>
+            <p class="activate-sub">Junior calls AI from your machine using your own key. We never see your videos, transcripts, or clips. Paste a Whop license instead if you bought one.</p>
+
+            <div class="activate-tabs">
+              <div class="activate-tab active">Free · your own key</div>
+              <div class="activate-tab">License · from Whop</div>
+            </div>
+
+            <div class="activate-field">
+              <label class="activate-label">Anthropic API key</label>
+              <input class="activate-input has-value" value="sk-ant-api03-••••••••••••••••••••••••••••MJ5e" />
+              <div class="activate-validation">Key validated · Claude 3.7 Sonnet available</div>
+            </div>
+
+            <div class="activate-cta">
+              <button class="btn btn-primary" onclick="goNext()">Continue →</button>
+              <span class="activate-link">Where do I get a key?</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================
+           SCREEN 3 — EMPTY WORKSPACE
+           ============================================================ -->
+
+      <div class="screen" data-screen="3">
+        <div class="workspace">
+
+          <div class="workspace-top">
+            <div class="workspace-greeting">Morning. <em>Drop a video.</em></div>
+            <div class="workspace-time">Tuesday · 06:42</div>
+          </div>
+
+          <div class="dropzone" id="dropzone-3" onclick="goNext()">
+            <div class="dropzone-icon">+</div>
+            <div class="dropzone-title">Drop a video here</div>
+            <div class="dropzone-sub">Or paste a YouTube, Vimeo, or Twitch URL</div>
+
+            <div class="dropzone-or">— or —</div>
+            <div class="dropzone-url">
+              <input class="dropzone-url-input" placeholder="https://youtube.com/watch?v=..." />
+              <button class="btn btn-fuchsia btn-small">Fetch</button>
+            </div>
+
+            <div class="dropzone-formats">MP4 · MOV · MKV · WebM · up to 4 hours</div>
+          </div>
+
+          <div class="recent-rail">
+            <div class="recent-rail-label">Recent</div>
+            <div class="recent-rail-items">
+              <div class="recent-item">Q3 strategy stream <span class="recent-meta">2h ago · 14 clips</span></div>
+              <div class="recent-item">Interview · Founder Mode <span class="recent-meta">Yesterday · 22 clips</span></div>
+              <div class="recent-item">Podcast Ep. 47 <span class="recent-meta">3 days ago · 18 clips</span></div>
+              <div class="recent-item">Webinar replay <span class="recent-meta">Last week · 9 clips</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="app-statusbar">
+          <div class="app-statusbar-left">
+            <span class="app-statusbar-tier">CHANNEL TIER</span>
+            <span><span class="app-statusbar-dot"></span> Unlimited videos this month</span>
+          </div>
+          <div class="app-statusbar-right">
+            <span><span class="app-statusbar-dot"></span> YouTube</span>
+            <span><span class="app-statusbar-dot"></span> TikTok</span>
+            <span><span class="app-statusbar-dot off"></span> X</span>
+            <span>v1.0.0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================
+           SCREEN 4 — HOVERING WITH FILE
+           ============================================================ -->
+
+      <div class="screen" data-screen="4">
+        <div class="workspace">
+
+          <div class="workspace-top">
+            <div class="workspace-greeting">Morning. <em>Drop a video.</em></div>
+            <div class="workspace-time">Tuesday · 06:42</div>
+          </div>
+
+          <div class="dropzone dragging">
+            <div class="dropzone-file-preview">
+              <div class="dropzone-file-icon">MP4</div>
+              <div class="dropzone-file-text">
+                <div class="dropzone-file-name">podcast-ep-47-future-of-agents.mp4</div>
+                <div class="dropzone-file-meta">3h 12m · 4K · 2.4 GB</div>
+              </div>
+            </div>
+            <div class="dropzone-icon">↓</div>
+            <div class="dropzone-title" style="color: var(--fuchsia-deep);">Release to start processing</div>
+            <div class="dropzone-sub">Junior will read it from your drive. Nothing uploads.</div>
+          </div>
+
+          <div class="recent-rail">
+            <div class="recent-rail-label">Recent</div>
+            <div class="recent-rail-items">
+              <div class="recent-item">Q3 strategy stream <span class="recent-meta">2h ago · 14 clips</span></div>
+              <div class="recent-item">Interview · Founder Mode <span class="recent-meta">Yesterday · 22 clips</span></div>
+              <div class="recent-item">Podcast Ep. 47 <span class="recent-meta">3 days ago · 18 clips</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="app-statusbar">
+          <div class="app-statusbar-left">
+            <span class="app-statusbar-tier">CHANNEL TIER</span>
+            <span><span class="app-statusbar-dot"></span> Unlimited videos this month</span>
+          </div>
+          <div class="app-statusbar-right">
+            <span><span class="app-statusbar-dot"></span> YouTube</span>
+            <span><span class="app-statusbar-dot"></span> TikTok</span>
+            <span><span class="app-statusbar-dot off"></span> X</span>
+            <span>v1.0.0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================
+           SCREEN 5 — BRIEF PANEL
+           ============================================================ -->
+
+      <div class="screen" data-screen="5">
+        <div class="brief">
+          <div class="brief-left">
+            <div>
+              <div class="brief-video-meta">Just dropped · ready to process</div>
+              <h2 class="brief-video-title">Podcast Ep. 47 — The Future of Agents</h2>
+              <p style="color: var(--text-tertiary); font-family: var(--mono); font-size: 12px; line-height: 1.6;">
+                podcast-ep-47-future-of-agents.mp4
+              </p>
+            </div>
+
+            <div class="brief-video-stats">
+              <div>
+                <div class="brief-stat-label">Length</div>
+                <div class="brief-stat-value">3<span class="unit">h</span> 12<span class="unit">m</span></div>
+              </div>
+              <div>
+                <div class="brief-stat-label">Estimated clips</div>
+                <div class="brief-stat-value">18 – 24</div>
+              </div>
+              <div>
+                <div class="brief-stat-label">Process time</div>
+                <div class="brief-stat-value">~9<span class="unit">m</span></div>
+              </div>
+              <div>
+                <div class="brief-stat-label">Upload time</div>
+                <div class="brief-stat-value" style="color: var(--fuchsia);">0<span class="unit">s</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="brief-right">
+            <div class="brief-section">
+              <div class="brief-section-label">What is this video?</div>
+              <div class="brief-chips">
+                <div class="brief-chip selected">Podcast</div>
+                <div class="brief-chip">Interview</div>
+                <div class="brief-chip">Tutorial</div>
+                <div class="brief-chip">Stream</div>
+                <div class="brief-chip">Vlog</div>
+                <div class="brief-chip">Webinar</div>
+              </div>
+            </div>
+
+            <div class="brief-section">
+              <div class="brief-section-label">Anything specific to focus on? (optional)</div>
+              <textarea class="brief-textarea" placeholder="e.g. 'Focus on the agents discussion at the end' — or leave blank, Junior decides.">Focus on the agents discussion at the end, especially the section where we argue about whether autonomy is dangerous.</textarea>
+
+              <div class="brief-memory">
+                <span class="brief-memory-tag">v1.2 · memory</span>
+                <span>Junior will remember you prefer Podcast briefs with focus notes. Memory layer arrives in Autopilot tier.</span>
+              </div>
+            </div>
+
+            <div class="brief-bottom">
+              <span class="brief-skip" onclick="goNext()">Skip — start with defaults</span>
+              <button class="btn btn-primary" onclick="goNext()">Start →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================
+           SCREEN 6 — WORKING STATE STAGE 1
+           ============================================================ -->
+
+      <div class="screen" data-screen="6">
+        <div class="working">
+
+          <div class="working-header">
+            <div class="working-file">
+              <div class="working-file-name">podcast-ep-47-future-of-agents.mp4 · 3h 12m</div>
+              <div class="working-file-title">Junior is working.</div>
+            </div>
+            <div class="working-timer">
+              <div class="working-timer-elapsed">Elapsed</div>
+              <div class="working-timer-value">01:47</div>
+            </div>
+          </div>
+
+          <div class="working-stages">
+            <div class="working-stage done">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text">Read the file · 0s upload time</div>
+              <div class="working-stage-time">3s</div>
+            </div>
+            <div class="working-stage done">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text">Extracted audio</div>
+              <div class="working-stage-time">42s</div>
+            </div>
+            <div class="working-stage active">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text"><span class="working-stage-cursor">Transcribing audio</span></div>
+              <div class="working-stage-time">in progress</div>
+            </div>
+            <div class="working-stage pending">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text">Pick the best moments</div>
+            </div>
+            <div class="working-stage pending">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text">Cut clips</div>
+            </div>
+            <div class="working-stage pending">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text">Track faces, reframe vertical</div>
+            </div>
+            <div class="working-stage pending">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text">Burn captions</div>
+            </div>
+            <div class="working-stage pending">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text">Write chapters, descriptions, thread</div>
+            </div>
+            <div class="working-stage pending">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text">Generate thumbnails</div>
+            </div>
+          </div>
+
+          <div class="working-bottom">
+            <div class="working-eta">Est. <span class="est">7m 13s</span> remaining · stage 3 of 9</div>
+            <div class="working-promise">Your video never left your machine</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================
+           SCREEN 7 — WORKING STATE STAGE 4
+           ============================================================ -->
+
+      <div class="screen" data-screen="7">
+        <div class="working">
+
+          <div class="working-header">
+            <div class="working-file">
+              <div class="working-file-name">podcast-ep-47-future-of-agents.mp4 · 3h 12m</div>
+              <div class="working-file-title">Junior is working.</div>
+            </div>
+            <div class="working-timer">
+              <div class="working-timer-elapsed">Elapsed</div>
+              <div class="working-timer-value">07:21</div>
+            </div>
+          </div>
+
+          <div class="working-stages">
+            <div class="working-stage done">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text">Read the file · 0s upload time</div>
+              <div class="working-stage-time">3s</div>
+            </div>
+            <div class="working-stage done">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text">Extracted audio</div>
+              <div class="working-stage-time">42s</div>
+            </div>
+            <div class="working-stage done">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text">Transcribed audio · 184,232 words</div>
+              <div class="working-stage-time">2m 18s</div>
+            </div>
+            <div class="working-stage done">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text">Picked 22 moments · scored 67 – 96</div>
+              <div class="working-stage-time">38s</div>
+            </div>
+            <div class="working-stage done">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text">Cut 22 clips</div>
+              <div class="working-stage-time">1m 4s</div>
+            </div>
+            <div class="working-stage done">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text">Tracked faces, reframed to 9:16</div>
+              <div class="working-stage-time">1m 51s</div>
+            </div>
+            <div class="working-stage active">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text"><span class="working-stage-cursor">Writing chapters, descriptions, thread</span></div>
+              <div class="working-stage-time">in progress</div>
+            </div>
+            <div class="working-stage pending">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text">Generate thumbnails</div>
+            </div>
+            <div class="working-stage pending">
+              <div class="working-stage-icon"></div>
+              <div class="working-stage-text">Save to ~/Junior/projects/</div>
+            </div>
+          </div>
+
+          <div class="working-bottom">
+            <div class="working-eta">Est. <span class="est">1m 47s</span> remaining · stage 7 of 9</div>
+            <div class="working-promise">Your video never left your machine</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================
+           SCREEN 8 — RESULTS / CLIPS
+           ============================================================ -->
+
+      <div class="screen" data-screen="8">
+        <div class="results">
+
+          <div class="results-header">
+            <div class="results-title-block">
+              <div class="eyebrow results-eyebrow">
+                <span class="eyebrow-dot"></span>
+                <span>Done in 9m 8s</span>
+              </div>
+              <h2 class="results-title">15 clips, ready to post.</h2>
+              <div class="results-meta">
+                <span>Podcast Ep. 47</span>
+                <span class="highlight">Scored 70 – 94</span>
+                <span>~/Junior/projects/ep-47</span>
+              </div>
+            </div>
+            <div class="results-actions">
+              <button class="btn btn-ghost btn-small">Open folder</button>
+              <button class="btn btn-ghost btn-small">Publish now</button>
+              <button class="btn btn-fuchsia btn-small" onclick="goToScreen(10)">Drip across 2 weeks →</button>
+            </div>
+          </div>
+
+          <div class="results-tabs">
+            <div class="results-tab active">Clips <span class="results-tab-count">15</span></div>
+            <div class="results-tab">Chapters <span class="results-tab-count">8</span></div>
+            <div class="results-tab">Description</div>
+            <div class="results-tab">Titles <span class="results-tab-count">5</span></div>
+            <div class="results-tab">Thread <span class="results-tab-count">12</span></div>
+            <div class="results-tab">LinkedIn</div>
+            <div class="results-tab">Thumbnails <span class="results-tab-count">3</span></div>
+            <div class="results-tab">Files</div>
+          </div>
+
+          <div class="results-body">
+            <div class="clips-grid">
+
+              <div class="clip-card" onclick="goToScreen(9)">
+                <div class="clip-thumb"><video class="clip-thumb-video" src="clips/clip-01.mp4" muted loop playsinline preload="metadata" autoplay></video>
+                  <div class="clip-score">94</div>
+                  <div class="clip-play">▶</div>
+                  <div class="clip-thumb-caption">"Six years I had it wrong."</div>
+                </div>
+                <div class="clip-info">
+                  <div class="clip-info-time">0:38</div>
+                  <div class="clip-info-title">The moment I realised</div>
+                </div>
+              </div>
+
+              <div class="clip-card">
+                <div class="clip-thumb"><video class="clip-thumb-video" src="clips/clip-02.mp4" muted loop playsinline preload="metadata" autoplay></video>
+                  <div class="clip-score">91</div>
+                  <div class="clip-play">▶</div>
+                  <div class="clip-thumb-caption">"Agents change everything."</div>
+                </div>
+                <div class="clip-info">
+                  <div class="clip-info-time">0:42</div>
+                  <div class="clip-info-title">Why agents matter now</div>
+                </div>
+              </div>
+
+              <div class="clip-card">
+                <div class="clip-thumb"><video class="clip-thumb-video" src="clips/clip-03.mp4" muted loop playsinline preload="metadata" autoplay></video>
+                  <div class="clip-score bright">88</div>
+                  <div class="clip-play">▶</div>
+                  <div class="clip-thumb-caption">"That was the dumbest hire I ever made."</div>
+                </div>
+                <div class="clip-info">
+                  <div class="clip-info-time">0:55</div>
+                  <div class="clip-info-title">The hire that broke us</div>
+                </div>
+              </div>
+
+              <div class="clip-card">
+                <div class="clip-thumb"><video class="clip-thumb-video" src="clips/clip-04.mp4" muted loop playsinline preload="metadata" autoplay></video>
+                  <div class="clip-score bright">86</div>
+                  <div class="clip-play">▶</div>
+                  <div class="clip-thumb-caption">"Three ways to use Claude."</div>
+                </div>
+                <div class="clip-info">
+                  <div class="clip-info-time">0:33</div>
+                  <div class="clip-info-title">Three ways to use Claude</div>
+                </div>
+              </div>
+
+              <div class="clip-card">
+                <div class="clip-thumb"><video class="clip-thumb-video" src="clips/clip-05.mp4" muted loop playsinline preload="metadata" autoplay></video>
+                  <div class="clip-score bright">83</div>
+                  <div class="clip-play">▶</div>
+                  <div class="clip-thumb-caption">"Most founders get this wrong."</div>
+                </div>
+                <div class="clip-info">
+                  <div class="clip-info-time">0:51</div>
+                  <div class="clip-info-title">Where founders go wrong</div>
+                </div>
+              </div>
+
+              <div class="clip-card">
+                <div class="clip-thumb"><video class="clip-thumb-video" src="clips/clip-06.mp4" muted loop playsinline preload="metadata" autoplay></video>
+                  <div class="clip-score bright">81</div>
+                  <div class="clip-play">▶</div>
+                  <div class="clip-thumb-caption">"The 2 hours that changed it all."</div>
+                </div>
+                <div class="clip-info">
+                  <div class="clip-info-time">0:47</div>
+                  <div class="clip-info-title">Two hours, one decision</div>
+                </div>
+              </div>
+
+              <div class="clip-card">
+                <div class="clip-thumb"><video class="clip-thumb-video" src="clips/clip-07.mp4" muted loop playsinline preload="metadata" autoplay></video>
+                  <div class="clip-score bright">78</div>
+                  <div class="clip-play">▶</div>
+                  <div class="clip-thumb-caption">"I'd never hire that again."</div>
+                </div>
+                <div class="clip-info">
+                  <div class="clip-info-time">0:36</div>
+                  <div class="clip-info-title">The hiring rule</div>
+                </div>
+              </div>
+
+              <div class="clip-card">
+                <div class="clip-thumb"><video class="clip-thumb-video" src="clips/clip-08.mp4" muted loop playsinline preload="metadata" autoplay></video>
+                  <div class="clip-score glow">76</div>
+                  <div class="clip-play">▶</div>
+                  <div class="clip-thumb-caption">"Stop optimising. Start shipping."</div>
+                </div>
+                <div class="clip-info">
+                  <div class="clip-info-time">0:29</div>
+                  <div class="clip-info-title">Ship before you optimise</div>
+                </div>
+              </div>
+
+              <div class="clip-card">
+                <div class="clip-thumb"><video class="clip-thumb-video" src="clips/clip-09.mp4" muted loop playsinline preload="metadata" autoplay></video>
+                  <div class="clip-score glow">74</div>
+                  <div class="clip-play">▶</div>
+                  <div class="clip-thumb-caption">"It's not about the tool."</div>
+                </div>
+                <div class="clip-info">
+                  <div class="clip-info-time">0:44</div>
+                  <div class="clip-info-title">Not about the tool</div>
+                </div>
+              </div>
+
+              <div class="clip-card">
+                <div class="clip-thumb"><video class="clip-thumb-video" src="clips/clip-01.mp4" muted loop playsinline preload="metadata" autoplay></video>
+                  <div class="clip-score glow">72</div>
+                  <div class="clip-play">▶</div>
+                  <div class="clip-thumb-caption">"I used to be wrong about this."</div>
+                </div>
+                <div class="clip-info">
+                  <div class="clip-info-time">0:39</div>
+                  <div class="clip-info-title">What I had wrong</div>
+                </div>
+              </div>
+
+              <div class="clip-card">
+                <div class="clip-thumb"><video class="clip-thumb-video" src="clips/clip-02.mp4" muted loop playsinline preload="metadata" autoplay></video>
+                  <div class="clip-score glow">71</div>
+                  <div class="clip-play">▶</div>
+                  <div class="clip-thumb-caption">"Trust the boring answer."</div>
+                </div>
+                <div class="clip-info">
+                  <div class="clip-info-time">0:32</div>
+                  <div class="clip-info-title">Trust boring</div>
+                </div>
+              </div>
+
+              <div class="clip-card">
+                <div class="clip-thumb"><video class="clip-thumb-video" src="clips/clip-03.mp4" muted loop playsinline preload="metadata" autoplay></video>
+                  <div class="clip-score glow">70</div>
+                  <div class="clip-play">▶</div>
+                  <div class="clip-thumb-caption">"This is the lesson."</div>
+                </div>
+                <div class="clip-info">
+                  <div class="clip-info-time">0:41</div>
+                  <div class="clip-info-title">The lesson</div>
+                </div>
+              </div>
+
+              <div class="clip-card">
+                <div class="clip-thumb"><video class="clip-thumb-video" src="clips/clip-04.mp4" muted loop playsinline preload="metadata" autoplay></video>
+                  <div class="clip-score glow">70</div>
+                  <div class="clip-play">▶</div>
+                  <div class="clip-thumb-caption">"Start before you're ready."</div>
+                </div>
+                <div class="clip-info">
+                  <div class="clip-info-time">0:34</div>
+                  <div class="clip-info-title">Start before ready</div>
+                </div>
+              </div>
+
+              <div class="clip-card">
+                <div class="clip-thumb"><video class="clip-thumb-video" src="clips/clip-05.mp4" muted loop playsinline preload="metadata" autoplay></video>
+                  <div class="clip-score glow">70</div>
+                  <div class="clip-play">▶</div>
+                  <div class="clip-thumb-caption">"Listen to the second answer."</div>
+                </div>
+                <div class="clip-info">
+                  <div class="clip-info-time">0:48</div>
+                  <div class="clip-info-title">The second answer</div>
+                </div>
+              </div>
+
+              <div class="clip-card">
+                <div class="clip-thumb"><video class="clip-thumb-video" src="clips/clip-06.mp4" muted loop playsinline preload="metadata" autoplay></video>
+                  <div class="clip-score glow">70</div>
+                  <div class="clip-play">▶</div>
+                  <div class="clip-thumb-caption">"What I'd tell my younger self."</div>
+                </div>
+                <div class="clip-info">
+                  <div class="clip-info-time">0:43</div>
+                  <div class="clip-info-title">Younger self advice</div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- AUTOPILOT NUDGE -->
+            <div class="autopilot-nudge">
+              <div class="autopilot-text">
+                <div class="autopilot-eyebrow">— Autopilot tier · £149/mo</div>
+                <div class="autopilot-title">You have 15 clips. <em>Want Junior to post them while you sleep?</em></div>
+                <div class="autopilot-sub">Autopilot drips them across 2 weeks, picks optimal times per platform, and posts even when your laptop is closed. Junior tier customers ship 4× the content with zero ongoing work.</div>
+              </div>
+              <div class="autopilot-actions">
+                <button class="autopilot-dismiss">Not now</button>
+                <button class="btn btn-fuchsia btn-small">Try Autopilot →</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================
+           SCREEN 9 — CLIP PREVIEW MODAL
+           ============================================================ -->
+
+      <div class="screen" data-screen="9">
+        <div class="preview-screen">
+          <div class="preview-video-pane">
+            <div class="preview-video"><video class="preview-video-el" src="clips/clip-featured.mp4" controls playsinline preload="metadata" autoplay muted></video></div>
+            <div class="preview-scrubber">
+              <div class="preview-scrubber-bar">
+                <div class="preview-scrubber-progress"></div>
+              </div>
+              <div class="preview-scrubber-times">
+                <span>00:00</span>
+                <span style="color: var(--fuchsia);">00:11 / 00:38</span>
+                <span>00:38</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="preview-info-pane">
+            <div class="preview-clip-meta">
+              <div class="preview-clip-num">Clip 01 of 15</div>
+              <h2 class="preview-clip-title">The moment I realised</h2>
+              <div class="preview-score-row">
+                <span class="preview-score-pill">94</span>
+                <span>Virality score · top 5%</span>
+              </div>
+            </div>
+
+            <div class="preview-section">
+              <div class="preview-section-label">Source range</div>
+              <div class="preview-range">
+                <input class="preview-range-input" value="02:14:08" />
+                <span style="color: var(--text-tertiary);">→</span>
+                <input class="preview-range-input" value="02:14:46" />
+                <span style="color: var(--text-tertiary); font-size: 11px;">38s</span>
+              </div>
+            </div>
+
+            <div class="preview-section">
+              <div class="preview-section-label">Caption style</div>
+              <div class="brief-chips" style="margin: 0;">
+                <div class="brief-chip selected">Bold (TikTok)</div>
+                <div class="brief-chip">Subtle</div>
+                <div class="brief-chip">Boxed</div>
+              </div>
+            </div>
+
+            <div class="preview-section">
+              <div class="preview-section-label">Aspect ratio</div>
+              <div class="brief-chips" style="margin: 0;">
+                <div class="brief-chip selected">9:16 vertical</div>
+                <div class="brief-chip">1:1 square</div>
+                <div class="brief-chip">16:9 wide</div>
+              </div>
+            </div>
+
+            <div class="preview-actions">
+              <button class="btn btn-ghost btn-small">Regenerate</button>
+              <button class="btn btn-primary btn-small" onclick="goNext()">Save changes →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================
+           SCREEN 10 — DRIP MODE SETUP
+           ============================================================ -->
+
+      <div class="screen" data-screen="10">
+        <div class="drip">
+          <div class="drip-left">
+            <div>
+              <div class="drip-eyebrow">— DRIP MODE</div>
+              <h2 class="drip-title">Drip across <em>2 weeks.</em></h2>
+              <p style="color: var(--text-tertiary); font-size: 14px; line-height: 1.55; margin-top: 12px;">
+                Junior will distribute your 15 clips across 14 days, picking optimal times for each platform.
+              </p>
+            </div>
+
+            <div>
+              <div class="drip-section-label">Duration</div>
+              <div class="drip-duration">
+                <div class="drip-duration-option">
+                  <div class="drip-duration-label">1 wk</div>
+                  <div class="drip-duration-meta">2 per day</div>
+                </div>
+                <div class="drip-duration-option selected">
+                  <div class="drip-duration-label">2 wks</div>
+                  <div class="drip-duration-meta">~1 per day</div>
+                </div>
+                <div class="drip-duration-option">
+                  <div class="drip-duration-label">3 wks</div>
+                  <div class="drip-duration-meta">5 per week</div>
+                </div>
+                <div class="drip-duration-option">
+                  <div class="drip-duration-label">4 wks</div>
+                  <div class="drip-duration-meta">4 per week</div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="drip-section-label">Platforms · post times</div>
+              <div class="drip-platforms">
+                <div class="drip-platform">
+                  <div class="drip-platform-info">
+                    <span class="drip-platform-dot"></span>
+                    <span class="drip-platform-name">YouTube</span>
+                  </div>
+                  <span class="drip-platform-time">6:00 PM</span>
+                </div>
+                <div class="drip-platform">
+                  <div class="drip-platform-info">
+                    <span class="drip-platform-dot"></span>
+                    <span class="drip-platform-name">TikTok</span>
+                  </div>
+                  <span class="drip-platform-time">8:00 PM</span>
+                </div>
+                <div class="drip-platform off">
+                  <div class="drip-platform-info">
+                    <span class="drip-platform-dot"></span>
+                    <span class="drip-platform-name">X (Twitter)</span>
+                  </div>
+                  <span class="drip-platform-time">Connect →</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="drip-bottom">
+              <div class="drip-summary">
+                <span class="highlight">30 posts</span> across <span class="highlight">14 days</span><br/>
+                Starting <span class="highlight">today, 6:00 PM</span><br/>
+                Finishing <span class="highlight">June 02</span>
+              </div>
+              <button class="btn btn-fuchsia" onclick="goNext()" style="width: 100%;">Confirm drip →</button>
+            </div>
+          </div>
+
+          <div class="drip-right">
+            <div class="drip-calendar-header">
+              <div class="drip-calendar-title">14-day preview</div>
+              <div class="drip-calendar-meta">drag any post to reschedule</div>
+            </div>
+
+            <div class="drip-calendar">
+              <!-- Week 1 -->
+              <div class="drip-day">
+                <div class="drip-day-header">Tue</div>
+                <div class="drip-day-num">20</div>
+                <div class="drip-post yt"><span class="drip-post-platform">YT</span><span class="drip-post-time">6PM</span></div>
+                <div class="drip-post tt"><span class="drip-post-platform">TT</span><span class="drip-post-time">8PM</span></div>
+              </div>
+              <div class="drip-day">
+                <div class="drip-day-header">Wed</div>
+                <div class="drip-day-num">21</div>
+                <div class="drip-post yt"><span class="drip-post-platform">YT</span><span class="drip-post-time">6PM</span></div>
+                <div class="drip-post tt"><span class="drip-post-platform">TT</span><span class="drip-post-time">8PM</span></div>
+              </div>
+              <div class="drip-day">
+                <div class="drip-day-header">Thu</div>
+                <div class="drip-day-num">22</div>
+                <div class="drip-post yt"><span class="drip-post-platform">YT</span><span class="drip-post-time">6PM</span></div>
+                <div class="drip-post tt"><span class="drip-post-platform">TT</span><span class="drip-post-time">8PM</span></div>
+              </div>
+              <div class="drip-day">
+                <div class="drip-day-header">Fri</div>
+                <div class="drip-day-num">23</div>
+                <div class="drip-post yt"><span class="drip-post-platform">YT</span><span class="drip-post-time">6PM</span></div>
+                <div class="drip-post tt"><span class="drip-post-platform">TT</span><span class="drip-post-time">8PM</span></div>
+              </div>
+              <div class="drip-day weekend">
+                <div class="drip-day-header">Sat</div>
+                <div class="drip-day-num">24</div>
+                <div class="drip-post tt"><span class="drip-post-platform">TT</span><span class="drip-post-time">8PM</span></div>
+              </div>
+              <div class="drip-day weekend">
+                <div class="drip-day-header">Sun</div>
+                <div class="drip-day-num">25</div>
+                <div class="drip-post yt"><span class="drip-post-platform">YT</span><span class="drip-post-time">6PM</span></div>
+              </div>
+              <div class="drip-day">
+                <div class="drip-day-header">Mon</div>
+                <div class="drip-day-num">26</div>
+                <div class="drip-post yt"><span class="drip-post-platform">YT</span><span class="drip-post-time">6PM</span></div>
+                <div class="drip-post tt"><span class="drip-post-platform">TT</span><span class="drip-post-time">8PM</span></div>
+              </div>
+              <!-- Week 2 -->
+              <div class="drip-day">
+                <div class="drip-day-header">Tue</div>
+                <div class="drip-day-num">27</div>
+                <div class="drip-post yt"><span class="drip-post-platform">YT</span><span class="drip-post-time">6PM</span></div>
+                <div class="drip-post tt"><span class="drip-post-platform">TT</span><span class="drip-post-time">8PM</span></div>
+              </div>
+              <div class="drip-day">
+                <div class="drip-day-header">Wed</div>
+                <div class="drip-day-num">28</div>
+                <div class="drip-post yt"><span class="drip-post-platform">YT</span><span class="drip-post-time">6PM</span></div>
+                <div class="drip-post tt"><span class="drip-post-platform">TT</span><span class="drip-post-time">8PM</span></div>
+              </div>
+              <div class="drip-day">
+                <div class="drip-day-header">Thu</div>
+                <div class="drip-day-num">29</div>
+                <div class="drip-post yt"><span class="drip-post-platform">YT</span><span class="drip-post-time">6PM</span></div>
+                <div class="drip-post tt"><span class="drip-post-platform">TT</span><span class="drip-post-time">8PM</span></div>
+              </div>
+              <div class="drip-day">
+                <div class="drip-day-header">Fri</div>
+                <div class="drip-day-num">30</div>
+                <div class="drip-post yt"><span class="drip-post-platform">YT</span><span class="drip-post-time">6PM</span></div>
+                <div class="drip-post tt"><span class="drip-post-platform">TT</span><span class="drip-post-time">8PM</span></div>
+              </div>
+              <div class="drip-day weekend">
+                <div class="drip-day-header">Sat</div>
+                <div class="drip-day-num">31</div>
+                <div class="drip-post tt"><span class="drip-post-platform">TT</span><span class="drip-post-time">8PM</span></div>
+              </div>
+              <div class="drip-day weekend">
+                <div class="drip-day-header">Sun</div>
+                <div class="drip-day-num">01</div>
+                <div class="drip-post yt"><span class="drip-post-platform">YT</span><span class="drip-post-time">6PM</span></div>
+              </div>
+              <div class="drip-day">
+                <div class="drip-day-header">Mon</div>
+                <div class="drip-day-num">02</div>
+                <div class="drip-post yt"><span class="drip-post-platform">YT</span><span class="drip-post-time">6PM</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================
+           SCREEN 11 — DRIP CONFIRMATION
+           ============================================================ -->
+
+      <div class="screen" data-screen="11">
+        <div class="drip-confirm">
+          <div class="drip-confirm-header">
+            <div>
+              <div class="drip-confirm-eyebrow">— DRIP SCHEDULED</div>
+              <h2 class="drip-confirm-title">30 posts queued. <em>Sleep in tomorrow.</em></h2>
+            </div>
+            <div class="drip-confirm-stats">
+              <div class="drip-stat">
+                <div class="drip-stat-label">First post</div>
+                <div class="drip-stat-value">Today · 6 PM</div>
+              </div>
+              <div class="drip-stat">
+                <div class="drip-stat-label">Last post</div>
+                <div class="drip-stat-value">Jun 02</div>
+              </div>
+              <div class="drip-stat">
+                <div class="drip-stat-label">Total</div>
+                <div class="drip-stat-value">30</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="drip-confirm-body">
+            <div class="drip-confirm-callout">
+              <div class="drip-confirm-callout-icon"></div>
+              <div class="drip-confirm-callout-text">
+                Your clips are queued. <strong>Junior posts them on schedule even if you close this laptop.</strong> You'll get one daily report by email — the rest you can ignore.
+              </div>
+            </div>
+
+            <div class="drip-confirm-callout">
+              <div class="drip-confirm-callout-icon" style="background: var(--ink); color: var(--fuchsia);"></div>
+              <div class="drip-confirm-callout-text">
+                <strong>Tomorrow at 06:42</strong>, Junior reports back: "Yesterday's clip on agents got 4,200 views on TikTok in 12 hours. Want me to lean into that hook style?"
+              </div>
+            </div>
+
+            <div style="margin-top: 32px;">
+              <div style="font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); margin-bottom: 16px;">
+                Today's schedule
+              </div>
+              <div class="settings-card">
+                <div class="settings-row">
+                  <div class="settings-row-label">
+                    Clip 01 · The moment I realised
+                    <span class="meta">YouTube · 6:00 PM today</span>
+                  </div>
+                  <div class="settings-row-value">
+                    <span class="settings-pill active">Scheduled</span>
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-row-label">
+                    Clip 02 · Why agents matter now
+                    <span class="meta">TikTok · 8:00 PM today</span>
+                  </div>
+                  <div class="settings-row-value">
+                    <span class="settings-pill active">Scheduled</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="drip-confirm-footer">
+            <div class="drip-confirm-footer-text">Junior is running the queue. You can close the laptop.</div>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-ghost btn-small">View full schedule</button>
+              <button class="btn btn-primary btn-small" onclick="goToScreen(3)">Back to workspace →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================
+           SCREEN 12 — SETTINGS
+           ============================================================ -->
+
+      <div class="screen" data-screen="12">
+        <div class="settings">
+          <div class="settings-sidebar">
+            <div class="settings-sidebar-header">Settings</div>
+            <div class="settings-nav-item active">Account</div>
+            <div class="settings-nav-item">API keys</div>
+            <div class="settings-nav-item">Connected platforms</div>
+            <div class="settings-nav-item">Captions</div>
+            <div class="settings-nav-item">Output folder</div>
+            <div class="settings-nav-item">Privacy</div>
+            <div class="settings-nav-item">About</div>
+          </div>
+
+          <div class="settings-main">
+
+            <div class="settings-section">
+              <div class="eyebrow settings-section-eyebrow">
+                <span class="eyebrow-dot"></span>
+                <span>Account</span>
+              </div>
+              <h2 class="settings-section-title">Channel tier · £49/mo</h2>
+              <p class="settings-section-sub">Renews Jun 19, 2026. Managed by Whop.</p>
+
+              <div class="settings-card">
+                <div class="settings-row">
+                  <div class="settings-row-label">
+                    This month
+                    <span class="meta">All-time: 184 videos · 3,247 clips</span>
+                  </div>
+                  <div class="settings-row-value">24 videos · 412 clips</div>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-row-label">Current limit</div>
+                  <div class="settings-row-value" style="color: var(--fuchsia); font-weight: 600;">Unlimited</div>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-row-label">Billing</div>
+                  <div class="settings-row-value">
+                    <a class="settings-link">Manage subscription on Whop →</a>
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-row-label">
+                    Cancel anytime
+                    <span class="meta">No retention popups. No 30-day waits.</span>
+                  </div>
+                  <div class="settings-row-value">
+                    <a class="settings-link">Cancel via Whop →</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <h2 class="settings-section-title">API keys</h2>
+              <p class="settings-section-sub">Pasted keys are encrypted via your OS keychain and never leave this machine.</p>
+
+              <div class="settings-card">
+                <div class="settings-row">
+                  <div class="settings-row-label">
+                    Anthropic
+                    <span class="meta">sk-ant-api03-••••••••••••••••MJ5e</span>
+                  </div>
+                  <div class="settings-row-value">
+                    <span class="settings-pill active">Active</span>
+                    <a class="settings-link">Change</a>
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-row-label">
+                    OpenAI (optional · for thumbnails)
+                    <span class="meta">Not connected</span>
+                  </div>
+                  <div class="settings-row-value">
+                    <span class="settings-pill off">Off</span>
+                    <a class="settings-link">Paste key</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <h2 class="settings-section-title">Connected platforms</h2>
+              <p class="settings-section-sub">Junior publishes on your behalf. Your tokens never leave our publishing relay.</p>
+
+              <div class="settings-card">
+                <div class="settings-row">
+                  <div class="settings-row-label">
+                    YouTube
+                    <span class="meta">@yourchannel · connected May 14</span>
+                  </div>
+                  <div class="settings-row-value">
+                    <span class="settings-pill active">Connected</span>
+                    <a class="settings-link">Disconnect</a>
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-row-label">
+                    TikTok
+                    <span class="meta">@yourchannel · connected May 14</span>
+                  </div>
+                  <div class="settings-row-value">
+                    <span class="settings-pill active">Connected</span>
+                    <a class="settings-link">Disconnect</a>
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-row-label">
+                    X (Twitter)
+                    <span class="meta">Not connected</span>
+                  </div>
+                  <div class="settings-row-value">
+                    <span class="settings-pill off">Off</span>
+                    <a class="settings-link">Connect</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <h2 class="settings-section-title">Output folder</h2>
+              <div class="settings-card">
+                <div class="settings-row">
+                  <div class="settings-row-label">
+                    Where clips are saved
+                    <span class="meta">All your projects, transcripts, and clips live here. Open in Finder anytime.</span>
+                  </div>
+                  <div class="settings-row-value">
+                    <span style="font-family: var(--mono); font-size: 11px;">~/Junior/projects/</span>
+                    <a class="settings-link">Change</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     NAV
+     ============================================================ -->
+
+<div class="sim-nav">
+  <div class="sim-arrows">
+    <button class="sim-arrow" onclick="goPrev()">←</button>
+    <button class="sim-arrow" onclick="goNext()">→</button>
+  </div>
+  <div class="sim-nav-pages" id="nav-pages">
+    <!-- populated by JS -->
+  </div>
+</div>
+
+<script>
+  const screens = [
+    { num: 1,  name: 'First run · welcome',      sprint: 'Sprint 5 · onboarding',          title: 'A new user opens Junior for the first time.', note: 'No account. No login. Just the brand mark, the promise, and one button. Either start free with your own key, or paste a license you bought from Whop.' },
+    { num: 2,  name: 'Activate · key paste',     sprint: 'Sprint 5 · onboarding',          title: 'Paste an Anthropic key, or a license from Whop.', note: 'Free tier brings their own AI key. Paid users paste a Whop license that unlocks embedded keys, more videos, and publishing. Keys are encrypted via the OS keychain — never sent to Junior\'s servers.' },
+    { num: 3,  name: 'Workspace · empty',        sprint: 'Sprint 4 · UI core',             title: 'The home screen. One drop zone, one promise.', note: 'This is the screen the user sees 95% of the time. Recent projects sit at the bottom — never block the drop zone. Status bar shows tier, unlimited counter, and platform connection state.' },
+    { num: 4,  name: 'Workspace · hovering',     sprint: 'Sprint 4 · UI core',             title: 'A file is dragged over the drop zone.', note: 'The zone responds to drag-over with a fuchsia outline, the file preview floats above. Subtle but clear: "yes, you can drop this here." The "0s upload" promise gets reinforced inline.' },
+    { num: 5,  name: 'Brief · context for AI',   sprint: 'Sprint 2 · pipeline',            title: 'Optional brief before processing starts.', note: 'After drop. Left pane shows what Junior already knows about the file. Right pane lets the user nudge the model. Skippable — Junior runs with sensible defaults if no brief. Memory hint (v1.2) plants the seed.' },
+    { num: 6,  name: 'Working · stage 1',        sprint: 'Sprint 2 · pipeline',            title: 'Junior is working. Stage 3 of 9.', note: 'Past-tense for done stages, present verb for the active one, neutral for pending. Elapsed timer in italic Fraunces — the only large display element. The "0s upload time" tag stays visible. Cancel button lives in the chrome.' },
+    { num: 7,  name: 'Working · stage 4',        sprint: 'Sprint 2 · pipeline',            title: 'Stage 7 of 9. Almost there.', note: 'Same screen, later. Done stages collapse visually. Active stage gets the page weight. Note how each completed stage gets a concrete number ("184,232 words", "22 moments scored 67–96") — specificity over vibes.' },
+    { num: 8,  name: 'Results · clips grid',     sprint: 'Sprint 3 · output bundle',       title: '15 clips, ready to post. Scored 70 – 94.', note: 'Counter-Opus-Clip move: only show clips scored 70+. Quality over quantity. Tabs reveal the rest of the output bundle. Autopilot nudge below the grid — soft upsell, dismissible, fuchsia-tinted card.' },
+    { num: 9,  name: 'Clip preview · edit',      sprint: 'Sprint 3 · output bundle',       title: 'Open a clip to preview, trim, or restyle.', note: 'Click any clip in the grid. Left pane: the actual clip in 9:16 with caption burned in. Right pane: source range editor, caption style picker, aspect ratio swap. Regenerate is destructive but cheap — runs stages 5–6 again on this clip only.' },
+    { num: 10, name: 'Drip · setup',             sprint: 'Sprint 10 · drip mode',          title: 'Drip across 2 weeks. The killer feature.', note: 'The £149/mo moat. Left: duration picker + platform-by-platform schedule. Right: live 14-day calendar that updates as the user changes duration. Default: 2 weeks. Posts get auto-staggered per platform optimum (YT 6pm, TT 8pm).' },
+    { num: 11, name: 'Drip · confirmation',      sprint: 'Sprint 10 · drip mode',          title: 'Queued. Junior posts while you sleep.', note: 'After confirm. Reinforces the moat copy directly: "Junior posts them on schedule even if you close this laptop." Bottom callout previews tomorrow\'s morning report — gives the user a reason to look forward to opening Junior the next day.' },
+    { num: 12, name: 'Settings · one page',      sprint: 'Sprint 5 · onboarding · polish', title: 'One scrollable settings page. No nested screens.', note: 'Sidebar is anchor links, not separate pages. "Cancel via Whop →" link is deliberately prominent — direct refutation of Opus Clip\'s cancellation traps. Output folder shows the literal path the user can open in Finder.' },
+  ];
+
+  let currentScreen = 1;
+
+  function buildNav() {
+    const navEl = document.getElementById('nav-pages');
+    navEl.innerHTML = '';
+    screens.forEach(s => {
+      const btn = document.createElement('button');
+      btn.className = 'sim-nav-page';
+      if (s.num === currentScreen) btn.classList.add('active');
+      btn.textContent = String(s.num).padStart(2, '0') + ' · ' + s.name.replace('·', '—').split('—')[0].trim();
+      btn.onclick = () => goToScreen(s.num);
+      navEl.appendChild(btn);
+    });
+  }
+
+  function goToScreen(n) {
+    if (n < 1) n = screens.length;
+    if (n > screens.length) n = 1;
+    currentScreen = n;
+    document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+    const el = document.querySelector('[data-screen="' + n + '"]');
+    if (el) el.classList.add('active');
+
+    const s = screens[n - 1];
+    document.getElementById('current-screen-num').textContent = String(n).padStart(2, '0');
+    document.getElementById('screen-num').textContent = String(n).padStart(2, '0');
+    document.getElementById('screen-name').textContent = s.name;
+    document.getElementById('screen-sprint').textContent = s.sprint;
+    document.getElementById('screen-title').textContent = s.title;
+    document.getElementById('screen-note').textContent = s.note;
+
+    document.querySelectorAll('.sim-nav-page').forEach((btn, i) => {
+      btn.classList.toggle('active', i + 1 === n);
+    });
+
+    // Scroll active nav button into view
+    const activeBtn = document.querySelector('.sim-nav-page.active');
+    if (activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+
+    // Scroll the app window into view
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function goNext() { goToScreen(currentScreen + 1); }
+  function goPrev() { goToScreen(currentScreen - 1); }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight') goNext();
+    if (e.key === 'ArrowLeft') goPrev();
+  });
+
+  buildNav();
+</script>
+
+
+<script>
+/* ============================================================
+   SIMULATED INTERACTIVITY — every button does something
+   ============================================================ */
+(function() {
+  // toast helper
+  let toastEl = null;
+  function toast(msg, ms=2200) {
+    if (!toastEl) {
+      toastEl = document.createElement('div');
+      toastEl.className = 'toast';
+      document.body.appendChild(toastEl);
+    }
+    toastEl.innerHTML = '<span class="toast-dot"></span>' + msg;
+    toastEl.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => toastEl.classList.remove('show'), ms);
+  }
+  window._jnrToast = toast; // expose for debugging
+
+  // chip + tab toggling via event delegation
+  document.addEventListener('click', (e) => {
+    const chip = e.target.closest('.brief-chip');
+    if (chip && chip.parentElement && chip.parentElement.classList.contains('brief-chips')) {
+      chip.parentElement.querySelectorAll('.brief-chip').forEach(c => c.classList.remove('selected'));
+      chip.classList.add('selected');
+      return;
+    }
+    const tab = e.target.closest('.results-tab');
+    if (tab && tab.parentElement && tab.parentElement.classList.contains('results-tabs')) {
+      tab.parentElement.querySelectorAll('.results-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const label = (tab.firstChild?.textContent || tab.textContent).trim();
+      toast(`Switched to ${label}`);
+      return;
+    }
+    const dur = e.target.closest('.drip-duration-option');
+    if (dur && dur.parentElement && dur.parentElement.classList.contains('drip-duration')) {
+      dur.parentElement.querySelectorAll('.drip-duration-option').forEach(o => o.classList.remove('selected'));
+      dur.classList.add('selected');
+      updateDripCalendar(dur);
+      return;
+    }
+    const platform = e.target.closest('.drip-platform');
+    if (platform) {
+      platform.classList.toggle('off');
+      const name = platform.querySelector('.drip-platform-name')?.textContent || 'platform';
+      toast(platform.classList.contains('off') ? `${name} paused` : `${name} re-enabled`);
+      return;
+    }
+  });
+
+  // recent items → open results
+  document.querySelectorAll('.recent-item').forEach(item => {
+    item.addEventListener('click', () => {
+      toast('Reopening project');
+      setTimeout(() => goToScreen(8), 320);
+    });
+  });
+
+  // drop zone simulation
+  const dz = document.getElementById('dropzone-3');
+  if (dz) {
+    dz.onclick = null;
+    dz.addEventListener('click', () => {
+      dz.classList.add('dropping');
+      setTimeout(() => goToScreen(4), 380);
+      setTimeout(() => {
+        dz.classList.remove('dropping');
+        goToScreen(5);
+      }, 1300);
+    });
+  }
+  const screen4 = document.querySelector('[data-screen="4"]');
+  if (screen4) {
+    screen4.addEventListener('click', (e) => {
+      if (e.target.closest('button,a,input,select,textarea')) return;
+      goToScreen(5);
+    });
+  }
+
+  // working state animation
+  let lastScreen = 1;
+  let workingTimers = [];
+  function clearWorkingTimers() { workingTimers.forEach(clearTimeout); workingTimers = []; }
+  function tickTimer(el, fromSec, toSec, durationMs) {
+    if (!el) return;
+    const start = performance.now();
+    function step(now) {
+      const t = Math.min(1, (now - start) / durationMs);
+      const cur = Math.round(fromSec + (toSec - fromSec) * t);
+      const m = Math.floor(cur / 60), s = cur % 60;
+      el.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  const screenObs = new MutationObserver(muts => {
+    muts.forEach(m => {
+      if (m.attributeName !== 'class') return;
+      const el = m.target;
+      if (!el.classList.contains('active')) return;
+      const num = parseInt(el.dataset.screen, 10);
+      if (num === 6 && lastScreen === 5) {
+        clearWorkingTimers();
+        const t1 = el.querySelector('.working-timer-value');
+        tickTimer(t1, 107, 218, 2800);
+        workingTimers.push(setTimeout(() => { if (currentScreen === 6) goToScreen(7); }, 2900));
+        workingTimers.push(setTimeout(() => {
+          if (currentScreen !== 7) return;
+          const t2 = document.querySelector('[data-screen="7"] .working-timer-value');
+          tickTimer(t2, 218, 318, 2500);
+        }, 3000));
+        workingTimers.push(setTimeout(() => { if (currentScreen === 7) goToScreen(8); }, 5800));
+      }
+      if (num !== 6 && num !== 7) clearWorkingTimers();
+      // Pause/play featured preview on enter/leave screen 9
+      if (num === 9) {
+        const v = document.querySelector('.preview-video-el');
+        if (v) { v.currentTime = 0; v.play().catch(() => {}); }
+      }
+      lastScreen = num;
+    });
+  });
+  document.querySelectorAll('.screen').forEach(s => {
+    screenObs.observe(s, { attributes: true, attributeFilter: ['class'] });
+  });
+
+  // preview modal buttons
+  document.querySelectorAll('[data-screen="9"] .btn').forEach(btn => {
+    const text = btn.textContent.trim().toLowerCase();
+    if (text.startsWith('regenerate')) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (btn.dataset.busy) return;
+        btn.dataset.busy = '1';
+        const orig = btn.textContent;
+        btn.innerHTML = '<span class="spinner"></span>Regenerating';
+        const v = document.querySelector('.preview-video-el');
+        if (v) { try { v.currentTime = 0; v.play().catch(() => {}); } catch(_) {} }
+        setTimeout(() => {
+          btn.textContent = orig;
+          delete btn.dataset.busy;
+          toast('Clip regenerated · new framing applied');
+        }, 1700);
+      });
+    } else if (text.startsWith('save changes')) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toast('Saved');
+        setTimeout(() => goToScreen(8), 280);
+      });
+    }
+  });
+
+  // results action buttons
+  document.querySelectorAll('[data-screen="8"] .results-actions .btn, [data-screen="8"] .results-actions button').forEach(btn => {
+    const text = btn.textContent.trim().toLowerCase();
+    if (text === 'open folder') {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toast('~/Junior/projects/podcast-ep-47/  · Opened in Finder');
+      });
+    } else if (text === 'publish now') {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toast('Pick a clip first, then publish');
+      });
+    }
+  });
+
+  // drip calendar live update
+  function updateDripCalendar(durEl) {
+    if (!durEl) return;
+    const label = durEl.querySelector('.drip-duration-label')?.textContent.trim() || '';
+    const days = label.startsWith('1') ? 7 : label.startsWith('2') ? 14 : label.startsWith('3') ? 21 : 28;
+    const meta = document.querySelector('.drip-calendar-meta');
+    const calTitle = document.querySelector('.drip-calendar-title');
+    const titleEm = document.querySelector('.drip-title em');
+    if (meta) meta.textContent = `${days} days · 15 posts`;
+    if (calTitle) calTitle.textContent = `Episode 47 — drip across ${label}`;
+    if (titleEm) titleEm.textContent = `${label}.`;
+    toast(`Drip set to ${label}`);
+  }
+
+  // drip schedule button
+  document.querySelectorAll('[data-screen="10"] .btn').forEach(btn => {
+    const text = btn.textContent.trim().toLowerCase();
+    if (text.includes('schedule') || text.includes('confirm') || text.startsWith('queue')) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (btn.dataset.busy) return;
+        btn.dataset.busy = '1';
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner"></span>Scheduling 15 clips';
+        setTimeout(() => {
+          btn.innerHTML = orig;
+          delete btn.dataset.busy;
+          toast('15 clips scheduled across 14 days');
+          goToScreen(11);
+        }, 1400);
+      });
+    }
+  });
+
+  // settings toggles
+  document.querySelectorAll('[data-screen="12"] .settings-pill').forEach(p => {
+    p.style.cursor = 'pointer';
+    p.addEventListener('click', () => {
+      const group = p.parentElement;
+      if (group) {
+        group.querySelectorAll('.settings-pill').forEach(pp => pp.classList.remove('active'));
+        p.classList.add('active');
+      } else {
+        p.classList.toggle('active');
+      }
+      toast(`Set to ${p.textContent.trim()}`);
+    });
+  });
+
+  // first-run demo video click → toggle mute
+  document.querySelectorAll('.first-run-demo-video').forEach(v => {
+    v.addEventListener('click', () => {
+      v.muted = !v.muted;
+      try { v.play(); } catch(_) {}
+      toast(v.muted ? 'Muted' : "Sound on — that's your clip");
+    });
+  });
+
+  // force-play all videos on first user gesture (mobile autoplay safety net)
+  let firstGestureHandled = false;
+  function kickAllVideos() {
+    if (firstGestureHandled) return;
+    firstGestureHandled = true;
+    document.querySelectorAll('video').forEach(v => {
+      try { v.play().catch(() => {}); } catch(_) {}
+    });
+  }
+  ['click','touchstart','keydown','scroll'].forEach(ev => {
+    document.addEventListener(ev, kickAllVideos, { once: true, passive: true });
+  });
+
+  // screen 2: paste field auto-fills on focus
+  document.querySelectorAll('[data-screen="2"] input').forEach(input => {
+    input.addEventListener('focus', () => {
+      if (!input.value) {
+        input.value = 'sk-ant-' + 'x'.repeat(40);
+        input.dispatchEvent(new Event('input'));
+        setTimeout(() => toast('Key validated · all systems good'), 600);
+      }
+    });
+  });
+
+  // IntersectionObserver: pause off-screen clip videos
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        const v = e.target;
+        if (e.isIntersecting) { v.play().catch(() => {}); }
+        else { v.pause(); }
+      });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('.clip-thumb-video').forEach(v => io.observe(v));
+  }
+})();
+</script>
+
+</body>
+</html>

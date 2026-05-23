@@ -1,0 +1,23 @@
+node_modules/
+dist/
+.DS_Store
+
+# Tauri / Rust
+src-tauri/target/
+src-tauri/gen/
+src-tauri/Cargo.lock
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Editor
+.vscode/
+.idea/
+
+# Local artifacts
+*.log
+
+# Tauri auto-updater signing keys
+.junior-updater/

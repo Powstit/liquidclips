@@ -1,0 +1,14 @@
+{
+  "rewrites": [
+    { "source": "/experiences/:experienceId", "destination": "/index.html" },
+    { "source": "/experiences/:experienceId/:rest*", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Content-Security-Policy", "value": "frame-ancestors 'self' https://*.whop.com https://whop.com" }
+      ]
+    }
+  ]
+}
