@@ -305,10 +305,32 @@ _OAUTH_RESULT: dict[str, Any] | None = None  # {"status": "pending"|"success"|"e
 _OAUTH_SERVER: HTTPServer | None = None
 
 
+import socket
+
+
 class _ReusableHTTPServer(HTTPServer):
-    """HTTPServer with SO_REUSEADDR so a fresh `Sign in` doesn't fail with
-    `Address already in use` if a previous listener went down uncleanly."""
+    """HTTPServer that:
+      1. Sets SO_REUSEADDR so a stale port (TIME_WAIT after a crashed listener)
+         doesn't block a fresh `Sign in`.
+      2. Binds dual-stack IPv4 + IPv6 by listening on `::` with the
+         `IPV6_V6ONLY = 0` socket option. macOS resolves `localhost` to ::1
+         (IPv6) before 127.0.0.1, so an IPv4-only listener silently misses
+         the browser's callback request even though Junior thinks it's armed.
+         This was the actual failure mode on first OAuth attempts.
+    """
     allow_reuse_address = True
+    address_family = socket.AF_INET6
+
+    def server_bind(self) -> None:
+        # Disable IPV6_V6ONLY so the same socket accepts IPv4 connections
+        # (delivered as ::ffff:127.0.0.1) AND IPv6 connections (::1).
+        try:
+            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        except (AttributeError, OSError):
+            # Some systems (rare on macOS, but defend against it) won't allow
+            # toggling; fall back gracefully to IPv6-only.
+            pass
+        super().server_bind()
 
 
 def _b64url(raw: bytes) -> str:
@@ -490,9 +512,12 @@ def oauth_start() -> dict[str, Any]:
     _OAUTH_STATE = _b64url(secrets.token_bytes(24))
     _OAUTH_RESULT = None
 
-    _OAUTH_SERVER = _ReusableHTTPServer(("127.0.0.1", REDIRECT_PORT), _CallbackHandler)
+    # Bind to "::" + dual-stack so both IPv6 (::1) and IPv4 (127.0.0.1)
+    # callbacks land on the same listener. macOS prefers IPv6 for localhost,
+    # which an IPv4-only listener silently misses.
+    _OAUTH_SERVER = _ReusableHTTPServer(("::", REDIRECT_PORT), _CallbackHandler)
     Thread(target=_OAUTH_SERVER.serve_forever, daemon=True).start()
-    log.info("[whop] OAuth listener armed on %s", REDIRECT_URI)
+    log.info("[whop] OAuth listener armed on %s (dual-stack)", REDIRECT_URI)
 
     params = {
         "response_type": "code",
