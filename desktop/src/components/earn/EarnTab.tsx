@@ -393,14 +393,14 @@ function SignInSplash({ onAuthenticated }: { onAuthenticated: () => void }) {
           /
         </span>
         <p className="font-mono text-[16px] leading-none text-ink">
-          Connect Whop to see live bounties.
+          Connect Whop to browse bounties.
           <span className="blink ml-[2px] text-fuchsia">_</span>
         </p>
       </div>
       <p className="max-w-[480px] font-sans text-[13px] leading-relaxed text-text-secondary">
-        Sign in with your Whop account. We open Whop in your browser — once you
-        approve, Junior picks up the session automatically. Token stays in your
-        OS keychain.
+        Your Junior account is already signed in — this is a separate
+        connection. We open Whop in your browser; once you approve, Junior
+        picks up the session and bounties load. Token stays in your OS keychain.
       </p>
 
       {phase === "idle" && (
@@ -409,7 +409,7 @@ function SignInSplash({ onAuthenticated }: { onAuthenticated: () => void }) {
             onClick={() => void startOAuth()}
             className="rounded-full bg-ink px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
           >
-            Sign in with Whop →
+            Connect Whop →
           </button>
         </div>
       )}

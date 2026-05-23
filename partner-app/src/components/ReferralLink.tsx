@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { track } from "@/lib/analytics";
 
 export function ReferralLink({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
@@ -7,6 +8,15 @@ export function ReferralLink({ url }: { url: string }) {
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
+      // The URL itself contains the affiliate slug; sending the slug as a
+      // property is fine (it's the same value that's in our backend DB
+      // already). The full URL is omitted by sanitize() rules below
+      // anyway.
+      const slug = url.split("?a=")[1]?.split(/[&#]/)[0];
+      track("affiliate_link_copied", {
+        affiliate_id: slug,
+        surface: "partner_dashboard",
+      });
       setTimeout(() => setCopied(false), 1800);
     } catch {
       // ignore

@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     account_site_url: str = "https://account.jnremployee.com"
     app_download_url: str = "https://jnremployee.com/download"
 
+    # PostHog — observability only (funnel events, attribution debugging).
+    # Backend uses the PROJECT key, same as the frontends — there's no need
+    # for a personal API key. Empty key disables sends so we can run the
+    # backend locally without a PostHog account.
+    posthog_key: str = ""
+    posthog_host: str = "https://us.i.posthog.com"
+
     # CORS — which origins can hit us. Railway sets the real list.
     cors_origins: str = "http://localhost:3000,http://localhost:3500,http://localhost:1420"
 

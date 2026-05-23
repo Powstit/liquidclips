@@ -1,4 +1,11 @@
+"use client";
+
+import { track } from "@/lib/analytics";
+
 export function ShareButtons({ referralUrl, username }: { referralUrl: string; username: string }) {
+  const slug = referralUrl.split("?a=")[1]?.split(/[&#]/)[0];
+  const fire = (channel: "x" | "email" | "demo_clip") =>
+    track("affiliate_link_shared", { affiliate_id: slug, channel });
   const tweet = `Just found Junior — drops a 4-hour podcast in, gets 30 ready-to-post clips out, posts them across the next 2 weeks while you sleep. Free forever for clippers. ${referralUrl}`;
   const xUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(tweet)}`;
 
@@ -16,6 +23,7 @@ export function ShareButtons({ referralUrl, username }: { referralUrl: string; u
           href={xUrl}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => fire("x")}
           className="flex items-center justify-center gap-2 rounded-2xl border border-line bg-paper px-5 py-4 text-sm font-medium text-ink transition-all hover:border-fuchsia hover:bg-fuchsia-soft"
         >
           <span>𝕏</span>
@@ -25,6 +33,7 @@ export function ShareButtons({ referralUrl, username }: { referralUrl: string; u
           href="https://app.jnremployee.com/clips/clip-featured.mp4"
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => fire("demo_clip")}
           className="flex items-center justify-center gap-2 rounded-2xl border border-line bg-paper px-5 py-4 text-sm font-medium text-ink transition-all hover:border-fuchsia hover:bg-fuchsia-soft"
         >
           <span>▷</span>
@@ -32,6 +41,7 @@ export function ShareButtons({ referralUrl, username }: { referralUrl: string; u
         </a>
         <a
           href={mailUrl}
+          onClick={() => fire("email")}
           className="flex items-center justify-center gap-2 rounded-2xl border border-line bg-paper px-5 py-4 text-sm font-medium text-ink transition-all hover:border-fuchsia hover:bg-fuchsia-soft"
         >
           <span>✉</span>

@@ -3,7 +3,7 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { sidecar, type HardwareInfo, type SecretName } from "../lib/sidecar";
 
-const APP_VERSION = "0.4.7";
+const APP_VERSION = "0.4.8";
 const SUPPORT_EMAIL = "support@jnremployee.com";
 import { syncStatus, backend, type SyncStatus, type PlatformConnection, type ConnectionPlatform } from "../lib/backend";
 import { applyUpdate, checkForUpdate, type UpdateState } from "../lib/updater";
@@ -440,6 +440,7 @@ function ConnectionsSection() {
         </p>
       ) : (
         <div className="flex flex-col gap-2">
+          <WhopConnectionRow />
           {PLATFORMS.map((p) => {
             const accounts = byPlatform.get(p) ?? [];
             const label = ({ youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", x: "X" })[p];
@@ -563,6 +564,128 @@ function SubscriptionAction({
     >
       {label}
     </button>
+  );
+}
+
+
+// Whop sits inside the Connections section as a "bounty source" — distinct
+// from publish targets (YouTube/TikTok/IG/X) but presented with the same
+// shape so users have one place to manage all platform plumbing. The
+// connection lives in the desktop's OS keychain (JUNIOR_WHOP_TOKEN) and the
+// OAuth flow + session status come from the sidecar, not the backend.
+function WhopConnectionRow() {
+  const [status, setStatus] = useState<
+    "iframe" | "env_user" | "keychain" | "seller_key" | "none" | "loading"
+  >("loading");
+  const [phase, setPhase] = useState<"idle" | "awaiting">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    try {
+      const s = await sidecar.whopSessionStatus();
+      setStatus(s.authenticated ? s.source : "none");
+    } catch {
+      setStatus("none");
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function connect() {
+    setError(null);
+    setPhase("awaiting");
+    try {
+      const { authorize_url } = await sidecar.whopOAuthStart();
+      void openExternal(authorize_url).catch(() => undefined);
+      const deadline = Date.now() + 10 * 60 * 1000;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        if (Date.now() > deadline) {
+          throw new Error("Whop sign-in timed out.");
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+        const st = await sidecar.whopOAuthStatus();
+        if (st.status === "success") {
+          await load();
+          break;
+        }
+        if (st.status === "error") {
+          throw new Error(st.error || "Whop sign-in failed.");
+        }
+        if (st.status === "idle") {
+          throw new Error("Listener stopped — try again.");
+        }
+      }
+    } catch (e) {
+      setError(String(e).replace(/^Error:\s*/i, ""));
+    } finally {
+      setPhase("idle");
+    }
+  }
+
+  async function disconnect() {
+    if (!confirm("Disconnect Whop? You'll need to reconnect to browse bounties again.")) return;
+    try {
+      await sidecar.whopClearSessionToken();
+      await sidecar.secretDelete("JUNIOR_WHOP_TOKEN");
+    } finally {
+      await load();
+    }
+  }
+
+  const connected = status !== "none" && status !== "loading";
+  const sourceLabel =
+    status === "iframe"
+      ? "iframe preview"
+      : status === "env_user"
+        ? "env"
+        : status === "keychain"
+          ? "OAuth · keychain"
+          : status === "seller_key"
+            ? "dev seller key"
+            : "";
+
+  return (
+    <div className="rounded-xl border border-line bg-paper p-3.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-fuchsia font-mono text-[14px] font-bold leading-none text-paper">
+            /
+          </span>
+          <div>
+            <div className="font-sans text-[14px] font-medium text-ink">Whop</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+              {status === "loading"
+                ? "checking…"
+                : connected
+                  ? `connected · ${sourceLabel}`
+                  : "not connected · bounty source"}
+            </div>
+          </div>
+        </div>
+        {connected ? (
+          <button
+            onClick={() => void disconnect()}
+            className="rounded-full border border-line bg-paper px-3.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:border-[#DC2626] hover:text-[#DC2626]"
+          >
+            disconnect
+          </button>
+        ) : (
+          <button
+            onClick={() => void connect()}
+            disabled={phase === "awaiting"}
+            className="rounded-full border border-line bg-paper px-3.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:border-fuchsia hover:text-ink disabled:opacity-40"
+          >
+            {phase === "awaiting" ? "awaiting browser…" : "connect"}
+          </button>
+        )}
+      </div>
+      {error && (
+        <p className="mt-2 pl-11 font-mono text-[11px] text-[#DC2626]">{error}</p>
+      )}
+    </div>
   );
 }
 

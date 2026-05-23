@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckoutButton } from "@clerk/nextjs/experimental";
+import { track } from "@/lib/analytics";
 
 // Custom pricing UI. Replaces Clerk's stock <PricingTable> so we control the
 // layout, copy, and brand expression while Clerk still owns the checkout +
@@ -110,6 +111,7 @@ export function PricingCards({ currentSlug }: { currentSlug?: string }) {
             plan={p}
             isCurrent={currentSlug === p.slug}
             isOnPaidPlan={!!currentSlug && currentSlug !== "free_user"}
+            currentSlug={currentSlug}
           />
         ))}
       </div>
@@ -125,10 +127,12 @@ function PlanCard({
   plan,
   isCurrent,
   isOnPaidPlan,
+  currentSlug,
 }: {
   plan: Plan;
   isCurrent: boolean;
   isOnPaidPlan: boolean;
+  currentSlug?: string;
 }) {
   const isFreePlan = plan.priceGbp === 0;
   const accentClasses = plan.highlight
@@ -190,6 +194,13 @@ function PlanCard({
         ) : (
           <CheckoutButton planId={plan.id} planPeriod="month">
             <button
+              onClick={() =>
+                track("checkout_started", {
+                  plan_id: plan.id,
+                  plan_name: plan.name,
+                  current_tier: currentSlug,
+                })
+              }
               className={`w-full rounded-full px-5 py-3 font-sans text-[13px] font-medium transition-all ${
                 plan.highlight
                   ? "bg-fuchsia text-paper hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"

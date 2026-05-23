@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { SignUp } from "@clerk/nextjs";
 import { TestimonialPanel } from "@/components/TestimonialPanel";
+import { track } from "@/lib/analytics";
 
 // Two-column sign-up surface. Same shape as /sign-in. Affiliate cookie is
 // captured into Clerk's unsafeMetadata at sign-up — that's the "first-touch
@@ -19,8 +20,14 @@ export default function SignUpPage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setAffiliateId(readAffiliateCookie());
+    const aff = readAffiliateCookie();
+    setAffiliateId(aff);
     setReady(true);
+    // signup_started fires when the user lands on the form. affiliate_ref_captured
+    // is a separate event so we can tell the difference between "saw the
+    // form" and "arrived via a referral". Neither carries email.
+    track("signup_started", { has_affiliate: !!aff });
+    if (aff) track("affiliate_ref_captured", { affiliate_id: aff, surface: "signup" });
   }, []);
 
   return (
