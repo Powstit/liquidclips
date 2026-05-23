@@ -22,9 +22,36 @@ export function initAnalytics(): PostHog | null {
     capture_pageview: false,
     capture_pageleave: true,
     persistence: "localStorage+cookie",
+    // Match account-app posture: strip ?ref / ?a / query / hash from the
+    // automatic $current_url so an affiliate slug doesn't ride along as
+    // PII on default page events.
+    sanitize_properties: (props) => {
+      if (props && typeof props.$current_url === "string") {
+        try {
+          const u = new URL(props.$current_url);
+          props.$current_url = `${u.origin}${u.pathname}`;
+        } catch {
+          /* leave as-is */
+        }
+      }
+      return props;
+    },
   });
   inited = true;
   return posthog;
+}
+
+// Referral URLs are built with ?ref=<affiliate_id> (per buildReferralUrl in
+// partner-app/src/app/page.tsx). The brand-first marketing redirect later
+// converts ?ref to ?a for Whop's tracker. Either shape can show up depending
+// on which URL the user copies/shares, so we accept both.
+export function referralIdFromUrl(raw: string): string | undefined {
+  try {
+    const u = new URL(raw);
+    return u.searchParams.get("ref") ?? u.searchParams.get("a") ?? undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function track(event: PartnerEvent, properties?: Record<string, unknown>): void {

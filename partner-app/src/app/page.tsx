@@ -99,7 +99,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
       <TrackOnMount
         event="partner_dashboard_viewed"
         properties={{
-          affiliate_id: affiliate?.user?.username ?? null,
+          // Use the actual affiliate record id — this is what joins to
+          // referral URLs (?ref=affiliate.id) and backend attribution
+          // (User.affiliate_id). Username is a display name, not a join key.
+          affiliate_id: affiliate?.id ?? null,
           has_affiliate: !!affiliate,
         }}
       />
