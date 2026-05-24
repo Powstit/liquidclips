@@ -83,6 +83,7 @@
   /* motion reveals — applied only when has-motion (set unless reduce-motion) */
   .has-motion .reveal, .has-motion .reveal-hero { opacity: 0; }
   .has-motion .reveal-steps .step { opacity: 0; }
+  .has-motion .reveal-steps .step-icon { opacity: 0; }
   .eyebrow {
     display: inline-flex; align-items: center; gap: 8px; background: var(--ink); color: var(--paper);
     padding: 6px 14px; border-radius: 100px; font-size: 12px; font-family: 'Geist Mono', monospace;
@@ -125,6 +126,11 @@
   .step-num { font-family: 'Geist Mono', monospace; font-size: 11px; font-weight: 700; color: var(--fuchsia); margin-bottom: 12px; }
   .step-title { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 7px; }
   .step-desc { font-size: 14px; color: var(--text-secondary); line-height: 1.55; }
+  .step { transition: border-color .25s ease, box-shadow .25s ease; }
+  .step:hover { border-color: var(--fuchsia); box-shadow: 0 14px 34px rgba(255,26,140,.12); }
+  .step-icon { width: 42px; height: 42px; border-radius: 12px; background: var(--fuchsia-soft); color: var(--fuchsia-deep); display: grid; place-items: center; margin-bottom: 16px; transition: background .25s ease, color .25s ease; }
+  .step-icon svg { width: 22px; height: 22px; }
+  .step:hover .step-icon { background: var(--fuchsia); color: var(--paper); }
 
   /* STATS */
   .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 40px; }
@@ -225,21 +231,25 @@
     <p class="section-sub">Junior is the tool clippers already want — you just put it in front of them with a tracked invite.</p>
     <div class="steps reveal-steps">
       <div class="step">
+        <div class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg></div>
         <div class="step-num">01</div>
         <div class="step-title">Share your Junior link</div>
         <div class="step-desc">Give clippers 100 reward clip exports with your invite.</div>
       </div>
       <div class="step">
+        <div class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12"/></svg></div>
         <div class="step-num">02</div>
         <div class="step-title">They clip paid rewards</div>
         <div class="step-desc">Junior turns Whop Content Rewards into focused editing workspaces.</div>
       </div>
       <div class="step">
+        <div class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v7h-7M17.5 21v-1"/></svg></div>
         <div class="step-num">03</div>
         <div class="step-title">Junior adds your link</div>
         <div class="step-desc">Eligible Junior promo clips can include your affiliate QR/link automatically — not your everyday client clips.</div>
       </div>
       <div class="step">
+        <div class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4M16.71 13.88l.7.71-2.82 2.82"/></svg></div>
         <div class="step-num">04</div>
         <div class="step-title">You earn 50% MRR</div>
         <div class="step-desc">When referred clippers become paid, you earn 50% — while they stay paid and you keep an active Junior subscription.</div>
@@ -412,6 +422,8 @@
       // Loop cards — stagger in when the grid enters.
       inView(".reveal-steps", (info) => {
         animate(info.target.querySelectorAll(".step"), { opacity: [0, 1], transform: ["translateY(20px)", "translateY(0)"] }, { duration: 0.5, delay: stagger(0.08), easing: ease });
+        // Icon tiles pop in with a little overshoot, just behind each card.
+        animate(info.target.querySelectorAll(".step-icon"), { opacity: [0, 1], transform: ["scale(0.6) rotate(-10deg)", "scale(1) rotate(0deg)"] }, { duration: 0.5, delay: stagger(0.08, { startDelay: 0.12 }), easing: [0.34, 1.56, 0.64, 1] });
       }, { amount: 0.2 });
     } catch (e) {
       // CDN/import failed — never leave content hidden.
