@@ -45,7 +45,7 @@ export function StatTiles({
       <div className={`mt-4 grid grid-cols-3 gap-3 sm:gap-5 ${empty ? "opacity-50" : ""}`}>
         <Tile label="Active MRR" value={fmt(activeMrrUsd)} />
         <Tile label="This month" value={fmt(pendingPayoutUsd)} />
-        <Tile label="Lifetime" value={fmt(lifetimeEarnedUsd)} />
+        <Tile label="Total earned" value={fmt(lifetimeEarnedUsd)} />
       </div>
 
       {currency !== "USD" && !empty && (
