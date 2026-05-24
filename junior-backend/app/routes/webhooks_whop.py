@@ -91,13 +91,20 @@ async def whop_webhook(
     if db.query(WebhookEvent).filter_by(external_id=external_id).one_or_none():
         return {"status": "duplicate", "event": event_type}
 
-    if event_type in ("membership_went_valid", "membership.went_valid"):
+    if event_type in (
+        "membership_went_valid",
+        "membership.went_valid",
+        "membership_activated",  # current Whop catalog name
+        "membership.activated",
+    ):
         _handle_membership_valid(db, data)
     elif event_type in (
         "membership_went_invalid",
         "membership.went_invalid",
         "membership_canceled",
         "membership.canceled",
+        "membership_deactivated",  # current Whop catalog name
+        "membership.deactivated",
     ):
         _handle_membership_invalid(db, data)
     elif event_type in ("payment_succeeded", "payment.succeeded"):
