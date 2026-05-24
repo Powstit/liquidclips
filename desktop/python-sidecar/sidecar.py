@@ -23,10 +23,10 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import shutil
 import subprocess
 import sys
 import traceback
+from pathlib import Path
 from typing import Any, Callable
 
 from project import JUNIOR_HOME, Project
@@ -57,6 +57,22 @@ def log(msg: str) -> None:
     sys.stderr.flush()
 
 
+def _yt_dlp_ffmpeg_location() -> str | None:
+    """Return the directory yt-dlp should use for ffmpeg/ffprobe.
+
+    The packaged app ships static binaries next to the sidecar under
+    python-sidecar/bin/. Pipeline stages already resolve those through
+    stages.ffmpeg_bin(), but yt-dlp does not know about that resolver unless we
+    pass ffmpeg_location explicitly. Without this, packaged URL ingest can fail
+    with "ffprobe and ffmpeg not found" even though the binaries are bundled.
+    """
+    ffmpeg = stages.ffmpeg_bin()
+    p = Path(ffmpeg)
+    if p.is_absolute() and p.name == "ffmpeg":
+        return str(p.parent)
+    return None
+
+
 # --- legacy methods ---------------------------------------------------
 
 def method_ping(_params: dict[str, Any]) -> dict[str, Any]:
@@ -69,9 +85,7 @@ def method_probe(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("probe requires `path` (str)")
     if not os.path.isfile(path):
         raise FileNotFoundError(f"file not found: {path}")
-    ffprobe = os.environ.get("JUNIOR_FFPROBE") or shutil.which("ffprobe")
-    if not ffprobe:
-        raise RuntimeError("ffprobe not found")
+    ffprobe = stages.ffprobe_bin()
     cmd = [
         ffprobe, "-v", "error",
         "-print_format", "json",
@@ -542,6 +556,9 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
         "logger": _SidecarSafeLogger(),    # any logged line goes to stderr, never stdout
         "progress_hooks": [_on_progress],
     }
+    ffmpeg_location = _yt_dlp_ffmpeg_location()
+    if ffmpeg_location:
+        ydl_opts["ffmpeg_location"] = ffmpeg_location
 
     # Belt-and-braces: any stray write to stdout from yt-dlp internals (or its
     # postprocessors / ffmpeg invocations) gets rerouted to stderr.
@@ -681,6 +698,9 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
         # front so we don't double-process.
         "postprocessor_args": ["-ac", "1", "-ar", "16000"],
     }
+    ffmpeg_location = _yt_dlp_ffmpeg_location()
+    if ffmpeg_location:
+        ydl_opts["ffmpeg_location"] = ffmpeg_location
     with contextlib.redirect_stdout(sys.stderr):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.extract_info(url, download=True)
@@ -695,9 +715,7 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
             raise RuntimeError("audio download produced no file")
         src = candidates[0]
         if src.suffix.lower() != ".wav":
-            ffmpeg = os.environ.get("JUNIOR_FFMPEG") or shutil.which("ffmpeg")
-            if not ffmpeg:
-                raise RuntimeError("ffmpeg not found — cannot convert to wav")
+            ffmpeg = stages.ffmpeg_bin()
             subprocess.run(
                 [ffmpeg, "-y", "-i", str(src), "-vn", "-ac", "1", "-ar", "16000",
                  "-acodec", "pcm_s16le", str(audio_wav)],
