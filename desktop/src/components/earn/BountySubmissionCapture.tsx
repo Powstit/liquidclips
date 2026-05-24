@@ -64,7 +64,10 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
 
   if (!project.whop_bounty_id) return null;
 
-  const bountyUrl = `https://whop.com/experiences/${project.whop_bounty_id}`;
+  // Use the real Whop experience URL persisted at setup. whop_bounty_id is the
+  // bounty id, NOT the experience id, so building experiences/{whop_bounty_id}
+  // pointed at the wrong page. Null for manual rewards with no experience.
+  const bountyUrl = project.whop_bounty_url;
 
   function save() {
     const id = extractId(draft);
@@ -108,14 +111,16 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => {
-              void openExternal(bountyUrl).catch(() => undefined);
-            }}
-            className="rounded-full bg-ink px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia"
-          >
-            Open reward on Whop ↗
-          </button>
+          {bountyUrl && (
+            <button
+              onClick={() => {
+                void openExternal(bountyUrl).catch(() => undefined);
+              }}
+              className="rounded-full bg-ink px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia"
+            >
+              Open reward on Whop ↗
+            </button>
+          )}
           <button
             onClick={() => setOpen((v) => !v)}
             className="rounded-full border border-line bg-paper px-3.5 py-1.5 font-sans text-[12px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"

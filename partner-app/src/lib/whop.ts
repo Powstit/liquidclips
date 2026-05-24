@@ -1,9 +1,15 @@
 import Whop from "@whop/sdk";
 
-const apiKey = process.env.WHOP_API_KEY;
-if (!apiKey) throw new Error("WHOP_API_KEY missing");
-
-export const whop = new Whop({ apiKey });
+// Lazy Whop client. Validate the key at CALL time, not module-eval time, so
+// `next build` route collection (and local/preview builds without the secret)
+// don't die at import.
+let _whop: Whop | null = null;
+export function getWhop(): Whop {
+  const apiKey = process.env.WHOP_API_KEY;
+  if (!apiKey) throw new Error("WHOP_API_KEY missing");
+  if (!_whop) _whop = new Whop({ apiKey });
+  return _whop;
+}
 
 export const env = {
   appId: process.env.WHOP_APP_ID!,
@@ -53,7 +59,7 @@ export function decodeIdToken(idToken: string): { sub: string; email?: string; n
 
 /** Get-or-create the affiliate record for this user against the Junior company. */
 export async function ensureAffiliate(userId: string) {
-  return whop.affiliates.create({
+  return getWhop().affiliates.create({
     company_id: env.companyId,
     user_identifier: userId,
   });

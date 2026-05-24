@@ -9,10 +9,17 @@ import { track } from "@/lib/analytics";
 // captured into Clerk's unsafeMetadata at sign-up — that's the "first-touch
 // forever" attribution behaviour from ~/Desktop/jnr/oauth-billing.md §6.
 
-function readAffiliateCookie(): string | null {
-  if (typeof document === "undefined") return null;
-  const match = document.cookie.match(/(?:^|;\s*)jnr_ref=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : null;
+function readAffiliateRef(): string | null {
+  if (typeof window === "undefined") return null;
+  // First-touch cookie wins (set by the marketing ref-capture script). Fall
+  // back to ?ref/?a on a direct account link (account.jnremployee.com/sign-up
+  // ?ref=…) so attribution still locks into Clerk unsafeMetadata instead of
+  // only landing in PostHog.
+  const m = document.cookie.match(/(?:^|;\s*)jnr_ref=([^;]+)/);
+  if (m) return decodeURIComponent(m[1]);
+  const p = new URLSearchParams(window.location.search);
+  const fromUrl = p.get("ref") || p.get("a");
+  return fromUrl && /^[A-Za-z0-9_-]+$/.test(fromUrl) ? fromUrl.slice(0, 64) : null;
 }
 
 export default function SignUpPage() {
@@ -20,7 +27,7 @@ export default function SignUpPage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const aff = readAffiliateCookie();
+    const aff = readAffiliateRef();
     setAffiliateId(aff);
     setReady(true);
     // signup_started fires when the user lands on the form. affiliate_ref_captured
