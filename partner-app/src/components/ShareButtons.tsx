@@ -6,11 +6,11 @@ export function ShareButtons({ referralUrl, username }: { referralUrl: string; u
   const slug = referralIdFromUrl(referralUrl);
   const fire = (channel: "x" | "email" | "demo_clip") =>
     track("affiliate_link_shared", { affiliate_id: slug, channel });
-  const tweet = `Just found Junior — drops a 4-hour podcast in, gets 30 ready-to-post clips out, posts them across the next 2 weeks while you sleep. Free forever for clippers. ${referralUrl}`;
+  const tweet = `Junior turns Whop bounties into submission-ready clips. My link gives you 100 bounty clip exports to try it. ${referralUrl}`;
   const xUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(tweet)}`;
 
   const mailSubject = `You should try Junior`;
-  const mailBody = `Hey,\n\nFound an app called Junior. You drop a long video in, it spits out 30+ ready-to-post clips with captions and schedules them across YouTube, TikTok and X. Free forever for clippers.\n\n${referralUrl}\n\n— ${username}`;
+  const mailBody = `Hey,\n\nFound Junior. Pick a Whop bounty, paste the source, and it builds a clipping workspace around the brief. My invite gives you 100 bounty clip exports. Bring your own OpenAI key, card required, then Solo if you keep going.\n\n${referralUrl}\n\n— ${username}`;
   const mailUrl = `mailto:?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`;
 
   return (
