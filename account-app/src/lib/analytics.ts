@@ -105,6 +105,10 @@ export type AnalyticsEvent =
   // Affiliate funnel (marketing surface in this app for now)
   | "affiliate_landing_viewed"
   | "affiliate_ref_captured"
+  // Top-of-funnel: a referred visitor reached the app (ref cookie/param seen),
+  // fired once per session before they reach the signup form. Distinct from
+  // affiliate_ref_captured (which fires on the signup surface itself).
+  | "affiliate_link_clicked"
   // Signup → activated
   | "signup_started"
   | "signup_completed"

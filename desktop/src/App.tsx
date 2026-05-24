@@ -20,6 +20,7 @@ import { IntentPicker } from "./components/IntentPicker";
 import { EarnTab } from "./components/earn/EarnTab";
 import { allowedPlatforms } from "./components/earn/types";
 import { BountySourceSetup } from "./components/earn/BountySourceSetup";
+import { track as trackEvent, trackFirstBountyWorkspace } from "./lib/analytics";
 import { FailureCard } from "./components/FailureCard";
 import type { WhopBounty } from "./lib/sidecar";
 
@@ -132,6 +133,13 @@ export default function App() {
       });
       const trimmed = brief.trim();
       const { project } = await sidecar.ingestUrl(url, trimmed || undefined, intent, bounty);
+      if (project.whop_bounty_id) {
+        trackFirstBountyWorkspace({
+          bounty_id: project.whop_bounty_id,
+          source_type: "pasted_url",
+          allowed_platforms: bounty?.allowedPlatforms,
+        });
+      }
       await runRemainingStages(project);
     } catch (e) {
       console.error("[pipeline] URL ingest failed:", e);
@@ -186,6 +194,15 @@ export default function App() {
         return;
       }
     }
+    // Clips are written to disk by the pipeline, so reaching results == the
+    // bounty's clips are "exported". One event per run, count = clips produced.
+    if (current.whop_bounty_id && current.clips.length > 0) {
+      trackEvent("bounty_clip_exported", {
+        bounty_id: current.whop_bounty_id,
+        project_slug: current.slug,
+        export_count: current.clips.length,
+      });
+    }
     setView({ kind: "results", project: current });
   }
 
@@ -194,6 +211,13 @@ export default function App() {
       if (!(await guardQuota())) return;
       const trimmed = brief.trim();
       const { project } = await sidecar.startRun(sourcePath, trimmed || undefined, intent, bounty);
+      if (project.whop_bounty_id) {
+        trackFirstBountyWorkspace({
+          bounty_id: project.whop_bounty_id,
+          source_type: "upload",
+          allowed_platforms: bounty?.allowedPlatforms,
+        });
+      }
       await runRemainingStages(project);
     } catch (e) {
       setView((prev) => {
