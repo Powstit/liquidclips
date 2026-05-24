@@ -277,7 +277,14 @@ def _handle_subscription_active(db: Session, data: dict) -> None:
     analytics.capture(
         user_id=clerk_id,
         event="subscription_activated",
-        properties={"tier": user.tier, "via": "clerk"},
+        properties={
+            "tier": user.tier,
+            "via": "clerk",
+            # Affiliate attribution for the conversion funnel — paid conversion
+            # is the event the affiliate flywheel optimises for. ID only.
+            "affiliate_id": user.affiliate_id,
+            "billing_provider": "whop" if user.whop_user_id else "clerk",
+        },
     )
     analytics.identify(user_id=clerk_id, tier=user.tier)
 

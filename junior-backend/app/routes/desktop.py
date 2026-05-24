@@ -90,6 +90,10 @@ def connect_desktop(
                 "tier": effective_tier,
                 "founder": effective_founder,
                 "admin_override": is_admin,
+                # Affiliate attribution so the funnel can join activation back to
+                # the referring partner. ID only — never email/name (sanitized too).
+                "affiliate_id": user.affiliate_id,
+                "activation_source": "desktop_connect",
             },
         )
 
