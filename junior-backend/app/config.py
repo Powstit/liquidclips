@@ -61,7 +61,14 @@ class Settings(BaseSettings):
     posthog_host: str = "https://us.i.posthog.com"
 
     # CORS — which origins can hit us. Railway sets the real list.
-    cors_origins: str = "http://localhost:3000,http://localhost:3500,http://localhost:1420"
+    # Includes the packaged Tauri webview origins: macOS serves the app from
+    # tauri://localhost; Windows/Linux from http(s)://tauri.localhost. Without
+    # these, browser-side packaged calls (e.g. notifications/unread-count) fail
+    # the CORS preflight with 400 even though sidecar→backend calls are fine.
+    cors_origins: str = (
+        "http://localhost:3000,http://localhost:3500,http://localhost:1420,"
+        "tauri://localhost,https://tauri.localhost,http://tauri.localhost"
+    )
 
     @property
     def cors_origin_list(self) -> list[str]:
