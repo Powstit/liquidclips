@@ -216,6 +216,14 @@ export const sidecar = {
     }),
   whopSessionStatus: () =>
     sidecarCall<{
+      // New canonical names — `junior_activated` is what the Earn tab
+      // checks to know if backend bounty proxy will work, and
+      // `whop_desktop_oauth_source` reports the local Whop OAuth token
+      // (reserved for future per-user actions, not browsing).
+      junior_activated: boolean;
+      whop_desktop_oauth_source: "iframe" | "env_user" | "keychain" | "seller_key" | "none";
+      // Legacy fields — same data under old names, kept so a stale UI
+      // doesn't crash mid-rollout.
       authenticated: boolean;
       source: "iframe" | "env_user" | "keychain" | "seller_key" | "none";
     }>("whop_session_status"),
@@ -234,17 +242,17 @@ export const sidecar = {
   whopClearSessionToken: () =>
     sidecarCall<{ ok: true }>("whop_clear_session_token"),
   whopListBounties: (first = 30) =>
-    sidecarCall<{ bounties: WhopBounty[]; authenticated: boolean }>(
+    sidecarCall<{ bounties: WhopBounty[]; authenticated: boolean; error?: string }>(
       "whop_list_bounties",
       { first },
     ),
   whopBounty: (id: string) =>
-    sidecarCall<{ bounty: WhopBounty | null; authenticated: boolean }>(
+    sidecarCall<{ bounty: WhopBounty | null; authenticated: boolean; error?: string }>(
       "whop_bounty",
       { id },
     ),
   whopSubmission: (id: string) =>
-    sidecarCall<{ submission: WhopSubmission | null; authenticated: boolean }>(
+    sidecarCall<{ submission: WhopSubmission | null; authenticated: boolean; error?: string }>(
       "whop_submission",
       { id },
     ),

@@ -1,18 +1,30 @@
-"""Whop GraphQL client for the Earn tab integration.
+"""Whop client for the Earn tab — public bounty reads + per-user OAuth.
 
-Reads public Content Rewards data — bounties and submission statuses. No
-mutations (Whop hasn't opened submission-create publicly yet). Auth flow:
+Two distinct auth axes, do not confuse them:
 
-  1. Iframe context (Junior running inside whop.com community iframe):
-     Whop's parent frame postMessage's the user's id_token. The token is
-     passed in via WHOP_USER_TOKEN env var by the iframe shim → no separate
-     OAuth flow.
-  2. Desktop binary: falls back to the seller-side API key from
-     ~/.claude-credentials/whop.env so Daniel can browse bounties from his
-     own machine for testing.
+  A. Public bounty browsing (list_bounties / get_bounty / get_submission)
+     Routes through junior-backend's /whop/* proxy. Backend holds the App
+     API Key server-side because Whop's public-graphql rejects user OAuth
+     tokens for publicBounties* queries ("must provide a valid App API
+     Key"). Desktop only needs a JUNIOR_LICENSE_JWT in the keychain to use
+     these — i.e. "is Junior activated?", NOT "did the user finish Whop
+     OAuth?". See _backend_get() below.
 
-Both paths return data in the same shape, so the rest of the codebase doesn't
-have to branch on auth source.
+  B. Per-user Whop OAuth (oauth_start / oauth_complete / set_session_token)
+     Reserved for future user-specific actions (e.g. submitting a bounty
+     entry once Whop opens that mutation publicly). The token lives in
+     memory + the keychain as JUNIOR_WHOP_TOKEN. NOT required for browsing.
+
+Stale paths removed from this file (kept here for git-history breadcrumb):
+  - direct api.whop.com GraphQL calls from desktop (Whop rejects user
+    tokens against publicBounties)
+  - iframe postMessage shim for token capture (was scaffolding; @whop/iframe
+    is the production answer for a web-build Whop app)
+  - seller-key fallback as a primary path (now JUNIOR_DEV-gated only)
+
+If you find yourself adding a Whop-token gate before calling list_bounties /
+get_bounty / get_submission again, stop: that's wrong, the backend proxy
+already authenticates with the license JWT.
 """
 
 from __future__ import annotations
