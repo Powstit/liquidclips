@@ -60,36 +60,36 @@ export function EarnTab({
   const [filterPlatforms, setFilterPlatforms] = useState<ConnectedPlatform[]>([]);
   const [openOnly, setOpenOnly] = useState(true);
 
-  // Initial load: auth check + bounties + my submissions.
-  // Bug fix (2026-05-23): the old `try/catch { setAuthed(false) }` silently
-  // demoted authenticated users when the bounty fetch failed for ANY reason —
-  // most importantly OAuth scope mismatches against Whop's public-graphql.
-  // We now separate the two concerns: auth state comes from session_status,
-  // bounty-fetch failures surface as bountyError without lying about auth.
+  // Initial load: gate Available bounties on **Junior activation**, not on
+  // local Whop OAuth. Public bounty browsing now goes through the backend
+  // proxy (server-side App API Key) and only requires a JUNIOR_LICENSE_JWT.
+  // The local Whop OAuth token is reserved for future per-user actions.
   async function bootstrap() {
     setBountyError(null);
-    let sessionOK = false;
+    let activated = false;
     try {
       const s = await sidecar.whopSessionStatus();
-      setAuthed(s.authenticated);
-      setAuthSource(s.source);
-      sessionOK = s.authenticated;
+      setAuthed(s.junior_activated);
+      setAuthSource(s.whop_desktop_oauth_source);
+      activated = s.junior_activated;
     } catch (e) {
       setAuthed(false);
       setAuthSource("none");
-      setBountyError(`Couldn't talk to the Whop helper: ${String(e)}`);
+      setBountyError(`Couldn't talk to the Junior helper: ${String(e)}`);
       return;
     }
-    if (!sessionOK) return;
+    if (!activated) return;
     try {
       const list = await sidecar.whopListBounties(30);
       setBounties(list.bounties);
+      // Backend proxy may return authenticated:false + an error string when
+      // its own App API Key isn't configured / Whop is down. Surface that
+      // so the user gets a real reason and the manual paste affordance.
+      const errMsg = list.error;
+      const proxyOk = list.authenticated ?? true;
+      if (!proxyOk && errMsg) setBountyError(errMsg);
       await refreshSubmissions();
     } catch (e) {
-      // Whop said our token is valid (session_status is "authenticated"), but
-      // the bounty query refused it — usually a scope/permission mismatch on
-      // the OAuth token, not a sign-in problem. Show the actual error so we
-      // can fix it rather than logging the user out spuriously.
       setBountyError(String(e).replace(/^Error:\s*/i, ""));
     }
   }
@@ -143,28 +143,21 @@ export function EarnTab({
     return (
       <div className="w-full max-w-[640px]">
         <p className="font-mono text-[12px] text-text-tertiary">
-          Checking your Whop session<span className="blink">_</span>
+          Checking your Junior license<span className="blink">_</span>
         </p>
       </div>
     );
   }
 
+  // Junior not activated → user hasn't connected the desktop to a Junior
+  // account yet. Public bounty browsing needs the license JWT (backend
+  // proxy auth), so we route to the activation flow. Whop OAuth is a
+  // separate optional step that lives in Settings → Connections.
   if (authed === false) {
-    // Inside Whop iframe: the bridge couldn't capture a token (parent didn't
-    // respond, postMessage failed, or the user opened a logged-out Whop tab).
-    // The right response is "Reconnect in Whop" — NOT a developer paste box.
     if (inWhopIframe()) {
       return <WhopIframeFailed onRetry={() => void bootstrap()} />;
     }
-    // Standalone desktop: v0.4 dev path keeps the paste flow. Real users get
-    // OAuth in v0.5; for now this is internal/test only.
-    return (
-      <SignInSplash
-        onAuthenticated={() => {
-          void bootstrap();
-        }}
-      />
-    );
+    return <ActivateJuniorSplash onActivated={() => bootstrap()} />;
   }
 
   if (activeBounty) {
@@ -403,59 +396,18 @@ function WhopIframeFailed({ onRetry }: { onRetry: () => void }) {
 }
 
 
-function SignInSplash({ onAuthenticated }: { onAuthenticated: () => void }) {
-  const [phase, setPhase] = useState<"idle" | "awaiting" | "exchanging">("idle");
-  const [error, setError] = useState<string | null>(null);
-
-  async function startOAuth() {
-    setError(null);
-    setPhase("awaiting");
-    try {
-      const { authorize_url } = await sidecar.whopOAuthStart();
-      // Open the user's default browser to Whop. Tauri's shell plugin verifies
-      // the URL against the allowlist (https://api.whop.com is whitelisted in
-      // capabilities so this resolves cleanly).
-      void openExternal(authorize_url).catch(() => undefined);
-
-      // Non-blocking poll loop: the sidecar's HTTP listener does the token
-      // exchange itself the instant Whop hits the callback, so we just need
-      // to see when status flips to "success" / "error". 1s tick, 10-min cap.
-      const deadline = Date.now() + 10 * 60 * 1000;
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        if (Date.now() > deadline) {
-          throw new Error(
-            "Took too long to authorize. Try again — your Whop tab probably timed out.",
-          );
-        }
-        await new Promise((r) => setTimeout(r, 1000));
-        const st = await sidecar.whopOAuthStatus();
-        if (st.status === "success") {
-          setPhase("exchanging");
-          onAuthenticated();
-          return;
-        }
-        if (st.status === "error") {
-          throw new Error(st.error || "Whop sign-in failed.");
-        }
-        if (st.status === "idle") {
-          throw new Error("Sign-in listener stopped unexpectedly. Try again.");
-        }
-        // status === "pending" → keep polling
-      }
-    } catch (e) {
-      setError(String(e).replace(/^Error:\s*/i, ""));
-      setPhase("idle");
-      // Best-effort cleanup if the user cancelled mid-flow.
-      void sidecar.whopOAuthCancel().catch(() => undefined);
-    }
-  }
-
-  function cancel() {
-    setPhase("idle");
-    setError(null);
-    void sidecar.whopOAuthCancel().catch(() => undefined);
-  }
+// Junior isn't activated on this desktop yet — no license JWT in the keychain,
+// so the backend bounty proxy has nothing to authenticate with. Activation is
+// the same flow as FirstRun: sign in at account.jnremployee.com, which writes
+// the license JWT back via the activation deep link. Connecting Whop for
+// per-user actions is a SEPARATE, optional step in Settings → Connections — it
+// is not required to browse bounties.
+function ActivateJuniorSplash({
+  onActivated,
+}: {
+  onActivated: () => void | Promise<void>;
+}) {
+  const [rechecking, setRechecking] = useState(false);
 
   return (
     <div className="flex w-full max-w-[520px] flex-col items-start gap-5">
@@ -471,52 +423,42 @@ function SignInSplash({ onAuthenticated }: { onAuthenticated: () => void }) {
           /
         </span>
         <p className="font-mono text-[16px] leading-none text-ink">
-          Connect Whop to browse bounties.
+          Activate Junior to browse bounties.
           <span className="blink ml-[2px] text-fuchsia">_</span>
         </p>
       </div>
       <p className="max-w-[480px] font-sans text-[13px] leading-relaxed text-text-secondary">
-        Your Junior account is already signed in — this is a separate
-        connection. We open Whop in your browser; once you approve, Junior
-        picks up the session and bounties load. Token stays in your OS keychain.
+        Bounties load once this desktop is activated against your Junior account.
+        Sign in at account.jnremployee.com — Junior writes your license to the OS
+        keychain and the list loads. Connecting Whop is a separate, optional step
+        in Settings → Connections.
       </p>
-
-      {phase === "idle" && (
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => void startOAuth()}
-            className="rounded-full bg-ink px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
-          >
-            Connect Whop →
-          </button>
-        </div>
-      )}
-
-      {(phase === "awaiting" || phase === "exchanging") && (
-        <div className="flex w-full flex-col gap-3 rounded-2xl border border-line bg-paper p-4">
-          <p className="font-mono text-[12px] text-text-secondary">
-            {phase === "awaiting"
-              ? "Approve Junior in the browser window that just opened…"
-              : "Exchanging your code with Whop…"}
-            <span className="blink ml-[2px] text-fuchsia">_</span>
-          </p>
-          <button
-            onClick={cancel}
-            className="self-start rounded-full border border-line bg-paper px-4 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-ink"
-          >
-            Cancel
-          </button>
-          <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-            redirect listens on localhost:8765 · times out after 3 min
-          </p>
-        </div>
-      )}
-
-      {error && (
-        <p className="max-w-[480px] font-mono text-[11px] leading-relaxed text-[#DC2626]">
-          {error}
-        </p>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() =>
+            void openExternal("https://account.jnremployee.com/sign-in").catch(
+              () => undefined,
+            )
+          }
+          className="rounded-full bg-ink px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+        >
+          Open browser to sign in →
+        </button>
+        <button
+          onClick={async () => {
+            setRechecking(true);
+            try {
+              await onActivated();
+            } finally {
+              setRechecking(false);
+            }
+          }}
+          disabled={rechecking}
+          className="rounded-full border border-line bg-paper px-4 py-2.5 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep disabled:opacity-50"
+        >
+          {rechecking ? "Checking…" : "I've activated — reload"}
+        </button>
+      </div>
     </div>
   );
 }

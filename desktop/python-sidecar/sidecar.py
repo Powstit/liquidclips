@@ -744,52 +744,84 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
 
 
 def method_whop_list_bounties(params: dict[str, Any]) -> dict[str, Any]:
-    """Browse live Whop Content Rewards campaigns (called 'bounties' in the
-    API). Used by the Earn tab to render the Available list."""
+    """Browse live Whop Content Rewards campaigns. Reads now go through
+    junior-backend's /whop/bounties proxy (uses the server-side App API Key),
+    so the gate is "is the desktop activated with a Junior license JWT?",
+    NOT "did the user complete the Whop OAuth flow". The local Whop OAuth
+    token is reserved for future user-specific actions (submit-on-behalf,
+    etc.) — public bounty browsing only needs Junior activation."""
     import asyncio
     import whop_client
-    if not whop_client.has_token():
-        return {"bounties": [], "authenticated": False}
     first = int(params.get("first") or 30)
-    bounties = asyncio.run(whop_client.list_bounties(first=first))
-    return {"bounties": bounties, "authenticated": True}
+    try:
+        bounties = asyncio.run(whop_client.list_bounties(first=first))
+        return {"bounties": bounties, "authenticated": True}
+    except Exception as e:
+        # Surface the backend's reason so EarnTab can show the manual paste
+        # fallback (503 = backend missing WHOP_API_KEY, 502 = Whop down, etc.)
+        return {
+            "bounties": [],
+            "authenticated": False,
+            "error": str(e),
+        }
 
 
 def method_whop_bounty(params: dict[str, Any]) -> dict[str, Any]:
-    """Full detail for one bounty — used by the Bounty Detail screen."""
+    """Full detail for one bounty. Same auth posture as list_bounties —
+    license-JWT-gated server-side, no local Whop token required."""
     import asyncio
     import whop_client
     bounty_id = params.get("id")
     if not isinstance(bounty_id, str) or not bounty_id:
         raise ValueError("whop_bounty requires id (str)")
-    if not whop_client.has_token():
-        return {"bounty": None, "authenticated": False}
-    bounty = asyncio.run(whop_client.get_bounty(bounty_id))
-    return {"bounty": bounty, "authenticated": True}
+    try:
+        bounty = asyncio.run(whop_client.get_bounty(bounty_id))
+        return {"bounty": bounty, "authenticated": True}
+    except Exception as e:
+        return {"bounty": None, "authenticated": False, "error": str(e)}
 
 
 def method_whop_submission(params: dict[str, Any]) -> dict[str, Any]:
-    """Submission status poller — used to update Earn / Submitted + Approved
-    when statuses change on Whop's side."""
+    """Submission status poller — also via the backend proxy now."""
     import asyncio
     import whop_client
     submission_id = params.get("id")
     if not isinstance(submission_id, str) or not submission_id:
         raise ValueError("whop_submission requires id (str)")
-    if not whop_client.has_token():
-        return {"submission": None, "authenticated": False}
-    submission = asyncio.run(whop_client.get_submission(submission_id))
-    return {"submission": submission, "authenticated": True}
+    try:
+        submission = asyncio.run(whop_client.get_submission(submission_id))
+        return {"submission": submission, "authenticated": True}
+    except Exception as e:
+        return {"submission": None, "authenticated": False, "error": str(e)}
 
 
 def method_whop_session_status(_params: dict[str, Any]) -> dict[str, Any]:
-    """Lightweight check: is there a usable Whop token? Called by the Earn
-    splash to decide whether to show the sign-in CTA or proceed to bounties.
-    Returns the real token source from whop_client.token_source() so the UI
-    can distinguish iframe / env / keychain / seller_key / none precisely."""
+    """Reports BOTH auth axes the Earn tab cares about, separately:
+
+      - junior_activated: do we have a license JWT in the keychain? This is
+        what gates public bounty browsing now (backend proxy auth).
+      - whop_desktop_oauth_source: where the user's Whop OAuth token came
+        from (iframe / env_user / keychain / seller_key / none). Currently
+        unused for bounty browsing — reserved for future per-user Whop
+        actions.
+      - authenticated: legacy field == junior_activated. Kept so older
+        clients don't break.
+      - source: legacy field == whop_desktop_oauth_source.
+    """
     import whop_client
+    try:
+        from secrets_store import get_secret
+        has_license = bool(get_secret("JUNIOR_LICENSE_JWT"))
+    except Exception:
+        has_license = False
     source = whop_client.token_source()
-    return {"authenticated": source != "none", "source": source}
+    return {
+        "junior_activated": has_license,
+        "whop_desktop_oauth_source": source,
+        # Legacy fields — kept temporarily so a stale UI doesn't crash.
+        "authenticated": has_license,
+        "source": source,
+    }
 
 
 def method_whop_set_session_token(params: dict[str, Any]) -> dict[str, Any]:
