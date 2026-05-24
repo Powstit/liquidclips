@@ -29,6 +29,8 @@ const FORBIDDEN_KEYS = new Set([
   "token", "access_token", "id_token", "jwt", "license_jwt",
   "api_key", "secret", "password",
   "path", "filename", "transcript", "source_filename", "source_path",
+  // slug derives from the source filename/title — treat as content/PII.
+  "slug", "project_slug",
 ]);
 
 function sanitize(props?: Record<string, unknown>): Record<string, unknown> {

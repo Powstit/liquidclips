@@ -199,8 +199,9 @@ export default function App() {
     if (current.whop_bounty_id && current.clips.length > 0) {
       trackEvent("bounty_clip_exported", {
         bounty_id: current.whop_bounty_id,
-        project_slug: current.slug,
         export_count: current.clips.length,
+        // No project_slug — it derives from the source filename/title (PII).
+        // If a project identifier is ever needed, use an opaque id, not the slug.
       });
     }
     setView({ kind: "results", project: current });
