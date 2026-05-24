@@ -340,7 +340,10 @@ export type WhopBounty = {
     name: string | null;
     image: string | null;
   };
-  experience?: { id: string } | null;
+  experience?: { id: string; name?: string | null } | null;
+  // Campaign thumbnail — flattened from experience.logo.sourceUrl by the
+  // backend proxy (Whop has no image on the bounty itself).
+  thumbnail?: string | null;
 };
 
 export type WhopSubmission = {

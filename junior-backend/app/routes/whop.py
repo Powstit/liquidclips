@@ -132,6 +132,7 @@ query JuniorListBounties($first: Int) {
         createdAt
         updatedAt
         user { username name profilePicture { sourceUrl } }
+        experience { id name logo { sourceUrl } }
       }
     }
   }
@@ -160,7 +161,7 @@ query JuniorBounty($id: ID!) {
     totalPaid
     budgetAmount
     user { username name profilePicture { sourceUrl } }
-    experience { id }
+    experience { id name logo { sourceUrl } }
   }
 }
 """
@@ -196,6 +197,15 @@ def _normalize_bounty(node: dict[str, Any]) -> dict[str, Any]:
     if isinstance(user, dict):
         pic = user.pop("profilePicture", None)
         user["image"] = pic.get("sourceUrl") if isinstance(pic, dict) else None
+    # Whop has no thumbnail on the bounty itself — the campaign image lives on
+    # the linked experience (experience.logo, an AttachmentInterface). Flatten
+    # it to a top-level `thumbnail` string and keep experience as {id, name}.
+    exp = node.get("experience")
+    if isinstance(exp, dict):
+        logo = exp.pop("logo", None)
+        node["thumbnail"] = logo.get("sourceUrl") if isinstance(logo, dict) else None
+    else:
+        node["thumbnail"] = None
     return node
 
 

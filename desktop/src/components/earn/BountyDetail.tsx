@@ -38,13 +38,16 @@ export function BountyDetail({
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <section className="rounded-2xl border border-line bg-paper p-5">
           <h2 className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
-            source
+            campaign
           </h2>
           <div className="mt-3 aspect-video w-full overflow-hidden rounded-xl bg-ink">
-            {/* No source thumbnail in the public bounty API — placeholder. */}
-            <div className="grid h-full place-items-center font-mono text-[11px] text-paper/40">
-              source video preview
-            </div>
+            {bounty.thumbnail ? (
+              <img src={bounty.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover" />
+            ) : (
+              <div className="grid h-full place-items-center font-mono text-[11px] text-paper/40">
+                no campaign image
+              </div>
+            )}
           </div>
           <p className="mt-3 font-mono text-[11px] text-text-tertiary">
             experience id
