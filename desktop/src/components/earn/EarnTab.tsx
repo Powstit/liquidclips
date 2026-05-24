@@ -206,19 +206,24 @@ export function EarnTab({
   // "add one" works by bounty link/ID (publicBounty(id:) under the hood).
   function extractBountyId(input: string): string {
     const t = input.trim();
+    if (/^bnty_[A-Za-z0-9_-]+$/.test(t)) return t;
     const m = t.match(/bounties\/([^/?#]+)/i);
     if (m) return m[1];
     try {
       const parts = new URL(t).pathname.split("/").filter(Boolean);
-      return parts[parts.length - 1] || t;
+      const last = parts[parts.length - 1] || "";
+      return /^bnty_[A-Za-z0-9_-]+$/.test(last) ? last : "";
     } catch {
-      return t;
+      return "";
     }
   }
 
   async function handleAddByLink() {
     const id = extractBountyId(addUrl);
-    if (!id) return;
+    if (!id) {
+      setAddError("Paste a Content Reward link that contains bnty_… or paste the raw bnty_… ID. Campaign / experience links do not point to a specific reward.");
+      return;
+    }
     setAdding(true);
     setAddError(null);
     try {
