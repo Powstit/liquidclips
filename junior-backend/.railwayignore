@@ -1,0 +1,10 @@
+*.db
+*.sqlite
+*.sqlite3
+.junior-keys/
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.local
+.DS_Store
