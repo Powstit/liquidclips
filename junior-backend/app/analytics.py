@@ -25,6 +25,20 @@ log = logging.getLogger("junior.analytics")
 _client = None
 _inited = False
 
+# Canonical affiliate-flywheel funnel chain (CLAUDE_POSTHOG_AFFILIATE_FUNNEL_
+# ARCHITECTURE.md). Listed here as the single source of truth for event names;
+# the comment marks where each one is emitted. Phase 1 wires only the events
+# that naturally happen today — the rest are reserved names for later phases.
+#
+#   reward_clip_viewed              → backend sync/manual import   (Phase 3)
+#   affiliate_link_clicked          → marketing/account frontend   (Phase 1)
+#   starter_pass_started            → backend ledger redeem        (Phase 3)
+#   desktop_activated               → backend /desktop/connect     (Phase 1 ✓ live)
+#   first_bounty_workspace_created  → desktop sidecar              (Phase 1)
+#   bounty_clip_exported            → desktop sidecar              (Phase 1)
+#   starter_pass_exhausted          → backend ledger/cron          (Phase 3)
+#   subscription_activated          → backend clerk webhook        (Phase 1 ✓ live)
+#   subscription_still_active_day_30 → backend scheduled job       (Phase 2)
 BackendEvent = Literal[
     # Webhook lifecycle
     "signup_completed",                 # user.created handled
@@ -32,8 +46,13 @@ BackendEvent = Literal[
     "whop_membership_valid",            # paid subscription went live
     "subscription_activated",           # Clerk subscription_active
     "subscription_canceled",
+    "subscription_still_active_day_30", # retention check (Phase 2 scheduled job)
     # Desktop activation
     "desktop_activated",                # /desktop/connect first license issued
+    # Affiliate starter-pass flywheel (names reserved; emit homes per Phase)
+    "reward_clip_viewed",               # Whop reward view sync (Phase 3)
+    "starter_pass_started",             # ledger redeem (Phase 3)
+    "starter_pass_exhausted",           # credits/expiry (Phase 3)
 ]
 
 
