@@ -379,6 +379,43 @@ export default function App() {
               }
               setView({ kind: "paste-source", bounty });
             }}
+            onStartManualBounty={(bountyCtx, sourceUrl) => {
+              // Beta fallback: user pasted bounty + source. Synthesize a
+              // minimal WhopBounty shape so the existing choosing-intent →
+              // pipeline path doesn't need to learn a new code path. Only the
+              // BountyContext-shaped fields actually flow through (see
+              // onIntentPicked's `bounty:` mapping — extracts id/title/
+              // rewardPerUnitAmount/currency only).
+              const synthetic: WhopBounty = {
+                id: bountyCtx.id,
+                title: bountyCtx.title,
+                description: "",
+                baseUnitAmount: 0,
+                rewardPerUnitAmount: bountyCtx.rewardPerUnitAmount,
+                currency: bountyCtx.currency,
+                allowYoutube: true,
+                allowTiktok: true,
+                allowInstagram: true,
+                allowX: true,
+                acceptedSubmissionsLimit: 0,
+                acceptedSubmissionsCount: 0,
+                spotsRemaining: 0,
+                bountyType: "manual",
+                status: "active",
+                viewCount: 0,
+                totalPaid: 0,
+                budgetAmount: 0,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                user: { username: "", name: "", image: "" },
+              };
+              setView({
+                kind: "choosing-intent",
+                source: { kind: "url", url: sourceUrl },
+                brief: "",
+                bounty: synthetic,
+              });
+            }}
           />
         )}
 

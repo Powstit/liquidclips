@@ -136,133 +136,74 @@ def token_source() -> str:
     return "none"
 
 
-async def _gql(query: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Execute a GraphQL query against Whop. Raises on HTTP error or graphql
-    errors so callers can surface the failure cleanly."""
-    token = _whop_token()
-    if not token:
-        raise RuntimeError("No Whop token available — not in iframe context and no seller key")
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(
-            WHOP_GRAPHQL_URL,
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            json={"query": query, "variables": variables or {}},
+def _backend_url() -> str:
+    return os.environ.get("JUNIOR_BACKEND_URL", "http://localhost:8000")
+
+
+def _license_jwt() -> str | None:
+    """Read the license JWT from the keychain. Used as Bearer auth against
+    junior-backend's /whop/* proxy endpoints."""
+    try:
+        from secrets_store import get_secret
+        return get_secret("JUNIOR_LICENSE_JWT")
+    except Exception:
+        return None
+
+
+async def _backend_get(path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    """GET against junior-backend with the license JWT as Bearer.
+
+    We funnel Whop reads through the backend because Whop's public-graphql
+    refuses user OAuth tokens for the publicBounties* queries — it requires
+    an App API Key, which must stay server-side. The backend holds that key
+    and proxies for us.
+    """
+    jwt_token = _license_jwt()
+    if not jwt_token:
+        raise RuntimeError(
+            "No license JWT in keychain — sign in to Junior via "
+            "account.jnremployee.com to activate the desktop first."
         )
-        resp.raise_for_status()
-        body = resp.json()
-        if body.get("errors"):
-            raise RuntimeError(f"Whop GraphQL error: {body['errors'][:2]}")
-        return body.get("data", {})
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            resp = await client.get(
+                f"{_backend_url()}{path}",
+                params=params or {},
+                headers={"Authorization": f"Bearer {jwt_token}"},
+            )
+        except httpx.HTTPError as e:
+            raise RuntimeError(f"Couldn't reach junior-backend: {e}") from e
+    if resp.status_code == 503:
+        raise RuntimeError(
+            "Backend says Whop API key isn't configured server-side yet. "
+            "Use the manual paste fallback."
+        )
+    if resp.status_code != 200:
+        snippet = resp.text[:200]
+        raise RuntimeError(f"Backend {resp.status_code}: {snippet}")
+    return resp.json()
 
 
-# --- queries ----------------------------------------------------------
-
-_LIST_BOUNTIES = """
-query JuniorListBounties($first: Int) {
-  publicBounties(first: $first) {
-    edges {
-      node {
-        id
-        title
-        description
-        baseUnitAmount
-        rewardPerUnitAmount
-        currency
-        allowYoutube
-        allowTiktok
-        allowInstagram
-        allowX
-        acceptedSubmissionsLimit
-        acceptedSubmissionsCount
-        spotsRemaining
-        bountyType
-        status
-        viewCount
-        totalPaid
-        budgetAmount
-        createdAt
-        updatedAt
-        user {
-          username
-          name
-          image
-        }
-      }
-    }
-  }
-}
-"""
-
-_BOUNTY_DETAIL = """
-query JuniorBounty($id: ID!) {
-  publicBounty(id: $id) {
-    id
-    title
-    description
-    baseUnitAmount
-    rewardPerUnitAmount
-    currency
-    allowYoutube
-    allowTiktok
-    allowInstagram
-    allowX
-    acceptedSubmissionsLimit
-    acceptedSubmissionsCount
-    spotsRemaining
-    bountyType
-    status
-    viewCount
-    totalPaid
-    budgetAmount
-    user {
-      username
-      name
-      image
-    }
-    experience {
-      id
-    }
-  }
-}
-"""
-
-_SUBMISSION = """
-query JuniorSubmission($id: ID!) {
-  publicBountySubmission(id: $id) {
-    id
-    status
-    submittedAt
-    claimedAt
-    expiresAt
-    formattedPayoutAmount
-    denialReason
-    verifiedVotesCount
-    rejectedVotesCount
-    bounty {
-      id
-      title
-      rewardPerUnitAmount
-      currency
-    }
-  }
-}
-"""
+# GraphQL queries used to live here — direct calls from desktop to
+# api.whop.com. Whop rejects user OAuth tokens against the publicBounties*
+# queries ("You must provide a valid App API Key"), so all reads now route
+# through junior-backend, which holds the App API Key server-side. The
+# canonical query strings live in junior-backend/app/routes/whop.py.
 
 
 async def list_bounties(*, first: int = 30) -> list[dict[str, Any]]:
-    data = await _gql(_LIST_BOUNTIES, {"first": first})
-    edges = (data.get("publicBounties") or {}).get("edges") or []
-    return [e["node"] for e in edges if e.get("node")]
+    payload = await _backend_get("/whop/bounties", {"first": first})
+    return payload.get("bounties", [])
 
 
 async def get_bounty(bounty_id: str) -> dict[str, Any] | None:
-    data = await _gql(_BOUNTY_DETAIL, {"id": bounty_id})
-    return data.get("publicBounty")
+    payload = await _backend_get(f"/whop/bounties/{bounty_id}")
+    return payload.get("bounty")
 
 
 async def get_submission(submission_id: str) -> dict[str, Any] | None:
-    data = await _gql(_SUBMISSION, {"id": submission_id})
-    return data.get("publicBountySubmission")
+    payload = await _backend_get(f"/whop/submissions/{submission_id}")
+    return payload.get("submission")
 
 
 def has_token() -> bool:

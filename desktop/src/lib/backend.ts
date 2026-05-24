@@ -359,6 +359,38 @@ export async function syncStatus(): Promise<SyncStatus | null> {
   }
 }
 
+
+// Canonical "who am I" answer from the backend. Used by Settings → Account
+// to surface what the backend actually thinks vs what Clerk or the keychain
+// might be saying. Source of truth for tier/admin/billing — never derive
+// from Clerk publicMetadata alone.
+export type MeStatus = {
+  backend_user_id: string;
+  clerk_id: string | null;
+  email: string | null;
+  whop_user_id: string | null;
+  affiliate_id: string | null;
+  raw_tier: string;
+  raw_founder: boolean;
+  effective_tier: string;
+  effective_founder: boolean;
+  admin_override: boolean;
+  subscription_status: string;
+  billing_provider: "whop" | "clerk";
+  whop_backend_key_configured: boolean;
+};
+
+export async function meStatus(): Promise<MeStatus | null> {
+  if (isWebPreview()) return null;
+  try {
+    const res = await authedFetch("/me");
+    if (!res.ok) return null;
+    return (await res.json()) as MeStatus;
+  } catch {
+    return null;
+  }
+}
+
 // ── Web preview: platform connections ───────────────────────────────────
 
 const PREVIEW_CONNECTIONS_KEY = "junior:preview-connections:v1";
