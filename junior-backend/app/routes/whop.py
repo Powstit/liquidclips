@@ -131,7 +131,7 @@ query JuniorListBounties($first: Int) {
         budgetAmount
         createdAt
         updatedAt
-        user { username name image }
+        user { username name profilePicture { sourceUrl } }
       }
     }
   }
@@ -159,7 +159,7 @@ query JuniorBounty($id: ID!) {
     viewCount
     totalPaid
     budgetAmount
-    user { username name image }
+    user { username name profilePicture { sourceUrl } }
     experience { id }
   }
 }
@@ -183,6 +183,22 @@ query JuniorSubmission($id: ID!) {
 """
 
 
+# --- normalization -------------------------------------------------------
+
+
+def _normalize_bounty(node: dict[str, Any]) -> dict[str, Any]:
+    """Flatten Whop's nested `user.profilePicture.sourceUrl` back to the flat
+    `user.image` string the desktop's WhopBounty type expects. Whop has no
+    scalar avatar field — `profilePicture` is an AttachmentInterface — so we
+    query the sub-field and collapse it here, keeping the wire contract stable.
+    """
+    user = node.get("user")
+    if isinstance(user, dict):
+        pic = user.pop("profilePicture", None)
+        user["image"] = pic.get("sourceUrl") if isinstance(pic, dict) else None
+    return node
+
+
 # --- endpoints -----------------------------------------------------------
 
 
@@ -202,7 +218,7 @@ async def list_bounties(
 
     data = await _whop_gql(_LIST_BOUNTIES, {"first": first})
     edges = (data.get("publicBounties") or {}).get("edges") or []
-    bounties = [edge["node"] for edge in edges if edge and edge.get("node")]
+    bounties = [_normalize_bounty(edge["node"]) for edge in edges if edge and edge.get("node")]
     _cache_put(cache_key, bounties, _BOUNTY_LIST_TTL)
     log.info(
         "[whop_proxy] list_bounties for user=%s count=%d", user.id, len(bounties)
@@ -223,6 +239,7 @@ async def get_bounty(
     bounty = data.get("publicBounty")
     if not bounty:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Bounty not found")
+    bounty = _normalize_bounty(bounty)
     _cache_put(cache_key, bounty, _BOUNTY_DETAIL_TTL)
     log.info("[whop_proxy] get_bounty %s for user=%s", bounty_id, user.id)
     return {"bounty": bounty, "source": "live"}
