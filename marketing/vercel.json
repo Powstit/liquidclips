@@ -1,5 +1,11 @@
 {
+  "cleanUrls": true,
   "redirects": [
+    {
+      "source": "/affiliate",
+      "destination": "/affiliates",
+      "permanent": false
+    },
     {
       "source": "/dashboard",
       "destination": "https://account.jnremployee.com/dashboard",
