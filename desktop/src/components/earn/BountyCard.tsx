@@ -46,12 +46,24 @@ export function BountyCard({
         </span>
       </div>
 
-      <h3 className="mt-3 font-display text-[18px] font-semibold leading-tight tracking-[-0.015em] text-ink">
-        {bounty.title}
-      </h3>
-      <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.1em] text-text-tertiary">
-        by @{bounty.user.username ?? "unknown"}
-      </p>
+      <div className="mt-3 flex items-start gap-3">
+        {bounty.thumbnail && (
+          <img
+            src={bounty.thumbnail}
+            alt=""
+            loading="lazy"
+            className="h-12 w-12 shrink-0 rounded-lg border border-line object-cover"
+          />
+        )}
+        <div className="min-w-0">
+          <h3 className="font-display text-[18px] font-semibold leading-tight tracking-[-0.015em] text-ink">
+            {bounty.title}
+          </h3>
+          <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.1em] text-text-tertiary">
+            by @{bounty.user.username ?? "unknown"}
+          </p>
+        </div>
+      </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-3 font-mono text-[10px] uppercase tracking-[0.08em]">
         <Pill label="fit" value={`${fit}`} tone={fit >= 80 ? "good" : fit >= 60 ? "ok" : "warn"} />

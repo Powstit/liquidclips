@@ -63,6 +63,13 @@ export function EarnTab({
   const [sort, setSort] = useState<SortKey>("best_match");
   const [filterPlatforms, setFilterPlatforms] = useState<ConnectedPlatform[]>([]);
   const [openOnly, setOpenOnly] = useState(true);
+  // Client-side search over the fetched pool — Whop's publicBounties has no
+  // server text search, so we fetch a wider pool and filter here.
+  const [search, setSearch] = useState("");
+  // Add a specific reward by pasting its Whop link/ID (fetches the real one).
+  const [addUrl, setAddUrl] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
   // Local bounty-linked projects for the In progress tab. Read from disk via
   // the sidecar — independent of Whop/backend, so it works even when bounty
   // browsing is down.
@@ -97,7 +104,7 @@ export function EarnTab({
     }
     if (!activated) return;
     try {
-      const list = await sidecar.whopListBounties(30);
+      const list = await sidecar.whopListBounties(60);
       setBounties(list.bounties);
       // Backend proxy may return authenticated:false + an error string when
       // its own App API Key isn't configured / Whop is down. Surface that
@@ -194,9 +201,53 @@ export function EarnTab({
     );
   }
 
+  // Resolve a Whop reward id from a pasted link or raw id, then fetch the real
+  // reward and route into the setup flow. Whop has no campaign-list query, so
+  // "add one" works by bounty link/ID (publicBounty(id:) under the hood).
+  function extractBountyId(input: string): string {
+    const t = input.trim();
+    const m = t.match(/bounties\/([^/?#]+)/i);
+    if (m) return m[1];
+    try {
+      const parts = new URL(t).pathname.split("/").filter(Boolean);
+      return parts[parts.length - 1] || t;
+    } catch {
+      return t;
+    }
+  }
+
+  async function handleAddByLink() {
+    const id = extractBountyId(addUrl);
+    if (!id) return;
+    setAdding(true);
+    setAddError(null);
+    try {
+      const { bounty } = await sidecar.whopBounty(id);
+      if (!bounty) {
+        setAddError("Couldn't find that Content Reward on Whop. Check the link or ID.");
+        return;
+      }
+      setAddUrl("");
+      onStartBounty(bounty);
+    } catch (e) {
+      setAddError(String(e).replace(/^Error:\s*/i, ""));
+    } finally {
+      setAdding(false);
+    }
+  }
+
   // Main listing surface
+  const q = search.trim().toLowerCase();
   const filtered = sortBounties(
-    bounties.filter((b) => matchesFilter(b, filterPlatforms, openOnly)),
+    bounties.filter(
+      (b) =>
+        matchesFilter(b, filterPlatforms, openOnly) &&
+        (!q ||
+          b.title.toLowerCase().includes(q) ||
+          (b.user.username ?? "").toLowerCase().includes(q) ||
+          (b.user.name ?? "").toLowerCase().includes(q) ||
+          (b.experience?.name ?? "").toLowerCase().includes(q)),
+    ),
     sort,
     filterPlatforms,
   );
@@ -279,6 +330,33 @@ export function EarnTab({
       <div className="mt-6 flex flex-col gap-4">
         {subTab === "available" && (
           <>
+            <div className="flex flex-col gap-2">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                spellCheck={false}
+                placeholder="Search Content Rewards by title or brand…"
+                className="w-full rounded-full border border-line bg-paper px-4 py-2.5 font-sans text-[13px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={addUrl}
+                  onChange={(e) => { setAddUrl(e.target.value); setAddError(null); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") void handleAddByLink(); }}
+                  spellCheck={false}
+                  placeholder="Paste a Whop reward link or ID to add it…"
+                  className="min-w-[240px] flex-1 rounded-full border border-line bg-paper px-4 py-2 font-mono text-[12px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
+                />
+                <button
+                  onClick={() => void handleAddByLink()}
+                  disabled={!addUrl.trim() || adding}
+                  className="shrink-0 rounded-full bg-ink px-4 py-2 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia disabled:opacity-40"
+                >
+                  {adding ? "Adding…" : "Add reward"}
+                </button>
+              </div>
+              {addError && <p className="font-mono text-[11px] text-[#DC2626]">{addError}</p>}
+            </div>
             <BountyFilters
               sort={sort}
               onSortChange={setSort}
