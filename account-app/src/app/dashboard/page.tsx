@@ -18,6 +18,19 @@ export default async function DashboardPage() {
   const tier = ((user.publicMetadata?.tier as string | undefined) ?? "free") as
     | "free" | "solo" | "growth" | "autopilot";
   const isFree = tier === "free";
+
+  // Mirror of junior-backend's ADMIN_EMAILS fallback so the dashboard can
+  // surface "admin override" without an extra backend round-trip. Env override
+  // wins. Keep this list in sync with junior-backend/app/features.py.
+  const adminEnv = process.env.JUNIOR_ADMIN_EMAILS ?? "";
+  const adminList = (adminEnv
+    ? adminEnv.split(",")
+    : ["danieldiyepriye@gmail.com", "mrddokubo@gmail.com", "crazycatjackkids@gmail.com", "thedoks2019@gmail.com"]
+  ).map((e) => e.trim().toLowerCase()).filter(Boolean);
+  const primaryEmail = (user.primaryEmailAddress?.emailAddress ?? "").trim().toLowerCase();
+  const isAdmin = primaryEmail && adminList.includes(primaryEmail);
+  const effectiveTier = isAdmin ? "autopilot" : tier;
+  const effectiveFounder = isAdmin ? true : (user.publicMetadata?.founder === true);
   const greeting =
     user.firstName ??
     user.username ??
@@ -125,6 +138,38 @@ export default async function DashboardPage() {
           />
         </Carousel>
       </div>
+
+      <section className="mt-12">
+        <div className="flex items-baseline justify-between gap-4">
+          <div>
+            <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+              account · debug
+            </div>
+            <h2 className="mt-2 font-display text-[clamp(20px,2vw,24px)] font-semibold tracking-[-0.02em] text-ink">
+              What Junior thinks you are.
+            </h2>
+          </div>
+          <p className="hidden max-w-[360px] font-sans text-[12px] text-text-secondary sm:block">
+            Use these values to debug "I don't know what account I'm signed in
+            as." Backend wins over everything else.
+          </p>
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-1 rounded-3xl border border-line bg-paper-warm/40 p-5 font-mono text-[12px] sm:grid-cols-2">
+          <DebugLine label="Clerk email" value={user.primaryEmailAddress?.emailAddress ?? "—"} />
+          <DebugLine label="Clerk user id" value={user.id} mono />
+          <DebugLine label="Affiliate id" value={affiliateId ?? "—"} mono />
+          <DebugLine
+            label="Effective tier"
+            value={`${effectiveTier}${isAdmin ? " · admin override" : ""}${effectiveFounder ? " · founder" : ""}`}
+            accent={!!isAdmin}
+          />
+          <DebugLine label="Raw tier (Clerk metadata)" value={tier} />
+          <DebugLine
+            label="Whop connection"
+            value="manage from desktop · Settings → Connections → Whop"
+          />
+        </div>
+      </section>
 
       <section id="plans" className="mt-20 scroll-mt-12">
         <div className="flex items-baseline justify-between gap-4">
@@ -272,4 +317,30 @@ function Card({
 
 function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+
+function DebugLine({
+  label,
+  value,
+  mono = false,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  accent?: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-center justify-between gap-3 border-b border-line/40 px-1 py-1.5 last:border-b-0 sm:[&:nth-last-child(2)]:border-b-0 ${
+        accent ? "text-fuchsia-deep" : "text-ink"
+      }`}
+    >
+      <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">{label}</span>
+      <span className={`truncate ${mono ? "font-mono text-[11px]" : "font-sans text-[12px]"}`} title={value}>
+        {value}
+      </span>
+    </div>
+  );
 }

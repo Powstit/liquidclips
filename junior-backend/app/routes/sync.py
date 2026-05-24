@@ -42,6 +42,15 @@ def sync(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> SyncResponse:
+    from app.features import is_admin_email, tier_features
+
+    # Compute the effective tier+founder ONCE — admin override applies to
+    # both the JWT we rotate AND the response we return, so we don't end up
+    # minting a free-tier JWT for an admin five days before their next /sync.
+    is_admin = is_admin_email(user.email)
+    effective_tier = "autopilot" if is_admin else user.tier
+    effective_founder = True if is_admin else user.founder_flag
+
     new_jwt: str | None = None
 
     # Auto-rotate the license if it's within 5 days of expiring. Keeps the
@@ -60,36 +69,19 @@ def sync(
     if not latest or latest_exp is None or latest_exp <= threshold:
         jwt_str, expires_at = issue_license_jwt(
             user_id=user.id,
-            tier=user.tier,
-            founder=user.founder_flag,
+            tier=effective_tier,
+            founder=effective_founder,
         )
-        db.add(License(user_id=user.id, jwt=jwt_str, tier_at_issue=user.tier, expires_at=expires_at))
+        db.add(License(user_id=user.id, jwt=jwt_str, tier_at_issue=effective_tier, expires_at=expires_at))
         db.commit()
         new_jwt = jwt_str
 
-    from app.features import tier_features, is_admin_email
-
-    # Master admins get Autopilot+Founder regardless of Clerk billing state —
-    # bypass is one source of truth in app/features.py::ADMIN_EMAILS. This
-    # surfaces in the desktop UI as if they were a paying Autopilot+Founder
-    # user, with every feature unlocked.
-    if is_admin_email(user.email):
-        return SyncResponse(
-            tier="autopilot",
-            founder=True,
-            subscription_status="admin",
-            paid_until=None,
-            billing_provider="clerk",
-            features=tier_features("autopilot", founder=True),
-            new_license_jwt=new_jwt,
-        )
-
     return SyncResponse(
-        tier=user.tier,
-        founder=user.founder_flag,
-        subscription_status=user.subscription_status,
-        paid_until=user.paid_until,
+        tier=effective_tier,
+        founder=effective_founder,
+        subscription_status="admin" if is_admin else user.subscription_status,
+        paid_until=None if is_admin else user.paid_until,
         billing_provider="whop" if user.whop_user_id else "clerk",
-        features=tier_features(user.tier, founder=user.founder_flag),
+        features=tier_features(effective_tier, founder=effective_founder),
         new_license_jwt=new_jwt,
     )

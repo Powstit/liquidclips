@@ -3,9 +3,9 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { sidecar, type HardwareInfo, type SecretName } from "../lib/sidecar";
 
-const APP_VERSION = "0.4.9";
+const APP_VERSION = "0.4.11";
 const SUPPORT_EMAIL = "support@jnremployee.com";
-import { syncStatus, backend, type SyncStatus, type PlatformConnection, type ConnectionPlatform } from "../lib/backend";
+import { syncStatus, backend, meStatus, type SyncStatus, type MeStatus, type PlatformConnection, type ConnectionPlatform } from "../lib/backend";
 import { applyUpdate, checkForUpdate, type UpdateState } from "../lib/updater";
 import { PlatformIcon } from "./PlatformIcon";
 
@@ -229,6 +229,8 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
               </a>
             </div>
           </Section>
+
+          <WhoAmISection />
 
           <SupportSection />
 
@@ -564,6 +566,104 @@ function SubscriptionAction({
     >
       {label}
     </button>
+  );
+}
+
+
+// "Who am I?" — surfaces the backend's canonical view of the current user so
+// there's no ambiguity between Clerk metadata, the desktop's keychain state,
+// and what the server actually believes. Hits /me which applies admin
+// override + reports billing provider truthfully.
+function WhoAmISection() {
+  const [me, setMe] = useState<MeStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [whopSource, setWhopSource] = useState<string>("…");
+
+  useEffect(() => {
+    void (async () => {
+      const [m, sess] = await Promise.all([
+        meStatus(),
+        sidecar.whopSessionStatus().catch(() => null),
+      ]);
+      setMe(m);
+      setWhopSource(sess?.source ?? "none");
+      setLoading(false);
+    })();
+  }, []);
+
+  if (loading) {
+    return (
+      <Section eyebrow="account" title="Who Junior thinks you are.">
+        <p className="font-mono text-[12px] text-text-tertiary">
+          Reading from backend<span className="blink">_</span>
+        </p>
+      </Section>
+    );
+  }
+
+  if (!me) {
+    return (
+      <Section eyebrow="account" title="Who Junior thinks you are.">
+        <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+          Couldn't reach the backend. Sign in via{" "}
+          <a
+            onClick={() => void openExternal("https://account.jnremployee.com/dashboard")}
+            className="cursor-pointer text-fuchsia hover:text-fuchsia-deep"
+          >
+            account.jnremployee.com
+          </a>
+          {" "}then come back.
+        </p>
+      </Section>
+    );
+  }
+
+  return (
+    <Section eyebrow="account" title="Who Junior thinks you are.">
+      <p className="font-sans text-[12px] text-text-secondary">
+        Source of truth: junior-backend. Use this row when something looks off
+        — backend wins over Clerk metadata or anything cached locally.
+      </p>
+      <div className="flex flex-col gap-1 rounded-xl border border-line bg-paper-warm/30 p-3 font-mono text-[12px]">
+        <DebugRow label="Email" value={me.email ?? "—"} />
+        <DebugRow label="Backend user id" value={me.backend_user_id} mono />
+        <DebugRow label="Clerk id" value={me.clerk_id ?? "—"} mono />
+        <DebugRow label="Whop user id" value={me.whop_user_id ?? "—"} mono />
+        <DebugRow label="Affiliate id" value={me.affiliate_id ?? "—"} mono />
+        <DebugRow
+          label="Effective tier"
+          value={`${me.effective_tier}${
+            me.admin_override ? " · admin override" : ""
+          }${me.effective_founder ? " · founder" : ""}`}
+        />
+        <DebugRow label="Raw tier (db)" value={`${me.raw_tier}${me.raw_founder ? " · founder" : ""}`} />
+        <DebugRow label="Subscription" value={me.subscription_status} />
+        <DebugRow label="Billing provider" value={me.billing_provider} />
+        <DebugRow
+          label="Whop bounties auth"
+          value={
+            me.whop_backend_key_configured
+              ? `backend app key · desktop session: ${whopSource}`
+              : `backend key missing — desktop session: ${whopSource}`
+          }
+        />
+      </div>
+    </Section>
+  );
+}
+
+
+function DebugRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-t border-line/60 pt-1 first:border-t-0 first:pt-0">
+      <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">{label}</span>
+      <span
+        className={`truncate ${mono ? "font-mono text-[11px]" : "font-sans text-[12px]"} text-ink`}
+        title={value}
+      >
+        {value}
+      </span>
+    </div>
   );
 }
 

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { sidecar, type WhopBounty, type WhopSubmission } from "../../lib/sidecar";
+import { sidecar, type WhopBounty, type WhopSubmission, type BountyContext } from "../../lib/sidecar";
 import { inWhopIframe } from "../../lib/whop-iframe";
+import { ManualBountyPrompt, type ManualBountyForm } from "./ManualBountyPrompt";
 import { BountyCard } from "./BountyCard";
 import { BountyFilters } from "./BountyFilters";
 import { BountyDetail } from "./BountyDetail";
@@ -28,13 +29,28 @@ const SUBMISSION_IDS_KEY = "junior:my-whop-submissions:v1";
 
 export function EarnTab({
   onStartBounty,
+  onStartManualBounty,
 }: {
   onStartBounty: (bounty: WhopBounty) => void;
+  // Beta fallback path — clipper pasted a bounty by hand, source URL too.
+  // App.tsx routes this straight to choosing-intent without going through
+  // the extractSourceUrl / paste-source modal.
+  onStartManualBounty: (b: BountyContext, sourceUrl: string) => void;
 }) {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [authSource, setAuthSource] = useState<
     "iframe" | "env_user" | "keychain" | "seller_key" | "none"
   >("none");
+  // Bootstrap surfaces fetch failures here so the UI can tell the user the
+  // real reason instead of silently flipping back to the sign-in splash
+  // when (for example) the OAuth token can't read bounties.
+  const [bountyError, setBountyError] = useState<string | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+
+  function handleManualSubmit(form: ManualBountyForm) {
+    setManualOpen(false);
+    onStartManualBounty(form.bounty, form.source_url);
+  }
   const [bounties, setBounties] = useState<WhopBounty[]>([]);
   const [submissions, setSubmissions] = useState<WhopSubmission[]>([]);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
@@ -44,20 +60,37 @@ export function EarnTab({
   const [filterPlatforms, setFilterPlatforms] = useState<ConnectedPlatform[]>([]);
   const [openOnly, setOpenOnly] = useState(true);
 
-  // Initial load: auth check + bounties + my submissions. Also re-runnable
-  // after the user pastes a fresh Whop key in the splash.
+  // Initial load: auth check + bounties + my submissions.
+  // Bug fix (2026-05-23): the old `try/catch { setAuthed(false) }` silently
+  // demoted authenticated users when the bounty fetch failed for ANY reason —
+  // most importantly OAuth scope mismatches against Whop's public-graphql.
+  // We now separate the two concerns: auth state comes from session_status,
+  // bounty-fetch failures surface as bountyError without lying about auth.
   async function bootstrap() {
+    setBountyError(null);
+    let sessionOK = false;
     try {
       const s = await sidecar.whopSessionStatus();
       setAuthed(s.authenticated);
       setAuthSource(s.source);
-      if (!s.authenticated) return;
+      sessionOK = s.authenticated;
+    } catch (e) {
+      setAuthed(false);
+      setAuthSource("none");
+      setBountyError(`Couldn't talk to the Whop helper: ${String(e)}`);
+      return;
+    }
+    if (!sessionOK) return;
+    try {
       const list = await sidecar.whopListBounties(30);
       setBounties(list.bounties);
       await refreshSubmissions();
-    } catch {
-      setAuthed(false);
-      setAuthSource("none");
+    } catch (e) {
+      // Whop said our token is valid (session_status is "authenticated"), but
+      // the bounty query refused it — usually a scope/permission mismatch on
+      // the OAuth token, not a sign-in problem. Show the actual error so we
+      // can fix it rather than logging the user out spuriously.
+      setBountyError(String(e).replace(/^Error:\s*/i, ""));
     }
   }
 
@@ -168,6 +201,43 @@ export function EarnTab({
           Whop tracks bounty payouts. Junior helps you make, publish, and prepare submissions.
         </p>
         <ConnectionBadge source={authSource} />
+
+        {bountyError && (
+          <div className="mt-3 rounded-2xl border border-[#DC2626]/40 bg-[#DC2626]/5 p-4">
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#DC2626]">
+              connected — but Whop wouldn't return bounties
+            </div>
+            <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
+              Your sign-in worked. The bounty fetch came back with this error:
+            </p>
+            <pre className="mt-2 max-h-[140px] overflow-auto rounded-lg border border-line bg-paper-warm/40 p-2.5 font-mono text-[11px] text-text-secondary">
+              {bountyError}
+            </pre>
+            <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+              Common cause: the OAuth scope Junior asked for doesn't cover bounties yet — known limitation, fixing next.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => void bootstrap()}
+                className="rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:border-fuchsia hover:text-ink"
+              >
+                Retry
+              </button>
+              <button
+                onClick={() => setManualOpen(true)}
+                className="rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-paper hover:bg-ink"
+              >
+                Paste bounty manually →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {manualOpen && (
+          <div className="mt-4">
+            <ManualBountyPrompt onSubmit={handleManualSubmit} onCancel={() => setManualOpen(false)} />
+          </div>
+        )}
       </header>
 
       <nav className="mt-6 flex gap-0.5 border-b border-line font-mono text-[11px] uppercase tracking-[0.14em]">
@@ -215,9 +285,17 @@ export function EarnTab({
                 />
               ))}
               {filtered.length === 0 && (
-                <p className="font-mono text-[12px] text-text-tertiary">
-                  No bounties match these filters. Loosen the platform list or turn off "open only".
-                </p>
+                <div className="flex flex-col items-start gap-3">
+                  <p className="font-mono text-[12px] text-text-tertiary">
+                    No bounties match these filters. Loosen the platform list or turn off "open only".
+                  </p>
+                  <button
+                    onClick={() => setManualOpen(true)}
+                    className="rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:border-fuchsia hover:text-ink"
+                  >
+                    Paste a bounty manually →
+                  </button>
+                </div>
               )}
             </div>
           </>
