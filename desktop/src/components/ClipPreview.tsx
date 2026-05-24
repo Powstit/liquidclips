@@ -9,6 +9,7 @@ import { LayoutIcon, LAYOUTS, type LayoutKey } from "./clips-feed/LayoutIcon";
 import { pickOverlaySource } from "./OverlaySourcePicker";
 import { LayoutCellDiagram } from "./clips-feed/LayoutCellDiagram";
 import { LAYOUT_TOPOLOGY, type CellRole } from "./clips-feed/layout-cells";
+import { BountyFitChecklist } from "./earn/bounty-fit";
 
 // Editor modal — the side-door power view from each feed card. Designed to
 // echo the card's vocabulary (same layout icons, same ratio chips) so the
@@ -338,6 +339,8 @@ export function ClipPreview({
           {/* RIGHT: cell editor + metadata */}
           <div className="flex w-full flex-col gap-5 overflow-y-auto p-5 lg:w-[42%]">
             {/* Cell editor */}
+            <BountyFitChecklist clip={clip} project={project} />
+
             <section>
               <LayoutCellDiagram
                 kind={layout}

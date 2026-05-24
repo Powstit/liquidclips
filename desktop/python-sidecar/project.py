@@ -93,6 +93,14 @@ class Project:
     whop_bounty_title: str | None = None
     whop_bounty_reward_per_unit: float | None = None
     whop_bounty_currency: str | None = None
+    # Richer bounty context — powers the BountyWorkspaceHeader, the per-clip
+    # fit checklist, and the "open bounty on Whop" / source affordances.
+    whop_bounty_description: str | None = None
+    whop_bounty_platforms: list[str] | None = None
+    whop_bounty_source_url: str | None = None
+    whop_bounty_creator: str | None = None
+    whop_bounty_spots_remaining: int | None = None
+    whop_bounty_url: str | None = None
 
     # ----- factories -----
 
@@ -133,6 +141,12 @@ class Project:
             whop_bounty_title=(bounty or {}).get("title"),
             whop_bounty_reward_per_unit=(bounty or {}).get("rewardPerUnitAmount"),
             whop_bounty_currency=(bounty or {}).get("currency"),
+            whop_bounty_description=(bounty or {}).get("description"),
+            whop_bounty_platforms=(bounty or {}).get("allowedPlatforms"),
+            whop_bounty_source_url=(bounty or {}).get("sourceUrl"),
+            whop_bounty_creator=(bounty or {}).get("creator"),
+            whop_bounty_spots_remaining=(bounty or {}).get("spotsRemaining"),
+            whop_bounty_url=(bounty or {}).get("whopUrl"),
         )
         proj.save()
         return proj
@@ -159,6 +173,12 @@ class Project:
             whop_bounty_title=data.get("whop_bounty_title"),
             whop_bounty_reward_per_unit=data.get("whop_bounty_reward_per_unit"),
             whop_bounty_currency=data.get("whop_bounty_currency"),
+            whop_bounty_description=data.get("whop_bounty_description"),
+            whop_bounty_platforms=data.get("whop_bounty_platforms"),
+            whop_bounty_source_url=data.get("whop_bounty_source_url"),
+            whop_bounty_creator=data.get("whop_bounty_creator"),
+            whop_bounty_spots_remaining=data.get("whop_bounty_spots_remaining"),
+            whop_bounty_url=data.get("whop_bounty_url"),
         )
 
     # ----- cancellation -----
@@ -227,6 +247,12 @@ class Project:
             "whop_bounty_title": self.whop_bounty_title,
             "whop_bounty_reward_per_unit": self.whop_bounty_reward_per_unit,
             "whop_bounty_currency": self.whop_bounty_currency,
+            "whop_bounty_description": self.whop_bounty_description,
+            "whop_bounty_platforms": self.whop_bounty_platforms,
+            "whop_bounty_source_url": self.whop_bounty_source_url,
+            "whop_bounty_creator": self.whop_bounty_creator,
+            "whop_bounty_spots_remaining": self.whop_bounty_spots_remaining,
+            "whop_bounty_url": self.whop_bounty_url,
             "stages": {s: self.stages[s].to_dict() for s in STAGES},
             "clips": self.clips,
         }
@@ -247,6 +273,12 @@ class Project:
             "whop_bounty_title": self.whop_bounty_title,
             "whop_bounty_reward_per_unit": self.whop_bounty_reward_per_unit,
             "whop_bounty_currency": self.whop_bounty_currency,
+            "whop_bounty_description": self.whop_bounty_description,
+            "whop_bounty_platforms": self.whop_bounty_platforms,
+            "whop_bounty_source_url": self.whop_bounty_source_url,
+            "whop_bounty_creator": self.whop_bounty_creator,
+            "whop_bounty_spots_remaining": self.whop_bounty_spots_remaining,
+            "whop_bounty_url": self.whop_bounty_url,
             "stages": {s: self.stages[s].to_dict() for s in STAGES},
             "clips": self.clips,
         }

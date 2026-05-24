@@ -112,15 +112,47 @@ export type Project = {
   whop_bounty_title: string | null;
   whop_bounty_reward_per_unit: number | null;
   whop_bounty_currency: string | null;
+  // Richer bounty context — set when the project was started from a bounty.
+  // Drives the BountyWorkspaceHeader + per-clip fit checklist.
+  whop_bounty_description: string | null;
+  whop_bounty_platforms: string[] | null;
+  whop_bounty_source_url: string | null;
+  whop_bounty_creator: string | null;
+  whop_bounty_spots_remaining: number | null;
+  whop_bounty_url: string | null;
   stages: Record<string, StageState>;
   clips: Clip[];
 };
 
+// What the desktop hands the sidecar when starting a bounty-linked run. Only
+// the first four were persisted historically; the rest were added so the
+// workspace feels bounty-specific (header, fit checklist, "open on Whop").
 export type BountyContext = {
   id: string;
   title: string;
   rewardPerUnitAmount: number;
   currency: string;
+  description?: string | null;
+  allowedPlatforms?: string[];
+  sourceUrl?: string | null;
+  creator?: string | null;
+  spotsRemaining?: number | null;
+  whopUrl?: string | null;
+};
+
+// A locally-stored project linked to a Whop bounty — surfaced in Earn → In progress
+// so a clipper can resume bounty work. Returned by sidecar.listBountyProjects().
+export type BountyProjectSummary = {
+  slug: string;
+  source_filename: string;
+  created_at: number;
+  intent: Intent;
+  clips_count: number;
+  done: boolean;
+  whop_bounty_id: string;
+  whop_bounty_title: string | null;
+  whop_bounty_reward_per_unit: number | null;
+  whop_bounty_currency: string | null;
 };
 
 export type StageName = "ingest" | "audio" | "transcribe" | "llm" | "cut" | "reframe" | "thumbs";
@@ -184,6 +216,8 @@ export const sidecar = {
   runStage: (slug: string, stage: StageName) =>
     sidecarCall<{ project: Project }>("run_stage", { slug, stage }),
   getProject: (slug: string) => sidecarCall<{ project: Project }>("get_project", { slug }),
+  listBountyProjects: () =>
+    sidecarCall<{ projects: BountyProjectSummary[] }>("list_bounty_projects"),
   getMetadata: (slug: string) => sidecarCall<{ metadata: Record<string, string> }>("get_metadata", { slug }),
   secretsStatus: () => sidecarCall<{ secrets: Record<SecretName, boolean> }>("secrets_status"),
   // Restricted to JUNIOR_LICENSE_JWT on the sidecar side — other secrets stay opaque.

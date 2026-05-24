@@ -149,6 +149,49 @@ def method_get_project(params: dict[str, Any]) -> dict[str, Any]:
     return {"project": project.to_dict()}
 
 
+def method_list_bounty_projects(_params: dict[str, Any]) -> dict[str, Any]:
+    """List local projects linked to a Whop bounty, newest first. Powers the
+    Earn → In progress tab so a clipper can resume bounty work. Reads each
+    project.json directly (cheap) rather than fully hydrating Project objects."""
+    from project import JUNIOR_HOME
+    root = JUNIOR_HOME / "projects"
+    out: list[dict[str, Any]] = []
+    if root.is_dir():
+        for proj_dir in root.iterdir():
+            pj = proj_dir / "project.json"
+            if not pj.is_file():
+                continue
+            try:
+                with pj.open("r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not data.get("whop_bounty_id"):
+                continue
+            stages = data.get("stages") or {}
+            clips = data.get("clips") or []
+            # "done" once thumbs finished (clips intent) or llm finished and no
+            # clip stages exist (youtube intent). Cheap heuristic for the badge.
+            done = (
+                (stages.get("thumbs", {}) or {}).get("status") == "done"
+                or (stages.get("reframe", {}) or {}).get("status") == "done"
+            )
+            out.append({
+                "slug": data.get("slug") or proj_dir.name,
+                "source_filename": data.get("source_filename") or proj_dir.name,
+                "created_at": data.get("created_at") or 0,
+                "intent": data.get("intent") or "both",
+                "clips_count": len(clips),
+                "done": bool(done),
+                "whop_bounty_id": data.get("whop_bounty_id"),
+                "whop_bounty_title": data.get("whop_bounty_title"),
+                "whop_bounty_reward_per_unit": data.get("whop_bounty_reward_per_unit"),
+                "whop_bounty_currency": data.get("whop_bounty_currency"),
+            })
+    out.sort(key=lambda p: p.get("created_at") or 0, reverse=True)
+    return {"projects": out}
+
+
 def method_get_metadata(params: dict[str, Any]) -> dict[str, Any]:
     """Return the text contents of every file in `metadata/` for the project."""
     slug = params.get("slug")
@@ -1151,6 +1194,7 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "ingest_url": method_ingest_url,
     "run_stage": method_run_stage,
     "get_project": method_get_project,
+    "list_bounty_projects": method_list_bounty_projects,
     "get_metadata": method_get_metadata,
     "secrets_status": method_secrets_status,
     "secret_get": method_secret_get,
