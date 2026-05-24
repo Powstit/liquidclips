@@ -47,6 +47,7 @@ _CACHE: dict[str, tuple[float, Any]] = {}
 _BOUNTY_LIST_TTL = 60.0      # 1 min — clippers want fresh listings
 _BOUNTY_DETAIL_TTL = 120.0
 _SUBMISSION_TTL = 30.0       # tight — used for status polling
+_MAX_BOUNTY_LIST_FIRST = 25  # keep Whop GraphQL complexity safely < 1000
 
 
 def _cache_get(key: str) -> Any | None:
@@ -62,6 +63,16 @@ def _cache_get(key: str) -> Any | None:
 
 def _cache_put(key: str, val: Any, ttl: float) -> None:
     _CACHE[key] = (time.time() + ttl, val)
+
+
+def _clamp_bounty_list_first(first: int) -> int:
+    """Whop rejects queries above complexity 1000.
+
+    The list query includes enough card fields (description + campaign logo) that
+    asking for 60 rewards hits ~1862 complexity. Clamp server-side so stale or
+    future desktop builds cannot take Earn down with an oversized request.
+    """
+    return max(1, min(int(first or 30), _MAX_BOUNTY_LIST_FIRST))
 
 
 async def _whop_gql(query: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -221,6 +232,7 @@ async def list_bounties(
     """Return public Content Rewards bounties. License-JWT-gated so a leaked
     desktop key can only browse what the App API Key can already see."""
     _ = db  # current_user already opened the session
+    first = _clamp_bounty_list_first(first)
     cache_key = f"bounties:{first}"
     cached = _cache_get(cache_key)
     if cached is not None:
