@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>junior/employee — Affiliate program · earn 50% MRR while you both stay active</title>
+<meta name="description" content="Share Junior with clippers. When they go paid, earn 50% of their subscription every month you both stay active. Managed by Whop, paid in 170+ countries.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23FF1A8C'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='monospace' font-weight='700' font-size='22' fill='%23FAF7F2'%3E/%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800;9..144,900&family=Geist+Mono:wght@400;500&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --fuchsia: #FF1A8C;
+    --fuchsia-bright: #FF3DA5;
+    --fuchsia-deep: #C70066;
+    --fuchsia-soft: #FFD6EC;
+    --fuchsia-glow: #FF66B8;
+    --ink: #0A0A0F;
+    --ink-soft: #1A1A24;
+    --paper: #FAF7F2;
+    --paper-warm: #F5EFE7;
+    --line: #E8DFD2;
+    --text-secondary: #5A5560;
+    --text-tertiary: #8A8590;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Geist', system-ui, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.5;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { max-width: 1240px; margin: 0 auto; padding: 0 32px; }
+
+  /* NAV */
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(250, 247, 242, 0.85);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--line); padding: 18px 0;
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; }
+  .logo {
+    font-family: 'Geist Mono', monospace; font-weight: 700; font-size: 16px;
+    letter-spacing: -0.01em; text-decoration: none; display: inline-flex;
+    align-items: center; background: var(--fuchsia); color: var(--paper);
+    padding: 9px 14px 9px 9px; border-radius: 9px; line-height: 1; gap: 8px; transition: all 0.2s;
+  }
+  .logo:hover { background: var(--ink); }
+  .logo .slash { color: var(--ink); opacity: 0.9; margin: 0 1px; font-weight: 700; }
+  .logo:hover .slash { color: var(--fuchsia-bright); opacity: 1; }
+  .logo-icon-tile {
+    width: 26px; height: 26px; background: var(--paper); color: var(--fuchsia);
+    border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;
+    font-family: 'Geist Mono', monospace; font-weight: 700; font-size: 15px; line-height: 1; flex-shrink: 0;
+  }
+  .logo:hover .logo-icon-tile { background: var(--fuchsia); color: var(--paper); }
+  .nav-links { display: flex; gap: 36px; align-items: center; }
+  .nav-links a { color: var(--ink); text-decoration: none; font-size: 14px; font-weight: 500; opacity: 0.7; transition: opacity 0.2s; }
+  .nav-links a:hover, .nav-links a.current { opacity: 1; }
+  .nav-cta { background: var(--ink); color: var(--paper); padding: 10px 20px; border-radius: 100px; font-size: 14px; font-weight: 500; text-decoration: none; transition: background 0.2s; }
+  .nav-cta:hover { background: var(--fuchsia); }
+  @media (max-width: 760px) { .nav-links a:not(.nav-cta) { display: none; } }
+
+  /* HERO */
+  .hero { padding: 80px 0 64px; position: relative; overflow: hidden; }
+  .hero::before {
+    content: ''; position: absolute; top: -200px; right: -200px; width: 600px; height: 600px;
+    background: radial-gradient(circle, var(--fuchsia-soft) 0%, transparent 70%); border-radius: 50%; z-index: 0;
+  }
+  .hero-content { position: relative; z-index: 1; max-width: 760px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px; background: var(--ink); color: var(--paper);
+    padding: 6px 14px; border-radius: 100px; font-size: 12px; font-family: 'Geist Mono', monospace;
+    font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 28px;
+  }
+  .eyebrow-dot { width: 6px; height: 6px; background: var(--fuchsia-bright); border-radius: 50%; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(1.3); } }
+  h1 {
+    font-family: 'Fraunces', serif; font-weight: 700; font-size: clamp(44px, 6.5vw, 88px);
+    line-height: 0.97; letter-spacing: -0.04em; color: var(--ink); margin-bottom: 26px;
+  }
+  h1 .ink-out { color: var(--fuchsia); font-style: italic; font-weight: 800; }
+  .hero-sub { font-size: clamp(17px, 2.2vw, 22px); line-height: 1.5; color: var(--text-secondary); max-width: 620px; margin-bottom: 40px; }
+  .hero-sub strong { color: var(--ink); font-weight: 600; }
+  .hero-ctas { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+  .btn-primary {
+    background: var(--ink); color: var(--paper); padding: 18px 32px; border-radius: 100px;
+    font-size: 16px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center;
+    gap: 10px; transition: all 0.2s; border: none; cursor: pointer;
+  }
+  .btn-primary:hover { background: var(--fuchsia); transform: translateY(-2px); box-shadow: 0 10px 30px rgba(255, 26, 140, 0.3); }
+  .btn-secondary {
+    background: transparent; color: var(--ink); padding: 18px 28px; border-radius: 100px; font-size: 16px;
+    font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 10px;
+    border: 1.5px solid var(--ink); transition: all 0.2s;
+  }
+  .btn-secondary:hover { background: var(--ink); color: var(--paper); }
+  .meta-line { font-size: 13px; color: var(--text-tertiary); font-family: 'Geist Mono', monospace; letter-spacing: 0.02em; }
+
+  /* SECTION primitives */
+  section.block { padding: 72px 0; }
+  .section-label { font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fuchsia); margin-bottom: 12px; }
+  h2 { font-family: 'Fraunces', serif; font-weight: 600; font-size: clamp(28px, 4vw, 44px); letter-spacing: -0.02em; line-height: 1.05; margin-bottom: 14px; }
+  h2 em { color: var(--fuchsia); font-style: italic; }
+  .section-sub { font-size: clamp(15px, 1.8vw, 18px); color: var(--text-secondary); line-height: 1.55; max-width: 620px; }
+
+  /* STEPS */
+  .steps { margin-top: 44px; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+  .step { border: 1px solid rgba(255,26,140,.18); border-radius: 18px; padding: 24px; background: var(--paper); }
+  .step-num { font-family: 'Geist Mono', monospace; font-size: 11px; font-weight: 700; color: var(--fuchsia); margin-bottom: 12px; }
+  .step-title { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 7px; }
+  .step-desc { font-size: 14px; color: var(--text-secondary); line-height: 1.55; }
+
+  /* STATS */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 40px; }
+  .stat { border-top: 2px solid var(--fuchsia); padding-top: 16px; }
+  .stat-num { font-family: 'Fraunces', serif; font-weight: 700; font-size: clamp(32px, 5vw, 52px); letter-spacing: -0.03em; line-height: 1; }
+  .stat-label { margin-top: 8px; font-size: 13px; color: var(--text-secondary); }
+  @media (max-width: 700px) { .stats { grid-template-columns: 1fr; } }
+
+  /* TERMS */
+  .terms { background: var(--paper-warm); border: 1px solid var(--line); border-radius: 24px; padding: 40px; }
+  .terms ul { list-style: none; margin-top: 20px; display: grid; gap: 14px; }
+  .terms li { display: flex; gap: 12px; font-size: 15px; line-height: 1.5; color: var(--ink); }
+  .terms li::before { content: '→'; color: var(--fuchsia); font-weight: 700; flex-shrink: 0; }
+  .terms .fine { margin-top: 20px; font-family: 'Geist Mono', monospace; font-size: 11px; line-height: 1.7; color: var(--text-tertiary); }
+
+  /* FAQ */
+  .faq-list { margin-top: 32px; display: grid; gap: 12px; max-width: 820px; }
+  .faq-q { border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; background: var(--paper); }
+  .faq-q h4 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .faq-q p { font-size: 14px; color: var(--text-secondary); line-height: 1.55; }
+
+  /* CTA BAND */
+  .cta-band { background: var(--ink); color: var(--paper); border-radius: 28px; padding: 56px 40px; text-align: center; }
+  .cta-band h2 { color: var(--paper); }
+  .cta-band .btn-primary { background: var(--fuchsia); margin-top: 24px; }
+  .cta-band .btn-primary:hover { background: var(--paper); color: var(--ink); }
+
+  /* FOOTER */
+  footer.site-footer { padding: 64px 0 32px; background: var(--paper-warm); border-top: 1px solid var(--line); color: var(--ink); }
+  .footer-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 40px; margin-bottom: 40px; }
+  .footer-col h4 { font-family: 'Geist Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-tertiary); margin-bottom: 18px; font-weight: 500; }
+  .footer-col a { display: block; padding: 6px 0; color: var(--ink); text-decoration: none; font-size: 14px; transition: color 150ms ease; }
+  .footer-col a:hover { color: var(--fuchsia); }
+  .footer-brand { display: flex; flex-direction: column; gap: 14px; }
+  .footer-brand p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; max-width: 240px; }
+  .footer-bottom { border-top: 1px solid var(--line); padding-top: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+  .footer-bottom-copy { font-family: 'Geist Mono', monospace; font-size: 12px; color: var(--text-tertiary); }
+  .footer-bottom-socials { display: flex; gap: 16px; font-size: 13px; }
+  .footer-bottom-socials a { color: var(--text-tertiary); text-decoration: none; }
+  .footer-bottom-socials a:hover { color: var(--fuchsia); }
+  @media (max-width: 900px) { .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; } }
+  @media (max-width: 560px) { .footer-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="container nav-inner">
+    <a href="/" class="logo">
+      <span class="logo-icon-tile">/</span>
+      <span>junior<span class="slash">/</span>employee</span>
+    </a>
+    <div class="nav-links">
+      <a href="/#how">How it works</a>
+      <a href="/#pricing">Pricing</a>
+      <a href="https://app.jnremployee.com" target="_blank" rel="noopener">Demo</a>
+      <a href="/affiliates" class="current">Affiliates</a>
+      <a href="https://partner.jnremployee.com/auth/whop/start" class="nav-cta">Become an affiliate</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="container hero-content">
+    <div class="eyebrow"><span class="eyebrow-dot"></span>Junior affiliate program</div>
+    <h1>Get paid when your<br><span class="ink-out">audience gets paid.</span></h1>
+    <p class="hero-sub">Send clippers to Junior. They turn Whop Content Rewards into submission-ready clips. When they go paid, you earn <strong>50% of their subscription</strong> — every month you both stay active.</p>
+    <div class="hero-ctas">
+      <a href="https://partner.jnremployee.com/auth/whop/start" class="btn-primary">Become an affiliate →</a>
+      <a href="https://partner.jnremployee.com" class="btn-secondary">Affiliate sign in</a>
+    </div>
+    <div class="meta-line">Managed by Whop · Paid in 170+ countries · 50% recurring while you both stay active</div>
+  </div>
+</section>
+
+<!-- HOW THE LOOP WORKS -->
+<section class="block" id="how">
+  <div class="container">
+    <div class="section-label">The loop</div>
+    <h2>Your audience clips. <em>You earn.</em></h2>
+    <p class="section-sub">Junior is the tool clippers already want — you just put it in front of them with a tracked invite.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">01</div>
+        <div class="step-title">Share your Junior link</div>
+        <div class="step-desc">Give clippers 100 reward clip exports with your invite.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <div class="step-title">They clip paid rewards</div>
+        <div class="step-desc">Junior turns Whop Content Rewards into focused editing workspaces.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <div class="step-title">Junior adds your link</div>
+        <div class="step-desc">Eligible Junior promo clips can include your affiliate QR/link automatically — not your everyday client clips.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">04</div>
+        <div class="step-title">You earn 50% MRR</div>
+        <div class="step-desc">When referred clippers become paid, you earn 50% — while they stay paid and you keep an active Junior subscription.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<section class="block" style="padding-top:0;">
+  <div class="container">
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-num">50%</div>
+        <div class="stat-label">Of referred MRR, while active</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">£74.50</div>
+        <div class="stat-label">Per active Autopilot referral / mo</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">170+</div>
+        <div class="stat-label">Countries paid via Whop</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- COMMISSION TERMS -->
+<section class="block">
+  <div class="container">
+    <div class="section-label">How commission works</div>
+    <h2>Simple, honest, recurring.</h2>
+    <p class="section-sub" style="margin-bottom:32px;">Earn 50% MRR from referred customers while they stay paid and you keep an active Junior subscription.</p>
+    <div class="terms">
+      <ul>
+        <li>To earn commission, you hold an active paid Junior plan — <strong>Solo or up qualifies</strong>.</li>
+        <li>You earn only when a referred customer becomes a <strong>paid</strong> customer — never on a free or trial signup.</li>
+        <li>Commission is <strong>50% of their subscription</strong>, recurring for as long as they stay paid.</li>
+        <li>If your Junior subscription lapses, future commissions pause. Reactivate and eligible commissions resume from that point.</li>
+        <li>Already-paid commissions are never clawed back — except for fraud or abuse.</li>
+        <li>Payouts are managed by Whop and paid in 170+ countries.</li>
+      </ul>
+      <p class="fine">First-touch attribution is locked at signup and is never reassigned. Affiliate IDs are Whop affiliate records. Junior may pause an affiliate's offer for abuse.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="block" style="padding-top:0;">
+  <div class="container">
+    <div class="section-label">Questions</div>
+    <h2>Affiliate FAQ.</h2>
+    <div class="faq-list">
+      <div class="faq-q">
+        <h4>Who can join?</h4>
+        <p>Anyone with an audience of clippers or creators. Sign in with Whop to get your tracked link. Commission payouts require an active paid Junior subscription (Solo or up).</p>
+      </div>
+      <div class="faq-q">
+        <h4>When do I get paid?</h4>
+        <p>Commission starts after your referred customer's first successful paid invoice, then recurs each month they stay paid. Whop handles the payouts.</p>
+      </div>
+      <div class="faq-q">
+        <h4>What happens if I cancel my Junior plan?</h4>
+        <p>Future commissions pause while your subscription is inactive. Reactivate and eligible commissions resume from that point forward. Commissions already paid to you are yours to keep.</p>
+      </div>
+      <div class="faq-q">
+        <h4>What's the starter pass my audience gets?</h4>
+        <p>Approved invite links can unlock 100 reward clip exports before Solo billing starts. New clippers add a card and bring their own OpenAI key. (Rolling out — ask in the partner dashboard.)</p>
+      </div>
+      <div class="faq-q">
+        <h4>Does Junior submit clips to Whop for them?</h4>
+        <p>No. Junior prepares submission-ready clips and helps track the submission link — clippers post and submit on Whop themselves. Whop tracks views and pays out.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA BAND -->
+<section class="block">
+  <div class="container">
+    <div class="cta-band">
+      <div class="section-label" style="color:var(--fuchsia-glow);">Start earning</div>
+      <h2>Put Junior in front of clippers.</h2>
+      <p class="section-sub" style="color:rgba(250,247,242,.7); margin:0 auto;">Get your tracked link in minutes. Keep 50% while you both stay active.</p>
+      <a href="https://partner.jnremployee.com/auth/whop/start" class="btn-primary">Become an affiliate →</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <h4>Product</h4>
+        <a href="/#how">How it works</a>
+        <a href="/#pricing">Pricing</a>
+        <a href="/#compare">Compare</a>
+        <a href="/#download">Download</a>
+        <a href="https://app.jnremployee.com" target="_blank" rel="noopener">Demo</a>
+        <a href="/founder">Founder offer</a>
+        <a href="/changelog">Changelog</a>
+      </div>
+      <div class="footer-col">
+        <h4>Earn</h4>
+        <a href="/affiliates">Affiliate program</a>
+        <a href="/#how">For Whop clippers</a>
+        <a href="https://partner.jnremployee.com" target="_blank" rel="noopener">Affiliate sign in</a>
+      </div>
+      <div class="footer-col">
+        <h4>Trust</h4>
+        <a href="/security">Security</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="/refunds">Refunds</a>
+        <a href="mailto:support@jnremployee.com">Support</a>
+      </div>
+      <div class="footer-col footer-brand">
+        <a href="/" class="logo" style="align-self: flex-start;">
+          <span class="logo-icon-tile">/</span>
+          <span>junior<span class="slash">/</span>employee</span>
+        </a>
+        <p>Made for creators who'd rather record.</p>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="footer-bottom-copy">© 2026 junior/employee · All rights reserved</div>
+      <div class="footer-bottom-socials">
+        <a href="https://x.com/jnremployee" target="_blank" rel="noopener">X</a>
+        <a href="https://www.youtube.com/@jnremployee" target="_blank" rel="noopener">YouTube</a>
+        <a href="https://www.tiktok.com/@jnremployee" target="_blank" rel="noopener">TikTok</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script src="/ref-capture.js" defer></script>
+</body>
+</html>
