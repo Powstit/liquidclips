@@ -813,7 +813,10 @@ def method_whop_list_bounties(params: dict[str, Any]) -> dict[str, Any]:
     etc.) — public bounty browsing only needs Junior activation."""
     import asyncio
     import whop_client
-    first = int(params.get("first") or 30)
+    # Keep this in sync with junior-backend/app/routes/whop.py. Whop's
+    # publicBounties query has a hard complexity ceiling, so Earn should never
+    # request a giant pool from the packaged sidecar.
+    first = max(1, min(int(params.get("first") or 25), 25))
     try:
         bounties = asyncio.run(whop_client.list_bounties(first=first))
         return {"bounties": bounties, "authenticated": True}

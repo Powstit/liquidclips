@@ -203,7 +203,8 @@ async def _backend_get(path: str, params: dict[str, Any] | None = None) -> dict[
 # canonical query strings live in junior-backend/app/routes/whop.py.
 
 
-async def list_bounties(*, first: int = 30) -> list[dict[str, Any]]:
+async def list_bounties(*, first: int = 25) -> list[dict[str, Any]]:
+    first = max(1, min(int(first or 25), 25))
     payload = await _backend_get("/whop/bounties", {"first": first})
     return payload.get("bounties", [])
 
