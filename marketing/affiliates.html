@@ -72,7 +72,17 @@
     content: ''; position: absolute; top: -200px; right: -200px; width: 600px; height: 600px;
     background: radial-gradient(circle, var(--fuchsia-soft) 0%, transparent 70%); border-radius: 50%; z-index: 0;
   }
-  .hero-content { position: relative; z-index: 1; max-width: 760px; }
+  .hero-content { position: relative; z-index: 1; max-width: 1120px; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center; }
+  .hero-text { max-width: 600px; }
+  .hero-media img { width: 100%; height: auto; display: block; border-radius: 22px; border: 1px solid var(--line); box-shadow: 0 24px 70px rgba(15,15,18,.14); }
+  @media (max-width: 900px) { .hero-content { grid-template-columns: 1fr; gap: 36px; } .hero-text { max-width: none; } }
+  /* image showcase band */
+  .showcase { display: grid; grid-template-columns: 1fr 1fr; gap: 44px; align-items: center; }
+  .showcase img { width: 100%; height: auto; display: block; border-radius: 20px; border: 1px solid var(--line); box-shadow: 0 20px 60px rgba(15,15,18,.12); }
+  @media (max-width: 760px) { .showcase { grid-template-columns: 1fr; gap: 28px; } }
+  /* motion reveals — applied only when has-motion (set unless reduce-motion) */
+  .has-motion .reveal, .has-motion .reveal-hero { opacity: 0; }
+  .has-motion .reveal-steps .step { opacity: 0; }
   .eyebrow {
     display: inline-flex; align-items: center; gap: 8px; background: var(--ink); color: var(--paper);
     padding: 6px 14px; border-radius: 100px; font-size: 12px; font-family: 'Geist Mono', monospace;
@@ -158,6 +168,16 @@
   @media (max-width: 900px) { .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; } }
   @media (max-width: 560px) { .footer-grid { grid-template-columns: 1fr; } }
 </style>
+<script>
+  // Enable motion reveals only when the visitor hasn't asked to reduce motion.
+  if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+    var h = document.documentElement;
+    h.classList.add('has-motion');
+    // Safety net: if the Motion CDN is slow/blocked, reveal everything after
+    // 1.4s so content is never stuck invisible. The module clears this on load.
+    window.__motionFallback = setTimeout(function () { h.classList.remove('has-motion'); }, 1400);
+  }
+</script>
 </head>
 <body>
 
@@ -181,24 +201,29 @@
 <!-- HERO -->
 <section class="hero">
   <div class="container hero-content">
-    <div class="eyebrow"><span class="eyebrow-dot"></span>Junior affiliate program</div>
-    <h1>Get paid when your<br><span class="ink-out">audience gets paid.</span></h1>
-    <p class="hero-sub">Send clippers to Junior. They turn Whop Content Rewards into submission-ready clips. When they go paid, you earn <strong>50% of their subscription</strong> — every month you both stay active.</p>
-    <div class="hero-ctas">
-      <a href="https://partner.jnremployee.com/auth/whop/start" class="btn-primary">Become an affiliate →</a>
-      <a href="https://partner.jnremployee.com" class="btn-secondary">Affiliate sign in</a>
+    <div class="hero-text">
+      <div class="eyebrow reveal-hero"><span class="eyebrow-dot"></span>Junior affiliate program</div>
+      <h1 class="reveal-hero">Get paid when your<br><span class="ink-out">audience gets paid.</span></h1>
+      <p class="hero-sub reveal-hero">Send clippers to Junior. They turn Whop Content Rewards into submission-ready clips. When they go paid, you earn <strong>50% of their subscription</strong> — every month you both stay active.</p>
+      <div class="hero-ctas reveal-hero">
+        <a href="https://partner.jnremployee.com/auth/whop/start" class="btn-primary">Become an affiliate →</a>
+        <a href="https://partner.jnremployee.com" class="btn-secondary">Affiliate sign in</a>
+      </div>
+      <div class="meta-line reveal-hero">Managed by Whop · Paid in 170+ countries · 50% recurring while you both stay active</div>
     </div>
-    <div class="meta-line">Managed by Whop · Paid in 170+ countries · 50% recurring while you both stay active</div>
+    <div class="hero-media reveal-hero">
+      <img src="/img/clipper-editing.jpg" alt="A creator editing a short vertical clip on a laptop" width="1200" height="800" />
+    </div>
   </div>
 </section>
 
 <!-- HOW THE LOOP WORKS -->
 <section class="block" id="how">
-  <div class="container">
+  <div class="container reveal">
     <div class="section-label">The loop</div>
     <h2>Your audience clips. <em>You earn.</em></h2>
     <p class="section-sub">Junior is the tool clippers already want — you just put it in front of them with a tracked invite.</p>
-    <div class="steps">
+    <div class="steps reveal-steps">
       <div class="step">
         <div class="step-num">01</div>
         <div class="step-title">Share your Junior link</div>
@@ -225,7 +250,7 @@
 
 <!-- STATS -->
 <section class="block" style="padding-top:0;">
-  <div class="container">
+  <div class="container reveal">
     <div class="stats">
       <div class="stat">
         <div class="stat-num">50%</div>
@@ -243,9 +268,23 @@
   </div>
 </section>
 
+<!-- SHOWCASE -->
+<section class="block" style="padding-top:0;">
+  <div class="container">
+    <div class="showcase reveal">
+      <img src="/img/clipper-win.jpg" alt="A clipper smiling at a short video gaining views on their phone" width="1200" height="800" />
+      <div>
+        <div class="section-label">Why it works</div>
+        <h2>When your clippers win, <em>you win.</em></h2>
+        <p class="section-sub">Junior makes clipping paid Content Rewards genuinely easier — so the people you refer actually stick, post, and get paid. Their momentum is your recurring revenue.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- COMMISSION TERMS -->
 <section class="block">
-  <div class="container">
+  <div class="container reveal">
     <div class="section-label">How commission works</div>
     <h2>Simple, honest, recurring.</h2>
     <p class="section-sub" style="margin-bottom:32px;">Earn 50% MRR from referred customers while they stay paid and you keep an active Junior subscription.</p>
@@ -265,7 +304,7 @@
 
 <!-- FAQ -->
 <section class="block" style="padding-top:0;">
-  <div class="container">
+  <div class="container reveal">
     <div class="section-label">Questions</div>
     <h2>Affiliate FAQ.</h2>
     <div class="faq-list">
@@ -296,7 +335,7 @@
 <!-- CTA BAND -->
 <section class="block">
   <div class="container">
-    <div class="cta-band">
+    <div class="cta-band reveal">
       <div class="section-label" style="color:var(--fuchsia-glow);">Start earning</div>
       <h2>Put Junior in front of clippers.</h2>
       <p class="section-sub" style="color:rgba(250,247,242,.7); margin:0 auto;">Get your tracked link in minutes. Keep 50% while you both stay active.</p>
@@ -353,5 +392,32 @@
 </footer>
 
 <script src="/ref-capture.js" defer></script>
+<script type="module">
+  // Motion (motion.dev) via CDN — real animation on a static page, no build step.
+  if (document.documentElement.classList.contains('has-motion')) {
+    try {
+      const { animate, inView, stagger } = await import("https://cdn.jsdelivr.net/npm/motion@11/+esm");
+      clearTimeout(window.__motionFallback); // Motion is here — cancel the reveal-all fallback.
+      const ease = [0.16, 1, 0.3, 1];
+      // Hero entrance — staggered on load.
+      animate(
+        document.querySelectorAll(".reveal-hero"),
+        { opacity: [0, 1], transform: ["translateY(18px)", "translateY(0)"] },
+        { duration: 0.6, delay: stagger(0.09), easing: ease },
+      );
+      // Sections — fade + rise as they scroll into view.
+      inView(".reveal", (info) => {
+        animate(info.target, { opacity: [0, 1], transform: ["translateY(24px)", "translateY(0)"] }, { duration: 0.6, easing: ease });
+      }, { amount: 0.15 });
+      // Loop cards — stagger in when the grid enters.
+      inView(".reveal-steps", (info) => {
+        animate(info.target.querySelectorAll(".step"), { opacity: [0, 1], transform: ["translateY(20px)", "translateY(0)"] }, { duration: 0.5, delay: stagger(0.08), easing: ease });
+      }, { amount: 0.2 });
+    } catch (e) {
+      // CDN/import failed — never leave content hidden.
+      document.documentElement.classList.remove('has-motion');
+    }
+  }
+</script>
 </body>
 </html>
