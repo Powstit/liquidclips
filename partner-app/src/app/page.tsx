@@ -114,7 +114,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
             Welcome, {greetingName}.
           </h1>
           <p className="mt-2 text-text-secondary sm:text-lg">
-            Your referral link is ready. Earn <strong className="text-ink">50% of every payment</strong>, forever.
+            Your referral link is ready. Earn <strong className="text-ink">50% of referred customers&rsquo; payments</strong> while they stay paid and you keep an active Junior subscription.
+          </p>
+          <p className="mt-2 font-mono text-[11px] leading-relaxed text-text-tertiary">
+            Solo or up qualifies. Commissions pause if your subscription lapses and resume when you reactivate. Paid only on referred customers&rsquo; successful payments; already-paid commissions are never clawed back except for fraud or abuse.
           </p>
         </header>
 
