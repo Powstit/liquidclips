@@ -467,9 +467,7 @@ def _try_api_transcribe(project: Project) -> dict[str, Any] | None:
 def _probe_audio_duration(audio_path: Path) -> float:
     """Fast probe of the 16 kHz mono wav we extracted. Used as a fallback when
     project.stages.ingest didn't capture duration."""
-    ffprobe = os.environ.get("JUNIOR_FFPROBE") or shutil.which("ffprobe")
-    if not ffprobe:
-        return 0.0
+    ffprobe = ffprobe_bin()
     try:
         out = subprocess.check_output([
             ffprobe, "-v", "error", "-show_entries", "format=duration",
@@ -642,9 +640,7 @@ def _split_audio_at_silences(audio_path: Path, target_chunk_s: float = 75.0) -> 
     """Use ffmpeg silencedetect to find natural break points, then carve the
     audio into chunks of roughly target_chunk_s. Returns list of
     {path, start, end} where path is a wav segment on disk."""
-    ffmpeg = os.environ.get("JUNIOR_FFMPEG") or shutil.which("ffmpeg")
-    if not ffmpeg:
-        return []
+    ffmpeg = ffmpeg_bin()
 
     # Step 1: locate silences (≥300 ms gaps under -35dB).
     detect_cmd = [
