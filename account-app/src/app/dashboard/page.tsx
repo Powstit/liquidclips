@@ -132,6 +132,26 @@ export default async function DashboardPage() {
           />
           <Card
             num={isFree ? "05" : "04"}
+            eyebrow="earn"
+            title="Clip paid Content Rewards."
+            sub="Junior shows you live Whop Content Rewards, keeps the brief attached, and helps you make submission-ready clips — then you post and submit on Whop. New clippers can start with a 100-clip starter pass via an approved invite."
+            actions={[
+              { label: "Open Earn in desktop →", href: "/download", primary: true },
+            ]}
+          />
+          <Card
+            num={isFree ? "06" : "05"}
+            eyebrow="partner"
+            title="Earn up to 50%."
+            sub="Refer paid Junior customers and earn up to 50% recurring commission. An active paid Junior subscription (Solo or higher) is required to earn. Terms apply."
+            actions={[
+              { label: "Get your referral link →", href: "https://partner.jnremployee.com", primary: true, external: true },
+              { label: "Affiliate terms", href: "https://jnremployee.com/terms#affiliate", external: true },
+            ]}
+            accent="fuchsia"
+          />
+          <Card
+            num={isFree ? "07" : "06"}
             eyebrow="your files"
             title="On your machine."
             sub="One folder per project · ~/Junior · open in Finder from the app."

@@ -104,7 +104,9 @@ export function EarnTab({
     }
     if (!activated) return;
     try {
-      const list = await sidecar.whopListBounties(60);
+      // Whop enforces a GraphQL complexity ceiling; 25 keeps the card query
+      // safely under the limit while detail fetches richer data on click.
+      const list = await sidecar.whopListBounties(25);
       setBounties(list.bounties);
       // Backend proxy may return authenticated:false + an error string when
       // its own App API Key isn't configured / Whop is down. Surface that
@@ -335,6 +337,7 @@ export function EarnTab({
       <div className="mt-6 flex flex-col gap-4">
         {subTab === "available" && (
           <>
+            <EarnHowItWorks />
             <div className="flex flex-col gap-2">
               <input
                 value={search}
@@ -421,6 +424,48 @@ export function EarnTab({
 
         {subTab === "approved" && <ApprovedList items={approved} />}
       </div>
+    </div>
+  );
+}
+
+
+// First-earning path, collapsible so it stays out of the way for returning
+// clippers. Makes the "how do I actually earn?" journey obvious in one place.
+function EarnHowItWorks() {
+  const [open, setOpen] = useState(false);
+  const steps = [
+    "Activate Junior — sign in to connect this desktop to your account.",
+    "Open Earn and browse live Whop Content Rewards.",
+    "Pick a reward — payout, platforms, spots, and rules stay attached.",
+    "Paste a source link or upload your own video.",
+    "Generate clips — Junior cuts, captions, and reframes for you.",
+    "Submit on Whop — post your clip, then paste the submission link to track it.",
+    "Share your tracked link / QR on eligible Junior promo clips to earn referrals.",
+    "Track your partner progress in the partner dashboard.",
+  ];
+  return (
+    <div className="rounded-2xl border border-line bg-paper-warm/40">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary hover:text-ink"
+      >
+        <span className="flex items-center gap-2">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" /> how earning works
+        </span>
+        <span className="text-text-tertiary">{open ? "▾" : "▸"}</span>
+      </button>
+      {open && (
+        <ol className="flex flex-col gap-2 px-4 pb-4">
+          {steps.map((s, i) => (
+            <li key={i} className="flex items-start gap-3 font-sans text-[13px] leading-relaxed text-ink">
+              <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-fuchsia-soft font-mono text-[10px] font-bold text-fuchsia-deep">
+                {i + 1}
+              </span>
+              <span>{s}</span>
+            </li>
+          ))}
+        </ol>
+      )}
     </div>
   );
 }
