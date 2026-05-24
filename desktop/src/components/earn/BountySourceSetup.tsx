@@ -58,7 +58,7 @@ export function BountySourceSetup({
       <header className="rounded-2xl border border-fuchsia-soft bg-fuchsia-soft/20 p-5">
         <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
           <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-          setting up your bounty clip
+          setting up your reward clip
         </div>
         <h1 className="mt-2 font-display text-[24px] font-semibold leading-tight tracking-[-0.02em] text-ink">
           {bounty.title}
@@ -66,21 +66,21 @@ export function BountySourceSetup({
         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[11px] text-text-secondary">
           <span className="inline-flex items-center gap-1.5">
             payout
-            <InfoHint text="What this bounty pays per 1,000 views on an approved clip. Whop tracks the views and pays you — Junior doesn't." />
+            <InfoHint text="What this reward pays per 1,000 views on an approved clip. Whop tracks the views and pays you — Junior doesn't." />
             <span className="font-display text-[14px] font-semibold text-ink">{formatPayout(bounty)}</span>
           </span>
           {bounty.user.username && <span>by @{bounty.user.username}</span>}
           {bounty.spotsRemaining > 0 && (
             <span className="inline-flex items-center gap-1.5">
               {bounty.spotsRemaining} spots left
-              <InfoHint text="How many accepted submissions the brand still has budget for. When it hits zero the bounty is full." />
+              <InfoHint text="How many accepted submissions the brand still has budget for. When it hits zero the reward is full." />
             </span>
           )}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
             allowed platforms
-            <InfoHint text="Only clips posted to these platforms count for this bounty. Post elsewhere and it won't be eligible." />
+            <InfoHint text="Only clips posted to these platforms count for this reward. Post elsewhere and it won't be eligible." />
           </span>
           {platforms.map((p) => (
             <span

@@ -29,8 +29,8 @@ export function BountyWorkspaceHeader({ project }: { project: Project }) {
             <span className="inline-grid h-5 w-5 place-items-center rounded-full bg-fuchsia font-mono text-[11px] font-bold leading-none text-paper" aria-hidden>
               /
             </span>
-            clipping for whop bounty
-            <InfoHint text="This project is linked to a Whop Content Rewards bounty. Every clip is tagged with it, and the actions below help you submit." />
+            clipping for a Whop reward
+            <InfoHint text="This project is linked to a Whop Content Reward. Every clip is tagged with it, and the actions below help you submit." />
           </div>
           <h3 className="mt-1.5 font-display text-[18px] font-semibold leading-tight tracking-[-0.01em] text-ink">
             {project.whop_bounty_title}
@@ -44,7 +44,7 @@ export function BountyWorkspaceHeader({ project }: { project: Project }) {
             onClick={() => void openExternal(whopUrl).catch(() => undefined)}
             className="shrink-0 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep"
           >
-            Open bounty on Whop ↗
+            Open reward on Whop ↗
           </button>
         )}
       </div>
@@ -65,7 +65,7 @@ export function BountyWorkspaceHeader({ project }: { project: Project }) {
         <div className="rounded-xl border border-line bg-paper/60 px-3 py-2.5">
           <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
             allowed platforms
-            <InfoHint text="Only clips posted to these platforms count toward this bounty." />
+            <InfoHint text="Only clips posted to these platforms count toward this reward." />
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {platforms.length > 0 ? (

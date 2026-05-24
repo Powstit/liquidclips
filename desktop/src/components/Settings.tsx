@@ -640,7 +640,7 @@ function WhoAmISection() {
         <DebugRow label="Subscription" value={me.subscription_status} />
         <DebugRow label="Billing provider" value={me.billing_provider} />
         <DebugRow
-          label="Whop bounties auth"
+          label="Whop Content Rewards auth"
           value={
             me.whop_backend_key_configured
               ? `backend app key · desktop session: ${whopSource}`
@@ -726,7 +726,7 @@ function WhopConnectionRow() {
   }
 
   async function disconnect() {
-    if (!confirm("Disconnect Whop? You'll need to reconnect to browse bounties again.")) return;
+    if (!confirm("Disconnect Whop? You'll need to reconnect to browse Content Rewards again.")) return;
     try {
       await sidecar.whopClearSessionToken();
       await sidecar.secretDelete("JUNIOR_WHOP_TOKEN");
@@ -761,7 +761,7 @@ function WhopConnectionRow() {
                 ? "checking…"
                 : connected
                   ? `connected · ${sourceLabel}`
-                  : "not connected · bounty source"}
+                  : "not connected · Content Rewards source"}
             </div>
           </div>
         </div>

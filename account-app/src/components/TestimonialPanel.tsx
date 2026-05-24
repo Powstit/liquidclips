@@ -20,7 +20,7 @@ const TESTIMONIALS: Testimonial[] = [
     role: "Whop Clipper",
     avatar: "/avatars/marcus.webp",
     quote:
-      "Made £180 my first weekend on Whop bounties. Three approved, two pending. The rule-check told me exactly why my one denied clip failed — saved me from making the same mistake twice.",
+      "Made £180 my first weekend on Whop Content Rewards. Three approved, two pending. The rule-check told me exactly why my one denied clip failed — saved me from making the same mistake twice.",
   },
   {
     name: "Sofia L.",
@@ -55,7 +55,7 @@ const TESTIMONIALS: Testimonial[] = [
     role: "Whop Clipper",
     avatar: "/avatars/priya.webp",
     quote:
-      "I used to spend 40 minutes per submission. Now it's 8. The fit-score per bounty stops me wasting time on clips that won't pass review. Pure earnings-per-hour.",
+      "I used to spend 40 minutes per submission. Now it's 8. The fit-score per reward stops me wasting time on clips that won't pass review. Pure earnings-per-hour.",
   },
 ];
 

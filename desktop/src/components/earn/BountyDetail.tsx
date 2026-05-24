@@ -124,7 +124,7 @@ export function BountyDetail({
         Start clipping →
       </button>
       <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-        Junior imports the source, runs your pipeline, and tags every clip with this bounty.
+        Junior imports the source, runs your pipeline, and tags every clip with this reward.
       </p>
     </div>
   );

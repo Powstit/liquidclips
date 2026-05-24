@@ -55,7 +55,7 @@ export function ManualBountyPrompt({
   function go() {
     setError(null);
     if (!title.trim()) {
-      setError("Add the bounty title so the pinned banner makes sense.");
+      setError("Add the reward title so the pinned banner makes sense.");
       return;
     }
     if (!sourceUrl.trim()) {
@@ -84,15 +84,15 @@ export function ManualBountyPrompt({
   return (
     <div className="rounded-2xl border border-line bg-paper p-4">
       <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-        manual bounty · beta fallback
+        manual reward · beta fallback
       </div>
       <p className="mt-1 font-sans text-[12px] leading-relaxed text-text-secondary">
-        Paste the bounty's details by hand and start clipping. Same pipeline,
-        same submission-capture flow — only the bounty list is bypassed.
+        Paste the reward's details by hand and start clipping. Same pipeline,
+        same submission-capture flow — only the Content Rewards list is bypassed.
       </p>
 
       <div className="mt-3 grid gap-2">
-        <Field label="bounty title" required>
+        <Field label="reward title" required>
           <input
             value={title}
             autoFocus
@@ -112,7 +112,7 @@ export function ManualBountyPrompt({
           />
         </Field>
 
-        <Field label="whop bounty url (optional)">
+        <Field label="whop reward url (optional)">
           <input
             value={bountyUrl}
             spellCheck={false}
