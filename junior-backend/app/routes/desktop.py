@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
+from app.features import is_admin_email
 from app.jwt_signer import issue_license_jwt, public_pem
 from app.models import License, User
 
@@ -52,11 +53,18 @@ def connect_desktop(
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found — sign up first")
 
-    quota = 3 if user.tier == "free" else None
+    # Apply admin override BEFORE issuing the JWT — otherwise an admin who
+    # also happens to be on a free tier gets a free-tier JWT with a 3-video
+    # quota. Founders and master-admins always get Autopilot entitlements.
+    is_admin = is_admin_email(user.email)
+    effective_tier = "autopilot" if is_admin else user.tier
+    effective_founder = True if is_admin else user.founder_flag
+    quota = 3 if effective_tier == "free" else None
+
     jwt_str, expires_at = issue_license_jwt(
         user_id=user.id,
-        tier=user.tier,
-        founder=user.founder_flag,
+        tier=effective_tier,
+        founder=effective_founder,
         quota_videos_per_month=quota,
     )
     # Only send the security-style "Junior activated on a new machine" email
@@ -65,7 +73,7 @@ def connect_desktop(
     # License row is added so we can check the prior count cleanly.
     is_first_activation = db.query(License).filter_by(user_id=user.id).count() == 0
 
-    db.add(License(user_id=user.id, jwt=jwt_str, tier_at_issue=user.tier, expires_at=expires_at))
+    db.add(License(user_id=user.id, jwt=jwt_str, tier_at_issue=effective_tier, expires_at=expires_at))
     db.commit()
 
     if is_first_activation:
@@ -78,14 +86,18 @@ def connect_desktop(
         analytics.capture(
             user_id=user.clerk_id,
             event="desktop_activated",
-            properties={"tier": user.tier, "founder": user.founder_flag},
+            properties={
+                "tier": effective_tier,
+                "founder": effective_founder,
+                "admin_override": is_admin,
+            },
         )
 
     return ConnectResponse(
         license_jwt=jwt_str,
         expires_at=expires_at,
-        tier=user.tier,
-        founder=user.founder_flag,
+        tier=effective_tier,
+        founder=effective_founder,
         challenge=body.challenge,
     )
 

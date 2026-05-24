@@ -23,6 +23,7 @@ should return 503 with a "Coming Sprint X" body — not silently succeed.
 
 from __future__ import annotations
 
+import os
 from typing import Any, TypedDict
 
 
@@ -111,11 +112,33 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
 
 # Master admins get the full Autopilot+Founder feature set regardless of what
 # Clerk billing reports. Used for the founder's own account and any internal
-# staff we want to comp. Adding more emails is a one-line change — no DB
-# migration required.
-ADMIN_EMAILS = frozenset({
+# staff we want to comp.
+#
+# Source of truth: env JUNIOR_ADMIN_EMAILS — comma-separated. The hardcoded
+# fallback below covers the dev machine when no env is set. Production reads
+# the env so we can rotate without a deploy. Emails are case-insensitive +
+# whitespace-tolerant.
+_FALLBACK_ADMIN_EMAILS = (
     "danieldiyepriye@gmail.com",
-})
+    # Daniel sometimes signs in via the Powstit / mrddokubo / crazycatjackkids
+    # variants too — listed here so first-launch never locks him out of his
+    # own product. Override via JUNIOR_ADMIN_EMAILS in prod.
+    "mrddokubo@gmail.com",
+    "crazycatjackkids@gmail.com",
+    "thedoks2019@gmail.com",
+)
+
+
+def _load_admin_emails() -> frozenset[str]:
+    raw = os.environ.get("JUNIOR_ADMIN_EMAILS", "")
+    if not raw.strip():
+        return frozenset(e.strip().lower() for e in _FALLBACK_ADMIN_EMAILS)
+    return frozenset(
+        e.strip().lower() for e in raw.split(",") if e.strip()
+    )
+
+
+ADMIN_EMAILS: frozenset[str] = _load_admin_emails()
 
 
 def is_admin_email(email: str | None) -> bool:
