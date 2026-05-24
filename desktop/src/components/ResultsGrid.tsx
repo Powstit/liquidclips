@@ -12,9 +12,11 @@ import { UpgradeLockCard } from "./UpgradeLockCard";
 import { AddClipCard } from "./AddClipCard";
 import { YouTubeView } from "./YouTubeView";
 import { BountySubmissionCapture } from "./earn/BountySubmissionCapture";
+import { BountyWorkspaceHeader } from "./earn/BountyWorkspaceHeader";
 import { sidecar, type DripSlot } from "../lib/sidecar";
 import { backend } from "../lib/backend";
 import { useTier, FREE_TIER_VISIBLE_CLIPS } from "../lib/useTier";
+import { InfoHint } from "./InfoHint";
 
 type Tab = "clips" | "youtube" | "files";
 
@@ -39,6 +41,7 @@ export function ResultsGrid({
   } | null>(null);
   const [actionToast, setActionToast] = useState<string | null>(null);
   const tier = useTier();
+  const isBounty = !!project.whop_bounty_id;
   const previewClip = previewIdx !== null ? project.clips[previewIdx] : null;
   // Publishing requires a 9:16 render — cut_path alone (horizontal) won't do.
   const firstRenderedClipIdx = project.clips.findIndex((c) => !!c.vertical_path);
@@ -66,32 +69,7 @@ export function ResultsGrid({
 
   return (
     <div className="w-full max-w-[1080px]">
-      {project.whop_bounty_id && project.whop_bounty_title && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-fuchsia-soft bg-fuchsia-soft/30 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <span
-              className="inline-grid h-7 w-7 place-items-center rounded-full bg-fuchsia font-mono text-[14px] font-bold leading-none text-paper"
-              aria-hidden
-            >
-              /
-            </span>
-            <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
-                clipping for whop bounty
-              </div>
-              <div className="font-display text-[14px] font-semibold leading-tight tracking-[-0.01em] text-ink">
-                {project.whop_bounty_title}
-              </div>
-            </div>
-          </div>
-          {project.whop_bounty_reward_per_unit != null && (
-            <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-fuchsia-deep">
-              {project.whop_bounty_currency === "GBP" ? "£" : project.whop_bounty_currency === "USD" ? "$" : ""}
-              {project.whop_bounty_reward_per_unit.toFixed(2)} / 1k views
-            </span>
-          )}
-        </div>
-      )}
+      <BountyWorkspaceHeader project={project} />
 
       <BountySubmissionCapture project={project} />
 
@@ -145,10 +123,19 @@ export function ResultsGrid({
           <button
             onClick={() => openPublish("publish-now")}
             disabled={firstRenderedClipIdx < 0}
-            title={firstRenderedClipIdx < 0 ? "No rendered clips yet" : "Publish a clip now"}
-            className="rounded-full bg-ink px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-40"
+            title={
+              firstRenderedClipIdx < 0
+                ? "No rendered clips yet"
+                : isBounty
+                ? "Publish a clip, then paste your Whop submission link to track it"
+                : "Publish a clip now"
+            }
+            className="inline-flex items-center gap-1.5 rounded-full bg-ink px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-40"
           >
-            Publish now
+            {isBounty ? "Publish & prepare Whop submission" : "Publish now"}
+            {isBounty && (
+              <InfoHint text="Junior publishes the clip to your connected platform, then points you to Whop to submit it for the bounty. Whop has no public submit API, so the final submit happens on whop.com." />
+            )}
           </button>
           <button
             onClick={() => openPublish("schedule-one")}
@@ -310,8 +297,13 @@ export function ResultsGrid({
           onClose={() => setPublishModal(null)}
           onDone={(msg) => {
             setPublishModal(null);
-            setActionToast(msg);
-            window.setTimeout(() => setActionToast(null), 8000);
+            // For bounty projects, the publish is only half the job — nudge the
+            // clipper to finish on Whop, where the actual submission lives.
+            const guidance = isBounty
+              ? `${msg} — now open the bounty on Whop and paste your submission link below to track approval + payout.`
+              : msg;
+            setActionToast(guidance);
+            window.setTimeout(() => setActionToast(null), isBounty ? 12000 : 8000);
           }}
         />
       )}

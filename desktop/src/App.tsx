@@ -18,7 +18,8 @@ import { applyUpdate, checkForUpdate, type UpdateState } from "./lib/updater";
 import { TranscriptResult, LiftingProgress } from "./components/TranscriptResult";
 import { IntentPicker } from "./components/IntentPicker";
 import { EarnTab } from "./components/earn/EarnTab";
-import { SourcePastePrompt } from "./components/earn/SourcePastePrompt";
+import { allowedPlatforms } from "./components/earn/types";
+import { BountySourceSetup } from "./components/earn/BountySourceSetup";
 import { FailureCard } from "./components/FailureCard";
 import type { WhopBounty } from "./lib/sidecar";
 
@@ -27,7 +28,7 @@ type View =
   | { kind: "empty" }
   | { kind: "quota" }
   | { kind: "earn" }
-  | { kind: "paste-source"; bounty: WhopBounty }
+  | { kind: "bounty-setup"; bounty: WhopBounty }
   | { kind: "choosing-intent"; source: { kind: "file"; path: string } | { kind: "url"; url: string }; brief: string; bounty?: WhopBounty }
   | { kind: "downloading"; url: string; progress?: IngestProgress; intent: Intent }
   | { kind: "lifting"; url: string; progress?: LiftProgress }
@@ -224,14 +225,22 @@ export default function App() {
       if (v.kind !== "choosing-intent") return v;
       const src = v.source;
       const brief = v.brief;
-      // Compact bounty payload — only the fields Project persists. Avoids
-      // dragging the whole WhopBounty graph through the sidecar.
+      // Compact bounty payload Project persists — now carries the richer
+      // context the workspace header + fit checklist read. sourceUrl is the
+      // actual source the clipper chose (URL ingests only; file picks have no
+      // shareable URL). Avoids dragging the whole WhopBounty graph through.
       const bounty: BountyContext | undefined = v.bounty
         ? {
             id: v.bounty.id,
             title: v.bounty.title,
             rewardPerUnitAmount: v.bounty.rewardPerUnitAmount,
             currency: v.bounty.currency,
+            description: v.bounty.description || null,
+            allowedPlatforms: allowedPlatforms(v.bounty),
+            sourceUrl: src.kind === "url" ? src.url : null,
+            creator: v.bounty.user?.username || null,
+            spotsRemaining: v.bounty.spotsRemaining ?? null,
+            whopUrl: whopBountyUrl(v.bounty),
           }
         : undefined;
       if (src.kind === "file") {
@@ -363,21 +372,16 @@ export default function App() {
         {view.kind === "earn" && (
           <EarnTab
             onStartBounty={(bounty) => {
-              // Whop's public API doesn't expose a yt-dlp-compatible source
-              // URL on the bounty/experience. We extract one from the brand's
-              // description (most bounties include a YouTube/Vimeo link inline)
-              // and route to a proper paste view when nothing is found.
-              const extracted = extractSourceUrl(bounty.description);
-              if (extracted) {
-                setView({
-                  kind: "choosing-intent",
-                  source: { kind: "url", url: extracted },
-                  brief: bounty.description,
-                  bounty,
-                });
-                return;
-              }
-              setView({ kind: "paste-source", bounty });
+              // Route into a focused, bounty-specific setup screen — detected
+              // source URL, paste, or upload-local — instead of dumping the
+              // clipper into the generic drop flow.
+              setView({ kind: "bounty-setup", bounty });
+            }}
+            onResumeProject={(slug) => {
+              void sidecar
+                .getProject(slug)
+                .then(({ project }) => setView({ kind: "results", project }))
+                .catch((e) => console.error("[resume] getProject failed:", e));
             }}
             onStartManualBounty={(bountyCtx, sourceUrl) => {
               // Beta fallback: user pasted bounty + source. Synthesize a
@@ -419,15 +423,16 @@ export default function App() {
           />
         )}
 
-        {view.kind === "paste-source" && (
-          <SourcePastePrompt
+        {view.kind === "bounty-setup" && (
+          <BountySourceSetup
             bounty={view.bounty}
+            detectedUrl={extractSourceUrl(view.bounty.description)}
             onCancel={() => setView({ kind: "earn" })}
-            onSubmit={(url) =>
+            onContinue={(source) =>
               setView({
                 kind: "choosing-intent",
-                source: { kind: "url", url },
-                brief: view.bounty.description,
+                source,
+                brief: view.bounty.description ?? "",
                 bounty: view.bounty,
               })
             }
@@ -658,6 +663,13 @@ function extractSourceUrl(description: string | null | undefined): string | null
   const re = /https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be|vimeo\.com|tiktok\.com|twitch\.tv|streamable\.com|instagram\.com|x\.com|twitter\.com)\/[^\s)\]]+/i;
   const m = description.match(re);
   return m ? m[0].replace(/[.,;:!?]+$/, "") : null;
+}
+
+// Best-effort public Whop URL for a bounty. The public API doesn't return a
+// canonical bounty permalink, but the experience page is a real Whop URL that
+// lands the clipper on the bounty's hub. Null when there's no experience.
+function whopBountyUrl(bounty: WhopBounty): string | null {
+  return bounty.experience?.id ? `https://whop.com/experiences/${bounty.experience.id}` : null;
 }
 
 function NavTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {

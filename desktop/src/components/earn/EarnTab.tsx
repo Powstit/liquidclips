@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { sidecar, type WhopBounty, type WhopSubmission, type BountyContext } from "../../lib/sidecar";
+import { sidecar, type WhopBounty, type WhopSubmission, type BountyContext, type BountyProjectSummary } from "../../lib/sidecar";
 import { inWhopIframe } from "../../lib/whop-iframe";
 import { ManualBountyPrompt, type ManualBountyForm } from "./ManualBountyPrompt";
+import { InfoHint } from "../InfoHint";
 import { BountyCard } from "./BountyCard";
 import { BountyFilters } from "./BountyFilters";
 import { BountyDetail } from "./BountyDetail";
@@ -30,12 +31,15 @@ const SUBMISSION_IDS_KEY = "junior:my-whop-submissions:v1";
 export function EarnTab({
   onStartBounty,
   onStartManualBounty,
+  onResumeProject,
 }: {
   onStartBounty: (bounty: WhopBounty) => void;
   // Beta fallback path — clipper pasted a bounty by hand, source URL too.
   // App.tsx routes this straight to choosing-intent without going through
   // the extractSourceUrl / paste-source modal.
   onStartManualBounty: (b: BountyContext, sourceUrl: string) => void;
+  // Resume a local bounty project (In progress tab) → opens its ResultsGrid.
+  onResumeProject: (slug: string) => void;
 }) {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [authSource, setAuthSource] = useState<
@@ -59,6 +63,19 @@ export function EarnTab({
   const [sort, setSort] = useState<SortKey>("best_match");
   const [filterPlatforms, setFilterPlatforms] = useState<ConnectedPlatform[]>([]);
   const [openOnly, setOpenOnly] = useState(true);
+  // Local bounty-linked projects for the In progress tab. Read from disk via
+  // the sidecar — independent of Whop/backend, so it works even when bounty
+  // browsing is down.
+  const [bountyProjects, setBountyProjects] = useState<BountyProjectSummary[]>([]);
+
+  async function loadBountyProjects() {
+    try {
+      const { projects } = await sidecar.listBountyProjects();
+      setBountyProjects(projects);
+    } catch {
+      /* in-progress list is best-effort */
+    }
+  }
 
   // Initial load: gate Available bounties on **Junior activation**, not on
   // local Whop OAuth. Public bounty browsing now goes through the backend
@@ -107,6 +124,13 @@ export function EarnTab({
     return () => window.removeEventListener("junior:whop-auth", onAuthArrived);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Refresh the In-progress list on mount and whenever the user opens that tab,
+  // so resuming reflects projects created since Earn was first shown.
+  useEffect(() => {
+    if (subTab === "in_progress") void loadBountyProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subTab]);
 
   async function refreshSubmissions() {
     // We track submission IDs locally — Whop's public API doesn't list a
@@ -295,9 +319,17 @@ export function EarnTab({
         )}
 
         {subTab === "in_progress" && (
-          <p className="font-mono text-[12px] text-text-tertiary">
-            Bounty projects in progress show here. Start one from Available to fill this up.
-          </p>
+          <div className="flex flex-col gap-3">
+            {bountyProjects.length === 0 ? (
+              <p className="font-mono text-[12px] text-text-tertiary">
+                Bounty projects you start show here so you can pick up where you left off. Start one from Available to fill this up.
+              </p>
+            ) : (
+              bountyProjects.map((p) => (
+                <BountyProjectCard key={p.slug} project={p} onResume={() => onResumeProject(p.slug)} />
+              ))
+            )}
+          </div>
         )}
 
         {subTab === "submitted" && (
@@ -306,6 +338,52 @@ export function EarnTab({
 
         {subTab === "approved" && <ApprovedList items={approved} />}
       </div>
+    </div>
+  );
+}
+
+
+function BountyProjectCard({
+  project,
+  onResume,
+}: {
+  project: BountyProjectSummary;
+  onResume: () => void;
+}) {
+  const sym =
+    project.whop_bounty_currency === "GBP" ? "£" : project.whop_bounty_currency === "USD" ? "$" : "";
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-paper px-4 py-3 transition-colors hover:border-fuchsia">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
+          <span
+            className={`inline-block h-1.5 w-1.5 rounded-full ${project.done ? "bg-fuchsia" : "bg-[#F59E0B]"}`}
+          />
+          {project.done ? "ready to submit" : "in progress"}
+          <InfoHint
+            text={
+              project.done
+                ? "Clips are rendered. Open it to publish and prepare your Whop submission."
+                : "Junior was still working when you left. Open it to finish or re-run any stage."
+            }
+          />
+        </div>
+        <div className="mt-0.5 truncate font-display text-[15px] font-semibold tracking-[-0.01em] text-ink">
+          {project.whop_bounty_title || project.source_filename}
+        </div>
+        <div className="mt-0.5 font-mono text-[11px] text-text-tertiary">
+          {project.source_filename} · {project.clips_count} clip{project.clips_count === 1 ? "" : "s"}
+          {project.whop_bounty_reward_per_unit != null && (
+            <> · {sym}{project.whop_bounty_reward_per_unit.toFixed(2)} / 1k views</>
+          )}
+        </div>
+      </div>
+      <button
+        onClick={onResume}
+        className="shrink-0 rounded-full bg-ink px-4 py-2 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+      >
+        Resume →
+      </button>
     </div>
   );
 }

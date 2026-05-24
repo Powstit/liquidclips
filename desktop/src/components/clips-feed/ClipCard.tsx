@@ -7,6 +7,7 @@ import type { Clip, OverlayType, Project, RatioKey } from "../../lib/sidecar";
 import { sidecar, RATIOS } from "../../lib/sidecar";
 import { LayoutIcon, LAYOUTS, type LayoutKey } from "./LayoutIcon";
 import { pickOverlaySource } from "../OverlaySourcePicker";
+import { BountyFitPill } from "../earn/bounty-fit";
 
 // Self-contained card. Tap = play preview. Layout icons swap composition in
 // place. Copy buttons inline. "..." opens the side-door full editor for the
@@ -167,6 +168,11 @@ export function ClipCard({
         <span className="pointer-events-none absolute left-2 top-2 font-display text-[20px] font-bold italic text-fuchsia drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
           {index.toString().padStart(2, "0")}
         </span>
+        {project.whop_bounty_id && (
+          <span className="absolute right-2 top-2">
+            <BountyFitPill clip={clip} project={project} />
+          </span>
+        )}
       </div>
 
       {/* Layout picker — visual icons */}
