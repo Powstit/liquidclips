@@ -40,7 +40,7 @@ export function ApprovedList({ items }: { items: WhopSubmission[] }) {
         >
           <div>
             <h4 className="font-display text-[14px] font-semibold leading-tight tracking-[-0.01em] text-ink">
-              {s.bounty?.title ?? "Bounty"}
+              {s.bounty?.title ?? "Reward"}
             </h4>
             <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
               approved · {s.verifiedVotesCount} verified votes
@@ -63,7 +63,7 @@ export function ApprovedList({ items }: { items: WhopSubmission[] }) {
               className="rounded-xl border border-line bg-paper-warm/30 p-4 opacity-70"
             >
               <h4 className="font-display text-[14px] font-semibold leading-tight tracking-[-0.01em] text-ink">
-                {s.bounty?.title ?? "Bounty"}
+                {s.bounty?.title ?? "Reward"}
               </h4>
               {s.denialReason && (
                 <p className="mt-1 font-mono text-[11px] text-[#DC2626]">

@@ -134,7 +134,7 @@ export function ResultsGrid({
           >
             {isBounty ? "Publish & prepare Whop submission" : "Publish now"}
             {isBounty && (
-              <InfoHint text="Junior publishes the clip to your connected platform, then points you to Whop to submit it for the bounty. Whop has no public submit API, so the final submit happens on whop.com." />
+              <InfoHint text="Junior publishes the clip to your connected platform, then points you to Whop to submit it for the reward. Whop has no public submit API, so the final submit happens on whop.com." />
             )}
           </button>
           <button
@@ -300,7 +300,7 @@ export function ResultsGrid({
             // For bounty projects, the publish is only half the job — nudge the
             // clipper to finish on Whop, where the actual submission lives.
             const guidance = isBounty
-              ? `${msg} — now open the bounty on Whop and paste your submission link below to track approval + payout.`
+              ? `${msg} — now open the reward on Whop and paste your submission link below to track approval + payout.`
               : msg;
             setActionToast(guidance);
             window.setTimeout(() => setActionToast(null), isBounty ? 12000 : 8000);

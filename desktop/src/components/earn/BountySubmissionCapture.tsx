@@ -114,7 +114,7 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
             }}
             className="rounded-full bg-ink px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia"
           >
-            Open bounty on Whop ↗
+            Open reward on Whop ↗
           </button>
           <button
             onClick={() => setOpen((v) => !v)}

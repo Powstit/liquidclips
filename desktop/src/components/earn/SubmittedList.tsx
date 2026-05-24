@@ -13,7 +13,7 @@ export function SubmittedList({
   if (items.length === 0) {
     return (
       <p className="font-mono text-[12px] text-text-tertiary">
-        No submissions in review. Publish a clip from a bounty to fill this up.
+        No submissions in review. Publish a clip from a reward to fill this up.
       </p>
     );
   }
@@ -30,7 +30,7 @@ export function SubmittedList({
           <div className="flex items-center justify-between gap-3">
             <div>
               <h4 className="font-display text-[15px] font-semibold leading-tight tracking-[-0.01em] text-ink">
-                {s.bounty?.title ?? "Bounty"}
+                {s.bounty?.title ?? "Reward"}
               </h4>
               <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
                 {s.status} {s.expiresAt ? ` · auto-approves in ${hoursUntil(s.expiresAt)}h` : ""}

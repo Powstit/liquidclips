@@ -21,7 +21,7 @@ const GROUPS: Group[] = [
       { label: "Hosted LLM (no OpenAI key needed)",         free: false,  solo: false,  growth: true,  autopilot: true },
       { label: "Multi-ratio export (9:16, 1:1, 4:5)",       free: true,   solo: true,   growth: true,  autopilot: true },
       { label: "B-roll overlay + hook burn-in",             free: true,   solo: true,   growth: true,  autopilot: true },
-      { label: "Per-clip rule check against bounty rules",  free: false,  solo: true,   growth: true,  autopilot: true },
+      { label: "Per-clip rule check against reward rules",  free: false,  solo: true,   growth: true,  autopilot: true },
     ],
   },
   {
@@ -48,8 +48,8 @@ const GROUPS: Group[] = [
   {
     heading: "Earn (Whop Content Rewards)",
     rows: [
-      { label: "Browse live bounties in-app",               free: true,   solo: true,   growth: true,  autopilot: true },
-      { label: "Bounty-aware fit + effort scoring",         free: true,   solo: true,   growth: true,  autopilot: true },
+      { label: "Browse live Content Rewards in-app",        free: true,   solo: true,   growth: true,  autopilot: true },
+      { label: "Reward-aware fit + effort scoring",         free: true,   solo: true,   growth: true,  autopilot: true },
       { label: "Per-clip approval-risk pre-flight",         free: false,  solo: true,   growth: true,  autopilot: true },
       { label: "Publish-and-prepare submission flow",       free: false,  solo: true,   growth: true,  autopilot: true },
       { label: "Background submission status polling",      free: false,  solo: true,   growth: true,  autopilot: true },

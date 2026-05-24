@@ -212,26 +212,26 @@ export function EarnTab({
           earn
         </div>
         <h1 className="font-display text-[28px] font-semibold leading-tight tracking-[-0.025em] text-ink">
-          Whop content rewards you can work on now.
+          Whop Content Rewards you can work on now.
         </h1>
         <p className="max-w-[640px] font-sans text-[13px] leading-relaxed text-text-secondary">
-          Whop tracks bounty payouts. Junior helps you make, publish, and prepare submissions.
+          Whop tracks reward payouts. Junior helps you make, publish, and prepare submissions.
         </p>
         <ConnectionBadge source={authSource} />
 
         {bountyError && (
           <div className="mt-3 rounded-2xl border border-[#DC2626]/40 bg-[#DC2626]/5 p-4">
             <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#DC2626]">
-              connected — but Whop wouldn't return bounties
+              connected — but Whop wouldn't return Content Rewards
             </div>
             <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
-              Your sign-in worked. The bounty fetch came back with this error:
+              Your sign-in worked. The Content Rewards fetch came back with this error:
             </p>
             <pre className="mt-2 max-h-[140px] overflow-auto rounded-lg border border-line bg-paper-warm/40 p-2.5 font-mono text-[11px] text-text-secondary">
               {bountyError}
             </pre>
             <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-              Common cause: the OAuth scope Junior asked for doesn't cover bounties yet — known limitation, fixing next.
+              Common cause: the OAuth scope Junior asked for doesn't cover Content Rewards yet — known limitation, fixing next.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
@@ -244,7 +244,7 @@ export function EarnTab({
                 onClick={() => setManualOpen(true)}
                 className="rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-paper hover:bg-ink"
               >
-                Paste bounty manually →
+                Paste a reward manually →
               </button>
             </div>
           </div>
@@ -304,13 +304,13 @@ export function EarnTab({
               {filtered.length === 0 && (
                 <div className="flex flex-col items-start gap-3">
                   <p className="font-mono text-[12px] text-text-tertiary">
-                    No bounties match these filters. Loosen the platform list or turn off "open only".
+                    No Content Rewards match these filters. Loosen the platform list or turn off "open only".
                   </p>
                   <button
                     onClick={() => setManualOpen(true)}
                     className="rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:border-fuchsia hover:text-ink"
                   >
-                    Paste a bounty manually →
+                    Paste a reward manually →
                   </button>
                 </div>
               )}
@@ -322,7 +322,7 @@ export function EarnTab({
           <div className="flex flex-col gap-3">
             {bountyProjects.length === 0 ? (
               <p className="font-mono text-[12px] text-text-tertiary">
-                Bounty projects you start show here so you can pick up where you left off. Start one from Available to fill this up.
+                Reward projects you start show here so you can pick up where you left off. Start one from Available to fill this up.
               </p>
             ) : (
               bountyProjects.map((p) => (
@@ -501,12 +501,12 @@ function ActivateJuniorSplash({
           /
         </span>
         <p className="font-mono text-[16px] leading-none text-ink">
-          Activate Junior to browse bounties.
+          Activate Junior to browse Content Rewards.
           <span className="blink ml-[2px] text-fuchsia">_</span>
         </p>
       </div>
       <p className="max-w-[480px] font-sans text-[13px] leading-relaxed text-text-secondary">
-        Bounties load once this desktop is activated against your Junior account.
+        Content Rewards load once this desktop is activated against your Junior account.
         Sign in at account.jnremployee.com — Junior writes your license to the OS
         keychain and the list loads. Connecting Whop is a separate, optional step
         in Settings → Connections.

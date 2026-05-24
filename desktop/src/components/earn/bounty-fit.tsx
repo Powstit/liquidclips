@@ -86,7 +86,7 @@ export function computeBountyFit(clip: Clip, project: Project): BountyFit | null
     label: "Allowed platform",
     ok: platforms.length > 0,
     detail: platforms.length > 0 ? platforms.join(" · ") : "no platform restriction",
-    hint: "Only clips posted to the bounty's allowed platforms count. Post elsewhere and the submission won't be eligible.",
+    hint: "Only clips posted to the reward's allowed platforms count. Post elsewhere and the submission won't be eligible.",
     weight: 20,
   });
 
@@ -139,7 +139,7 @@ export function BountyFitPill({ clip, project }: { clip: Clip; project: Project 
   if (!fit) return null;
   return (
     <span
-      title={`Bounty fit ${fit.score}/100`}
+      title={`Reward fit ${fit.score}/100`}
       className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] backdrop-blur-sm ${scoreTone(fit.score)}`}
     >
       fit {fit.score}
@@ -155,8 +155,8 @@ export function BountyFitChecklist({ clip, project }: { clip: Clip; project: Pro
     <div className="rounded-2xl border border-line bg-paper-warm/40 p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-          bounty fit
-          <InfoHint text="A quick heuristic check against the bounty brief. Guidance, not a guarantee — the brand makes the final call on Whop." />
+          reward fit
+          <InfoHint text="A quick heuristic check against the reward's brief. Guidance, not a guarantee — the brand makes the final call on Whop." />
         </div>
         <span className={`rounded-full border px-2.5 py-0.5 font-mono text-[11px] uppercase tracking-[0.08em] ${scoreTone(fit.score)}`}>
           {fit.score}/100

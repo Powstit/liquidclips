@@ -119,7 +119,7 @@ export default async function DashboardPage() {
             num={isFree ? "04" : "03"}
             eyebrow="connection"
             title="Connect Whop."
-            sub="Your Junior account is signed in with Google/email. Connect Whop separately to browse Content Rewards and track bounty submissions — done from the desktop Earn tab."
+            sub="Your Junior account is signed in with Google/email. Connect Whop separately to browse Content Rewards and track reward submissions — done from the desktop Earn tab."
             actions={[
               {
                 label: "Open Earn in desktop →",
