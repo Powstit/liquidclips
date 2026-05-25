@@ -211,11 +211,11 @@ export default function App() {
     // reach this point, so the starter pass is only ever charged for real
     // exports — never previews, drafts, or failures.
     if (current.clips.length > 0) {
-      // Count this export against the 100-export starter pass. Paid / founder
-      // users get remaining_exports: null and are never 402'd. A free user who
-      // has just used their last export gets a 402 → raise the upgrade wall and
-      // block instead of dropping them on the results screen.
-      const blocked = await chargeClipExport();
+      // Count EACH exported clip against the 100-export starter pass (one
+      // /usage/clip-exported per clip file). Paid / founder users get
+      // remaining_exports: null and are never 402'd. A free user who crosses
+      // 100 mid-run gets a 402 → raise the upgrade wall and block.
+      const blocked = await chargeClipExport(current.clips.length);
       if (blocked) return;
     }
 
@@ -230,17 +230,24 @@ export default function App() {
     setView({ kind: "results", project: current });
   }
 
-  // Charges one successful export against the starter pass. Returns true when
-  // the user is now blocked (402 → upgrade wall shown), false otherwise.
-  // Resilient: no JWT / backend offline / network error → never blocks (the
-  // export already succeeded locally, so we fail open rather than penalise an
-  // unactivated or offline user).
-  async function chargeClipExport(): Promise<boolean> {
+  // Charges ONE export per successfully exported clip/file — a 7-clip run
+  // consumes 7 of the 100, matching the "100 free clip exports" promise. Failed/
+  // canceled runs return earlier and never reach here, so only real exports
+  // count; re-running creates a new run → charges again. Paid/founder users get
+  // remaining_exports: null on the first call and stop charging. On the call
+  // that crosses 100 the backend 402s → upgrade wall (export #101 blocked).
+  // Resilient: no JWT / backend offline / network error → never blocks.
+  async function chargeClipExport(count: number): Promise<boolean> {
     try {
       const { value: jwt } = await sidecar.licenseJwtRead();
       if (!jwt) return false; // unactivated — uncapped, no gate
-      const { remaining_exports } = await backend.clipExported(jwt);
-      setRemainingExports(remaining_exports);
+      let remaining: number | null = null;
+      for (let i = 0; i < count; i++) {
+        const res = await backend.clipExported(jwt);
+        remaining = res.remaining_exports;
+        if (remaining === null) break; // paid / founder — uncapped, stop charging
+      }
+      setRemainingExports(remaining);
       return false;
     } catch (e) {
       if (e instanceof QuotaExceededError) {
