@@ -19,13 +19,13 @@ function parseUsd(s: string | number | undefined | null): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-// Whop-checkout referral URL: routes the visitor straight to the Whop checkout
-// carrying the affiliate code as ?a=<id>, so Whop attributes the sale and pays
-// the affiliate. Base comes from NEXT_PUBLIC_WHOP_CHECKOUT_URL (defaulting to
-// the company checkout); once per-plan checkouts exist, set that env var to the
-// exact per-plan checkout URL so attribution lands on the right plan.
+// Referral URL → Junior-owned checkout (account.jnremployee.com/checkout), which
+// embeds the Whop checkout and passes the affiliate code through as ?a=<id>. The
+// customer stays on a Junior-branded page (no generic Whop storefront), Whop still
+// attributes + pays the affiliate, and on completion returns to /get to link the
+// account. Override the base via NEXT_PUBLIC_WHOP_CHECKOUT_URL if needed.
 function buildReferralUrl(affiliateId: string): string {
-  const base = process.env.NEXT_PUBLIC_WHOP_CHECKOUT_URL ?? "https://whop.com/jnremployee";
+  const base = process.env.NEXT_PUBLIC_WHOP_CHECKOUT_URL ?? "https://account.jnremployee.com/checkout";
   const sep = base.includes("?") ? "&" : "?";
   return `${base}${sep}a=${affiliateId}`;
 }

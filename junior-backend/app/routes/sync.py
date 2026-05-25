@@ -17,6 +17,7 @@ from app.db import get_db
 from app.deps import current_user
 from app.jwt_signer import issue_license_jwt
 from app.models import License, User
+from app.routes.usage import starter_export_remaining
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 
@@ -35,6 +36,9 @@ class SyncResponse(BaseModel):
     # round-trip. Founders get Autopilot's feature set regardless of tier.
     features: dict
     new_license_jwt: str | None  # set when the desktop's current one is near expiry
+    # Starter pass — remaining free clip exports (null = unlimited / paid). Lets
+    # the desktop show "82 clips left" and block export #101 for free/starter users.
+    remaining_exports: int | None
 
 
 @router.get("", response_model=SyncResponse)
@@ -84,4 +88,5 @@ def sync(
         billing_provider="whop" if user.whop_user_id else "clerk",
         features=tier_features(effective_tier, founder=effective_founder),
         new_license_jwt=new_jwt,
+        remaining_exports=None if is_admin else starter_export_remaining(user),
     )
