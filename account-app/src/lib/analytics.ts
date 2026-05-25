@@ -122,15 +122,20 @@ export type AnalyticsEvent =
   | "checkout_cta_clicked"
   | "whop_checkout_loaded"
   | "whop_checkout_completed"
+  | "checkout_return_to_get"   // immediately before window.location.href = returnUrl
   // Post-purchase onboarding (/get) + download
   | "get_page_viewed"
   | "whop_link_started"
   | "whop_link_succeeded"
-  | "whop_link_failed"
+  | "whop_link_not_found"      // { linked: false } — no pending entitlement for this email
+  | "whop_link_failed"         // non-200 or exception only
   | "whop_claim_started"
+  | "whop_claim_email_requested" // after generic { ok: true } from /claim-whop
+  | "whop_claim_redeem_started"  // when ?claim=<token> redeem begins
   | "whop_claim_succeeded"
   | "whop_claim_failed"
   | "download_page_viewed"
+  | "download_clicked"           // installer / download CTA (alias for desktop_download_clicked)
   // Connections
   | "whop_connect_clicked"
   | "connection_added";

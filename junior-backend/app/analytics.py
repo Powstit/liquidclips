@@ -47,6 +47,7 @@ BackendEvent = Literal[
     "pending_whop_membership_stashed",  # buyer paid before signup; entitlement parked
     "whop_trial_started",               # membership valid → trialing/starter state
     "whop_payment_succeeded",           # payment promoted user to active paid
+    "whop_membership_invalid",          # invalid/cancel/refund → tier downgraded/expired
     "subscription_activated",           # Clerk subscription_active
     "subscription_canceled",
     "subscription_still_active_day_30", # retention check (Phase 2 scheduled job)
@@ -56,9 +57,14 @@ BackendEvent = Literal[
     "reward_clip_viewed",               # Whop reward view sync (Phase 3)
     "starter_pass_started",             # ledger redeem (Phase 3)
     "starter_pass_exhausted",           # credits/expiry (Phase 3)
+    # 100-export gate
+    "clip_export_recorded",             # successful export increment; props: exports_used, remaining_exports, subscription_status
+    "clip_export_blocked",              # 402 block; props: exports_used, reason:"starter_cap"
     # Self-serve claim (bought on Whop with a different email than signup)
+    "whop_onboarding_link_succeeded",   # pending membership consumed by same-email link-whop; props: tier, founder
     "whop_claim_email_sent",            # claim link emailed to the Whop purchase email
-    "whop_claim_succeeded",             # claim token redeemed → pending applied
+    "whop_claim_redeemed",              # token redeemed → pending applied (doc name); props: tier, founder
+    "whop_claim_succeeded",             # legacy alias kept for dashboards
     "whop_claim_failed",                # invalid/expired/used token or mismatch
 ]
 

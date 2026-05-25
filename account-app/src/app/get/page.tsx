@@ -93,8 +93,8 @@ export default function GetPage() {
   useEffect(() => {
     if (!isLoaded || viewFired.current) return;
     viewFired.current = true;
-    track("get_page_viewed", { signed_in: !!isSignedIn });
-  }, [isLoaded, isSignedIn]);
+    track("get_page_viewed", { signed_in: !!isSignedIn, has_claim_token: !!claimToken });
+  }, [isLoaded, isSignedIn, claimToken]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !user) return;
@@ -123,7 +123,10 @@ export default function GetPage() {
           track("whop_link_succeeded", { tier: data.tier ?? undefined });
           setLink({ status: "linked", tier: data.tier ?? "your plan" });
         } else {
-          track("whop_link_failed", { reason: "not_linked" });
+          // No pending entitlement found for this email — distinct from a
+          // network/server failure. Dashboards use this to measure the
+          // "bought with a different email" drop rate.
+          track("whop_link_not_found", { tier: data.tier ?? undefined });
           setLink({ status: "not_linked" });
         }
       } catch {
@@ -141,6 +144,7 @@ export default function GetPage() {
     if (redeemFired.current) return;
     redeemFired.current = true;
     setRedeem({ status: "redeeming" });
+    track("whop_claim_redeem_started");
 
     (async () => {
       try {
@@ -384,6 +388,9 @@ function ClaimForm({ clerkUserId, signedInEmail }: { clerkUserId: string; signed
           whop_purchase_email: value,
         }),
       });
+      // Backend always returns { ok: true } (generic — never reveals if a
+      // purchase exists). Fire the event here to signal the request completed.
+      track("whop_claim_email_requested");
     } catch {
       /* response is intentionally generic — always show the same confirmation */
     }

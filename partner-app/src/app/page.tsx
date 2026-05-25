@@ -109,6 +109,14 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
           has_affiliate: !!affiliate,
         }}
       />
+      {/* Fire once when a non-empty referral URL renders — lets us track
+          how many affiliates successfully see their link on first load. */}
+      {referralUrl && (
+        <TrackOnMount
+          event="affiliate_checkout_link_viewed"
+          properties={{ affiliate_id: affiliate?.id ?? null }}
+        />
+      )}
       <Nav username={session.username ?? session.name} />
 
       <main className="mx-auto max-w-[820px] px-5 py-10 sm:py-14">

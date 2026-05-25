@@ -1,4 +1,5 @@
 import QRCode from "qrcode";
+import { QRDownloadButton } from "./QRDownloadButton";
 
 export async function ReferralQR({ url }: { url: string }) {
   const svg = await QRCode.toString(url, {
@@ -27,13 +28,15 @@ export async function ReferralQR({ url }: { url: string }) {
             Your link as a QR code.
           </h3>
           <p className="mt-2 text-sm text-text-secondary">
-            Right-click → Save image. Print it on stickers, drop it in your bio, post it on a podcast cover. Every scan opens the{" "}
+            Right-click → Save image, or use the button below. Print it on stickers, drop it in your bio, post it on a podcast cover. Every scan opens the{" "}
             <code className="rounded bg-paper-warm px-1.5 py-0.5 font-mono text-xs">Junior checkout</code>{" "}
             with your attribution.
           </p>
           <p className="mt-3 break-all font-mono text-[11px] text-text-tertiary">
             Encodes: {url}
           </p>
+          {/* Client button so we can track the download in PostHog */}
+          <QRDownloadButton svgContent={svg} referralUrl={url} />
         </div>
       </div>
     </div>
