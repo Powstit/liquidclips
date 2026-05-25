@@ -76,6 +76,7 @@ const TABS = [
   "Usage",
   "Billing",
   "Postiz",
+  "Bugs",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -173,6 +174,7 @@ export function AdminHQ({ adminEmail, initialOverview }: { adminEmail: string; i
         {tab === "Usage" && <UsageTab />}
         {tab === "Billing" && <BillingTab />}
         {tab === "Postiz" && <PostizTab />}
+        {tab === "Bugs" && <BugsTab />}
       </div>
 
       <footer className="mt-14 border-t border-line pt-5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
@@ -966,6 +968,216 @@ function PostizTab() {
           )}
           <p className="mt-3 font-mono text-[11px] text-text-tertiary">{data.note}</p>
         </>
+      )}
+    </Panel>
+  );
+}
+
+// =====================================================================
+// Bugs (desktop error telemetry — read-only)
+// =====================================================================
+type BugRow = {
+  event: string;
+  app_version: string | null;
+  os: string | null;
+  arch: string | null;
+  route: string | null;
+  http_status: number | null;
+  error_code: string | null;
+  message: string | null;
+  user_ref: string | null;
+  created_at: string | null;
+};
+
+type BugsData = {
+  rows: BugRow[];
+  by_app_version?: Record<string, number>;
+  by_error_code?: Record<string, number>;
+  affected_users?: number;
+  needs_action?: Record<string, boolean | string | number>;
+};
+
+function bugChipTone(event: string, http_status: number | null, error_code: string | null): ChipTone {
+  const ev = (event ?? "").toLowerCase();
+  const code = (error_code ?? "").toLowerCase();
+  if (["error", "crash", "failed", "fail", "exception"].some((k) => ev.includes(k) || code.includes(k))) return "fail";
+  if (http_status !== null && http_status >= 500) return "fail";
+  if (http_status !== null && http_status >= 400) return "pending";
+  if (["warn", "warning", "timeout", "retry"].some((k) => ev.includes(k) || code.includes(k))) return "pending";
+  return "gray";
+}
+
+function BugsTab() {
+  const fetchAdmin = useAdminFetch();
+  const [data, setData] = useState<BugsData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [filterEvent, setFilterEvent] = useState("");
+  const [filterVersion, setFilterVersion] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const qs = new URLSearchParams();
+      if (filterEvent) qs.set("event", filterEvent);
+      if (filterVersion) qs.set("app_version", filterVersion);
+      const path = qs.toString() ? `bugs?${qs.toString()}` : "bugs";
+      setData((await fetchAdmin(path)) as unknown as BugsData);
+      setLoaded(true);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAdmin, filterEvent, filterVersion]);
+
+  const rows = data?.rows ?? [];
+
+  // Derive unique event + version options for filter selects (from loaded data).
+  const eventOptions = ["", ...Array.from(new Set(rows.map((r) => r.event).filter(Boolean)))];
+  const versionOptions = ["", ...Array.from(new Set(rows.map((r) => r.app_version ?? "").filter(Boolean)))];
+
+  // Needs-action flags from the response.
+  const needsAction = data?.needs_action ? Object.entries(data.needs_action).filter(([, v]) => v === true || (typeof v === "number" && v > 0)) : [];
+
+  return (
+    <Panel
+      title="bugs · desktop error telemetry"
+      sub="Recent desktop error events forwarded by the app. Read-only — no payloads, tokens, or PII from the payload."
+      right={<LoadButton onClick={load} />}
+    >
+      {/* Needs-action summary */}
+      {needsAction.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">needs action</span>
+          {needsAction.map(([k, v]) => (
+            <Chip key={k} label={`${k.replace(/_/g, " ")}${typeof v === "number" ? `: ${v}` : ""}`} tone="fail" />
+          ))}
+        </div>
+      )}
+
+      {/* Aggregation cards */}
+      {data && (
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {/* Affected users */}
+          <div className="rounded-2xl border border-line bg-paper p-4">
+            <div className="font-display text-[28px] font-bold tracking-[-0.02em] text-ink">
+              {data.affected_users !== undefined ? data.affected_users : <span className="text-[14px] text-text-tertiary">—</span>}
+            </div>
+            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">affected users</div>
+          </div>
+          {/* Total rows */}
+          <div className="rounded-2xl border border-line bg-paper p-4">
+            <div className="font-display text-[28px] font-bold tracking-[-0.02em] text-ink">{rows.length}</div>
+            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">events shown</div>
+          </div>
+          {/* By version */}
+          <div className="col-span-2 rounded-2xl border border-line bg-paper p-4">
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">by app version</div>
+            {data.by_app_version && Object.keys(data.by_app_version).length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {Object.entries(data.by_app_version).map(([ver, cnt]) => (
+                  <span key={ver} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper-warm/60 px-2.5 py-1">
+                    <span className="font-mono text-[11px] text-ink">{ver || "unknown"}</span>
+                    <span className="font-display text-[13px] font-bold text-ink">{cnt}</span>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-2"><NA /></div>
+            )}
+          </div>
+          {/* By error code / event */}
+          <div className="col-span-2 rounded-2xl border border-line bg-paper p-4">
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">by error code / event</div>
+            {data.by_error_code && Object.keys(data.by_error_code).length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {Object.entries(data.by_error_code).map(([code, cnt]) => (
+                  <span key={code} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper-warm/60 px-2.5 py-1">
+                    <Chip label={code || "unknown"} tone="fail" />
+                    <span className="font-display text-[13px] font-bold text-ink">{cnt}</span>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-2"><NA /></div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        {loaded && eventOptions.length > 1 && (
+          <FilterSelect label="event" value={filterEvent} onChange={setFilterEvent} options={eventOptions} />
+        )}
+        {loaded && versionOptions.length > 1 && (
+          <FilterSelect label="version" value={filterVersion} onChange={setFilterVersion} options={versionOptions} />
+        )}
+        {loaded && (eventOptions.length > 1 || versionOptions.length > 1) && (
+          <span className="font-mono text-[10px] text-text-tertiary">pick filters, then Load</span>
+        )}
+      </div>
+
+      <Loader on={loading} />
+      <ErrorNote error={error} />
+
+      {loaded && rows.length === 0 && !loading && (
+        <p className="font-mono text-[11px] text-text-tertiary">No bug rows for this filter yet.</p>
+      )}
+
+      {rows.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse font-mono text-[11px]">
+            <thead>
+              <tr className="text-left text-text-tertiary">
+                {["event", "version", "os / arch", "route", "status", "error code", "message", "user", "time"].map((h) => (
+                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const tone = bugChipTone(r.event, r.http_status, r.error_code);
+                const osArch = [r.os, r.arch].filter(Boolean).join(" / ") || null;
+                const msgShort = r.message ? (r.message.length > 60 ? r.message.slice(0, 60) + "…" : r.message) : null;
+                const userShort = r.user_ref ? (r.user_ref.length > 12 ? r.user_ref.slice(0, 12) + "…" : r.user_ref) : null;
+                return (
+                  <tr key={i} className="border-b border-line/40 align-top hover:bg-paper-warm/60">
+                    <td className="px-2 py-2">
+                      <Chip label={r.event || "unknown"} tone={tone} />
+                    </td>
+                    <td className="px-2 py-2 text-text-secondary">{r.app_version ?? <NA />}</td>
+                    <td className="px-2 py-2 text-text-tertiary">{osArch ?? <NA />}</td>
+                    <td className="px-2 py-2 text-text-secondary">{r.route ?? <NA />}</td>
+                    <td className="px-2 py-2">
+                      {r.http_status !== null ? (
+                        <Chip
+                          label={String(r.http_status)}
+                          tone={r.http_status >= 500 ? "fail" : r.http_status >= 400 ? "pending" : "gray"}
+                        />
+                      ) : (
+                        <span className="text-text-tertiary">—</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-2">
+                      {r.error_code ? <Chip label={r.error_code} tone={tone} /> : <span className="text-text-tertiary">—</span>}
+                    </td>
+                    <td className="max-w-[240px] px-2 py-2 text-ink" title={r.message ?? undefined}>
+                      {msgShort ?? <NA />}
+                    </td>
+                    <td className="px-2 py-2 text-text-tertiary" title={r.user_ref ?? undefined}>
+                      {userShort ?? <span className="text-text-tertiary">—</span>}
+                    </td>
+                    <td className="px-2 py-2 text-text-tertiary">{r.created_at?.slice(0, 16) ?? "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </Panel>
   );

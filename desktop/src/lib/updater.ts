@@ -1,5 +1,6 @@
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { reportDesktopError } from "./telemetry";
 
 export type UpdateState =
   | { kind: "idle" }
@@ -16,6 +17,7 @@ export async function checkForUpdate(): Promise<UpdateState> {
     if (!update) return { kind: "up-to-date" };
     return { kind: "available", update };
   } catch (e) {
+    void reportDesktopError("update_failed", { route: "update", error_code: "check_failed", message: String(e) });
     return { kind: "error", message: String(e) };
   }
 }
@@ -45,6 +47,7 @@ export async function applyUpdate(
     });
     await relaunch();
   } catch (e) {
+    void reportDesktopError("update_failed", { route: "update", error_code: "install_failed", message: String(e) });
     onProgress({ kind: "error", message: String(e) });
   }
 }

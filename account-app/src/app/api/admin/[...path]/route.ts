@@ -40,6 +40,7 @@ const READ_PATHS = [
   /^claims$/,
   /^webhooks$/,
   /^postiz$/,
+  /^bugs$/,
 ];
 const WRITE_PATHS = [/^claims\/[^/]+\/expire$/, /^claims\/[^/]+\/resend$/];
 

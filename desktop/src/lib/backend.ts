@@ -1,4 +1,19 @@
 import { sidecar, type DripSlot } from "./sidecar";
+import { reportDesktopError } from "./telemetry";
+
+// Map a backend path to a coarse "route" for telemetry grouping (no ids/PII).
+function routeFor(path: string): string {
+  const p = path.split("?")[0];
+  if (p.startsWith("/notifications")) return "inbox";
+  if (p.startsWith("/schedules")) return "queue";
+  if (p.startsWith("/sync")) return "sync";
+  if (p.startsWith("/connections")) return "connections";
+  if (p.startsWith("/usage")) return "export";
+  if (p.startsWith("/me")) return "account";
+  if (p.startsWith("/whop") || p.startsWith("/bounties") || p.startsWith("/submissions")) return "earn";
+  if (p.startsWith("/publish")) return "publish";
+  return p;
+}
 
 // Junior Backend client. Production builds talk to https://api.jnremployee.com
 // (LIVE on Railway). `npm run tauri dev` targets localhost:8000 so the desktop
@@ -45,22 +60,59 @@ async function licenseJwt(): Promise<string | null> {
   }
 }
 
+// Central "license rejected" hook. App.tsx registers a handler that flips the
+// app to signed-out + shows the activation prompt. Fired once per 401 from ANY
+// authed call (Inbox, Queue, Sync, Connections, Earn, usage/export) — no
+// per-screen wiring needed.
+let onUnauthorized: (() => void) | null = null;
+export function setOnUnauthorized(fn: (() => void) | null): void {
+  onUnauthorized = fn;
+}
+
+// Self-heal on a rejected license JWT (401): the stored token is stale/expired/
+// rotated. Drop ONLY the license token (Whop + other secrets stay), notify the
+// app so it flips to needs-activation + shows the prompt, and throw a typed
+// error so callers don't surface raw "HTTP 401" noise. The token is now gone,
+// so the next authed call hits the no-JWT guard instead of retrying the bad one.
+async function handleUnauthorized(route: string): Promise<never> {
+  try {
+    await sidecar.secretDelete("JUNIOR_LICENSE_JWT");
+  } catch {
+    /* best-effort — clearing must never throw out of the auth path */
+  }
+  void reportDesktopError("license_rejected", { route, http_status: 401, error_code: "UnauthorizedError" });
+  onUnauthorized?.();
+  throw new UnauthorizedError("license rejected — please sign in to Junior again");
+}
+
 async function authedFetch(path: string, init: RequestInit & { jwt?: string | null } = {}): Promise<Response> {
   const { jwt: maybeJwt, headers, ...rest } = init;
   const jwt = maybeJwt ?? (await licenseJwt());
   if (!jwt) {
-    throw new Error(
-      "no license JWT — paste one in Settings → API keys (JUNIOR_LICENSE_JWT) to enable schedule + publish."
-    );
+    throw new UnauthorizedError("not activated — sign in to Junior to continue.");
   }
-  return fetch(`${BACKEND_URL}${path}`, {
-    ...rest,
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${jwt}`,
-      ...(headers ?? {}),
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BACKEND_URL}${path}`, {
+      ...rest,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${jwt}`,
+        ...(headers ?? {}),
+      },
+    });
+  } catch (e) {
+    // Network failure → backend unreachable / offline. Report + raise a typed
+    // error so screens show a friendly retry state, not a raw stack trace.
+    void reportDesktopError("backend_offline", {
+      route: routeFor(path),
+      error_code: (e as Error)?.name ?? "NetworkError",
+      message: String(e),
+    });
+    throw new BackendOfflineError("can't reach Junior — check your connection and retry.");
+  }
+  if (res.status === 401) await handleUnauthorized(routeFor(path));
+  return res;
 }
 
 export type NotificationDto = {
@@ -177,6 +229,7 @@ export const backend = {
       headers: { authorization: `Bearer ${jwt}` },
       body: form,
     });
+    if (res.status === 401) await handleUnauthorized("publish");
     if (res.status === 402) {
       const body = await res.json().catch(() => ({}));
       throw new QuotaExceededError(body.detail || "Publishing requires Solo or higher.");
@@ -315,6 +368,7 @@ export const backend = {
   clipExported: async (jwt: string): Promise<{ remaining_exports: number | null }> => {
     const res = await authedFetch("/usage/clip-exported", { method: "POST", jwt });
     if (res.status === 402) {
+      void reportDesktopError("export_capped", { route: "export", http_status: 402, error_code: "QuotaExceededError" });
       const body = await res.json().catch(() => ({}));
       throw new QuotaExceededError(
         body.detail || "Your 100 free clip exports are used up.",
@@ -349,6 +403,21 @@ export async function maybeCheckQuota(): Promise<{ tier: string; remaining: numb
 
 export class QuotaExceededError extends Error {
   readonly kind = "quota_exceeded" as const;
+}
+
+/** Thrown by the authed layer when the license JWT is missing or rejected (401).
+ * By the time callers see this, handleUnauthorized has already cleared the stale
+ * token + fired the signed-out callback — treat it as "needs activation", not an
+ * error to surface raw. */
+export class UnauthorizedError extends Error {
+  readonly kind = "unauthorized" as const;
+}
+
+/** Thrown by the authed layer when the backend can't be reached (network
+ * failure). Screens should show a friendly "can't reach Junior — retry" state
+ * rather than a raw error; the failure is already reported to telemetry. */
+export class BackendOfflineError extends Error {
+  readonly kind = "backend_offline" as const;
 }
 
 export type Tier = "free" | "solo" | "growth" | "autopilot";
