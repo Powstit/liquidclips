@@ -165,7 +165,7 @@ export const backend = {
     });
     if (res.status === 402) {
       const body = await res.json().catch(() => ({}));
-      throw new QuotaExceededError(body.detail || "Publishing requires Channel tier.");
+      throw new QuotaExceededError(body.detail || "Publishing requires Solo or higher.");
     }
     if (!res.ok) {
       throw new Error(`publish-now failed: HTTP ${res.status} ${await res.text()}`);
@@ -598,8 +598,8 @@ function previewNotifications(): NotificationDto[] {
       {
         id: "ntf_004",
         category: "quota_warning",
-        title: "1 video left this month on Free.",
-        body: "You've used 2 of 3 free runs. Upgrade to Solo for unlimited clipping.",
+        title: "10 free clip exports left.",
+        body: "You've used 90 of your 100 free exports. Continue clipping with Solo for unlimited exports.",
         priority: "medium",
         action_kind: "upgrade",
         action_data: {},

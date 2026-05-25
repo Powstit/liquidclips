@@ -14,7 +14,7 @@ const GROUPS: Group[] = [
   {
     heading: "Clipping",
     rows: [
-      { label: "Clip exports",                              free: "100",  solo: "Unlimited", growth: "Unlimited", autopilot: "Unlimited" },
+      { label: "Clip exports",                              free: "100",  solo: "Unlimited", growth: "200/mo", autopilot: "500/mo" },
       { label: "Local processing (your machine)",           free: true,   solo: true,   growth: true,  autopilot: true },
       { label: "Bring your own OpenAI key",                 free: true,   solo: true,   growth: "Optional", autopilot: "Optional" },
       { label: "Hosted transcribe (no local model)",        free: false,  solo: false,  growth: true,  autopilot: true },
@@ -42,7 +42,7 @@ const GROUPS: Group[] = [
       { label: "Schedule across YouTube + TikTok + X",      free: false,  solo: false,  growth: true,  autopilot: true },
       { label: "14-day auto-drip across all platforms",     free: false,  solo: false,  growth: false, autopilot: true },
       { label: "Cron fires while laptop is closed",         free: false,  solo: false,  growth: true,  autopilot: true },
-      { label: "Cross-platform optimal-timing learner",     free: false,  solo: false,  growth: false, autopilot: true },
+      { label: "Cross-platform optimal-timing learner",     free: false,  solo: false,  growth: false, autopilot: "v1.2" },
     ],
   },
   {
@@ -68,8 +68,8 @@ const GROUPS: Group[] = [
   {
     heading: "Memory + intelligence",
     rows: [
-      { label: "Project memory across clips",               free: false,  solo: false,  growth: false, autopilot: true },
-      { label: "Channel voice learning",                    free: false,  solo: false,  growth: false, autopilot: true },
+      { label: "Project memory across clips",               free: false,  solo: false,  growth: false, autopilot: "v1.2" },
+      { label: "Channel voice learning",                    free: false,  solo: false,  growth: false, autopilot: "v1.2" },
     ],
   },
   {

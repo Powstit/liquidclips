@@ -77,13 +77,13 @@ export default async function DownloadPage() {
         <Tile
           label="Mac · Apple Silicon"
           eyebrow="01"
-          status="Sprint 9 — signing in progress"
+          status="Signing in progress"
           sub="Code-signed + notarized .dmg, auto-update via Ed25519. M1/M2/M3/M4."
         />
         <Tile
           label="Windows · x64"
           eyebrow="02"
-          status="Sprint 9 — EV cert in review"
+          status="EV cert in review"
           sub="EV-signed .msi installer, auto-update via Ed25519. Win 10+."
         />
       </div>

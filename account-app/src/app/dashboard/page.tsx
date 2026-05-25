@@ -125,7 +125,7 @@ export default async function DashboardPage() {
             num="01"
             eyebrow="download"
             title="Get the app."
-            sub="Mac and Windows installers ship Sprint 9. You're already on the waitlist by virtue of being signed in — we'll email you the moment they're ready."
+            sub="Mac and Windows installers are on the way. You're already on the waitlist by virtue of being signed in — we'll email you the moment they're ready."
             actions={[
               {
                 label: "Waitlist status →",
@@ -278,7 +278,7 @@ export default async function DashboardPage() {
       <footer className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
         <span className="inline-flex items-center gap-2">
           <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-          license activation · sprint 4
+          junior · account
         </span>
         <div className="flex flex-wrap gap-5">
           <a href="https://jnremployee.com/refunds" className="hover:text-ink">refunds</a>

@@ -520,25 +520,25 @@ export default function App() {
         {view.kind === "quota" && (
           <div className="w-full max-w-[720px] rounded-3xl border border-fuchsia-soft bg-fuchsia-soft/30 p-7">
             <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
-              free tier cap reached
+              free starter pass used up
             </div>
             <h2 className="mt-2 font-display text-[28px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">
-              Three videos a month — used up.
+              Your 100 free clip exports — used up.
             </h2>
             <p className="mt-2 max-w-[520px] font-sans text-[14px] leading-relaxed text-text-secondary">
-              Channel · £49/mo unlimits videos and all platforms. Autopilot · £149/mo adds drip-mode + memory.
-              Founder · £500 once locks Channel forever.
+              Continue clipping with Solo · $29.99/mo for unlimited exports. Growth · $99.99/mo adds
+              hosted transcribe and multi-platform publishing. Autopilot · $199.99/mo adds drip-mode.
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
               <button
                 onClick={() => {
                   void import("@tauri-apps/plugin-shell").then((m) =>
-                    m.open("https://whop.com/jnremployee"),
+                    m.open("https://account.jnremployee.com/upgrade"),
                   );
                 }}
                 className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper hover:bg-ink"
               >
-                Upgrade on Whop →
+                Upgrade to Solo →
               </button>
               <button
                 onClick={() => setView({ kind: "empty" })}

@@ -5,6 +5,10 @@ import { syncStatus, type SyncStatus, type Tier } from "./backend";
 // user has no license JWT, so gating UX renders immediately on first paint
 // rather than flashing the paid view before downgrading.
 
+// Per-project clip-preview cap on Free: show the first 3 clips, then surface an
+// upgrade card for the rest. This is a display nudge, NOT the account quota —
+// the real Free gate is the 100 clip-export starter pass enforced backend-side
+// (the old "3 videos / month" cap was retired; video_quota_monthly is null now).
 const FREE_CLIPS_VISIBLE = 3;
 
 export type PublishCapability =
@@ -82,9 +86,11 @@ export function useTier(): TierState {
 export const FREE_TIER_VISIBLE_CLIPS = FREE_CLIPS_VISIBLE;
 
 // Marketing copy for upgrade walls — tier name + price tagline.
+// Prices are USD-native — match account-app PricingCards + marketing exactly
+// (Solo $29.99, Growth $99.99, Autopilot $199.99). No GBP conversion layer.
 export const TIER_COPY: Record<Tier, { name: string; price: string; pitch: string }> = {
-  free:      { name: "Free",      price: "free",         pitch: "Try Junior on 3 videos a month." },
-  solo:      { name: "Solo",      price: "from £12/mo",  pitch: "Unlimited clips, publish one platform at a time." },
-  growth:    { name: "Growth",    price: "from £49/mo",  pitch: "Multi-platform publish + schedule + 4 connected accounts." },
-  autopilot: { name: "Autopilot", price: "from £149/mo", pitch: "Drip-mode across every platform, unlimited connections." },
+  free:      { name: "Free",      price: "free",            pitch: "100 free clip exports — no card." },
+  solo:      { name: "Solo",      price: "$29.99/mo",       pitch: "Continue clipping with Solo." },
+  growth:    { name: "Growth",    price: "$99.99/mo",       pitch: "Upgrade to Growth to publish across platforms and schedule posts." },
+  autopilot: { name: "Autopilot", price: "$199.99/mo",      pitch: "Upgrade to Autopilot to drip a whole month of clips and connect unlimited accounts." },
 };
