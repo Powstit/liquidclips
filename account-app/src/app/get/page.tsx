@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
 import { track } from "@/lib/analytics";
@@ -58,6 +58,12 @@ type LinkState =
   | { status: "not_linked" }
   | { status: "error" };
 
+type RedeemState =
+  | { status: "idle" }
+  | { status: "redeeming" }
+  | { status: "redeemed"; tier: string }
+  | { status: "failed"; reason?: string };
+
 export default function GetPage() {
   const { isLoaded, isSignedIn, user } = useUser();
   const [link, setLink] = useState<LinkState>({ status: "idle" });
@@ -67,6 +73,15 @@ export default function GetPage() {
   // Analytics: ensure get_page_viewed fires exactly once, after Clerk loads so
   // the signed_in bool is accurate.
   const viewFired = useRef(false);
+  // ?claim=<token> → a different-email claim link was opened. Read synchronously
+  // so the auto-link effect can skip when we're redeeming a claim instead.
+  const [claimToken] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const t = new URLSearchParams(window.location.search).get("claim");
+    return t ? t.trim().slice(0, 200) : null;
+  });
+  const [redeem, setRedeem] = useState<RedeemState>({ status: "idle" });
+  const redeemFired = useRef(false);
 
   // Capture the affiliate ref on mount, regardless of auth state, so a buyer
   // who lands signed-out still gets first-touch attribution before signing in.
@@ -83,6 +98,7 @@ export default function GetPage() {
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !user) return;
+    if (claimToken) return;  // redeeming a claim link — don't also auto-link
     if (linkFired.current) return;
     linkFired.current = true;
 
@@ -115,7 +131,39 @@ export default function GetPage() {
         setLink({ status: "error" });
       }
     })();
-  }, [isLoaded, isSignedIn, user]);
+  }, [isLoaded, isSignedIn, user, claimToken]);
+
+  // Redeem a ?claim token once signed in. The backend requires the SAME signed-in
+  // user that requested it, so opening the emailed link while signed into the
+  // right account is the second half of the ownership proof.
+  useEffect(() => {
+    if (!claimToken || !isLoaded || !isSignedIn || !user) return;
+    if (redeemFired.current) return;
+    redeemFired.current = true;
+    setRedeem({ status: "redeeming" });
+
+    (async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/onboarding/claim-whop/redeem`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clerk_user_id: user.id, token: claimToken }),
+        });
+        const data: { linked?: boolean; tier?: string; reason?: string } =
+          await res.json().catch(() => ({}));
+        if (res.ok && data.linked) {
+          track("whop_claim_succeeded", { tier: data.tier ?? undefined });
+          setRedeem({ status: "redeemed", tier: data.tier ?? "your plan" });
+        } else {
+          track("whop_claim_failed", { reason: data.reason ?? "redeem_error" });
+          setRedeem({ status: "failed", reason: data.reason });
+        }
+      } catch {
+        track("whop_claim_failed", { reason: "exception" });
+        setRedeem({ status: "failed" });
+      }
+    })();
+  }, [claimToken, isLoaded, isSignedIn, user]);
 
   return (
     <div className="mx-auto max-w-[760px] px-6 py-20 sm:px-8 sm:py-28">
@@ -130,10 +178,16 @@ export default function GetPage() {
 
       {!isLoaded ? (
         <LoadingCard />
-      ) : isSignedIn ? (
-        <SignedInPanel link={link} />
+      ) : !isSignedIn ? (
+        <SignedOutPanel claimToken={claimToken} />
+      ) : claimToken ? (
+        <RedeemPanel redeem={redeem} />
       ) : (
-        <SignedOutPanel />
+        <SignedInPanel
+          link={link}
+          clerkUserId={user?.id ?? ""}
+          email={user?.primaryEmailAddress?.emailAddress ?? ""}
+        />
       )}
 
       <footer className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
@@ -158,28 +212,31 @@ function LoadingCard() {
   );
 }
 
-function SignedOutPanel() {
+function SignedOutPanel({ claimToken }: { claimToken: string | null }) {
+  const dest = claimToken ? `/get?claim=${encodeURIComponent(claimToken)}` : "/get";
+  const enc = encodeURIComponent(dest);
   return (
     <div className="mt-12 rounded-3xl border border-line bg-paper-warm/50 p-7 sm:p-8">
       <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
         one quick step
       </div>
       <h2 className="mt-2 font-display text-[clamp(24px,4vw,28px)] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">
-        Sign in to attach your plan.
+        {claimToken ? "Sign in to claim your purchase." : "Sign in to attach your plan."}
       </h2>
       <p className="mt-3 max-w-[520px] font-sans text-[15px] leading-relaxed text-text-secondary">
-        Your purchase is safe. Create your Junior account (or sign in) and we&apos;ll link the plan
-        you just bought to it automatically — then you&apos;re ready to download.
+        {claimToken
+          ? "Sign in to the Junior account you want the purchase attached to, then we'll finish the claim automatically."
+          : "Your purchase is safe. Create your Junior account (or sign in) and we'll link the plan you just bought to it automatically — then you're ready to download."}
       </p>
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
         <Link
-          href="/sign-up?redirect_url=/get"
+          href={`/sign-up?redirect_url=${enc}`}
           className="w-full rounded-full bg-ink px-6 py-3 text-center font-sans text-[15px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] sm:w-auto"
         >
           Create account →
         </Link>
         <Link
-          href="/sign-in?redirect_url=/get"
+          href={`/sign-in?redirect_url=${enc}`}
           className="w-full rounded-full border border-line bg-paper px-6 py-3 text-center font-sans text-[15px] font-medium text-ink transition-colors hover:border-fuchsia sm:w-auto"
         >
           Sign in
@@ -189,7 +246,7 @@ function SignedOutPanel() {
   );
 }
 
-function SignedInPanel({ link }: { link: LinkState }) {
+function SignedInPanel({ link, clerkUserId, email }: { link: LinkState; clerkUserId: string; email: string }) {
   if (link.status === "linked") {
     return (
       <div className="mt-12 rounded-3xl border border-fuchsia-soft bg-fuchsia-soft/30 p-7 sm:p-8">
@@ -251,6 +308,10 @@ function SignedInPanel({ link }: { link: LinkState }) {
             Go to dashboard
           </Link>
         </div>
+
+        <div className="mt-7 border-t border-line pt-6">
+          <ClaimForm clerkUserId={clerkUserId} signedInEmail={email} />
+        </div>
       </div>
     );
   }
@@ -298,6 +359,151 @@ function SignedInPanel({ link }: { link: LinkState }) {
       </h2>
       <p className="mt-3 max-w-[520px] font-sans text-[15px] leading-relaxed text-text-secondary">
         Hold tight — we&apos;re attaching your purchase to this account. This only takes a second.
+      </p>
+    </div>
+  );
+}
+
+function ClaimForm({ clerkUserId, signedInEmail }: { clerkUserId: string; signedInEmail: string }) {
+  const [email, setEmail] = useState("");
+  const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const value = email.trim();
+    if (!value || state === "sending") return;
+    setState("sending");
+    track("whop_claim_started");
+    try {
+      await fetch(`${BACKEND_URL}/onboarding/claim-whop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clerk_user_id: clerkUserId,
+          signed_in_email: signedInEmail,
+          whop_purchase_email: value,
+        }),
+      });
+    } catch {
+      /* response is intentionally generic — always show the same confirmation */
+    }
+    setState("sent");
+  }
+
+  if (state === "sent") {
+    return (
+      <div>
+        <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">check your email</div>
+        <p className="mt-2 max-w-[520px] font-sans text-[14px] leading-relaxed text-text-secondary">
+          If a purchase exists for that address, we sent a secure claim link to it. Open the link
+          (good for 20 minutes) while signed into this account to finish.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <label htmlFor="whop-email" className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+        Bought with a different Whop email?
+      </label>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <input
+          id="whop-email"
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Whop purchase email"
+          className="w-full flex-1 rounded-xl border border-line bg-paper px-4 py-2.5 font-sans text-[15px] text-ink outline-none focus:border-fuchsia"
+        />
+        <button
+          type="submit"
+          disabled={state === "sending"}
+          className="shrink-0 rounded-xl bg-ink px-5 py-2.5 font-sans text-[15px] font-medium text-paper transition hover:bg-fuchsia disabled:opacity-60"
+        >
+          {state === "sending" ? "Sending…" : "Send claim link"}
+        </button>
+      </div>
+      <p className="mt-3 max-w-[520px] font-sans text-[12px] leading-relaxed text-text-tertiary">
+        Use this only if you paid on Whop with a different email than your Junior account. We&apos;ll
+        send a secure claim link to the Whop purchase email.
+      </p>
+    </form>
+  );
+}
+
+function RedeemPanel({ redeem }: { redeem: RedeemState }) {
+  if (redeem.status === "redeemed") {
+    return (
+      <div className="mt-12 rounded-3xl border border-fuchsia-soft bg-fuchsia-soft/30 p-7 sm:p-8">
+        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" /> claimed
+        </div>
+        <h2 className="mt-2 font-display text-[clamp(24px,4vw,28px)] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">
+          You&apos;re on {capitalise(redeem.tier)}.
+        </h2>
+        <p className="mt-3 max-w-[520px] font-sans text-[15px] leading-relaxed text-text-secondary">
+          Your purchase is now attached to this account. Grab the app and start clipping.
+        </p>
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          <Link
+            href="/download"
+            onClick={() => track("desktop_download_clicked", { source: "claim" })}
+            className="w-full rounded-full bg-ink px-6 py-3 text-center font-sans text-[15px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] sm:w-auto"
+          >
+            Download Junior →
+          </Link>
+          <Link
+            href="/dashboard"
+            className="w-full rounded-full border border-line bg-paper px-6 py-3 text-center font-sans text-[15px] font-medium text-ink transition-colors hover:border-fuchsia sm:w-auto"
+          >
+            Open dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (redeem.status === "failed") {
+    return (
+      <div className="mt-12 rounded-3xl border border-line bg-paper-warm/50 p-7 sm:p-8">
+        <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">claim link</div>
+        <h2 className="mt-2 font-display text-[clamp(24px,4vw,28px)] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">
+          This claim link didn&apos;t work.
+        </h2>
+        <p className="mt-3 max-w-[520px] font-sans text-[15px] leading-relaxed text-text-secondary">
+          It may have expired (links last 20 minutes), already been used, or belong to a different
+          account. Open <span className="font-mono text-[13px]">/get</span> again to request a fresh link.
+        </p>
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          <Link
+            href="/get"
+            className="w-full rounded-full bg-ink px-6 py-3 text-center font-sans text-[15px] font-medium text-paper transition-all hover:bg-fuchsia sm:w-auto"
+          >
+            Request a new link
+          </Link>
+          <Link
+            href="/dashboard"
+            className="w-full rounded-full border border-line bg-paper px-6 py-3 text-center font-sans text-[15px] font-medium text-ink transition-colors hover:border-fuchsia sm:w-auto"
+          >
+            Go to dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-12 rounded-3xl border border-line bg-paper-warm/50 p-7 sm:p-8">
+      <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+        <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" /> claiming
+      </div>
+      <h2 className="mt-2 font-display text-[clamp(24px,4vw,28px)] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">
+        Claiming your purchase…
+      </h2>
+      <p className="mt-3 max-w-[520px] font-sans text-[15px] leading-relaxed text-text-secondary">
+        Verifying your claim link and attaching the purchase to this account.
       </p>
     </div>
   );

@@ -127,6 +127,9 @@ export type AnalyticsEvent =
   | "whop_link_started"
   | "whop_link_succeeded"
   | "whop_link_failed"
+  | "whop_claim_started"
+  | "whop_claim_succeeded"
+  | "whop_claim_failed"
   | "download_page_viewed"
   // Connections
   | "whop_connect_clicked"

@@ -56,6 +56,10 @@ BackendEvent = Literal[
     "reward_clip_viewed",               # Whop reward view sync (Phase 3)
     "starter_pass_started",             # ledger redeem (Phase 3)
     "starter_pass_exhausted",           # credits/expiry (Phase 3)
+    # Self-serve claim (bought on Whop with a different email than signup)
+    "whop_claim_email_sent",            # claim link emailed to the Whop purchase email
+    "whop_claim_succeeded",             # claim token redeemed → pending applied
+    "whop_claim_failed",                # invalid/expired/used token or mismatch
 ]
 
 

@@ -197,3 +197,22 @@ class WebhookEvent(Base):
     event_type: Mapped[str] = mapped_column(String, nullable=False)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     body_hash: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class WhopClaimToken(Base):
+    """Short-lived, one-use token for the self-serve 'I paid on Whop with a
+    different email' claim. The user enters their Whop purchase email; if a
+    pending membership exists we email a claim link to THAT address. Ownership
+    proof is two-factor: you must control the inbox (to get the link) AND be the
+    same signed-in Clerk user that requested it (checked at redeem). Expires
+    fast, burns on use. Not a ledger."""
+
+    __tablename__ = "whop_claim_tokens"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    token: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    clerk_user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    whop_purchase_email: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
