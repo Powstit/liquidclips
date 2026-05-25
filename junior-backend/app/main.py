@@ -24,15 +24,43 @@ async def lifespan(_app: FastAPI):
     # Auto-create tables locally so the dev loop is fast. Alembic owns schema
     # in production — we drop the create_all once the first migration is in.
     Base.metadata.create_all(bind=engine)
-    # No alembic yet: create_all adds missing TABLES but not new COLUMNS on existing
-    # tables. Idempotently ensure recently-added columns exist (Postgres prod).
+    # No alembic yet: create_all adds missing TABLES but not new COLUMNS on
+    # existing tables. Idempotently ensure every column added after a table's
+    # first deploy exists in prod (Postgres). ADD COLUMN IF NOT EXISTS is a
+    # no-op when the column already exists; NOT NULL columns carry a DEFAULT so
+    # they backfill existing rows. Each runs in its own transaction so one
+    # failure can't abort the rest. New TABLES (claims, webhook logs, pending
+    # memberships, telemetry) are created whole by create_all above.
+    import logging as _logging
     from sqlalchemy import text as _text
-    try:
-        with engine.begin() as _conn:
-            if _conn.dialect.name == "postgresql":
-                _conn.execute(_text("ALTER TABLE users ADD COLUMN IF NOT EXISTS starter_exports_used integer NOT NULL DEFAULT 0"))
-    except Exception:
-        pass
+
+    _COLUMN_MIGRATIONS = [
+        # users — billing / affiliate / whop / starter-pass columns added over time
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_user_id varchar",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS tier varchar NOT NULL DEFAULT 'free'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS founder_flag boolean NOT NULL DEFAULT false",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_id varchar",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status varchar NOT NULL DEFAULT 'trial'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_started_at timestamptz NOT NULL DEFAULT now()",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS paid_until timestamptz",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS starter_exports_used integer NOT NULL DEFAULT 0",
+        # schedules — retry policy + postiz result columns added after it shipped
+        "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS status varchar NOT NULL DEFAULT 'pending'",
+        "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS postiz_post_id varchar",
+        "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS post_url varchar",
+        "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS error text",
+        "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS retry_count integer NOT NULL DEFAULT 0",
+        "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS next_retry_at timestamptz",
+    ]
+    if engine.dialect.name == "postgresql":
+        for _stmt in _COLUMN_MIGRATIONS:
+            try:
+                with engine.begin() as _conn:
+                    _conn.execute(_text(_stmt))
+            except Exception as _e:  # noqa: BLE001
+                _logging.getLogger("junior.schema").warning(
+                    "[schema] idempotent ALTER skipped: %s (%s)", _stmt, _e
+                )
     start_cron()
     try:
         yield

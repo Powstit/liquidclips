@@ -95,7 +95,7 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
               {!syncChecked
                 ? "Checking activation…"
                 : !sync
-                ? "Not activated — paste your license JWT in the section below."
+                ? "Not activated — click Sign in to activate this device."
                 : sync.billing_provider === "whop"
                 ? "Whop holds your card. Cancel / update card / change plan all happen there."
                 : "Manage plan + payment method on your account page."}
@@ -242,7 +242,7 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
             </p>
             <button
               onClick={async () => {
-                if (!confirm("Sign out of Junior? You'll need to paste your license JWT to come back in.")) return;
+                if (!confirm("Sign out of Junior? You'll sign in again to come back in.")) return;
                 // Clear license JWT + close. App.tsx watches for sign-out and re-routes.
                 try {
                   await sidecar.secretDelete("JUNIOR_LICENSE_JWT");

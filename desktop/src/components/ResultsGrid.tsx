@@ -60,7 +60,7 @@ export function ResultsGrid({
     const { value: jwt } = await sidecar.licenseJwtRead();
     if (!jwt) {
       throw new Error(
-        "No license JWT stored. Open Settings → API keys, paste the JWT from account.jnremployee.com, then retry."
+        "Sign in to Junior to continue — use the Sign in button in the top bar, then retry."
       );
     }
     await backend.scheduleDripBatch(project.slug, slots, jwt);

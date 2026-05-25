@@ -108,7 +108,7 @@ export function PublishModal({
     setError(null);
     try {
       const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) throw new Error("Sign in first — Settings → API keys → JUNIOR_LICENSE_JWT.");
+      if (!jwt) throw new Error("Sign in to Junior first — use the Sign in button in the top bar.");
       const { redirect_url } = await backend.connections.startConnect(jwt, platform);
       // In production this opens an external browser tab for the OAuth
       // consent. The preview shim returns a dummy URL and the platform is
@@ -164,7 +164,7 @@ export function PublishModal({
     try {
       const { value: jwt } = await sidecar.licenseJwtRead();
       if (!jwt) {
-        throw new Error("Sign in first — Settings → API keys → JUNIOR_LICENSE_JWT.");
+        throw new Error("Sign in to Junior first — use the Sign in button in the top bar.");
       }
       if (!videoPath) {
         throw new Error("This clip has no rendered file yet. Re-cut from the editor first.");
