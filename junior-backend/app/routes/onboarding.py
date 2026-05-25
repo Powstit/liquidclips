@@ -39,6 +39,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import PendingWhopMembership, User
+from app.routes.notifications import write_notification
 from app.routes.webhooks_whop import apply_membership_tier
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
@@ -86,6 +87,53 @@ def link_whop(
         renewal_at=pending.renewal_period_end,
     )
     pending.consumed_at = datetime.now(timezone.utc)
+
+    # This is the COMMON affiliate/founder path (pay on Whop → sign up after).
+    # apply_membership_tier is deliberately side-effect-free, so without this the
+    # typical buyer got NO activation email, notification, or funnel event. Layer
+    # the same effects the webhook path applies when the user already existed.
+    founder = bool(pending.founder)
+    if user.founder_flag and founder:
+        write_notification(
+            db, user_id=user.id, category="founder",
+            title="Welcome, founder.",
+            body="Your founder seat is locked — Autopilot is yours from day one of every sprint.",
+            priority="high", external_dedup_key=f"founder-claim-{user.id}",
+        )
+    else:
+        write_notification(
+            db, user_id=user.id, category="billing",
+            title=f"{user.tier.capitalize()} tier active.",
+            body="Your plan is live. Download Junior and start exporting.",
+            priority="medium", external_dedup_key=f"whop-claim-{user.id}-{user.tier}",
+        )
     db.commit()
+
+    # Branded activation email (founder welcome vs trial/paid). Non-blocking.
+    from app.mailer import send_founder_welcome, send_subscription_activated
+    if user.founder_flag and founder:
+        send_founder_welcome(user.email)
+    else:
+        send_subscription_activated(
+            user.email, tier=user.tier, trial=(user.subscription_status == "trialing"),
+        )
+
+    # PostHog — mirror the webhook funnel events so the pay-then-signup path is
+    # measured the same as the user-already-existed path.
+    if user.clerk_id:
+        from app import analytics
+        analytics.identify(
+            user_id=user.clerk_id, tier=user.tier,
+            whop_user_id=user.whop_user_id, affiliate_id=user.affiliate_id,
+        )
+        analytics.capture(
+            user_id=user.clerk_id, event="whop_membership_valid",
+            properties={"tier": user.tier, "founder": founder},
+        )
+        if user.subscription_status == "trialing":
+            analytics.capture(
+                user_id=user.clerk_id, event="whop_trial_started",
+                properties={"tier": user.tier, "subscription_status": user.subscription_status, "billing_provider": "whop"},
+            )
 
     return LinkWhopResponse(linked=True, tier=user.tier)

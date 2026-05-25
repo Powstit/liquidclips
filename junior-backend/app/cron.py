@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -137,6 +137,66 @@ def _tick() -> None:
         log.info("[cron] fired %d schedule(s): %s", len(fired), fired)
 
 
+def _billing_sweep_tick() -> None:
+    """Hourly billing reconciliation (the 'period-end cron' the cancel handlers
+    referenced):
+      - A paid tier whose period has ended — canceled/expired/past_due/refunded
+        with paid_until in the PAST — drops to Free, so access + the 100-export
+        cap actually end after the grace period (the entitlement keeps them
+        unlimited until paid_until; this finalises it).
+      - LOUD warning on stale unclaimed Whop pending memberships (>3d old) — the
+        buyer likely used a different email at signup, so make it reconcilable
+        instead of silently lost.
+    """
+    from app.db import engine
+    from app.models import PendingWhopMembership, User
+
+    now_aware = datetime.now(timezone.utc)
+    now = now_aware.replace(tzinfo=None) if engine.dialect.name == "sqlite" else now_aware
+    swept = 0
+    with session_scope() as db:
+        due = (
+            db.query(User)
+            .filter(
+                User.tier != "free",
+                User.founder_flag.is_(False),
+                User.subscription_status.in_(("canceled", "expired", "past_due", "refunded")),
+                User.paid_until.isnot(None),
+                User.paid_until < now,
+            )
+            .limit(200)
+            .all()
+        )
+        for u in due:
+            u.tier = "free"
+            u.subscription_status = "expired"
+            swept += 1
+            try:
+                from app.clerk_sync import sync_clerk_metadata
+                sync_clerk_metadata(u.clerk_id, tier="free", subscription_status="expired", founder=u.founder_flag)
+            except Exception:  # noqa: BLE001
+                pass
+
+        cutoff = now - timedelta(days=3)
+        stale = (
+            db.query(PendingWhopMembership)
+            .filter(
+                PendingWhopMembership.consumed_at.is_(None),
+                PendingWhopMembership.created_at < cutoff,
+            )
+            .limit(100)
+            .all()
+        )
+        if stale:
+            log.warning(
+                "[billing] %d unclaimed Whop pending membership(s) >3d old — likely "
+                "email mismatch at signup; reconcile manually: %s",
+                len(stale), [p.email for p in stale],
+            )
+    if swept:
+        log.info("[billing] swept %d expired paid sub(s) → Free", swept)
+
+
 _scheduler: BackgroundScheduler | None = None
 
 
@@ -150,8 +210,9 @@ def start_cron() -> None:
         return
     _scheduler = BackgroundScheduler(timezone="UTC")
     _scheduler.add_job(_tick, "interval", seconds=60, max_instances=1, coalesce=True, id="schedules_tick")
+    _scheduler.add_job(_billing_sweep_tick, "interval", seconds=3600, max_instances=1, coalesce=True, id="billing_sweep")
     _scheduler.start()
-    log.info("[cron] started, tick every 60s")
+    log.info("[cron] started: schedules tick 60s, billing sweep 3600s")
 
 
 def stop_cron() -> None:

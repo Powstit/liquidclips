@@ -19,8 +19,11 @@ class Settings(BaseSettings):
     # Database. Local SQLite by default; Railway sets DATABASE_URL to Postgres.
     database_url: str = "sqlite:///./junior-backend.db"
 
-    # Clerk — webhook signing secret only (no SDK call from backend in v1.0).
+    # Clerk — webhook signing secret + a secret key for writing user metadata
+    # back (so publicMetadata.tier/status/founder stays in sync with the DB on
+    # Whop/Clerk billing transitions; empty disables the write-back).
     clerk_webhook_secret: str = ""  # svix signing secret from Clerk dashboard
+    clerk_secret_key: str = ""      # sk_live_… — Clerk Backend API (metadata sync)
 
     # Whop — webhook signing + outbound API for affiliate updates etc.
     whop_webhook_secret: str = ""

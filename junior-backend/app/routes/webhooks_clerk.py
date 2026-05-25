@@ -131,7 +131,7 @@ def _handle_user_created(db: Session, data: dict) -> None:
     jwt_str, expires_at = issue_license_jwt(
         user_id=user.id,
         tier="free",
-        quota_videos_per_month=3,
+        quota_videos_per_month=None,  # free is gated by the 100 clip-export starter pass
     )
     db.add(License(user_id=user.id, jwt=jwt_str, tier_at_issue="free", expires_at=expires_at))
 
@@ -273,6 +273,11 @@ def _handle_subscription_active(db: Session, data: dict) -> None:
     if period_end:
         user.paid_until = period_end
 
+    # Mirror to Clerk publicMetadata — nothing else writes tier there, so the
+    # upgrade page / PostHogBoot / dashboard fallback would otherwise read "free".
+    from app.clerk_sync import sync_clerk_metadata
+    sync_clerk_metadata(clerk_id, tier=user.tier, subscription_status="active", founder=user.founder_flag)
+
     from app import analytics
     analytics.capture(
         user_id=clerk_id,
@@ -308,11 +313,24 @@ def _handle_subscription_canceled(db: Session, data: dict) -> None:
         return
     user.subscription_status = "canceled"
     # We DO NOT downgrade tier here — the user keeps access through paid_until.
-    # The /sync endpoint already issues licenses with tier=user.tier and the
-    # period-end cron (out of scope today) sweeps to 'expired' afterwards.
+    # The /sync endpoint issues licenses with tier=user.tier, the entitlement
+    # grace in starter_export_remaining keeps exports unlimited until paid_until,
+    # and the hourly billing-sweep cron drops them to Free once it passes.
     period_end = _parse_period_end(data)
     if period_end:
         user.paid_until = period_end
+
+    from app.clerk_sync import sync_clerk_metadata
+    sync_clerk_metadata(clerk_id, tier=user.tier, subscription_status="canceled", founder=user.founder_flag)
+
+    # Cancellation email — the Whop path already sends one; the Clerk path didn't.
+    from app.mailer import send_subscription_canceled
+    first_name = user.email.split("@")[0] if user.email else None
+    send_subscription_canceled(
+        user.email,
+        paid_until_iso=user.paid_until.isoformat() if user.paid_until else None,
+        first_name=first_name,
+    )
 
     from app import analytics
     analytics.capture(
@@ -330,6 +348,8 @@ def _handle_subscription_past_due(db: Session, data: dict) -> None:
     if not user:
         return
     user.subscription_status = "past_due"
+    from app.clerk_sync import sync_clerk_metadata
+    sync_clerk_metadata(clerk_id, tier=user.tier, subscription_status="past_due", founder=user.founder_flag)
     write_notification(
         db,
         user_id=user.id,
