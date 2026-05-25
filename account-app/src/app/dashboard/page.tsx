@@ -3,6 +3,20 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { Carousel } from "@/components/Carousel";
 import { PricingCards } from "@/components/PricingCards";
 import { TrackOnMount, TrackedLink } from "@/components/Track";
+import { AffiliateCard, type AffiliateData, type AffiliateMeResponse } from "@/components/AffiliateCard";
+
+const FALLBACK_AFFILIATE: AffiliateData = {
+  connected: false,
+  affiliate_id: null,
+  referral_url: null,
+  status: null,
+  active_members_count: null,
+  total_referrals_count: null,
+  monthly_recurring_revenue_usd: null,
+  total_referral_earnings_usd: null,
+  qualification: null,
+  partner_dashboard_url: "https://partner.jnremployee.com",
+};
 
 // Dashboard — carousel of sectioned cards. One thought per card.
 // Tier/usage resolved from Junior Backend in Sprint 4.5; stubbed today.
@@ -14,23 +28,59 @@ export default async function DashboardPage() {
   const user = await currentUser();
   if (!user) redirect("/sign-in");
 
-  const affiliateId = (user.unsafeMetadata?.affiliate_id as string | undefined) ?? null;
-  const tier = ((user.publicMetadata?.tier as string | undefined) ?? "free") as
+  const clerkAffiliateId = (user.unsafeMetadata?.affiliate_id as string | undefined) ?? null;
+  const clerkTier = ((user.publicMetadata?.tier as string | undefined) ?? "free") as
     | "free" | "solo" | "growth" | "autopilot";
-  const isFree = tier === "free";
 
-  // Mirror of junior-backend's ADMIN_EMAILS fallback so the dashboard can
-  // surface "admin override" without an extra backend round-trip. Env override
-  // wins. Keep this list in sync with junior-backend/app/features.py.
+  // Backend is the source of truth — Clerk metadata is NOT written on Whop
+  // trial/paid/founder transitions (see docs/customer-journey.md split-brain),
+  // so a linked trial/paid/founder can read "free" from Clerk. Fetch the real
+  // state server-to-server; the secret never reaches the browser. Degrade to
+  // Clerk metadata if the backend is unreachable.
+  const BACKEND_URL = process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "https://api.jnremployee.com";
+  let overview: AffiliateMeResponse | null = null;
+  try {
+    const res = await fetch(`${BACKEND_URL}/affiliate/me?clerk_user_id=${encodeURIComponent(userId)}`, {
+      headers: { "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "" },
+      cache: "no-store",
+    });
+    if (res.ok) overview = (await res.json()) as AffiliateMeResponse;
+  } catch {
+    /* backend unreachable — degrade to Clerk metadata below */
+  }
+  const c = overview?.customer ?? null;
+
+  // Admin fallback list — only used if the backend fetch failed. Keep in sync
+  // with junior-backend/app/features.py.
   const adminEnv = process.env.JUNIOR_ADMIN_EMAILS ?? "";
   const adminList = (adminEnv
     ? adminEnv.split(",")
     : ["danieldiyepriye@gmail.com", "mrddokubo@gmail.com", "crazycatjackkids@gmail.com", "thedoks2019@gmail.com"]
   ).map((e) => e.trim().toLowerCase()).filter(Boolean);
   const primaryEmail = (user.primaryEmailAddress?.emailAddress ?? "").trim().toLowerCase();
-  const isAdmin = primaryEmail && adminList.includes(primaryEmail);
-  const effectiveTier = isAdmin ? "autopilot" : tier;
-  const effectiveFounder = isAdmin ? true : (user.publicMetadata?.founder === true);
+  const clerkIsAdmin = !!primaryEmail && adminList.includes(primaryEmail);
+
+  const isAdmin = c?.admin_override ?? clerkIsAdmin;
+  const tier = (c?.tier ?? (clerkIsAdmin ? "autopilot" : clerkTier)) as
+    | "free" | "solo" | "growth" | "autopilot";
+  const isFree = tier === "free";
+  const effectiveTier = tier;
+  const effectiveFounder = c?.founder ?? (clerkIsAdmin ? true : user.publicMetadata?.founder === true);
+  const affiliateId = c?.referrer_affiliate_id ?? clerkAffiliateId;
+
+  const subStatus = c?.subscription_status ?? (isAdmin ? "admin" : "—");
+  const isTrial = c?.is_trial ?? false;
+  const remainingExports = c?.remaining_exports; // number | null (unlimited) | undefined (no backend)
+  const billingProvider = c?.billing_provider ?? "clerk";
+  const canEarn = c?.can_earn ?? !!isAdmin;
+  const affiliateData = overview?.affiliate ?? FALLBACK_AFFILIATE;
+
+  const exportsBig =
+    remainingExports === null ? "Unlimited"
+    : remainingExports === undefined ? (isFree ? "100" : "Unlimited")
+    : `${remainingExports} / 100`;
+  const exportsSmall = remainingExports === null ? "clip exports" : "free exports left";
+
   const greeting =
     user.firstName ??
     user.username ??
@@ -58,8 +108,8 @@ export default async function DashboardPage() {
 
       <div className="mt-10">
         <Carousel label="at a glance · swipe">
-          <Stat big={tierDisplay} small="plan" accent={isFree ? "neutral" : "fuchsia"} />
-          <Stat big={isFree ? "100" : "Unlimited"} small={isFree ? "free clip exports" : "clip exports"} />
+          <Stat big={`${tierDisplay}${isTrial ? " · trial" : ""}`} small="plan" accent={isFree ? "neutral" : "fuchsia"} />
+          <Stat big={exportsBig} small={exportsSmall} />
           <Stat
             big={affiliateId ? `${affiliateId.slice(0, 10)}…` : "—"}
             small={affiliateId ? "referred — locked" : "direct signup"}
@@ -145,7 +195,7 @@ export default async function DashboardPage() {
             title="Earn up to 50%."
             sub="Refer paid Junior customers and earn up to 50% recurring commission. An active paid Junior subscription (Solo or higher) is required to earn. Terms apply."
             actions={[
-              { label: "Get your referral link →", href: "https://partner.jnremployee.com", primary: true, external: true },
+              { label: "Your referral link ↓", href: "#affiliate", primary: true },
               { label: "Affiliate terms", href: "https://jnremployee.com/terms#affiliate", external: true },
             ]}
             accent="fuchsia"
@@ -157,6 +207,10 @@ export default async function DashboardPage() {
             sub="One folder per project · ~/Junior · open in Finder from the app."
           />
         </Carousel>
+      </div>
+
+      <div id="affiliate" className="scroll-mt-12">
+        <AffiliateCard affiliate={affiliateData} canEarn={canEarn} />
       </div>
 
       <section className="mt-12">
@@ -177,13 +231,23 @@ export default async function DashboardPage() {
         <div className="mt-4 grid grid-cols-1 gap-1 rounded-3xl border border-line bg-paper-warm/40 p-5 font-mono text-[12px] sm:grid-cols-2">
           <DebugLine label="Clerk email" value={user.primaryEmailAddress?.emailAddress ?? "—"} />
           <DebugLine label="Clerk user id" value={user.id} mono />
-          <DebugLine label="Affiliate id" value={affiliateId ?? "—"} mono />
+          <DebugLine label="Referred by (affiliate id)" value={affiliateId ?? "—"} mono />
           <DebugLine
             label="Effective tier"
             value={`${effectiveTier}${isAdmin ? " · admin override" : ""}${effectiveFounder ? " · founder" : ""}`}
             accent={!!isAdmin}
           />
-          <DebugLine label="Raw tier (Clerk metadata)" value={tier} />
+          <DebugLine label="Subscription status" value={subStatus} />
+          <DebugLine
+            label="Remaining exports"
+            value={remainingExports === null ? "unlimited" : remainingExports === undefined ? "—" : String(remainingExports)}
+          />
+          <DebugLine label="Billing provider" value={billingProvider} />
+          <DebugLine
+            label="Backend source"
+            value={overview ? "live ✓" : "unreachable — showing Clerk metadata"}
+            accent={!overview}
+          />
           <DebugLine
             label="Whop connection"
             value="manage from desktop · Settings → Connections → Whop"

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { TrackOnMount } from "@/components/Track";
 
 // /download — public marketing surface. Until Sprint 9 ships signed
 // installers, this captures the waitlist intent. Signed-in users are
@@ -14,6 +15,7 @@ export default async function DownloadPage() {
 
   return (
     <div className="mx-auto max-w-[1080px] px-6 py-20 sm:px-8 sm:py-24">
+      <TrackOnMount event="download_page_viewed" />
       <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
         <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
         download

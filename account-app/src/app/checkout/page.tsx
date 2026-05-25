@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { track } from "@/lib/analytics";
 
 // Affiliate growth offer = ONE offer: 100 free clips, then Solo $29.99/mo.
 // The Whop Solo plan carries a 30-day free trial, so "30 days free then $29.99"
@@ -37,6 +38,22 @@ export default function CheckoutPage() {
   const [affiliateId, setAffiliateId] = useState("");
   const [ready, setReady] = useState(false);
 
+  // Analytics: page view. Compute has_affiliate from the same URL/cookie
+  // sources the embed uses, independent of the async affiliateId state so the
+  // event fires exactly once on mount. ID-derived bool only — no affiliate id.
+  useEffect(() => {
+    let hasAffiliate = false;
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const fromUrl = (p.get("a") || p.get("ref") || "").trim();
+      hasAffiliate = !!fromUrl || /(?:^|;\s*)jnr_ref=/.test(document.cookie);
+    } catch {
+      /* best-effort */
+    }
+    track("checkout_page_viewed", { has_affiliate: hasAffiliate });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Read ?a (affiliate) + capture first-touch jnr_ref. Gate the embed on `ready`
   // so the affiliate code is present BEFORE the Whop loader mounts the iframe.
   useEffect(() => {
@@ -66,6 +83,13 @@ export default function CheckoutPage() {
     document.body.appendChild(s);
   }, []);
 
+  // Analytics: the Whop checkout embed div mounts once `ready` flips true.
+  // We track the mount of our embed container, not Whop's internal iframe.
+  useEffect(() => {
+    if (ready) track("whop_checkout_loaded", { billing_provider: "whop" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
+
   const origin = typeof window !== "undefined" ? window.location.origin : "https://account.jnremployee.com";
   const returnUrl = `${origin}/get${affiliateId ? `?a=${encodeURIComponent(affiliateId)}` : ""}`;
 
@@ -75,6 +99,8 @@ export default function CheckoutPage() {
   // onboarding (sign in + link membership) → download.
   useEffect(() => {
     (window as unknown as Record<string, unknown>).__jnrCheckoutComplete = () => {
+      // Fire BEFORE navigating so the event isn't lost to the redirect.
+      track("whop_checkout_completed", { billing_provider: "whop" });
       window.location.href = returnUrl;
     };
   }, [returnUrl]);
@@ -103,7 +129,7 @@ export default function CheckoutPage() {
             Start with <strong className="text-ink">100 free clip exports</strong>. Junior runs on your computer, finds the best moments, captions them, and exports ready-to-post clips.
           </p>
           <div className="mt-7 flex flex-wrap items-center gap-3">
-            <a href="#start" className="rounded-full bg-ink px-6 py-3.5 text-sm font-semibold text-paper transition-colors hover:bg-fuchsia">
+            <a href="#start" onClick={() => track("checkout_cta_clicked", { source: "hero" })} className="rounded-full bg-ink px-6 py-3.5 text-sm font-semibold text-paper transition-colors hover:bg-fuchsia">
               Start 100 free clips →
             </a>
             <a href="#how" className="rounded-full border border-line px-5 py-3.5 text-sm font-medium text-ink transition-colors hover:border-fuchsia">
@@ -153,7 +179,7 @@ export default function CheckoutPage() {
               <span><strong className="text-ink">Then $29.99/mo</strong> — your Solo plan starts after 30 days, or when you choose to continue after using your 100 free exports.</span>
             </li>
           </ul>
-          <a href="#start" className="mt-6 inline-flex rounded-full bg-ink px-6 py-3 text-sm font-semibold text-paper transition-colors hover:bg-fuchsia">
+          <a href="#start" onClick={() => track("checkout_cta_clicked", { source: "offer_card" })} className="mt-6 inline-flex rounded-full bg-ink px-6 py-3 text-sm font-semibold text-paper transition-colors hover:bg-fuchsia">
             Start 100 free clips →
           </a>
         </div>

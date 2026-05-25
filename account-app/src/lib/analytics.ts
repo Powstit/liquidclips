@@ -117,6 +117,17 @@ export type AnalyticsEvent =
   // Billing
   | "checkout_started"
   | "upgrade_viewed"
+  // Checkout funnel (Whop affiliate checkout surface)
+  | "checkout_page_viewed"
+  | "checkout_cta_clicked"
+  | "whop_checkout_loaded"
+  | "whop_checkout_completed"
+  // Post-purchase onboarding (/get) + download
+  | "get_page_viewed"
+  | "whop_link_started"
+  | "whop_link_succeeded"
+  | "whop_link_failed"
+  | "download_page_viewed"
   // Connections
   | "whop_connect_clicked"
   | "connection_added";
