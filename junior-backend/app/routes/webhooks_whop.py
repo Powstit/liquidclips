@@ -190,6 +190,18 @@ def _stash_pending_membership(db: Session, data: dict, *, tier: str, founder: bo
         )
     )
 
+    # PostHog: buyer paid on Whop before a Junior user existed; entitlement
+    # parked for /onboarding/link-whop to claim. No user id yet, so key the
+    # event on the Whop membership/user id. ID + tier only — no email.
+    whop_user_id = user_block.get("id")
+    if whop_user_id:
+        from app import analytics
+        analytics.capture(
+            user_id=str(whop_user_id),
+            event="pending_whop_membership_stashed",
+            properties={"tier": tier, "founder": bool(founder), "billing_provider": "whop"},
+        )
+
 
 def apply_membership_tier(
     db: Session,
@@ -324,6 +336,19 @@ def _handle_membership_valid(db: Session, data: dict) -> None:
             event="whop_membership_valid",
             properties={"tier": tier, "founder": bool(founder)},
         )
+        # A non-founder membership going valid is the trial/starter activation
+        # (status set to "trialing" by apply_membership_tier). Distinct funnel
+        # step from the paid conversion (whop_payment_succeeded).
+        if user.subscription_status == "trialing":
+            analytics.capture(
+                user_id=user.clerk_id,
+                event="whop_trial_started",
+                properties={
+                    "tier": tier,
+                    "subscription_status": user.subscription_status,
+                    "billing_provider": "whop",
+                },
+            )
 
 
 def _seat_count(db: Session) -> int:
@@ -383,3 +408,17 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
     else:
         # No explicit renewal date — push out 30 days.
         user.paid_until = datetime.now(timezone.utc) + timedelta(days=30)
+
+    # PostHog: trial→paid conversion. User is now "active" (true paid). Keyed
+    # on clerk_id so it lands on the same person as the frontend funnel.
+    if user.clerk_id:
+        from app import analytics
+        analytics.capture(
+            user_id=user.clerk_id,
+            event="whop_payment_succeeded",
+            properties={
+                "tier": user.tier,
+                "subscription_status": user.subscription_status,
+                "billing_provider": "whop",
+            },
+        )

@@ -44,6 +44,9 @@ BackendEvent = Literal[
     "signup_completed",                 # user.created handled
     "affiliate_attribution_locked",     # affiliate_id baked at signup
     "whop_membership_valid",            # paid subscription went live
+    "pending_whop_membership_stashed",  # buyer paid before signup; entitlement parked
+    "whop_trial_started",               # membership valid → trialing/starter state
+    "whop_payment_succeeded",           # payment promoted user to active paid
     "subscription_activated",           # Clerk subscription_active
     "subscription_canceled",
     "subscription_still_active_day_30", # retention check (Phase 2 scheduled job)

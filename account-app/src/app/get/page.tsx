@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
+import { track } from "@/lib/analytics";
 
 // /get — post-purchase onboarding landing. Affiliate-referred buyers land here
 // AFTER paying on Whop; Whop redirects to account.jnremployee.com/get?ref=<affId>.
@@ -63,12 +64,22 @@ export default function GetPage() {
   // Guard against double-fire: useUser can re-render and StrictMode mounts
   // effects twice in dev. We only ever want one POST to /onboarding/link-whop.
   const linkFired = useRef(false);
+  // Analytics: ensure get_page_viewed fires exactly once, after Clerk loads so
+  // the signed_in bool is accurate.
+  const viewFired = useRef(false);
 
   // Capture the affiliate ref on mount, regardless of auth state, so a buyer
   // who lands signed-out still gets first-touch attribution before signing in.
   useEffect(() => {
     captureFirstTouchRef();
   }, []);
+
+  // Analytics: page view. signed_in only meaningful once Clerk has loaded.
+  useEffect(() => {
+    if (!isLoaded || viewFired.current) return;
+    viewFired.current = true;
+    track("get_page_viewed", { signed_in: !!isSignedIn });
+  }, [isLoaded, isSignedIn]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !user) return;
@@ -79,6 +90,7 @@ export default function GetPage() {
     setLink({ status: "linking" });
 
     (async () => {
+      track("whop_link_started");
       try {
         const res = await fetch(`${BACKEND_URL}/onboarding/link-whop`, {
           method: "POST",
@@ -86,16 +98,20 @@ export default function GetPage() {
           body: JSON.stringify({ clerk_user_id: user.id, email }),
         });
         if (!res.ok) {
+          track("whop_link_failed", { reason: "http_error" });
           setLink({ status: "error" });
           return;
         }
         const data: { linked?: boolean; tier?: string } = await res.json();
         if (data.linked) {
+          track("whop_link_succeeded", { tier: data.tier ?? undefined });
           setLink({ status: "linked", tier: data.tier ?? "your plan" });
         } else {
+          track("whop_link_failed", { reason: "not_linked" });
           setLink({ status: "not_linked" });
         }
       } catch {
+        track("whop_link_failed", { reason: "exception" });
         setLink({ status: "error" });
       }
     })();
@@ -191,6 +207,7 @@ function SignedInPanel({ link }: { link: LinkState }) {
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <Link
             href="/download"
+            onClick={() => track("desktop_download_clicked", { source: "get" })}
             className="w-full rounded-full bg-ink px-6 py-3 text-center font-sans text-[15px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] sm:w-auto"
           >
             Download Junior →

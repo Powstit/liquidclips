@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     posthog_key: str = ""
     posthog_host: str = "https://us.i.posthog.com"
 
+    # Server-to-server shared secret for the account-app dashboard → backend
+    # reads (e.g. /affiliate/me). The account-app server component sends it as
+    # x-internal-secret; never exposed to the browser. Empty = allow (local dev).
+    internal_api_secret: str = ""
+
     # CORS — which origins can hit us. Railway sets the real list.
     # Includes the packaged Tauri webview origins: macOS serves the app from
     # tauri://localhost; Windows/Linux from http(s)://tauri.localhost. Without
