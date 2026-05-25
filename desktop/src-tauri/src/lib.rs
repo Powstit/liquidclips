@@ -21,7 +21,17 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
+            // Register the junior:// scheme at runtime too. The bundled .app
+            // gets it from Info.plist (config schemes), but `tauri dev` needs
+            // this so activation deep links resolve to the dev binary. Best-
+            // effort: on a packaged build it's already registered.
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let _ = app.deep_link().register("junior");
+            }
             // Resolve the Python sidecar script path. Tauri's bundler encodes
             // `../python-sidecar/` (parent traversal in the resources glob) as
             // `Resources/_up_/python-sidecar/`, so we check both layouts.

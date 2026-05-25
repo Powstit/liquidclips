@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { sidecar, type WhopBounty, type WhopSubmission, type BountyContext, type BountyProjectSummary } from "../../lib/sidecar";
+import { useActivation } from "../../lib/activation";
 import { inWhopIframe } from "../../lib/whop-iframe";
 import { ManualBountyPrompt, type ManualBountyForm } from "./ManualBountyPrompt";
 import { InfoHint } from "../InfoHint";
@@ -614,6 +614,16 @@ function ActivateJuniorSplash({
   onActivated: () => void | Promise<void>;
 }) {
   const [rechecking, setRechecking] = useState(false);
+  const { status: act, activate } = useActivation();
+  const startedActivation = useRef(false);
+
+  // When activation completes, reload bounties in place — stay on Earn.
+  useEffect(() => {
+    if (startedActivation.current && act.kind === "done") {
+      startedActivation.current = false;
+      void onActivated();
+    }
+  }, [act.kind, onActivated]);
 
   return (
     <div className="flex w-full max-w-[520px] flex-col items-start gap-5">
@@ -641,14 +651,22 @@ function ActivateJuniorSplash({
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <button
-          onClick={() =>
-            void openExternal("https://account.jnremployee.com/sign-in").catch(
-              () => undefined,
-            )
-          }
-          className="rounded-full bg-ink px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+          onClick={() => {
+            startedActivation.current = true;
+            void activate();
+          }}
+          disabled={act.kind === "opening" || act.kind === "waiting" || act.kind === "activating"}
+          className="rounded-full bg-ink px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[var(--glow-md)] disabled:opacity-60"
         >
-          Open browser to sign in →
+          {act.kind === "opening"
+            ? "Opening browser…"
+            : act.kind === "waiting"
+            ? "Waiting for activation…"
+            : act.kind === "activating"
+            ? "Activating…"
+            : act.kind === "error"
+            ? "Try again →"
+            : "Activate Junior →"}
         </button>
         <button
           onClick={async () => {
@@ -665,6 +683,14 @@ function ActivateJuniorSplash({
           {rechecking ? "Checking…" : "I've activated — reload"}
         </button>
       </div>
+      {act.kind === "waiting" && (
+        <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+          complete sign-in in your browser — Junior activates automatically
+        </p>
+      )}
+      {act.kind === "error" && (
+        <p className="font-mono text-[12px] text-[#DC2626]">{act.message}</p>
+      )}
     </div>
   );
 }
