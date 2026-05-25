@@ -36,6 +36,7 @@ from app.config import get_settings
 from app.db import engine, get_db
 from app.features import is_admin_email
 from app.models import (
+    DesktopErrorEvent,
     License,
     Notification,
     PendingWhopMembership,
@@ -696,5 +697,187 @@ def postiz_status(
             "Status display only — Admin HQ never calls or changes Postiz. Per-user "
             "per-platform integration detail lives in Postiz; counts here are the "
             "local PostizConnection rows. published/scheduled/failed are in status_counts."
+        ),
+    }
+
+
+# ======================================================================
+# 7. Desktop bug telemetry (read-only)
+# ======================================================================
+
+# A group (event or error_code) is flagged needs_action when it has spiked
+# recently or just appeared. Tunable thresholds.
+_BUGS_SPIKE_COUNT = 5        # ≥ this many in the last 24h → spike
+_BUGS_SPIKE_WINDOW_H = 24
+_BUGS_NEW_WINDOW_H = 1       # first seen within the last hour → brand-new
+
+
+def _bug_row(e: DesktopErrorEvent) -> dict[str, Any]:
+    """All fields of one event. Already sanitized at ingest (telemetry.py):
+    message has emails redacted + is truncated; user_ref is an internal id, never
+    a JWT/secret; no file paths/tokens are stored. We surface them verbatim."""
+    return {
+        "id": e.id,
+        "event": e.event,
+        "app_version": e.app_version,
+        "os": e.os,
+        "arch": e.arch,
+        "route": e.route,
+        "http_status": e.http_status,
+        "error_code": e.error_code,
+        "message": e.message,
+        "user_ref": e.user_ref,
+        "created_at": _iso(e.created_at),
+    }
+
+
+@router.get("/bugs")
+def bugs(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    event: str | None = None,
+    app_version: str | None = None,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Desktop error telemetry for Admin HQ → Bugs. Read-only over the
+    metadata-only DesktopErrorEvent table (no secrets/tokens/paths stored).
+
+    Returns the recent events (newest first, all fields) plus aggregations:
+      - count by app_version
+      - count by event and by error_code
+      - distinct affected users (non-null user_ref)
+      - per-group last_seen
+      - needs_action flags: a group seen ≥ 5 times in the last 24h, OR a
+        brand-new error_code first seen in the last hour.
+
+    Optional ?event= and ?app_version= filters narrow BOTH the recent list and
+    the aggregations so a drill-down is self-consistent."""
+    now = _now()
+    spike_since = now - timedelta(hours=_BUGS_SPIKE_WINDOW_H)
+    new_since = now - timedelta(hours=_BUGS_NEW_WINDOW_H)
+
+    base = db.query(DesktopErrorEvent)
+    if event:
+        base = base.filter(DesktopErrorEvent.event == event)
+    if app_version:
+        base = base.filter(DesktopErrorEvent.app_version == app_version)
+
+    # Pull recent rows (newest first) for the table.
+    recent_rows = (
+        base.order_by(DesktopErrorEvent.created_at.desc())
+        .limit(min(max(limit, 1), 500))
+        .all()
+    )
+
+    # For aggregations we scan the filtered set. Telemetry is metadata-only and
+    # low-volume; a single ordered scan keeps the dialect-portable logic simple
+    # (works identically on SQLite-dev and Postgres-prod) without per-group SQL.
+    all_rows = base.order_by(DesktopErrorEvent.created_at.desc()).all()
+
+    by_app_version: dict[str, int] = {}
+    by_event: dict[str, int] = {}
+    by_error_code: dict[str, int] = {}
+
+    # Per-group tracking for last_seen + needs_action. We track BOTH event and
+    # error_code groupings (error_code may be null → bucketed as "(none)").
+    # group key → {count, count_24h, last_seen, first_seen}
+    def _empty() -> dict[str, Any]:
+        return {"count": 0, "count_24h": 0, "last_seen": None, "first_seen": None}
+
+    event_groups: dict[str, dict[str, Any]] = {}
+    code_groups: dict[str, dict[str, Any]] = {}
+    affected_users: set[str] = set()
+
+    def _track(groups: dict[str, dict[str, Any]], key: str, ts: datetime | None) -> None:
+        g = groups.setdefault(key, _empty())
+        g["count"] += 1
+        if ts is not None:
+            iso = _iso(ts)
+            if g["last_seen"] is None or (iso or "") > g["last_seen"]:
+                g["last_seen"] = iso
+            if g["first_seen"] is None or (iso or "") < g["first_seen"]:
+                g["first_seen"] = iso
+            if ts >= spike_since:
+                g["count_24h"] += 1
+
+    for e in all_rows:
+        by_app_version[e.app_version] = by_app_version.get(e.app_version, 0) + 1
+        by_event[e.event] = by_event.get(e.event, 0) + 1
+        code_key = e.error_code or "(none)"
+        by_error_code[code_key] = by_error_code.get(code_key, 0) + 1
+        if e.user_ref:
+            affected_users.add(e.user_ref)
+        _track(event_groups, e.event, e.created_at)
+        _track(code_groups, code_key, e.created_at)
+
+    # needs_action: spike (≥N in 24h) OR brand-new error_code (first seen in last
+    # hour). New-detection applies to real error_codes only, not the "(none)"
+    # bucket. A spike can fire on either an event group or an error_code group.
+    needs_action: list[dict[str, Any]] = []
+
+    def _consider(kind: str, key: str, g: dict[str, Any], allow_new: bool) -> None:
+        reasons: list[str] = []
+        if g["count_24h"] >= _BUGS_SPIKE_COUNT:
+            reasons.append(f"spike: {g['count_24h']} in last {_BUGS_SPIKE_WINDOW_H}h")
+        if allow_new and g["first_seen"] is not None:
+            try:
+                first_dt = datetime.fromisoformat(g["first_seen"])
+            except ValueError:
+                first_dt = None
+            if first_dt is not None:
+                # Normalise to compare against `new_since` on either dialect.
+                cmp_first = first_dt
+                if new_since.tzinfo is None and cmp_first.tzinfo is not None:
+                    cmp_first = cmp_first.replace(tzinfo=None)
+                elif new_since.tzinfo is not None and cmp_first.tzinfo is None:
+                    cmp_first = cmp_first.replace(tzinfo=timezone.utc)
+                if cmp_first >= new_since:
+                    reasons.append(f"new: first seen within last {_BUGS_NEW_WINDOW_H}h")
+        if reasons:
+            needs_action.append(
+                {
+                    "kind": kind,            # "event" | "error_code"
+                    "key": key,
+                    "count": g["count"],
+                    "count_24h": g["count_24h"],
+                    "last_seen": g["last_seen"],
+                    "first_seen": g["first_seen"],
+                    "reasons": reasons,
+                }
+            )
+
+    for key, g in event_groups.items():
+        _consider("event", key, g, allow_new=False)
+    for key, g in code_groups.items():
+        # Brand-new detection only for real error codes, not the null bucket.
+        _consider("error_code", key, g, allow_new=(key != "(none)"))
+
+    # Per-group last_seen surfaced for the UI (event + error_code groupings).
+    last_seen_by_event = {k: g["last_seen"] for k, g in event_groups.items()}
+    last_seen_by_error_code = {k: g["last_seen"] for k, g in code_groups.items()}
+
+    return {
+        "filters": {"event": event, "app_version": app_version},
+        "total_events": len(all_rows),
+        "recent": [_bug_row(e) for e in recent_rows],
+        "aggregations": {
+            "by_app_version": by_app_version,
+            "by_event": by_event,
+            "by_error_code": by_error_code,
+            "affected_users": len(affected_users),  # distinct non-null user_ref
+            "last_seen_by_event": last_seen_by_event,
+            "last_seen_by_error_code": last_seen_by_error_code,
+        },
+        "needs_action": needs_action,
+        "thresholds": {
+            "spike_count": _BUGS_SPIKE_COUNT,
+            "spike_window_hours": _BUGS_SPIKE_WINDOW_H,
+            "new_window_hours": _BUGS_NEW_WINDOW_H,
+        },
+        "generated_at": _iso(datetime.now(timezone.utc)),
+        "note": (
+            "Metadata only — no secrets, JWTs, tokens, or file paths are stored. "
+            "message is sanitized at ingest (emails redacted, truncated); user_ref "
+            "is an internal backend/clerk id used only for grouping."
         ),
     }

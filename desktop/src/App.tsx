@@ -13,7 +13,8 @@ import { NotificationSheet } from "./components/NotificationSheet";
 import { ScheduleQueue } from "./components/ScheduleQueue";
 import { Settings } from "./components/Settings";
 import { sidecar, visibleStagesFor, pipelineStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
-import { backend, maybeCheckQuota, QuotaExceededError } from "./lib/backend";
+import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
+import { reportDesktopError } from "./lib/telemetry";
 import { applyUpdate, checkForUpdate, type UpdateState } from "./lib/updater";
 import { TranscriptResult, LiftingProgress } from "./components/TranscriptResult";
 import { IntentPicker } from "./components/IntentPicker";
@@ -54,6 +55,11 @@ export default function App() {
   const [queueOpen, setQueueOpen] = useState(false);
   const [bootChecked, setBootChecked] = useState(false);
   const [updateBanner, setUpdateBanner] = useState<UpdateState>({ kind: "idle" });
+  // Set when the backend rejects our license JWT (401). backend.ts has already
+  // cleared the stale token; here we flip to a friendly "sign in again" prompt
+  // instead of letting Inbox/Queue/etc. show raw errors. Cleared on re-activation
+  // → recovers without a restart.
+  const [needsActivation, setNeedsActivation] = useState(false);
   // Auth indicator. true once we've confirmed the user has a license JWT in
   // the keychain (i.e. they've activated via account.jnremployee.com). Drives
   // the top-nav button copy — "Sign in" while null/false, "Account" once true.
@@ -107,8 +113,46 @@ export default function App() {
     // Whop iframe auth bridge — captures the user session token from the
     // parent window and pushes it to the sidecar. No-op outside an iframe.
     // Teardown clears the in-memory token on unmount.
+    // Central self-heal: any authed backend call that 401s makes backend.ts
+    // clear the stale license JWT + fire this handler → flip the whole app to a
+    // friendly "activate again" state (Inbox/Queue/Sync/Connections/Earn all
+    // benefit, no per-screen wiring). Re-activation clears it without a restart.
+    setOnUnauthorized(() => {
+      setSignedIn(false);
+      setNeedsActivation(true);
+      setInboxOpen(false);
+      setQueueOpen(false);
+    });
+
+    // Catch-all telemetry for UNEXPECTED errors. The known self-heal paths
+    // (401, offline, quota) already report + are skipped here to avoid dupes —
+    // this surfaces the bugs we don't yet know about so they show in Admin HQ.
+    const reportedKind = (err: unknown) =>
+      ["unauthorized", "backend_offline", "quota_exceeded"].includes(
+        (err as { kind?: string })?.kind ?? "",
+      );
+    const onWinError = (ev: ErrorEvent) => {
+      if (reportedKind(ev.error)) return;
+      void reportDesktopError("unhandled_error", {
+        error_code: (ev.error as Error)?.name ?? "Error",
+        message: ev.message || String(ev.error),
+      });
+    };
+    const onRejection = (ev: PromiseRejectionEvent) => {
+      if (reportedKind(ev.reason)) return;
+      void reportDesktopError("unhandled_error", {
+        error_code: (ev.reason as Error)?.name ?? "UnhandledRejection",
+        message: String(ev.reason),
+      });
+    };
+    window.addEventListener("error", onWinError);
+    window.addEventListener("unhandledrejection", onRejection);
+
     const detach = attachWhopIframeAuth({});
     return () => {
+      setOnUnauthorized(null);
+      window.removeEventListener("error", onWinError);
+      window.removeEventListener("unhandledrejection", onRejection);
       detach();
     };
   }, []);
@@ -369,6 +413,7 @@ export default function App() {
         <FirstRun
           onComplete={() => {
             setView({ kind: "empty" });
+            setNeedsActivation(false); // fresh JWT written → clear the prompt; polls recover
             // Activation usually writes the license JWT during FirstRun.
             // Re-poll so the nav swaps Sign in → Account without a relaunch.
             void sidecar.licenseJwtRead().then(({ value }) => setSignedIn(!!value)).catch(() => undefined);
@@ -654,6 +699,20 @@ export default function App() {
         )}
       </main>
 
+      {needsActivation && (
+        <div className="flex items-center justify-between border-t border-fuchsia-soft bg-fuchsia-soft/40 px-6 py-2">
+          <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
+            ● Your Junior session ended — sign in again to sync
+          </div>
+          <button
+            onClick={() => { setNeedsActivation(false); setView({ kind: "first-run" }); }}
+            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-ink"
+          >
+            Sign in
+          </button>
+        </div>
+      )}
+
       {updateBanner.kind === "available" && (
         <div className="flex items-center justify-between border-t border-fuchsia-soft bg-fuchsia-soft/40 px-6 py-2">
           <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
@@ -675,6 +734,23 @@ export default function App() {
         <div className="border-t border-fuchsia-soft bg-fuchsia-soft/40 px-6 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
           ↓ downloading update…
           {updateBanner.total ? ` ${Math.round((updateBanner.downloaded / updateBanner.total) * 100)}%` : ""}
+        </div>
+      )}
+
+      {updateBanner.kind === "error" && (
+        <div className="flex items-center justify-between border-t border-fuchsia-soft bg-fuchsia-soft/40 px-6 py-2">
+          <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
+            ● Update didn&apos;t finish — you can keep working; we&apos;ll retry next launch
+          </div>
+          <button
+            onClick={async () => {
+              setUpdateBanner({ kind: "checking" });
+              setUpdateBanner(await checkForUpdate());
+            }}
+            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-ink"
+          >
+            Retry
+          </button>
         </div>
       )}
 

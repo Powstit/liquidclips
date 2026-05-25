@@ -218,6 +218,37 @@ class WhopClaimToken(Base):
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class DesktopErrorEvent(Base):
+    """Metadata-only telemetry of desktop-side errors.
+
+    The desktop POSTs to /telemetry/desktop-error (NO auth — must accept reports
+    even when the license JWT is rejected or the backend is otherwise unreachable
+    from the app's point of view). Powers Admin HQ → Bugs so production failures
+    are visible without users having to report them.
+
+    Deliberately stores NO secrets, JWTs, tokens, file paths, or raw payloads —
+    only sanitized metadata: the event name, the build/OS/arch, an optional route
+    + http_status + error_code, a SANITIZED short message (emails redacted), and
+    `user_ref` which is an INTERNAL backend/clerk id the desktop caches for
+    grouping (never a JWT/secret). Writing is best-effort; a logging failure must
+    never block the report. New table — auto-created by the lifespan create_all.
+    """
+
+    __tablename__ = "desktop_error_event"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    event: Mapped[str] = mapped_column(String, nullable=False, index=True)        # license_rejected | backend_offline | update_failed | export_capped | unhandled_error | ...
+    app_version: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    os: Mapped[str] = mapped_column(String, nullable=False)                       # darwin | win32 | linux ...
+    arch: Mapped[str] = mapped_column(String, nullable=False)                     # arm64 | x64 ...
+    route: Mapped[str | None] = mapped_column(String, nullable=True)              # logical screen/api route, not a filesystem path
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)             # sanitized: ~300 chars, emails redacted, whitespace collapsed
+    user_ref: Mapped[str | None] = mapped_column(String, nullable=True, index=True)  # internal backend/clerk id only — NEVER a JWT/secret
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+
+
 class WebhookEventLog(Base):
     """Metadata-only audit log of every signature-valid Clerk/Whop webhook.
 
