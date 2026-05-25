@@ -142,7 +142,7 @@ def _handle_user_created(db: Session, data: dict) -> None:
         category="junior_message",
         title="Junior's ready.",
         body=(
-            "Drop a recording in and I'll cut it. Three videos a month on Free, your keys, "
+            "Drop a recording in and I'll cut it. 100 free clip exports to start, your keys, "
             "your files. When you outgrow it, upgrading is one click."
         ),
         priority="high",
