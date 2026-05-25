@@ -97,10 +97,11 @@ def send_welcome(email: str, *, first_name: str | None = None) -> None:
     _async(_send, to=email, subject=subject, html=html, text=text, tag="welcome")
 
 
-def send_subscription_activated(email: str, *, tier: str, first_name: str | None = None) -> None:
-    """Sent when Whop webhook confirms a paid subscription. tier = solo|growth|autopilot."""
+def send_subscription_activated(email: str, *, tier: str, first_name: str | None = None, trial: bool = False) -> None:
+    """Sent when Whop webhook confirms a membership. trial=True for the starter
+    pass (30-day Solo trial, 100 free exports); trial=False for a confirmed paid plan."""
     ctx = MailContext.build()
-    subject, html, text = render_subscription_activated(email=email, tier=tier, first_name=first_name, ctx=ctx)
+    subject, html, text = render_subscription_activated(email=email, tier=tier, first_name=first_name, ctx=ctx, trial=trial)
     _async(_send, to=email, subject=subject, html=html, text=text, tag="subscription_activated")
 
 
@@ -115,7 +116,7 @@ def send_subscription_canceled(email: str, *, paid_until_iso: str | None = None,
 
 
 def send_founder_welcome(email: str, *, first_name: str | None = None) -> None:
-    """Founder Lifetime — special £500 one-time tier. Different welcome copy
+    """Founder Lifetime — special $500 one-time tier. Different welcome copy
     (community access, lifetime guarantees, founder slack channel)."""
     ctx = MailContext.build()
     subject, html, text = render_founder_welcome(email=email, first_name=first_name, ctx=ctx)
@@ -218,7 +219,7 @@ def render_welcome(*, email: str, first_name: str | None, ctx: MailContext) -> t
 </h1>
 <p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
-  Junior turns long videos into ready-to-post shorts — local-first, your files never leave your machine unless you publish them. You're set up to clip three videos a month on Free, no card required.
+  Junior turns long videos into ready-to-post shorts — local-first, your files never leave your machine unless you publish them. You're set up with <strong style="color:{INK};">100 free clip exports</strong> to start.
 </p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
   Two next steps that take about 90 seconds combined:
@@ -229,15 +230,15 @@ def render_welcome(*, email: str, first_name: str | None, ctx: MailContext) -> t
 </ol>
 <p style="margin:0 0 16px;">{_btn("Download Junior →", ctx.download_url)}</p>
 <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
-  no credit card · cancel anytime · your files stay on your machine
+  100 free clip exports · cancel anytime · your files stay on your machine
 </p>
 """
     text = (
         f"Welcome to Junior.\n\n{_greeting(first_name)}\n\n"
         "Junior turns long videos into ready-to-post shorts — local-first, "
         "your files never leave your machine unless you publish them. "
-        "You're on Free: three videos a month, no card.\n\n"
-        f"1. Download the desktop app: {ctx.download_url}\n"
+        "You're set up with 100 free clip exports to start.\n\n"
+        f"1. Download Junior after signing into your account: {ctx.download_url}\n"
         "2. Open the Earn tab inside your Whop community for live Content Rewards bounties.\n\n"
         "Reply to this email to reach us directly.\n"
         "— Junior"
@@ -245,8 +246,41 @@ def render_welcome(*, email: str, first_name: str | None, ctx: MailContext) -> t
     return subject, _shell("Welcome to Junior", body, ctx=ctx), text
 
 
-def render_subscription_activated(*, email: str, tier: str, first_name: str | None, ctx: MailContext) -> tuple[str, str, str]:
+def render_subscription_activated(*, email: str, tier: str, first_name: str | None, ctx: MailContext, trial: bool = False) -> tuple[str, str, str]:
     pretty = {"solo": "Solo", "growth": "Growth", "autopilot": "Autopilot"}.get(tier, tier.capitalize())
+    if trial:
+        # Affiliate / Whop-trial starter pass — NOT yet a paid Solo. Junior caps
+        # at 100 successful exports; Whop bills $29.99 after the 30-day trial.
+        subject = "Your 100 free clip exports are ready."
+        body = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">trial active · $0 today</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
+  Your 100 free clip exports are ready.
+</h1>
+<p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  You're in — <strong style="color:{INK};">$0 today</strong>. Your Solo plan starts after 30 days, unless you cancel.
+</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  Use your <strong style="color:{INK};">100 free clip exports</strong> however you like. If you use all 100 free exports first, Junior will ask you to continue on Solo before exporting more.
+</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  Download Junior after signing into your account, then drop in a video and start exporting.
+</p>
+<p style="margin:0 0 16px;">{_btn("Download Junior →", ctx.download_url)}</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
+  $0 today · Solo $29.99/mo after 30 days unless you cancel · cancel any time
+</p>
+"""
+        text = (
+            f"Your 100 free clip exports are ready.\n\n{_greeting(first_name)}\n\n"
+            "You're in — $0 today. Your Solo plan starts after 30 days, unless you cancel.\n\n"
+            "Use your 100 free clip exports however you like. If you use all 100 free exports "
+            "first, Junior will ask you to continue on Solo before exporting more.\n\n"
+            f"Download Junior after signing into your account: {ctx.download_url}\n\n"
+            "Reply to this email to reach us directly.\n— Junior"
+        )
+        return subject, _shell(subject, body, ctx=ctx), text
     pitch = {
         "solo": "Unlimited clipping. One platform connection. Publish posts manually any time.",
         "growth": "Hosted transcribe + LLM, four platform connections, multi-platform publish + schedule.",
@@ -302,7 +336,7 @@ def render_subscription_canceled(*, email: str, paid_until_iso: str | None, firs
 </h1>
 <p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
-  Your Junior subscription has been canceled and won't renew. {until_line} After that you'll drop to Free — three videos a month, your projects on disk stay put.
+  Your Junior subscription has been canceled and won't renew. {until_line} After that you'll drop to the Free plan — your projects on disk stay put.
 </p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
   If something specifically didn't work, reply to this email — it goes straight to us and we read every one.
@@ -323,7 +357,7 @@ def render_subscription_canceled(*, email: str, paid_until_iso: str | None, firs
 def render_founder_welcome(*, email: str, first_name: str | None, ctx: MailContext) -> tuple[str, str, str]:
     subject = "Founder Lifetime — you're in."
     body = f"""
-<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">founder lifetime · one-time £500</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">founder lifetime · one-time $500</p>
 <h1 style="font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
   You're a founder.
 </h1>

@@ -302,7 +302,12 @@ def _handle_membership_valid(db: Session, data: dict) -> None:
     if user.founder_flag and founder:
         send_founder_welcome(user.email, first_name=first_name if isinstance(first_name, str) else None)
     else:
-        send_subscription_activated(user.email, tier=tier, first_name=first_name if isinstance(first_name, str) else None)
+        send_subscription_activated(
+            user.email,
+            tier=tier,
+            first_name=first_name if isinstance(first_name, str) else None,
+            trial=(user.subscription_status == "trialing"),
+        )
 
     # PostHog: paid membership went valid via Whop. Distinct event from the
     # Clerk-billing subscription_activated so we can compare funnels.
