@@ -27,6 +27,7 @@ from app.deps import current_user
 from app.features import is_admin_email
 from app.jwt_signer import issue_license_jwt, public_pem
 from app.models import License, User
+from app.routes.usage import starter_export_remaining
 
 router = APIRouter(prefix="/desktop", tags=["desktop"])
 
@@ -111,6 +112,8 @@ class HeartbeatResponse(BaseModel):
     founder: bool
     paid_until: datetime | None
     subscription_status: str
+    # Starter pass — remaining free clip exports (null = unlimited / paid).
+    remaining_exports: int | None
 
 
 @router.post("/heartbeat", response_model=HeartbeatResponse)
@@ -121,6 +124,7 @@ def heartbeat(user: Annotated[User, Depends(current_user)]) -> HeartbeatResponse
         founder=user.founder_flag,
         paid_until=user.paid_until,
         subscription_status=user.subscription_status,
+        remaining_exports=starter_export_remaining(user),
     )
 
 

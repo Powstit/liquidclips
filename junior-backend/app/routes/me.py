@@ -20,6 +20,7 @@ from app.db import get_db
 from app.deps import current_user
 from app.features import is_admin_email
 from app.models import User
+from app.routes.usage import starter_export_remaining
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -42,6 +43,9 @@ class MeResponse(BaseModel):
     # Billing
     subscription_status: str
     billing_provider: str  # "whop" | "clerk"
+
+    # Starter pass — remaining free clip exports (null = unlimited / paid).
+    remaining_exports: int | None
 
     # Whop integration auth state — backend doesn't store the desktop's
     # OAuth token (that's keychain-local), but it can confirm whether the
@@ -81,5 +85,6 @@ def me(
         admin_override=is_admin,
         subscription_status="admin" if is_admin else (raw.subscription_status if raw else user.subscription_status),
         billing_provider="whop" if user.whop_user_id else "clerk",
+        remaining_exports=None if is_admin else starter_export_remaining(raw or user),
         whop_backend_key_configured=bool(get_settings().whop_api_key),
     )

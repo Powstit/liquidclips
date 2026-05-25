@@ -38,6 +38,11 @@ class User(Base):
     trial_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     paid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Starter pass — lifetime free clip-EXPORT counter (Junior-enforced, not Whop).
+    # Free/starter users get 100 successful exports; #101 requires Solo. Paid tiers
+    # are unlimited. Incremented only on a successful export via /usage/clip-exported.
+    starter_exports_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 

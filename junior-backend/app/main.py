@@ -24,6 +24,15 @@ async def lifespan(_app: FastAPI):
     # Auto-create tables locally so the dev loop is fast. Alembic owns schema
     # in production — we drop the create_all once the first migration is in.
     Base.metadata.create_all(bind=engine)
+    # No alembic yet: create_all adds missing TABLES but not new COLUMNS on existing
+    # tables. Idempotently ensure recently-added columns exist (Postgres prod).
+    from sqlalchemy import text as _text
+    try:
+        with engine.begin() as _conn:
+            if _conn.dialect.name == "postgresql":
+                _conn.execute(_text("ALTER TABLE users ADD COLUMN IF NOT EXISTS starter_exports_used integer NOT NULL DEFAULT 0"))
+    except Exception:
+        pass
     start_cron()
     try:
         yield

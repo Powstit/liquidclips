@@ -40,6 +40,19 @@ def _quota_for_tier(tier: str) -> int | None:
     return 3 if tier == "free" else None
 
 
+STARTER_EXPORT_CAP = 100
+
+
+def starter_export_remaining(user: User) -> int | None:
+    """Starter pass — free/starter users get 100 successful clip EXPORTS (lifetime).
+    Paid tiers (solo, channel, growth, autopilot) and founders are unlimited.
+    Returns remaining free exports, or None when unlimited. Junior enforces this,
+    not Whop (Whop only handles the trial/billing)."""
+    if user.founder_flag or user.tier != "free":
+        return None
+    return max(0, STARTER_EXPORT_CAP - (user.starter_exports_used or 0))
+
+
 def _usage_row(db: Session, user_id: str) -> Usage:
     period = _current_period_start()
     row = db.query(Usage).filter_by(user_id=user_id, period_start=period).one_or_none()
@@ -89,4 +102,37 @@ def video_started(
         videos_processed=row.videos_processed,
         cap=cap,
         remaining=remaining,
+    )
+
+
+class ExportStatus(BaseModel):
+    tier: str
+    exports_used: int
+    cap: int | None
+    remaining_exports: int | None
+
+
+@router.post("/clip-exported", response_model=ExportStatus)
+def clip_exported(
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> ExportStatus:
+    """Called by the desktop AFTER a successful clip export (never on previews,
+    drafts, or failed exports). Increments the starter counter for free/starter
+    users and returns remaining free exports. 402 once 100 are used → desktop shows
+    the 'continue on Solo' prompt. Paid tiers/founders never count and never block."""
+    capped = not (user.founder_flag or user.tier != "free")
+    if capped and (user.starter_exports_used or 0) >= STARTER_EXPORT_CAP:
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            "You've used your 100 free clips. Continue on Solo ($29.99/mo) to keep exporting.",
+        )
+    if capped:
+        user.starter_exports_used = (user.starter_exports_used or 0) + 1
+        db.commit()
+    return ExportStatus(
+        tier=user.tier,
+        exports_used=user.starter_exports_used or 0,
+        cap=STARTER_EXPORT_CAP if capped else None,
+        remaining_exports=(max(0, STARTER_EXPORT_CAP - (user.starter_exports_used or 0)) if capped else None),
     )
