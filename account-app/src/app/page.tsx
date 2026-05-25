@@ -41,7 +41,7 @@ export default function Home() {
 
       <div className="mt-20">
         <Carousel label="how it works · swipe">
-          <Pitch num="01" eyebrow="free forever" title="Three videos a month." />
+          <Pitch num="01" eyebrow="free to start" title="100 free clip exports." />
           <Pitch num="02" eyebrow="one click" title="Unlimited when you outgrow it." />
           <Pitch num="03" eyebrow="lifetime" title="Founder · $500 once." />
           <Pitch num="04" eyebrow="never leaves you" title="Files on your machine." />

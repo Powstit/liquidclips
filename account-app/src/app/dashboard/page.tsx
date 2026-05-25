@@ -59,7 +59,7 @@ export default async function DashboardPage() {
       <div className="mt-10">
         <Carousel label="at a glance · swipe">
           <Stat big={tierDisplay} small="plan" accent={isFree ? "neutral" : "fuchsia"} />
-          <Stat big={isFree ? "0 / 3" : "0"} small="videos this month" />
+          <Stat big={isFree ? "100" : "Unlimited"} small={isFree ? "free clip exports" : "clip exports"} />
           <Stat
             big={affiliateId ? `${affiliateId.slice(0, 10)}…` : "—"}
             small={affiliateId ? "referred — locked" : "direct signup"}

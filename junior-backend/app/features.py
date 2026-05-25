@@ -36,7 +36,7 @@ class Feature(TypedDict):
 # Tier-by-tier feature flag matrix. Keep keys snake_case + stable — code reads them.
 FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
     "free": {
-        "video_quota_monthly":      {"value": 3,     "built": True,  "sprint": None},
+        "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},  # unlimited; free is gated by the 100 clip-export starter pass
         "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
         "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
