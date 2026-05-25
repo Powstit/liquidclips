@@ -20,7 +20,12 @@ export TAURI_SIGNING_PRIVATE_KEY="$(cat "$KEY_PATH")"
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
 
 echo "→ tauri build (release + sign)…"
-npm run tauri build
+# --bundles app: produce Junior.app + the signed updater artifact (.app.tar.gz +
+# .sig via createUpdaterArtifacts) only. We deliberately SKIP the .dmg bundle —
+# bundle_dmg.sh drives Finder via AppleScript and fails in a non-GUI/headless
+# session, and the updater never uses the DMG. Build the DMG separately (interactive
+# GUI session) when you need a distributable installer.
+npm run tauri build -- --bundles app
 
 VERSION="$(node -e "console.log(require('./package.json').version)")"
 BUNDLE_DIR="src-tauri/target/release/bundle"

@@ -126,14 +126,20 @@ async def upload_release(request: Request):
     if not (target and version and signature and filename):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "missing x-release-* headers")
 
-    body = await request.body()
-    if not body:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "empty body")
-
     rd = releases_dir()
     rd.mkdir(parents=True, exist_ok=True)
     safe_name = Path(filename).name  # strip any path components
-    (rd / safe_name).write_bytes(body)
+    dest = rd / safe_name
+    # STREAM the artifact to disk in chunks — updater bundles are ~100-150MB, so
+    # never buffer the whole body in memory on the Railway instance.
+    size = 0
+    with dest.open("wb") as fh:
+        async for chunk in request.stream():
+            fh.write(chunk)
+            size += len(chunk)
+    if size == 0:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "empty body")
 
     manifest_path = rd / "manifest.json"
     manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
@@ -145,4 +151,4 @@ async def upload_release(request: Request):
     manifest.setdefault("platforms", {})[target] = {"signature": signature, "file": safe_name}
     manifest_path.write_text(json.dumps(manifest, indent=2))
 
-    return {"ok": True, "version": version, "target": target, "file": safe_name, "bytes": len(body)}
+    return {"ok": True, "version": version, "target": target, "file": safe_name, "bytes": size}
