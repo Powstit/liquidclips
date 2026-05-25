@@ -91,6 +91,6 @@ export const FREE_TIER_VISIBLE_CLIPS = FREE_CLIPS_VISIBLE;
 export const TIER_COPY: Record<Tier, { name: string; price: string; pitch: string }> = {
   free:      { name: "Free",      price: "free",            pitch: "100 free clip exports — no card." },
   solo:      { name: "Solo",      price: "$29.99/mo",       pitch: "Continue clipping with Solo." },
-  growth:    { name: "Growth",    price: "$99.99/mo",       pitch: "Upgrade to Growth to publish across platforms and schedule posts." },
-  autopilot: { name: "Autopilot", price: "$199.99/mo",      pitch: "Upgrade to Autopilot to drip a whole month of clips and connect unlimited accounts." },
+  growth:    { name: "Growth",    price: "$99.99/mo",       pitch: "Upgrade to Growth for higher monthly limits and advanced clipping." },
+  autopilot: { name: "Autopilot", price: "$199.99/mo",      pitch: "Upgrade to Autopilot for the highest limits and priority support." },
 };

@@ -190,6 +190,28 @@ async def delete_integration(access_token: str, integration_id: str) -> None:
             resp.raise_for_status()
 
 
+# --- high-level orchestration (NOT yet wired) --------------------------
+# cron._fire_schedule and routes/publish.py reference these. The real flow
+# (resolve the user's pos_* token from PostizConnection, upload the clip, then
+# create_post) was never implemented — calls used to AttributeError. Publishing
+# is gated off in beta (UI flag + 503 routes + cron is_live() skip), so these are
+# unreachable today; they fail LOUD rather than silently stub a fake post, and
+# are the single place to implement when publishing graduates from beta.
+
+async def upload_clip(*, user_id: str, clip_path: str, title: str, description: str, platform: str) -> str:
+    raise NotImplementedError(
+        "postiz.upload_clip is not wired yet — publishing is in beta. Implement "
+        "the pos_* token lookup + upload_file() before enabling publishing."
+    )
+
+
+async def publish_now(*, user_id: str, postiz_post_id: str, platform: str) -> dict[str, Any]:
+    raise NotImplementedError(
+        "postiz.publish_now is not wired yet — publishing is in beta. Implement "
+        "the pos_* token lookup + create_post() before enabling publishing."
+    )
+
+
 # --- platform name mapping ---------------------------------------------
 
 # Junior's customer-facing platform IDs → Postiz's `__type` strings.
