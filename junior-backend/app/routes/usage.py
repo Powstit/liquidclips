@@ -49,13 +49,29 @@ STARTER_EXPORT_CAP = 100
 
 def starter_export_remaining(user: User) -> int | None:
     """Starter pass — free + Whop-TRIAL users get 100 successful clip EXPORTS
-    (lifetime). Only a CONFIRMED paid subscription lifts the cap, so we key on
-    subscription_status, not just tier: a trial buyer is tier=solo but status
-    "trialing" → still capped (they can't bypass the 100 free exports until the
-    first payment promotes them to "active"). Founders and active-paid users are
-    unlimited (None). Junior enforces this; Whop only handles trial/billing."""
-    if user.founder_flag or (user.subscription_status == "active" and user.tier != "free"):
+    (lifetime). None = unlimited. We key on subscription_status, not just tier:
+    a trial buyer is tier=solo but status "trialing" → still capped (can't bypass
+    the 100 free exports until the first payment promotes them to "active").
+
+    Grace: a paid plan that's been canceled or is in dunning (past_due) keeps
+    full access until the paid period actually ENDS (paid_until in the future) —
+    Clerk/Whop cancel sets status away from "active" but access is promised
+    through period end, so we must not re-cap them mid-period. Founders are
+    always unlimited. Junior enforces this; Whop/Clerk only handle billing."""
+    if user.founder_flag:
         return None
+    if user.tier != "free":
+        if user.subscription_status == "active":
+            return None
+        if user.subscription_status in ("canceled", "past_due"):
+            pu = user.paid_until
+            if pu is not None:
+                now = datetime.now(timezone.utc)
+                if pu.tzinfo is None:  # SQLite stores naive; match it
+                    now = now.replace(tzinfo=None)
+                if pu > now:
+                    return None  # grace — still inside the paid period
+        # trialing / expired / refunded / canceled-past-period → starter-limited
     return max(0, STARTER_EXPORT_CAP - (user.starter_exports_used or 0))
 
 
@@ -137,6 +153,15 @@ def clip_exported(
         user.starter_exports_used = (user.starter_exports_used or 0) + 1
         db.commit()
         remaining = starter_export_remaining(user)
+        # Funnel signal: the 100th free export just landed → next export hits the
+        # paywall. This is the "continue on Solo" moment for the desktop.
+        if remaining == 0 and user.clerk_id:
+            from app import analytics
+            analytics.capture(
+                user_id=user.clerk_id,
+                event="starter_pass_exhausted",
+                properties={"tier": user.tier, "subscription_status": user.subscription_status},
+            )
     capped = remaining is not None
     return ExportStatus(
         tier=user.tier,

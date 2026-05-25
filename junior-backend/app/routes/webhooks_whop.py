@@ -57,6 +57,12 @@ PLAN_TIER_BY_ID = {
     "plan_BvDBrtybhbxNg": "autopilot",  # Junior Autopilot $199.99/mo
 }
 
+# Founder is a $500 one-time unlock → Autopilot tier + founder_flag forever.
+# Match by plan id: the webhook can send title=null (like the renewal plans
+# above do), so a title-only check would let a Founder buy fall through to
+# "growth". Keep this set in sync with the live Whop "Founder Lifetime" plan.
+FOUNDER_PLAN_IDS = {"plan_OieNCPrvkw9U4"}  # "Founder Lifetime" $500 one-time
+
 
 def _verify_signature(body: bytes, header_sig: str | None) -> None:
     if not settings.whop_webhook_secret:
@@ -76,6 +82,8 @@ def _tier_from_event(event_data: dict) -> tuple[str, bool]:
     paid plans default to 'growth' if the title doesn't match the map."""
     plan = event_data.get("plan") or {}
     plan_id = (plan.get("id") or "").strip()
+    if plan_id in FOUNDER_PLAN_IDS:
+        return "autopilot", True
     if plan_id in PLAN_TIER_BY_ID:
         return PLAN_TIER_BY_ID[plan_id], False
     title = (plan.get("title") or "").strip().lower()
@@ -123,6 +131,12 @@ async def whop_webhook(
         _handle_membership_invalid(db, data)
     elif event_type in ("payment_succeeded", "payment.succeeded"):
         _handle_payment_succeeded(db, data)
+    elif event_type in (
+        "payment_refunded", "payment.refunded",
+        "refund_created", "refund.created",
+        "dispute_created", "dispute.created",
+    ):
+        _handle_payment_refunded(db, data)
     # else: silently accept.
 
     db.add(WebhookEvent(
@@ -240,6 +254,18 @@ def apply_membership_tier(
         user.paid_until = datetime.fromtimestamp(renewal_at, tz=timezone.utc)
     elif founder:
         user.paid_until = None  # one-time
+
+    # Keep Clerk publicMetadata in step with the DB — account-app surfaces that
+    # still read Clerk metadata (upgrade page, PostHogBoot, dashboard fallback)
+    # otherwise show a stale "free". Best-effort; the DB stays source of truth.
+    from app.clerk_sync import sync_clerk_metadata
+    sync_clerk_metadata(
+        user.clerk_id,
+        tier=user.tier,
+        subscription_status=user.subscription_status,
+        founder=user.founder_flag,
+        whop_user_id=user.whop_user_id,
+    )
 
     jwt_str, expires_at = issue_license_jwt(
         user_id=user.id,
@@ -363,10 +389,13 @@ def _handle_membership_invalid(db: Session, data: dict) -> None:
     user.subscription_status = "expired"
     user.tier = "free"
 
+    from app.clerk_sync import sync_clerk_metadata
+    sync_clerk_metadata(user.clerk_id, tier="free", subscription_status="expired", founder=user.founder_flag)
+
     jwt_str, expires_at = issue_license_jwt(
         user_id=user.id,
         tier="free",
-        quota_videos_per_month=3,
+        quota_videos_per_month=None,
     )
     db.add(License(user_id=user.id, jwt=jwt_str, tier_at_issue="free", expires_at=expires_at))
 
@@ -377,7 +406,7 @@ def _handle_membership_invalid(db: Session, data: dict) -> None:
         category="billing",
         title="Subscription expired.",
         body=(
-            "Back to Free tier — 3 videos a month with your own keys. "
+            "Back to Free — your 100 free clip exports, with your own keys. "
             "Your projects, clips, and folder stay where they are."
         ),
         priority="medium",
@@ -409,6 +438,15 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
         # No explicit renewal date — push out 30 days.
         user.paid_until = datetime.now(timezone.utc) + timedelta(days=30)
 
+    from app.clerk_sync import sync_clerk_metadata
+    sync_clerk_metadata(
+        user.clerk_id,
+        tier=user.tier,
+        subscription_status="active",
+        founder=user.founder_flag,
+        whop_user_id=user.whop_user_id,
+    )
+
     # PostHog: trial→paid conversion. User is now "active" (true paid). Keyed
     # on clerk_id so it lands on the same person as the frontend funnel.
     if user.clerk_id:
@@ -422,3 +460,35 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
                 "billing_provider": "whop",
             },
         )
+
+
+def _handle_payment_refunded(db: Session, data: dict) -> None:
+    """A refund/dispute pulls the entitlement. Critically, if the refunded plan
+    was the one-time Founder unlock, clear founder_flag — otherwise a refunded
+    founder keeps unlimited Autopilot forever. Drop to Free + mark 'refunded'."""
+    user = _find_user_for_event(db, data)
+    if not user:
+        return
+    _tier, founder = _tier_from_event(data)
+    if founder:
+        user.founder_flag = False
+    user.tier = "free"
+    user.subscription_status = "refunded"
+    user.paid_until = None
+
+    from app.clerk_sync import sync_clerk_metadata
+    sync_clerk_metadata(user.clerk_id, tier="free", subscription_status="refunded", founder=user.founder_flag)
+
+    jwt_str, expires_at = issue_license_jwt(user_id=user.id, tier="free", quota_videos_per_month=None)
+    db.add(License(user_id=user.id, jwt=jwt_str, tier_at_issue="free", expires_at=expires_at))
+
+    event_id = data.get("event_id") or data.get("id") or ""
+    write_notification(
+        db,
+        user_id=user.id,
+        category="billing",
+        title="Refund processed.",
+        body="Your payment was refunded and access returned to Free. Your projects stay on disk.",
+        priority="medium",
+        external_dedup_key=f"whop-refund-{event_id}" if event_id else None,
+    )
