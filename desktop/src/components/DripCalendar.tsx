@@ -1,16 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { sidecar, type DripSlot, type Project } from "../lib/sidecar";
+import { PlatformIcon, type PlatformId } from "./PlatformIcon";
 
 // Spec §1.5 preview calendar — 14-day grid (or 7/21/28 depending on weeks
 // picker), each clip as a card under its day column at platform-icon row.
 // User can change weeks ▾ ; "Reset to optimal" recomputes the plan.
 
 type Weeks = 1 | 2 | 3 | 4;
-const PLATFORM_GLYPH: Record<string, string> = {
-  youtube: "▶",
-  tiktok: "♪",
-  x: "𝕏",
-};
+
+const KNOWN_PLATFORMS: PlatformId[] = ["youtube", "tiktok", "instagram", "x"];
+
+// Monochrome platform mark — shared PlatformIcon glyph set (no emoji). Falls
+// back to a neutral bullet for anything unrecognised.
+function PlatformGlyph({ platform }: { platform: string }) {
+  if ((KNOWN_PLATFORMS as string[]).includes(platform)) {
+    return <PlatformIcon id={platform as PlatformId} className="h-3 w-3" />;
+  }
+  return <span aria-hidden>•</span>;
+}
 
 export function DripCalendar({
   project,
@@ -187,7 +194,9 @@ function SlotCard({ slot }: { slot: DripSlot }) {
   return (
     <div className="flex flex-col gap-1 rounded-lg border border-line bg-paper p-2">
       <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
-        <span className="text-fuchsia">{PLATFORM_GLYPH[slot.platform] ?? "•"}</span>
+        <span className="inline-flex items-center text-fuchsia">
+          <PlatformGlyph platform={slot.platform} />
+        </span>
         <span>{slot.platform}</span>
         <span className="ml-auto">{hh}:{mm}</span>
       </div>

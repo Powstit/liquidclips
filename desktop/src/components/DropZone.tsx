@@ -6,10 +6,14 @@ export function DropZone({
   onPickFile,
   onPasteUrl,
   onLiftTranscript,
+  remainingExports = null,
 }: {
   onPickFile: (brief: string) => void;
   onPasteUrl: (url: string, brief: string) => void;
   onLiftTranscript: (url: string) => void;
+  // Free clip exports left on the starter pass. null = unlimited (paid /
+  // founder / unactivated) — counter is hidden in that case.
+  remainingExports?: number | null;
 }) {
   const [brief, setBrief] = useState("");
   const [url, setUrl] = useState("");
@@ -45,6 +49,12 @@ export function DropZone({
           click to browse — or drag a file anywhere
         </p>
       </button>
+
+      {remainingExports !== null && (
+        <p className="px-1 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+          {remainingExports} free export{remainingExports === 1 ? "" : "s"} left
+        </p>
+      )}
 
       <div className="flex items-center gap-3 px-1 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
         <span className="h-px flex-1 bg-line" /> or <span className="h-px flex-1 bg-line" />

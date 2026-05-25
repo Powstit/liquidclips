@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { Nav } from "@/components/Nav";
 import { PricingCards } from "@/components/PricingCards";
 import { ComparisonToggle } from "@/components/ComparisonToggle";
 
@@ -29,7 +28,6 @@ export default async function UpgradePage() {
 
   return (
     <div className="min-h-screen bg-paper">
-      <Nav />
       <main className="mx-auto flex max-w-[1080px] flex-col gap-8 px-6 py-12">
         <header className="flex flex-col gap-3">
           <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
@@ -71,6 +69,7 @@ export default async function UpgradePage() {
       </main>
     </div>
   );
+
 }
 
 function capitalise(s: string): string {

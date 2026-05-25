@@ -51,7 +51,12 @@ def latest(
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     # Rewrite the download URL so the client fetches from this same backend.
+    # Railway terminates TLS at its edge and forwards to us over http, so
+    # request.base_url is http:// — but Tauri's updater requires https. Force
+    # https for the public host (keep http for local dev).
     base = str(request.base_url).rstrip("/")
+    if base.startswith("http://") and "localhost" not in base and "127.0.0.1" not in base:
+        base = "https://" + base[len("http://"):]
     artifact_url = f"{base}/updates/download/{target}"
 
     return JSONResponse({
@@ -78,7 +83,66 @@ def download_artifact(target: str):
     platform_block = manifest.get("platforms", {}).get(target)
     if not platform_block:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"target {target!r} not in manifest")
-    artifact_path = Path(platform_block["local_path"])
+    # Resolve the artifact by FILENAME inside the releases dir (the persistent
+    # Railway volume). `file` is the upload-time name; `local_path` is the legacy
+    # build-machine absolute path (back-compat for old manifests / local dev).
+    fname = platform_block.get("file")
+    artifact_path = (releases_dir() / Path(fname).name) if fname else Path(platform_block.get("local_path", ""))
     if not artifact_path.is_file():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"artifact missing: {artifact_path}")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"artifact missing: {artifact_path.name}")
     return FileResponse(artifact_path, filename=artifact_path.name, media_type="application/octet-stream")
+
+
+@router.post("/upload")
+async def upload_release(request: Request):
+    """Release pusher (run from the build machine by scripts/release.sh).
+
+    The signed artifact + its metadata are pushed here so the backend serves
+    updates from a STABLE location (a persistent Railway volume at
+    JUNIOR_RELEASES_DIR) instead of an ephemeral build-machine path. Raw-body
+    upload (no python-multipart dependency); metadata travels in x-release-*
+    headers. Gated by the existing INTERNAL_API_SECRET — sign locally, push here.
+
+    Headers:
+      x-internal-secret   shared server secret
+      x-release-target    e.g. darwin-aarch64 | darwin-x86_64 | windows-x86_64
+      x-release-version   e.g. 0.4.19
+      x-release-signature Tauri updater signature (contents of the .sig file)
+      x-release-filename  artifact filename, e.g. Junior_0.4.19_aarch64.app.tar.gz
+      x-release-notes     (optional) release notes
+    Body: the raw signed artifact bytes.
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+    if settings.internal_api_secret and request.headers.get("x-internal-secret") != settings.internal_api_secret:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "bad internal secret")
+
+    target = request.headers.get("x-release-target")
+    version = request.headers.get("x-release-version")
+    signature = request.headers.get("x-release-signature")
+    filename = request.headers.get("x-release-filename")
+    notes = request.headers.get("x-release-notes", "")
+    if not (target and version and signature and filename):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "missing x-release-* headers")
+
+    body = await request.body()
+    if not body:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "empty body")
+
+    rd = releases_dir()
+    rd.mkdir(parents=True, exist_ok=True)
+    safe_name = Path(filename).name  # strip any path components
+    (rd / safe_name).write_bytes(body)
+
+    manifest_path = rd / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
+    # A new version resets the platform set; same version accumulates targets.
+    if manifest.get("version") != version:
+        manifest = {"version": version, "platforms": {}}
+    manifest["notes"] = notes or manifest.get("notes", "")
+    manifest["pub_date"] = datetime.now(timezone.utc).isoformat()
+    manifest.setdefault("platforms", {})[target] = {"signature": signature, "file": safe_name}
+    manifest_path.write_text(json.dumps(manifest, indent=2))
+
+    return {"ok": True, "version": version, "target": target, "file": safe_name, "bytes": len(body)}
