@@ -212,7 +212,15 @@ def apply_membership_tier(
     """
     user.tier = tier
     user.founder_flag = user.founder_flag or founder
-    user.subscription_status = "active"
+    # A membership going valid is the trial/activation, NOT a confirmed recurring
+    # payment. Keep non-founder users starter-limited ("trialing") so they can't
+    # bypass the 100 free-export cap during a Whop trial; payment_succeeded then
+    # promotes them to "active" (true paid → unlimited). Founder is a one-time
+    # paid unlock. Never downgrade an already-active (paying) customer.
+    if user.founder_flag:
+        user.subscription_status = "active"
+    elif user.subscription_status != "active":
+        user.subscription_status = "trialing"
     if whop_user_id:
         user.whop_user_id = whop_user_id
 
@@ -361,6 +369,9 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
     user = _find_user_for_event(db, data)
     if not user:
         return
+    # A successful payment is the trial→paid conversion: promote to "active" so the
+    # 100 free-export cap lifts (true paid → unlimited entitlement).
+    user.subscription_status = "active"
     renewal_at = data.get("renewal_period_end")
     if isinstance(renewal_at, (int, float)):
         user.paid_until = datetime.fromtimestamp(renewal_at, tz=timezone.utc)
