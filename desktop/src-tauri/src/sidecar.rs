@@ -47,11 +47,28 @@ pub struct SidecarState {
 impl SidecarState {
     pub fn spawn(app: AppHandle, script_path: &Path) -> Result<Self> {
         let python = find_python(script_path)?;
+
+        // The Python sidecar (whop_client.py for the Earn tab, stages.py for
+        // cloud transcribe) talks to the Junior Backend and falls back to
+        // http://localhost:8000 when JUNIOR_BACKEND_URL is unset. A Finder-
+        // launched .app inherits no such env, so without this injection those
+        // sidecar paths would hit localhost in production. Mirror the JS
+        // resolution in src/lib/backend.ts: an explicit override wins, else
+        // debug builds (`tauri dev`) use localhost and release builds use prod.
+        let backend_url = std::env::var("JUNIOR_BACKEND_URL").unwrap_or_else(|_| {
+            if cfg!(debug_assertions) {
+                "http://localhost:8000".to_string()
+            } else {
+                "https://api.jnremployee.com".to_string()
+            }
+        });
+
         let mut child = Command::new(&python)
             .arg(script_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .env("JUNIOR_BACKEND_URL", &backend_url)
             .env_remove("VIRTUAL_ENV")  // let the venv set its own when invoked directly
             .kill_on_drop(true)
             .spawn()
