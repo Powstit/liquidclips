@@ -47,7 +47,7 @@ export function ScheduleQueue({ onClose }: { onClose: () => void }) {
       const { value: jwt } = await sidecar.licenseJwtRead();
       if (!jwt) {
         setError(
-          "No license JWT — sign in at account.jnremployee.com and paste the JWT into Settings → API keys to see your queue.",
+          "Sign in to Junior to see your queue — use the Sign in button in the top bar.",
         );
         return;
       }

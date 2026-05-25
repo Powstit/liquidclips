@@ -223,6 +223,22 @@ export default function App() {
   }
 
   async function guardQuota(): Promise<boolean> {
+    // Exporting requires a Junior account: the 100-free-export pass is tracked
+    // server-side against the license JWT. No JWT = not activated, so we send
+    // the user to sign in rather than letting exports run uncapped/untracked
+    // (the "free forever" bypass). Sign-in is free — it just makes them a known
+    // user so the starter pass can be counted.
+    try {
+      const { value: jwt } = await sidecar.licenseJwtRead();
+      if (!jwt) {
+        setNeedsActivation(true);
+        setView({ kind: "first-run" });
+        return false;
+      }
+    } catch {
+      // Keychain read failed — fall through to the quota check; if that also
+      // can't resolve a token the authed call will surface it.
+    }
     try {
       await maybeCheckQuota();
       return true;
@@ -301,7 +317,10 @@ export default function App() {
   async function chargeClipExport(count: number): Promise<boolean> {
     try {
       const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) return false; // unactivated — uncapped, no gate
+      // Unactivated users are blocked at guardQuota() before the pipeline runs,
+      // so we shouldn't reach here without a JWT. If we somehow do, don't charge
+      // (no clips should exist) — the pre-run gate is the real enforcement.
+      if (!jwt) return false;
       let remaining: number | null = null;
       for (let i = 0; i < count; i++) {
         const res = await backend.clipExported(jwt);
