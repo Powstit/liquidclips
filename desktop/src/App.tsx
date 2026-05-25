@@ -14,6 +14,7 @@ import { ScheduleQueue } from "./components/ScheduleQueue";
 import { Settings } from "./components/Settings";
 import { sidecar, visibleStagesFor, pipelineStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
 import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
+import { initDeepLinks, setOnActivated } from "./lib/activation";
 import { reportDesktopError } from "./lib/telemetry";
 import { applyUpdate, checkForUpdate, type UpdateState } from "./lib/updater";
 import { TranscriptResult, LiftingProgress } from "./components/TranscriptResult";
@@ -124,6 +125,21 @@ export default function App() {
       setQueueOpen(false);
     });
 
+    // Activation bridge: register the junior:// deep-link listener once so a
+    // license can land even if the user navigated away from the sign-in screen,
+    // and wire the success hook. On activation we flip the whole app to
+    // signed-in + re-sync — no restart, and we leave the current view alone so
+    // someone who activated from Earn stays on Earn.
+    void initDeepLinks();
+    setOnActivated(() => {
+      setSignedIn(true);
+      setNeedsActivation(false);
+      void import("./lib/backend")
+        .then((m) => m.syncStatus())
+        .then((s) => setRemainingExports(s?.remaining_exports ?? null))
+        .catch(() => undefined);
+    });
+
     // Catch-all telemetry for UNEXPECTED errors. The known self-heal paths
     // (401, offline, quota) already report + are skipped here to avoid dupes —
     // this surfaces the bugs we don't yet know about so they show in Admin HQ.
@@ -151,6 +167,7 @@ export default function App() {
     const detach = attachWhopIframeAuth({});
     return () => {
       setOnUnauthorized(null);
+      setOnActivated(null);
       window.removeEventListener("error", onWinError);
       window.removeEventListener("unhandledrejection", onRejection);
       detach();

@@ -18,10 +18,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db import get_db
 from app.deps import current_user
 from app.features import is_admin_email
@@ -33,7 +34,11 @@ router = APIRouter(prefix="/desktop", tags=["desktop"])
 
 
 class ConnectRequest(BaseModel):
-    clerk_user_id: str   # in v1.0 we accept this directly; v1.1 swaps for verified Clerk session
+    # The VERIFIED Clerk user id, injected server-side by account-app's
+    # /api/desktop/connect route from the active Clerk session. The browser
+    # never reaches this endpoint directly (it lacks the internal secret), so a
+    # client can't mint a license for an arbitrary clerk_user_id.
+    clerk_user_id: str
     challenge: str       # echoed back in the deep link so desktop can verify
 
 
@@ -48,8 +53,18 @@ class ConnectResponse(BaseModel):
 @router.post("/connect", response_model=ConnectResponse)
 def connect_desktop(
     body: ConnectRequest,
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
 ) -> ConnectResponse:
+    # Server-to-server only: minting a desktop license is gated by the shared
+    # internal secret. Only account-app's /api/desktop/connect (which derives
+    # clerk_user_id from a verified Clerk session) holds it. The desktop and the
+    # browser must NEVER be able to call this directly with an arbitrary id.
+    # Empty secret = local dev (matches updates.py / admin.py convention).
+    settings = get_settings()
+    if settings.internal_api_secret and request.headers.get("x-internal-secret") != settings.internal_api_secret:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "desktop licenses are minted server-side only")
+
     user = db.query(User).filter_by(clerk_id=body.clerk_user_id).one_or_none()
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found — sign up first")

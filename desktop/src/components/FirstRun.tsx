@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { sidecar, type HardwareInfo } from "../lib/sidecar";
+import { useActivation } from "../lib/activation";
 import { Logo } from "./Logo";
 
 // First-run flow per spec §3.8 screen 1.
@@ -13,10 +14,21 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hw, setHw] = useState<HardwareInfo | null>(null);
+  const { status: act, activate } = useActivation();
+  // Only react to an activation WE started from this screen, so a stale "done"
+  // from a prior flow can't auto-advance an unrelated mount.
+  const startedActivation = useRef(false);
 
   useEffect(() => {
     sidecar.hardwareInfo().then(setHw).catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (startedActivation.current && act.kind === "done") {
+      startedActivation.current = false;
+      onComplete();
+    }
+  }, [act.kind, onComplete]);
 
   async function save() {
     if (!key.trim()) {
@@ -112,11 +124,36 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
             Sign in once and Junior activates against your tier.
           </p>
           <button
-            onClick={() => void openExternal("https://account.jnremployee.com/sign-in")}
-            className="mt-4 rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink transition-colors hover:border-fuchsia"
+            onClick={() => {
+              startedActivation.current = true;
+              void activate();
+            }}
+            disabled={act.kind === "opening" || act.kind === "waiting" || act.kind === "activating"}
+            className="mt-4 rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink transition-colors hover:border-fuchsia disabled:opacity-60"
           >
-            Open browser to sign in →
+            {act.kind === "opening"
+              ? "Opening browser…"
+              : act.kind === "waiting"
+              ? "Waiting for activation…"
+              : act.kind === "activating"
+              ? "Activating…"
+              : act.kind === "error"
+              ? "Try again →"
+              : "Sign in with browser →"}
           </button>
+          {act.kind === "waiting" && (
+            <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+              complete sign-in in your browser — Junior activates automatically
+            </p>
+          )}
+          {act.kind === "activating" && (
+            <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
+              activated — syncing your account…
+            </p>
+          )}
+          {act.kind === "error" && (
+            <p className="mt-2 font-mono text-[12px] text-[#DC2626]">{act.message}</p>
+          )}
         </div>
 
         {hw && hw.warnings.length > 0 && (
