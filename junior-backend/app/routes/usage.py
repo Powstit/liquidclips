@@ -44,11 +44,13 @@ STARTER_EXPORT_CAP = 100
 
 
 def starter_export_remaining(user: User) -> int | None:
-    """Starter pass — free/starter users get 100 successful clip EXPORTS (lifetime).
-    Paid tiers (solo, channel, growth, autopilot) and founders are unlimited.
-    Returns remaining free exports, or None when unlimited. Junior enforces this,
-    not Whop (Whop only handles the trial/billing)."""
-    if user.founder_flag or user.tier != "free":
+    """Starter pass — free + Whop-TRIAL users get 100 successful clip EXPORTS
+    (lifetime). Only a CONFIRMED paid subscription lifts the cap, so we key on
+    subscription_status, not just tier: a trial buyer is tier=solo but status
+    "trialing" → still capped (they can't bypass the 100 free exports until the
+    first payment promotes them to "active"). Founders and active-paid users are
+    unlimited (None). Junior enforces this; Whop only handles trial/billing."""
+    if user.founder_flag or (user.subscription_status == "active" and user.tier != "free"):
         return None
     return max(0, STARTER_EXPORT_CAP - (user.starter_exports_used or 0))
 
@@ -121,18 +123,20 @@ def clip_exported(
     drafts, or failed exports). Increments the starter counter for free/starter
     users and returns remaining free exports. 402 once 100 are used → desktop shows
     the 'continue on Solo' prompt. Paid tiers/founders never count and never block."""
-    capped = not (user.founder_flag or user.tier != "free")
-    if capped and (user.starter_exports_used or 0) >= STARTER_EXPORT_CAP:
+    remaining = starter_export_remaining(user)  # None = unlimited (paid/founder)
+    if remaining is not None and remaining <= 0:
         raise HTTPException(
             status.HTTP_402_PAYMENT_REQUIRED,
             "You've used your 100 free clips. Continue on Solo ($29.99/mo) to keep exporting.",
         )
-    if capped:
+    if remaining is not None:
         user.starter_exports_used = (user.starter_exports_used or 0) + 1
         db.commit()
+        remaining = starter_export_remaining(user)
+    capped = remaining is not None
     return ExportStatus(
         tier=user.tier,
         exports_used=user.starter_exports_used or 0,
         cap=STARTER_EXPORT_CAP if capped else None,
-        remaining_exports=(max(0, STARTER_EXPORT_CAP - (user.starter_exports_used or 0)) if capped else None),
+        remaining_exports=remaining,
     )
