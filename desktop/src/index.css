@@ -23,6 +23,32 @@
   --font-display: "Fraunces", ui-serif, Georgia, serif;
   --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Elevation — neutral depth ladder (resting structure only) */
+  --shadow-e0: 0 1px 0 rgba(10, 10, 15, 0.03);
+  --shadow-e1: 0 2px 12px rgba(10, 10, 15, 0.05);
+  --shadow-e2: 0 8px 28px rgba(10, 10, 15, 0.08);
+  --shadow-e3: 0 20px 60px rgba(10, 10, 15, 0.18);
+
+  /* Elevation — fuchsia glow (reserved for active / selected / primary / focused) */
+  --glow-sm: 0 6px 18px rgba(255, 26, 140, 0.15);
+  --glow-md: 0 10px 30px rgba(255, 26, 140, 0.28);
+  --glow-lg: 0 0 0 1px rgba(255, 26, 140, 0.4), 0 14px 44px rgba(255, 26, 140, 0.22);
+
+  /* Gradients — fuchsia-only, brand/hero surfaces and generated-art backplates */
+  --grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+  --grad-paper: linear-gradient(180deg, #faf7f2 0%, #f5efe7 100%);
+
+  /* Radius rhythm */
+  --radius-chip: 8px;
+  --radius-control: 12px;
+  --radius-card: 16px;
+  --radius-card-lg: 24px;
+  --radius-pill: 9999px;
+
+  /* Tracking */
+  --tracking-eyebrow: 0.12em;
+  --tracking-display: -0.025em;
 }
 
 html,
