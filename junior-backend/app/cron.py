@@ -33,6 +33,13 @@ def _fire_schedule(row_id: str) -> None:
     """
     import asyncio
     from app import postiz
+    # Publishing is in beta until Postiz is deployed (POSTIZ_CLIENT_ID/SECRET).
+    # Don't stub-fire: it would emit a fake "published" notification and call the
+    # not-yet-implemented postiz.publish_now. Leave the row pending; it fires for
+    # real once Postiz is live. (Schedule creation is also 503'd in beta, so no
+    # new rows accrue here.)
+    if not postiz.is_live():
+        return
     with session_scope() as db:
         row = db.get(Schedule, row_id)
         if not row:

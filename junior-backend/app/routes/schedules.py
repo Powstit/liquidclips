@@ -35,6 +35,18 @@ router = APIRouter(prefix="/schedules", tags=["schedules"])
 Platform = Literal["youtube", "tiktok", "x"]
 
 
+def _require_scheduling_built(user: User) -> None:
+    """Scheduling + drip fire through the Postiz engine, which isn't live in prod
+    yet (beta). 503 instead of inserting rows the cron can't actually publish.
+    Auto-clears once POSTIZ_CLIENT_ID/SECRET are configured (see features.py)."""
+    from app.features import is_feature_built
+    if not is_feature_built(user.tier, "schedule_one"):
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Scheduling & drip are in beta — coming soon. Export your clips and post them for now.",
+        )
+
+
 class ScheduleCreate(BaseModel):
     project_slug: str
     clip_idx: int
@@ -71,6 +83,7 @@ def create_schedule(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> ScheduleResponse:
+    _require_scheduling_built(user)
     if body.scheduled_for.tzinfo is None:
         body.scheduled_for = body.scheduled_for.replace(tzinfo=timezone.utc)
     row = Schedule(
@@ -100,6 +113,7 @@ def create_drip_batch(
     The desktop calls this once with the whole drip plan instead of N POSTs —
     keeps the UI feedback tight ("15 clips scheduled across 14 days").
     """
+    _require_scheduling_built(user)
     out: list[ScheduleResponse] = []
     for item in body.items:
         scheduled_for = item.scheduled_for

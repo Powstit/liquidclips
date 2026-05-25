@@ -14,6 +14,7 @@ import { YouTubeView } from "./YouTubeView";
 import { BountySubmissionCapture } from "./earn/BountySubmissionCapture";
 import { BountyWorkspaceHeader } from "./earn/BountyWorkspaceHeader";
 import { sidecar, type DripSlot } from "../lib/sidecar";
+import { PUBLISHING_ENABLED } from "../lib/flags";
 import { backend } from "../lib/backend";
 import { useTier, FREE_TIER_VISIBLE_CLIPS } from "../lib/useTier";
 import { InfoHint } from "./InfoHint";
@@ -119,7 +120,17 @@ export function ResultsGrid({
         <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
           take action
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        {!PUBLISHING_ENABLED ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-paper-warm px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+              beta · coming soon
+            </span>
+            <span className="font-sans text-[13px] text-text-secondary">
+              Auto-publish, schedule &amp; drip are in private beta — for now, export each clip and post it yourself.
+            </span>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => openPublish("publish-now")}
             disabled={firstRenderedClipIdx < 0}
@@ -163,6 +174,7 @@ export function ResultsGrid({
             </button>
           )}
         </div>
+        )}
         {actionToast && (
           <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
             {actionToast}

@@ -51,6 +51,14 @@ def _require_paid_tier(user: User) -> None:
             f"Publishing arrives in Sprint {sprint}. Your subscription entitles you to it; "
             "we'll email when it's live.",
         )
+    # Hardening: the Postiz publish path isn't live in prod (beta). 503 instead of
+    # calling the unimplemented postiz.publish_now/upload_clip (which would error)
+    # or stub-posting. Auto-clears once POSTIZ_CLIENT_ID/SECRET are configured.
+    if not is_feature_built(user.tier, "publish_now"):
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Publishing is in beta — coming soon. Export your clips and post them for now.",
+        )
 
 
 @router.post("", response_model=list[PublishResponse])

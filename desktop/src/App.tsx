@@ -15,6 +15,7 @@ import { Settings } from "./components/Settings";
 import { sidecar, visibleStagesFor, pipelineStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
 import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
 import { initDeepLinks, setOnActivated } from "./lib/activation";
+import { PUBLISHING_ENABLED } from "./lib/flags";
 import { reportDesktopError } from "./lib/telemetry";
 import { applyUpdate, checkForUpdate, type UpdateState } from "./lib/updater";
 import { TranscriptResult, LiftingProgress } from "./components/TranscriptResult";
@@ -490,13 +491,15 @@ export default function App() {
             />
             {sidecarStatus === "ready" ? "ready" : sidecarStatus === "failed" ? "sidecar failed" : "starting…"}
           </div>
-          <button
-            onClick={() => setQueueOpen(true)}
-            className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
-            aria-label="Open schedule queue"
-          >
-            Queue
-          </button>
+          {PUBLISHING_ENABLED && (
+            <button
+              onClick={() => setQueueOpen(true)}
+              className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
+              aria-label="Open schedule queue"
+            >
+              Queue
+            </button>
+          )}
           <NotificationBell onOpen={() => setInboxOpen(true)} />
           {signedIn ? (
             <button
