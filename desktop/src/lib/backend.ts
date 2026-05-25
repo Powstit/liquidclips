@@ -1,13 +1,27 @@
 import { sidecar, type DripSlot } from "./sidecar";
 
-// Junior Backend client. Talks to localhost:8000 in dev, https://api.jnremployee.com
-// once Sprint 4 deploys to Railway.
+// Junior Backend client. Production builds talk to https://api.jnremployee.com
+// (LIVE on Railway). `npm run tauri dev` targets localhost:8000 so the desktop
+// can be driven against a local FastAPI instance.
+//
+// Selection (compile-time, baked by Vite):
+//   • VITE_BACKEND_URL  — explicit override, wins everywhere when set. Lets a
+//     dev point at staging / a tunnel without editing source.
+//   • import.meta.env.DEV — true under `tauri dev` / `vite dev`, false for
+//     `tauri build` / `vite build`. Dev defaults to local, prod to the
+//     deployed API. This is THE production flip: a shipped (built) app has
+//     DEV=false, so it resolves to https://api.jnremployee.com.
 //
 // The license JWT lives in the OS keychain (Sprint 3 secrets infra). We fetch
 // it lazily so we can keep the helper sync at the surface but resilient when
 // the user hasn't activated yet.
 
-const BACKEND_URL = "http://localhost:8000";
+const PROD_BACKEND_URL = "https://api.jnremployee.com";
+const DEV_BACKEND_URL = "http://localhost:8000";
+
+const BACKEND_URL =
+  import.meta.env.VITE_BACKEND_URL ??
+  (import.meta.env.DEV ? DEV_BACKEND_URL : PROD_BACKEND_URL);
 
 /** True in the deployed web preview (app.jnremployee.com), false in Tauri.
  * Detected by absence of the Tauri injection marker. Used to short-circuit
@@ -290,6 +304,27 @@ export const backend = {
     }
     return res.json();
   },
+
+  // Counts ONE successful clip export against the 100-export starter pass.
+  // Call only after a real export lands on disk — never for previews, drafts,
+  // or failed runs. Paid/founder users are never capped (the backend returns
+  // remaining_exports: null and never 402s for them).
+  //
+  // Returns the post-increment `remaining_exports` (null = unlimited). Throws
+  // QuotaExceededError on 402 so the caller can raise the upgrade wall.
+  clipExported: async (jwt: string): Promise<{ remaining_exports: number | null }> => {
+    const res = await authedFetch("/usage/clip-exported", { method: "POST", jwt });
+    if (res.status === 402) {
+      const body = await res.json().catch(() => ({}));
+      throw new QuotaExceededError(
+        body.detail || "Your 100 free clip exports are used up.",
+      );
+    }
+    if (!res.ok) {
+      throw new Error(`clip-exported call failed: HTTP ${res.status}`);
+    }
+    return (await res.json()) as { remaining_exports: number | null };
+  },
 };
 
 /**
@@ -341,6 +376,10 @@ export type SyncStatus = {
   paid_until: string | null;
   billing_provider: "whop" | "clerk";
   features: FeatureMap;
+  // Free clip exports left on the starter pass. null = unlimited (paid/founder)
+  // — when null we never show the export gate or the "X free exports left"
+  // counter. Backend-authoritative; do not derive client-side.
+  remaining_exports: number | null;
 };
 
 /**
@@ -378,6 +417,8 @@ export type MeStatus = {
   subscription_status: string;
   billing_provider: "whop" | "clerk";
   whop_backend_key_configured: boolean;
+  // Mirrors SyncStatus.remaining_exports — null = unlimited (paid/founder).
+  remaining_exports: number | null;
 };
 
 export async function meStatus(): Promise<MeStatus | null> {
@@ -447,6 +488,7 @@ function previewSyncStatus(): SyncStatus {
     subscription_status: "active",
     paid_until: renewal.toISOString(),
     billing_provider: "whop",
+    remaining_exports: null, // demo tier is Solo (paid) → uncapped, no gate
     features: {
       video_quota_monthly: null,
       multi_ratio_export: true,

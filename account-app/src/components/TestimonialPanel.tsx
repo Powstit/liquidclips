@@ -20,7 +20,7 @@ const TESTIMONIALS: Testimonial[] = [
     role: "Whop Clipper",
     avatar: "/avatars/marcus.webp",
     quote:
-      "Made £180 my first weekend on Whop Content Rewards. Three approved, two pending. The rule-check told me exactly why my one denied clip failed — saved me from making the same mistake twice.",
+      "Made $180 my first weekend on Whop Content Rewards. Three approved, two pending. The rule-check told me exactly why my one denied clip failed — saved me from making the same mistake twice.",
   },
   {
     name: "Sofia L.",
@@ -48,7 +48,7 @@ const TESTIMONIALS: Testimonial[] = [
     role: "Agency Owner",
     avatar: "/avatars/lukas.webp",
     quote:
-      "We run 14 creator channels through Junior. The Earn-tab turned our spare-capacity hours into £4k/month of clipper revenue on top of client work.",
+      "We run 14 creator channels through Junior. The Earn-tab turned our spare-capacity hours into $4k/month of clipper revenue on top of client work.",
   },
   {
     name: "Priya S.",

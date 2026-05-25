@@ -2,12 +2,18 @@ import { useCallback, useEffect, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { backend, type ScheduleDto } from "../lib/backend";
 import { sidecar } from "../lib/sidecar";
+import { PlatformIcon, type PlatformId } from "./PlatformIcon";
 
-const PLATFORM_GLYPH: Record<string, string> = {
-  youtube: "▶",
-  tiktok: "♪",
-  x: "𝕏",
-};
+const KNOWN_PLATFORMS: PlatformId[] = ["youtube", "tiktok", "instagram", "x"];
+
+// Monochrome platform mark — uses the shared PlatformIcon glyph set (no emoji).
+// Falls back to a neutral bullet for anything unrecognised.
+function PlatformGlyph({ platform }: { platform: string }) {
+  if ((KNOWN_PLATFORMS as string[]).includes(platform)) {
+    return <PlatformIcon id={platform as PlatformId} className="h-3.5 w-3.5" />;
+  }
+  return <span aria-hidden>•</span>;
+}
 
 const STATUS_STYLE: Record<ScheduleDto["status"], string> = {
   pending: "border-line bg-paper-warm/40 text-text-secondary",
@@ -109,7 +115,10 @@ export function ScheduleQueue({ onClose }: { onClose: () => void }) {
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em]">
-                  <span className="text-ink">{PLATFORM_GLYPH[row.platform] ?? "•"} {row.platform}</span>
+                  <span className="inline-flex items-center gap-1.5 text-ink">
+                    <PlatformGlyph platform={row.platform} />
+                    {row.platform}
+                  </span>
                   <span className="text-text-tertiary">·</span>
                   <span>{STATUS_LABEL[row.status]}</span>
                 </div>

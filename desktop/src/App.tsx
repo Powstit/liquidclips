@@ -13,7 +13,7 @@ import { NotificationSheet } from "./components/NotificationSheet";
 import { ScheduleQueue } from "./components/ScheduleQueue";
 import { Settings } from "./components/Settings";
 import { sidecar, visibleStagesFor, pipelineStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
-import { maybeCheckQuota, QuotaExceededError } from "./lib/backend";
+import { backend, maybeCheckQuota, QuotaExceededError } from "./lib/backend";
 import { applyUpdate, checkForUpdate, type UpdateState } from "./lib/updater";
 import { TranscriptResult, LiftingProgress } from "./components/TranscriptResult";
 import { IntentPicker } from "./components/IntentPicker";
@@ -58,6 +58,11 @@ export default function App() {
   // the keychain (i.e. they've activated via account.jnremployee.com). Drives
   // the top-nav button copy — "Sign in" while null/false, "Account" once true.
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  // Free clip exports left on the 100-export starter pass. null = unlimited
+  // (paid / founder / unactivated) — when null we never show the counter or
+  // the export gate. Updated from /sync on boot and from each clip-exported
+  // call so the "X free exports left" line stays honest within a session.
+  const [remainingExports, setRemainingExports] = useState<number | null>(null);
 
   // Verify sidecar + warm-load whisper. We DON'T force first-run anymore —
   // the app opens straight into the empty/workspace view so the flow is
@@ -79,6 +84,13 @@ export default function App() {
         } catch {
           setSignedIn(false);
         }
+        // Seed the starter-pass counter from /sync (null = unlimited / paid /
+        // unactivated). Best-effort: a missing backend just leaves it null,
+        // which hides the counter and never blocks.
+        void import("./lib/backend")
+          .then((m) => m.syncStatus())
+          .then((s) => setRemainingExports(s?.remaining_exports ?? null))
+          .catch(() => undefined);
       } catch {
         setSidecarStatus("failed");
       } finally {
@@ -194,8 +206,19 @@ export default function App() {
         return;
       }
     }
-    // Clips are written to disk by the pipeline, so reaching results == the
-    // bounty's clips are "exported". One event per run, count = clips produced.
+    // Clips are written to disk by the pipeline, so reaching here == a
+    // SUCCESSFUL export. Failed / canceled runs returned early above and never
+    // reach this point, so the starter pass is only ever charged for real
+    // exports — never previews, drafts, or failures.
+    if (current.clips.length > 0) {
+      // Count this export against the 100-export starter pass. Paid / founder
+      // users get remaining_exports: null and are never 402'd. A free user who
+      // has just used their last export gets a 402 → raise the upgrade wall and
+      // block instead of dropping them on the results screen.
+      const blocked = await chargeClipExport();
+      if (blocked) return;
+    }
+
     if (current.whop_bounty_id && current.clips.length > 0) {
       trackEvent("bounty_clip_exported", {
         bounty_id: current.whop_bounty_id,
@@ -205,6 +228,29 @@ export default function App() {
       });
     }
     setView({ kind: "results", project: current });
+  }
+
+  // Charges one successful export against the starter pass. Returns true when
+  // the user is now blocked (402 → upgrade wall shown), false otherwise.
+  // Resilient: no JWT / backend offline / network error → never blocks (the
+  // export already succeeded locally, so we fail open rather than penalise an
+  // unactivated or offline user).
+  async function chargeClipExport(): Promise<boolean> {
+    try {
+      const { value: jwt } = await sidecar.licenseJwtRead();
+      if (!jwt) return false; // unactivated — uncapped, no gate
+      const { remaining_exports } = await backend.clipExported(jwt);
+      setRemainingExports(remaining_exports);
+      return false;
+    } catch (e) {
+      if (e instanceof QuotaExceededError) {
+        setRemainingExports(0);
+        setView({ kind: "quota" });
+        return true;
+      }
+      console.warn("[export-gate] charge failed (proceeding):", e);
+      return false;
+    }
   }
 
   async function runPipeline(sourcePath: string, brief: string = "", intent: Intent = "both", bounty?: BountyContext) {
@@ -469,6 +515,7 @@ export default function App() {
             onPickFile={pickFile}
             onPasteUrl={onPasteUrl}
             onLiftTranscript={(url) => void onLiftTranscript(url)}
+            remainingExports={remainingExports}
           />
         )}
 
@@ -526,7 +573,7 @@ export default function App() {
               Your 100 free clip exports — used up.
             </h2>
             <p className="mt-2 max-w-[520px] font-sans text-[14px] leading-relaxed text-text-secondary">
-              Continue clipping with Solo · $29.99/mo for unlimited exports. Growth · $99.99/mo adds
+              You've exported 100 clips for free. Keep going for unlimited exports. Growth · $99.99/mo adds
               hosted transcribe and multi-platform publishing. Autopilot · $199.99/mo adds drip-mode.
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
@@ -538,7 +585,7 @@ export default function App() {
                 }}
                 className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper hover:bg-ink"
               >
-                Upgrade to Solo →
+                Continue on Solo · $29.99/mo
               </button>
               <button
                 onClick={() => setView({ kind: "empty" })}

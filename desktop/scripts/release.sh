@@ -37,7 +37,7 @@ if [ ! -f "$APP_TAR" ] || [ ! -f "$APP_SIG_FILE" ]; then
   exit 1
 fi
 
-SIG="$(cat "$APP_SIG_FILE")"
+SIG="$(tr -d '\n' < "$APP_SIG_FILE")"   # single line — travels in an HTTP header on upload
 PUB_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 # Pick the right target name based on the cargo host triple.
@@ -63,8 +63,37 @@ cat > "$MANIFEST_PATH" <<EOF
 }
 EOF
 
-echo "✓ manifest written: $MANIFEST_PATH"
+echo "✓ local manifest written (dev): $MANIFEST_PATH"
 echo "✓ target: $TARGET  · version: $VERSION  · artifact: $(basename "$APP_TAR")"
 echo ""
-echo "Backend (junior-backend) serves this manifest at:"
-echo "  http://localhost:8000/updates/latest.json?target=$TARGET&current_version=<v>"
+
+# --- Publish to the backend (prod auto-update host on Railway) ---------------
+# The backend serves the manifest + artifact from a persistent Railway volume,
+# so the build machine PUSHES the signed artifact here. Raw-body upload; metadata
+# in x-release-* headers; gated by INTERNAL_API_SECRET (same shared secret).
+BASE="${JUNIOR_UPDATE_BASE:-https://api.jnremployee.com}"
+if [ -n "${INTERNAL_API_SECRET:-}" ]; then
+  echo "→ publishing signed artifact to $BASE/updates/upload …"
+  HTTP=$(curl -sS -o /tmp/jnr_upload_resp.json -w "%{http_code}" -X POST "$BASE/updates/upload" \
+    -H "x-internal-secret: $INTERNAL_API_SECRET" \
+    -H "x-release-target: $TARGET" \
+    -H "x-release-version: $VERSION" \
+    -H "x-release-signature: $SIG" \
+    -H "x-release-filename: $(basename "$APP_TAR")" \
+    -H "x-release-notes: Junior $VERSION" \
+    -H "Content-Type: application/octet-stream" \
+    --data-binary @"$APP_TAR")
+  if [ "$HTTP" = "200" ]; then
+    echo "✓ published to backend: $(cat /tmp/jnr_upload_resp.json)"
+  else
+    echo "✗ upload failed (HTTP $HTTP): $(cat /tmp/jnr_upload_resp.json)" >&2
+    exit 1
+  fi
+else
+  echo "⚠ INTERNAL_API_SECRET not set — skipped backend publish (local manifest only)."
+  echo "  To publish: source ~/.claude-credentials/junior-internal.env && ./scripts/release.sh"
+fi
+
+echo ""
+echo "Live update manifest:"
+echo "  $BASE/updates/latest.json?target=$TARGET&current_version=<v>"

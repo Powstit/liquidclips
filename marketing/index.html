@@ -134,6 +134,64 @@
   .nav-cta:hover { background: var(--fuchsia); }
   .mobile-only { display: none; }
 
+  /* ============ HAMBURGER BUTTON ============ */
+  .nav-hamburger {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: none;
+    border: 1.5px solid var(--line);
+    border-radius: 10px;
+    cursor: pointer;
+    padding: 0;
+    transition: border-color 0.2s, background 0.2s;
+    flex-shrink: 0;
+  }
+  .nav-hamburger:hover {
+    border-color: var(--fuchsia);
+    background: var(--fuchsia-soft);
+  }
+  .nav-hamburger svg {
+    display: block;
+  }
+
+  /* Mobile drawer */
+  .nav-mobile-drawer {
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 20px 16px;
+    border-top: 1px solid var(--line);
+    background: rgba(250, 247, 242, 0.97);
+  }
+  .nav-mobile-drawer.is-open {
+    display: flex;
+  }
+  .nav-mobile-drawer a {
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 500;
+    padding: 10px 0;
+    opacity: 0.8;
+    border-bottom: 1px solid var(--line);
+    transition: opacity 0.15s;
+  }
+  .nav-mobile-drawer a:last-child {
+    border-bottom: none;
+  }
+  .nav-mobile-drawer a:hover { opacity: 1; }
+  .nav-mobile-drawer .nav-cta {
+    margin-top: 8px;
+    text-align: center;
+    border-bottom: none;
+    border-radius: 100px;
+    padding: 12px 20px;
+    opacity: 1;
+  }
+
   /* ============ HERO ============ */
   .hero {
     padding: 80px 0 60px;
@@ -641,7 +699,35 @@
     font-size: 28px;
     flex-shrink: 0;
   }
-  .dock-app-finder { background: linear-gradient(135deg, #4A90E2, #357ABD); }
+  /* Dock tiles — "other apps scream, Junior whispers" contrast */
+  /* Finder-style tile: blue gradient with a subtle folder shape */
+  .dock-app-finder {
+    background: linear-gradient(135deg, #4A90E2, #357ABD);
+    position: relative;
+    overflow: hidden;
+  }
+  .dock-app-finder::before {
+    content: '';
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 28px;
+    height: 20px;
+    background: rgba(255,255,255,0.30);
+    border-radius: 3px 3px 3px 3px;
+  }
+  .dock-app-finder::after {
+    content: '';
+    position: absolute;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 14px;
+    height: 6px;
+    background: rgba(255,255,255,0.22);
+    border-radius: 3px 3px 0 0;
+  }
   .dock-app-junior {
     background: var(--fuchsia);
     color: var(--paper);
@@ -653,7 +739,58 @@
     transform: translateY(-4px);
   }
   .slash-tiny { color: var(--ink); margin: 0 1px; }
-  .dock-app-other { background: linear-gradient(135deg, #2D3748, #1A202C); }
+  /* "Other app" tiles: vivid gradients so they "scream" via colour */
+  .dock-app-video {
+    background: linear-gradient(135deg, #FF6B35, #E8002D);
+    position: relative;
+    overflow: hidden;
+  }
+  .dock-app-video::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-44%, -50%);
+    width: 0;
+    height: 0;
+    border-top: 9px solid transparent;
+    border-bottom: 9px solid transparent;
+    border-left: 16px solid rgba(255,255,255,0.85);
+    border-radius: 1px;
+  }
+  .dock-app-edit {
+    background: linear-gradient(135deg, #7C3AED, #4F46E5);
+    position: relative;
+    overflow: hidden;
+  }
+  .dock-app-edit::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-45deg);
+    width: 18px;
+    height: 3px;
+    background: rgba(255,255,255,0.80);
+    border-radius: 2px;
+    box-shadow: 4px -4px 0 rgba(255,255,255,0.50);
+  }
+  .dock-app-chat {
+    background: linear-gradient(135deg, #10B981, #059669);
+    position: relative;
+    overflow: hidden;
+  }
+  .dock-app-chat::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -52%);
+    width: 22px;
+    height: 16px;
+    background: rgba(255,255,255,0.80);
+    border-radius: 10px 10px 10px 2px;
+  }
   .dock-caption {
     font-family: 'Geist Mono', monospace;
     font-size: 11px;
@@ -1285,7 +1422,9 @@
   @media (max-width: 900px) {
     .container { padding: 0 20px; }
     .nav-links { gap: 20px; }
-    .nav-links a:not(.nav-cta) { display: none; }
+    /* Hide all nav links (including Download) in the desktop bar; hamburger takes over */
+    .nav-links { display: none; }
+    .nav-hamburger { display: flex; }
     .click-grid { grid-template-columns: 1fr; }
     .moat-grid { grid-template-columns: 1fr; }
     .moat-cell { border-right: none !important; }
@@ -1411,7 +1550,7 @@
 <body>
 
 <!-- NAV -->
-<nav>
+<nav id="site-nav">
   <div class="container nav-inner">
     <a href="#" class="logo">
       <span class="logo-icon-tile">/</span>
@@ -1424,6 +1563,32 @@
       <a href="/affiliates">Affiliates</a>
       <a href="#download" class="nav-cta">Download</a>
     </div>
+    <button
+      class="nav-hamburger"
+      id="nav-hamburger"
+      aria-expanded="false"
+      aria-controls="nav-mobile-drawer"
+      aria-label="Open navigation menu"
+    >
+      <!-- Hamburger icon; swapped to × when open via JS -->
+      <svg id="nav-icon-open" width="18" height="14" viewBox="0 0 18 14" fill="none" aria-hidden="true">
+        <rect y="0" width="18" height="2" rx="1" fill="currentColor"/>
+        <rect y="6" width="18" height="2" rx="1" fill="currentColor"/>
+        <rect y="12" width="18" height="2" rx="1" fill="currentColor"/>
+      </svg>
+      <svg id="nav-icon-close" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style="display:none">
+        <line x1="1" y1="1" x2="13" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <line x1="13" y1="1" x2="1" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+  <!-- Mobile drawer: hidden by default, toggled by hamburger button -->
+  <div class="nav-mobile-drawer" id="nav-mobile-drawer" role="navigation" aria-label="Mobile navigation">
+    <a href="#how">How it works</a>
+    <a href="#pricing">Pricing</a>
+    <a href="https://app.jnremployee.com" target="_blank" rel="noopener">Demo</a>
+    <a href="/affiliates">Affiliates</a>
+    <a href="#download" class="nav-cta">Download</a>
   </div>
 </nav>
 
@@ -1613,13 +1778,13 @@
         </div>
         <div class="dock-mockup">
           <div class="dock-mockup-inner">
-            <div class="dock-app dock-app-finder">📁</div>
+            <div class="dock-app dock-app-finder" aria-label="Files app"></div>
             <div class="dock-app dock-app-junior">
               <span>j<span class="slash-tiny">/</span>e</span>
             </div>
-            <div class="dock-app dock-app-other">🎬</div>
-            <div class="dock-app dock-app-other">✏️</div>
-            <div class="dock-app dock-app-other">💬</div>
+            <div class="dock-app dock-app-video" aria-label="Video app"></div>
+            <div class="dock-app dock-app-edit" aria-label="Edit app"></div>
+            <div class="dock-app dock-app-chat" aria-label="Chat app"></div>
           </div>
           <div class="dock-caption">In your dock. Where everything else screams. Junior whispers.</div>
         </div>
@@ -1663,7 +1828,7 @@
       <div class="moat-cell">
         <div class="moat-num">06 · ONE-OFF</div>
         <div class="moat-title">Pay once. Hire forever.</div>
-        <div class="moat-desc">First 2,000 founding customers get Pro tier locked at $500 once. No subscription. No price hikes. Junior shows up to work every day for the rest of your career.</div>
+        <div class="moat-desc">First 2,000 founding customers get Autopilot locked at $500 once. No subscription. No price hikes. Junior shows up to work every day for the rest of your career.</div>
       </div>
     </div>
   </div>
@@ -1721,7 +1886,7 @@
   <div class="container">
     <div class="comparison-header">
       <h2>The whole YouTube team. In one app.</h2>
-      <p>What you'd otherwise pay £800–£2,500/month in tools and freelancers to do.</p>
+      <p>What you'd otherwise pay $800–$2,500/month in tools and freelancers to do.</p>
     </div>
 
     <div class="comp-table">
@@ -1833,7 +1998,7 @@
           <li>Unlimited videos per month</li>
           <li>Local-only processing · your machine, your keys</li>
           <li>Multi-ratio + b-roll overlay</li>
-          <li>One platform connection</li>
+          <li>2 platform connections</li>
           <li>All output bundles</li>
         </ul>
         <a href="https://account.jnremployee.com/sign-up?plan=solo" class="price-cta">Start Solo</a>
@@ -1848,7 +2013,7 @@
           <li>Everything in Solo</li>
           <li>Hosted transcribe · no Whisper download</li>
           <li>Hosted LLM · no OpenAI key needed</li>
-          <li>All three platforms (YouTube, TikTok, X)</li>
+          <li>4 platform connections (YouTube, TikTok, Reels, X)</li>
           <li>Priority support</li>
         </ul>
         <a href="https://account.jnremployee.com/sign-up?plan=growth" class="price-cta">Start Growth</a>
@@ -1872,7 +2037,7 @@
 
     <p style="text-align:center;margin:2rem auto 0;max-width:640px;font-family:monospace;font-size:11px;color:#7a7280;letter-spacing:0.02em;">
       Billed in USD at today's rate via Stripe. Your bank converts at their card-network rate.
-      Already on Whop? <a href="https://whop.com/orders" style="color:inherit;text-decoration:underline;">Manage on Whop →</a>
+      Manage your plan at <a href="https://account.jnremployee.com/dashboard" style="color:inherit;text-decoration:underline;">account.jnremployee.com →</a>
     </p>
     <p style="text-align:center;margin:0.75rem auto 0;max-width:640px;font-family:monospace;font-size:11px;color:#7a7280;letter-spacing:0.02em;">
       Solo includes unlimited local clipping with your own OpenAI key. Approved affiliate invite links can unlock 100 reward clip exports before Solo billing starts.
@@ -1975,11 +2140,11 @@
       </div>
       <div class="faq-item">
         <div class="faq-q">Do I need to pay for OpenAI / Claude separately?</div>
-        <div class="faq-a">On the Free tier, yes — you paste your own API key and pay your own usage (typically £2–5/month for moderate use). On Pro and Junior tiers, we include API costs up to your tier's allowance. You'll see exactly what's being used in settings.</div>
+        <div class="faq-a">On the Free tier, yes — you paste your own API key and pay your own usage (typically $2–5/month for moderate use). On Solo and above, we include API costs up to your tier's allowance. You'll see exactly what's being used in settings.</div>
       </div>
       <div class="faq-item">
         <div class="faq-q">What if I cancel?</div>
-        <div class="faq-a">You go to Free tier. Your existing clips stay on your hard drive forever — we never had them in the first place. No "your work disappears when your subscription does" trap. Cancel any time in your Whop account.</div>
+        <div class="faq-a">You go to Free tier. Your existing clips stay on your hard drive forever — we never had them in the first place. No "your work disappears when your subscription does" trap. Cancel any time from your Junior account dashboard.</div>
       </div>
     </div>
   </div>
@@ -2120,6 +2285,44 @@
 </footer>
 
 <script>
+  // Hamburger mobile nav
+  (function() {
+    var btn = document.getElementById('nav-hamburger');
+    var drawer = document.getElementById('nav-mobile-drawer');
+    var iconOpen = document.getElementById('nav-icon-open');
+    var iconClose = document.getElementById('nav-icon-close');
+    if (!btn || !drawer) return;
+
+    function openMenu() {
+      drawer.classList.add('is-open');
+      btn.setAttribute('aria-expanded', 'true');
+      btn.setAttribute('aria-label', 'Close navigation menu');
+      iconOpen.style.display = 'none';
+      iconClose.style.display = 'block';
+    }
+    function closeMenu() {
+      drawer.classList.remove('is-open');
+      btn.setAttribute('aria-expanded', 'false');
+      btn.setAttribute('aria-label', 'Open navigation menu');
+      iconOpen.style.display = 'block';
+      iconClose.style.display = 'none';
+    }
+
+    btn.addEventListener('click', function() {
+      drawer.classList.contains('is-open') ? closeMenu() : openMenu();
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && drawer.classList.contains('is-open')) closeMenu();
+    });
+
+    // Close when a drawer link is tapped (navigates to anchor)
+    drawer.querySelectorAll('a').forEach(function(a) {
+      a.addEventListener('click', closeMenu);
+    });
+  })();
+
   // FAQ toggle
   document.querySelectorAll('.faq-item').forEach(item => {
     item.addEventListener('click', () => item.classList.toggle('open'));
