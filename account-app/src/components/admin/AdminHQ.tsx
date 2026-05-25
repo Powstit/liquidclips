@@ -84,7 +84,7 @@ type ChipTone = "ok" | "pending" | "fail" | "gray";
 
 function chipTone(value: string): ChipTone {
   const v = value.toLowerCase();
-  if (["active", "ok", "true", "yes", "live", "published", "open", "used", "connected"].includes(v)) return "ok";
+  if (["active", "ok", "true", "yes", "live", "published", "open", "used", "connected", "handled"].includes(v)) return "ok";
   if (["trial", "trialing", "pending", "scheduled", "uploading", "consumed"].includes(v)) return "pending";
   if (["failed", "fail", "blocked", "expired", "canceled", "past_due", "refunded", "false", "no", "denied", "revoked"].includes(v))
     return "fail";
@@ -748,38 +748,112 @@ function ClaimsTab() {
 // =====================================================================
 // Webhooks (read-only)
 // =====================================================================
-type Webhook = { id: string; provider: string; event_type: string; received_at: string | null };
+type Webhook = {
+  id: string;
+  provider: string;
+  event_name: string;
+  status: string;
+  user_id: string | null;
+  pending_whop_membership_id: string | null;
+  claim_token_id: string | null;
+  external_event_id: string | null;
+  error: string | null;
+  received_at: string | null;
+  handled_at: string | null;
+};
+
+function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: string[] }) {
+  return (
+    <label className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
+      {label}
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded border border-line bg-paper px-2 py-1 text-[11px] text-ink"
+      >
+        {options.map((o) => (
+          <option key={o} value={o}>{o || "all"}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 function WebhooksTab() {
-  const { rows, note, loading, error, load } = useList<Webhook>("webhooks");
+  const fetchAdmin = useAdminFetch();
+  const [rows, setRows] = useState<Webhook[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [provider, setProvider] = useState("");
+  const [status, setStatus] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const qs = new URLSearchParams();
+      if (provider) qs.set("provider", provider);
+      if (status) qs.set("status", status);
+      const path = qs.toString() ? `webhooks?${qs.toString()}` : "webhooks";
+      const r = (await fetchAdmin(path)) as unknown as { rows: Webhook[] };
+      setRows(r.rows ?? []);
+      setLoaded(true);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAdmin, provider, status]);
+
+  const shortId = (v: string | null) => (v ? v.slice(0, 8) + "…" : null);
+
   return (
-    <Panel title="webhooks · read-only" sub="Recent rows from the existing WebhookEvent idempotency log." right={<LoadButton onClick={load} />}>
+    <Panel
+      title="webhooks · read-only"
+      sub="Metadata-only log of signature-valid Clerk/Whop webhooks — no payloads, emails, secrets, or tokens stored."
+      right={<LoadButton onClick={load} />}
+    >
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <FilterSelect label="provider" value={provider} onChange={setProvider} options={["", "clerk", "whop"]} />
+        <FilterSelect label="status" value={status} onChange={setStatus} options={["", "handled", "ignored", "failed"]} />
+        <span className="font-mono text-[10px] text-text-tertiary">pick filters, then Load</span>
+      </div>
       <Loader on={loading} />
       <ErrorNote error={error} />
+      {loaded && rows.length === 0 && !loading && (
+        <p className="font-mono text-[11px] text-text-tertiary">No webhook rows for this filter yet.</p>
+      )}
       {rows.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse font-mono text-[11px]">
             <thead>
               <tr className="text-left text-text-tertiary">
-                {["provider", "event type", "received", "status"].map((h) => (
+                {["provider", "event", "status", "linked", "error", "received", "handled"].map((h) => (
                   <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {rows.map((w) => (
-                <tr key={w.id} className="border-b border-line/40">
+                <tr key={w.id} className="border-b border-line/40 align-top">
                   <td className="px-2 py-2"><Chip label={w.provider} tone="gray" /></td>
-                  <td className="px-2 py-2 text-ink">{w.event_type}</td>
+                  <td className="px-2 py-2 text-ink">{w.event_name}</td>
+                  <td className="px-2 py-2"><Chip label={w.status} /></td>
+                  <td className="px-2 py-2 text-text-tertiary">
+                    {w.user_id ? <span title="backend user id">u:{shortId(w.user_id)}</span> : null}
+                    {w.pending_whop_membership_id ? <span title="pending membership id"> p:{shortId(w.pending_whop_membership_id)}</span> : null}
+                    {!w.user_id && !w.pending_whop_membership_id ? <NA /> : null}
+                  </td>
+                  <td className="max-w-[260px] truncate px-2 py-2 text-fuchsia-deep" title={w.error ?? undefined}>{w.error ?? "—"}</td>
                   <td className="px-2 py-2 text-text-tertiary">{w.received_at?.slice(0, 19) ?? "—"}</td>
-                  <td className="px-2 py-2"><NA /></td>
+                  <td className="px-2 py-2 text-text-tertiary">{w.handled_at?.slice(0, 19) ?? "—"}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      {note && <p className="mt-3 font-mono text-[11px] text-text-tertiary">{note}</p>}
     </Panel>
   );
 }

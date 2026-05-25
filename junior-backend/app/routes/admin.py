@@ -43,6 +43,7 @@ from app.models import (
     Schedule,
     User,
     WebhookEvent,
+    WebhookEventLog,
     WhopClaimToken,
 )
 from app.routes.usage import STARTER_EXPORT_CAP, starter_export_remaining
@@ -587,35 +588,37 @@ def resend_claim(
 def webhooks(
     admin: AdminUser,
     db: Annotated[Session, Depends(get_db)],
+    provider: str | None = None,
+    status: str | None = None,
     limit: int = 100,
 ) -> dict[str, Any]:
-    """Recent rows from the EXISTING WebhookEvent table. In v0 this table is an
-    idempotency log only — it stores provider / event_type / received_at, NOT
-    handled-status or error. We surface that limitation instead of faking it."""
-    rows = (
-        db.query(WebhookEvent)
-        .order_by(WebhookEvent.received_at.desc())
-        .limit(min(limit, 500))
-        .all()
-    )
+    """Recent rows from the metadata-only WebhookEventLog: provider, event name,
+    outcome status (received|handled|ignored|failed), linked user/pending ids, and
+    a short sanitized error. No raw payloads, emails, secrets, or tokens stored.
+    Optional ?provider=clerk|whop and ?status=... filters."""
+    q = db.query(WebhookEventLog)
+    if provider in ("clerk", "whop"):
+        q = q.filter(WebhookEventLog.provider == provider)
+    if status in ("received", "handled", "ignored", "failed"):
+        q = q.filter(WebhookEventLog.status == status)
+    rows = q.order_by(WebhookEventLog.received_at.desc()).limit(min(limit, 500)).all()
     out = [
         {
             "id": w.id,
             "provider": w.provider,
-            "event_type": w.event_type,
+            "event_name": w.event_name,
+            "status": w.status,
+            "user_id": w.user_id,
+            "pending_whop_membership_id": w.pending_whop_membership_id,
+            "claim_token_id": w.claim_token_id,
+            "external_event_id": w.external_event_id,
+            "error": w.error,
             "received_at": _iso(w.received_at),
+            "handled_at": _iso(w.handled_at),
         }
         for w in rows
     ]
-    return {
-        "count": len(out),
-        "rows": out,
-        "note": (
-            "WebhookEvent is an idempotency log in v0 — handled status, error, and "
-            "linked user/pending are NOT persisted. Delivery/processing detail lives "
-            "in Railway logs + the Clerk/Whop dashboards."
-        ),
-    }
+    return {"count": len(out), "rows": out}
 
 
 # ======================================================================

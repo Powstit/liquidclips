@@ -216,3 +216,28 @@ class WhopClaimToken(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WebhookEventLog(Base):
+    """Metadata-only audit log of every signature-valid Clerk/Whop webhook.
+
+    Powers the Admin HQ Webhooks tab so failed/ignored events are visible
+    without log diving. Deliberately stores NO raw payloads, secrets, emails,
+    or tokens — only ids, the event name, an outcome status, and a short
+    sanitized error. Writing is best-effort in its OWN session, so a logging
+    failure (or a processing rollback) never blocks webhook handling.
+    """
+
+    __tablename__ = "webhook_event_log"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    provider: Mapped[str] = mapped_column(String, nullable=False, index=True)   # clerk | whop
+    event_name: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, index=True)     # received|handled|ignored|failed
+    user_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    pending_whop_membership_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    claim_token_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    external_event_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)            # short sanitized
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    handled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -113,40 +113,72 @@ async def whop_webhook(
     if db.query(WebhookEvent).filter_by(external_id=external_id).one_or_none():
         return {"status": "duplicate", "event": event_type}
 
-    if event_type in (
-        "membership_went_valid",
-        "membership.went_valid",
-        "membership_activated",  # current Whop catalog name
-        "membership.activated",
-    ):
-        _handle_membership_valid(db, data)
-    elif event_type in (
-        "membership_went_invalid",
-        "membership.went_invalid",
-        "membership_canceled",
-        "membership.canceled",
-        "membership_deactivated",  # current Whop catalog name
-        "membership.deactivated",
-    ):
-        _handle_membership_invalid(db, data)
-    elif event_type in ("payment_succeeded", "payment.succeeded"):
-        _handle_payment_succeeded(db, data)
-    elif event_type in (
-        "payment_refunded", "payment.refunded",
-        "refund_created", "refund.created",
-        "dispute_created", "dispute.created",
-    ):
-        _handle_payment_refunded(db, data)
-    # else: silently accept.
+    from app.webhook_log import log_webhook
+    _MEMBERSHIP_VALID = ("membership_went_valid", "membership.went_valid", "membership_activated", "membership.activated")
+    _MEMBERSHIP_INVALID = ("membership_went_invalid", "membership.went_invalid", "membership_canceled", "membership.canceled", "membership_deactivated", "membership.deactivated")
+    _PAYMENT = ("payment_succeeded", "payment.succeeded")
+    _REFUND = ("payment_refunded", "payment.refunded", "refund_created", "refund.created", "dispute_created", "dispute.created")
+    recognized = event_type in (_MEMBERSHIP_VALID + _MEMBERSHIP_INVALID + _PAYMENT + _REFUND)
 
-    db.add(WebhookEvent(
-        provider="whop",
-        external_id=external_id,
-        event_type=event_type,
-        body_hash=hashlib.sha256(body).hexdigest(),
-    ))
-    db.commit()
+    try:
+        if event_type in _MEMBERSHIP_VALID:
+            _handle_membership_valid(db, data)
+        elif event_type in _MEMBERSHIP_INVALID:
+            _handle_membership_invalid(db, data)
+        elif event_type in _PAYMENT:
+            _handle_payment_succeeded(db, data)
+        elif event_type in _REFUND:
+            _handle_payment_refunded(db, data)
+        # else: unsupported — accepted but ignored.
+
+        db.add(WebhookEvent(
+            provider="whop",
+            external_id=external_id,
+            event_type=event_type,
+            body_hash=hashlib.sha256(body).hexdigest(),
+        ))
+        db.commit()
+    except Exception as exc:  # preserve the existing 500→Whop-retry behaviour
+        db.rollback()
+        log_webhook(provider="whop", event_name=event_type, status="failed",
+                    external_event_id=external_id, user_id=_user_id_for_log(db, data), error=exc)
+        raise
+
+    log_webhook(
+        provider="whop", event_name=event_type,
+        status="handled" if recognized else "ignored",
+        external_event_id=external_id,
+        user_id=_user_id_for_log(db, data),
+        pending_whop_membership_id=_pending_id_for_log(db, data) if recognized else None,
+        handled=recognized,
+    )
     return {"status": "ok", "event": event_type}
+
+
+def _user_id_for_log(db: Session, data: dict) -> str | None:
+    """Best-effort backend user id for the webhook audit log (id only, never email)."""
+    try:
+        u = _find_user_for_event(db, data)
+        return u.id if u else None
+    except Exception:  # noqa: BLE001 — logging metadata is best-effort
+        return None
+
+
+def _pending_id_for_log(db: Session, data: dict) -> str | None:
+    """Best-effort latest pending-membership id for this event's buyer email."""
+    try:
+        email = ((data.get("user") or {}).get("email") or "").strip().lower()
+        if not email:
+            return None
+        row = (
+            db.query(PendingWhopMembership)
+            .filter(PendingWhopMembership.email == email)
+            .order_by(PendingWhopMembership.created_at.desc())
+            .first()
+        )
+        return row.id if row else None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _find_user_for_event(db: Session, data: dict) -> User | None:

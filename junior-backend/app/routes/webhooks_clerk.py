@@ -79,23 +79,56 @@ async def clerk_webhook(
     if _already_processed(db, svix_id, body_hash):
         return {"status": "duplicate", "event": event_type}
 
-    if event_type == "user.created":
-        _handle_user_created(db, data)
-    elif event_type == "user.updated":
-        _handle_user_updated(db, data)
-    elif event_type == "user.deleted":
-        _handle_user_deleted(db, data)
-    elif event_type in ("subscription.active", "subscriptionItem.updated"):
-        _handle_subscription_active(db, data)
-    elif event_type == "subscription.canceled":
-        _handle_subscription_canceled(db, data)
-    elif event_type == "subscription.past_due":
-        _handle_subscription_past_due(db, data)
-    # else: silently accept — Clerk sends events we haven't subscribed to yet.
+    from app.webhook_log import log_webhook
+    _KNOWN = (
+        "user.created", "user.updated", "user.deleted",
+        "subscription.active", "subscriptionItem.updated",
+        "subscription.canceled", "subscription.past_due",
+    )
+    recognized = event_type in _KNOWN
+    try:
+        if event_type == "user.created":
+            _handle_user_created(db, data)
+        elif event_type == "user.updated":
+            _handle_user_updated(db, data)
+        elif event_type == "user.deleted":
+            _handle_user_deleted(db, data)
+        elif event_type in ("subscription.active", "subscriptionItem.updated"):
+            _handle_subscription_active(db, data)
+        elif event_type == "subscription.canceled":
+            _handle_subscription_canceled(db, data)
+        elif event_type == "subscription.past_due":
+            _handle_subscription_past_due(db, data)
+        # else: unsupported — accepted but ignored.
 
-    db.add(WebhookEvent(provider="clerk", external_id=svix_id, event_type=event_type, body_hash=body_hash))
-    db.commit()
+        db.add(WebhookEvent(provider="clerk", external_id=svix_id, event_type=event_type, body_hash=body_hash))
+        db.commit()
+    except Exception as exc:  # preserve existing failure→retry behaviour; log first
+        db.rollback()
+        log_webhook(provider="clerk", event_name=event_type, status="failed",
+                    external_event_id=svix_id, user_id=_clerk_user_id_for_log(db, data), error=exc)
+        raise
+
+    log_webhook(
+        provider="clerk", event_name=event_type,
+        status="handled" if recognized else "ignored",
+        external_event_id=svix_id,
+        user_id=_clerk_user_id_for_log(db, data),
+        handled=recognized,
+    )
     return {"status": "ok", "event": event_type}
+
+
+def _clerk_user_id_for_log(db: Session, data: dict) -> str | None:
+    """Best-effort backend user id for the webhook audit log (id only, never email)."""
+    try:
+        cid = data.get("id") or _user_id_from_payer(data)
+        if not cid:
+            return None
+        u = db.query(User).filter_by(clerk_id=cid).one_or_none()
+        return u.id if u else None
+    except Exception:  # noqa: BLE001 — logging metadata is best-effort
+        return None
 
 
 def _primary_email(data: dict) -> str:
