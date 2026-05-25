@@ -136,6 +136,11 @@ def link_whop(
             user_id=user.clerk_id, tier=user.tier,
             whop_user_id=user.whop_user_id, affiliate_id=user.affiliate_id,
         )
+        # New spec event: pending membership consumed by same-email link-whop.
+        analytics.capture(
+            user_id=user.clerk_id, event="whop_onboarding_link_succeeded",
+            properties={"tier": user.tier, "founder": founder},
+        )
         analytics.capture(
             user_id=user.clerk_id, event="whop_membership_valid",
             properties={"tier": user.tier, "founder": founder},
@@ -283,6 +288,9 @@ def redeem_claim(
     if user.clerk_id:
         from app import analytics
         analytics.identify(user_id=user.clerk_id, tier=user.tier, whop_user_id=user.whop_user_id, affiliate_id=user.affiliate_id)
+        # Emit both the doc's new name (whop_claim_redeemed) and the existing
+        # name (whop_claim_succeeded) so existing dashboards don't break.
+        analytics.capture(user_id=user.clerk_id, event="whop_claim_redeemed", properties={"tier": user.tier, "founder": founder})
         analytics.capture(user_id=user.clerk_id, event="whop_claim_succeeded", properties={"tier": user.tier, "founder": founder})
 
     return RedeemClaimResponse(linked=True, tier=user.tier)

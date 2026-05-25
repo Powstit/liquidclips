@@ -80,4 +80,6 @@ export type PartnerEvent =
   | "partner_dashboard_viewed"
   | "affiliate_link_copied"
   | "affiliate_link_shared"
-  | "qr_downloaded";
+  | "affiliate_qr_downloaded"          // QR code saved/downloaded
+  | "affiliate_checkout_link_viewed"   // referral URL rendered on dashboard (non-empty)
+  | "qr_downloaded";                   // legacy alias — kept so existing events don't break

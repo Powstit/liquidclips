@@ -145,6 +145,18 @@ def clip_exported(
     the 'continue on Solo' prompt. Paid tiers/founders never count and never block."""
     remaining = starter_export_remaining(user)  # None = unlimited (paid/founder)
     if remaining is not None and remaining <= 0:
+        # 402 — starter cap exhausted. Fire before raising so the event lands
+        # even if the caller doesn't see the exception body.
+        if user.clerk_id:
+            from app import analytics
+            analytics.capture(
+                user_id=user.clerk_id,
+                event="clip_export_blocked",
+                properties={
+                    "exports_used": user.starter_exports_used or 0,
+                    "reason": "starter_cap",
+                },
+            )
         raise HTTPException(
             status.HTTP_402_PAYMENT_REQUIRED,
             "You've used your 100 free clips. Continue on Solo ($29.99/mo) to keep exporting.",
@@ -153,6 +165,18 @@ def clip_exported(
         user.starter_exports_used = (user.starter_exports_used or 0) + 1
         db.commit()
         remaining = starter_export_remaining(user)
+        if user.clerk_id:
+            from app import analytics
+            # Record the successful export increment.
+            analytics.capture(
+                user_id=user.clerk_id,
+                event="clip_export_recorded",
+                properties={
+                    "exports_used": user.starter_exports_used or 0,
+                    "remaining_exports": remaining if remaining is not None else 0,
+                    "subscription_status": user.subscription_status,
+                },
+            )
         # Funnel signal: the 100th free export just landed → next export hits the
         # paywall. This is the "continue on Solo" moment for the desktop.
         if remaining == 0 and user.clerk_id:
@@ -160,7 +184,7 @@ def clip_exported(
             analytics.capture(
                 user_id=user.clerk_id,
                 event="starter_pass_exhausted",
-                properties={"tier": user.tier, "subscription_status": user.subscription_status},
+                properties={"exports_used": STARTER_EXPORT_CAP, "tier": user.tier, "subscription_status": user.subscription_status},
             )
     capped = remaining is not None
     return ExportStatus(

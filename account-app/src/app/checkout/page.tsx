@@ -37,6 +37,9 @@ function StepIcon({ name }: { name: string }) {
 export default function CheckoutPage() {
   const [affiliateId, setAffiliateId] = useState("");
   const [ready, setReady] = useState(false);
+  // Computed once on mount from URL/cookie — used as a bool-only prop across
+  // multiple analytics events. Never sent as a raw id, only as a boolean.
+  const [hasAffiliate, setHasAffiliate] = useState(false);
 
   // Analytics: page view. Compute has_affiliate from the same URL/cookie
   // sources the embed uses, independent of the async affiliateId state so the
@@ -50,7 +53,8 @@ export default function CheckoutPage() {
     } catch {
       /* best-effort */
     }
-    track("checkout_page_viewed", { has_affiliate: hasAffiliate });
+    track("checkout_page_viewed", { has_affiliate: hasAffiliate, plan: "solo", source: "affiliate_whop" });
+    setHasAffiliate(hasAffiliate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -86,7 +90,7 @@ export default function CheckoutPage() {
   // Analytics: the Whop checkout embed div mounts once `ready` flips true.
   // We track the mount of our embed container, not Whop's internal iframe.
   useEffect(() => {
-    if (ready) track("whop_checkout_loaded", { billing_provider: "whop" });
+    if (ready) track("whop_checkout_loaded", { billing_provider: "whop", has_affiliate: hasAffiliate, plan: "solo" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
@@ -99,11 +103,12 @@ export default function CheckoutPage() {
   // onboarding (sign in + link membership) → download.
   useEffect(() => {
     (window as unknown as Record<string, unknown>).__jnrCheckoutComplete = () => {
-      // Fire BEFORE navigating so the event isn't lost to the redirect.
-      track("whop_checkout_completed", { billing_provider: "whop" });
+      // Fire BEFORE navigating so the events aren't lost to the redirect.
+      track("whop_checkout_completed", { billing_provider: "whop", has_affiliate: hasAffiliate, plan: "solo" });
+      track("checkout_return_to_get", { has_affiliate: hasAffiliate });
       window.location.href = returnUrl;
     };
-  }, [returnUrl]);
+  }, [returnUrl, hasAffiliate]);
 
   return (
     <main className="mx-auto max-w-[1080px] px-5 py-10 sm:py-14">
@@ -129,7 +134,7 @@ export default function CheckoutPage() {
             Start with <strong className="text-ink">100 free clip exports</strong>. Junior runs on your computer, finds the best moments, captions them, and exports ready-to-post clips.
           </p>
           <div className="mt-7 flex flex-wrap items-center gap-3">
-            <a href="#start" onClick={() => track("checkout_cta_clicked", { source: "hero" })} className="rounded-full bg-ink px-6 py-3.5 text-sm font-semibold text-paper transition-colors hover:bg-fuchsia">
+            <a href="#start" onClick={() => track("checkout_cta_clicked", { source: "hero", has_affiliate: hasAffiliate })} className="rounded-full bg-ink px-6 py-3.5 text-sm font-semibold text-paper transition-colors hover:bg-fuchsia">
               Start 100 free clips →
             </a>
             <a href="#how" className="rounded-full border border-line px-5 py-3.5 text-sm font-medium text-ink transition-colors hover:border-fuchsia">
@@ -179,7 +184,7 @@ export default function CheckoutPage() {
               <span><strong className="text-ink">Then $29.99/mo</strong> — your Solo plan starts after 30 days, or when you choose to continue after using your 100 free exports.</span>
             </li>
           </ul>
-          <a href="#start" onClick={() => track("checkout_cta_clicked", { source: "offer_card" })} className="mt-6 inline-flex rounded-full bg-ink px-6 py-3 text-sm font-semibold text-paper transition-colors hover:bg-fuchsia">
+          <a href="#start" onClick={() => track("checkout_cta_clicked", { source: "offer_card", has_affiliate: hasAffiliate })} className="mt-6 inline-flex rounded-full bg-ink px-6 py-3 text-sm font-semibold text-paper transition-colors hover:bg-fuchsia">
             Start 100 free clips →
           </a>
         </div>

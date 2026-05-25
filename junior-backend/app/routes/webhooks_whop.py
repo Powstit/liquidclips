@@ -423,6 +423,15 @@ def _handle_membership_invalid(db: Session, data: dict) -> None:
         first_name=first_name if isinstance(first_name, str) else None,
     )
 
+    # PostHog: membership went invalid/canceled → tier downgraded to free.
+    if user.clerk_id:
+        from app import analytics
+        analytics.capture(
+            user_id=user.clerk_id,
+            event="whop_membership_invalid",
+            properties={"reason": "canceled", "tier": "free"},
+        )
+
 
 def _handle_payment_succeeded(db: Session, data: dict) -> None:
     user = _find_user_for_event(db, data)
@@ -492,3 +501,13 @@ def _handle_payment_refunded(db: Session, data: dict) -> None:
         priority="medium",
         external_dedup_key=f"whop-refund-{event_id}" if event_id else None,
     )
+
+    # PostHog: refund pulled the entitlement → same "invalid" funnel signal as
+    # cancellation but with reason="refunded" so we can distinguish in dashboards.
+    if user.clerk_id:
+        from app import analytics
+        analytics.capture(
+            user_id=user.clerk_id,
+            event="whop_membership_invalid",
+            properties={"reason": "refunded", "tier": "free"},
+        )
