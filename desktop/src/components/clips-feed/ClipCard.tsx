@@ -8,6 +8,7 @@ import { sidecar, RATIOS } from "../../lib/sidecar";
 import { LayoutIcon, LAYOUTS, type LayoutKey } from "./LayoutIcon";
 import { pickOverlaySource } from "../OverlaySourcePicker";
 import { BountyFitPill } from "../earn/bounty-fit";
+import { useCountUp } from "../../lib/useCountUp";
 
 // Self-contained card. Tap = play preview. Layout icons swap composition in
 // place. Copy buttons inline. "..." opens the side-door full editor for the
@@ -20,7 +21,7 @@ function formatHms(s: number): string {
 }
 
 function viralityClass(v: number): string {
-  if (v >= 90) return "bg-fuchsia text-paper";
+  if (v >= 90) return "bg-fuchsia text-paper shadow-[var(--glow-sm)]";
   if (v >= 75) return "bg-fuchsia-bright text-paper";
   if (v >= 50) return "bg-fuchsia-glow text-ink";
   return "bg-paper-warm text-text-tertiary";
@@ -54,6 +55,7 @@ export function ClipCard({
   const [busy, setBusy] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const viralityDisplay = useCountUp(clip.virality, { durationMs: 700 });
 
   const videoPath = useMemo(
     () => pathForRatio(clip, ratio) ?? clip.cut_path,
@@ -124,12 +126,12 @@ export function ClipCard({
   }
 
   return (
-    <article className="flex flex-col gap-3 rounded-2xl border border-line bg-paper p-4 shadow-[0_2px_12px_rgba(15,15,18,0.04)] transition-shadow hover:shadow-[0_8px_28px_rgba(15,15,18,0.08)]">
+    <article className="flex flex-col gap-3 rounded-2xl border border-line bg-paper p-4 shadow-[var(--shadow-e1)] transition-all duration-200 hover:-translate-y-[2px] hover:shadow-[var(--shadow-e2)]">
       {/* Header: virality + theme + duration */}
       <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-[0.08em]">
         <div className="flex items-center gap-2">
           <span className={`rounded-full px-2 py-0.5 ${viralityClass(clip.virality)}`}>
-            {clip.virality}
+            {viralityDisplay}
           </span>
           {clip.theme && (
             <span className="text-text-tertiary">{clip.theme}</span>
