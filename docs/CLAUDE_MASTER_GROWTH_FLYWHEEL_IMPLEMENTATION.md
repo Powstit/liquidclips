@@ -2,6 +2,17 @@
 
 Last updated: 2026-05-24
 
+> **POLICY UPDATE 2026-05-24 — Commission qualification gate.** The "50% MRR"
+> mentions below are now **gated behind Qualified Affiliate status**. An affiliate
+> qualifies via **either** (1) two referred paid Junior customers, **or** (2)
+> 11,000 Whop-verified views on approved Junior promo / Content Reward
+> submissions. 50% recurring then starts from the **third** referred paid customer
+> (paid-customer path) or the **next** referred paid customer after view
+> qualification (views path). The first two referred paid customers do not earn.
+> Active paid Junior subscription (Solo+) required; Whop is payout + verified-views
+> source of truth; no Stripe Connect. Canonical: `CLAUDE_AFFILIATE_QUALIFICATION_POLICY.md`.
+> This supersedes any flat/immediate-50% wording in this file.
+
 ## Current State
 
 The Whop bounty workspace is now shipped and committed as `31133a1` / desktop `v0.4.12`.
@@ -348,33 +359,33 @@ Base floor assumptions:
 Reward payout: $3 / 1,000 views
 Free signup rate from views: 3%
 Free → paid retained rate: 1%
-Solo price: £19.99/mo
+Solo price: $29.99/mo
 Affiliate share: 50%
-Net to Junior per paid Solo user: ~£10/mo
+Net to Junior per paid Solo user: ~$15/mo
 ```
 
-At £2,500 budget:
+At $2,500 budget:
 
 ```text
-~1,041,000 views
-~31,230 free users at 3%
-~312 paid users at 1% of free
-~£6,237 gross MRR
-~£3,118 net MRR after affiliate share
+~833,000 views
+~24,990 free users at 3%
+~250 paid users at 1% of free
+~$7,497 gross MRR
+~$3,748 net MRR after affiliate share
 ```
 
 Reinvestment rule:
 
 ```text
-Keep £6,000 net MRR.
+Keep $6,000 net MRR.
 Reinvest everything above into reward campaigns.
 ```
 
 Under no-decay / lock-in assumptions:
 
-- Starting around £10k net MRR can reach ~£100k net MRR around month 4.
-- Starting around £10k net MRR can reach ~£1M net MRR around month 7.
-- Starting below £6k net MRR stalls unless external budget is added.
+- Starting around $10k net MRR can reach ~$100k net MRR around month 4.
+- Starting around $10k net MRR can reach ~$1M net MRR around month 7.
+- Starting below $6k net MRR stalls unless external budget is added.
 
 ## Build Gate
 

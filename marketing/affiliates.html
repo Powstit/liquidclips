@@ -173,6 +173,47 @@
   .footer-bottom-socials a:hover { color: var(--fuchsia); }
   @media (max-width: 900px) { .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; } }
   @media (max-width: 560px) { .footer-grid { grid-template-columns: 1fr; } }
+  /* ---- MOBILE (≤480px) ---- */
+  @media (max-width: 480px) {
+    .container { padding: 0 16px; }
+
+    /* Hero h1 — clamp floor 44px is still big on 360–375px screens */
+    h1 { font-size: clamp(34px, 9vw, 56px); }
+    .hero-sub { font-size: 16px; }
+    .hero { padding: 48px 0 40px; }
+
+    /* Hero CTA buttons — full-width stack */
+    .hero-ctas { flex-direction: column; gap: 12px; }
+    .btn-primary,
+    .btn-secondary { width: 100%; justify-content: center; }
+
+    /* Steps grid */
+    section.block { padding: 48px 0; }
+    .step { padding: 20px; }
+
+    /* Stats row — already 1-col at 700px, just tighten number size */
+    .stat-num { font-size: clamp(28px, 8vw, 40px); }
+
+    /* Terms card */
+    .terms { padding: 24px 20px; border-radius: 16px; }
+    .terms li { font-size: 14px; }
+
+    /* FAQ cards */
+    .faq-q { padding: 18px 16px; border-radius: 12px; }
+    .faq-q h4 { font-size: 15px; }
+    .faq-q p { font-size: 13px; }
+
+    /* CTA band */
+    .cta-band { padding: 36px 20px; border-radius: 20px; }
+    .cta-band .btn-primary { width: 100%; justify-content: center; }
+
+    /* Section sub text — 18px too large on narrow screens */
+    .section-sub { font-size: 15px; }
+
+    /* Footer */
+    footer.site-footer { padding: 40px 0 24px; }
+    .footer-bottom { flex-direction: column; align-items: flex-start; gap: 10px; }
+  }
 </style>
 <script>
   // Enable motion reveals only when the visitor hasn't asked to reduce motion.
@@ -252,7 +293,7 @@
         <div class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4M16.71 13.88l.7.71-2.82 2.82"/></svg></div>
         <div class="step-num">04</div>
         <div class="step-title">You earn up to 50%</div>
-        <div class="step-desc">When referred clippers become paid, you earn recurring commission — up to 50% at the top tier — while you keep an active paid Junior subscription.</div>
+        <div class="step-desc">Once you qualify as a partner, referred clippers who become paid earn you up to 50% recurring commission — while you keep an active paid Junior subscription.</div>
       </div>
     </div>
   </div>
@@ -264,10 +305,10 @@
     <div class="stats">
       <div class="stat">
         <div class="stat-num">Up to 50%</div>
-        <div class="stat-label">Recurring commission (top tier)</div>
+        <div class="stat-label">Recurring commission (after you qualify)</div>
       </div>
       <div class="stat">
-        <div class="stat-num">£74.50</div>
+        <div class="stat-num">$100</div>
         <div class="stat-label">Max / Autopilot referral / mo</div>
       </div>
       <div class="stat">
@@ -297,13 +338,13 @@
   <div class="container reveal">
     <div class="section-label">How commission works</div>
     <h2>Simple, honest, recurring.</h2>
-    <p class="section-sub" style="margin-bottom:32px;">Earn up to 50% recurring commission when you refer paid Junior customers. Active paid Junior subscription required. The headline rate is the top performance tier — commission starts at a lower base tier.</p>
+    <p class="section-sub" style="margin-bottom:32px;">Earn up to 50% recurring commission when you refer paid Junior customers. Active paid Junior subscription required. Commission becomes payable once you reach Qualified Partner status — the full qualification details are in the affiliate terms.</p>
     <div class="terms">
       <ul>
         <li><strong>Active paid Junior subscription required</strong> to earn — Solo or higher qualifies.</li>
         <li>Paid <strong>only on successful payments from referred customers</strong> — never on free or trial sign-ups.</li>
-        <li><strong>Up to 50%</strong> is performance-tiered (referred paid subscribers + verified eligible promo activity), assessed on a rolling 30 days. Commission starts at a lower base tier.</li>
-        <li>Commission pauses if your subscription lapses, with a 30-day grace before any tier step-down; already-paid commission is never clawed back except for fraud or abuse.</li>
+        <li><strong>Up to 50% recurring</strong>, payable once you reach <strong>Qualified Partner</strong> status. How you qualify is set out in the <a href="/terms#affiliate">affiliate terms</a>.</li>
+        <li>Commission pauses if your subscription lapses and resumes on reactivation; already-paid commission is never clawed back except for fraud or abuse.</li>
         <li>Payouts are managed by Whop and paid in 170+ countries.</li>
       </ul>
       <p class="fine">Fraud, bot traffic, abuse, and duplicate or self-referrals are excluded. <a href="/terms#affiliate">Read the full affiliate terms →</a></p>
@@ -323,7 +364,7 @@
       </div>
       <div class="faq-q">
         <h4>When do I get paid?</h4>
-        <p>Commission starts after your referred customer's first successful paid invoice, then recurs each month they stay paid. Whop handles the payouts.</p>
+        <p>Commission becomes payable once you reach Qualified Partner status, then recurs each month your referred customers stay paid. The qualification details are in the <a href="/terms#affiliate">affiliate terms</a>. Whop handles the payouts.</p>
       </div>
       <div class="faq-q">
         <h4>What happens if I cancel my Junior plan?</h4>

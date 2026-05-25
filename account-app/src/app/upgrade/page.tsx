@@ -58,14 +58,14 @@ export default async function UpgradePage() {
             Want lifetime access?
           </h2>
           <p className="mt-2 font-sans text-[14px] leading-relaxed text-text-secondary">
-            Founder Lifetime is a one-time £500 — locks in Autopilot forever, no recurring charge.
+            Founder Lifetime is a one-time $500 — locks in Autopilot forever, no recurring charge.
             Sold through Whop because Clerk only handles recurring plans.
           </p>
           <a
             href="https://jnremployee.com/founder"
             className="mt-4 inline-flex items-center gap-2 rounded-full bg-ink px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)]"
           >
-            Founder Lifetime — £500 →
+            Founder Lifetime — $500 →
           </a>
         </section>
       </main>

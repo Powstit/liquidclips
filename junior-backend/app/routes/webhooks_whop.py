@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db import get_db
 from app.jwt_signer import issue_license_jwt
-from app.models import License, User, WebhookEvent
+from app.models import License, PendingWhopMembership, User, WebhookEvent
 from app.routes.notifications import write_notification
 
 router = APIRouter(prefix="/webhooks/whop", tags=["webhooks"])
@@ -35,8 +35,10 @@ settings = get_settings()
 # Map Whop plan IDs → our internal tiers.
 # Whop is for affiliate-tracked + one-time sales (Founder £500 is the only
 # active Whop product right now). Recurring tiers go through Clerk Billing.
+# Keys are lowercased — the lookup lowercases the incoming plan title so a
+# title cased differently by Whop ("Junior Solo") still resolves.
 PLAN_TIER_BY_TITLE = {
-    "Junior Pro": "growth",      # legacy prod_V8UzHw4fxCqaJ — back-compat
+    "junior pro": "growth",      # legacy prod_V8UzHw4fxCqaJ — back-compat
     "junior solo": "solo",
     "junior growth": "growth",
     "junior channel": "growth",  # legacy alias
@@ -44,6 +46,15 @@ PLAN_TIER_BY_TITLE = {
     # Founder is a one-time £500 unlock; founder_flag also gets set in
     # _tier_from_event so they get Autopilot entitlements forever.
     "junior founder": "autopilot",
+}
+
+# PRIMARY mapping: Whop plans here carry no `title` (the v2 API returns title=null),
+# so title-matching is unreliable — match by the stable plan id first. These are
+# the live USD plans on Junior Pro (prod_V8UzHw4fxCqaJ), created 2026-05-25.
+PLAN_TIER_BY_ID = {
+    "plan_qe8AFXj9J3SWi": "solo",       # Junior Solo  $29.99/mo
+    "plan_dhssNse4FfPlI": "growth",     # Junior Growth $99.99/mo
+    "plan_BvDBrtybhbxNg": "autopilot",  # Junior Autopilot $199.99/mo
 }
 
 
@@ -64,8 +75,11 @@ def _tier_from_event(event_data: dict) -> tuple[str, bool]:
     the £500 one-time unlock gives lifetime Autopilot entitlements. Other
     paid plans default to 'growth' if the title doesn't match the map."""
     plan = event_data.get("plan") or {}
-    title = (plan.get("title") or "").strip()
-    is_founder = "founder" in title.lower()
+    plan_id = (plan.get("id") or "").strip()
+    if plan_id in PLAN_TIER_BY_ID:
+        return PLAN_TIER_BY_ID[plan_id], False
+    title = (plan.get("title") or "").strip().lower()
+    is_founder = "founder" in title
     if is_founder:
         return "autopilot", True
     tier = PLAN_TIER_BY_TITLE.get(title, "growth")
@@ -138,19 +152,70 @@ def _find_user_for_event(db: Session, data: dict) -> User | None:
     return None
 
 
-def _handle_membership_valid(db: Session, data: dict) -> None:
-    user = _find_user_for_event(db, data)
-    if not user:
-        # No Clerk user yet — the buyer paid before signing up on the website.
-        # We'll backfill in a follow-up flow; ignore for now.
+def _stash_pending_membership(db: Session, data: dict, *, tier: str, founder: bool) -> None:
+    """Persist an entitlement for a buyer who paid before signing up.
+
+    Keyed by email so /onboarding/link-whop can claim it on first sign-in.
+    Idempotent: a webhook retry for the same email+tier that's still
+    unconsumed is a no-op. The Whop membership webhook is at-least-once, so
+    we de-dup on (email, tier, consumed_at IS NULL) rather than spawn rows.
+    """
+    user_block = data.get("user") or {}
+    email = (user_block.get("email") or "").strip().lower()
+    if not email:
+        # Nothing to key on — Whop didn't include the buyer email. Drop it;
+        # the outer webhook still records the WebhookEvent for idempotency.
         return
-    tier, founder = _tier_from_event(data)
+
+    existing = (
+        db.query(PendingWhopMembership)
+        .filter(
+            PendingWhopMembership.email == email,
+            PendingWhopMembership.tier == tier,
+            PendingWhopMembership.consumed_at.is_(None),
+        )
+        .one_or_none()
+    )
+    if existing:
+        return  # already parked — webhook retry
+
+    renewal_at = data.get("renewal_period_end")
+    db.add(
+        PendingWhopMembership(
+            email=email,
+            tier=tier,
+            founder=founder,
+            whop_user_id=user_block.get("id"),
+            renewal_period_end=int(renewal_at) if isinstance(renewal_at, (int, float)) else None,
+        )
+    )
+
+
+def apply_membership_tier(
+    db: Session,
+    user: User,
+    *,
+    tier: str,
+    founder: bool,
+    whop_user_id: str | None = None,
+    renewal_at: int | float | None = None,
+) -> str:
+    """Apply a paid Whop tier to a user and issue a fresh license JWT.
+
+    This is the minimal, side-effect-free core shared by the membership
+    webhook and the /onboarding/link-whop backfill: it sets tier,
+    subscription_status, whop_user_id, paid_until and mints a License row.
+    It deliberately does NOT send notifications or email — the webhook path
+    layers those on top; the onboarding backfill stays quiet.
+
+    Returns the freshly issued license JWT.
+    """
     user.tier = tier
     user.founder_flag = user.founder_flag or founder
     user.subscription_status = "active"
-    user.whop_user_id = (data.get("user") or {}).get("id") or user.whop_user_id
+    if whop_user_id:
+        user.whop_user_id = whop_user_id
 
-    renewal_at = data.get("renewal_period_end")
     if isinstance(renewal_at, (int, float)):
         user.paid_until = datetime.fromtimestamp(renewal_at, tz=timezone.utc)
     elif founder:
@@ -163,6 +228,27 @@ def _handle_membership_valid(db: Session, data: dict) -> None:
         quota_videos_per_month=None,
     )
     db.add(License(user_id=user.id, jwt=jwt_str, tier_at_issue=tier, expires_at=expires_at))
+    return jwt_str
+
+
+def _handle_membership_valid(db: Session, data: dict) -> None:
+    user = _find_user_for_event(db, data)
+    tier, founder = _tier_from_event(data)
+    if not user:
+        # No Clerk user yet — the buyer paid on Whop before signing up on the
+        # website (common for affiliate-referred sales). Park the entitlement
+        # in a pending row keyed by email; /onboarding/link-whop applies it
+        # the moment they create / sign into their Junior account.
+        _stash_pending_membership(db, data, tier=tier, founder=founder)
+        return
+    apply_membership_tier(
+        db,
+        user,
+        tier=tier,
+        founder=founder,
+        whop_user_id=(data.get("user") or {}).get("id"),
+        renewal_at=data.get("renewal_period_end"),
+    )
 
     # Inbox notification — billing category, dedup-keyed on whop event id so
     # webhook retries don't double-up.

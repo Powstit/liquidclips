@@ -7,10 +7,10 @@ import { track } from "@/lib/analytics";
 // layout, copy, and brand expression while Clerk still owns the checkout +
 // card capture under the hood (CheckoutButton wraps any child element).
 //
-// Currency note: Clerk Billing is USD-only at the engine layer right now, but
-// the headline figures here are the GBP prices Daniel set in the dashboard
-// (the conversions Clerk performed match these exactly). Small disclosure below
-// each price makes the USD billing explicit so customers aren't surprised.
+// Currency note: pricing is now USD-native. The headline figures here are the
+// exact USD amounts Clerk charges (Solo $29.99, Growth $99.99, Autopilot
+// $199.99, Free $0) — what the user sees IS what the card is billed. No GBP
+// conversion layer anymore.
 
 type Feature = {
   label: string;
@@ -23,8 +23,7 @@ type Plan = {
   name: string;
   slug: string;          // Clerk plan slug — also load-bearing for the webhook
   tagline: string;
-  priceGbp: number;
-  priceUsd: number;      // what Clerk actually charges
+  priceUsd: number;      // USD — what Clerk charges AND what we display
   features: Feature[];
   highlight?: boolean;   // "Most popular" badge
 };
@@ -41,7 +40,6 @@ const PLANS: Plan[] = [
     slug: "free_user",
     name: "Free",
     tagline: "Try it. Three videos, no card.",
-    priceGbp: 0,
     priceUsd: 0,
     features: [
       { label: "3 videos per month", built: true },
@@ -56,8 +54,7 @@ const PLANS: Plan[] = [
     slug: "solo",
     name: "Solo",
     tagline: "Unlimited clips. Bring your own keys.",
-    priceGbp: 19.99,
-    priceUsd: 26.82,
+    priceUsd: 29.99,
     features: [
       { label: "Unlimited videos per month", built: true },
       { label: "Local-only processing — your machine, your keys", built: true },
@@ -71,8 +68,7 @@ const PLANS: Plan[] = [
     slug: "growth",
     name: "Growth",
     tagline: "Hosted transcribe and LLM. Nothing to plug in.",
-    priceGbp: 49,
-    priceUsd: 67.09,
+    priceUsd: 99.99,
     features: [
       { label: "Everything in Solo", built: true },
       { label: "Hosted transcribe — no Whisper download", built: true },
@@ -87,8 +83,7 @@ const PLANS: Plan[] = [
     slug: "autopilot",
     name: "Autopilot",
     tagline: "Drip-mode. Junior posts while you sleep.",
-    priceGbp: 149,
-    priceUsd: 201.31,
+    priceUsd: 199.99,
     features: [
       { label: "Everything in Growth", built: true },
       { label: "14-day auto-drip scheduling", built: false, sprint: "Sprint 7" },
@@ -134,7 +129,7 @@ function PlanCard({
   isOnPaidPlan: boolean;
   currentSlug?: string;
 }) {
-  const isFreePlan = plan.priceGbp === 0;
+  const isFreePlan = plan.priceUsd === 0;
   const accentClasses = plan.highlight
     ? "border-fuchsia bg-gradient-to-br from-fuchsia-soft/30 to-paper shadow-[0_20px_60px_rgba(255,26,140,0.10)]"
     : "border-line bg-paper";
@@ -160,7 +155,7 @@ function PlanCard({
 
       <div className="mt-3 flex items-baseline gap-2">
         <span className="font-display text-[44px] font-bold tracking-[-0.03em] text-ink">
-          {isFreePlan ? "Free" : `£${plan.priceGbp}`}
+          {isFreePlan ? "Free" : `$${plan.priceUsd.toFixed(2)}`}
         </span>
         {!isFreePlan && (
           <span className="font-mono text-[12px] text-text-tertiary">/month</span>
@@ -168,7 +163,7 @@ function PlanCard({
       </div>
       {!isFreePlan && (
         <div className="mt-1 font-mono text-[11px] text-text-tertiary">
-          ≈ ${plan.priceUsd.toFixed(2)} USD billed
+          USD billed monthly
         </div>
       )}
 

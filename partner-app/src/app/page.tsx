@@ -19,12 +19,15 @@ function parseUsd(s: string | number | undefined | null): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-// Brand-first referral URL: lands visitor on jnremployee.com, where a small
-// ref-capture script (see /tmp/jnr-deploy/ref-capture.js on the marketing site)
-// stores the affiliate id in a cookie and appends ?a=<id> to every whop.com
-// link on the page. Attribution survives the brand-first funnel.
-function buildReferralUrl(affiliateId: string, marketingHost = "jnremployee.com"): string {
-  return `https://${marketingHost}/?ref=${affiliateId}`;
+// Whop-checkout referral URL: routes the visitor straight to the Whop checkout
+// carrying the affiliate code as ?a=<id>, so Whop attributes the sale and pays
+// the affiliate. Base comes from NEXT_PUBLIC_WHOP_CHECKOUT_URL (defaulting to
+// the company checkout); once per-plan checkouts exist, set that env var to the
+// exact per-plan checkout URL so attribution lands on the right plan.
+function buildReferralUrl(affiliateId: string): string {
+  const base = process.env.NEXT_PUBLIC_WHOP_CHECKOUT_URL ?? "https://whop.com/jnremployee";
+  const sep = base.includes("?") ? "&" : "?";
+  return `${base}${sep}a=${affiliateId}`;
 }
 
 export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -114,10 +117,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
             Welcome, {greetingName}.
           </h1>
           <p className="mt-2 text-text-secondary sm:text-lg">
-            Your referral link is ready. Earn <strong className="text-ink">50% of referred customers&rsquo; payments</strong> while they stay paid and you keep an active Junior subscription.
+            Your referral link is ready. Unlock <strong className="text-ink">up to 50% recurring commission</strong> once you reach Qualified Partner status, while you keep an active Junior subscription.
           </p>
           <p className="mt-2 font-mono text-[11px] leading-relaxed text-text-tertiary">
-            Solo or up qualifies. Commissions pause if your subscription lapses and resume when you reactivate. Paid only on referred customers&rsquo; successful payments; already-paid commissions are never clawed back except for fraud or abuse.
+            Solo or up qualifies. Commission is payable after qualification, only on referred customers&rsquo; successful payments; it pauses if your subscription lapses and resumes when you reactivate; already-paid commission is never clawed back except for fraud or abuse.
           </p>
         </header>
 
@@ -141,6 +144,75 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
 
         <div className="mb-10 border-t border-line pt-8">
           <ShareButtons referralUrl={referralUrl || brand.marketingUrl} username={displayName} />
+        </div>
+
+        {/* Qualification target */}
+        <div className="mb-10 rounded-2xl border border-line bg-paper-warm/60 p-5 sm:p-6">
+          <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+            Your qualification target
+          </div>
+          <h3 className="mt-2 font-display text-xl font-semibold tracking-tight text-ink sm:text-2xl">
+            Unlock 50% recurring commission.
+          </h3>
+          <p className="mt-1 text-sm text-text-secondary">
+            Reach <strong className="text-ink">either</strong> milestone to qualify:
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-line bg-paper p-4">
+              <div className="font-display text-2xl font-semibold text-fuchsia">2</div>
+              <div className="mt-1 text-sm text-ink">referred paid customers</div>
+              <div className="mt-1 text-xs text-text-tertiary">using your tracked link</div>
+            </div>
+            <div className="rounded-xl border border-line bg-paper p-4">
+              <div className="font-display text-2xl font-semibold text-fuchsia">11,000</div>
+              <div className="mt-1 text-sm text-ink">Whop-verified views</div>
+              <div className="mt-1 text-xs text-text-tertiary">on approved Junior promo submissions</div>
+            </div>
+          </div>
+          <p className="mt-4 text-sm text-text-secondary">
+            After qualification, <strong className="text-ink">50% starts from customer 3 onward</strong>, or from the next paid customer after view qualification. The first two paid customers qualify you — they don&rsquo;t earn commission.
+          </p>
+        </div>
+
+        {/* Affiliate FAQ + terms PDF */}
+        <div className="mb-10 rounded-2xl border border-line bg-paper-warm/60 p-5 sm:p-6">
+          <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+            Affiliate FAQ
+          </div>
+          <dl className="mt-3 space-y-4 text-sm">
+            <div>
+              <dt className="font-medium text-ink">When do I earn commission?</dt>
+              <dd className="mt-1 text-text-secondary">After you qualify — 2 referred paid customers or 11,000 Whop-verified views on approved Junior promo submissions.</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-ink">Do the first two paid customers earn commission?</dt>
+              <dd className="mt-1 text-text-secondary">No. They qualify you. 50% starts from the third referred paid customer onward.</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-ink">What if I qualify by views first?</dt>
+              <dd className="mt-1 text-text-secondary">Once you reach 11,000 Whop-verified views, 50% applies to the next referred paid customer and onward.</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-ink">Who pays me?</dt>
+              <dd className="mt-1 text-text-secondary">Whop handles affiliate payouts. Complete your Whop payout setup.</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-ink">Do free signups count?</dt>
+              <dd className="mt-1 text-text-secondary">They can count as tracked referrals, but commission is paid only on successful paid-customer payments after qualification.</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-ink">Do fake views or self-referrals count?</dt>
+              <dd className="mt-1 text-text-secondary">No. Bot traffic, invalid traffic, duplicate accounts, self-referrals, refunds, and chargebacks are excluded.</dd>
+            </div>
+          </dl>
+          <a
+            href="/Junior-Affiliate-Terms-FAQ.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-5 inline-flex items-center gap-2 rounded-full border border-line bg-paper px-5 py-2.5 text-sm font-medium text-ink hover:border-fuchsia hover:text-fuchsia"
+          >
+            Download affiliate terms &amp; FAQ (PDF) →
+          </a>
         </div>
 
         {/* Use Junior — guidance for new affiliates */}

@@ -38,7 +38,7 @@ export default async function DashboardPage() {
     "there";
   const tierDisplay = isFree ? "Free" : capitalise(tier);
 
-  // Founder is a one-time £500 tier, still sold through Whop (Clerk Billing is
+  // Founder is a one-time $500 tier, still sold through Whop (Clerk Billing is
   // recurring-only). Affiliate ID is baked first-touch per oauth-billing.md §6.
   const founderUrl = affiliateId
     ? `https://jnremployee.com/founder?a=${encodeURIComponent(affiliateId)}`
@@ -91,7 +91,7 @@ export default async function DashboardPage() {
               num="02"
               eyebrow="unlock"
               title="Outgrow free."
-              sub="Pick a plan below. Founder · £500 is a separate one-time tier on Whop."
+              sub="Pick a plan below. Founder · $500 is a separate one-time tier on Whop."
               actions={[
                 {
                   label: "See plans ↓",
@@ -100,7 +100,7 @@ export default async function DashboardPage() {
                   event: "upgrade_viewed",
                   eventProperties: { source: "dashboard_card_02_unlock" },
                 },
-                { label: "Founder · £500", href: founderUrl, external: true },
+                { label: "Founder · $500", href: founderUrl, external: true },
               ]}
               accent="fuchsia"
             />

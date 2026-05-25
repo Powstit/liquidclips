@@ -1310,6 +1310,93 @@
   @media (max-width: 600px) {
     .pricing-grid { grid-template-columns: 1fr; }
   }
+
+  /* ============ MOBILE (≤480px) ============ */
+  @media (max-width: 480px) {
+    /* Container — tighter gutters */
+    .container { padding: 0 16px; }
+
+    /* Hero — prevent h1 clipping and oversized subtitle */
+    h1 { font-size: clamp(36px, 9vw, 48px); }
+    .hero-sub { font-size: 17px; }
+    .hero { padding: 48px 0 40px; }
+
+    /* Hero CTA buttons — full-width stack so they never overflow */
+    .hero-ctas { flex-direction: column; gap: 12px; }
+    .btn-primary,
+    .btn-secondary { width: 100%; justify-content: center; }
+
+    /* Chat window — allow text to wrap inside narrow containers */
+    .chat-window { padding: 16px; }
+    .chat-text { font-size: 14px; }
+    .chat-text .code-path { word-break: break-all; }
+
+    /* Two-clicks section */
+    .two-clicks { padding: 56px 0; }
+    .click-card { padding: 24px 20px; }
+    .click-num { font-size: 80px; }
+    .click-title { font-size: 24px; }
+    .click-mock { font-size: 12px; padding: 14px; }
+
+    /* Moat */
+    .moat { padding: 72px 0; }
+    .moat-sub { font-size: 16px; }
+    .moat-cell { padding: 28px 20px; }
+
+    /* Drip calendar — shrink further so 7-col grid doesn't overflow */
+    .drip { padding: 72px 0; }
+    .calendar { padding: 16px; border-radius: 16px; }
+    .cal-grid { gap: 3px; }
+    .cal-day { padding: 4px 3px; font-size: 8px; border-radius: 6px; }
+    .cal-day .post-pill { font-size: 6px; padding: 2px 3px; border-radius: 3px; }
+    .cal-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .cal-title { font-size: 16px; }
+
+    /* Comparison table — horizontal scroll on narrow screens */
+    .comparison { padding: 72px 0; }
+    .comp-table { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 16px; }
+    /* Give rows a minimum width so columns don't squash below readable size */
+    .comp-row { grid-template-columns: 150px 60px 70px 70px; min-width: 370px; padding: 12px 12px; font-size: 12px; }
+    .comp-row.header { padding: 14px 12px; font-size: 10px; }
+    .comp-task { font-size: 12px; }
+    .comp-yes { font-size: 15px; }
+
+    /* Pricing */
+    .pricing { padding: 72px 0; }
+    .price-card { padding: 24px 20px; }
+    .price-name { font-size: 26px; }
+    .price-amount { font-size: 40px; }
+    .founder-banner { padding: 28px 20px; }
+    .founder-price { font-size: 40px; }
+
+    /* Affiliate section */
+    .affiliate { padding: 72px 0; }
+    .affiliate-inner { padding: 28px 20px; border-radius: 20px; }
+    .affiliate h2 { font-size: clamp(28px, 7vw, 40px); }
+
+    /* FAQ */
+    .faq { padding: 72px 0; }
+    .faq-q { font-size: 18px; gap: 12px; }
+
+    /* Final CTA */
+    .final-cta { padding: 80px 0; }
+    .final-cta h2 { font-size: clamp(36px, 10vw, 56px); }
+    .final-cta p { font-size: 17px; }
+    .final-cta .btn-primary { width: 100%; justify-content: center; font-size: 16px; padding: 18px 24px; }
+
+    /* Section sub-text — fixed sizes that are too big on mobile */
+    .section-sub { font-size: 16px; }
+    .moat-sub { font-size: 16px; }
+    .drip-header p { font-size: 16px; }
+
+    /* Icon showcase */
+    .icon-showcase { padding: 72px 0; }
+    .hero-app-icon { width: 180px; height: 180px; }
+    .hero-app-icon-inner { font-size: 20px; border-radius: 40px; }
+    .slash-mega { font-size: 36px; }
+    .icon-spec-row { grid-template-columns: auto auto; gap: 16px; }
+
+  }
 </style>
 <meta property="og:title" content="junior/employee — One podcast in. Two weeks of posts out.">
 <meta property="og:description" content="Drop a recording. Get clips, metadata, thumbnails, and a fortnight of scheduled posts. Local-first, no upload, no watermark.">
@@ -1576,7 +1663,7 @@
       <div class="moat-cell">
         <div class="moat-num">06 · ONE-OFF</div>
         <div class="moat-title">Pay once. Hire forever.</div>
-        <div class="moat-desc">First 2,000 founding customers get Pro tier locked at £500 once. No subscription. No price hikes. Junior shows up to work every day for the rest of your career.</div>
+        <div class="moat-desc">First 2,000 founding customers get Pro tier locked at $500 once. No subscription. No price hikes. Junior shows up to work every day for the rest of your career.</div>
       </div>
     </div>
   </div>
@@ -1725,7 +1812,7 @@
       <div class="price-card">
         <div class="price-tier">FREE FOREVER</div>
         <div class="price-name">Try</div>
-        <div class="price-amount">£0</div>
+        <div class="price-amount">$0</div>
         <div class="price-period">3 videos / month · bring your own keys</div>
         <ul class="price-features">
           <li>3 videos per month</li>
@@ -1740,7 +1827,7 @@
       <div class="price-card">
         <div class="price-tier">STARTER</div>
         <div class="price-name">Solo</div>
-        <div class="price-amount">£19.99</div>
+        <div class="price-amount">$29.99</div>
         <div class="price-period">/ month · unlimited videos</div>
         <ul class="price-features">
           <li>Unlimited videos per month</li>
@@ -1755,7 +1842,7 @@
       <div class="price-card">
         <div class="price-tier">MOST POPULAR</div>
         <div class="price-name">Growth</div>
-        <div class="price-amount">£49</div>
+        <div class="price-amount">$99.99</div>
         <div class="price-period">/ month · nothing to plug in</div>
         <ul class="price-features">
           <li>Everything in Solo</li>
@@ -1770,7 +1857,7 @@
       <div class="price-card flagship">
         <div class="price-tier">JUNIOR</div>
         <div class="price-name">Autopilot</div>
-        <div class="price-amount">£149</div>
+        <div class="price-amount">$199.99</div>
         <div class="price-period">/ month · the whole team</div>
         <ul class="price-features">
           <li>Everything in Growth</li>
@@ -1799,7 +1886,7 @@
         <a href="https://whop.com/jnremployee" style="display:inline-block;margin-top:1.5rem;padding:0.875rem 1.75rem;background:#0F0F12;color:#F9F4EE;font-family:'Geist',sans-serif;font-size:15px;font-weight:500;text-decoration:none;border-radius:9999px;transition:all 0.2s;">Reserve a Founder seat →</a>
       </div>
       <div class="founder-price-block">
-        <div class="founder-price">£500</div>
+        <div class="founder-price">$500</div>
         <div class="founder-once">ONCE · 2,000 SPOTS</div>
       </div>
     </div>
@@ -1812,18 +1899,18 @@
     <div class="affiliate-inner">
       <div class="affiliate-content">
         <div class="affiliate-eyebrow">FOR CREATORS WITH AUDIENCE</div>
-        <h2>Send Junior to a friend.<br><em>Earn 50% while you're both active.</em></h2>
-        <p>Earn 50% MRR from referred customers while they stay paid and you keep an active Junior subscription (Solo or up qualifies). Pause if you cancel, resume when you reactivate. Managed by Whop. Paid in 170+ countries.</p>
+        <h2>Send Junior to a friend.<br><em>Earn up to 50% recurring.</em></h2>
+        <p>Earn up to 50% recurring commission when you refer paid Junior customers, while you keep an active Junior subscription (Solo or up qualifies). Commission becomes payable once you qualify as a partner. Pause if you cancel, resume when you reactivate. Managed by Whop. Paid in 170+ countries. <a href="/terms#affiliate" style="color:inherit;text-decoration:underline;">Terms apply.</a></p>
         <a href="https://partner.jnremployee.com/auth/whop/start" class="btn-primary" style="background: var(--fuchsia);">Become an affiliate →</a>
-        <p style="margin-top:14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.6;opacity:.6;">Commissions are paid only on referred customers' successful payments, only while you hold an active paid Junior subscription, and pause if your subscription lapses. Already-paid commissions are never clawed back except for fraud or abuse.</p>
+        <p style="margin-top:14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.6;opacity:.6;">Commission is payable only after you reach Qualified Partner status, only on referred customers' successful payments, and only while you hold an active paid Junior subscription; it pauses if your subscription lapses. Already-paid commissions are never clawed back except for fraud or abuse. <a href="/terms#affiliate" style="color:inherit;text-decoration:underline;">See affiliate terms.</a></p>
       </div>
       <div class="affiliate-stats">
         <div>
-          <div class="stat-num">50%</div>
-          <div class="stat-label">Of referred MRR, while active</div>
+          <div class="stat-num">Up to 50%</div>
+          <div class="stat-label">Recurring, after you qualify</div>
         </div>
         <div>
-          <div class="stat-num">£74.50</div>
+          <div class="stat-num">$100</div>
           <div class="stat-label">Per active Autopilot referral / mo</div>
         </div>
         <div>
@@ -1980,6 +2067,10 @@
   }
   @media (max-width: 560px) {
     .footer-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 480px) {
+    footer.site-footer { padding: 40px 0 24px; }
+    .footer-bottom { flex-direction: column; align-items: flex-start; gap: 10px; }
   }
 </style>
 <footer class="site-footer">

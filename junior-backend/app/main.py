@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.cron import start_cron, stop_cron
 from app.db import Base, engine
-from app.routes import connections, desktop, me, notifications, publish, schedules, sync, transcribe, updates, usage, webhooks_clerk, webhooks_whop, whop
+from app.routes import connections, desktop, me, notifications, onboarding, publish, schedules, sync, transcribe, updates, usage, webhooks_clerk, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -59,6 +59,7 @@ app.include_router(publish.router)
 app.include_router(connections.router)
 app.include_router(whop.router)
 app.include_router(me.router)
+app.include_router(onboarding.router)
 
 
 @app.get("/healthcheck")
