@@ -66,7 +66,7 @@ export function ClipsBulkToolbar({
           <span className="text-ink">{project.clips.length}</span> clips
         </span>
         <span>
-          🔥 avg <span className="text-ink">{avg}</span>
+          avg score <span className="text-ink">{avg}</span>
         </span>
         <span>
           {Math.floor(totalSec / 60)}m {Math.round(totalSec % 60)}s total
@@ -118,16 +118,6 @@ export function ClipsBulkToolbar({
             </div>
           )}
         </div>
-
-        {/* Regenerate captions across all — stubbed for Sprint 5 LLM batch path */}
-        <button
-          disabled
-          title="Regenerate all captions — Sprint 5"
-          className="rounded-full border border-line bg-paper-warm/40 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary"
-        >
-          Regen captions
-          <span className="ml-2 rounded-full border border-line px-1.5 py-[1px] text-[9px] text-text-tertiary">S5</span>
-        </button>
       </div>
     </div>
   );

@@ -224,7 +224,7 @@ export function ClipCard({
           disabled={busy}
           className="flex-1 rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-[12px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia disabled:opacity-50"
         >
-          📋 Copy caption
+          Copy caption
         </button>
         <button
           onClick={onOpenEditor}

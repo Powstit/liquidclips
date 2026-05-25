@@ -60,7 +60,8 @@ const PLANS: Plan[] = [
       { label: "Local-only processing — your machine, your keys", built: true },
       { label: "Multi-ratio export (9:16, 1:1, 4:5)", built: true },
       { label: "B-roll overlay + hook burn-in", built: true },
-      { label: "One platform connection (YouTube, TikTok, or X)", built: false, sprint: "Sprint 5" },
+      { label: "2 platform connections (YouTube, TikTok, X)", built: true },
+      { label: "Manual publish — one platform at a time", built: true },
     ],
   },
   {
@@ -73,7 +74,10 @@ const PLANS: Plan[] = [
       { label: "Everything in Solo", built: true },
       { label: "Hosted transcribe — no Whisper download", built: true },
       { label: "Hosted LLM — no OpenAI key needed", built: true },
-      { label: "All three platforms (YouTube, TikTok, X)", built: false, sprint: "Sprint 5" },
+      { label: "4 platform connections", built: true },
+      { label: "Multi-platform publish in one click", built: true },
+      { label: "Schedule one post at a time", built: true },
+      { label: "200 clips / month", built: true },
       { label: "Priority support", built: false, sprint: "Sprint 6" },
     ],
     highlight: true,
@@ -86,7 +90,9 @@ const PLANS: Plan[] = [
     priceUsd: 199.99,
     features: [
       { label: "Everything in Growth", built: true },
-      { label: "14-day auto-drip scheduling", built: false, sprint: "Sprint 7" },
+      { label: "Drip scheduling — a whole month of clips", built: true },
+      { label: "Unlimited platform connections", built: true },
+      { label: "500 clips / month", built: true },
       { label: "Project memory — learns your voice", built: false, sprint: "v1.2" },
       { label: "Cross-platform smart timing", built: false, sprint: "v1.2" },
       { label: "Founder community access", built: false, sprint: "Sprint 6" },
@@ -220,14 +226,14 @@ function PlanCard({
               <span
                 className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full border border-fuchsia bg-paper"
                 aria-label="Coming soon"
-                title={f.sprint ? `Arrives in ${f.sprint}` : "Coming soon"}
+                title="Coming soon"
               />
             )}
             <span className={`flex-1 ${f.built ? "" : "text-text-secondary"}`}>
               {f.label}
-              {!f.built && f.sprint && (
+              {!f.built && (
                 <span className="ml-2 inline-flex items-center rounded-full border border-line bg-paper-warm/60 px-2 py-[1px] font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
-                  {f.sprint}
+                  Soon
                 </span>
               )}
             </span>
