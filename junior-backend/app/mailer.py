@@ -145,6 +145,41 @@ def send_bounty_approved(email: str, *, bounty_title: str, payout: str, first_na
     _async(_send, to=email, subject=subject, html=html, text=text, tag="bounty_approved")
 
 
+def send_whop_claim_link(email: str, *, claim_url: str, first_name: str | None = None) -> None:
+    """Self-serve 'I paid on Whop with a different email' claim. Sent ONLY to the
+    Whop purchase email the user entered, and only when a matching pending
+    membership exists — controlling this inbox is half the ownership proof."""
+    ctx = MailContext.build()
+    subject, html, text = render_whop_claim(email=email, claim_url=claim_url, first_name=first_name, ctx=ctx)
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="whop_claim")
+
+
+def render_whop_claim(*, email: str, claim_url: str, first_name: str | None, ctx: MailContext) -> tuple[str, str, str]:
+    subject = "Claim your Junior purchase"
+    body = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">secure claim · expires in 20 min</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
+  Link your Whop purchase to Junior.
+</h1>
+<p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  Someone asked to attach a Junior purchase made with <strong style="color:{INK};">this email</strong> to a Junior account that signed up with a different address. If that was you, confirm below — the link works once and expires in 20 minutes.
+</p>
+<p style="margin:0 0 16px;">{_btn("Claim my purchase →", claim_url)}</p>
+<p style="font-size:13px;line-height:1.6;color:{TEXT_TERTIARY};margin:18px 0 0;">
+  Didn't request this? Ignore this email — nothing changes. The link only works for the account that asked for it.
+</p>
+"""
+    text = (
+        f"Claim your Junior purchase\n\n{_greeting(first_name)}\n\n"
+        "Someone asked to attach a Junior purchase made with this email to a Junior account "
+        "that signed up with a different address. If that was you, confirm here:\n\n"
+        f"{claim_url}\n\n"
+        "This link works once and expires in 20 minutes. If you didn't request it, ignore this email.\n— Junior"
+    )
+    return subject, _shell(subject, body, ctx=ctx), text
+
+
 # --- template renderers --------------------------------------------------
 
 # Shared design tokens — kept inline so the templates are self-contained and
