@@ -186,7 +186,7 @@ function CellTile({
         </span>
         {isAudioOwner && (
           <span title="Audio source for this clip" className="rounded-full bg-fuchsia px-1.5 py-0.5 font-mono text-[8px] uppercase text-paper">
-            🔊
+            audio
           </span>
         )}
       </div>

@@ -28,7 +28,7 @@ export function UpgradeLockCard({
         </h3>
         <p className="mt-2 font-sans text-[14px] leading-relaxed text-text-secondary">
           Junior found {totalClips} clips in this video. Free shows the first 3 —
-          Solo unlocks the rest, plus drip scheduling and multi-platform publishing.
+          continue clipping with Solo to unlock the rest.
         </p>
       </div>
 
@@ -40,7 +40,7 @@ export function UpgradeLockCard({
           Upgrade to Solo →
         </button>
         <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
-          from £12/month · cancel anytime
+          $29.99/month · cancel anytime
         </span>
       </div>
     </article>
