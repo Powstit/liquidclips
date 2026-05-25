@@ -55,12 +55,12 @@ def connect_desktop(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found — sign up first")
 
     # Apply admin override BEFORE issuing the JWT — otherwise an admin who
-    # also happens to be on a free tier gets a free-tier JWT with a 3-video
-    # quota. Founders and master-admins always get Autopilot entitlements.
+    # also happens to be on a free tier gets a free-tier JWT. Founders and
+    # master-admins always get Autopilot entitlements.
     is_admin = is_admin_email(user.email)
     effective_tier = "autopilot" if is_admin else user.tier
     effective_founder = True if is_admin else user.founder_flag
-    quota = 3 if effective_tier == "free" else None
+    quota = None  # free is export-gated (100 clip exports), not monthly-video-capped
 
     jwt_str, expires_at = issue_license_jwt(
         user_id=user.id,

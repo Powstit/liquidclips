@@ -69,6 +69,16 @@ export default function CheckoutPage() {
   const origin = typeof window !== "undefined" ? window.location.origin : "https://account.jnremployee.com";
   const returnUrl = `${origin}/get${affiliateId ? `?a=${encodeURIComponent(affiliateId)}` : ""}`;
 
+  // On a completed checkout, drive the TOP window to /get ourselves. The embed's
+  // built-in redirect lands inside the iframe / on Whop's hub (what Daniel hit);
+  // skip-redirect + this named global callback keep the buyer on our site →
+  // onboarding (sign in + link membership) → download.
+  useEffect(() => {
+    (window as unknown as Record<string, unknown>).__jnrCheckoutComplete = () => {
+      window.location.href = returnUrl;
+    };
+  }, [returnUrl]);
+
   return (
     <main className="mx-auto max-w-[1080px] px-5 py-10 sm:py-14">
       <style>{`
@@ -194,6 +204,8 @@ export default function CheckoutPage() {
               data-whop-checkout-plan-id={SOLO_PLAN_ID}
               data-whop-checkout-affiliate-code={affiliateId || undefined}
               data-whop-checkout-return-url={returnUrl}
+              data-whop-checkout-on-complete="__jnrCheckoutComplete"
+              data-whop-checkout-skip-redirect="true"
               data-whop-checkout-theme="light"
               className="min-h-[540px] w-full"
             />

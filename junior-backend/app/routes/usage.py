@@ -37,7 +37,11 @@ def _current_period_start() -> date:
 
 
 def _quota_for_tier(tier: str) -> int | None:
-    return 3 if tier == "free" else None
+    # Monthly video cap retired (2026-05-25). The free tier is now gated by the
+    # 100 clip-export starter pass (starter_export_remaining), not a per-month
+    # video count. video_started still tracks processed videos for analytics but
+    # never blocks. See [[junior-whop-affiliate-checkout]] for the export model.
+    return None
 
 
 STARTER_EXPORT_CAP = 100
