@@ -14,7 +14,7 @@ const GROUPS: Group[] = [
   {
     heading: "Clipping",
     rows: [
-      { label: "Videos per month",                          free: "3",    solo: "Unlimited", growth: "Unlimited", autopilot: "Unlimited" },
+      { label: "Clip exports",                              free: "100",  solo: "Unlimited", growth: "Unlimited", autopilot: "Unlimited" },
       { label: "Local processing (your machine)",           free: true,   solo: true,   growth: true,  autopilot: true },
       { label: "Bring your own OpenAI key",                 free: true,   solo: true,   growth: "Optional", autopilot: "Optional" },
       { label: "Hosted transcribe (no local model)",        free: false,  solo: false,  growth: true,  autopilot: true },

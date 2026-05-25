@@ -39,10 +39,10 @@ const PLANS: Plan[] = [
     id: "free",
     slug: "free_user",
     name: "Free",
-    tagline: "Try it. Three videos, no card.",
+    tagline: "Try it. 100 free clip exports, no card.",
     priceUsd: 0,
     features: [
-      { label: "3 videos per month", built: true },
+      { label: "100 free clip exports", built: true },
       { label: "Bring your own OpenAI key", built: true },
       { label: "Multi-ratio export (9:16, 1:1, 4:5)", built: true },
       { label: "B-roll overlay + hook burn-in", built: true },
