@@ -13,7 +13,7 @@ export default async function DownloadPage() {
   const email = user?.primaryEmailAddress?.emailAddress ?? null;
 
   return (
-    <div className="mx-auto max-w-[1080px] px-8 py-20 sm:py-24">
+    <div className="mx-auto max-w-[1080px] px-6 py-20 sm:px-8 sm:py-24">
       <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
         <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
         download
@@ -54,16 +54,16 @@ export default async function DownloadPage() {
             Sign up takes 20 seconds — you'll get the install link the moment it ships, plus a free tier
             you can try in the simulator today.
           </p>
-          <div className="mt-6 flex flex-wrap gap-3">
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <Link
               href="/sign-up"
-              className="rounded-full bg-ink px-6 py-3 font-sans text-[15px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+              className="w-full rounded-full bg-ink px-6 py-3 text-center font-sans text-[15px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] sm:w-auto"
             >
               Join waitlist →
             </Link>
             <Link
               href="/sign-in"
-              className="rounded-full border border-line bg-paper px-6 py-3 font-sans text-[15px] font-medium text-ink transition-colors hover:border-fuchsia"
+              className="w-full rounded-full border border-line bg-paper px-6 py-3 text-center font-sans text-[15px] font-medium text-ink transition-colors hover:border-fuchsia sm:w-auto"
             >
               Already in? Sign in
             </Link>
@@ -91,26 +91,26 @@ export default async function DownloadPage() {
           founder — 2,000 seats
         </div>
         <h2 className="mt-2 max-w-[640px] font-display text-[32px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">
-          Get installer day one. Lock <em className="not-italic text-fuchsia">Autopilot forever</em> for £500.
+          Get installer day one. Lock <em className="not-italic text-fuchsia">Autopilot forever</em> for $500.
         </h2>
         <p className="mt-3 max-w-[560px] font-sans text-[15px] leading-relaxed text-text-secondary">
           Founders are first in line for every release, every sprint update, every feature drop.
           Autopilot tier never expires — when drip-mode and project memory ship, you already have them.
           Refund window is 30 days, no questions.
         </p>
-        <div className="mt-6 flex flex-wrap gap-3">
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <a
             href="https://whop.com/jnremployee"
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-full bg-ink px-6 py-3 font-sans text-[15px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+            className="w-full rounded-full bg-ink px-6 py-3 text-center font-sans text-[15px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] sm:w-auto"
           >
             Reserve a Founder seat →
           </a>
           {!onWaitlist && (
             <Link
               href="/sign-up"
-              className="rounded-full border border-line bg-paper px-6 py-3 font-sans text-[15px] font-medium text-ink transition-colors hover:border-fuchsia"
+              className="w-full rounded-full border border-line bg-paper px-6 py-3 text-center font-sans text-[15px] font-medium text-ink transition-colors hover:border-fuchsia sm:w-auto"
             >
               Create free account
             </Link>

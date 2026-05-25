@@ -156,6 +156,32 @@ class PostizConnection(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
 
+class PendingWhopMembership(Base):
+    """Entitlement parked for a buyer who paid on Whop BEFORE creating their
+    Junior account (common for affiliate-referred sales).
+
+    The membership_went_valid webhook can't find a local user yet, so instead
+    of dropping the sale it stashes the resolved tier here keyed by email.
+    /onboarding/link-whop claims the row on first sign-in, applies the tier,
+    and stamps consumed_at so it's only ever applied once.
+
+    Intentionally tiny — this is NOT a billing ledger. Whop remains the
+    source of truth for the subscription record.
+    """
+
+    __tablename__ = "pending_whop_memberships"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    email: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    tier: Mapped[str] = mapped_column(String, nullable=False)
+    founder: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    whop_user_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    renewal_period_end: Mapped[int | None] = mapped_column(Integer, nullable=True)  # unix ts from Whop
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class WebhookEvent(Base):
     """Idempotency log for incoming webhooks."""
     __tablename__ = "webhook_events"

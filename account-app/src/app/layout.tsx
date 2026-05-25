@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { Nav } from "@/components/Nav";
 import { RouteSplash } from "@/components/RouteSplash";
 import { PostHogBoot } from "@/components/PostHogBoot";
+import { WhopLinkBoot } from "@/components/WhopLinkBoot";
 import "./globals.css";
 
 const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-fraunces", display: "swap" });
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       >
         <body className="flex min-h-screen flex-col bg-paper text-ink">
           <PostHogBoot />
+          <WhopLinkBoot />
           <Nav />
           <main className="flex-1">{children}</main>
           <RouteSplash />

@@ -23,11 +23,11 @@ export function StatTiles({
 
   return (
     <div>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
           {empty ? "When someone signs up, this fills in" : "Your earnings"}
         </div>
-        <div className="flex gap-1 rounded-full border border-line bg-paper p-1 font-mono text-[11px]">
+        <div className="flex shrink-0 gap-1 rounded-full border border-line bg-paper p-1 font-mono text-[11px]">
           {(["USD", "GBP", "EUR"] as Currency[]).map((c) => (
             <button
               key={c}
@@ -59,9 +59,9 @@ export function StatTiles({
 
 function Tile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-paper p-4 sm:p-5">
-      <div className="font-display text-2xl font-bold tracking-tight text-ink sm:text-3xl">{value}</div>
-      <div className="mt-1 font-mono text-[11px] uppercase tracking-[0.08em] text-text-tertiary">{label}</div>
+    <div className="rounded-2xl border border-line bg-paper p-3 sm:p-5">
+      <div className="font-display text-xl font-bold tracking-tight text-ink sm:text-3xl">{value}</div>
+      <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary sm:text-[11px]">{label}</div>
     </div>
   );
 }
