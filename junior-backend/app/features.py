@@ -110,6 +110,36 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
 }
 
 
+# --- Launch-hardening override (Codex 2k audit, 2026-05-25) -------------------
+# These features are NOT live in prod yet, so force built=False everywhere until
+# the real path ships + is verified — keeping routes honest (503 "beta") instead
+# of silently stubbing/over-promising. The matrix above keeps the *intended*
+# entitlement (value) so flipping a feature live later is a one-line removal here.
+#   - Publishing (publish/schedule/drip): the hidden Postiz engine isn't deployed
+#     (no POSTIZ_CLIENT_ID/SECRET, cron fire path is a stub, no media upload).
+#   - hosted_transcribe / hosted_llm: no MODAL_TRANSCRIBE_URL / REPLICATE path
+#     configured — transcription falls back to local on-device whisper, which
+#     works; the "hosted/cloud AI" claim does not.
+# Each entry is auto-promoted to built=True at import IF its prod path is wired,
+# so production config (not a redeploy of this file) is what turns them on.
+_PUBLISHING_LIVE = bool(os.environ.get("POSTIZ_CLIENT_ID") and os.environ.get("POSTIZ_CLIENT_SECRET"))
+_HOSTED_AI_LIVE = bool(os.environ.get("MODAL_TRANSCRIBE_URL") or os.environ.get("REPLICATE_API_TOKEN"))
+_NOT_LIVE_UNLESS = {
+    "publish_now": _PUBLISHING_LIVE,
+    "publish_multi_platform": _PUBLISHING_LIVE,
+    "schedule_one": _PUBLISHING_LIVE,
+    "drip_scheduling": _PUBLISHING_LIVE,
+    "hosted_transcribe": _HOSTED_AI_LIVE,
+    "hosted_llm": _HOSTED_AI_LIVE,
+}
+for _block in FEATURES_BY_TIER.values():
+    for _feat, _live in _NOT_LIVE_UNLESS.items():
+        if _feat in _block and not _live:
+            _block[_feat]["built"] = False
+            if _block[_feat].get("sprint") is None:
+                _block[_feat]["sprint"] = "beta"
+
+
 # Master admins get the full Autopilot+Founder feature set regardless of what
 # Clerk billing reports. Used for the founder's own account and any internal
 # staff we want to comp.

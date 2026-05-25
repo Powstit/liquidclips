@@ -91,7 +91,14 @@ async def transcribe_audio_stream(
     elif provider == "replicate":
         transcript = await _transcribe_via_replicate(body, content_type)
     else:
-        transcript = await _transcribe_via_stub(body, content_type)
+        # No real hosted provider configured → don't run heavy whisper on the
+        # web dyno or pretend it's "hosted". 503 so the desktop transcribes
+        # on-device (fast, local-first). Auto-enables when MODAL_TRANSCRIBE_URL
+        # (or REPLICATE_API_TOKEN) is set.
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Hosted transcription is in beta — using on-device for now.",
+        )
 
     return Response(
         content=json.dumps(transcript),
@@ -120,11 +127,12 @@ async def transcribe_from_url(
     if provider == "modal":
         transcript = await _transcribe_url_via_modal(body.url)
     else:
-        # Stub + replicate both fall through to a local yt-dlp + faster-whisper.
-        # That defeats the "no upload" win in production (we'd run yt-dlp on
-        # Junior Backend) but proves the contract. Real Modal path is the only
-        # one with the real bandwidth + speed advantage.
-        transcript = await _transcribe_url_via_stub(body.url)
+        # No real hosted provider → 503 so the desktop downloads + transcribes
+        # locally instead of running yt-dlp + whisper on the web dyno.
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Hosted transcription is in beta — using on-device for now.",
+        )
 
     return Response(
         content=json.dumps(transcript),
