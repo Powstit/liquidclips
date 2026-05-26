@@ -155,7 +155,7 @@ export function DripCalendar({
             <button
               onClick={confirm}
               disabled={!slots || busy}
-              className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper hover:bg-ink hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50"
+              className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50"
             >
               {busy ? "Scheduling…" : `Schedule all ${slots?.length ?? 0} →`}
             </button>

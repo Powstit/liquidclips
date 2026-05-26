@@ -154,7 +154,7 @@ export function BountySourceSetup({
                   {src.supported ? (
                     <button
                       onClick={() => onContinue({ kind: "url", url: src.url })}
-                      className="shrink-0 rounded-full bg-ink px-4 py-2 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+                      className="shrink-0 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
                     >
                       Use this source →
                     </button>

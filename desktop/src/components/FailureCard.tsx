@@ -99,7 +99,7 @@ export function FailureCard({
         {onRetry && (
           <button
             onClick={onRetry}
-            className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper hover:bg-ink"
+            className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper hover:bg-fuchsia-bright"
           >
             {retryLabel}
           </button>

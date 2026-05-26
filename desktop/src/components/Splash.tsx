@@ -98,7 +98,7 @@ export function Splash({ failed = false }: { failed?: boolean }) {
           <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               onClick={() => void onRestart()}
-              className="rounded-full bg-ink px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia"
+              className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright"
             >
               Restart Junior
             </button>
@@ -124,11 +124,11 @@ export function Splash({ failed = false }: { failed?: boolean }) {
 
   return (
     <div
-      className="relative flex h-full w-full flex-col items-center justify-center gap-8 overflow-hidden bg-ink"
+      className="relative flex h-full w-full flex-col items-center justify-center gap-8 overflow-hidden bg-paper"
       style={{ backgroundImage: `url(${splashArt})`, backgroundSize: "cover", backgroundPosition: "center" }}
     >
       {/* Soft scrim so the light mark + text stay legible over the art. */}
-      <div className="pointer-events-none absolute inset-0 bg-ink/25" />
+      <div className="pointer-events-none absolute inset-0 bg-black/25" />
 
       <div className="splash-mark-anim relative z-10 animate-[splash-mark-in_0.6s_ease-out]">
         <Logo />
