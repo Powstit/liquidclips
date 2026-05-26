@@ -30,6 +30,12 @@ export default async function DownloadPage() {
         try the simulator at app.jnremployee.com, and reserve your founder seat.
       </p>
 
+      <p className="mt-4 max-w-[620px] rounded-2xl border border-line bg-paper-warm/50 px-4 py-3 font-sans text-[14px] leading-relaxed text-text-secondary">
+        <strong className="text-ink">What you'll need:</strong> Junior runs locally on your machine.
+        You'll add your own OpenAI key to power clip selection — hosted AI (no key needed) is in
+        private beta and rolling out soon.
+      </p>
+
       {onWaitlist ? (
         <div className="mt-12 rounded-3xl border border-fuchsia-soft bg-fuchsia-soft/30 p-8">
           <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">

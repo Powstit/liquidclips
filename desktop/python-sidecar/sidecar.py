@@ -228,6 +228,14 @@ def method_secrets_status(_params: dict[str, Any]) -> dict[str, Any]:
     return {"secrets": list_known_secrets()}
 
 
+def method_openai_key_status(_params: dict[str, Any]) -> dict[str, Any]:
+    """Whether the LLM clip-picker can resolve an OpenAI key through the full
+    chain (env → keychain → dev file) — not just the keychain. The desktop's
+    pre-run guard uses this so a key set via env/dev-file doesn't false-block."""
+    from llm import openai_key_available
+    return {"available": openai_key_available()}
+
+
 def method_secret_get(params: dict[str, Any]) -> dict[str, Any]:
     """Return the value of a stored secret. RESTRICTED to JUNIOR_LICENSE_JWT —
     other secrets stay sidecar-side only so the React layer can't leak them."""
@@ -1218,6 +1226,7 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "list_bounty_projects": method_list_bounty_projects,
     "get_metadata": method_get_metadata,
     "secrets_status": method_secrets_status,
+    "openai_key_status": method_openai_key_status,
     "secret_get": method_secret_get,
     "secret_set": method_secret_set,
     "secret_delete": method_secret_delete,
