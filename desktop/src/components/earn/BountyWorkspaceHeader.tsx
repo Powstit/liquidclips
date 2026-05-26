@@ -3,6 +3,7 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import type { Project } from "../../lib/sidecar";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
 import { InfoHint } from "../InfoHint";
+import { computeBountyFit } from "./bounty-fit";
 
 const KNOWN: PlatformId[] = ["youtube", "tiktok", "instagram", "x"];
 
@@ -20,6 +21,14 @@ export function BountyWorkspaceHeader({ project }: { project: Project }) {
   );
   const whopUrl = project.whop_bounty_url;
   const source = project.whop_bounty_source_url;
+  const readyClips = project.clips.filter((c) => c.vertical_path || c.cut_path).length;
+  const fitScores = project.clips
+    .map((c) => computeBountyFit(c, project)?.score)
+    .filter((n): n is number => typeof n === "number");
+  const avgFit = fitScores.length
+    ? Math.round(fitScores.reduce((sum, n) => sum + n, 0) / fitScores.length)
+    : null;
+  const bestFit = fitScores.length ? Math.max(...fitScores) : null;
 
   return (
     <div className="mb-4 rounded-2xl border border-fuchsia-soft bg-fuchsia-soft/25 p-5">
@@ -91,6 +100,13 @@ export function BountyWorkspaceHeader({ project }: { project: Project }) {
         </div>
       </div>
 
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
+        <ProgressTile label="clips ready" value={`${readyClips}/${project.clips.length || 0}`} />
+        <ProgressTile label="avg fit" value={avgFit == null ? "—" : `${avgFit}/100`} />
+        <ProgressTile label="best clip" value={bestFit == null ? "—" : `${bestFit}/100`} />
+        <ProgressTile label="next step" value={readyClips > 0 ? "submit" : "generate"} />
+      </div>
+
       {project.whop_bounty_description && (
         <div className="mt-3 border-t border-fuchsia-soft/60 pt-3">
           <button
@@ -107,6 +123,15 @@ export function BountyWorkspaceHeader({ project }: { project: Project }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function ProgressTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-line bg-paper/60 px-3 py-2.5">
+      <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">{label}</div>
+      <div className="mt-1 truncate font-display text-[16px] font-semibold tracking-[-0.01em] text-ink">{value}</div>
     </div>
   );
 }

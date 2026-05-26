@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { sidecar, type WhopBounty, type WhopSubmission, type BountyContext, type BountyProjectSummary } from "../../lib/sidecar";
 import { useActivation } from "../../lib/activation";
 import { inWhopIframe } from "../../lib/whop-iframe";
@@ -11,6 +12,11 @@ import { SubmittedList } from "./SubmittedList";
 import { ApprovedList } from "./ApprovedList";
 import {
   matchesFilter,
+  formatBudget,
+  formatPayout,
+  moneySymbol,
+  openBudget,
+  opportunityScore,
   sortBounties,
   type ConnectedPlatform,
   type EarnTab as EarnSubTab,
@@ -122,6 +128,7 @@ export function EarnTab({
 
   useEffect(() => {
     void bootstrap();
+    void loadBountyProjects();
     // Event-driven: whop-iframe.ts dispatches `junior:whop-auth` the instant
     // it pushes a token to the sidecar. Avoids the previous 10-second polling
     // window which would leave a slow Whop response stuck on the failure
@@ -337,6 +344,13 @@ export function EarnTab({
       <div className="mt-6 flex flex-col gap-4">
         {subTab === "available" && (
           <>
+            <EarnMoneyCockpit
+              bounties={bounties}
+              filtered={filtered}
+              submissions={submissions}
+              projects={bountyProjects}
+              connectedPlatforms={filterPlatforms}
+            />
             <EarnHowItWorks />
             <div className="flex flex-col gap-2">
               <input
@@ -424,6 +438,95 @@ export function EarnTab({
 
         {subTab === "approved" && <ApprovedList items={approved} />}
       </div>
+    </div>
+  );
+}
+
+function EarnMoneyCockpit({
+  bounties,
+  filtered,
+  submissions,
+  projects,
+  connectedPlatforms,
+}: {
+  bounties: WhopBounty[];
+  filtered: WhopBounty[];
+  submissions: WhopSubmission[];
+  projects: BountyProjectSummary[];
+  connectedPlatforms: ConnectedPlatform[];
+}) {
+  const openRewards = bounties.filter((b) => b.spotsRemaining > 0);
+  const top = [...filtered].sort((a, b) => opportunityScore(b, connectedPlatforms) - opportunityScore(a, connectedPlatforms))[0];
+  const topPayout = [...openRewards].sort((a, b) => b.rewardPerUnitAmount - a.rewardPerUnitAmount)[0];
+  const inReview = submissions.filter((s) => ["submitted", "claimed", "pending"].includes(s.status));
+  const approved = submissions.filter((s) => s.status === "approved");
+  const approvedTotal = approved.reduce((sum, s) => {
+    const n = Number.parseFloat((s.formattedPayoutAmount ?? "").replace(/[^\d.]/g, ""));
+    return sum + (Number.isFinite(n) ? n : 0);
+  }, 0);
+  const topSym = top ? moneySymbol(top.currency) : "$";
+  const totalOpenBudget = openRewards.reduce((sum, b) => sum + openBudget(b), 0);
+  const readyProjects = projects.filter((p) => p.done).length;
+
+  return (
+    <section className="rounded-3xl border border-fuchsia-soft bg-gradient-to-br from-fuchsia-soft/45 via-paper to-paper-warm/50 p-5 shadow-[0_18px_60px_rgba(15,15,18,0.08)]">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep">
+            money cockpit
+          </div>
+          <h2 className="mt-1 font-display text-[24px] font-semibold tracking-[-0.02em] text-ink">
+            Pick the clip most likely to get paid.
+          </h2>
+          <p className="mt-1 max-w-[620px] font-sans text-[13px] leading-relaxed text-text-secondary">
+            Junior ranks rewards by fit, payout, open spots and approval risk. Whop still tracks views and pays you; this is your work queue.
+          </p>
+        </div>
+        <button
+          onClick={() => void openExternal("https://partner.jnremployee.com").catch(() => undefined)}
+          className="rounded-full border border-fuchsia-soft bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
+        >
+          Referral dashboard ↗
+        </button>
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <MoneyTile label="open rewards" value={`${openRewards.length}`} />
+        <MoneyTile label="open budget" value={`${topSym}${totalOpenBudget.toFixed(0)}`} />
+        <MoneyTile label="highest payout" value={topPayout ? formatPayout(topPayout) : "—"} />
+        <MoneyTile label="in review" value={`${inReview.length}`} />
+        <MoneyTile label="approved" value={`${topSym}${approvedTotal.toFixed(2)}`} />
+      </div>
+
+      {top && (
+        <div className="mt-4 rounded-2xl border border-line bg-paper/80 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
+                best chance now · score {opportunityScore(top, connectedPlatforms)}
+              </div>
+              <div className="mt-0.5 truncate font-display text-[18px] font-semibold tracking-[-0.01em] text-ink">
+                {top.title}
+              </div>
+              <div className="mt-1 font-mono text-[11px] text-text-tertiary">
+                {formatPayout(top)} · {top.spotsRemaining} spots left · {formatBudget(top)} open budget
+              </div>
+            </div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+              {readyProjects} ready project{readyProjects === 1 ? "" : "s"} waiting to submit
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function MoneyTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-line bg-paper/75 px-3 py-3">
+      <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-text-tertiary">{label}</div>
+      <div className="mt-1 truncate font-display text-[18px] font-semibold tracking-[-0.02em] text-ink">{value}</div>
     </div>
   );
 }
