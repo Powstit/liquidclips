@@ -986,15 +986,18 @@ def stage_cut(project: Project) -> dict[str, Any]:
         slug = clip.get("slug") or f"clip-{idx:02d}"
         out = clips_dir / f"{idx:02d}-{slug}.mp4"
         if not out.exists():
+            # Stream-copy (no re-encode). The reframe stage re-encodes this with
+            # crop + captions + hook for the FINAL output, so the cut here is a
+            # throwaway intermediate — re-encoding is wasted work. Trade-off:
+            # `-ss` before `-i` does fast keyframe seek, so the cut may start at
+            # the nearest preceding keyframe (typically <1s drift). Drops cut
+            # from ~30s to near-instant on a 4-core Intel.
             run_ffmpeg([
                 "-ss", str(clip["start"]),
                 "-to", str(clip["end"]),
                 "-i", str(src),
-                "-c:v", "libx264",
-                "-preset", "veryfast",
-                "-crf", "20",
-                "-c:a", "aac",
-                "-b:a", "128k",
+                "-c", "copy",
+                "-avoid_negative_ts", "make_zero",
                 "-movflags", "+faststart",
                 str(out),
             ])
@@ -1614,7 +1617,7 @@ def _read_openai_key() -> str | None:
 
 # --- Overlay (b-roll) — on-demand per clip ----------------------------------
 
-OVERLAY_TYPES = {"stack-bottom", "stack-top", "pip-br", "pip-bl"}
+OVERLAY_TYPES = {"stack-bottom", "stack-top", "split-left", "split-right", "pip-br", "pip-bl"}
 
 
 def apply_overlay_to_clip(
@@ -1655,7 +1658,10 @@ def apply_overlay_to_clip(
     if not source_path or not os.path.isfile(source_path):
         raise FileNotFoundError(f"overlay source not found: {source_path}")
 
-    start_offset = float(overlay_spec.get("start_offset_s") or 0)
+    start_offset = max(0.0, float(overlay_spec.get("start_offset_s") or 0))
+    audio_source = str(overlay_spec.get("audio_source") or "main")
+    if audio_source not in {"main", "broll", "muted"}:
+        raise ValueError("audio_source must be main, broll, or muted")
     clip_duration = float(clip.get("end", 0)) - float(clip.get("start", 0))
     if clip_duration <= 0:
         raise ValueError("clip has no duration — re-cut before applying overlay")
@@ -1686,7 +1692,12 @@ def apply_overlay_to_clip(
             "-i", source_path,
             "-filter_complex", filter_complex,
             "-map", "[v]",
-            "-map", "0:a?",         # main audio only — broll is always muted
+        ]
+        if audio_source == "main":
+            cmd += ["-map", "0:a?"]
+        elif audio_source == "broll":
+            cmd += ["-map", "1:a?"]
+        cmd += [
             "-c:v", "libx264",
             "-preset", "veryfast",
             "-crf", "22",
@@ -1703,7 +1714,8 @@ def apply_overlay_to_clip(
         "type": overlay_type,
         "source_path": source_path,
         "start_offset_s": start_offset,
-        "mute": True,
+        "mute": audio_source != "broll",
+        "audio_source": audio_source,
         "applied_paths": applied_paths,
     }
     project.set_clips(project.clips)
@@ -1730,6 +1742,20 @@ def _build_overlay_filter(overlay_type: str, out_w: int, out_h: int) -> str:
             f"[0:v]scale={out_w}:{half_h},setsar=1[bot];"
             f"[1:v]scale={out_w}:{half_h},setsar=1[top];"
             f"[top][bot]vstack[v]"
+        )
+    if overlay_type == "split-left":
+        half_w = out_w // 2
+        return (
+            f"[1:v]scale={half_w}:{out_h}:force_original_aspect_ratio=increase,crop={half_w}:{out_h},setsar=1[left];"
+            f"[0:v]scale={half_w}:{out_h}:force_original_aspect_ratio=increase,crop={half_w}:{out_h},setsar=1[right];"
+            f"[left][right]hstack[v]"
+        )
+    if overlay_type == "split-right":
+        half_w = out_w // 2
+        return (
+            f"[0:v]scale={half_w}:{out_h}:force_original_aspect_ratio=increase,crop={half_w}:{out_h},setsar=1[left];"
+            f"[1:v]scale={half_w}:{out_h}:force_original_aspect_ratio=increase,crop={half_w}:{out_h},setsar=1[right];"
+            f"[left][right]hstack[v]"
         )
     if overlay_type == "pip-br":
         return (

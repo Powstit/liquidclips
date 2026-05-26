@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import type { Clip, CellState, OverlayType, Project, RatioKey } from "../lib/sidecar";
+import type { Clip, OverlayType, Project, RatioKey } from "../lib/sidecar";
 import { sidecar, RATIOS } from "../lib/sidecar";
 import { CopyButton } from "./CopyButton";
 import { InfoTip } from "./InfoTip";
 import { LayoutIcon, LAYOUTS, type LayoutKey } from "./clips-feed/LayoutIcon";
 import { pickOverlaySource } from "./OverlaySourcePicker";
 import { LayoutCellDiagram } from "./clips-feed/LayoutCellDiagram";
-import { LAYOUT_TOPOLOGY, type CellRole } from "./clips-feed/layout-cells";
+import { LAYOUT_TOPOLOGY } from "./clips-feed/layout-cells";
 import { BountyFitChecklist } from "./earn/bounty-fit";
 
 // Editor modal — the side-door power view from each feed card. Designed to
@@ -69,6 +69,8 @@ export function ClipPreview({
   const [descDraft, setDescDraft] = useState(clip.description);
   const [pinDraft, setPinDraft] = useState(clip.pinned_comment ?? "");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [brollOffset, setBrollOffset] = useState(clip.overlay?.start_offset_s ?? 0);
+  const [audioSource, setAudioSource] = useState<"main" | "broll" | "muted">(clip.overlay?.audio_source ?? "main");
 
   useEffect(() => {
     setTrimStart(clip.start);
@@ -78,7 +80,9 @@ export function ClipPreview({
     setDescDraft(clip.description);
     setPinDraft(clip.pinned_comment ?? "");
     setSaveState("idle");
-  }, [clip.start, clip.end, clip.title, clip.description, clip.pinned_comment, index]);
+    setBrollOffset(clip.overlay?.start_offset_s ?? 0);
+    setAudioSource(clip.overlay?.audio_source ?? "main");
+  }, [clip.start, clip.end, clip.title, clip.description, clip.pinned_comment, clip.overlay?.start_offset_s, clip.overlay?.audio_source, index]);
 
   const isDirty =
     titleDraft !== clip.title ||
@@ -124,11 +128,10 @@ export function ClipPreview({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, onNavigate, index, totalClips]);
 
-  // Apply a new layout. Caller picks the kind via the icon row; for non-"none"
-  // we trigger a file picker to grab the b-roll source (used by every cell
-  // that isn't the main clip). Cell-level source overrides come later via
-  // the LayoutCellDiagram drill-in.
-  async function applyLayout(kind: LayoutKey) {
+  // Apply a launch-safe b-roll layout. The renderer supports one extra source
+  // per clip; the advanced cell editor stays hidden until the backend supports
+  // independent cells / audio / music beds end-to-end.
+  async function applyLayout(kind: LayoutKey, opts?: { forcePick?: boolean }) {
     if (busy) return;
     setBusy(true);
     setActionError(null);
@@ -141,7 +144,7 @@ export function ClipPreview({
         // ask via the picker (this project's clips OR upload a file).
         const existing = clip.overlay?.source_path;
         let source: string | undefined = existing;
-        if (!source || (clip.overlay?.type ?? "none") !== kind) {
+        if (opts?.forcePick || !source || (clip.overlay?.type ?? "none") !== kind) {
           const pick = await pickOverlaySource({ project, excludeIdx: index - 1 });
           if (pick.kind === "cancel") return;
           source = pick.path;
@@ -149,7 +152,8 @@ export function ClipPreview({
         const r = await sidecar.applyOverlay(slug, index - 1, {
           type: kind as OverlayType,
           source_path: source,
-          start_offset_s: 0,
+          start_offset_s: brollOffset,
+          audio_source: audioSource,
         });
         onProjectChange(r.project);
       }
@@ -158,65 +162,6 @@ export function ClipPreview({
     } finally {
       setBusy(false);
     }
-  }
-
-  async function changeCellSource(role: CellRole, path: string) {
-    if (!clip.overlay) return;
-    const cells: Record<string, CellState> = {
-      ...(clip.overlay.cells ?? {}),
-      [role]: { ...(clip.overlay.cells?.[role] ?? { audio: "muted", source_path: null }), source_path: path },
-    };
-    const r = await sidecar.applyOverlay(slug, index - 1, {
-      type: clip.overlay.type,
-      source_path: clip.overlay.source_path,
-      start_offset_s: clip.overlay.start_offset_s,
-      cells,
-      music_bed: clip.overlay.music_bed ?? null,
-    } as any);
-    onProjectChange(r.project);
-  }
-
-  async function changeCellAudio(role: CellRole, audio: "this" | "muted") {
-    if (!clip.overlay) return;
-    const cells: Record<string, CellState> = {
-      ...(clip.overlay.cells ?? {}),
-      [role]: {
-        source_path: clip.overlay.cells?.[role]?.source_path ?? null,
-        audio,
-      },
-    };
-    const r = await sidecar.applyOverlay(slug, index - 1, {
-      type: clip.overlay.type,
-      source_path: clip.overlay.source_path,
-      start_offset_s: clip.overlay.start_offset_s,
-      cells,
-      music_bed: clip.overlay.music_bed ?? null,
-    } as any);
-    onProjectChange(r.project);
-  }
-
-  async function setMusicBed(path: string) {
-    if (!clip.overlay) return;
-    const r = await sidecar.applyOverlay(slug, index - 1, {
-      type: clip.overlay.type,
-      source_path: clip.overlay.source_path,
-      start_offset_s: clip.overlay.start_offset_s,
-      cells: clip.overlay.cells,
-      music_bed: { source_path: path, volume: 0.4 },
-    } as any);
-    onProjectChange(r.project);
-  }
-
-  async function clearMusicBed() {
-    if (!clip.overlay) return;
-    const r = await sidecar.applyOverlay(slug, index - 1, {
-      type: clip.overlay.type,
-      source_path: clip.overlay.source_path,
-      start_offset_s: clip.overlay.start_offset_s,
-      cells: clip.overlay.cells,
-      music_bed: null,
-    } as any);
-    onProjectChange(r.project);
   }
 
   async function regenerate() {
@@ -308,14 +253,26 @@ export function ClipPreview({
                 })}
               </div>
               <div className="flex items-center gap-1 rounded-full bg-paper/10 p-0.5">
-                {RATIOS.map((r) => (
-                  <button key={r.key} onClick={() => setRatio(r.key)}
-                    className={`rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-[0.08em] transition-colors ${
-                      ratio === r.key ? "bg-paper text-ink" : "text-paper/60 hover:text-paper"
-                    }`}>
-                    {r.label}
-                  </button>
-                ))}
+                {RATIOS.map((r) => {
+                  const available = !!pathForRatio(clip, r.key);
+                  return (
+                    <button
+                      key={r.key}
+                      onClick={() => available && setRatio(r.key)}
+                      disabled={!available}
+                      title={available ? r.label : `${r.label} not rendered yet`}
+                      className={`rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-[0.08em] transition-colors ${
+                        ratio === r.key
+                          ? "bg-paper text-ink"
+                          : available
+                          ? "text-paper/60 hover:text-paper"
+                          : "cursor-not-allowed text-paper/25"
+                      }`}
+                    >
+                      {r.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -332,7 +289,7 @@ export function ClipPreview({
             {/* Inline status row */}
             <div className="flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.08em] text-paper/60">
               <span>{LAYOUT_TOPOLOGY[layout].label}</span>
-              {clip.overlay?.music_bed && <span className="text-fuchsia-bright">music bed on</span>}
+              {clip.overlay?.source_path && <span className="text-fuchsia-bright">b-roll rendered</span>}
             </div>
           </div>
 
@@ -344,15 +301,82 @@ export function ClipPreview({
             <section>
               <LayoutCellDiagram
                 kind={layout}
-                cells={(clip.overlay?.cells as any) ?? {}}
-                musicBedSet={!!clip.overlay?.music_bed}
-                project={project}
-                excludeIdx={index - 1}
-                onChangeCellSource={(role, path) => void changeCellSource(role, path)}
-                onChangeCellAudio={(role, audio) => void changeCellAudio(role, audio)}
-                onClearMusicBed={() => void clearMusicBed()}
-                onSetMusicBed={(path) => void setMusicBed(path)}
+                sourcePath={clip.overlay?.source_path ?? null}
               />
+              {layout !== "none" && (
+                <div className="mt-3 space-y-3 rounded-xl border border-line bg-paper p-3.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                      side-by-side controls
+                    </span>
+                    <button
+                      onClick={() => void applyLayout(layout, { forcePick: true })}
+                      disabled={busy}
+                      className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary hover:border-fuchsia hover:text-ink disabled:opacity-40"
+                    >
+                      Change b-roll
+                    </button>
+                  </div>
+
+                  <label className="block">
+                    <div className="mb-1 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                      <span>B-roll start offset</span>
+                      <span>{brollOffset.toFixed(1)}s</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={60}
+                      step={0.5}
+                      value={brollOffset}
+                      onChange={(e) => setBrollOffset(Number(e.target.value))}
+                      className="w-full accent-fuchsia"
+                    />
+                  </label>
+
+                  <div>
+                    <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                      Audio
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {([
+                        ["main", "Main audio"],
+                        ["broll", "B-roll audio"],
+                        ["muted", "Muted"],
+                      ] as const).map(([key, label]) => (
+                        <button
+                          key={key}
+                          onClick={() => setAudioSource(key)}
+                          className={`rounded-full border px-3 py-1 font-sans text-[12px] transition-colors ${
+                            audioSource === key
+                              ? "border-fuchsia bg-fuchsia text-paper"
+                              : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => void applyLayout(layout)}
+                      disabled={busy}
+                      className="rounded-full bg-ink px-4 py-1.5 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia disabled:opacity-50"
+                    >
+                      {busy ? "Rendering..." : "Render update"}
+                    </button>
+                    <button
+                      onClick={() => void applyLayout("none")}
+                      disabled={busy}
+                      className="rounded-full border border-line bg-paper px-4 py-1.5 font-sans text-[13px] font-medium text-ink hover:border-[#DC2626] hover:text-[#DC2626] disabled:opacity-50"
+                    >
+                      Remove b-roll
+                    </button>
+                  </div>
+                </div>
+              )}
             </section>
 
             {/* Post-ready text Junior wrote for you. One header, three sub-blocks
@@ -493,10 +517,10 @@ export function ClipPreview({
             {actionError && <p className="font-mono text-[12px] text-[#DC2626]">{actionError}</p>}
 
             <div className="mt-auto flex items-center gap-2 pt-3">
-              <button onClick={() => clip.cut_path && void openExternal(clip.cut_path)}
-                disabled={!clip.cut_path}
+              <button onClick={() => videoPath && void openExternal(videoPath)}
+                disabled={!videoPath}
                 className="rounded-full border border-line bg-paper px-4 py-2 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary hover:border-fuchsia hover:text-ink disabled:opacity-40">
-                Open file
+                Open current file
               </button>
               <button onClick={remove} disabled={busy}
                 className="ml-auto rounded-full border border-line bg-paper px-4 py-2 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary hover:border-[#DC2626] hover:text-[#DC2626] disabled:opacity-40">

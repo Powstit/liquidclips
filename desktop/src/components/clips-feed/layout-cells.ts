@@ -49,6 +49,22 @@ export const LAYOUT_TOPOLOGY: Record<LayoutKey, LayoutTopology> = {
       { role: "main",  label: "Bottom — main",    rect: { x: 0, y: 0.5, w: 1, h: 0.5 }, isMain: true },
     ],
   },
+  "split-left": {
+    key: "split-left",
+    label: "Split · b-roll left",
+    cells: [
+      { role: "broll", label: "Left — b-roll", rect: { x: 0, y: 0, w: 0.5, h: 1 } },
+      { role: "main", label: "Right — main clip", rect: { x: 0.5, y: 0, w: 0.5, h: 1 }, isMain: true },
+    ],
+  },
+  "split-right": {
+    key: "split-right",
+    label: "Split · b-roll right",
+    cells: [
+      { role: "main", label: "Left — main clip", rect: { x: 0, y: 0, w: 0.5, h: 1 }, isMain: true },
+      { role: "broll", label: "Right — b-roll", rect: { x: 0.5, y: 0, w: 0.5, h: 1 } },
+    ],
+  },
   "pip-br": {
     key: "pip-br",
     label: "PiP · bottom-right",

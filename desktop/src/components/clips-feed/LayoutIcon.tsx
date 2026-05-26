@@ -27,6 +27,12 @@ export function LayoutIcon({ kind, className = "" }: { kind: LayoutKey; classNam
     case "stack-top":
       inner = <rect x="2.5" y="2" width="21" height="14" rx="2" fill={fill} opacity="0.85" />;
       break;
+    case "split-left":
+      inner = <rect x="2.5" y="2" width="10" height="30" rx="2" fill={fill} opacity="0.85" />;
+      break;
+    case "split-right":
+      inner = <rect x="13.5" y="2" width="10" height="30" rx="2" fill={fill} opacity="0.85" />;
+      break;
     case "pip-br":
       inner = <rect x="14" y="22" width="9" height="9" rx="1.5" fill={fill} opacity="0.85" />;
       break;
@@ -43,5 +49,8 @@ export const LAYOUTS: { key: LayoutKey; label: string; short: string }[] = [
   { key: "none",         label: "No overlay",         short: "Full"    },
   { key: "stack-bottom", label: "Stack · bottom",     short: "Stack ↓" },
   { key: "stack-top",    label: "Stack · top",        short: "Stack ↑" },
+  { key: "split-left",   label: "Split · b-roll left", short: "Split ←" },
+  { key: "split-right",  label: "Split · b-roll right", short: "Split →" },
   { key: "pip-br",       label: "PiP · bottom-right", short: "PiP"     },
+  { key: "pip-bl",       label: "PiP · bottom-left",  short: "PiP L"   },
 ];
