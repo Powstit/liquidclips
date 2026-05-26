@@ -21,3 +21,4 @@ __pycache__/
 
 # Tauri auto-updater signing keys
 .junior-updater/
+tsconfig.tsbuildinfo
