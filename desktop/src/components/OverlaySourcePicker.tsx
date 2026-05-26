@@ -134,7 +134,7 @@ export function OverlaySourcePickerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
       onClick={() => onResolve({ kind: "cancel" })}
     >
       <div
@@ -190,7 +190,7 @@ export function OverlaySourcePickerModal({
             </div>
             <button
               onClick={() => void chooseFile()}
-              className="rounded-full bg-ink px-4 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)]"
+              className="rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)]"
             >
               Choose file →
             </button>
@@ -236,7 +236,7 @@ function ClipThumb({
       className="group flex flex-col gap-1 overflow-hidden rounded-md border border-line bg-paper transition-all hover:border-fuchsia hover:shadow-[0_6px_18px_rgba(255,26,140,0.15)]"
       title={label}
     >
-      <div className="aspect-[9/16] w-full overflow-hidden bg-ink">
+      <div className="aspect-[9/16] w-full overflow-hidden bg-paper-warm">
         {thumbSrc ? (
           <img src={thumbSrc} alt={label} className="h-full w-full object-cover" />
         ) : (

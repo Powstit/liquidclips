@@ -307,7 +307,7 @@ export function EarnTab({
               </button>
               <button
                 onClick={() => setManualOpen(true)}
-                className="rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-paper hover:bg-ink"
+                className="rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-paper hover:bg-fuchsia-bright"
               >
                 Paste a reward manually →
               </button>
@@ -372,7 +372,7 @@ export function EarnTab({
                 <button
                   onClick={() => void handleAddByLink()}
                   disabled={!addUrl.trim() || adding}
-                  className="shrink-0 rounded-full bg-ink px-4 py-2 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia disabled:opacity-40"
+                  className="shrink-0 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia-bright disabled:opacity-40"
                 >
                   {adding ? "Adding…" : "Add reward"}
                 </button>
@@ -611,7 +611,7 @@ function BountyProjectCard({
       </div>
       <button
         onClick={onResume}
-        className="shrink-0 rounded-full bg-ink px-4 py-2 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+        className="shrink-0 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
       >
         Resume →
       </button>
@@ -687,7 +687,7 @@ function WhopIframeFailed({ onRetry }: { onRetry: () => void }) {
       <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={onRetry}
-          className="rounded-full bg-ink px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+          className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
         >
           Retry
         </button>
@@ -759,7 +759,7 @@ function ActivateJuniorSplash({
             void activate();
           }}
           disabled={act.kind === "opening" || act.kind === "waiting" || act.kind === "activating"}
-          className="rounded-full bg-ink px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[var(--glow-md)] disabled:opacity-60"
+          className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] disabled:opacity-60"
         >
           {act.kind === "opening"
             ? "Opening browser…"

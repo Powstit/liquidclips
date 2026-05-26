@@ -39,7 +39,7 @@ export function UpgradeLockCard({
       <div className="flex flex-col items-center gap-2">
         <button
           onClick={() => void openExternal("https://account.jnremployee.com/upgrade")}
-          className="rounded-full bg-ink px-6 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[var(--glow-md)]"
+          className="rounded-full bg-fuchsia px-6 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
         >
           Upgrade to Solo →
         </button>

@@ -116,7 +116,7 @@ export function ResultsGrid({
           </button>
           <button
             onClick={onDropAnother}
-            className="inline-flex items-center gap-1.5 rounded-full bg-ink px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[var(--glow-md)]"
+            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
           >
             <Plus className="h-4 w-4" strokeWidth={2.5} />
             Drop another
@@ -150,7 +150,7 @@ export function ResultsGrid({
                 ? "Publish a clip, then paste your Whop submission link to track it"
                 : "Publish a clip now"
             }
-            className="inline-flex items-center gap-1.5 rounded-full bg-ink px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-40"
           >
             {isBounty ? "Publish & prepare Whop submission" : "Publish now"}
             {isBounty && (
@@ -169,7 +169,7 @@ export function ResultsGrid({
               onClick={() => setDripOpen(true)}
               disabled={project.clips.length === 0}
               title={project.clips.length === 0 ? "Drop a video first" : "Open drip planner"}
-              className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-ink hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50 disabled:hover:bg-fuchsia disabled:hover:shadow-none"
+              className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50 disabled:hover:bg-fuchsia-bright disabled:hover:shadow-none"
             >
               Drip across ▾
             </button>

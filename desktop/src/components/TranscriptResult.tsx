@@ -47,7 +47,7 @@ export function TranscriptResult({
         </div>
         <button
           onClick={onDone}
-          className="rounded-full bg-ink px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+          className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
         >
           Lift another →
         </button>
@@ -67,7 +67,7 @@ export function TranscriptResult({
                 no poster
               </div>
             )}
-            <div className="absolute left-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-ink/70 text-paper backdrop-blur-md">
+            <div className="absolute left-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-black/70 text-paper backdrop-blur-md">
               <PlatformIcon id={platform} className="h-4 w-4" />
             </div>
           </div>
@@ -114,7 +114,7 @@ export function TranscriptResult({
             </span>
             <button
               onClick={() => void copy("transcript", buildPlainText(result))}
-              className="rounded-full bg-ink px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia"
+              className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia-bright"
             >
               {copied === "transcript" ? "Copied" : "Copy all"}
             </button>

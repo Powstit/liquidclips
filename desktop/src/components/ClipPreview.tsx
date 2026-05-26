@@ -196,7 +196,7 @@ export function ClipPreview({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-4 sm:p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 sm:p-6" onClick={onClose}>
       <div
         className="flex h-full max-h-[94vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-2xl bg-paper shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -363,7 +363,7 @@ export function ClipPreview({
                     <button
                       onClick={() => void applyLayout(layout)}
                       disabled={busy}
-                      className="rounded-full bg-ink px-4 py-1.5 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia disabled:opacity-50"
+                      className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright disabled:opacity-50"
                     >
                       {busy ? "Rendering..." : "Render update"}
                     </button>
@@ -452,7 +452,7 @@ export function ClipPreview({
                   <button
                     onClick={() => void saveMeta()}
                     disabled={!isDirty || busy}
-                    className="rounded-full bg-ink px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)] disabled:opacity-40"
+                    className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)] disabled:opacity-40"
                   >
                     {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved ✓" : "Save"}
                   </button>
@@ -503,7 +503,7 @@ export function ClipPreview({
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button onClick={() => void regenerate()} disabled={busy}
-                    className="rounded-full bg-ink px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia disabled:opacity-50">
+                    className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright disabled:opacity-50">
                     {busy ? "Working…" : "Re-cut"}
                   </button>
                   <button onClick={() => { setTrimStart(clip.start); setTrimEnd(clip.end); }}

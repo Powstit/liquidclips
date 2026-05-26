@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import { LayoutGrid, Wallet, Settings as SettingsIcon, LogIn, UserCircle2, type LucideIcon } from "lucide-react";
+import { LayoutGrid, Wallet, UploadCloud, Settings as SettingsIcon, LogIn, UserCircle2, type LucideIcon } from "lucide-react";
 import { Logo } from "./components/Logo";
 import { DropZone } from "./components/DropZone";
 import { WorkingStage } from "./components/WorkingStage";
@@ -11,12 +11,12 @@ import { JuniorLoader } from "./components/JuniorLoader";
 import { Splash } from "./components/Splash";
 import { NotificationBell } from "./components/NotificationBell";
 import { NotificationSheet } from "./components/NotificationSheet";
-import { ScheduleQueue } from "./components/ScheduleQueue";
+import { UploadTab } from "./components/upload/UploadTab";
 import { Settings } from "./components/Settings";
 import { sidecar, visibleStagesFor, pipelineStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
 import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
 import { initDeepLinks, setOnActivated } from "./lib/activation";
-import { PUBLISHING_ENABLED, HOSTED_LLM_ENABLED } from "./lib/flags";
+import { HOSTED_LLM_ENABLED } from "./lib/flags";
 import { reportDesktopError } from "./lib/telemetry";
 import { applyUpdate, checkForUpdate, type UpdateState } from "./lib/updater";
 import { TranscriptResult, LiftingProgress } from "./components/TranscriptResult";
@@ -34,6 +34,7 @@ type View =
   | { kind: "empty" }
   | { kind: "quota" }
   | { kind: "earn" }
+  | { kind: "upload" }
   | { kind: "bounty-setup"; bounty: WhopBounty }
   | { kind: "choosing-intent"; source: { kind: "file"; path: string } | { kind: "url"; url: string }; brief: string; bounty?: WhopBounty }
   | { kind: "downloading"; url: string; progress?: IngestProgress; intent: Intent }
@@ -56,7 +57,6 @@ export default function App() {
   const [sidecarStatus, setSidecarStatus] = useState<"booting" | "ready" | "failed">("booting");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
-  const [queueOpen, setQueueOpen] = useState(false);
   const [bootChecked, setBootChecked] = useState(false);
   const [updateBanner, setUpdateBanner] = useState<UpdateState>({ kind: "idle" });
   // Set when the backend rejects our license JWT (401). backend.ts has already
@@ -125,7 +125,6 @@ export default function App() {
       setSignedIn(false);
       setNeedsActivation(true);
       setInboxOpen(false);
-      setQueueOpen(false);
     });
 
     // Activation bridge: register the junior:// deep-link listener once so a
@@ -485,15 +484,21 @@ export default function App() {
           <nav className="flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.12em]">
             <NavTab
               label="Workspace"
-              active={view.kind !== "earn"}
+              active={view.kind !== "earn" && view.kind !== "upload" && view.kind !== "bounty-setup"}
               onClick={() => setView({ kind: "empty" })}
               Icon={LayoutGrid}
             />
             <NavTab
               label="Earn"
-              active={view.kind === "earn"}
+              active={view.kind === "earn" || view.kind === "bounty-setup"}
               onClick={() => setView({ kind: "earn" })}
               Icon={Wallet}
+            />
+            <NavTab
+              label="Upload"
+              active={view.kind === "upload"}
+              onClick={() => setView({ kind: "upload" })}
+              Icon={UploadCloud}
             />
           </nav>
         </div>
@@ -510,15 +515,6 @@ export default function App() {
             />
             {sidecarStatus === "ready" ? "ready" : sidecarStatus === "failed" ? "sidecar failed" : "starting…"}
           </div>
-          {PUBLISHING_ENABLED && (
-            <button
-              onClick={() => setQueueOpen(true)}
-              className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
-              aria-label="Open schedule queue"
-            >
-              Queue
-            </button>
-          )}
           <NotificationBell onOpen={() => setInboxOpen(true)} />
           {signedIn ? (
             <button
@@ -552,6 +548,10 @@ export default function App() {
       </header>
 
       <main className="flex flex-1 items-stretch justify-center overflow-y-auto px-6 py-10">
+        {view.kind === "upload" && (
+          <UploadTab onOpenSettings={() => setSettingsOpen(true)} />
+        )}
+
         {view.kind === "earn" && (
           <EarnTab
             onStartBounty={(bounty) => {
@@ -695,7 +695,7 @@ export default function App() {
                     m.open("https://account.jnremployee.com/upgrade"),
                   );
                 }}
-                className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper hover:bg-ink"
+                className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper hover:bg-fuchsia-bright"
               >
                 Continue on Solo · $29.99/mo
               </button>
@@ -766,7 +766,7 @@ export default function App() {
           </div>
           <button
             onClick={() => { setNeedsActivation(false); setView({ kind: "first-run" }); }}
-            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-ink"
+            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright"
           >
             Sign in
           </button>
@@ -783,7 +783,7 @@ export default function App() {
               if (updateBanner.kind !== "available") return;
               await applyUpdate(updateBanner.update, setUpdateBanner);
             }}
-            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-ink"
+            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright"
           >
             Install + relaunch
           </button>
@@ -807,7 +807,7 @@ export default function App() {
               setUpdateBanner({ kind: "checking" });
               setUpdateBanner(await checkForUpdate());
             }}
-            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-ink"
+            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright"
           >
             Retry
           </button>
@@ -837,7 +837,6 @@ export default function App() {
         />
       )}
       {inboxOpen && <NotificationSheet onClose={() => setInboxOpen(false)} />}
-      {queueOpen && <ScheduleQueue onClose={() => setQueueOpen(false)} />}
     </div>
   );
 }

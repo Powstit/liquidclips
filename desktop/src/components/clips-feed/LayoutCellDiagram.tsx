@@ -26,7 +26,7 @@ export function LayoutCellDiagram({
       {/* Read-only launch diagram. The backend currently supports one b-roll
           source + main audio; advanced per-cell/audio editing stays hidden
           until the renderer supports it end-to-end. */}
-      <div className="relative mx-auto aspect-[9/16] w-full max-w-[260px] overflow-hidden rounded-xl border border-line bg-ink">
+      <div className="relative mx-auto aspect-[9/16] w-full max-w-[260px] overflow-hidden rounded-xl border border-line bg-paper-warm">
         {topology.cells.map((cell) => (
           <CellTile
             key={cell.role}

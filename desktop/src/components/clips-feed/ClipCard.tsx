@@ -144,7 +144,7 @@ export function ClipCard({
 
       {/* Video / poster — hover to preview */}
       <div
-        className="relative aspect-[9/16] overflow-hidden rounded-xl bg-ink"
+        className="relative aspect-[9/16] overflow-hidden rounded-xl bg-paper-warm"
         onMouseEnter={onEnter}
         onMouseLeave={onLeave}
       >
