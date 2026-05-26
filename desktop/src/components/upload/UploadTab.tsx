@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { UploadCloud, CalendarClock, Settings2 } from "lucide-react";
+import { UploadCloud, CalendarClock, Settings2, Zap } from "lucide-react";
 import { backend, type ConnectionsList, type ConnectionPlatform } from "../../lib/backend";
 import { sidecar } from "../../lib/sidecar";
+import { PUBLISHING_ENABLED } from "../../lib/flags";
 import { PlatformIcon } from "../PlatformIcon";
 import { ScheduleQueue } from "../ScheduleQueue";
+import { LocalQueue } from "./LocalQueue";
 
 const PLATFORM_ORDER: ConnectionPlatform[] = ["youtube", "tiktok", "instagram", "x"];
 
@@ -115,15 +117,38 @@ export function UploadTab({
         )}
       </section>
 
+      {/* PRIMARY: local "Junior reminds, you post" queue. Always available,
+          no tier gate, no Postiz dependency — runs from $JUNIOR_HOME/.schedule.json. */}
       <section>
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
             <CalendarClock className="h-3.5 w-3.5" strokeWidth={2} />
-            queue
+            schedule &mdash; assisted
           </div>
+          <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
+            local · runs offline
+          </span>
         </div>
-        <ScheduleQueue />
+        <LocalQueue />
       </section>
+
+      {/* SECONDARY: backend auto-publish queue (Postiz-backed, premium).
+          Hidden when the publishing flag is off so the tab doesn't show
+          two near-identical sections to beta users. */}
+      {PUBLISHING_ENABLED && (
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+              <Zap className="h-3.5 w-3.5" strokeWidth={2} />
+              auto-publish &mdash; growth / autopilot
+            </div>
+            <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
+              hosted
+            </span>
+          </div>
+          <ScheduleQueue />
+        </section>
+      )}
     </div>
   );
 }

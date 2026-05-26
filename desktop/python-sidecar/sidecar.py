@@ -1130,6 +1130,61 @@ def method_drip_plan(params: dict[str, Any]) -> dict[str, Any]:
     return {"slots": [s.to_dict() for s in slots]}
 
 
+# ── local schedule (Assisted Autopost) ─────────────────────────────────
+#
+# All five methods sit on top of local_schedule.py which file-stores in
+# $JUNIOR_HOME/.schedule.json. Used by the Upload tab and DripCalendar to
+# track "what I told Junior to remind me to post, when, where". Distinct
+# from the backend /schedules/* Postiz queue — local is always-available,
+# Postiz is the paid auto-publish layer.
+
+
+def method_local_schedule_list(_params: dict[str, Any]) -> dict[str, Any]:
+    import local_schedule
+    return {"items": local_schedule.list_items()}
+
+
+def method_local_schedule_add(params: dict[str, Any]) -> dict[str, Any]:
+    """Bulk-add. `items` is the same shape DripCalendar produces (with an
+    extra `project_slug` per row supplied by the caller)."""
+    import local_schedule
+    items = params.get("items")
+    if not isinstance(items, list):
+        raise ValueError("local_schedule_add requires items: list")
+    created = local_schedule.add_items(items)
+    return {"items": created, "count": len(created)}
+
+
+def method_local_schedule_mark_posted(params: dict[str, Any]) -> dict[str, Any]:
+    import local_schedule
+    item_id = params.get("id")
+    if not isinstance(item_id, str) or not item_id:
+        raise ValueError("local_schedule_mark_posted requires id (str)")
+    post_url = params.get("post_url")
+    if post_url is not None and not isinstance(post_url, str):
+        raise ValueError("post_url must be str or null")
+    updated = local_schedule.mark_posted(item_id, post_url)
+    if updated is None:
+        raise ValueError(f"no local schedule item with id={item_id}")
+    return {"item": updated}
+
+
+def method_local_schedule_cancel(params: dict[str, Any]) -> dict[str, Any]:
+    import local_schedule
+    item_id = params.get("id")
+    if not isinstance(item_id, str) or not item_id:
+        raise ValueError("local_schedule_cancel requires id (str)")
+    return {"ok": local_schedule.cancel(item_id)}
+
+
+def method_local_schedule_remove(params: dict[str, Any]) -> dict[str, Any]:
+    import local_schedule
+    item_id = params.get("id")
+    if not isinstance(item_id, str) or not item_id:
+        raise ValueError("local_schedule_remove requires id (str)")
+    return {"ok": local_schedule.remove(item_id)}
+
+
 def method_preload_whisper(_params: dict[str, Any]) -> dict[str, Any]:
     """Warm-load the whisper model so the user's first transcribe doesn't hit a
     cold path. With a bundled model the warmup is essentially free (~1s). For
@@ -1251,6 +1306,11 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "lift_transcript": method_lift_transcript,
     "apply_overlay": method_apply_overlay,
     "drip_plan": method_drip_plan,
+    "local_schedule_list": method_local_schedule_list,
+    "local_schedule_add": method_local_schedule_add,
+    "local_schedule_mark_posted": method_local_schedule_mark_posted,
+    "local_schedule_cancel": method_local_schedule_cancel,
+    "local_schedule_remove": method_local_schedule_remove,
     "preload_whisper": method_preload_whisper,
 }
 
