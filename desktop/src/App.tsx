@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
+import { LayoutGrid, Wallet, Settings as SettingsIcon, LogIn, UserCircle2, type LucideIcon } from "lucide-react";
 import { Logo } from "./components/Logo";
 import { DropZone } from "./components/DropZone";
 import { WorkingStage } from "./components/WorkingStage";
@@ -485,11 +486,13 @@ export default function App() {
               label="Workspace"
               active={view.kind !== "earn"}
               onClick={() => setView({ kind: "empty" })}
+              Icon={LayoutGrid}
             />
             <NavTab
               label="Earn"
               active={view.kind === "earn"}
               onClick={() => setView({ kind: "earn" })}
+              Icon={Wallet}
             />
           </nav>
         </div>
@@ -523,23 +526,25 @@ export default function App() {
               aria-label="Open your account"
               title="Signed in · open Account in Settings"
             >
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
+              <UserCircle2 className="h-3.5 w-3.5 text-fuchsia" strokeWidth={2} />
               Account
             </button>
           ) : signedIn === false ? (
             <button
               onClick={() => setView({ kind: "first-run" })}
-              className="rounded-full border border-fuchsia bg-fuchsia-soft/30 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep transition-colors hover:bg-fuchsia hover:text-paper"
+              className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-fuchsia-soft/30 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep transition-colors hover:bg-fuchsia hover:text-paper"
               aria-label="Sign in to Junior"
             >
+              <LogIn className="h-3.5 w-3.5" strokeWidth={2} />
               Sign in
             </button>
           ) : null}
           <button
             onClick={() => setSettingsOpen(true)}
-            className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
+            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
             aria-label="Open settings"
           >
+            <SettingsIcon className="h-3.5 w-3.5" strokeWidth={2} />
             Settings
           </button>
         </div>
@@ -881,14 +886,25 @@ function whopBountyUrl(bounty: WhopBounty): string | null {
   return bounty.experience?.id ? `https://whop.com/experiences/${bounty.experience.id}` : null;
 }
 
-function NavTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function NavTab({
+  label,
+  active,
+  onClick,
+  Icon,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  Icon?: LucideIcon;
+}) {
   return (
     <button
       onClick={onClick}
-      className={`relative px-3 py-1.5 transition-colors ${
+      className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 transition-colors ${
         active ? "text-ink" : "text-text-tertiary hover:text-ink"
       }`}
     >
+      {Icon && <Icon className="h-3.5 w-3.5" strokeWidth={2} />}
       {label}
       {active && (
         <span className="absolute inset-x-2 bottom-[-1px] h-[2px] rounded-full bg-fuchsia" />
