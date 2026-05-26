@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { rememberSubmissionId } from "./EarnTab";
 import type { Project } from "../../lib/sidecar";
+import { computeBountyFit } from "./bounty-fit";
 
 // Whop's public GraphQL has no `submitBounty` mutation — users still submit
 // through Whop's own UI on whop.com. To keep the Submitted / Approved tabs
@@ -99,6 +100,36 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
     );
   }
 
+  const readyClips = project.clips.filter((c) => c.vertical_path || c.cut_path);
+  const bestFit = readyClips.reduce((best, c) => {
+    const score = computeBountyFit(c, project)?.score ?? 0;
+    return Math.max(best, score);
+  }, 0);
+  const hasCaptions = readyClips.some((c) => c.srt_path || c.vtt_path || c.captions_burned);
+  const hasWhopLink = !!bountyUrl;
+  const checks = [
+    {
+      label: "At least one clip exported",
+      ok: readyClips.length > 0,
+      detail: readyClips.length > 0 ? `${readyClips.length} ready` : "render clips before submitting",
+    },
+    {
+      label: "Captions available",
+      ok: hasCaptions,
+      detail: hasCaptions ? "caption files / burned captions found" : "add captions for better approval odds",
+    },
+    {
+      label: "Brief fit checked",
+      ok: bestFit >= 70,
+      detail: bestFit > 0 ? `best clip fit ${bestFit}/100` : "open a clip to review reward fit",
+    },
+    {
+      label: "Whop reward page ready",
+      ok: hasWhopLink,
+      detail: hasWhopLink ? "open Whop, post, then paste submission URL" : "manual reward — use your saved Whop link",
+    },
+  ];
+
   return (
     <div className="mb-4 rounded-2xl border border-fuchsia-soft bg-fuchsia-soft/20 px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -128,6 +159,27 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
             {open ? "Cancel" : "I've submitted — paste link"}
           </button>
         </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {checks.map((c) => (
+          <div key={c.label} className="rounded-xl border border-line bg-paper/70 px-3 py-2">
+            <div className="flex items-center gap-2 font-sans text-[13px] font-medium text-ink">
+              <span
+                className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] font-bold ${
+                  c.ok ? "bg-fuchsia text-paper" : "border border-[#DC2626]/40 text-[#DC2626]"
+                }`}
+                aria-hidden
+              >
+                {c.ok ? "✓" : "!"}
+              </span>
+              {c.label}
+            </div>
+            <div className="mt-0.5 pl-6 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
+              {c.detail}
+            </div>
+          </div>
+        ))}
       </div>
 
       {open && (
