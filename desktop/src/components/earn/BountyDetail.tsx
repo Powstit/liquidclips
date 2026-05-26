@@ -1,6 +1,8 @@
+import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { ExternalLink } from "lucide-react";
 import type { WhopBounty } from "../../lib/sidecar";
 import { PlatformIcon } from "../PlatformIcon";
-import { allowedPlatforms, formatPayout } from "./types";
+import { allowedPlatforms, formatPayout, whopBountyUrl } from "./types";
 
 // Detail view: 3 columns — Source · Rules · Money. Then one CTA. Designed
 // for fast decision-making, not exploration.
@@ -16,6 +18,7 @@ export function BountyDetail({
 }) {
   const platforms = allowedPlatforms(bounty);
   const sym = bounty.currency === "GBP" ? "£" : bounty.currency === "USD" ? "$" : "";
+  const briefUrl = whopBountyUrl(bounty);
 
   return (
     <div className="flex w-full max-w-[1080px] flex-col gap-6">
@@ -26,13 +29,25 @@ export function BountyDetail({
         ← earn
       </button>
 
-      <header>
-        <h1 className="font-display text-[28px] font-semibold leading-tight tracking-[-0.025em] text-ink">
-          {bounty.title}
-        </h1>
-        <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.1em] text-text-tertiary">
-          by @{bounty.user.username ?? "unknown"}
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="font-display text-[28px] font-semibold leading-tight tracking-[-0.025em] text-ink">
+            {bounty.title}
+          </h1>
+          <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.1em] text-text-tertiary">
+            by @{bounty.user.username ?? "unknown"}
+          </p>
+        </div>
+        {briefUrl && (
+          <button
+            onClick={() => void openExternal(briefUrl)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
+            title="Open the brand's brief on Whop. Use this when the source video lives in a discussion post Junior can't read directly."
+          >
+            Open brief on Whop
+            <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
+          </button>
+        )}
       </header>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
