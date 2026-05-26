@@ -332,7 +332,7 @@ function FilesPane({ project }: { project: Project }) {
         <li>source/ — original file (symlinked)</li>
         <li>audio/audio.wav — extracted 16kHz mono</li>
         <li>transcript/transcript.json + .srt — word-level timestamps</li>
-        <li>clips/ — cut MP4s (reframe + captions land in Sprint 1.5)</li>
+        <li>clips/ — cut MP4s plus rendered vertical clips/captions when available</li>
         <li>metadata/ — chapters, description, titles, tweet thread, linkedin</li>
         <li>project.json — pipeline state</li>
       </ul>

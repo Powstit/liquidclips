@@ -51,7 +51,7 @@ export const RATIOS: { key: RatioKey; label: string; aspectClass: string }[] = [
   { key: "portrait", label: "4:5", aspectClass: "aspect-[4/5]" },
 ];
 
-export type OverlayType = "stack-bottom" | "stack-top" | "pip-br" | "pip-bl";
+export type OverlayType = "stack-bottom" | "stack-top" | "split-left" | "split-right" | "pip-br" | "pip-bl";
 
 // Per-cell state — each layout has N cells, each can hold an independent
 // source video + an audio role. Exactly one cell's audio plays (or the
@@ -68,6 +68,7 @@ export type Overlay = {
   source_path: string;
   start_offset_s: number;
   mute: boolean;
+  audio_source?: "main" | "broll" | "muted";
   applied_paths?: Partial<Record<RatioKey, string>>;
   /** Cell-level overlay state. Keys are CellRole (see layout-cells.ts). */
   cells?: Record<string, CellState>;
@@ -301,6 +302,7 @@ export const sidecar = {
       type: OverlayType;
       source_path: string;
       start_offset_s?: number;
+      audio_source?: "main" | "broll" | "muted";
     } | null,
   ) =>
     sidecarCall<{ project: Project }>("apply_overlay", { slug, idx, overlay }),
