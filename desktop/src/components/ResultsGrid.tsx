@@ -16,7 +16,6 @@ import { BountySubmissionCapture } from "./earn/BountySubmissionCapture";
 import { BountyWorkspaceHeader } from "./earn/BountyWorkspaceHeader";
 import { sidecar, type DripSlot } from "../lib/sidecar";
 import { PUBLISHING_ENABLED } from "../lib/flags";
-import { backend } from "../lib/backend";
 import { useTier, FREE_TIER_VISIBLE_CLIPS } from "../lib/useTier";
 import { InfoHint } from "./InfoHint";
 
@@ -57,15 +56,23 @@ export function ResultsGrid({
   }
 
   async function onDripConfirm(slots: DripSlot[]) {
-    // Pull the license JWT off the keychain. If absent, the user gets a clear
-    // pointer to Settings; we never silently swallow this.
-    const { value: jwt } = await sidecar.licenseJwtRead();
-    if (!jwt) {
-      throw new Error(
-        "Sign in to Junior to continue — use the Sign in button in the top bar, then retry."
-      );
-    }
-    await backend.scheduleDripBatch(project.slug, slots, jwt);
+    // 0.4.28 Drip Helper: write to the LOCAL queue, not the backend Postiz
+    // pipeline. The local queue ($JUNIOR_HOME/.schedule.json) needs no JWT
+    // and no tier gate — every user gets reminded to post at the optimal
+    // time, and Junior assists with copy-caption + open-platform on the
+    // Upload tab. Auto-publish via Postiz is a future opt-in toggle, not
+    // a default — avoids double-scheduling when both layers exist.
+    const items = slots.map((s) => ({
+      project_slug: project.slug,
+      clip_idx: s.clip_idx,
+      clip_title: s.clip_title,
+      vertical_path: s.vertical_path,
+      platform: s.platform,
+      scheduled_for: s.scheduled_for,
+      caption: project.clips[s.clip_idx]?.title || s.clip_title,
+    }));
+    await sidecar.localScheduleAdd(items);
+    setActionToast(`Scheduled ${items.length} reminder${items.length === 1 ? "" : "s"} — see them in the Upload tab.`);
     setDripOpen(false);
   }
 
@@ -129,61 +136,58 @@ export function ResultsGrid({
         <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
           take action
         </div>
-        {!PUBLISHING_ENABLED ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-paper-warm px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-              beta · coming soon
-            </span>
-            <span className="font-sans text-[13px] text-text-secondary">
-              Auto-publish, schedule &amp; drip are in private beta — for now, export each clip and post it yourself.
-            </span>
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Drip across ▾ — local, no tier gate (0.4.28). Schedules
+              reminders to $JUNIOR_HOME/.schedule.json; the Upload tab
+              surfaces them with copy-caption + open-platform assist. */}
           <button
-            onClick={() => openPublish("publish-now")}
-            disabled={firstRenderedClipIdx < 0}
+            onClick={() => setDripOpen(true)}
+            disabled={project.clips.length === 0}
             title={
-              firstRenderedClipIdx < 0
-                ? "No rendered clips yet"
-                : isBounty
-                ? "Publish a clip, then paste your Whop submission link to track it"
-                : "Publish a clip now"
+              project.clips.length === 0
+                ? "Drop a video first"
+                : "Plan a drip across the next 1–4 weeks. Junior reminds you to post; you stay in control."
             }
-            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] disabled:opacity-50 disabled:hover:bg-fuchsia disabled:hover:shadow-none"
           >
-            {isBounty ? "Publish & prepare Whop submission" : "Publish now"}
-            {isBounty && (
-              <InfoHint text="Junior publishes the clip to your connected platform, then points you to Whop to submit it for the reward. Whop has no public submit API, so the final submit happens on whop.com." />
-            )}
+            Drip across ▾
           </button>
-          <button
-            onClick={() => openPublish("schedule-one")}
-            disabled={firstRenderedClipIdx < 0}
-            className="rounded-full border border-line bg-paper px-4 py-1.5 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia disabled:opacity-40"
-          >
-            Schedule one
-          </button>
-          {tier.can("drip_scheduling") ? (
-            <button
-              onClick={() => setDripOpen(true)}
-              disabled={project.clips.length === 0}
-              title={project.clips.length === 0 ? "Drop a video first" : "Open drip planner"}
-              className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50 disabled:hover:bg-fuchsia-bright disabled:hover:shadow-none"
-            >
-              Drip across ▾
-            </button>
+          {/* Hosted auto-publish / single-clip schedule still require the
+              Postiz cron path that ships behind PUBLISHING_ENABLED. Locally
+              everyone can drip; auto-posting is the premium layer on top. */}
+          {PUBLISHING_ENABLED ? (
+            <>
+              <button
+                onClick={() => openPublish("publish-now")}
+                disabled={firstRenderedClipIdx < 0}
+                title={
+                  firstRenderedClipIdx < 0
+                    ? "No rendered clips yet"
+                    : isBounty
+                    ? "Publish a clip, then paste your Whop submission link to track it"
+                    : "Publish a clip now"
+                }
+                className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-1.5 font-sans text-[13px] font-medium text-ink transition-all hover:border-fuchsia hover:text-fuchsia-deep disabled:opacity-40"
+              >
+                {isBounty ? "Publish & prepare Whop submission" : "Publish now"}
+                {isBounty && (
+                  <InfoHint text="Junior publishes the clip to your connected platform, then points you to Whop to submit it for the reward. Whop has no public submit API, so the final submit happens on whop.com." />
+                )}
+              </button>
+              <button
+                onClick={() => openPublish("schedule-one")}
+                disabled={firstRenderedClipIdx < 0}
+                className="rounded-full border border-line bg-paper px-4 py-1.5 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia disabled:opacity-40"
+              >
+                Schedule one
+              </button>
+            </>
           ) : (
-            <button
-              onClick={() => openExternal("https://account.jnremployee.com/upgrade").catch(() => undefined)}
-              title="Drip-mode is an Autopilot feature — clips dripped across 14 days, optimal timing per platform."
-              className="rounded-full border border-fuchsia bg-paper px-4 py-1.5 font-sans text-[13px] font-medium text-fuchsia-deep transition-all hover:bg-fuchsia-soft/40"
-            >
-              Drip across · Autopilot →
-            </button>
+            <span className="font-sans text-[12px] text-text-tertiary">
+              Auto-publish is in private beta — Drip across schedules local reminders you can act on in the Upload tab.
+            </span>
           )}
         </div>
-        )}
         {actionToast && (
           <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
             {actionToast}

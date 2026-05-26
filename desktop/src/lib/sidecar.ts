@@ -308,6 +308,27 @@ export const sidecar = {
     sidecarCall<{ project: Project }>("apply_overlay", { slug, idx, overlay }),
   dripPlan: (slug: string, weeks: 1 | 2 | 3 | 4, userTzOffsetHours: number) =>
     sidecarCall<{ slots: DripSlot[] }>("drip_plan", { slug, weeks, user_tz_offset_hours: userTzOffsetHours }),
+
+  // ── Local schedule (Assisted Autopost, 0.4.28+) ──────────────────────
+  // File-backed queue at $JUNIOR_HOME/.schedule.json. Distinct from the
+  // backend Postiz queue — local is always-available, no tier gate, and
+  // the desktop reminds the user to post rather than auto-posting itself.
+  localScheduleList: () =>
+    sidecarCall<{ items: LocalScheduleItem[] }>("local_schedule_list", {}),
+  localScheduleAdd: (items: LocalScheduleNew[]) =>
+    sidecarCall<{ items: LocalScheduleItem[]; count: number }>(
+      "local_schedule_add",
+      { items },
+    ),
+  localScheduleMarkPosted: (id: string, postUrl?: string) =>
+    sidecarCall<{ item: LocalScheduleItem }>("local_schedule_mark_posted", {
+      id,
+      post_url: postUrl ?? null,
+    }),
+  localScheduleCancel: (id: string) =>
+    sidecarCall<{ ok: boolean }>("local_schedule_cancel", { id }),
+  localScheduleRemove: (id: string) =>
+    sidecarCall<{ ok: boolean }>("local_schedule_remove", { id }),
 };
 
 export type TimePrediction = {
@@ -420,4 +441,27 @@ export type DripSlot = {
   platform: "youtube" | "tiktok" | "x";
   scheduled_for: string; // ISO UTC
   theme: string;
+};
+
+/** What the desktop sends to `localScheduleAdd`. The sidecar fills in id,
+ *  created_at, status, and posted_at on persist. */
+export type LocalScheduleNew = {
+  project_slug: string;
+  clip_idx: number;
+  clip_title: string;
+  vertical_path: string;
+  platform: "youtube" | "tiktok" | "instagram" | "x";
+  scheduled_for: string; // ISO UTC
+  caption?: string;
+};
+
+/** What the sidecar returns. Mirrors local_schedule.py persisted shape. */
+export type LocalScheduleItem = LocalScheduleNew & {
+  id: string;
+  status: "pending" | "posted" | "canceled";
+  caption: string;
+  created_at: string;
+  posted_at: string | null;
+  /** Only populated after `localScheduleMarkPosted(id, postUrl)`. */
+  post_url?: string;
 };
