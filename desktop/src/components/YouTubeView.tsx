@@ -110,7 +110,7 @@ export function YouTubeView({ project }: { project: Project }) {
       {/* Header: poster + intent eyebrow + "Copy in Studio order" + Save */}
       <div className="flex flex-wrap items-stretch gap-4 rounded-2xl border border-line bg-gradient-to-r from-paper-warm/60 via-paper to-paper-warm/40 p-4 shadow-[0_2px_12px_rgba(15,15,18,0.04)]">
         {posterSrc && (
-          <div className="aspect-video h-[88px] shrink-0 overflow-hidden rounded-xl border border-line bg-ink">
+          <div className="aspect-video h-[88px] shrink-0 overflow-hidden rounded-xl border border-line bg-paper-warm">
             <img src={posterSrc} alt="" className="h-full w-full object-cover" />
           </div>
         )}
@@ -147,7 +147,7 @@ export function YouTubeView({ project }: { project: Project }) {
             <button
               onClick={() => void save()}
               disabled={!isDirty || saveState === "saving"}
-              className="rounded-full bg-ink px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)] disabled:opacity-40"
+              className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)] disabled:opacity-40"
             >
               {saveState === "saved" ? "Saved ✓" : saveState === "saving" ? "Saving…" : "Save"}
             </button>

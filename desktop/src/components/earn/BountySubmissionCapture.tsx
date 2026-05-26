@@ -147,7 +147,7 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
               onClick={() => {
                 void openExternal(bountyUrl).catch(() => undefined);
               }}
-              className="rounded-full bg-ink px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia"
+              className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright"
             >
               Open reward on Whop ↗
             </button>
@@ -209,7 +209,7 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
             <button
               onClick={save}
               disabled={!draft.trim()}
-              className="rounded-full bg-ink px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia disabled:opacity-40"
+              className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright disabled:opacity-40"
             >
               Track this submission →
             </button>

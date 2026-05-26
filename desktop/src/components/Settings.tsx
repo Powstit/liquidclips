@@ -170,7 +170,7 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
               <button
                 onClick={onCheckForUpdate}
                 disabled={updateState.kind === "checking" || updateState.kind === "downloading" || updateState.kind === "installing"}
-                className="rounded-full bg-ink px-4 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia disabled:opacity-50"
+                className="rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright disabled:opacity-50"
               >
                 {updateState.kind === "checking" ? "Checking…" : "Check for updates"}
               </button>
@@ -186,7 +186,7 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
                   </span>
                   <button
                     onClick={onApplyUpdate}
-                    className="rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-paper hover:bg-ink hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+                    className="rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
                   >
                     Install + relaunch →
                   </button>
@@ -322,7 +322,7 @@ function SecretRow({
         <div className="mt-3 flex gap-2">
           <button
             onClick={onSave}
-            className="rounded-full bg-ink px-4 py-1.5 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia"
+            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright"
           >
             Save
           </button>
@@ -852,7 +852,7 @@ function SupportSection() {
       <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={() => void onReportIssue()}
-          className="rounded-full bg-ink px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia"
+          className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright"
         >
           Report an issue →
         </button>

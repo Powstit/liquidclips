@@ -151,7 +151,7 @@ export function ManualBountyPrompt({
       <div className="mt-3 flex items-center gap-2">
         <button
           onClick={go}
-          className="rounded-full bg-ink px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia"
+          className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright"
         >
           Start clipping →
         </button>

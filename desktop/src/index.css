@@ -1,52 +1,73 @@
 @import "tailwindcss";
 
 @theme {
-  /* Brand — fuchsia ladder */
+  /* Brand — fuchsia ladder, tuned for dark surfaces.
+     `fuchsia-deep` was #c70066 in the light era (a punchy saturated pink that
+     reads as text on cream). On dark, "deep" doesn't read — we want
+     "visible accent" instead, so the value flips to a brighter pink that
+     hits AA contrast on `--color-paper`. ~70 call sites use
+     `text-fuchsia-deep` for chip/eyebrow text; redefining the token here is
+     cheaper and more consistent than rewriting them. */
   --color-fuchsia: #ff1a8c;
   --color-fuchsia-bright: #ff3da5;
-  --color-fuchsia-deep: #c70066;
-  --color-fuchsia-soft: #ffd6ec;
-  --color-fuchsia-glow: #ff66b8;
+  --color-fuchsia-deep: #ff66b8;
+  --color-fuchsia-soft: rgba(255, 26, 140, 0.16);
+  --color-fuchsia-glow: #ff8fcb;
 
-  /* Surfaces */
-  --color-ink: #0a0a0f;
-  --color-ink-soft: #1a1a24;
-  --color-paper: #faf7f2;
-  --color-paper-warm: #f5efe7;
-  --color-line: #e8dfd2;
+  /* Surfaces — Whop-shaped dark base (0.4.27).
+     Semantic names stay the same so existing `bg-paper text-ink border-line`
+     class usage flips theme without touching every component:
+       paper       = page background
+       paper-warm  = elevated card / hovered surface
+       ink         = primary text on paper (warm white, echoes Junior's
+                     original paper tone — keeps the brand feel)
+       ink-soft    = mid-emphasis text
+       line        = hairline divider on dark, white at ~7% alpha
+  */
+  --color-ink: #f4f1ea;
+  --color-ink-soft: #c8c4be;
+  --color-paper: #0b0b10;
+  --color-paper-warm: #15151c;
+  --color-paper-elev: #1c1c25;
+  --color-line: rgba(255, 255, 255, 0.07);
+  --color-line-strong: rgba(255, 255, 255, 0.12);
 
-  /* Text */
-  --color-text-secondary: #5a5560;
-  --color-text-tertiary: #8a8590;
+  /* Text — secondary/tertiary keep the same names; values are tuned for
+     dark surface contrast (WCAG AA on --color-paper). */
+  --color-text-secondary: #c8c4be;
+  --color-text-tertiary: #8a857e;
 
-  /* Type */
-  --font-display: "Fraunces", ui-serif, Georgia, serif;
-  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  /* Type — one font, weight-driven hierarchy. Display was Fraunces in the
+     light era; the dark Whop direction wants Inter end-to-end for the
+     editorial-but-tight feel (font clash was called out 2026-05-25). */
+  --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  /* Elevation — neutral depth ladder (resting structure only) */
-  --shadow-e0: 0 1px 0 rgba(10, 10, 15, 0.03);
-  --shadow-e1: 0 2px 12px rgba(10, 10, 15, 0.05);
-  --shadow-e2: 0 8px 28px rgba(10, 10, 15, 0.08);
-  --shadow-e3: 0 20px 60px rgba(10, 10, 15, 0.18);
+  /* Elevation — dark needs inner-highlight + heavier outer shadow to read.
+     The fuchsia glow ladder is preserved for active/selected primary
+     surfaces (sole accent stays fuchsia). */
+  --shadow-e0: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+  --shadow-e1: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 2px 8px rgba(0, 0, 0, 0.45);
+  --shadow-e2: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 14px 40px rgba(0, 0, 0, 0.55);
+  --shadow-e3: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 28px 80px rgba(0, 0, 0, 0.65);
 
-  /* Elevation — fuchsia glow (reserved for active / selected / primary / focused) */
-  --glow-sm: 0 6px 18px rgba(255, 26, 140, 0.15);
-  --glow-md: 0 10px 30px rgba(255, 26, 140, 0.28);
-  --glow-lg: 0 0 0 1px rgba(255, 26, 140, 0.4), 0 14px 44px rgba(255, 26, 140, 0.22);
+  --glow-sm: 0 0 0 1px rgba(255, 26, 140, 0.35), 0 6px 18px rgba(255, 26, 140, 0.18);
+  --glow-md: 0 0 0 1px rgba(255, 26, 140, 0.45), 0 12px 36px rgba(255, 26, 140, 0.28);
+  --glow-lg: 0 0 0 1px rgba(255, 26, 140, 0.5), 0 16px 48px rgba(255, 26, 140, 0.32);
 
-  /* Gradients — fuchsia-only, brand/hero surfaces and generated-art backplates */
+  /* Gradients — fuchsia-only, brand/hero surfaces. */
   --grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
-  --grad-paper: linear-gradient(180deg, #faf7f2 0%, #f5efe7 100%);
+  --grad-paper: linear-gradient(180deg, #0b0b10 0%, #15151c 100%);
 
-  /* Radius rhythm */
+  /* Radius rhythm — unchanged. */
   --radius-chip: 8px;
   --radius-control: 12px;
   --radius-card: 16px;
   --radius-card-lg: 24px;
   --radius-pill: 9999px;
 
-  /* Tracking */
+  /* Tracking — unchanged. */
   --tracking-eyebrow: 0.12em;
   --tracking-display: -0.025em;
 }
