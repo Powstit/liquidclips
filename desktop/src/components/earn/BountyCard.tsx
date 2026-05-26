@@ -1,6 +1,7 @@
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import type { WhopBounty } from "../../lib/sidecar";
 import { PlatformIcon } from "../PlatformIcon";
-import { Sparkles, Users, Wallet, ArrowRight } from "lucide-react";
+import { Sparkles, Users, Wallet, ArrowRight, ExternalLink } from "lucide-react";
 import {
   allowedPlatforms,
   approvalRisk,
@@ -10,6 +11,7 @@ import {
   formatBudget,
   opportunityLabel,
   opportunityScore,
+  whopBountyUrl,
   type ConnectedPlatform,
 } from "./types";
 
@@ -33,6 +35,7 @@ export function BountyCard({
   const effort = effortFor(bounty);
   const risk = approvalRisk(bounty);
   const label = opportunityLabel(score);
+  const briefUrl = whopBountyUrl(bounty);
 
   return (
     <article className="rounded-2xl border border-line bg-paper p-5 shadow-[var(--shadow-e1)] transition-all duration-200 hover:-translate-y-[2px] hover:border-fuchsia/40 hover:shadow-[var(--shadow-e2)]">
@@ -103,7 +106,7 @@ export function BountyCard({
         {bounty.description}
       </p>
 
-      <div className="mt-4 flex items-center gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
           onClick={onStart}
           className="inline-flex items-center gap-1.5 rounded-full bg-ink px-5 py-2 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[var(--glow-md)]"
@@ -117,6 +120,16 @@ export function BountyCard({
         >
           Details
         </button>
+        {briefUrl && (
+          <button
+            onClick={() => void openExternal(briefUrl)}
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 font-sans text-[12px] font-medium text-text-secondary hover:text-fuchsia-deep"
+            title="Open the brand's brief on Whop in your browser. Useful when the source video lives in a discussion post Junior can't read."
+          >
+            Open brief
+            <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
+          </button>
+        )}
       </div>
     </article>
   );

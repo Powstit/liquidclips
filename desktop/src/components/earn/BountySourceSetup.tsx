@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import type { WhopBounty } from "../../lib/sidecar";
 import { PlatformIcon } from "../PlatformIcon";
 import { InfoHint } from "../InfoHint";
 import { allowedPlatforms, formatPayout } from "./types";
+import type { DetectedSource } from "../../lib/sourceParser";
 
 type Source = { kind: "url"; url: string } | { kind: "file"; path: string };
 
@@ -13,12 +15,17 @@ type Source = { kind: "url"; url: string } | { kind: "file"; path: string };
 // while they choose where the source video comes from.
 export function BountySourceSetup({
   bounty,
-  detectedUrl,
+  detectedSources,
   onCancel,
   onContinue,
 }: {
   bounty: WhopBounty;
-  detectedUrl: string | null;
+  /**
+   * Every plausible source URL we found in `bounty.description`, classified
+   * into supported (Junior can ingest) and unsupported (Drive/Dropbox/etc. —
+   * open in browser, drag the file back). Comes from `extractSourceUrls`.
+   */
+  detectedSources: DetectedSource[];
   onCancel: () => void;
   onContinue: (source: Source) => void;
 }) {
@@ -119,21 +126,50 @@ export function BountySourceSetup({
           <InfoHint text="The long video Junior clips from. Use the brand's source link if they gave one, paste any public video URL, or upload your own file." />
         </div>
 
-        {detectedUrl && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-fuchsia-soft bg-fuchsia-soft/25 px-4 py-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
-                detected in the brief
-                <InfoHint text="Junior found this link inside the brand's brief. It's usually the source they want clipped." />
-              </div>
-              <div className="mt-0.5 truncate font-mono text-[12px] text-ink">{detectedUrl}</div>
+        {detectedSources.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
+              detected in the brief
+              <InfoHint text="Junior scanned the brand's brief and found these source links. Pick the one you want to clip from — Junior ingests it for you." />
             </div>
-            <button
-              onClick={() => onContinue({ kind: "url", url: detectedUrl })}
-              className="shrink-0 rounded-full bg-ink px-4 py-2 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
-            >
-              Use this source →
-            </button>
+            <div className="flex flex-col gap-2">
+              {detectedSources.map((src) => (
+                <div
+                  key={src.url}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-fuchsia-soft bg-fuchsia-soft/25 px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
+                      <span>{src.label}</span>
+                      {!src.supported && (
+                        <span className="rounded-full border border-fuchsia-soft bg-paper/70 px-2 py-0.5 text-[9px] tracking-[0.1em] text-text-tertiary">
+                          opens in browser
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 truncate font-mono text-[12px] text-ink">
+                      {src.url}
+                    </div>
+                  </div>
+                  {src.supported ? (
+                    <button
+                      onClick={() => onContinue({ kind: "url", url: src.url })}
+                      className="shrink-0 rounded-full bg-ink px-4 py-2 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+                    >
+                      Use this source →
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => void openExternal(src.url)}
+                      className="shrink-0 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep"
+                      title="Junior can't fetch this host directly. Open in your browser, download the file, then drop it below."
+                    >
+                      Open ↗
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
