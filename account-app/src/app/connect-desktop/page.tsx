@@ -76,15 +76,21 @@ export default function ConnectDesktopPage() {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ challenge }),
         });
-        if (res.status === 404) {
-          setPhase({
-            k: "error",
-            msg: "We couldn’t find your Junior account yet. If you just signed up, wait a few seconds and retry.",
-          });
-          return;
-        }
         if (!res.ok) {
-          setPhase({ k: "error", msg: "Activation failed. Please try again." });
+          // Surface the real server error rather than a guess — the upsert path
+          // means a verified Clerk session should always succeed or expose a
+          // genuine server-side problem. (The old "user not found, wait and
+          // retry" copy was a workaround for a webhook race that this bridge
+          // now self-heals.)
+          let msg = `Activation failed (HTTP ${res.status}). Please try again.`;
+          try {
+            const body = (await res.json()) as { detail?: string; error?: string };
+            const detail = body?.detail || body?.error;
+            if (typeof detail === "string" && detail.trim()) msg = detail;
+          } catch {
+            /* response wasn't JSON — keep the generic message */
+          }
+          setPhase({ k: "error", msg });
           return;
         }
         const data = (await res.json()) as { license_jwt?: string };
