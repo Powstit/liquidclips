@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { CheckCircle2, FolderOpen, Plus, Film } from "lucide-react";
 import type { Project, RatioKey } from "../lib/sidecar";
 import { ClipPreview } from "./ClipPreview";
 import { DripCalendar } from "./DripCalendar";
@@ -86,11 +87,17 @@ export function ResultsGrid({
             ) : null;
           })()}
           <div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">Done</div>
-            <h2 className="mt-1 font-display text-[28px] font-semibold tracking-[-0.02em] text-ink">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-soft bg-fuchsia-soft/30 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
+              <CheckCircle2 className="h-3 w-3" strokeWidth={2.25} />
+              Ready
+            </div>
+            <h2 className="mt-2 font-display text-[32px] font-semibold leading-[1.05] tracking-[-0.025em] text-ink">
               {project.source_filename}
             </h2>
-            <p className="mt-1 font-mono text-[12px] text-text-tertiary">{project.clips.length} clips ready</p>
+            <p className="mt-1.5 inline-flex items-center gap-1.5 font-mono text-[12px] text-text-tertiary">
+              <Film className="h-3.5 w-3.5" strokeWidth={2} />
+              <span className="text-ink tabular-nums">{project.clips.length}</span> {project.clips.length === 1 ? "clip" : "clips"} ready to ship
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -102,14 +109,16 @@ export function ResultsGrid({
                 console.warn("open folder failed:", e);
               }
             }}
-            className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia"
+            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-2.5 font-sans text-[14px] font-medium text-ink transition-colors hover:border-fuchsia"
           >
+            <FolderOpen className="h-4 w-4" strokeWidth={2} />
             Open folder
           </button>
           <button
             onClick={onDropAnother}
-            className="rounded-full bg-ink px-5 py-2.5 font-sans text-[14px] font-medium text-paper hover:bg-fuchsia"
+            className="inline-flex items-center gap-1.5 rounded-full bg-ink px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[var(--glow-md)]"
           >
+            <Plus className="h-4 w-4" strokeWidth={2.5} />
             Drop another
           </button>
         </div>
