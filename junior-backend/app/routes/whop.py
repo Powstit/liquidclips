@@ -117,6 +117,17 @@ async def _whop_gql(query: str, variables: dict[str, Any] | None = None) -> dict
 
 # --- queries (mirror what whop_client.py used to call directly) ---------
 
+# Note (Whop API limits, verified 2026-05-26 via live introspection):
+# - publicBounties returns `PublicBounty` (clipper-facing); the richer `Bounty`
+#   type (and its `discussionPost { markdownContent muxAssets ... }`) requires
+#   user-OAuth scope our App API Key doesn't carry. Trying it returns
+#   "User does not have access to this feed".
+# - PublicBounty does expose direct `attachments` (rare in practice — most
+#   creators paste source URLs into the description instead).
+# So the practical source-extraction path is: query `attachments` here, parse
+# URLs out of `description` text in the desktop client (regex for YouTube /
+# Drive / Vimeo / Dropbox / *.mp4). Adding hosted-discussion-post reading is
+# a future user-OAuth project, not a public-API tweak.
 _LIST_BOUNTIES = """
 query JuniorListBounties($first: Int) {
   publicBounties(first: $first) {
@@ -144,6 +155,7 @@ query JuniorListBounties($first: Int) {
         updatedAt
         user { username name profilePicture { sourceUrl } }
         experience { id name logo { sourceUrl } }
+        attachments { __typename id sourceUrl contentType filename }
       }
     }
   }
@@ -173,6 +185,18 @@ query JuniorBounty($id: ID!) {
     budgetAmount
     user { username name profilePicture { sourceUrl } }
     experience { id name logo { sourceUrl } }
+    attachments {
+      __typename
+      id
+      filename
+      sourceUrl
+      contentType
+      optimizedUrl
+      byteSizeV2
+      ... on VideoAttachment { aspectRatio duration width height blurhash }
+      ... on ImageAttachment { aspectRatio width height blurhash }
+      ... on AudioAttachment { duration waveformUrl }
+    }
   }
 }
 """
@@ -203,20 +227,37 @@ def _normalize_bounty(node: dict[str, Any]) -> dict[str, Any]:
     `user.image` string the desktop's WhopBounty type expects. Whop has no
     scalar avatar field — `profilePicture` is an AttachmentInterface — so we
     query the sub-field and collapse it here, keeping the wire contract stable.
+
+    Also derives a real video thumbnail from the bounty's discussion post Mux
+    asset when one exists (free + public via image.mux.com), falling back to
+    the experience logo. Closes the "no thumbnail on the bounty" gap noted in
+    the prior version of this comment.
     """
     user = node.get("user")
     if isinstance(user, dict):
         pic = user.pop("profilePicture", None)
         user["image"] = pic.get("sourceUrl") if isinstance(pic, dict) else None
-    # Whop has no thumbnail on the bounty itself — the campaign image lives on
-    # the linked experience (experience.logo, an AttachmentInterface). Flatten
-    # it to a top-level `thumbnail` string and keep experience as {id, name}.
+
+    # Prefer a real video thumbnail from a Mux source in the discussion post.
+    # image.mux.com/{playbackId}/thumbnail.jpg is the public Mux pattern — no
+    # auth, no signing required for public playback assets. Falls back to the
+    # experience logo (the old behaviour) when no Mux source is attached.
+    thumb: str | None = None
+    disc = node.get("discussionPost")
+    if isinstance(disc, dict):
+        mux_list = disc.get("muxAssets") or []
+        for mux in mux_list:
+            pb = (mux or {}).get("playbackId")
+            if pb:
+                thumb = f"https://image.mux.com/{pb}/thumbnail.jpg?time=2"
+                break
+
     exp = node.get("experience")
     if isinstance(exp, dict):
         logo = exp.pop("logo", None)
-        node["thumbnail"] = logo.get("sourceUrl") if isinstance(logo, dict) else None
-    else:
-        node["thumbnail"] = None
+        if thumb is None:
+            thumb = logo.get("sourceUrl") if isinstance(logo, dict) else None
+    node["thumbnail"] = thumb
     return node
 
 

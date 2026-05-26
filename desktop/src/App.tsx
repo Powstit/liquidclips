@@ -22,8 +22,9 @@ import { applyUpdate, checkForUpdate, type UpdateState } from "./lib/updater";
 import { TranscriptResult, LiftingProgress } from "./components/TranscriptResult";
 import { IntentPicker } from "./components/IntentPicker";
 import { EarnTab } from "./components/earn/EarnTab";
-import { allowedPlatforms } from "./components/earn/types";
+import { allowedPlatforms, whopBountyUrl } from "./components/earn/types";
 import { BountySourceSetup } from "./components/earn/BountySourceSetup";
+import { extractSourceUrls } from "./lib/sourceParser";
 import { track as trackEvent, trackFirstBountyWorkspace } from "./lib/analytics";
 import { FailureCard } from "./components/FailureCard";
 import type { WhopBounty } from "./lib/sidecar";
@@ -608,7 +609,7 @@ export default function App() {
         {view.kind === "bounty-setup" && (
           <BountySourceSetup
             bounty={view.bounty}
-            detectedUrl={extractSourceUrl(view.bounty.description)}
+            detectedSources={extractSourceUrls(view.bounty.description)}
             onCancel={() => setView({ kind: "earn" })}
             onContinue={(source) =>
               setView({
@@ -872,20 +873,6 @@ function formatEta(seconds: number): string {
 
 // Regex-match a yt-dlp-compatible URL out of a bounty description. Covers the
 // platforms yt-dlp resolves cleanly + that Junior's pipeline already handles.
-function extractSourceUrl(description: string | null | undefined): string | null {
-  if (!description) return null;
-  const re = /https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be|vimeo\.com|tiktok\.com|twitch\.tv|streamable\.com|instagram\.com|x\.com|twitter\.com)\/[^\s)\]]+/i;
-  const m = description.match(re);
-  return m ? m[0].replace(/[.,;:!?]+$/, "") : null;
-}
-
-// Best-effort public Whop URL for a bounty. The public API doesn't return a
-// canonical bounty permalink, but the experience page is a real Whop URL that
-// lands the clipper on the bounty's hub. Null when there's no experience.
-function whopBountyUrl(bounty: WhopBounty): string | null {
-  return bounty.experience?.id ? `https://whop.com/experiences/${bounty.experience.id}` : null;
-}
-
 function NavTab({
   label,
   active,

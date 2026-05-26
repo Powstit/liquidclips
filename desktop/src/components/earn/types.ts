@@ -3,6 +3,15 @@
 
 import type { WhopBounty, WhopSubmission } from "../../lib/sidecar";
 
+// Best-effort public Whop URL for a bounty. The public API doesn't return a
+// canonical bounty permalink, but the experience page is a real Whop URL that
+// lands the clipper on the bounty's hub — usable as the "open the brief on
+// Whop" fallback for things our App API Key can't read (hosted discussion
+// posts, embedded Mux video). Null when the bounty has no experience.
+export function whopBountyUrl(bounty: WhopBounty): string | null {
+  return bounty.experience?.id ? `https://whop.com/experiences/${bounty.experience.id}` : null;
+}
+
 export type ConnectedPlatform = "youtube" | "tiktok" | "instagram" | "x";
 
 export type SortKey = "best_match" | "highest_payout" | "most_spots" | "closing_soon";
