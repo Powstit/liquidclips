@@ -55,10 +55,14 @@ function etaSeconds(stage: StageName, duration: number): number {
   return Math.max(2, Math.ceil(duration / factor));
 }
 
-function formatEta(seconds: number): string {
-  if (seconds < 60) return `~${seconds}s`;
-  const m = Math.ceil(seconds / 60);
-  return `~${m} min`;
+// Live mm:ss countdown format — precise so it visibly decrements every second
+// rather than jumping between "~5 min" and "~4 min". `tabular-nums` on the
+// surrounding span keeps the digits stable as they tick down.
+function formatMmSs(ms: number): string {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return m > 0 ? `${m}m ${r.toString().padStart(2, "0")}s` : `${r}s`;
 }
 
 export function WorkingStage({
@@ -103,19 +107,66 @@ export function WorkingStage({
     }
   }
   const [elapsed, setElapsed] = useState(0);
+  // tickNow drives the live countdown — separate from elapsed (which can update
+  // at 250ms) so the mm:ss display only refreshes when the second changes.
+  const [tickNow, setTickNow] = useState(() => Date.now());
   const startedAt = project.stages[currentStage]?.started_at ?? null;
 
   useEffect(() => {
     if (!startedAt) {
       setElapsed(0);
+      setTickNow(Date.now());
       return;
     }
     const start = startedAt * 1000;
-    const tick = () => setElapsed((Date.now() - start) / 1000);
+    const tick = () => {
+      setElapsed((Date.now() - start) / 1000);
+      setTickNow(Date.now());
+    };
     tick();
     const id = window.setInterval(tick, 250);
     return () => window.clearInterval(id);
   }, [startedAt]);
+
+  // Adaptive ETA: when a stage emits processed/total (cut/reframe/thumbs do per
+  // clip; transcribe per audio second), compute remaining = (total-processed) /
+  // measured_rate so the countdown reflects ACTUAL machine speed instead of a
+  // pre-baked guess. Falls back to STAGE_SPEED-based estimate while we don't
+  // have enough data. Recomputed only on stage change OR a new progress event
+  // so the displayed countdown ticks down smoothly between rate-corrections.
+  const [etaCompleteAt, setEtaCompleteAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (!startedAt) {
+      setEtaCompleteAt(null);
+      return;
+    }
+    const elapsedInStage = Math.max(0.5, Date.now() / 1000 - startedAt);
+    let remainingSeconds: number | null = null;
+    if (
+      progress &&
+      progress.stage === currentStage &&
+      progress.total_seconds > 0 &&
+      progress.processed_seconds > 0
+    ) {
+      const rate = progress.processed_seconds / elapsedInStage; // units per second
+      if (rate > 0) {
+        remainingSeconds = Math.max(
+          0,
+          (progress.total_seconds - progress.processed_seconds) / rate,
+        );
+      }
+    }
+    if (remainingSeconds === null) {
+      const duration = durationSecondsOf(project);
+      if (duration) {
+        const est = etaSeconds(currentStage, duration);
+        remainingSeconds = Math.max(0, est - elapsedInStage);
+      }
+    }
+    setEtaCompleteAt(
+      remainingSeconds === null ? null : Date.now() + remainingSeconds * 1000,
+    );
+  }, [startedAt, currentStage, progress, project]);
 
   const currentIdx = stages.findIndex((s) => s.key === currentStage);
   const poster = posterPathOf(project);
@@ -229,7 +280,7 @@ export function WorkingStage({
       </ul>
 
       <div className="mt-10 flex flex-wrap items-center gap-4 font-mono text-[12px] text-text-secondary">
-        <span>Elapsed {formatElapsed(elapsed)}</span>
+        <span className="tabular-nums">Elapsed {formatElapsed(elapsed)}</span>
         <span>·</span>
         <span>{currentIdx + 1} / {stages.length}</span>
         <button
@@ -239,19 +290,16 @@ export function WorkingStage({
         >
           {cancelRequested ? "Cancelling…" : "Cancel"}
         </button>
-        {(() => {
-          const duration = durationSecondsOf(project);
-          const eta = etaSeconds(currentStage, duration);
-          if (!duration || !eta) return null;
-          return (
-            <>
-              <span>·</span>
-              <span className="text-fuchsia-deep">
-                {formatEta(eta)} {currentStage === "transcribe" ? `for ${Math.ceil(duration / 60)} min of audio` : "for this step"}
-              </span>
-            </>
-          );
-        })()}
+        {etaCompleteAt !== null && (
+          <>
+            <span>·</span>
+            <span className="text-fuchsia-deep tabular-nums">
+              {tickNow >= etaCompleteAt
+                ? "wrapping up…"
+                : `${formatMmSs(etaCompleteAt - tickNow)} remaining`}
+            </span>
+          </>
+        )}
       </div>
     </div>
   );

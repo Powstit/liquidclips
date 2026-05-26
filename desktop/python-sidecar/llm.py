@@ -217,6 +217,14 @@ def _call_with_retry(client, model: str, user_message: str, intent: str) -> "Cli
             raise RuntimeError(f"LLM refused to produce clips: {refusal}")
         return bundle
     except LengthFinishReasonError:
+        # Surface the retry to the UI — otherwise the user sees nothing while we
+        # call OpenAI again with a tighter cap. Best-effort: don't fail the
+        # stage if the emit itself errors.
+        try:
+            from stages import _emit_stage_progress
+            _emit_stage_progress("llm", 0.0, 1.0, last_text="Trimming response — retrying with fewer clips…")
+        except Exception:  # noqa: BLE001
+            pass
         # Response truncated. Retry with a stricter instruction to keep output small.
         capped_prompt = (
             _system_prompt_for(intent)
@@ -301,7 +309,11 @@ def pick_clips_from_transcript(
         )
 
     from openai import OpenAI
-    client = OpenAI(api_key=api_key)
+    # Cap each request + cap SDK-level retries. Without these the SDK silently
+    # retries with exponential backoff on a flaky connection — observed to take
+    # 6+ minutes with zero UI feedback. timeout=45 + max_retries=1 caps any
+    # single clip-pick at ~90s worst case.
+    client = OpenAI(api_key=api_key, timeout=45.0, max_retries=1)
     model = os.environ.get("JUNIOR_LLM_MODEL", "gpt-4o-mini")
     user_message = _build_user_message(transcript, brief)
 
