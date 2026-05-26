@@ -23,6 +23,24 @@ export function formatPayout(b: WhopBounty): string {
   return `${sym}${b.rewardPerUnitAmount.toFixed(2)} / 1k views`;
 }
 
+export function moneySymbol(currency: string): string {
+  if (currency === "GBP") return "£";
+  if (currency === "USD") return "$";
+  if (currency === "EUR") return "€";
+  return "";
+}
+
+export function openBudget(b: WhopBounty): number {
+  const remaining = Math.max(0, (b.budgetAmount || 0) - (b.totalPaid || 0));
+  if (remaining > 0) return remaining;
+  // Fallback when Whop omits a remaining budget: estimate from open spots.
+  return Math.max(0, b.spotsRemaining || 0) * Math.max(0, b.rewardPerUnitAmount || 0);
+}
+
+export function formatBudget(b: WhopBounty): string {
+  return `${moneySymbol(b.currency)}${openBudget(b).toFixed(0)}`;
+}
+
 export function approvalRisk(b: WhopBounty): "low" | "med" | "high" {
   // Heuristic until Whop exposes approval rate per bounty. For now: rules
   // density implies risk — long descriptions = more rules to violate.
@@ -51,6 +69,36 @@ export function fitScore(b: WhopBounty, connected: ConnectedPlatform[]): number 
   return Math.round(platformBoost + spotsBoost + payoutBoost);
 }
 
+export function opportunityScore(b: WhopBounty, connected: ConnectedPlatform[]): number {
+  // "What should I work on now?" score. It rewards fit, enough remaining
+  // budget/spots, decent payout, and proof that other submissions are getting
+  // accepted. It is guidance, not a payout guarantee.
+  const fit = fitScore(b, connected);
+  const spotsRatio =
+    b.acceptedSubmissionsLimit > 0
+      ? Math.max(0, Math.min(1, b.spotsRemaining / b.acceptedSubmissionsLimit))
+      : b.spotsRemaining > 0
+      ? 0.5
+      : 0;
+  const payout = Math.min(1, Math.max(0, b.rewardPerUnitAmount) / 50);
+  const acceptance =
+    b.acceptedSubmissionsCount > 20
+      ? 1
+      : b.acceptedSubmissionsCount > 8
+      ? 0.75
+      : b.acceptedSubmissionsCount > 2
+      ? 0.45
+      : 0.25;
+  const riskPenalty = approvalRisk(b) === "high" ? 10 : approvalRisk(b) === "med" ? 4 : 0;
+  return Math.max(0, Math.min(100, Math.round(fit * 0.48 + spotsRatio * 22 + payout * 18 + acceptance * 12 - riskPenalty)));
+}
+
+export function opportunityLabel(score: number): "Best chance" | "Good target" | "Read brief" {
+  if (score >= 78) return "Best chance";
+  if (score >= 58) return "Good target";
+  return "Read brief";
+}
+
 export function sortBounties(
   list: WhopBounty[],
   key: SortKey,
@@ -67,7 +115,7 @@ export function sortBounties(
     // best_match — composite Fit score
     copy.sort(
       (a, b) =>
-        fitScore(b, connected) - fitScore(a, connected),
+        opportunityScore(b, connected) - opportunityScore(a, connected),
     );
   }
   return copy;

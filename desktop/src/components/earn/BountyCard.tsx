@@ -1,11 +1,15 @@
 import type { WhopBounty } from "../../lib/sidecar";
 import { PlatformIcon } from "../PlatformIcon";
+import { Sparkles, Users, Wallet, ArrowRight } from "lucide-react";
 import {
   allowedPlatforms,
   approvalRisk,
   effortFor,
   fitScore,
   formatPayout,
+  formatBudget,
+  opportunityLabel,
+  opportunityScore,
   type ConnectedPlatform,
 } from "./types";
 
@@ -25,24 +29,48 @@ export function BountyCard({
 }) {
   const platforms = allowedPlatforms(bounty);
   const fit = fitScore(bounty, connectedPlatforms);
+  const score = opportunityScore(bounty, connectedPlatforms);
   const effort = effortFor(bounty);
   const risk = approvalRisk(bounty);
+  const label = opportunityLabel(score);
 
   return (
-    <article className="rounded-2xl border border-line bg-paper p-5 shadow-[0_2px_12px_rgba(15,15,18,0.04)] transition-all hover:border-fuchsia/40 hover:shadow-[0_8px_28px_rgba(15,15,18,0.08)]">
-      <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-        <span className="font-display text-[15px] font-semibold text-ink">
-          {formatPayout(bounty)}
-        </span>
-        <span>·</span>
-        <span>
-          <span className="text-ink">{bounty.spotsRemaining}</span> of {bounty.acceptedSubmissionsLimit} spots left
-        </span>
-        <span>·</span>
+    <article className="rounded-2xl border border-line bg-paper p-5 shadow-[var(--shadow-e1)] transition-all duration-200 hover:-translate-y-[2px] hover:border-fuchsia/40 hover:shadow-[var(--shadow-e2)]">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* PRIMARY: opportunity score chip + the big money figure */}
+        <div className="flex flex-wrap items-center gap-3">
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ${
+            score >= 78
+              ? "border-fuchsia-soft bg-fuchsia-soft/40 text-fuchsia-deep shadow-[var(--glow-sm)]"
+              : score >= 58
+              ? "border-line bg-paper-warm/40 text-ink"
+              : "border-line bg-paper-warm/40 text-text-tertiary"
+          }`}>
+            {score >= 78 && <Sparkles className="h-3 w-3" strokeWidth={2.25} />}
+            {label} · {score}
+          </span>
+          <span className="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink tabular-nums">
+            {formatPayout(bounty)}
+          </span>
+        </div>
         <span className="flex items-center gap-1.5">
           {platforms.map((p) => (
-            <PlatformIcon key={p} id={p} className="h-3.5 w-3.5 text-ink" />
+            <PlatformIcon key={p} id={p} className="h-3.5 w-3.5 text-text-tertiary" />
           ))}
+        </span>
+      </div>
+
+      {/* Secondary stats with icons */}
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] uppercase tracking-[0.1em] text-text-tertiary">
+        <span className="inline-flex items-center gap-1.5">
+          <Users className="h-3.5 w-3.5" strokeWidth={2} />
+          <span className="tabular-nums text-ink">{bounty.spotsRemaining}</span>
+          <span>of {bounty.acceptedSubmissionsLimit} spots</span>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Wallet className="h-3.5 w-3.5" strokeWidth={2} />
+          <span className="tabular-nums text-ink">{formatBudget(bounty)}</span>
+          <span>open</span>
         </span>
       </div>
 
@@ -78,9 +106,10 @@ export function BountyCard({
       <div className="mt-4 flex items-center gap-2">
         <button
           onClick={onStart}
-          className="rounded-full bg-ink px-5 py-2 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+          className="inline-flex items-center gap-1.5 rounded-full bg-ink px-5 py-2 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[var(--glow-md)]"
         >
-          Start clipping →
+          Start clipping
+          <ArrowRight className="h-4 w-4" strokeWidth={2.25} />
         </button>
         <button
           onClick={onOpen}
