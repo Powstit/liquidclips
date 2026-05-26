@@ -277,12 +277,23 @@ def _call_split(client, model: str, user_message: str) -> "ClipBundle":
 
 
 
+def resolve_openai_key() -> str | None:
+    """Single source of truth for the OpenAI key the LLM clip-picker uses:
+    env → OS keychain → dev file. Used both at clip time and by the desktop's
+    pre-run key guard so the check matches what the pipeline will actually find."""
+    return os.environ.get("OPENAI_API_KEY") or _read_keychain_openai_key() or _read_dev_openai_key()
+
+
+def openai_key_available() -> bool:
+    return bool(resolve_openai_key())
+
+
 def pick_clips_from_transcript(
     transcript: dict[str, Any],
     brief: str | None = None,
     intent: str = "both",
 ) -> dict[str, Any]:
-    api_key = os.environ.get("OPENAI_API_KEY") or _read_keychain_openai_key() or _read_dev_openai_key()
+    api_key = resolve_openai_key()
     if not api_key:
         raise RuntimeError(
             "No OpenAI key available. Open Settings → API keys to paste one, "

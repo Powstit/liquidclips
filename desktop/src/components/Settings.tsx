@@ -104,7 +104,9 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
 
           <Section eyebrow="api keys" title="Bring your own.">
             <p className="font-sans text-[13px] text-text-secondary">
-              Stored encrypted in your OS keychain. Decryption is in-memory at call time.
+              <strong className="text-ink">An OpenAI key is required for clip selection</strong> on
+              every plan today — Junior runs locally and hosted AI (no key needed) is in private beta.
+              Stored encrypted in your OS keychain, decrypted in-memory at call time.
               Never sent to Junior's servers, never logged.
             </p>
             {secrets && (

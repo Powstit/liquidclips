@@ -220,6 +220,10 @@ export const sidecar = {
     sidecarCall<{ projects: BountyProjectSummary[] }>("list_bounty_projects"),
   getMetadata: (slug: string) => sidecarCall<{ metadata: Record<string, string> }>("get_metadata", { slug }),
   secretsStatus: () => sidecarCall<{ secrets: Record<SecretName, boolean> }>("secrets_status"),
+  // Whether the LLM clip-picker can resolve an OpenAI key (env → keychain → dev
+  // file) — used by the pre-run key guard. More accurate than secretsStatus,
+  // which only reports the keychain.
+  openaiKeyStatus: () => sidecarCall<{ available: boolean }>("openai_key_status"),
   // Restricted to JUNIOR_LICENSE_JWT on the sidecar side — other secrets stay opaque.
   licenseJwtRead: () =>
     sidecarCall<{ name: "JUNIOR_LICENSE_JWT"; value: string | null }>("secret_get", { name: "JUNIOR_LICENSE_JWT" }),

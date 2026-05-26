@@ -41,6 +41,9 @@ Pre: a Mac you've never run Junior on, a NEW email (not danieldiyepriye@/mrddoku
 10. Quit + reopen → still signed in (keychain).
 11. Force a stale JWT (`security delete-generic-password -s video.junior.desktop -a JUNIOR_LICENSE_JWT`) → next authed call → 401 self-heal → "session ended" → Sign in re-runs the bridge.
 
+## Hosted LLM (blocks no-key paid tiers)
+- [ ] **Hosted LLM replacement path required before selling no-key Growth/Autopilot.** Today the desktop always resolves the OpenAI key locally (env→keychain→dev-file); there is no hosted-LLM proxy, so every tier needs their own key. Shipped 2026-05-26: paid-onboarding key prompt + pre-run key guard (`HOSTED_LLM_ENABLED=false` flag, `openai_key_status` sidecar check) + honest copy. Flip `HOSTED_LLM_ENABLED` true only when a tested hosted-LLM proxy is live.
+
 ## P1 — before launch campaign
 - [ ] Notarized/public DMG (Apple Developer cert) OR clear "right-click → Open" beta install instructions.
 - [ ] Real Whop purchase → real webhook → affiliate attribution end-to-end (non-admin email).

@@ -263,7 +263,8 @@ function SignedInPanel({ link, clerkUserId, email }: { link: LinkState; clerkUse
         </h2>
         <p className="mt-3 max-w-[520px] font-sans text-[15px] leading-relaxed text-text-secondary">
           Your plan is linked to this account. Grab the app and start clipping — your tier
-          unlocks the moment you sign in on the desktop.
+          unlocks the moment you sign in on the desktop. Junior runs locally, so you&apos;ll add
+          your own OpenAI key for clip selection (hosted AI is in private beta).
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <Link
