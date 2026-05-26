@@ -292,6 +292,9 @@ export async function mockSidecarCall<T>(method: string, params: Record<string, 
     case "secrets_status":
       return { secrets: { OPENAI_API_KEY: true, ANTHROPIC_API_KEY: false, JUNIOR_LICENSE_JWT: true } } as T;
 
+    case "openai_key_status":
+      return { available: true } as T;
+
     case "secret_get":
       return { name: params.name, value: params.name === "JUNIOR_LICENSE_JWT" ? "preview-jwt" : null } as T;
 

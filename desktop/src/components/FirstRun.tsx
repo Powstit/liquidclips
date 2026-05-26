@@ -71,14 +71,16 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
         </p>
 
         <div className="mt-10 rounded-3xl border border-line bg-paper-warm/60 p-7">
-          <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-            01 — paste an OpenAI key
+          <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
+            01 — add your OpenAI key · required
           </div>
           <h2 className="mt-2 font-display text-[22px] font-semibold tracking-[-0.015em] text-ink">
-            Free tier — bring your own key.
+            Add your OpenAI key to power clip selection.
           </h2>
           <p className="mt-1 font-sans text-[13px] text-text-secondary">
-            Stored encrypted in your OS keychain. Never sent anywhere except OpenAI when Junior calls it.
+            Junior runs locally — every plan uses your own OpenAI key for clip selection today.
+            Stored encrypted in your OS keychain, sent only to OpenAI when Junior calls it.
+            Hosted AI (no key needed) is in private beta.
           </p>
           <div className="mt-4 flex items-center gap-3">
             <input
@@ -114,14 +116,14 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
 
         <div className="mt-4 rounded-3xl border border-line bg-paper p-7">
           <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-            02 — or use embedded keys (paid tiers)
+            02 — sign in to Junior
           </div>
           <h2 className="mt-2 font-display text-[22px] font-semibold tracking-[-0.015em] text-ink">
             Sign in with your Junior account.
           </h2>
           <p className="mt-1 max-w-[440px] font-sans text-[13px] text-text-secondary">
-            Channel + Autopilot tiers ship with embedded LLM credits — you don't need an OpenAI key.
-            Sign in once and Junior activates against your tier.
+            Sign in to activate your plan and unlock the Earn tab. Until hosted AI leaves private
+            beta, every plan uses the OpenAI key above for clip selection.
           </p>
           <button
             onClick={() => {

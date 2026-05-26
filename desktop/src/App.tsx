@@ -15,7 +15,7 @@ import { Settings } from "./components/Settings";
 import { sidecar, visibleStagesFor, pipelineStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
 import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
 import { initDeepLinks, setOnActivated } from "./lib/activation";
-import { PUBLISHING_ENABLED } from "./lib/flags";
+import { PUBLISHING_ENABLED, HOSTED_LLM_ENABLED } from "./lib/flags";
 import { reportDesktopError } from "./lib/telemetry";
 import { applyUpdate, checkForUpdate, type UpdateState } from "./lib/updater";
 import { TranscriptResult, LiftingProgress } from "./components/TranscriptResult";
@@ -239,6 +239,21 @@ export default function App() {
     } catch {
       // Keychain read failed — fall through to the quota check; if that also
       // can't resolve a token the authed call will surface it.
+    }
+    // Clip selection runs on OpenAI until hosted AI ships (HOSTED_LLM_ENABLED).
+    // If no key is resolvable (env / keychain / dev file), guide the user to add
+    // one now instead of failing mid-pipeline at the LLM step.
+    if (!HOSTED_LLM_ENABLED) {
+      try {
+        const { available } = await sidecar.openaiKeyStatus();
+        if (!available) {
+          setView({ kind: "first-run" });
+          return false;
+        }
+      } catch {
+        // Status check failed — don't hard-block; the LLM stage surfaces a clear
+        // error if the key is genuinely missing.
+      }
     }
     try {
       await maybeCheckQuota();
