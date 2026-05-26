@@ -40,6 +40,12 @@ class ConnectRequest(BaseModel):
     # client can't mint a license for an arbitrary clerk_user_id.
     clerk_user_id: str
     challenge: str       # echoed back in the deep link so desktop can verify
+    # Verified email + first name from the SAME Clerk session — used to upsert
+    # the User row if the clerk.user.created webhook hasn't landed yet. Optional
+    # for backward compat with older account-app deploys; when present, sign-in
+    # self-heals instead of 404'ing on a webhook race.
+    email: str | None = None
+    first_name: str | None = None
 
 
 class ConnectResponse(BaseModel):
@@ -65,9 +71,38 @@ def connect_desktop(
     if settings.internal_api_secret and request.headers.get("x-internal-secret") != settings.internal_api_secret:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "desktop licenses are minted server-side only")
 
+    # Normalize email up-front so we never store mixed-case duplicates or
+    # whitespace, and the empty-after-strip case is rejected cleanly.
+    email_clean = (body.email or "").strip().lower()
+
     user = db.query(User).filter_by(clerk_id=body.clerk_user_id).one_or_none()
-    if not user:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found — sign up first")
+    if user:
+        # Existing User: ONLY fill in a missing email — never overwrite a real
+        # existing one (Clerk allows email changes, but the canonical sync path
+        # for that is the user.updated webhook, not this bridge).
+        if (not (user.email or "").strip()) and email_clean:
+            user.email = email_clean
+    else:
+        # SELF-HEAL: account-app passes the VERIFIED Clerk session (clerk_user_id
+        # + email from auth()/currentUser server-side). If the user.created
+        # webhook hasn't landed yet — or never fires — we MUST NOT hold sign-in
+        # hostage. Create the row here with the verified email; the webhook stays
+        # the canonical sync path and is idempotent (no-op if user exists).
+        if not email_clean:
+            # Older account-app deploys that don't send email — keep the 404
+            # rather than create a row without contact info we can't trust.
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                "user not found and no email provided to create one",
+            )
+        user = User(
+            clerk_id=body.clerk_user_id,
+            email=email_clean,
+            # tier/founder_flag/subscription_status/trial_started_at/starter_exports_used
+            # all use SQLAlchemy column defaults (free / False / trial / utcnow / 0).
+        )
+        db.add(user)
+        db.flush()  # populate user.id for the License insert below
 
     # Apply admin override BEFORE issuing the JWT — otherwise an admin who
     # also happens to be on a free tier gets a free-tier JWT. Founders and
