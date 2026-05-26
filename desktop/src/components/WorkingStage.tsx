@@ -2,21 +2,8 @@ import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { onStageProgress, type Project, type StageName, type StageProgress } from "../lib/sidecar";
-import transcribeIcon from "../assets/pipeline/transcribe.png";
-import cutIcon from "../assets/pipeline/cut.png";
-import reframeIcon from "../assets/pipeline/reframe.png";
-import thumbsIcon from "../assets/pipeline/thumbs.png";
 
 type ProgressBlob = StageProgress;
-
-// The four craft stages have generated marks (A10); ingest/audio/llm are
-// plumbing and render as a quiet dot, giving the rail a natural hierarchy.
-const STAGE_ICON: Partial<Record<StageName, string>> = {
-  transcribe: transcribeIcon,
-  cut: cutIcon,
-  reframe: reframeIcon,
-  thumbs: thumbsIcon,
-};
 
 type Row = { key: StageName; label: string; runningLabel: string };
 
@@ -107,8 +94,8 @@ export function WorkingStage({
     }
   }
   const [elapsed, setElapsed] = useState(0);
-  // tickNow drives the live countdown — separate from elapsed (which can update
-  // at 250ms) so the mm:ss display only refreshes when the second changes.
+  // tickNow drives the live countdown — separate from elapsed (250ms) so the
+  // mm:ss display only refreshes when the second changes.
   const [tickNow, setTickNow] = useState(() => Date.now());
   const startedAt = project.stages[currentStage]?.started_at ?? null;
 
@@ -131,9 +118,8 @@ export function WorkingStage({
   // Adaptive ETA: when a stage emits processed/total (cut/reframe/thumbs do per
   // clip; transcribe per audio second), compute remaining = (total-processed) /
   // measured_rate so the countdown reflects ACTUAL machine speed instead of a
-  // pre-baked guess. Falls back to STAGE_SPEED-based estimate while we don't
-  // have enough data. Recomputed only on stage change OR a new progress event
-  // so the displayed countdown ticks down smoothly between rate-corrections.
+  // pre-baked guess. Recomputed on stage change OR a new progress event so the
+  // countdown ticks smoothly between rate corrections.
   const [etaCompleteAt, setEtaCompleteAt] = useState<number | null>(null);
   useEffect(() => {
     if (!startedAt) {
@@ -148,7 +134,7 @@ export function WorkingStage({
       progress.total_seconds > 0 &&
       progress.processed_seconds > 0
     ) {
-      const rate = progress.processed_seconds / elapsedInStage; // units per second
+      const rate = progress.processed_seconds / elapsedInStage;
       if (rate > 0) {
         remainingSeconds = Math.max(
           0,
@@ -191,89 +177,80 @@ export function WorkingStage({
         </div>
       </div>
 
-      <ul className="mt-8 space-y-2.5">
+      <ul className="mt-8 space-y-3 font-mono text-[14px]">
         {stages.map((stage, idx) => {
           const state = project.stages[stage.key];
           const status = state?.status ?? "pending";
           const isCurrent = idx === currentIdx;
-          const done = status === "done";
-          const failed = status === "failed";
-          const icon = STAGE_ICON[stage.key];
 
-          const showProgress =
-            isCurrent && progress && progress.stage === stage.key && progress.total_seconds > 0;
-          const pct = showProgress
-            ? Math.min(100, Math.round((progress!.processed_seconds / progress!.total_seconds) * 100))
-            : null;
-          const countLabel = showProgress
-            ? stage.key === "transcribe"
-              ? `${Math.floor(progress!.processed_seconds)}s / ${Math.floor(progress!.total_seconds)}s`
-              : `${Math.round(progress!.processed_seconds)} / ${Math.round(progress!.total_seconds)} clips`
-            : null;
-
-          const chipCls = failed
-            ? "border-[#DC2626] bg-paper"
-            : isCurrent
-              ? "border-fuchsia bg-paper shadow-[var(--glow-md)]"
-              : done
-                ? "border-fuchsia/30 bg-fuchsia-soft/30"
-                : "border-line bg-paper-warm opacity-50";
-          const labelCls = failed
-            ? "text-[#DC2626]"
-            : isCurrent
-              ? "text-ink"
-              : done
-                ? "text-fuchsia-deep"
-                : "text-text-tertiary";
-
-          return (
-            <li key={stage.key} className="flex items-start gap-3">
-              <div
-                className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border transition-all duration-300 ${chipCls}`}
-              >
-                {icon ? (
-                  <img
-                    src={icon}
-                    alt=""
-                    className={`h-6 w-6 object-contain transition-opacity ${isCurrent || done ? "opacity-100" : "opacity-60"}`}
-                  />
-                ) : (
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${isCurrent || done ? "bg-fuchsia" : "bg-text-tertiary"}`}
-                  />
-                )}
-              </div>
-              <div className="min-w-0 flex-1 pt-1.5">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[14px]">
-                  <span className={labelCls}>
-                    {isCurrent ? stage.runningLabel : failed ? `${stage.label} — failed` : stage.label}
-                    {isCurrent && <span className="blink ml-1 text-fuchsia">_</span>}
+          if (status === "done") {
+            return (
+              <li key={stage.key} className="flex items-center gap-3 text-fuchsia-bright">
+                <span>✓</span>
+                <span>{stage.label}</span>
+              </li>
+            );
+          }
+          if (status === "failed") {
+            return (
+              <li key={stage.key} className="flex items-center gap-3 text-[#DC2626]">
+                <span>×</span>
+                <span>{stage.label} — failed</span>
+              </li>
+            );
+          }
+          if (isCurrent) {
+            const showProgress =
+              progress && progress.stage === stage.key && progress.total_seconds > 0;
+            const pct = showProgress
+              ? Math.min(100, Math.round((progress!.processed_seconds / progress!.total_seconds) * 100))
+              : null;
+            const countLabel = showProgress
+              ? stage.key === "transcribe"
+                ? `${Math.floor(progress!.processed_seconds)}s / ${Math.floor(progress!.total_seconds)}s`
+                : `${Math.round(progress!.processed_seconds)} / ${Math.round(progress!.total_seconds)} clips`
+              : null;
+            return (
+              <li key={stage.key} className="flex flex-col gap-2 text-ink">
+                <div className="flex items-center gap-3">
+                  <span className="text-fuchsia">›</span>
+                  <span>
+                    {stage.runningLabel}
+                    <span className="blink ml-1 text-fuchsia">_</span>
                   </span>
                   {pct !== null && (
-                    <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-fuchsia-deep">
+                    <span className="ml-2 font-mono text-[11px] uppercase tracking-[0.08em] text-fuchsia-deep">
                       {pct}%
                     </span>
                   )}
                   {countLabel && (
-                    <span className="font-mono text-[11px] text-text-tertiary">· {countLabel}</span>
+                    <span className="ml-2 font-mono text-[11px] text-text-tertiary">
+                      · {countLabel}
+                    </span>
                   )}
                 </div>
                 {pct !== null && (
                   <>
-                    <div className="mt-2 h-1 w-[440px] max-w-full overflow-hidden rounded-full bg-line">
+                    <div className="ml-6 h-1 w-[440px] max-w-full overflow-hidden rounded-full bg-line">
                       <div
                         className="h-full bg-fuchsia transition-all duration-500"
                         style={{ width: `${pct}%` }}
                       />
                     </div>
                     {progress!.last_text && (
-                      <p className="mt-1 max-w-[640px] truncate font-mono text-[11px] italic text-text-tertiary">
+                      <p className="ml-6 max-w-[640px] truncate font-mono text-[11px] italic text-text-tertiary">
                         "{progress!.last_text}"
                       </p>
                     )}
                   </>
                 )}
-              </div>
+              </li>
+            );
+          }
+          return (
+            <li key={stage.key} className="flex items-center gap-3 text-text-tertiary">
+              <span>○</span>
+              <span>{stage.label}</span>
             </li>
           );
         })}
