@@ -320,6 +320,11 @@ def pick_clips_from_transcript(
     # floor or run out of transcript. Anything we genuinely can't extend
     # (e.g. clip sits at the very end of a short video) gets skipped.
     duration = float(transcript.get("duration") or 0)
+    # Effective minimum is the LESSER of CLIP_MIN_SECONDS and the source duration.
+    # For sources shorter than 30s the whole video IS the clip — don't reject
+    # the LLM's pick because we can't extend past the source. (User dropped a
+    # 18s clip → returns one 18s clip; user dropped a podcast → still 30-75s.)
+    effective_min = min(CLIP_MIN_SECONDS, duration) if duration else CLIP_MIN_SECONDS
     out_clips: list[dict[str, Any]] = []
     rejected: list[str] = []
     for c in bundle.clips:
@@ -327,10 +332,10 @@ def pick_clips_from_transcript(
         end = c.end if not duration else min(duration, c.end)
         clip_duration = end - start
 
-        # Short → grow toward 30s. Prefer extending `end`; fall back to pulling
-        # `start` earlier if we'd run past the source.
-        if clip_duration < CLIP_MIN_SECONDS:
-            shortfall = CLIP_MIN_SECONDS - clip_duration
+        # Short → grow toward effective_min. Prefer extending `end`; fall back
+        # to pulling `start` earlier if we'd run past the source.
+        if clip_duration < effective_min:
+            shortfall = effective_min - clip_duration
             if duration:
                 grow_end = min(duration - end, shortfall)
                 end += grow_end
@@ -346,9 +351,9 @@ def pick_clips_from_transcript(
             end = start + CLIP_MAX_SECONDS
             clip_duration = end - start
 
-        if clip_duration < CLIP_MIN_SECONDS:
+        if clip_duration < effective_min:
             rejected.append(
-                f"{c.start:.1f}-{c.end:.1f}s ({c.end - c.start:.1f}s) — could not extend to 30s"
+                f"{c.start:.1f}-{c.end:.1f}s ({c.end - c.start:.1f}s) — could not extend to {effective_min:.0f}s"
             )
             continue
 
@@ -367,7 +372,7 @@ def pick_clips_from_transcript(
     # When the user only asked for YouTube extras we expect no clips — that's
     # the contract, not a failure. The clips array stays empty by design.
     if not out_clips and intent != "youtube":
-        msg = "LLM returned no clips in the 30-75s window after auto-extend."
+        msg = f"LLM returned no clips in the {effective_min:.0f}-{CLIP_MAX_SECONDS:.0f}s window after auto-extend."
         if rejected:
             msg += f" Rejected: {'; '.join(rejected[:5])}"
         raise RuntimeError(msg)
