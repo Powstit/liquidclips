@@ -79,19 +79,39 @@ echo ""
 BASE="${JUNIOR_UPDATE_BASE:-https://api.jnremployee.com}"
 if [ -n "${INTERNAL_API_SECRET:-}" ]; then
   echo "→ publishing signed artifact to $BASE/updates/upload …"
-  HTTP=$(curl -sS -o /tmp/jnr_upload_resp.json -w "%{http_code}" -X POST "$BASE/updates/upload" \
-    -H "x-internal-secret: $INTERNAL_API_SECRET" \
-    -H "x-release-target: $TARGET" \
-    -H "x-release-version: $VERSION" \
-    -H "x-release-signature: $SIG" \
-    -H "x-release-filename: $(basename "$APP_TAR")" \
-    -H "x-release-notes: Junior $VERSION" \
-    -H "Content-Type: application/octet-stream" \
-    --data-binary @"$APP_TAR")
-  if [ "$HTTP" = "200" ]; then
-    echo "✓ published to backend: $(cat /tmp/jnr_upload_resp.json)"
-  else
-    echo "✗ upload failed (HTTP $HTTP): $(cat /tmp/jnr_upload_resp.json)" >&2
+  # Retry the upload up to 3 times with backoff — the artifact is ~134 MB
+  # and a transient TLS reset / Railway-edge timeout mid-stream would
+  # otherwise force a manual re-run (it has, twice). curl exit codes 6
+  # (DNS), 7 (refused), 18/55/56 (transfer mid-stream) are all retryable;
+  # so are 5xx HTTP statuses. 4xx → fail immediately (we don't want to
+  # mask "bad secret" / "wrong shape" with retries).
+  UPLOAD_OK=""
+  for attempt in 1 2 3; do
+    HTTP=$(curl -sS --max-time 180 -o /tmp/jnr_upload_resp.json -w "%{http_code}" \
+      -X POST "$BASE/updates/upload" \
+      -H "x-internal-secret: $INTERNAL_API_SECRET" \
+      -H "x-release-target: $TARGET" \
+      -H "x-release-version: $VERSION" \
+      -H "x-release-signature: $SIG" \
+      -H "x-release-filename: $(basename "$APP_TAR")" \
+      -H "x-release-notes: Junior $VERSION" \
+      -H "Content-Type: application/octet-stream" \
+      --data-binary @"$APP_TAR") && CURL_EXIT=$? || CURL_EXIT=$?
+    if [ "${HTTP:-}" = "200" ]; then
+      echo "✓ published to backend: $(cat /tmp/jnr_upload_resp.json)"
+      UPLOAD_OK=1
+      break
+    fi
+    # 4xx → permanent (auth, shape, version conflict). No retry.
+    if [[ "${HTTP:-000}" =~ ^4[0-9][0-9]$ ]]; then
+      echo "✗ upload rejected (HTTP $HTTP): $(cat /tmp/jnr_upload_resp.json)" >&2
+      exit 1
+    fi
+    echo "⚠ upload attempt $attempt failed (curl_exit=$CURL_EXIT http=${HTTP:-—}); retrying in $((attempt * 5))s…"
+    sleep $((attempt * 5))
+  done
+  if [ -z "$UPLOAD_OK" ]; then
+    echo "✗ upload failed after 3 attempts. Last: curl_exit=$CURL_EXIT http=${HTTP:-—}  body=$(cat /tmp/jnr_upload_resp.json 2>/dev/null)" >&2
     exit 1
   fi
 else
