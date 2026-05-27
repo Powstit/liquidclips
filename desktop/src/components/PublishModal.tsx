@@ -352,7 +352,7 @@ export function PublishModal({
           <button
             onClick={() => void submit()}
             disabled={busy || picked.size === 0 || !videoPath || !!connectingPlatform}
-            className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50"
+            className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50"
           >
             {busy ? (mode === "publish-now" ? "Publishing…" : "Scheduling…") : cta}
           </button>
@@ -424,13 +424,13 @@ function PlatformTile({
         aria-pressed={picked}
         className={`group flex flex-col items-center justify-center gap-1.5 rounded-xl border px-3 py-4 transition-all ${
           picked
-            ? "border-fuchsia bg-fuchsia text-paper shadow-[0_8px_24px_rgba(255,26,140,0.25)]"
+            ? "border-fuchsia bg-fuchsia text-white shadow-[0_8px_24px_rgba(255,26,140,0.25)]"
             : "border-line bg-paper text-ink hover:border-fuchsia"
         }`}
       >
         <PlatformIcon id={platform.id} className="h-7 w-7" />
         <span className="font-sans text-[12px] font-medium leading-none">{platform.label}</span>
-        <span className={`font-mono text-[10px] uppercase leading-none tracking-[0.08em] ${picked ? "text-paper/80" : "text-text-secondary"}`}>
+        <span className={`font-mono text-[10px] uppercase leading-none tracking-[0.08em] ${picked ? "text-white/80" : "text-text-secondary"}`}>
           {account.account_handle}
         </span>
       </button>
@@ -546,7 +546,7 @@ function UpgradeWall({
           </button>
           <button
             onClick={() => void openExternal("https://account.jnremployee.com/upgrade")}
-            className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+            className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
           >
             Upgrade to {req.name} →
           </button>

@@ -529,7 +529,7 @@ export default function App() {
           ) : signedIn === false ? (
             <button
               onClick={() => setView({ kind: "first-run" })}
-              className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-fuchsia-soft/30 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep transition-colors hover:bg-fuchsia hover:text-paper"
+              className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-fuchsia-soft/30 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep transition-colors hover:bg-fuchsia hover:text-white"
               aria-label="Sign in to Junior"
             >
               <LogIn className="h-3.5 w-3.5" strokeWidth={2} />
@@ -696,7 +696,7 @@ export default function App() {
                     m.open("https://account.jnremployee.com/upgrade"),
                   );
                 }}
-                className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper hover:bg-fuchsia-bright"
+                className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white hover:bg-fuchsia-bright"
               >
                 Continue on Solo · $29.99/mo
               </button>
@@ -767,7 +767,7 @@ export default function App() {
           </div>
           <button
             onClick={() => { setNeedsActivation(false); setView({ kind: "first-run" }); }}
-            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright"
+            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
           >
             Sign in
           </button>
@@ -784,7 +784,7 @@ export default function App() {
               if (updateBanner.kind !== "available") return;
               await applyUpdate(updateBanner.update, setUpdateBanner);
             }}
-            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright"
+            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
           >
             Install + relaunch
           </button>
@@ -808,7 +808,7 @@ export default function App() {
               setUpdateBanner({ kind: "checking" });
               setUpdateBanner(await checkForUpdate());
             }}
-            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright"
+            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
           >
             Retry
           </button>

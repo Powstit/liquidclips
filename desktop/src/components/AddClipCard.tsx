@@ -19,7 +19,7 @@ export function AddClipCard({
         onClick={() => setOpen(true)}
         className="group flex aspect-[3/5] flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-line bg-paper-warm/30 p-4 transition-all hover:border-fuchsia hover:bg-fuchsia-soft/20 hover:shadow-[0_8px_28px_rgba(255,26,140,0.12)]"
       >
-        <div className="grid h-14 w-14 place-items-center rounded-full border border-line bg-paper font-display text-[28px] font-light text-fuchsia transition-colors group-hover:border-fuchsia group-hover:bg-fuchsia group-hover:text-paper">
+        <div className="grid h-14 w-14 place-items-center rounded-full border border-line bg-paper font-display text-[28px] font-light text-fuchsia transition-colors group-hover:border-fuchsia group-hover:bg-fuchsia group-hover:text-white">
           +
         </div>
         <div className="text-center">
@@ -177,7 +177,7 @@ function AddClipDialog({
           <button
             onClick={() => void submit()}
             disabled={busy || !durationOk || !boundsOk}
-            className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50"
+            className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50"
           >
             {busy ? "Cutting…" : "Cut clip →"}
           </button>

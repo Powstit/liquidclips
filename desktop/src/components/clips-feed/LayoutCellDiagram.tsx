@@ -78,7 +78,7 @@ function CellTile({
           {cell.isMain ? "main" : cell.role}
         </span>
         {cell.isMain && (
-          <span className="rounded-full bg-fuchsia px-1.5 py-0.5 font-mono text-[8px] uppercase text-paper">
+          <span className="rounded-full bg-fuchsia px-1.5 py-0.5 font-mono text-[8px] uppercase text-white">
             audio
           </span>
         )}

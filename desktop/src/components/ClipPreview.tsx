@@ -22,8 +22,8 @@ function formatHms(seconds: number): string {
 }
 
 function viralityClass(score: number): string {
-  if (score >= 90) return "bg-fuchsia text-paper";
-  if (score >= 75) return "bg-fuchsia-bright text-paper";
+  if (score >= 90) return "bg-fuchsia text-white";
+  if (score >= 75) return "bg-fuchsia-bright text-white";
   if (score >= 50) return "bg-fuchsia-glow text-ink";
   return "bg-paper-warm text-text-tertiary";
 }
@@ -243,7 +243,7 @@ export function ClipPreview({
                     <button key={l.key} onClick={() => void applyLayout(l.key)} disabled={busy}
                       title={l.label}
                       className={`flex items-center justify-center rounded-md p-1.5 transition-colors ${
-                        active ? "bg-fuchsia text-paper" : "text-paper/60 hover:bg-paper/10 hover:text-paper"
+                        active ? "bg-fuchsia text-white" : "text-white/60 hover:bg-paper/10 hover:text-white"
                       } disabled:opacity-50`}
                       aria-label={l.label} aria-pressed={active}
                     >
@@ -349,7 +349,7 @@ export function ClipPreview({
                           onClick={() => setAudioSource(key)}
                           className={`rounded-full border px-3 py-1 font-sans text-[12px] transition-colors ${
                             audioSource === key
-                              ? "border-fuchsia bg-fuchsia text-paper"
+                              ? "border-fuchsia bg-fuchsia text-white"
                               : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
                           }`}
                         >
@@ -363,7 +363,7 @@ export function ClipPreview({
                     <button
                       onClick={() => void applyLayout(layout)}
                       disabled={busy}
-                      className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright disabled:opacity-50"
+                      className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-50"
                     >
                       {busy ? "Rendering..." : "Render update"}
                     </button>
@@ -452,7 +452,7 @@ export function ClipPreview({
                   <button
                     onClick={() => void saveMeta()}
                     disabled={!isDirty || busy}
-                    className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)] disabled:opacity-40"
+                    className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)] disabled:opacity-40"
                   >
                     {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved ✓" : "Save"}
                   </button>
@@ -503,7 +503,7 @@ export function ClipPreview({
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button onClick={() => void regenerate()} disabled={busy}
-                    className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright disabled:opacity-50">
+                    className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-50">
                     {busy ? "Working…" : "Re-cut"}
                   </button>
                   <button onClick={() => { setTrimStart(clip.start); setTrimEnd(clip.end); }}

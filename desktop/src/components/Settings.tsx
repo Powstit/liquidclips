@@ -3,7 +3,10 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { sidecar, type HardwareInfo, type SecretName } from "../lib/sidecar";
 
-const APP_VERSION = "0.4.11";
+// Single source of truth — pulled from package.json so a stale constant can't
+// land in the Settings → About row again after a ship.
+import pkg from "../../package.json";
+const APP_VERSION: string = pkg.version;
 const SUPPORT_EMAIL = "support@jnremployee.com";
 import { syncStatus, backend, meStatus, type SyncStatus, type MeStatus, type PlatformConnection, type ConnectionPlatform } from "../lib/backend";
 import { applyUpdate, checkForUpdate, type UpdateState } from "../lib/updater";
@@ -170,7 +173,7 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
               <button
                 onClick={onCheckForUpdate}
                 disabled={updateState.kind === "checking" || updateState.kind === "downloading" || updateState.kind === "installing"}
-                className="rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright disabled:opacity-50"
+                className="rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-50"
               >
                 {updateState.kind === "checking" ? "Checking…" : "Check for updates"}
               </button>
@@ -186,7 +189,7 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
                   </span>
                   <button
                     onClick={onApplyUpdate}
-                    className="rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+                    className="rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
                   >
                     Install + relaunch →
                   </button>
@@ -214,7 +217,7 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
           <Section eyebrow="about" title='"Made with Junior" + privacy.'>
             <Toggle label="Show 'Made with Junior' watermark on clips" defaultOn={false} />
             <Toggle label="Send anonymous telemetry (no video content, no transcripts)" defaultOn={false} />
-            <Row label="Version" value="0.1.0" mono />
+            <Row label="Version" value={APP_VERSION} mono />
             {hw && <Row label="Machine" value={`${hw.ram_gb}GB RAM · ${hw.cpu_count} CPU · ${hw.free_disk_gb}GB free`} />}
             <div className="flex flex-wrap gap-3 pt-1">
               <a
@@ -322,7 +325,7 @@ function SecretRow({
         <div className="mt-3 flex gap-2">
           <button
             onClick={onSave}
-            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright"
+            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright"
           >
             Save
           </button>
@@ -753,7 +756,7 @@ function WhopConnectionRow() {
     <div className="rounded-xl border border-line bg-paper p-3.5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-fuchsia font-mono text-[14px] font-bold leading-none text-paper">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-fuchsia font-mono text-[14px] font-bold leading-none text-white">
             /
           </span>
           <div>
@@ -852,7 +855,7 @@ function SupportSection() {
       <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={() => void onReportIssue()}
-          className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright"
+          className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright"
         >
           Report an issue →
         </button>

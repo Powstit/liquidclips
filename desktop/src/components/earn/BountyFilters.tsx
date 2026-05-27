@@ -39,7 +39,7 @@ export function BountyFilters({
             onClick={() => onSortChange(o.key)}
             className={`rounded-full border px-3 py-1 transition-colors ${
               sort === o.key
-                ? "border-fuchsia bg-fuchsia text-paper"
+                ? "border-fuchsia bg-fuchsia text-white"
                 : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
             }`}
           >
@@ -58,7 +58,7 @@ export function BountyFilters({
               onClick={() => onPlatformToggle(p)}
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 transition-colors ${
                 active
-                  ? "border-fuchsia bg-fuchsia text-paper"
+                  ? "border-fuchsia bg-fuchsia text-white"
                   : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
               }`}
               title={p}
@@ -72,7 +72,7 @@ export function BountyFilters({
           onClick={() => onOpenOnlyChange(!openOnly)}
           className={`rounded-full border px-3 py-1 transition-colors ${
             openOnly
-              ? "border-fuchsia bg-fuchsia text-paper"
+              ? "border-fuchsia bg-fuchsia text-white"
               : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
           }`}
         >

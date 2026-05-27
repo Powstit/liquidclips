@@ -55,7 +55,7 @@ export function NotificationBell({ onOpen }: { onOpen: () => void }) {
     >
       Inbox
       {active && unread > 0 && (
-        <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-fuchsia px-1 font-mono text-[9px] font-bold leading-none text-paper">
+        <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-fuchsia px-1 font-mono text-[9px] font-bold leading-none text-white">
           {unread > 9 ? "9+" : unread}
         </span>
       )}

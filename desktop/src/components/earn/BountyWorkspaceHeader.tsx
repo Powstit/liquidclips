@@ -35,7 +35,7 @@ export function BountyWorkspaceHeader({ project }: { project: Project }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
-            <span className="inline-grid h-5 w-5 place-items-center rounded-full bg-fuchsia font-mono text-[11px] font-bold leading-none text-paper" aria-hidden>
+            <span className="inline-grid h-5 w-5 place-items-center rounded-full bg-fuchsia font-mono text-[11px] font-bold leading-none text-white" aria-hidden>
               /
             </span>
             clipping for a Whop reward

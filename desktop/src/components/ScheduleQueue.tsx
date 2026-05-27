@@ -133,7 +133,7 @@ export function ScheduleQueue() {
             {row.post_url && row.status === "published" && (
               <button
                 onClick={() => void openExternal(row.post_url!)}
-                className="rounded-full bg-fuchsia px-3 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright"
+                className="rounded-full bg-fuchsia px-3 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
               >
                 Open post →
               </button>

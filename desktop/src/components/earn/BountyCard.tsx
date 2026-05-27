@@ -109,7 +109,7 @@ export function BountyCard({
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
           onClick={onStart}
-          className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+          className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
         >
           Start clipping
           <ArrowRight className="h-4 w-4" strokeWidth={2.25} />

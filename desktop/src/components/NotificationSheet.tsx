@@ -147,7 +147,7 @@ function NotificationRow({
       >
         <div className="flex items-center gap-2">
           <span
-            className="inline-grid h-[26px] w-[26px] place-items-center rounded-md bg-fuchsia font-mono text-[15px] font-bold leading-none text-paper"
+            className="inline-grid h-[26px] w-[26px] place-items-center rounded-md bg-fuchsia font-mono text-[15px] font-bold leading-none text-white"
             aria-hidden
           >
             /
