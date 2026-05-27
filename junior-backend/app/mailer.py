@@ -145,6 +145,26 @@ def send_bounty_approved(email: str, *, bounty_title: str, payout: str, first_na
     _async(_send, to=email, subject=subject, html=html, text=text, tag="bounty_approved")
 
 
+def send_affiliate_qualified(email: str, *, first_name: str | None = None) -> None:
+    """Sent ONCE to a Junior affiliate the first time they cross the 2-paid-
+    referrals qualification threshold. Caller deduplicates via Notification's
+    `external_dedup_key` so a webhook retry can't re-send it. Never fired by
+    a dashboard read — the trigger lives in the paid-conversion webhook."""
+    ctx = MailContext.build()
+    subject, html, text = render_affiliate_qualified(email=email, first_name=first_name, ctx=ctx)
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="affiliate_qualified")
+
+
+def send_first_paid_referral(email: str, *, first_name: str | None = None) -> None:
+    """Sent ONCE to a Junior affiliate the first time one of their referrals
+    converts to a paid plan. Dedupe lives on the caller side (Notification
+    row with a per-affiliate dedup_key). Deliberately carries NO PII about
+    the buyer — just the affiliate's own count."""
+    ctx = MailContext.build()
+    subject, html, text = render_first_paid_referral(email=email, first_name=first_name, ctx=ctx)
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="first_paid_referral")
+
+
 def send_whop_claim_link(email: str, *, claim_url: str, first_name: str | None = None) -> None:
     """Self-serve 'I paid on Whop with a different email' claim. Sent ONLY to the
     Whop purchase email the user entered, and only when a matching pending
@@ -448,25 +468,91 @@ def render_license_activated(*, email: str, machine_label: str | None, first_nam
     return subject, _shell(subject, body, ctx=ctx), text
 
 
-def render_bounty_approved(*, email: str, bounty_title: str, payout: str, first_name: str | None, ctx: MailContext) -> tuple[str, str, str]:
-    subject = f"Your Whop submission was approved · est. {payout}"
+def render_affiliate_qualified(*, email: str, first_name: str | None, ctx: MailContext) -> tuple[str, str, str]:
+    # Deliberately carries no count of buyers, no buyer emails, no PII beyond
+    # the affiliate's own context. Whop owns the source of truth for payouts.
+    subject = "You unlocked Junior referrals."
     body = f"""
-<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">submission approved</p>
-<h1 style="font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
-  Clip approved · est. {payout}.
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">referrals · 50% recurring active</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
+  You unlocked Junior referrals.
 </h1>
 <p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
-  Your submission to <strong style="color:{INK};">{bounty_title}</strong> passed Whop's review. Payouts flow through Whop's rails on their cycle — track it on your Whop dashboard.
+  Two paid referrals confirmed — <strong style="color:{INK};">50% recurring</strong> is active on every customer you refer from here. Lifetime commission, not just first month.
 </p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
-  Junior's Earn tab now shows this in the Approved column. Want to claim another bounty? Open the tab and pick the highest fit-score one matching your platforms.
+  Whop tracks the payouts on their cycle; your Earn dashboard shows the live count and link.
+</p>
+<p style="margin:0 0 16px;">{_btn("Open Earn dashboard →", f"{ctx.account_url}/dashboard")}</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
+  payouts via Whop · we never handle the money
+</p>
+"""
+    text = (
+        f"You unlocked Junior referrals.\n\n{_greeting(first_name)}\n\n"
+        "Two paid referrals confirmed — 50% recurring is active on every customer you refer "
+        "from here. Lifetime commission, not just first month.\n\n"
+        f"Earn dashboard: {ctx.account_url}/dashboard\n\n"
+        "Payouts via Whop. Reply to this email any time.\n— Junior"
+    )
+    return subject, _shell(subject, body, ctx=ctx), text
+
+
+def render_first_paid_referral(*, email: str, first_name: str | None, ctx: MailContext) -> tuple[str, str, str]:
+    # Deliberately carries no buyer email, no platform handle, no transcript or
+    # caption fragment. The affiliate sees their own dashboard for the count.
+    subject = "Your first paid Junior referral landed."
+    body = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">first paid referral</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
+  First paid referral landed.
+</h1>
+<p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  Someone you referred just converted to a paid Junior plan. Commission is live on Whop's payout cycle from here.
+</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  One more paid referral unlocks the <strong style="color:{INK};">50% recurring</strong> rate on every customer you refer — lifetime, not just first month.
+</p>
+<p style="margin:0 0 16px;">{_btn("Open Earn dashboard →", f"{ctx.account_url}/dashboard")}</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
+  payouts via Whop · we never handle the money
+</p>
+"""
+    text = (
+        f"First paid referral landed.\n\n{_greeting(first_name)}\n\n"
+        "Someone you referred just converted to a paid Junior plan. "
+        "Commission is live on Whop's payout cycle.\n\n"
+        "One more paid referral unlocks the 50% recurring rate — lifetime, not just first month.\n\n"
+        f"Earn dashboard: {ctx.account_url}/dashboard\n\n"
+        "Payouts via Whop. Reply to this email any time.\n— Junior"
+    )
+    return subject, _shell(subject, body, ctx=ctx), text
+
+
+def render_bounty_approved(*, email: str, bounty_title: str, payout: str, first_name: str | None, ctx: MailContext) -> tuple[str, str, str]:
+    # Internal symbol stays `bounty_approved` to avoid call-site churn (per
+    # the Earn UI naming-sweep rule: user-facing copy says "Content Reward",
+    # code keeps `bounty`). All visible strings below use the user-facing terms.
+    subject = f"Content Reward approved · est. {payout}"
+    body = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">content reward approved</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
+  Reward clip approved · est. {payout}.
+</h1>
+<p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  Your reward clip for <strong style="color:{INK};">{bounty_title}</strong> passed Whop's review. Payouts flow through Whop's rails on their cycle — track it on your Whop dashboard.
+</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  Junior's Earn tab now shows this in the Approved column. Want to claim another Content Reward? Open the tab and pick the highest fit-score one matching your platforms.
 </p>
 <p style="margin:0 0 16px;">{_btn("Open Junior · Earn →", f"{ctx.download_url}")}</p>
 """
     text = (
-        f"Clip approved · est. {payout}.\n\n{_greeting(first_name)}\n\n"
-        f"Your submission to {bounty_title} passed Whop's review. "
+        f"Reward clip approved · est. {payout}.\n\n{_greeting(first_name)}\n\n"
+        f"Your reward clip for {bounty_title} passed Whop's review. "
         "Payouts flow through Whop on their cycle.\n\n"
         f"Open Junior · Earn: {ctx.download_url}\n\n— Junior"
     )

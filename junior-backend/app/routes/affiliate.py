@@ -110,15 +110,17 @@ def _fetch_whop_affiliate(email: str) -> dict[str, Any] | None:
         return None
 
 
-def build_affiliate_me_response(user: User) -> AffiliateMeResponse:
+def build_affiliate_me_response(user: User, db: Session | None = None) -> AffiliateMeResponse:
     """Shared builder — consumed by both `/affiliate/me` (account-app, internal
     secret + clerk id) and `/me/affiliate` (desktop, license JWT). Keeps the
     customer/affiliate construction in one place so both surfaces stay in
     lockstep when fields are added or rules change.
 
-    Pure function: takes a hydrated User, makes one Whop call, returns the
-    response object. No DB writes; the admin-override is already applied by
-    callers (deps.current_user mutates user in-memory before this runs)."""
+    Mostly pure: one Whop API call, returns the response object. When `db` is
+    passed AND Whop returns the affiliate, we opportunistically cache
+    `user.whop_affiliate_id` so paid-conversion webhooks can later resolve
+    `buyer.affiliate_id → referrer user` without an extra Whop round-trip.
+    Best-effort — a cache failure must not break the dashboard."""
     is_admin = is_admin_email(user.email)
     eff_tier = "autopilot" if is_admin else user.tier
     eff_founder = True if is_admin else user.founder_flag
@@ -145,6 +147,16 @@ def build_affiliate_me_response(user: User) -> AffiliateMeResponse:
     aff = _fetch_whop_affiliate((user.email or "").strip().lower())
     if aff and aff.get("id"):
         aff_id = str(aff["id"])
+        # Cache the user's own Whop affiliate_id for reverse lookup in
+        # paid-conversion webhooks. Skip if the user is detached (admin override
+        # path expunges from the session). Wrap so a commit failure never breaks
+        # the dashboard render.
+        if db is not None and user.whop_affiliate_id != aff_id:
+            try:
+                user.whop_affiliate_id = aff_id
+                db.commit()
+            except Exception:  # noqa: BLE001
+                db.rollback()
         active = aff.get("active_members_count")
         try:
             paid_count = int(active or 0)
@@ -194,4 +206,4 @@ def affiliate_me(
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found")
 
-    return build_affiliate_me_response(user)
+    return build_affiliate_me_response(user, db=db)
