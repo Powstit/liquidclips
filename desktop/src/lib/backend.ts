@@ -490,6 +490,63 @@ export type MeStatus = {
   remaining_exports: number | null;
 };
 
+// ── Affiliate / referral dashboard (0.4.30) ─────────────────────────────
+//
+// Mirrors junior-backend AffiliateMeResponse — single GET that returns
+// both the customer's earning gates AND their Whop affiliate stats in one
+// shot. The AffiliateHero component in the Earn tab branches on these
+// fields to render every state from "signed out" through "earning + qualified."
+
+export type AffiliateQualification = {
+  paid_referrals_count: number;
+  paid_referrals_needed: number;       // backend constant: 2
+  verified_views_count: number | null; // Whop owns view truth; null when not exposed here
+  verified_views_needed: number;       // backend constant: 11000
+  qualified: boolean | null;           // true = paid threshold met; null = view-path / pending
+};
+
+export type AffiliateBlock = {
+  connected: boolean;
+  affiliate_id: string | null;
+  referral_url: string | null;
+  status: string | null;
+  active_members_count: number | null;
+  total_referrals_count: number | null;
+  monthly_recurring_revenue_usd: string | null;
+  total_referral_earnings_usd: string | null;
+  qualification: AffiliateQualification | null;
+  partner_dashboard_url: string;       // always present, falls back to partner.jnremployee.com
+};
+
+export type AffiliateCustomer = {
+  tier: string;                        // free | solo | growth | autopilot
+  subscription_status: string;         // trial | trialing | active | past_due | expired | canceled | refunded | admin
+  founder: boolean;
+  admin_override: boolean;
+  can_earn: boolean;
+  billing_provider: "whop" | "clerk";
+  is_trial: boolean;
+  remaining_exports: number | null;
+  paid_until: string | null;
+  whop_connected: boolean;
+  referrer_affiliate_id: string | null;
+};
+
+export type AffiliateMeResponse = {
+  customer: AffiliateCustomer;
+  affiliate: AffiliateBlock;
+};
+
+/** GET /me/affiliate — license-JWT-auth. Returns null on web-preview only.
+ *  Network/5xx → throws (caller renders the error-state card). */
+export async function meAffiliate(): Promise<AffiliateMeResponse | null> {
+  if (isWebPreview()) return null;
+  const res = await authedFetch("/me/affiliate");
+  if (!res.ok) throw new Error(`affiliate fetch failed: HTTP ${res.status}`);
+  return (await res.json()) as AffiliateMeResponse;
+}
+
+
 export async function meStatus(): Promise<MeStatus | null> {
   if (isWebPreview()) return null;
   try {

@@ -554,6 +554,7 @@ export default function App() {
 
         {view.kind === "earn" && (
           <EarnTab
+            onSignIn={() => setView({ kind: "first-run" })}
             onStartBounty={(bounty) => {
               // Route into a focused, bounty-specific setup screen — detected
               // source URL, paste, or upload-local — instead of dumping the
