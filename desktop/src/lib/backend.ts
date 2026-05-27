@@ -174,6 +174,53 @@ export type ConnectionsList = {
   can_connect_more: boolean;
 };
 
+// --- Reward Clips + Tracking Links (mirrors junior-backend/app/routes/reward_clips.py)
+export type TrackingLinkBlock = {
+  id: string;
+  short_url: string;            // jnremployee.com/r/{id} — encode this in the QR
+  destination_url: string;
+  affiliate_id: string | null;
+  platform: string | null;
+  account_label: string | null;
+  campaign_id: string | null;
+  label: string | null;
+  disabled: boolean;
+  click_count: number;
+};
+
+export type RewardClipBlock = {
+  id: string;
+  whop_reward_id: string;
+  whop_reward_title: string | null;
+  clip_idx: number;
+  platform: string | null;
+  account_label: string | null;
+  campaign_id: string | null;
+  whop_submission_id: string | null;
+  status: string | null;        // draft | generated | submitted | approved | denied (loose)
+  tracking_link: TrackingLinkBlock | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RewardClipCreateInput = {
+  whop_reward_id: string;
+  whop_reward_title?: string | null;
+  clip_idx: number;
+  platform?: string | null;
+  account_label?: string | null;
+  campaign_id?: string | null;
+  destination_url?: string | null;
+};
+
+export type RewardClipPatchInput = {
+  whop_submission_id?: string | null;
+  platform?: string | null;
+  account_label?: string | null;
+  campaign_id?: string | null;
+  status?: string | null;
+};
+
 export const backend = {
   health: () => fetch(`${BACKEND_URL}/healthcheck`).then((r) => r.json()),
 
@@ -378,6 +425,41 @@ export const backend = {
       throw new Error(`clip-exported call failed: HTTP ${res.status}`);
     }
     return (await res.json()) as { remaining_exports: number | null };
+  },
+
+  // Reward Clips — bridges a generated Junior clip to a Whop Content Reward
+  // submission AND a Junior tracking link (clicks/signups/paid/MRR). The
+  // tracking_link is minted server-side in the same transaction as create.
+  rewardClips: {
+    list: async (jwt: string): Promise<RewardClipBlock[]> => {
+      const res = await authedFetch("/me/reward-clips", { jwt });
+      if (!res.ok) throw new Error(`reward-clips list failed: HTTP ${res.status}`);
+      const body = (await res.json()) as { reward_clips: RewardClipBlock[] };
+      return body.reward_clips;
+    },
+    create: async (jwt: string, input: RewardClipCreateInput): Promise<RewardClipBlock> => {
+      const res = await authedFetch("/me/reward-clips", {
+        method: "POST",
+        jwt,
+        body: JSON.stringify(input),
+      });
+      if (res.status === 502) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || "Couldn't reach Whop to set up the tracking link — retry shortly.");
+      }
+      if (!res.ok) throw new Error(`reward-clip create failed: HTTP ${res.status}`);
+      const body = (await res.json()) as { reward_clip: RewardClipBlock };
+      return body.reward_clip;
+    },
+    patch: async (jwt: string, id: string, patch: RewardClipPatchInput): Promise<RewardClipBlock> => {
+      const res = await authedFetch(`/me/reward-clips/${id}`, {
+        method: "PATCH",
+        jwt,
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) throw new Error(`reward-clip patch failed: HTTP ${res.status}`);
+      return (await res.json()) as RewardClipBlock;
+    },
   },
 };
 

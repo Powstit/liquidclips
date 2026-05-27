@@ -11,6 +11,7 @@ import { BountyDetail } from "./BountyDetail";
 import { SubmittedList } from "./SubmittedList";
 import { ApprovedList } from "./ApprovedList";
 import { AffiliateHero } from "./AffiliateHero";
+import { RewardClipsPanel } from "./RewardClipsPanel";
 import {
   matchesFilter,
   formatBudget,
@@ -280,6 +281,7 @@ export function EarnTab({
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
           <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
           earn
+          <InfoHint text="Content Reward stats help you pick work. Whop tracks reward payouts; Junior helps prepare submissions." />
         </div>
         <h1 className="font-display text-[28px] font-semibold leading-tight tracking-[-0.025em] text-ink">
           Whop Content Rewards you can work on now.
@@ -327,7 +329,7 @@ export function EarnTab({
         )}
       </header>
 
-      <nav className="mt-6 flex gap-0.5 border-b border-line font-mono text-[11px] uppercase tracking-[0.14em]">
+      <nav className="mt-6 flex items-center gap-0.5 border-b border-line font-mono text-[11px] uppercase tracking-[0.14em]">
         {(["available", "in_progress", "submitted", "approved"] as EarnSubTab[]).map((t) => (
           <button
             key={t}
@@ -344,6 +346,9 @@ export function EarnTab({
             )}
           </button>
         ))}
+        <span className="ml-auto pb-3 pl-2">
+          <InfoHint text="Available rewards come from Whop. Junior keeps the brief attached while you clip." />
+        </span>
       </nav>
 
       <div className="mt-6 flex flex-col gap-4">
@@ -444,6 +449,12 @@ export function EarnTab({
 
         {subTab === "approved" && <ApprovedList items={approved} />}
       </div>
+
+      {/* Reward Clips · Tracking Links — read-only list of clips the user has
+          generated from Content Rewards. Sits below the subtab content so it's
+          visible regardless of which subtab is selected. Empty when no clips
+          have been generated yet — creation happens in the clip pipeline. */}
+      <RewardClipsPanel />
     </div>
   );
 }
