@@ -249,6 +249,95 @@ class DesktopErrorEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
 
 
+class TrackingLink(Base):
+    """A user-owned trackable short link. Resolves at GET /r/{id} → 302 to
+    destination_url. Click logging is best-effort and never blocks the redirect.
+
+    Slugs are public (`trk_<16hex>`) since they appear in shared URLs. Disable
+    by stamping `disabled_at` rather than hard-deleting, so historical
+    link_clicks keep their FK target and analytics survive disablement.
+
+    Foundation lands ahead of the desktop UI — rows are created later by the
+    reward-clip pipeline and (eventually) by a user-facing 'Create tracking
+    link' surface in Earn.
+    """
+
+    __tablename__ = "tracking_links"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: "trk_" + uuid.uuid4().hex[:16])
+    # Owner may be null for system-generated campaign links; SET NULL on user
+    # delete so the link keeps resolving (it's already been shared publicly).
+    owner_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    affiliate_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    campaign_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    reward_clip_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    label: Mapped[str | None] = mapped_column(String, nullable=True)
+    platform: Mapped[str | None] = mapped_column(String, nullable=True)
+    account_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    destination_url: Mapped[str] = mapped_column(Text, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class LinkClick(Base):
+    """One row per resolved /r/{id} hit. Privacy-tight:
+      - no raw IP (sha256 with daily-rotating salt → ip_hash)
+      - no full user agent (truncated/sanitized family string)
+      - no full referer (host only)
+      - destination_url is snapshotted so analytics survive link edits
+
+    Written best-effort in a fresh session — a logging failure must never
+    block the redirect itself.
+    """
+
+    __tablename__ = "link_clicks"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    tracking_link_id: Mapped[str] = mapped_column(ForeignKey("tracking_links.id", ondelete="CASCADE"), nullable=False, index=True)
+    clicked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    ip_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    user_agent_family: Mapped[str | None] = mapped_column(String, nullable=True)
+    referer_host: Mapped[str | None] = mapped_column(String, nullable=True)
+    destination_url: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class RewardClip(Base):
+    """A Junior reward-clip record — bridges a locally generated clip to two
+    external systems: a Whop Content Reward submission (status + payout) and
+    a Junior tracking link (clicks → signups → paid → MRR).
+
+    Created by POST /me/reward-clips on clip generation. The tracking link is
+    minted in the same transaction so the dashboard row can show both Whop and
+    Junior numbers side-by-side.
+
+    Status is an intentionally loose string (no enum). Whop's submission states
+    evolve faster than our schema, and we display them verbatim where useful.
+    Common values: draft | generated | submitted | approved | denied.
+    """
+
+    __tablename__ = "reward_clips"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: "rclip_" + uuid.uuid4().hex[:16])
+    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    whop_reward_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    whop_reward_title: Mapped[str | None] = mapped_column(String, nullable=True)
+    clip_idx: Mapped[int] = mapped_column(Integer, nullable=False)
+    platform: Mapped[str | None] = mapped_column(String, nullable=True)
+    account_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    campaign_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    # Tracking link points the OTHER direction too (tracking_links.reward_clip_id).
+    # SET NULL so a deleted tracking link doesn't take the reward clip with it —
+    # the Whop submission record on the reward clip stays meaningful on its own.
+    tracking_link_id: Mapped[str | None] = mapped_column(ForeignKey("tracking_links.id", ondelete="SET NULL"), nullable=True, index=True)
+    whop_submission_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    status: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
 class WebhookEventLog(Base):
     """Metadata-only audit log of every signature-valid Clerk/Whop webhook.
 

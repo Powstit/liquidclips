@@ -132,10 +132,11 @@ export function UploadTab({
         <LocalQueue />
       </section>
 
-      {/* SECONDARY: backend auto-publish queue (Postiz-backed, premium).
-          Hidden when the publishing flag is off so the tab doesn't show
-          two near-identical sections to beta users. */}
-      {PUBLISHING_ENABLED && (
+      {/* SECONDARY: backend auto-publish queue (premium, hosted).
+          When PUBLISHING_ENABLED is off, render a visible coming-soon card
+          here instead of silently hiding the section. Users should see that
+          the hosted layer is on the roadmap, not absent. */}
+      {PUBLISHING_ENABLED ? (
         <section>
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
@@ -147,6 +148,25 @@ export function UploadTab({
             </span>
           </div>
           <ScheduleQueue />
+        </section>
+      ) : (
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+              <Zap className="h-3.5 w-3.5" strokeWidth={2} />
+              auto-publish
+            </div>
+            <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
+              coming soon
+            </span>
+          </div>
+          <div className="rounded-2xl border border-line bg-paper-warm/30 px-5 py-4">
+            <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+              One-tap publishing across your connected accounts is in beta. We're verifying the full
+              path end-to-end before flipping it on. For now, use the local schedule above &mdash;
+              Junior reminds you when it's time and copies your caption so you post in one tap.
+            </p>
+          </div>
         </section>
       )}
     </div>
