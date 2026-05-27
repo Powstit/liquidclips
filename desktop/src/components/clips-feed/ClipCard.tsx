@@ -21,8 +21,8 @@ function formatHms(s: number): string {
 }
 
 function viralityClass(v: number): string {
-  if (v >= 90) return "bg-fuchsia text-paper shadow-[var(--glow-sm)]";
-  if (v >= 75) return "bg-fuchsia-bright text-paper";
+  if (v >= 90) return "bg-fuchsia text-white shadow-[var(--glow-sm)]";
+  if (v >= 75) return "bg-fuchsia-bright text-white";
   if (v >= 50) return "bg-fuchsia-glow text-ink";
   return "bg-paper-warm text-text-tertiary";
 }

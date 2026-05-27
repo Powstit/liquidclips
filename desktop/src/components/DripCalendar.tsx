@@ -105,7 +105,7 @@ export function DripCalendar({
                 key={w}
                 onClick={() => setWeeks(w)}
                 className={`rounded-full px-4 py-1.5 font-mono text-[12px] uppercase tracking-[0.08em] transition-colors ${
-                  weeks === w ? "bg-fuchsia text-paper" : "border border-line text-text-secondary hover:border-fuchsia hover:text-ink"
+                  weeks === w ? "bg-fuchsia text-white" : "border border-line text-text-secondary hover:border-fuchsia hover:text-ink"
                 }`}
               >
                 {w}w
@@ -155,7 +155,7 @@ export function DripCalendar({
             <button
               onClick={confirm}
               disabled={!slots || busy}
-              className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50"
+              className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50"
             >
               {busy ? "Scheduling…" : `Schedule all ${slots?.length ?? 0} →`}
             </button>

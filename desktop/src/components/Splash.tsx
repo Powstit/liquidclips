@@ -98,7 +98,7 @@ export function Splash({ failed = false }: { failed?: boolean }) {
           <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               onClick={() => void onRestart()}
-              className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright"
+              className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright"
             >
               Restart Junior
             </button>
