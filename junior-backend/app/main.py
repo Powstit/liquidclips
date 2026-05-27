@@ -44,6 +44,8 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_started_at timestamptz NOT NULL DEFAULT now()",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS paid_until timestamptz",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS starter_exports_used integer NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_affiliate_id varchar",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_whop_affiliate_id ON users (whop_affiliate_id) WHERE whop_affiliate_id IS NOT NULL",
         # schedules — retry policy + postiz result columns added after it shipped
         "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS status varchar NOT NULL DEFAULT 'pending'",
         "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS postiz_post_id varchar",

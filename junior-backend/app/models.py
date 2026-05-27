@@ -33,6 +33,12 @@ class User(Base):
     # Locked at signup from the jnr_ref cookie. Never overwritten — see oauth-billing.md §6.
     affiliate_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
 
+    # This user's OWN Whop affiliate ID — cached on first /me/affiliate call so
+    # paid-conversion webhooks can resolve `buyer.affiliate_id → referrer user`
+    # without an extra Whop API call per webhook. Populated lazily by
+    # build_affiliate_me_response when Whop returns the affiliate record.
+    whop_affiliate_id: Mapped[str | None] = mapped_column(String, nullable=True, unique=True, index=True)
+
     # Subscription state — trial | active | expired | refunded | canceled.
     subscription_status: Mapped[str] = mapped_column(String, nullable=False, default="trial")
     trial_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)

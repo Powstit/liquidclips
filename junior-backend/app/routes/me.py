@@ -105,11 +105,16 @@ from app.routes.affiliate import AffiliateMeResponse, build_affiliate_me_respons
 
 
 @router.get("/affiliate", response_model=AffiliateMeResponse)
-def me_affiliate(user: Annotated[User, Depends(current_user)]) -> AffiliateMeResponse:
+def me_affiliate(
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> AffiliateMeResponse:
     """Return the authed user's affiliate + customer state.
 
     Single Whop API call inside `_fetch_whop_affiliate(email)`; on Whop
     failure the affiliate block degrades to `connected=False` rather than
     error-ing the whole call — the dashboard renders a 'couldn't load,
-    retry / open partner dashboard' card for that state."""
-    return build_affiliate_me_response(user)
+    retry / open partner dashboard' card for that state. The same call
+    opportunistically caches `user.whop_affiliate_id` so paid-conversion
+    webhooks can resolve referrer attribution without an extra Whop call."""
+    return build_affiliate_me_response(user, db=db)

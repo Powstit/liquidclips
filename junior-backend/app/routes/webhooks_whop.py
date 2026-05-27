@@ -469,6 +469,10 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
     user = _find_user_for_event(db, data)
     if not user:
         return
+    # Capture state BEFORE mutating — affiliate side-effects below only fire on
+    # the first true trial→paid transition, never on a renewal of an already-
+    # active subscription.
+    was_paid_before = user.subscription_status == "active"
     # A successful payment is the trial→paid conversion: promote to "active" so the
     # 100 free-export cap lifts (true paid → unlimited entitlement).
     user.subscription_status = "active"
@@ -500,6 +504,81 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
                 "subscription_status": user.subscription_status,
                 "billing_provider": "whop",
             },
+        )
+
+    # Affiliate lifecycle emails — fire ONLY on the buyer's first paid
+    # conversion (not renewals), and ONLY when the referrer is a known Junior
+    # user (their whop_affiliate_id was cached at first /me/affiliate read).
+    # Notification dedup_key ensures each affiliate gets each email at most once
+    # ever, so webhook retries / repeated triggers are safe.
+    if not was_paid_before and user.affiliate_id:
+        _fire_affiliate_lifecycle_emails(db, buyer_affiliate_id=user.affiliate_id)
+
+
+def _fire_affiliate_lifecycle_emails(db: Session, *, buyer_affiliate_id: str) -> None:
+    """Side-effect emails to the affiliate (the referrer) when one of their
+    referrals first converts to paid. Two emails, both deduped per-affiliate:
+      - first_paid_referral: any time their first referral pays
+      - affiliate_qualified: once they cross 2 paid referrals (50% unlock)
+
+    Wrapped in try/except so a logging or external-API failure here can never
+    block the webhook from acknowledging."""
+    try:
+        referrer = (
+            db.query(User).filter_by(whop_affiliate_id=buyer_affiliate_id).one_or_none()
+        )
+        if not referrer or not referrer.email:
+            # Referrer not cached yet — they haven't viewed /me/affiliate. We
+            # can't email them this time; we'll get the next paid conversion
+            # after they engage with their dashboard.
+            return
+
+        from app.mailer import send_affiliate_qualified, send_first_paid_referral
+        from app.routes.affiliate import QUALIFY_PAID_REFERRALS, _fetch_whop_affiliate
+        from app.routes.notifications import write_notification
+
+        # First-paid-referral email — write_notification's dedup_key check is
+        # the source of truth. If the row inserts, this is the first time;
+        # if it returns None, we've already emailed and can skip.
+        first_row = write_notification(
+            db,
+            user_id=referrer.id,
+            category="affiliate",
+            title="First paid referral landed.",
+            body="Someone you referred just converted to a paid Junior plan. Commission is live on Whop's cycle.",
+            priority="medium",
+            external_dedup_key=f"first-paid-referral-{referrer.id}",
+        )
+        if first_row is not None:
+            send_first_paid_referral(referrer.email)
+
+        # Qualification email — fires when the affiliate's live paid count
+        # reaches the threshold. Re-query Whop for the authoritative count
+        # since the dashboard cache could be stale.
+        aff = _fetch_whop_affiliate((referrer.email or "").strip().lower())
+        if not aff:
+            return
+        try:
+            paid_count = int(aff.get("active_members_count") or 0)
+        except (TypeError, ValueError):
+            paid_count = 0
+        if paid_count >= QUALIFY_PAID_REFERRALS:
+            qual_row = write_notification(
+                db,
+                user_id=referrer.id,
+                category="affiliate",
+                title="50% recurring unlocked.",
+                body="Two paid referrals confirmed. 50% recurring is now active on every customer you refer.",
+                priority="high",
+                external_dedup_key=f"affiliate-qualified-{referrer.id}",
+            )
+            if qual_row is not None:
+                send_affiliate_qualified(referrer.email)
+    except Exception:  # noqa: BLE001
+        import logging
+        logging.getLogger("junior.webhooks").exception(
+            "affiliate lifecycle side-effects failed for aff=%s — webhook continues",
+            buyer_affiliate_id,
         )
 
 
