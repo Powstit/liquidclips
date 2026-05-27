@@ -164,9 +164,20 @@ fi
 ok "manifest live: $VERSION for $TARGET"
 
 # ── push to origin so the commit + version bump are durable ─────────────
-step "Pushing $BRANCH → origin"
-git push -q origin "$BRANCH"
-ok "pushed"
+# Push is best-effort: the ship has already landed on the live manifest
+# (verified above) and the artifact is on the backend volume — customers
+# will see the update on next launch regardless. A broken/missing remote
+# (renamed repo, lost credentials, ...) shouldn't make the script claim
+# "failure" when the user-facing outcome succeeded. We surface it loud
+# and continue.
+step "Pushing $BRANCH → origin (best-effort)"
+if git push -q origin "$BRANCH" 2>/dev/null; then
+  ok "pushed"
+else
+  PUSH_FAILED=1
+  echo "${C_ERR}⚠${C_END} push to origin failed — manifest IS live, but local commits aren't backed up to git remote."
+  echo "  ${C_DIM}fix the remote URL (\`git remote set-url origin <url>\`) then run \`git push origin $BRANCH\` manually.${C_END}"
+fi
 
 # ── done ────────────────────────────────────────────────────────────────
 echo ""
@@ -175,4 +186,7 @@ echo "  commit:   $COMMIT_SHA"
 echo "  target:   $TARGET"
 echo "  manifest: $MANIFEST_URL"
 echo "  ${C_DIM}installed Junior.app will see the update on next launch (or after Settings → Check for updates).${C_END}"
+if [ -n "${PUSH_FAILED:-}" ]; then
+  echo "  ${C_ERR}git push failed${C_END} — commits stay local until the remote is fixed."
+fi
 echo ""
