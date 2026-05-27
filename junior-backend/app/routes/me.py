@@ -88,3 +88,28 @@ def me(
         remaining_exports=None if is_admin else starter_export_remaining(raw or user),
         whop_backend_key_configured=bool(get_settings().whop_api_key),
     )
+
+
+# ── /me/affiliate ───────────────────────────────────────────────────────
+#
+# Desktop-facing affiliate dashboard endpoint (0.4.30+). Mirrors
+# /affiliate/me but auths via the license JWT instead of the internal
+# secret + clerk_user_id — the desktop only ever has its JWT and shouldn't
+# carry server secrets.
+#
+# The response shape (`AffiliateMeResponse`) is intentionally identical so
+# we share types with the account-app over time; the builder lives in
+# affiliate.py so the two endpoints stay in lockstep.
+
+from app.routes.affiliate import AffiliateMeResponse, build_affiliate_me_response
+
+
+@router.get("/affiliate", response_model=AffiliateMeResponse)
+def me_affiliate(user: Annotated[User, Depends(current_user)]) -> AffiliateMeResponse:
+    """Return the authed user's affiliate + customer state.
+
+    Single Whop API call inside `_fetch_whop_affiliate(email)`; on Whop
+    failure the affiliate block degrades to `connected=False` rather than
+    error-ing the whole call — the dashboard renders a 'couldn't load,
+    retry / open partner dashboard' card for that state."""
+    return build_affiliate_me_response(user)

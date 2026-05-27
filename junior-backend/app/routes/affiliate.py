@@ -110,22 +110,18 @@ def _fetch_whop_affiliate(email: str) -> dict[str, Any] | None:
         return None
 
 
-@router.get("/me", response_model=AffiliateMeResponse)
-def affiliate_me(
-    db: Annotated[Session, Depends(get_db)],
-    clerk_user_id: Annotated[str, Query(min_length=1)],
-    x_internal_secret: Annotated[str | None, Header()] = None,
-) -> AffiliateMeResponse:
-    _require_internal(x_internal_secret)
+def build_affiliate_me_response(user: User) -> AffiliateMeResponse:
+    """Shared builder — consumed by both `/affiliate/me` (account-app, internal
+    secret + clerk id) and `/me/affiliate` (desktop, license JWT). Keeps the
+    customer/affiliate construction in one place so both surfaces stay in
+    lockstep when fields are added or rules change.
 
-    user = db.query(User).filter_by(clerk_id=clerk_user_id).one_or_none()
-    if not user:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found")
-
+    Pure function: takes a hydrated User, makes one Whop call, returns the
+    response object. No DB writes; the admin-override is already applied by
+    callers (deps.current_user mutates user in-memory before this runs)."""
     is_admin = is_admin_email(user.email)
     eff_tier = "autopilot" if is_admin else user.tier
     eff_founder = True if is_admin else user.founder_flag
-    # Earning requires an active paid plan; founders/admins always qualify.
     can_earn = bool(
         eff_founder
         or is_admin
@@ -162,7 +158,7 @@ def affiliate_me(
             total_referral_earnings_usd=aff.get("total_referral_earnings_usd"),
             qualification=Qualification(
                 paid_referrals_count=paid_count,
-                verified_views_count=None,  # Whop owns view truth; surfaced in partner app
+                verified_views_count=None,
                 qualified=True if paid_count >= QUALIFY_PAID_REFERRALS else None,
             ),
         )
@@ -180,3 +176,18 @@ def affiliate_me(
         )
 
     return AffiliateMeResponse(customer=customer, affiliate=affiliate)
+
+
+@router.get("/me", response_model=AffiliateMeResponse)
+def affiliate_me(
+    db: Annotated[Session, Depends(get_db)],
+    clerk_user_id: Annotated[str, Query(min_length=1)],
+    x_internal_secret: Annotated[str | None, Header()] = None,
+) -> AffiliateMeResponse:
+    _require_internal(x_internal_secret)
+
+    user = db.query(User).filter_by(clerk_id=clerk_user_id).one_or_none()
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found")
+
+    return build_affiliate_me_response(user)
