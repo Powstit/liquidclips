@@ -190,7 +190,7 @@ export function OverlaySourcePickerModal({
             </div>
             <button
               onClick={() => void chooseFile()}
-              className="rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)]"
+              className="rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)]"
             >
               Choose file →
             </button>

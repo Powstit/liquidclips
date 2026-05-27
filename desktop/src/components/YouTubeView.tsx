@@ -147,7 +147,7 @@ export function YouTubeView({ project }: { project: Project }) {
             <button
               onClick={() => void save()}
               disabled={!isDirty || saveState === "saving"}
-              className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)] disabled:opacity-40"
+              className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)] disabled:opacity-40"
             >
               {saveState === "saved" ? "Saved ✓" : saveState === "saving" ? "Saving…" : "Save"}
             </button>
@@ -283,7 +283,7 @@ function ScoredTitlesCard({
                   onClick={() => onPick(i)}
                   className={`grid h-9 w-9 shrink-0 place-items-center rounded-full font-mono text-[11px] font-semibold transition-colors ${
                     selected
-                      ? "bg-fuchsia text-paper"
+                      ? "bg-fuchsia text-white"
                       : "bg-paper-warm/60 text-ink hover:bg-fuchsia/20 hover:text-fuchsia-deep"
                   }`}
                   title={`CTR score ${t.score}/100`}

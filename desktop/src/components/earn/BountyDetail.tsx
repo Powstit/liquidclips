@@ -137,7 +137,7 @@ export function BountyDetail({
 
       <button
         onClick={onStart}
-        className="self-start rounded-full bg-fuchsia px-6 py-3 font-sans text-[15px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+        className="self-start rounded-full bg-fuchsia px-6 py-3 font-sans text-[15px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
       >
         Start clipping →
       </button>

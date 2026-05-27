@@ -123,7 +123,7 @@ export function ResultsGrid({
           </button>
           <button
             onClick={onDropAnother}
-            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
           >
             <Plus className="h-4 w-4" strokeWidth={2.5} />
             Drop another
@@ -148,7 +148,7 @@ export function ResultsGrid({
                 ? "Drop a video first"
                 : "Plan a drip across the next 1–4 weeks. Junior reminds you to post; you stay in control."
             }
-            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] disabled:opacity-50 disabled:hover:bg-fuchsia disabled:hover:shadow-none"
+            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] disabled:opacity-50 disabled:hover:bg-fuchsia disabled:hover:shadow-none"
           >
             Drip across ▾
           </button>

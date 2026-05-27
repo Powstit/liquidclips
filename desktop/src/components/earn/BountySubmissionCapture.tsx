@@ -147,7 +147,7 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
               onClick={() => {
                 void openExternal(bountyUrl).catch(() => undefined);
               }}
-              className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright"
+              className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
             >
               Open reward on Whop ↗
             </button>
@@ -167,7 +167,7 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
             <div className="flex items-center gap-2 font-sans text-[13px] font-medium text-ink">
               <span
                 className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] font-bold ${
-                  c.ok ? "bg-fuchsia text-paper" : "border border-[#DC2626]/40 text-[#DC2626]"
+                  c.ok ? "bg-fuchsia text-white" : "border border-[#DC2626]/40 text-[#DC2626]"
                 }`}
                 aria-hidden
               >
@@ -209,7 +209,7 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
             <button
               onClick={save}
               disabled={!draft.trim()}
-              className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright disabled:opacity-40"
+              className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-40"
             >
               Track this submission →
             </button>
