@@ -10,6 +10,7 @@ import { BountyFilters } from "./BountyFilters";
 import { BountyDetail } from "./BountyDetail";
 import { SubmittedList } from "./SubmittedList";
 import { ApprovedList } from "./ApprovedList";
+import { AffiliateHero } from "./AffiliateHero";
 import {
   matchesFilter,
   formatBudget,
@@ -38,6 +39,7 @@ export function EarnTab({
   onStartBounty,
   onStartManualBounty,
   onResumeProject,
+  onSignIn,
 }: {
   onStartBounty: (bounty: WhopBounty) => void;
   // Beta fallback path — clipper pasted a bounty by hand, source URL too.
@@ -46,6 +48,9 @@ export function EarnTab({
   onStartManualBounty: (b: BountyContext, sourceUrl: string) => void;
   // Resume a local bounty project (In progress tab) → opens its ResultsGrid.
   onResumeProject: (slug: string) => void;
+  // AffiliateHero's "signed-out" CTA wants to send the user to FirstRun —
+  // EarnTab proxies to App.tsx which owns the view state machine.
+  onSignIn?: () => void;
 }) {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [authSource, setAuthSource] = useState<
@@ -344,6 +349,7 @@ export function EarnTab({
       <div className="mt-6 flex flex-col gap-4">
         {subTab === "available" && (
           <>
+            <AffiliateHero onSignIn={onSignIn} />
             <EarnMoneyCockpit
               bounties={bounties}
               filtered={filtered}
