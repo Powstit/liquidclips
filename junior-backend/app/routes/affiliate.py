@@ -146,7 +146,11 @@ def build_affiliate_me_response(user: User) -> AffiliateMeResponse:
     if aff and aff.get("id"):
         aff_id = str(aff["id"])
         active = aff.get("active_members_count")
-        paid_count = int(active or 0)
+        try:
+            paid_count = int(active or 0)
+        except (TypeError, ValueError):
+            # Whop returned a non-numeric value here once before — don't crash the dashboard.
+            paid_count = 0
         affiliate = AffiliateBlock(
             connected=True,
             affiliate_id=aff_id,
