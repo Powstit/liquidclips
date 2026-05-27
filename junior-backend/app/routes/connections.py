@@ -16,6 +16,7 @@ upgrade copy, Solo gets a 2-account cap, Growth gets 4, Autopilot unlimited.
 from __future__ import annotations
 
 import secrets
+import time
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -67,9 +68,29 @@ class StartOAuthResponse(BaseModel):
 
 # -- in-memory state store ----------------------------------------------
 # The OAuth `state` parameter is held briefly between /start and /callback so
-# we can verify CSRF. In production this would be Redis; for v1 a dict is
-# fine — these states live for ~30s each.
-_OAUTH_STATE_TO_USER: dict[str, str] = {}
+# we can verify CSRF. In production this would be Redis; for v1 a dict is fine.
+# Each entry is (user_id, expires_at_unix). Abandoned consent flows would
+# otherwise leak forever — sweep stale entries on every insert.
+_OAUTH_STATE_TTL_SECONDS = 600  # 10 minutes covers slow consent screens.
+_OAUTH_STATE_TO_USER: dict[str, tuple[str, float]] = {}
+
+
+def _store_oauth_state(state: str, user_id: str) -> None:
+    now = time.time()
+    # Opportunistic sweep — cheap and bounds memory without a background task.
+    for k in [k for k, (_, exp) in _OAUTH_STATE_TO_USER.items() if exp <= now]:
+        _OAUTH_STATE_TO_USER.pop(k, None)
+    _OAUTH_STATE_TO_USER[state] = (user_id, now + _OAUTH_STATE_TTL_SECONDS)
+
+
+def _consume_oauth_state(state: str) -> str | None:
+    entry = _OAUTH_STATE_TO_USER.pop(state, None)
+    if not entry:
+        return None
+    user_id, expires_at = entry
+    if expires_at <= time.time():
+        return None
+    return user_id
 
 
 def _assert_can_connect(user: User) -> int | None:
@@ -104,7 +125,7 @@ def start_oauth(
     them to /oauth/postiz/callback below."""
     _assert_can_connect(user)
     state = secrets.token_urlsafe(24)
-    _OAUTH_STATE_TO_USER[state] = user.id
+    _store_oauth_state(state, user.id)
     return StartOAuthResponse(
         redirect_url=postiz.authorize_url(state),
         state=state,
@@ -126,7 +147,7 @@ async def oauth_callback(
     the desktop shows a clear message."""
     if not state:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "missing state")
-    user_id = _OAUTH_STATE_TO_USER.pop(state, None)
+    user_id = _consume_oauth_state(state)
     if not user_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown or expired state")
 
@@ -236,7 +257,7 @@ async def connect_platform(
             )
 
     state = secrets.token_urlsafe(24)
-    _OAUTH_STATE_TO_USER[state] = user.id
+    _store_oauth_state(state, user.id)
     return StartOAuthResponse(
         redirect_url=postiz.authorize_url(state),
         state=state,
