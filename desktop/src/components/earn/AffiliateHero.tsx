@@ -5,6 +5,7 @@ import {
   Banknote,
   Copy as CopyIcon,
   ExternalLink,
+  QrCode as QrCodeIcon,
   RotateCw,
   ShieldCheck,
   Sparkles,
@@ -19,6 +20,8 @@ import {
   type AffiliateCustomer,
   type AffiliateMeResponse,
 } from "../../lib/backend";
+import { QrCode } from "../QrCode";
+import { InfoHint } from "../InfoHint";
 
 // AffiliateHero — top-of-Earn referral dashboard (0.4.30).
 //
@@ -136,11 +139,12 @@ function Shell({
   );
 }
 
-function Eyebrow({ children }: { children: React.ReactNode }) {
+function Eyebrow({ children, hint }: { children: React.ReactNode; hint?: string }) {
   return (
     <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
       <Banknote className="h-3.5 w-3.5" strokeWidth={2} />
       {children}
+      {hint && <InfoHint text={hint} />}
     </div>
   );
 }
@@ -359,7 +363,9 @@ function Dashboard({
   return (
     <Shell tone={pastDue ? "warn" : isFounder || isAdmin ? "fuchsia" : "neutral"}>
       <div className="flex items-start justify-between gap-3">
-        <Eyebrow>your referral business</Eyebrow>
+        <Eyebrow hint="Your default referral link and QR. Use campaign links later when you want separate tracking.">
+          your referral business
+        </Eyebrow>
         <div className="flex items-center gap-2">
           {(isFounder || isAdmin) && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-fuchsia-soft/30 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
@@ -394,10 +400,32 @@ function Dashboard({
 
       {/* 2x2 figures grid. tabular-nums so they don't jitter on refresh. */}
       <div className="mt-5 grid grid-cols-2 gap-x-8 gap-y-5">
-        <Figure label="Earned all-time" value={earned} muted={pastDue} />
-        <Figure label="Recurring" value={`${mrr} / mo`} muted={pastDue} />
-        <Figure label="Active members" value={active.toLocaleString()} icon={Users} muted={pastDue} />
-        <Figure label="Total referrals" value={total.toLocaleString()} icon={Wallet} muted={pastDue} />
+        <Figure
+          label="Earned all-time"
+          value={earned}
+          muted={pastDue}
+          hint="Total commission earned from referred Junior customers."
+        />
+        <Figure
+          label="Recurring"
+          value={`${mrr} / mo`}
+          muted={pastDue}
+          hint="Monthly recurring revenue from active referred customers."
+        />
+        <Figure
+          label="Active members"
+          value={active.toLocaleString()}
+          icon={Users}
+          muted={pastDue}
+          hint="Referred customers currently paying for Junior."
+        />
+        <Figure
+          label="Total referrals"
+          value={total.toLocaleString()}
+          icon={Wallet}
+          muted={pastDue}
+          hint="All referrals Whop has tracked for your affiliate account."
+        />
       </div>
 
       {/* Zero-state pitch — only when truly empty. */}
@@ -409,20 +437,7 @@ function Dashboard({
 
       {/* Referral link with copy + share. Disabled visually in past-due. */}
       {affiliate.referral_url && (
-        <div
-          className={`mt-5 flex items-center gap-2 rounded-xl border border-line bg-paper px-3 py-2 ${
-            pastDue ? "opacity-60" : ""
-          }`}
-        >
-          <input
-            readOnly
-            value={affiliate.referral_url}
-            onClick={(e) => (e.target as HTMLInputElement).select()}
-            className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-ink focus:outline-none"
-            spellCheck={false}
-          />
-          <CopyLinkButton url={affiliate.referral_url} disabled={pastDue} />
-        </div>
+        <ReferralLinkRow url={affiliate.referral_url} disabled={pastDue} />
       )}
 
       {/* Qualification — hidden for founders/admins (already qualified). */}
@@ -431,13 +446,16 @@ function Dashboard({
       )}
 
       <div className="mt-5 flex items-center justify-between gap-3 border-t border-line pt-4">
-        <button
-          onClick={() => void openExternal(affiliate.partner_dashboard_url)}
-          className="inline-flex items-center gap-1.5 font-sans text-[12px] font-medium text-text-secondary hover:text-fuchsia-deep"
-        >
-          Open partner dashboard
-          <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void openExternal(affiliate.partner_dashboard_url)}
+            className="inline-flex items-center gap-1.5 font-sans text-[12px] font-medium text-text-secondary hover:text-fuchsia-deep"
+          >
+            Open partner dashboard
+            <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
+          </button>
+          <InfoHint text="Open the full partner dashboard for payout setup, terms, and deeper affiliate tools." />
+        </div>
         {isStripe && (
           <p className="text-right font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
             Whop powers referral tracking and payouts; your Junior plan stays on Stripe.
@@ -453,11 +471,13 @@ function Figure({
   value,
   icon: Icon,
   muted,
+  hint,
 }: {
   label: string;
   value: string;
   icon?: typeof Users;
   muted?: boolean;
+  hint?: string;
 }) {
   return (
     <div>
@@ -471,7 +491,50 @@ function Figure({
       <div className="mt-1.5 inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
         {Icon && <Icon className="h-3 w-3" strokeWidth={2} />}
         {label}
+        {hint && <InfoHint text={hint} />}
       </div>
+    </div>
+  );
+}
+
+function ReferralLinkRow({ url, disabled }: { url: string; disabled?: boolean }) {
+  const [showQr, setShowQr] = useState(false);
+  return (
+    <div className={`mt-5 ${disabled ? "opacity-60" : ""}`}>
+      <div className="flex items-center gap-2 rounded-xl border border-line bg-paper px-3 py-2">
+        <input
+          readOnly
+          value={url}
+          onClick={(e) => (e.target as HTMLInputElement).select()}
+          className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-ink focus:outline-none"
+          spellCheck={false}
+        />
+        <button
+          onClick={() => setShowQr((v) => !v)}
+          disabled={disabled}
+          title={showQr ? "Hide QR code" : "Show QR for this link"}
+          className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 font-sans text-[12px] font-medium transition-colors disabled:opacity-50 ${
+            showQr
+              ? "border-fuchsia bg-fuchsia-soft/40 text-fuchsia-deep"
+              : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
+          }`}
+        >
+          <QrCodeIcon className="h-3.5 w-3.5" strokeWidth={2} />
+          {showQr ? "Hide QR" : "QR"}
+        </button>
+        <InfoHint text="QR scans use the same referral link, so scans and clicks count together." />
+        <CopyLinkButton url={url} disabled={disabled} />
+      </div>
+      {showQr && (
+        <div className="mt-3 flex justify-center">
+          <QrCode
+            value={url}
+            size={176}
+            caption="Scan to try Junior"
+            downloadName="junior-referral"
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -493,7 +556,8 @@ function CopyLinkButton({ url, disabled }: { url: string; disabled?: boolean }) 
       onClick={() => void copy()}
       disabled={disabled}
       className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-fuchsia px-3 py-1 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-50"
-      title={copied ? "Copied!" : "Copy your referral link"}
+      title={copied ? "Copied" : "Copy your default Junior referral link."}
+      aria-label="Copy your default Junior referral link."
     >
       <CopyIcon className="h-3.5 w-3.5" strokeWidth={2.25} />
       {copied ? "Copied" : "Copy"}
@@ -529,6 +593,7 @@ function QualificationRow({ q }: { q: NonNullable<AffiliateBlock["qualification"
           </>
         )}
       </div>
+      <InfoHint text="Two paid referrals unlock 50% recurring commission." />
     </div>
   );
 }
