@@ -72,7 +72,7 @@ def _activate_pending(db: Session, user: User, pending: PendingWhopMembership) -
     else:
         write_notification(
             db, user_id=user.id, category="billing", title=f"{user.tier.capitalize()} tier active.",
-            body="Your plan is live. Download Junior and start exporting.",
+            body="Your plan is live. Download Liquid Clips and start exporting.",
             priority="medium", external_dedup_key=f"whop-claim-{user.id}-{user.tier}",
         )
     return founder
