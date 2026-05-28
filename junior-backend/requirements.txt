@@ -13,3 +13,4 @@ httpx>=0.28
 apscheduler>=3.10
 resend>=2.4
 posthog>=3.5
+stripe>=10.0

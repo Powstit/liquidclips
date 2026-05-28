@@ -19,6 +19,7 @@ import {
   type AffiliateBlock,
   type AffiliateCustomer,
   type AffiliateMeResponse,
+  type PaymentVisibility,
 } from "../../lib/backend";
 import { QrCode } from "../QrCode";
 import { InfoHint } from "../InfoHint";
@@ -99,7 +100,7 @@ export function AffiliateHero({ onSignIn }: { onSignIn?: () => void }) {
   // H — past_due before can_earn so the user gets the dashboard + warning
   // (their earnings exist, they need to fix payment, not upgrade).
   if (customer.subscription_status === "past_due") {
-    return <Dashboard customer={customer} affiliate={affiliate} onRefresh={() => void load()} variant="past-due" />;
+    return <Dashboard customer={customer} affiliate={affiliate} payments={state.data.payments} onRefresh={() => void load()} variant="past-due" />;
   }
 
   if (!customer.can_earn) {
@@ -114,7 +115,7 @@ export function AffiliateHero({ onSignIn }: { onSignIn?: () => void }) {
     return <WhopFetchFailedCard affiliate={affiliate} onRetry={() => void load()} />;
   }
 
-  return <Dashboard customer={customer} affiliate={affiliate} onRefresh={() => void load()} variant="live" />;
+  return <Dashboard customer={customer} affiliate={affiliate} payments={state.data.payments} onRefresh={() => void load()} variant="live" />;
 }
 
 // ── shared shell ────────────────────────────────────────────────────────
@@ -156,7 +157,7 @@ function SignedOutCard({ onSignIn }: { onSignIn?: () => void }) {
     <Shell>
       <Eyebrow>your referral business</Eyebrow>
       <h2 className="mt-2 font-display text-[22px] font-semibold leading-tight tracking-[-0.02em] text-ink">
-        Activate Junior to see your earnings.
+        Activate Liquid Clips to see your earnings.
       </h2>
       <p className="mt-1 max-w-[520px] font-sans text-[13px] leading-relaxed text-text-secondary">
         Solo+ subscribers earn 50% recurring on every customer they refer.
@@ -181,7 +182,7 @@ function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void 
     <Shell tone="warn">
       <Eyebrow>your referral business</Eyebrow>
       <h2 className="mt-2 font-display text-[18px] font-semibold leading-tight tracking-[-0.015em] text-ink">
-        Couldn&apos;t reach Junior.
+        Couldn&apos;t reach Liquid Clips.
       </h2>
       <p className="mt-1 max-w-[520px] font-sans text-[12px] leading-relaxed text-text-secondary">
         {message}
@@ -307,15 +308,18 @@ function WhopFetchFailedCard({
   affiliate: AffiliateBlock;
   onRetry: () => void;
 }) {
+  const setupUrl = affiliate.payout_setup_url || affiliate.partner_dashboard_url;
+  const stripeConnect = affiliate.payout_provider === "stripe_connect";
   return (
     <Shell tone="warn">
       <Eyebrow>your referral business</Eyebrow>
       <h2 className="mt-2 font-display text-[18px] font-semibold leading-tight tracking-[-0.015em] text-ink">
-        We couldn&apos;t load your Whop affiliate just now.
+        {stripeConnect ? "Set up payouts with Stripe Connect." : "We couldn&apos;t load your Whop affiliate just now."}
       </h2>
       <p className="mt-1 max-w-[520px] font-sans text-[12px] leading-relaxed text-text-secondary">
-        Whop&apos;s API didn&apos;t respond, or your affiliate hasn&apos;t been created yet. Both fix
-        themselves quickly &mdash; retry, or open your partner dashboard directly.
+        {stripeConnect
+          ? "You can promote Liquid Clips without a Whop account. Connect Stripe so commissions have somewhere to land."
+          : "Whop&apos;s API didn&apos;t respond, or your affiliate hasn&apos;t been created yet. Both fix themselves quickly — retry, or open your partner dashboard directly."}
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
@@ -326,10 +330,10 @@ function WhopFetchFailedCard({
           Retry
         </button>
         <button
-          onClick={() => void openExternal(affiliate.partner_dashboard_url)}
+          onClick={() => void openExternal(setupUrl)}
           className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
         >
-          Open partner dashboard
+          {stripeConnect ? "Set up Stripe Connect" : "Open partner dashboard"}
           <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
         </button>
       </div>
@@ -342,11 +346,13 @@ function WhopFetchFailedCard({
 function Dashboard({
   customer,
   affiliate,
+  payments,
   onRefresh,
   variant,
 }: {
   customer: AffiliateCustomer;
   affiliate: AffiliateBlock;
+  payments?: PaymentVisibility;
   onRefresh: () => void;
   /** "past-due" greys out the live indicators + adds a banner. */
   variant: "live" | "past-due";
@@ -404,7 +410,7 @@ function Dashboard({
           label="Earned all-time"
           value={earned}
           muted={pastDue}
-          hint="Total commission earned from referred Junior customers."
+          hint="Total commission earned from referred Liquid Clips customers."
         />
         <Figure
           label="Recurring"
@@ -417,7 +423,7 @@ function Dashboard({
           value={active.toLocaleString()}
           icon={Users}
           muted={pastDue}
-          hint="Referred customers currently paying for Junior."
+          hint="Referred customers currently paying for Liquid Clips."
         />
         <Figure
           label="Total referrals"
@@ -445,6 +451,8 @@ function Dashboard({
         <QualificationRow q={affiliate.qualification} />
       )}
 
+      <PaymentRoutingRow customer={customer} affiliate={affiliate} payments={payments} />
+
       <div className="mt-5 flex items-center justify-between gap-3 border-t border-line pt-4">
         <div className="flex items-center gap-2">
           <button
@@ -458,11 +466,78 @@ function Dashboard({
         </div>
         {isStripe && (
           <p className="text-right font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
-            Whop powers referral tracking and payouts; your Junior plan stays on Stripe.
+            Whop powers referral tracking and payouts; your Liquid Clips plan stays on Stripe.
           </p>
         )}
       </div>
     </Shell>
+  );
+}
+
+function PaymentRoutingRow({
+  customer,
+  affiliate,
+  payments,
+}: {
+  customer: AffiliateCustomer;
+  affiliate: AffiliateBlock;
+  payments?: PaymentVisibility;
+}) {
+  const fallback: PaymentVisibility = {
+    app_subscription: {
+      key: "app_subscription",
+      label: "Liquid Clips subscription",
+      provider: customer.billing_provider === "whop" ? "Whop" : "Stripe via Clerk",
+      status: customer.subscription_status,
+      manage_url: customer.billing_provider === "whop" ? "https://whop.com/jnremployee" : "https://account.jnremployee.com/dashboard",
+      helper: customer.billing_provider === "whop"
+        ? "Whop owns your subscription and card."
+        : "Your app plan stays on Stripe via Clerk.",
+      in_app: true,
+    },
+    reward_payouts: {
+      key: "reward_payouts",
+      label: "Content Reward payouts",
+      provider: "Whop",
+      status: "offloaded",
+      manage_url: "https://whop.com/dashboard/payouts",
+      helper: "Whop verifies reward views, approvals, and payouts.",
+      in_app: false,
+    },
+    affiliate_payouts: {
+      key: "affiliate_payouts",
+      label: "Affiliate commissions",
+      provider: affiliate.payout_provider === "stripe_connect" ? "Stripe Connect" : "Whop payouts",
+      status: affiliate.payout_status || (affiliate.connected ? "ready" : "setup_required"),
+      manage_url: affiliate.payout_setup_url || affiliate.partner_dashboard_url,
+      helper: affiliate.payout_provider === "stripe_connect"
+        ? "Connect Stripe so Liquid Clips can pay affiliate commissions directly."
+        : "Whop tracks referrals and handles payout setup.",
+      in_app: false,
+    },
+  };
+  const p = payments ?? fallback;
+  const rows = [p.app_subscription, p.reward_payouts, p.affiliate_payouts];
+
+  return (
+    <div className="mt-4 grid gap-2 rounded-xl border border-line bg-paper px-3 py-3 sm:grid-cols-3">
+      {rows.map((r) => (
+        <button
+          key={r.key}
+          onClick={() => void openExternal(r.manage_url)}
+          className="text-left transition-colors hover:text-fuchsia-deep"
+          title={r.helper}
+        >
+          <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-text-tertiary">
+            {r.provider}
+          </div>
+          <div className="mt-1 font-sans text-[12px] font-medium text-ink">{r.label}</div>
+          <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
+            {r.in_app ? "manage" : "opens outside"} · {r.status}
+          </div>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -530,7 +605,7 @@ function ReferralLinkRow({ url, disabled }: { url: string; disabled?: boolean })
           <QrCode
             value={url}
             size={176}
-            caption="Scan to try Junior"
+            caption="Scan to try Liquid Clips"
             downloadName="junior-referral"
           />
         </div>
@@ -556,8 +631,8 @@ function CopyLinkButton({ url, disabled }: { url: string; disabled?: boolean }) 
       onClick={() => void copy()}
       disabled={disabled}
       className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-fuchsia px-3 py-1 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-50"
-      title={copied ? "Copied" : "Copy your default Junior referral link."}
-      aria-label="Copy your default Junior referral link."
+      title={copied ? "Copied" : "Copy your default Liquid Clips referral link."}
+      aria-label="Copy your default Liquid Clips referral link."
     >
       <CopyIcon className="h-3.5 w-3.5" strokeWidth={2.25} />
       {copied ? "Copied" : "Copy"}

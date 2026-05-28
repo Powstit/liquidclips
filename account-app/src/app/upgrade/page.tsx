@@ -12,7 +12,7 @@ import { ComparisonToggle } from "@/components/ComparisonToggle";
 // no copy drift between the two entry points.
 
 export const metadata = {
-  title: "Upgrade Junior",
+  title: "Upgrade Liquid Clips",
   description: "Pick a plan to unlock publishing, scheduling, and drip-mode.",
 };
 
@@ -38,7 +38,7 @@ export default async function UpgradePage() {
             Pick a plan, get back to work.
           </h1>
           <p className="max-w-[640px] font-sans text-[15px] leading-relaxed text-text-secondary">
-            Junior bills monthly via Clerk. Switch plans or cancel any time from your dashboard.
+            Liquid Clips bills monthly via Clerk. Switch plans or cancel any time from your dashboard.
             Currently on{" "}
             <span className="font-medium text-ink">
               {currentTier === "free" ? "Free" : capitalise(currentTier)}
@@ -60,7 +60,7 @@ export default async function UpgradePage() {
             Sold through Whop because Clerk only handles recurring plans.
           </p>
           <a
-            href="https://jnremployee.com/founder"
+            href="https://liquidclips.app/founder"
             className="mt-4 inline-flex items-center gap-2 rounded-full bg-ink px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)]"
           >
             Founder Lifetime — $500 →

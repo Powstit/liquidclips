@@ -27,7 +27,7 @@ export function Logo({ size = 26 }: { size?: number }) {
           /
         </span>
         <span>
-          junior<span className="text-white">/</span>employee
+          liquid<span className="text-white">/</span>clips
         </span>
       </div>
       {version && (

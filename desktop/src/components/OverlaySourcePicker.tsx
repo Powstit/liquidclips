@@ -4,7 +4,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { Clip, Project } from "../lib/sidecar";
 
 // Two-column picker: pick an existing project clip as the overlay source, or
-// upload a file from disk. Junior remembers the last choice (per-machine, via
+// upload a file from disk. Liquid Clips remembers the last choice (per-machine, via
 // localStorage) so the modal auto-dismisses and re-uses it next time. Reset
 // via the "always ask me" toggle.
 

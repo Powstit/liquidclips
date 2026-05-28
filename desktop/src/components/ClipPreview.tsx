@@ -379,7 +379,7 @@ export function ClipPreview({
               )}
             </section>
 
-            {/* Post-ready text Junior wrote for you. One header, three sub-blocks
+            {/* Post-ready text Liquid Clips wrote for you. One header, three sub-blocks
                 with purpose labels so the user sees WHAT each is for, not just
                 a list of jargon fields. Fields are editable — Save commits to
                 project.json so edits survive publish + reload. */}

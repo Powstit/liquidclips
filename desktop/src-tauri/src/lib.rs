@@ -1,3 +1,4 @@
+mod browse;
 mod sidecar;
 
 use serde_json::Value;
@@ -23,14 +24,14 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
-            // Register the junior:// scheme at runtime too. The bundled .app
-            // gets it from Info.plist (config schemes), but `tauri dev` needs
-            // this so activation deep links resolve to the dev binary. Best-
-            // effort: on a packaged build it's already registered.
+            // Register the liquidclips:// scheme at runtime too. The bundled
+            // .app gets it from Info.plist (config schemes), but `tauri dev`
+            // needs this so activation deep links resolve to the dev binary.
+            // Best-effort: on a packaged build it's already registered.
             #[cfg(desktop)]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
-                let _ = app.deep_link().register("junior");
+                let _ = app.deep_link().register("liquidclips");
             }
             // Resolve the Python sidecar script path. Tauri's bundler encodes
             // `../python-sidecar/` (parent traversal in the resources glob) as
@@ -78,9 +79,30 @@ pub fn run() {
                 sidecar::SidecarState::spawn(app_handle, &script_path_clone)
             })?;
             app.manage(state);
+
+            // Browse Rewards panel: keep the child webview pinned to the
+            // right edge when the main window resizes. No-op when the panel
+            // isn't open. Registered once here so we never stack listeners.
+            if let Some(main) = app.get_window("main") {
+                let panel_app_handle = app.handle().clone();
+                main.on_window_event(move |event| {
+                    if matches!(event, tauri::WindowEvent::Resized(_)) {
+                        browse::reposition_panel(&panel_app_handle);
+                    }
+                });
+            }
+
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![sidecar_call])
+        .invoke_handler(tauri::generate_handler![
+            sidecar_call,
+            browse::open_browse_panel,
+            browse::close_browse_panel,
+            browse::is_browse_panel_open,
+            browse::browse_back,
+            browse::browse_forward,
+            browse::browse_reload,
+        ])
         .run(tauri::generate_context!())
-        .expect("error while running junior desktop");
+        .expect("error while running liquid clips desktop");
 }

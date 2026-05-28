@@ -142,7 +142,7 @@ export function AdminHQ({ adminEmail, initialOverview }: { adminEmail: string; i
             admin hq · read-only
           </div>
           <h1 className="mt-2 font-display text-[clamp(28px,4vw,42px)] font-semibold leading-[1.05] tracking-[-0.03em] text-ink">
-            Junior control surface.
+            Liquid Clips control surface.
           </h1>
         </div>
         <div className="text-right font-mono text-[11px] text-text-tertiary">

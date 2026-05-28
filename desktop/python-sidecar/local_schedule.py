@@ -1,4 +1,4 @@
-"""Local schedule queue — file-backed at $JUNIOR_HOME/.schedule.json.
+"""Local schedule queue — file-backed at $CLIPS_HOME/.schedule.json.
 
 The "assisted autopost" feature (0.4.28+) stores scheduled posts here instead
 of pushing them to the backend Postiz pipeline. The desktop reads from this
@@ -40,9 +40,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from project import JUNIOR_HOME
+from project import CLIPS_HOME
 
-_SCHEDULE_PATH = JUNIOR_HOME / ".schedule.json"
+_SCHEDULE_PATH = CLIPS_HOME / ".schedule.json"
 _SCHEMA_VERSION = 1
 
 
@@ -55,7 +55,7 @@ def _ensure_store() -> dict[str, Any]:
     `version` + `items`. Bad/corrupt files are quarantined as `.broken`
     and a fresh empty store is created — losing a local queue is annoying
     but recoverable; refusing to start the sidecar is not."""
-    JUNIOR_HOME.mkdir(parents=True, exist_ok=True)
+    CLIPS_HOME.mkdir(parents=True, exist_ok=True)
     if not _SCHEDULE_PATH.exists():
         return {"version": _SCHEMA_VERSION, "items": []}
     try:
@@ -79,7 +79,7 @@ def _ensure_store() -> dict[str, Any]:
 def _save(store: dict[str, Any]) -> None:
     """Atomic write — temp file + replace so a crash mid-write can't leave
     a half-written JSON that we'd later quarantine."""
-    JUNIOR_HOME.mkdir(parents=True, exist_ok=True)
+    CLIPS_HOME.mkdir(parents=True, exist_ok=True)
     tmp = _SCHEDULE_PATH.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(store, indent=2), encoding="utf-8")
     tmp.replace(_SCHEDULE_PATH)

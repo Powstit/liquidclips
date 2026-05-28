@@ -3,8 +3,8 @@
 // auth surface without duplicating the social proof.
 //
 // Avatars are hosted on Cloudinary (catjack-world account; same credentials
-// store the rest of Junior's brand assets use). Generated via gpt-image-1
-// per Junior brand guide: paper-cream background, soft fuchsia rim light,
+// store the rest of Liquid Clips's brand assets use). Generated via gpt-image-1
+// per Liquid Clips brand guide: paper-cream background, soft fuchsia rim light,
 // editorial portrait style, no text/logo.
 
 type Testimonial = {
@@ -27,7 +27,7 @@ const TESTIMONIALS: Testimonial[] = [
     role: "YouTube Creator · 1.2M subs",
     avatar: "/avatars/sofia.webp",
     quote:
-      "My Shorts cadence went from 2 a week to 12. Junior watches my podcast uploads and has the drafts ready by the time I sit down to review. I just approve.",
+      "My Shorts cadence went from 2 a week to 12. Liquid Clips watches my podcast uploads and has the drafts ready by the time I sit down to review. I just approve.",
   },
   {
     name: "Kenji T.",
@@ -41,14 +41,14 @@ const TESTIMONIALS: Testimonial[] = [
     role: "Solo Creator",
     avatar: "/avatars/amara.webp",
     quote:
-      "Junior handles the parts I hated — captions, reframes, thumbnails. I just pick the moments and approve. It's the editing assistant I couldn't afford to hire.",
+      "Liquid Clips handles the parts I hated — captions, reframes, thumbnails. I just pick the moments and approve. It's the editing assistant I couldn't afford to hire.",
   },
   {
     name: "Lukas K.",
     role: "Agency Owner",
     avatar: "/avatars/lukas.webp",
     quote:
-      "We run 14 creator channels through Junior. The Earn-tab turned our spare-capacity hours into $4k/month of clipper revenue on top of client work.",
+      "We run 14 creator channels through Liquid Clips. The Earn-tab turned our spare-capacity hours into $4k/month of clipper revenue on top of client work.",
   },
   {
     name: "Priya S.",
@@ -75,7 +75,7 @@ export function TestimonialPanel({ orientation = "beside" }: { orientation?: "be
               why creators ship with junior
             </div>
             <h2 className="mt-4 font-display text-[30px] font-semibold leading-[1.15] tracking-[-0.025em] text-paper sm:text-[36px]">
-              Clippers and YouTube creators use Junior to{" "}
+              Clippers and YouTube creators use Liquid Clips to{" "}
               <em className="not-italic text-fuchsia">clip, ship, and get paid</em>.
             </h2>
           </header>
@@ -98,7 +98,7 @@ export function TestimonialPanel({ orientation = "beside" }: { orientation?: "be
           why creators ship with junior
         </div>
         <h2 className="mt-4 font-display text-[34px] font-semibold leading-[1.1] tracking-[-0.025em] text-paper">
-          Clippers and YouTube creators use Junior to{" "}
+          Clippers and YouTube creators use Liquid Clips to{" "}
           <em className="not-italic text-fuchsia">clip, ship, and get paid</em>.
         </h2>
       </header>

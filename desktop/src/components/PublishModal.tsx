@@ -13,8 +13,8 @@ import { InfoTip } from "./InfoTip";
 import { useTier, TIER_COPY, type PublishCapability } from "../lib/useTier";
 
 // Customer-facing publish surface. The word "Postiz" appears nowhere — to the
-// customer, Junior owns the entire publishing path. Underneath, every action
-// routes through Junior Backend which talks to a hidden self-hosted Postiz.
+// customer, Liquid Clips owns the entire publishing path. Underneath, every action
+// routes through Liquid Clips Backend which talks to a hidden self-hosted Postiz.
 //
 // Three modes:
 //   publish-now: post immediately to N platforms (multi-platform = Growth+)
@@ -108,7 +108,7 @@ export function PublishModal({
     setError(null);
     try {
       const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) throw new Error("Sign in to Junior first — use the Sign in button in the top bar.");
+      if (!jwt) throw new Error("Sign in to Liquid Clips first — use the Sign in button in the top bar.");
       const { redirect_url } = await backend.connections.startConnect(jwt, platform);
       // In production this opens an external browser tab for the OAuth
       // consent. The preview shim returns a dummy URL and the platform is
@@ -164,7 +164,7 @@ export function PublishModal({
     try {
       const { value: jwt } = await sidecar.licenseJwtRead();
       if (!jwt) {
-        throw new Error("Sign in to Junior first — use the Sign in button in the top bar.");
+        throw new Error("Sign in to Liquid Clips first — use the Sign in button in the top bar.");
       }
       if (!videoPath) {
         throw new Error("This clip has no rendered file yet. Re-cut from the editor first.");
@@ -262,7 +262,7 @@ export function PublishModal({
         <div className="rounded-xl border border-line bg-paper-warm/40 p-4">
           <div className="flex items-center gap-1.5">
             <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">clip</span>
-            <InfoTip text="Junior sends the vertical 9:16 render of this clip. If no vertical render exists, re-cut from the editor first." />
+            <InfoTip text="Liquid Clips sends the vertical 9:16 render of this clip. If no vertical render exists, re-cut from the editor first." />
           </div>
           <h3 className="mt-1 font-display text-[16px] font-semibold leading-tight tracking-[-0.01em] text-ink">
             {clip.title}
@@ -474,7 +474,7 @@ function ConnectingOverlay({ platform }: { platform: PlatformId }) {
         connecting {platform}
       </div>
       <p className="max-w-[300px] text-center font-sans text-[13px] text-text-secondary">
-        Opening the {platform} sign-in. Junior reads your handle back when you finish — your password never touches Junior.
+        Opening the {platform} sign-in. Liquid Clips reads your handle back when you finish — your password never touches Liquid Clips.
       </p>
     </div>
   );

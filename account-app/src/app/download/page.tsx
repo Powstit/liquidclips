@@ -22,7 +22,7 @@ export default async function DownloadPage() {
       </div>
 
       <h1 className="mt-6 max-w-[880px] font-display text-[clamp(40px,6vw,72px)] font-bold leading-[1.02] tracking-[-0.04em] text-ink">
-        Junior <em className="not-italic text-fuchsia">on your machine</em>. Coming end of week 9.
+        Liquid Clips <em className="not-italic text-fuchsia">on your machine</em>. Coming end of week 9.
       </h1>
 
       <p className="mt-6 max-w-[620px] font-sans text-[18px] leading-relaxed text-text-secondary">
@@ -31,7 +31,7 @@ export default async function DownloadPage() {
       </p>
 
       <p className="mt-4 max-w-[620px] rounded-2xl border border-line bg-paper-warm/50 px-4 py-3 font-sans text-[14px] leading-relaxed text-text-secondary">
-        <strong className="text-ink">What you'll need:</strong> Junior runs locally on your machine.
+        <strong className="text-ink">What you'll need:</strong> Liquid Clips runs locally on your machine.
         You'll add your own OpenAI key to power clip selection — hosted AI (no key needed) is in
         private beta and rolling out soon.
       </p>
@@ -135,9 +135,9 @@ export default async function DownloadPage() {
       <footer className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
         <span>account.jnremployee.com</span>
         <div className="flex flex-wrap gap-5">
-          <a href="https://jnremployee.com" className="hover:text-ink">jnremployee.com</a>
-          <a href="https://jnremployee.com/changelog" className="hover:text-ink">changelog</a>
-          <a href="https://jnremployee.com/privacy" className="hover:text-ink">privacy</a>
+          <a href="https://liquidclips.app" className="hover:text-ink">liquidclips.app</a>
+          <a href="https://liquidclips.app/changelog" className="hover:text-ink">changelog</a>
+          <a href="https://liquidclips.app/privacy" className="hover:text-ink">privacy</a>
         </div>
       </footer>
     </div>

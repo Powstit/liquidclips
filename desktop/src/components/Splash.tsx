@@ -38,10 +38,10 @@ export function Splash({ failed = false }: { failed?: boolean }) {
   async function onCopyDiagnostic() {
     const ua = typeof navigator !== "undefined" ? navigator.userAgent : "n/a";
     const dump =
-      `Junior sidecar failed to start\n` +
+      `Liquid Clips sidecar failed to start\n` +
       `Time: ${new Date().toISOString()}\n` +
       `User agent: ${ua}\n` +
-      `Logs folder: ~/Junior/projects/<slug>/.progress.json (per run)\n` +
+      `Logs folder: ~/LiquidClips/projects/<slug>/.progress.json (per run)\n` +
       `Common cause: Python sidecar missing dependencies or model files. ` +
       `If you installed the .app fresh, try reopening once more — first launch ` +
       `extracts bundled resources and can take a few seconds.`;
@@ -55,7 +55,7 @@ export function Splash({ failed = false }: { failed?: boolean }) {
   }
 
   function onEmail() {
-    const subject = encodeURIComponent("Junior — sidecar failed to start");
+    const subject = encodeURIComponent("Liquid Clips — sidecar failed to start");
     void openExternal(`mailto:${SUPPORT_EMAIL}?subject=${subject}`).catch(() => undefined);
   }
 
@@ -100,7 +100,7 @@ export function Splash({ failed = false }: { failed?: boolean }) {
               onClick={() => void onRestart()}
               className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright"
             >
-              Restart Junior
+              Restart Liquid Clips
             </button>
             <button
               onClick={() => void onCopyDiagnostic()}

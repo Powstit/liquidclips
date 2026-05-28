@@ -1,7 +1,9 @@
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import type { WhopBounty } from "../../lib/sidecar";
 import { PlatformIcon } from "../PlatformIcon";
-import { Sparkles, Users, Wallet, ArrowRight, ExternalLink } from "lucide-react";
+import { Sparkles, Users, Wallet, ArrowRight, ExternalLink, PanelRightOpen } from "lucide-react";
+import { openBrowsePanel } from "../../lib/browse";
+import { BROWSE_PANEL_ENABLED } from "../../lib/flags";
 import {
   allowedPlatforms,
   approvalRisk,
@@ -127,12 +129,18 @@ export function BountyCard({
         </button>
         {briefUrl && (
           <button
-            onClick={() => void openExternal(briefUrl)}
+            onClick={() =>
+              void (BROWSE_PANEL_ENABLED ? openBrowsePanel(briefUrl) : openExternal(briefUrl))
+            }
             className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 font-sans text-[12px] font-medium text-text-secondary hover:text-fuchsia-deep"
-            title="Open the brand's brief on Whop in your browser. Useful when the source video lives in a discussion post Junior can't read."
+            title={BROWSE_PANEL_ENABLED
+              ? "Open the brand's brief in the side panel — clip alongside it."
+              : "Open the brand's brief on Whop in your browser. Useful when the source video lives in a discussion post Liquid Clips can't read."}
           >
             Open brief
-            <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
+            {BROWSE_PANEL_ENABLED
+              ? <PanelRightOpen className="h-3.5 w-3.5" strokeWidth={2} />
+              : <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />}
           </button>
         )}
       </div>

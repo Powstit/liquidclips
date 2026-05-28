@@ -186,7 +186,7 @@ export function visibleStagesFor(intent: Intent) {
 export type SecretName =
   | "OPENAI_API_KEY"
   | "ANTHROPIC_API_KEY"
-  | "JUNIOR_LICENSE_JWT"
+  | "LICENSE_JWT"
   | "JUNIOR_WHOP_TOKEN";
 
 export type HardwareInfo = {
@@ -225,9 +225,9 @@ export const sidecar = {
   // file) — used by the pre-run key guard. More accurate than secretsStatus,
   // which only reports the keychain.
   openaiKeyStatus: () => sidecarCall<{ available: boolean }>("openai_key_status"),
-  // Restricted to JUNIOR_LICENSE_JWT on the sidecar side — other secrets stay opaque.
+  // Restricted to LICENSE_JWT on the sidecar side — other secrets stay opaque.
   licenseJwtRead: () =>
-    sidecarCall<{ name: "JUNIOR_LICENSE_JWT"; value: string | null }>("secret_get", { name: "JUNIOR_LICENSE_JWT" }),
+    sidecarCall<{ name: "LICENSE_JWT"; value: string | null }>("secret_get", { name: "LICENSE_JWT" }),
   secretSet: (name: SecretName, value: string) => sidecarCall<{ ok: true; name: SecretName }>("secret_set", { name, value }),
   secretDelete: (name: SecretName) => sidecarCall<{ ok: true; name: SecretName }>("secret_delete", { name }),
   hardwareInfo: () => sidecarCall<HardwareInfo>("hardware_info"),
@@ -310,7 +310,7 @@ export const sidecar = {
     sidecarCall<{ slots: DripSlot[] }>("drip_plan", { slug, weeks, user_tz_offset_hours: userTzOffsetHours }),
 
   // ── Local schedule (Assisted Autopost, 0.4.28+) ──────────────────────
-  // File-backed queue at $JUNIOR_HOME/.schedule.json. Distinct from the
+  // File-backed queue at $CLIPS_HOME/.schedule.json. Distinct from the
   // backend Postiz queue — local is always-available, no tier gate, and
   // the desktop reminds the user to post rather than auto-posting itself.
   localScheduleList: () =>

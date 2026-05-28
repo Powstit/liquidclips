@@ -10,7 +10,7 @@ import { LocalQueue } from "./LocalQueue";
 const PLATFORM_ORDER: ConnectionPlatform[] = ["youtube", "tiktok", "instagram", "x"];
 
 /**
- * Upload tab — the home for everything that leaves Junior and lands on a
+ * Upload tab — the home for everything that leaves Liquid Clips and lands on a
  * social platform. Replaces the old header "Queue" drawer and centralises
  * the scheduled posts list, the connected-platforms summary, and (later)
  * the Drip planner entry point. Per-clip "Publish now / Schedule" is still
@@ -117,8 +117,8 @@ export function UploadTab({
         )}
       </section>
 
-      {/* PRIMARY: local "Junior reminds, you post" queue. Always available,
-          no tier gate, no Postiz dependency — runs from $JUNIOR_HOME/.schedule.json. */}
+      {/* PRIMARY: local "Liquid Clips reminds, you post" queue. Always available,
+          no tier gate, no Postiz dependency — runs from $CLIPS_HOME/.schedule.json. */}
       <section>
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
@@ -164,7 +164,7 @@ export function UploadTab({
             <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
               One-tap publishing across your connected accounts is in beta. We're verifying the full
               path end-to-end before flipping it on. For now, use the local schedule above &mdash;
-              Junior reminds you when it's time and copies your caption so you post in one tap.
+              Liquid Clips reminds you when it's time and copies your caption so you post in one tap.
             </p>
           </div>
         </section>

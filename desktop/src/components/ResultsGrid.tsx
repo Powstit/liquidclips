@@ -57,9 +57,9 @@ export function ResultsGrid({
 
   async function onDripConfirm(slots: DripSlot[]) {
     // 0.4.28 Drip Helper: write to the LOCAL queue, not the backend Postiz
-    // pipeline. The local queue ($JUNIOR_HOME/.schedule.json) needs no JWT
+    // pipeline. The local queue ($CLIPS_HOME/.schedule.json) needs no JWT
     // and no tier gate — every user gets reminded to post at the optimal
-    // time, and Junior assists with copy-caption + open-platform on the
+    // time, and Liquid Clips assists with copy-caption + open-platform on the
     // Upload tab. Auto-publish via Postiz is a future opt-in toggle, not
     // a default — avoids double-scheduling when both layers exist.
     const items = slots.map((s) => ({
@@ -138,7 +138,7 @@ export function ResultsGrid({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* Drip across ▾ — local, no tier gate (0.4.28). Schedules
-              reminders to $JUNIOR_HOME/.schedule.json; the Upload tab
+              reminders to $CLIPS_HOME/.schedule.json; the Upload tab
               surfaces them with copy-caption + open-platform assist. */}
           <button
             onClick={() => setDripOpen(true)}
@@ -146,7 +146,7 @@ export function ResultsGrid({
             title={
               project.clips.length === 0
                 ? "Drop a video first"
-                : "Plan a drip across the next 1–4 weeks. Junior reminds you to post; you stay in control."
+                : "Plan a drip across the next 1–4 weeks. Liquid Clips reminds you to post; you stay in control."
             }
             className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] disabled:opacity-50 disabled:hover:bg-fuchsia disabled:hover:shadow-none"
           >
@@ -171,7 +171,7 @@ export function ResultsGrid({
               >
                 {isBounty ? "Publish & prepare Whop submission" : "Publish now"}
                 {isBounty && (
-                  <InfoHint text="Junior publishes the clip to your connected platform, then points you to Whop to submit it for the reward. Whop has no public submit API, so the final submit happens on whop.com." />
+                  <InfoHint text="Liquid Clips publishes the clip to your connected platform, then points you to Whop to submit it for the reward. Whop has no public submit API, so the final submit happens on whop.com." />
                 )}
               </button>
               <button
@@ -339,7 +339,7 @@ export function ResultsGrid({
 function FilesPane({ project }: { project: Project }) {
   return (
     <div className="rounded-2xl border border-line bg-paper-warm/50 p-5 font-mono text-[12px] text-text-secondary">
-      <p className="mb-3">Everything Junior made is in:</p>
+      <p className="mb-3">Everything Liquid Clips made is in:</p>
       <code className="block rounded bg-paper px-3 py-2 text-ink">{project.root}</code>
       <ul className="mt-4 space-y-1 text-[11px]">
         <li>source/ — original file (symlinked)</li>

@@ -3,7 +3,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { Carousel } from "@/components/Carousel";
 import { PricingCards } from "@/components/PricingCards";
 import { TrackOnMount, TrackedLink } from "@/components/Track";
-import { AffiliateCard, type AffiliateData, type AffiliateMeResponse } from "@/components/AffiliateCard";
+import { AffiliateCard, type AffiliateData, type AffiliateMeResponse, type PaymentVisibility } from "@/components/AffiliateCard";
 
 const FALLBACK_AFFILIATE: AffiliateData = {
   connected: false,
@@ -16,10 +16,43 @@ const FALLBACK_AFFILIATE: AffiliateData = {
   total_referral_earnings_usd: null,
   qualification: null,
   partner_dashboard_url: "https://partner.jnremployee.com",
+  payout_provider: "stripe_connect",
+  payout_status: "setup_required",
+  payout_setup_url: "https://account.jnremployee.com/dashboard#payouts",
+};
+
+const FALLBACK_PAYMENTS: PaymentVisibility = {
+  app_subscription: {
+    key: "app_subscription",
+    label: "Liquid Clips subscription",
+    provider: "Stripe via Clerk",
+    status: "unknown",
+    manage_url: "https://account.jnremployee.com/dashboard",
+    helper: "Manage your app plan and payment method from your Liquid Clips account.",
+    in_app: true,
+  },
+  reward_payouts: {
+    key: "reward_payouts",
+    label: "Whop Content Reward payouts",
+    provider: "Whop",
+    status: "offloaded",
+    manage_url: "https://whop.com/dashboard/payouts",
+    helper: "Whop verifies reward views, approvals, and payouts.",
+    in_app: false,
+  },
+  affiliate_payouts: {
+    key: "affiliate_payouts",
+    label: "Affiliate commissions",
+    provider: "Stripe Connect",
+    status: "setup_required",
+    manage_url: "https://account.jnremployee.com/dashboard#payouts",
+    helper: "No Whop affiliate account is linked. Set up Stripe Connect so Liquid Clips can pay affiliate commissions directly.",
+    in_app: false,
+  },
 };
 
 // Dashboard — carousel of sectioned cards. One thought per card.
-// Tier/usage resolved from Junior Backend in Sprint 4.5; stubbed today.
+// Tier/usage resolved from Liquid Clips Backend in Sprint 4.5; stubbed today.
 
 export default async function DashboardPage() {
   const { userId } = await auth();
@@ -74,6 +107,7 @@ export default async function DashboardPage() {
   const billingProvider = c?.billing_provider ?? "clerk";
   const canEarn = c?.can_earn ?? !!isAdmin;
   const affiliateData = overview?.affiliate ?? FALLBACK_AFFILIATE;
+  const paymentVisibility = overview?.payments ?? FALLBACK_PAYMENTS;
 
   const exportsBig =
     remainingExports === null ? "Unlimited"
@@ -91,8 +125,8 @@ export default async function DashboardPage() {
   // Founder is a one-time $500 tier, still sold through Whop (Clerk Billing is
   // recurring-only). Affiliate ID is baked first-touch per oauth-billing.md §6.
   const founderUrl = affiliateId
-    ? `https://jnremployee.com/founder?a=${encodeURIComponent(affiliateId)}`
-    : "https://jnremployee.com/founder";
+    ? `https://liquidclips.app/founder?a=${encodeURIComponent(affiliateId)}`
+    : "https://liquidclips.app/founder";
 
   return (
     <div className="mx-auto max-w-[1080px] px-6 py-12 sm:py-16">
@@ -169,7 +203,7 @@ export default async function DashboardPage() {
             num={isFree ? "04" : "03"}
             eyebrow="connection"
             title="Connect Whop."
-            sub="Your Junior account is signed in with Google/email. Connect Whop separately to browse Content Rewards and track reward submissions — done from the desktop Earn tab."
+            sub="Your Liquid Clips account is signed in with Google/email. Connect Whop separately to browse Content Rewards and track reward submissions — done from the desktop Earn tab."
             actions={[
               {
                 label: "Open Earn in desktop →",
@@ -184,7 +218,7 @@ export default async function DashboardPage() {
             num={isFree ? "05" : "04"}
             eyebrow="earn"
             title="Clip paid Content Rewards."
-            sub="Junior shows you live Whop Content Rewards, keeps the brief attached, and helps you make submission-ready clips — then you post and submit on Whop. New clippers can start with a 100-clip starter pass via an approved invite."
+            sub="Liquid Clips shows you live Whop Content Rewards, keeps the brief attached, and helps you make submission-ready clips — then you post and submit on Whop. New clippers can start with a 100-clip starter pass via an approved invite."
             actions={[
               { label: "Open Earn in desktop →", href: "/download", primary: true },
             ]}
@@ -193,10 +227,10 @@ export default async function DashboardPage() {
             num={isFree ? "06" : "05"}
             eyebrow="partner"
             title="Earn up to 50%."
-            sub="Refer paid Junior customers and earn up to 50% recurring commission. An active paid Junior subscription (Solo or higher) is required to earn. Terms apply."
+            sub="Refer paid Liquid Clips customers and earn up to 50% recurring commission. An active paid Liquid Clips subscription (Solo or higher) is required to earn. Terms apply."
             actions={[
               { label: "Your referral link ↓", href: "#affiliate", primary: true },
-              { label: "Affiliate terms", href: "https://jnremployee.com/terms#affiliate", external: true },
+              { label: "Affiliate terms", href: "https://liquidclips.app/terms#affiliate", external: true },
             ]}
             accent="fuchsia"
           />
@@ -204,7 +238,7 @@ export default async function DashboardPage() {
             num={isFree ? "07" : "06"}
             eyebrow="your files"
             title="On your machine."
-            sub="One folder per project · ~/Junior · open in Finder from the app."
+            sub="One folder per project · ~/Liquid Clips · open in Finder from the app."
           />
         </Carousel>
       </div>
@@ -213,6 +247,8 @@ export default async function DashboardPage() {
         <AffiliateCard affiliate={affiliateData} canEarn={canEarn} />
       </div>
 
+      <PaymentVisibilitySection payments={paymentVisibility} />
+
       <section className="mt-12">
         <div className="flex items-baseline justify-between gap-4">
           <div>
@@ -220,7 +256,7 @@ export default async function DashboardPage() {
               account · debug
             </div>
             <h2 className="mt-2 font-display text-[clamp(20px,2vw,24px)] font-semibold tracking-[-0.02em] text-ink">
-              What Junior thinks you are.
+              What Liquid Clips thinks you are.
             </h2>
           </div>
           <p className="hidden max-w-[360px] font-sans text-[12px] text-text-secondary sm:block">
@@ -281,9 +317,9 @@ export default async function DashboardPage() {
           junior · account
         </span>
         <div className="flex flex-wrap gap-5">
-          <a href="https://jnremployee.com/refunds" className="hover:text-ink">refunds</a>
-          <a href="https://jnremployee.com/privacy" className="hover:text-ink">privacy</a>
-          <a href="https://jnremployee.com/terms" className="hover:text-ink">terms</a>
+          <a href="https://liquidclips.app/refunds" className="hover:text-ink">refunds</a>
+          <a href="https://liquidclips.app/privacy" className="hover:text-ink">privacy</a>
+          <a href="https://liquidclips.app/terms" className="hover:text-ink">terms</a>
         </div>
       </footer>
     </div>
@@ -403,6 +439,42 @@ function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+function PaymentVisibilitySection({ payments }: { payments: PaymentVisibility }) {
+  const rows = [payments.app_subscription, payments.reward_payouts, payments.affiliate_payouts];
+  return (
+    <section className="mt-12">
+      <div className="flex items-baseline justify-between gap-4">
+        <div>
+          <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+            money routing
+          </div>
+          <h2 className="mt-2 font-display text-[clamp(20px,2vw,24px)] font-semibold tracking-[-0.02em] text-ink">
+            What is managed where.
+          </h2>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        {rows.map((r) => (
+          <div key={r.key} className="flex flex-col rounded-2xl border border-line bg-paper-warm/40 p-4">
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+              {r.provider}
+            </div>
+            <h3 className="mt-2 font-display text-lg font-semibold text-ink">{r.label}</h3>
+            <p className="mt-2 flex-1 text-sm leading-relaxed text-text-secondary">{r.helper}</p>
+            <a
+              href={r.manage_url}
+              target={r.manage_url.startsWith("http") ? "_blank" : undefined}
+              rel={r.manage_url.startsWith("http") ? "noreferrer" : undefined}
+              className="mt-4 inline-flex self-start rounded-full border border-line bg-paper px-4 py-2 font-mono text-[11px] uppercase tracking-[0.08em] text-ink hover:border-fuchsia"
+            >
+              {r.in_app ? "Manage" : "Open"} →
+            </a>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function DebugLine({
   label,

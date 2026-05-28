@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-// Junior whispers. Per spec §3.9 + §3.10 — past tense for done, plain verb for
+// Liquid Clips whispers. Per spec §3.9 + §3.10 — past tense for done, plain verb for
 // in-progress, no exclamation marks, no emoji, specifics over vibes. This is
 // the loader you see between page transitions; it should never feel like a
 // generic spinner.

@@ -33,7 +33,7 @@ export function NotificationSheet({ onClose }: { onClose: () => void }) {
       const { value: jwt } = await sidecar.licenseJwtRead();
       if (!jwt) {
         setError(
-          "Sign in to Junior to enable your inbox — use the Sign in button in the top bar."
+          "Sign in to Liquid Clips to enable your inbox — use the Sign in button in the top bar."
         );
         return;
       }

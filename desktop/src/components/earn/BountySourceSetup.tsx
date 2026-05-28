@@ -22,7 +22,7 @@ export function BountySourceSetup({
   bounty: WhopBounty;
   /**
    * Every plausible source URL we found in `bounty.description`, classified
-   * into supported (Junior can ingest) and unsupported (Drive/Dropbox/etc. —
+   * into supported (Liquid Clips can ingest) and unsupported (Drive/Dropbox/etc. —
    * open in browser, drag the file back). Comes from `extractSourceUrls`.
    */
   detectedSources: DetectedSource[];
@@ -73,7 +73,7 @@ export function BountySourceSetup({
         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[11px] text-text-secondary">
           <span className="inline-flex items-center gap-1.5">
             payout
-            <InfoHint text="What this reward pays per 1,000 views on an approved clip. Whop tracks the views and pays you — Junior doesn't." />
+            <InfoHint text="What this reward pays per 1,000 views on an approved clip. Whop tracks the views and pays you — Liquid Clips doesn't." />
             <span className="font-display text-[14px] font-semibold text-ink">{formatPayout(bounty)}</span>
           </span>
           {bounty.user.username && <span>by @{bounty.user.username}</span>}
@@ -123,14 +123,14 @@ export function BountySourceSetup({
       <section className="flex flex-col gap-4">
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
           choose your source video
-          <InfoHint text="The long video Junior clips from. Use the brand's source link if they gave one, paste any public video URL, or upload your own file." />
+          <InfoHint text="The long video Liquid Clips clips from. Use the brand's source link if they gave one, paste any public video URL, or upload your own file." />
         </div>
 
         {detectedSources.length > 0 && (
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
               detected in the brief
-              <InfoHint text="Junior scanned the brand's brief and found these source links. Pick the one you want to clip from — Junior ingests it for you." />
+              <InfoHint text="Liquid Clips scanned the brand's brief and found these source links. Pick the one you want to clip from — Liquid Clips ingests it for you." />
             </div>
             <div className="flex flex-col gap-2">
               {detectedSources.map((src) => (
@@ -162,7 +162,7 @@ export function BountySourceSetup({
                     <button
                       onClick={() => void openExternal(src.url)}
                       className="shrink-0 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep"
-                      title="Junior can't fetch this host directly. Open in your browser, download the file, then drop it below."
+                      title="Liquid Clips can't fetch this host directly. Open in your browser, download the file, then drop it below."
                     >
                       Open ↗
                     </button>
@@ -213,7 +213,7 @@ export function BountySourceSetup({
           className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-line bg-paper-warm/40 px-4 py-4 font-sans text-[14px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep"
         >
           Upload a local video instead
-          <InfoHint text="Already downloaded the source? Pick a file from your Mac and Junior clips it directly — nothing leaves your machine to fetch it." />
+          <InfoHint text="Already downloaded the source? Pick a file from your Mac and Liquid Clips clips it directly — nothing leaves your machine to fetch it." />
         </button>
 
         {error && <p className="font-mono text-[11px] text-[#DC2626]">{error}</p>}

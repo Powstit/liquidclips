@@ -9,7 +9,7 @@ import { sidecar } from "./sidecar";
 //   1. generate a one-time challenge nonce,
 //   2. open the browser to account.jnremployee.com/connect-desktop?challenge=…,
 //   3. the page signs the user in (Clerk) and mints a license JWT server-side,
-//   4. the browser deep-links back: junior://activate?token=<jwt>&challenge=…,
+//   4. the browser deep-links back: liquidclips://activate?token=<jwt>&challenge=…,
 //   5. we verify the challenge matches, store the JWT in the OS keychain via the
 //      sidecar, and fire onActivated so the app flips to signed-in — no restart,
 //      no JWT pasting, and only the license secret is ever touched.
@@ -67,7 +67,7 @@ async function handleDeepLink(urls: string[]): Promise<void> {
     } catch {
       continue;
     }
-    if (u.protocol !== "junior:" || u.hostname !== "activate") continue;
+    if (u.protocol !== "liquidclips:" || u.hostname !== "activate") continue;
     if (!pendingChallenge) return; // nothing in flight — ignore stray/old links
 
     const token = u.searchParams.get("token");
@@ -80,7 +80,7 @@ async function handleDeepLink(urls: string[]): Promise<void> {
     }
     try {
       emit({ kind: "activating" });
-      await sidecar.secretSet("JUNIOR_LICENSE_JWT", token);
+      await sidecar.secretSet("LICENSE_JWT", token);
     } catch {
       emit({ kind: "error", message: "Couldn’t save your license. Try again." });
       return;
@@ -93,7 +93,7 @@ async function handleDeepLink(urls: string[]): Promise<void> {
   }
 }
 
-/** Register the junior:// listener once. Safe to call repeatedly. */
+/** Register the liquidclips:// listener once. Safe to call repeatedly. */
 export function initDeepLinks(): Promise<unknown> {
   if (!listenerReady) {
     listenerReady = onOpenUrl((urls) => {

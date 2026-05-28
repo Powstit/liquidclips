@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { sidecar, type Intent, type TimePrediction } from "../lib/sidecar";
 
-// Junior-agent conversation pattern (matches JuniorLoader / Splash voice).
+// Liquid Clips agent conversation pattern (matches JuniorLoader / Splash voice).
 // One question, three pills, breathing room. No dense cards, no bullets.
 
 const OPTIONS: { id: Intent; label: string; hint: string }[] = [
