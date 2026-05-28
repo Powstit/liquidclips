@@ -73,8 +73,19 @@ npm run tauri build -- --bundles app --target universal-apple-darwin
 
 VERSION="$(node -e "console.log(require('./package.json').version)")"
 BUNDLE_DIR="src-tauri/target/universal-apple-darwin/release/bundle"
-APP_PATH="$BUNDLE_DIR/macos/Junior.app"
-APP_TAR="$BUNDLE_DIR/macos/Junior.app.tar.gz"
+# Tauri's bundler derives the .app folder/file name from tauri.conf.json's
+# `productName`. After the 2026-05-28 rebrand productName is "Liquid Clips",
+# so the output is "Liquid Clips.app" (note the literal space). The "Junior"
+# names below are the LEGACY paths from before the rebrand — kept as a
+# fallback so a stale build cache or a hot-fix on an older branch still works.
+APP_NAME="Liquid Clips.app"
+APP_PATH="$BUNDLE_DIR/macos/$APP_NAME"
+if [ ! -d "$APP_PATH" ] && [ -d "$BUNDLE_DIR/macos/Junior.app" ]; then
+  echo "⚠ found legacy Junior.app instead of $APP_NAME — using it (pre-rebrand build cache?)"
+  APP_NAME="Junior.app"
+  APP_PATH="$BUNDLE_DIR/macos/$APP_NAME"
+fi
+APP_TAR="$BUNDLE_DIR/macos/$APP_NAME.tar.gz"
 APP_SIG_FILE="$APP_TAR.sig"
 
 [ -d "$APP_PATH" ]      || fail "missing build output: $APP_PATH"
@@ -89,7 +100,7 @@ if [ "$APPLE_SIGN" = "1" ]; then
 
   # ── Notarize ────────────────────────────────────────────────────────────
   echo "→ zipping for notarization"
-  ZIP_PATH="$BUNDLE_DIR/macos/Junior.app.zip"
+  ZIP_PATH="$BUNDLE_DIR/macos/$APP_NAME.zip"
   rm -f "$ZIP_PATH"
   # `ditto -c -k --keepParent` is Apple's recommended Zip — preserves resource
   # forks + the .app folder structure that notarytool expects.
@@ -122,7 +133,7 @@ if [ "$APPLE_SIGN" = "1" ]; then
   # the .sig must match the FINAL stapled tar.
   echo "→ re-creating updater bundle from stapled .app"
   rm -f "$APP_TAR" "$APP_SIG_FILE"
-  tar --no-xattrs -czf "$APP_TAR" -C "$BUNDLE_DIR/macos" "Junior.app"
+  tar --no-xattrs -czf "$APP_TAR" -C "$BUNDLE_DIR/macos" "$APP_NAME"
   npx tauri signer sign --private-key "$KEY_PATH" --password "" "$APP_TAR" \
     || fail "minisign re-sign failed"
   [ -f "$APP_SIG_FILE" ] || fail "minisign did not produce $APP_SIG_FILE"
@@ -144,7 +155,7 @@ MANIFEST_PATH="$BUNDLE_DIR/manifest.json"
 cat > "$MANIFEST_PATH" <<EOF
 {
   "version": "$VERSION",
-  "notes": "Junior $VERSION",
+  "notes": "Liquid Clips $VERSION",
   "pub_date": "$PUB_DATE",
   "platforms": {
 $(for t in "${TARGETS[@]}"; do
@@ -185,7 +196,7 @@ for TARGET in "${TARGETS[@]}"; do
       -H "x-release-version: $VERSION" \
       -H "x-release-signature: $SIG" \
       -H "x-release-filename: $(basename "$APP_TAR")" \
-      -H "x-release-notes: Junior $VERSION" \
+      -H "x-release-notes: Liquid Clips $VERSION" \
       -H "Content-Type: application/octet-stream" \
       --data-binary @"$APP_TAR") && CURL_EXIT=$? || CURL_EXIT=$?
     if [ "${HTTP:-}" = "200" ]; then

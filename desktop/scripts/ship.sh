@@ -46,7 +46,7 @@ fi
 if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   fail "version must be semver MAJOR.MINOR.PATCH (got: $VERSION)"
 fi
-if [ -z "$NOTES" ]; then NOTES="Junior $VERSION"; fi
+if [ -z "$NOTES" ]; then NOTES="Liquid Clips $VERSION"; fi
 
 # ── preflight ───────────────────────────────────────────────────────────
 step "Preflight"
@@ -139,26 +139,47 @@ step "Running scripts/release.sh (tauri build + sign + upload — ~7 min)"
 # Universal builds are uploaded under BOTH darwin-x86_64 and darwin-aarch64
 # (release.sh fan-outs the same artifact to both target slots). Verify both
 # so a half-failed upload doesn't slip through.
-step "Verifying $BASE/updates/latest.json (both arches)"
+#
+# We verify on TWO hosts:
+#   1. $BASE (api.jnremployee.com) — the backend that physically stores the
+#      artifact. Confirms the upload landed.
+#   2. https://updates.liquidclips.app — the brand-aligned proxy installed
+#      Tauri clients now fetch from (per tauri.conf.json after 2026-05-28
+#      rebrand). Confirms the Vercel rewrite to the backend is healthy. If
+#      this is broken, real users can't update even though upload "worked."
+PROXY_BASE="${TAURI_UPDATE_HOST:-https://updates.liquidclips.app}"
 
+verify_manifest() {
+  local host_label="$1" url="$2"
+  local response reported
+  response="$(curl -sS --max-time 15 "$url")" || fail "$host_label unreachable: $url"
+  if [ -z "$response" ]; then
+    fail "$host_label returned empty body — host may be cold or down"
+  fi
+  reported="$(echo "$response" | jq -r '.version // empty')"
+  if [ -z "$reported" ]; then
+    echo "$response" | head -20 >&2
+    fail "$host_label didn't parse as JSON / missing .version"
+  fi
+  if [ "$reported" != "$VERSION" ]; then
+    fail "$host_label reports $reported, expected $VERSION — upload didn't land or proxy stale"
+  fi
+}
+
+step "Verifying manifest on both hosts × both arches"
+VERIFIED_URLS=()
 for TARGET in darwin-x86_64 darwin-aarch64; do
-  # Hit the manifest with current_version=0.0.0 so we always get a body back
-  # (the endpoint returns 204 when current_version == manifest version).
-  MANIFEST_URL="$BASE/updates/latest.json?target=$TARGET&current_version=0.0.0"
-  RESPONSE="$(curl -sS --max-time 15 "$MANIFEST_URL")"
-  if [ -z "$RESPONSE" ]; then
-    fail "manifest endpoint returned empty body for $TARGET — backend may be cold or down"
-  fi
-
-  REPORTED_VERSION="$(echo "$RESPONSE" | jq -r '.version // empty')"
-  if [ -z "$REPORTED_VERSION" ]; then
-    echo "$RESPONSE" | head -20 >&2
-    fail "manifest didn't parse as JSON / missing .version for $TARGET"
-  fi
-  if [ "$REPORTED_VERSION" != "$VERSION" ]; then
-    fail "manifest reports $REPORTED_VERSION for $TARGET, expected $VERSION — upload didn't land"
-  fi
-  ok "manifest live: $VERSION for $TARGET"
+  for HOST in "$BASE" "$PROXY_BASE"; do
+    URL="$HOST/updates/latest.json?target=$TARGET&current_version=0.0.0"
+    # The proxy serves /latest.json (not /updates/latest.json) — try the
+    # bare path if the prefixed one 404s.
+    if [ "$HOST" = "$PROXY_BASE" ]; then
+      URL="$HOST/latest.json?target=$TARGET&current_version=0.0.0"
+    fi
+    verify_manifest "$HOST [$TARGET]" "$URL"
+    ok "$HOST [$TARGET] → $VERSION"
+    VERIFIED_URLS+=("$URL")
+  done
 done
 
 # ── push to origin so the commit + version bump are durable ─────────────
@@ -181,9 +202,12 @@ fi
 echo ""
 echo "${C_OK}${C_BOLD}═══ shipped $VERSION ═══${C_END}"
 echo "  commit:   $COMMIT_SHA"
-echo "  target:   $TARGET"
-echo "  manifest: $MANIFEST_URL"
-echo "  ${C_DIM}installed Junior.app will see the update on next launch (or after Settings → Check for updates).${C_END}"
+echo "  targets:  darwin-x86_64 + darwin-aarch64 (universal binary served from both slots)"
+echo "  verified: ${#VERIFIED_URLS[@]} manifest URLs"
+for u in "${VERIFIED_URLS[@]}"; do
+  echo "    ${C_DIM}$u${C_END}"
+done
+echo "  ${C_DIM}installed Liquid Clips.app will see the update on next launch (or after Settings → Check for updates).${C_END}"
 if [ -n "${PUSH_FAILED:-}" ]; then
   echo "  ${C_ERR}git push failed${C_END} — commits stay local until the remote is fixed."
 fi
