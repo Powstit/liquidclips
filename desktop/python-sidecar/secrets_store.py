@@ -9,7 +9,7 @@ the rest of the codebase looks for:
 
   - OPENAI_API_KEY      (BYOK Free / Solo tiers)
   - ANTHROPIC_API_KEY   (BYOK Solo tier alternative)
-  - JUNIOR_LICENSE_JWT  (set by the desktop activation deep link)
+  - LICENSE_JWT  (set by the desktop activation deep link)
   - JUNIOR_WHOP_TOKEN   (Whop OAuth access token from the PKCE flow in
                          whop_client.oauth_complete — reads bounties +
                          submissions. NOT a hand-pasted API key; we no longer
@@ -24,12 +24,12 @@ from __future__ import annotations
 import keyring
 from keyring.errors import KeyringError
 
-SERVICE = "video.junior.desktop"
+SERVICE = "app.liquidclips.desktop"
 
 KNOWN_KEYS = (
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
-    "JUNIOR_LICENSE_JWT",
+    "LICENSE_JWT",
     "JUNIOR_WHOP_TOKEN",
 )
 

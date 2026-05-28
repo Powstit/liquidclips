@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0",
-  "productName": "Junior",
+  "productName": "Liquid Clips",
   "version": "0.4.33",
-  "identifier": "video.junior.desktop",
+  "identifier": "app.liquidclips.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "junior/employee",
+        "title": "liquid/clips",
         "width": 1280,
         "height": 820,
         "minWidth": 1040,
@@ -28,7 +28,7 @@
       "assetProtocol": {
         "enable": true,
         "scope": [
-          "$HOME/Junior/**"
+          "$HOME/LiquidClips/**"
         ]
       }
     }
@@ -57,7 +57,7 @@
     ],
     "category": "Productivity",
     "shortDescription": "Your AI editor. Lives on your computer.",
-    "longDescription": "Junior turns long-form recordings into ready-to-post short clips. Local-first processing, scheduled posting, your files stay on your machine.",
+    "longDescription": "Liquid Clips turns long-form recordings into ready-to-post short clips. Local-first processing, scheduled posting, your files stay on your machine.",
     "macOS": {
       "entitlements": "./entitlements-direct.plist",
       "minimumSystemVersion": "11.0"
@@ -66,7 +66,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://api.jnremployee.com/updates/latest.json"
+        "https://updates.liquidclips.app/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIxRTAzNzA2NkJGQ0U0NDQKUldSRTVQeHJCamZnc2NpMzhmWjZrYzhaSCtjQmsxZE82b0hlbm4yejErZVBuUkMxZW1qM3diOGQK",
       "windows": {
@@ -76,7 +76,7 @@
     "deep-link": {
       "desktop": {
         "schemes": [
-          "junior"
+          "liquidclips"
         ]
       }
     }

@@ -31,7 +31,7 @@ export function UpgradeLockCard({
           See the other {hiddenCount}.
         </h3>
         <p className="mt-2 font-sans text-[14px] leading-relaxed text-text-secondary">
-          Junior found {totalClips} clips in this video. Free shows the first 3 —
+          Liquid Clips found {totalClips} clips in this video. Free shows the first 3 —
           continue clipping with Solo to unlock the rest.
         </p>
       </div>

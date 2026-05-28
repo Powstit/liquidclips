@@ -290,13 +290,13 @@ export async function mockSidecarCall<T>(method: string, params: Record<string, 
       return { pong: true, version: "preview-0.3.0" } as T;
 
     case "secrets_status":
-      return { secrets: { OPENAI_API_KEY: true, ANTHROPIC_API_KEY: false, JUNIOR_LICENSE_JWT: true } } as T;
+      return { secrets: { OPENAI_API_KEY: true, ANTHROPIC_API_KEY: false, LICENSE_JWT: true } } as T;
 
     case "openai_key_status":
       return { available: true } as T;
 
     case "secret_get":
-      return { name: params.name, value: params.name === "JUNIOR_LICENSE_JWT" ? "preview-jwt" : null } as T;
+      return { name: params.name, value: params.name === "LICENSE_JWT" ? "preview-jwt" : null } as T;
 
     case "hardware_info":
       return { ram_gb: 16, free_disk_gb: 240, cpu_count: 10, platform: "preview", warnings: [] } as T;

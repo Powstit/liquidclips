@@ -12,8 +12,8 @@ const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "sw
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "junior/employee — your account",
-  description: "Manage your Junior subscription, download the app, view your usage.",
+  title: "Liquid Clips — your account",
+  description: "Manage your Liquid Clips subscription, download the app, view your usage.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

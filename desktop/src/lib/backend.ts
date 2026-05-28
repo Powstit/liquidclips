@@ -76,7 +76,7 @@ export function setOnUnauthorized(fn: (() => void) | null): void {
 // so the next authed call hits the no-JWT guard instead of retrying the bad one.
 async function handleUnauthorized(route: string): Promise<never> {
   try {
-    await sidecar.secretDelete("JUNIOR_LICENSE_JWT");
+    await sidecar.secretDelete("LICENSE_JWT");
   } catch {
     /* best-effort — clearing must never throw out of the auth path */
   }
@@ -598,6 +598,9 @@ export type AffiliateBlock = {
   total_referral_earnings_usd: string | null;
   qualification: AffiliateQualification | null;
   partner_dashboard_url: string;       // always present, falls back to partner.jnremployee.com
+  payout_provider: "whop" | "stripe_connect" | string;
+  payout_status: "ready" | "setup_required" | "unavailable" | string;
+  payout_setup_url: string;
 };
 
 export type AffiliateCustomer = {
@@ -614,9 +617,26 @@ export type AffiliateCustomer = {
   referrer_affiliate_id: string | null;
 };
 
+export type PaymentRoute = {
+  key: string;
+  label: string;
+  provider: string;
+  status: string;
+  manage_url: string;
+  helper: string;
+  in_app: boolean;
+};
+
+export type PaymentVisibility = {
+  app_subscription: PaymentRoute;
+  reward_payouts: PaymentRoute;
+  affiliate_payouts: PaymentRoute;
+};
+
 export type AffiliateMeResponse = {
   customer: AffiliateCustomer;
   affiliate: AffiliateBlock;
+  payments: PaymentVisibility;
 };
 
 /** GET /me/affiliate — license-JWT-auth. Returns null on web-preview only.
@@ -891,7 +911,7 @@ function previewDismiss(id: string) {
 // "set" round-trip elsewhere or have the caller pass it explicitly.
 export async function readLicenseJwtViaSidecar(): Promise<string | null> {
   // Stub — see comment above. The right move is to add `method_secret_get`
-  // to sidecar.py that returns OPENAI_API_KEY / JUNIOR_LICENSE_JWT. We avoid
+  // to sidecar.py that returns OPENAI_API_KEY / LICENSE_JWT. We avoid
   // exposing keys to the frontend in general, but the license JWT is meant
   // to flow through the desktop, so this one is OK.
   void sidecar;

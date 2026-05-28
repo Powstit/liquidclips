@@ -2,10 +2,10 @@ import { useRef } from "react";
 import { QRCodeCanvas, QRCodeSVG } from "qrcode.react";
 
 /**
- * QrCode — Junior-branded QR for any URL.
+ * QrCode — Liquid Clips branded QR for any URL.
  *
  * Brand rules (per Daniel's brief):
- *  - Border accent in Junior fuchsia. THIN, not bulky.
+ *  - Border accent in Liquid Clips fuchsia. THIN, not bulky.
  *  - QR modules stay black-on-white. Tinting the modules harms scan reliability,
  *    so we never touch them.
  *  - Quiet zone preserved (qrcode.react ships its own white border; we add

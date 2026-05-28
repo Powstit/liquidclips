@@ -117,7 +117,7 @@ export function DropZone({
           type="text"
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
-          placeholder="What should Junior focus on? e.g. 'the personal stories'"
+          placeholder="What should Liquid Clips focus on? e.g. 'the personal stories'"
           className="mt-2 w-full bg-transparent font-sans text-[15px] text-ink placeholder:text-text-tertiary focus:outline-none"
         />
       </div>

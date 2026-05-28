@@ -25,8 +25,8 @@ An affiliate becomes a Qualified Affiliate when **either**:
 - Commission paid **only on successful payments** from referred paid customers.
 - Excluded: free sign-ups, trials, test payments, refunds, chargebacks, bot/invalid
   traffic, duplicate referrals, self-referrals.
-- **Whop is the source of truth** for affiliate payouts and Whop-verified promo views.
-- **No Stripe Connect** affiliate payout build for launch.
+- **Whop is the source of truth** for Whop-native affiliate payouts and Whop-verified promo views.
+- **Stripe Connect is the payout path for affiliates who do not have/use Whop.** The user journey must show payout setup visibility separately from Whop reward/affiliate surfaces.
 - Never claim commission is payable before qualification.
 - Subscription lapse pauses eligibility; may resume on reactivation, forward-only.
 - Already-paid commission is never clawed back except for fraud/abuse.
@@ -38,7 +38,7 @@ Two checkout paths now exist and both unlock the same backend tier:
 - **Direct customers** (organic / Clerk sign-up): sign up via Clerk/Stripe as before; Clerk subscription webhook sets tier.
 - **Affiliate-referred customers**: land on `/get` (Whop checkout page); backend `/onboarding/link-whop` endpoint links the Whop membership to the existing or new user record; tier is set via the Whop webhook, not Clerk.
 
-The affiliate → Whop-checkout → `/get` onboarding path and the `/onboarding/link-whop` backend endpoint are implemented. "Affiliate-referred" status is determined by the presence of `affiliate_id` locked at first-touch; both paths preserve that field. Commission accounting remains Whop-managed as before.
+The affiliate → Whop-checkout → `/get` onboarding path and the `/onboarding/link-whop` backend endpoint are implemented. "Affiliate-referred" status is determined by the presence of `affiliate_id` locked at first-touch; both paths preserve that field. Commission accounting is split by affiliate payout route: Whop-native affiliates use Whop payouts; non-Whop affiliates use Stripe Connect.
 
 ## Surfaces (where this is expressed)
 - **Public marketing** (`marketing/index.html`, `marketing/affiliates.html`):
@@ -53,8 +53,10 @@ The affiliate → Whop-checkout → `/get` onboarding path and the `/onboarding/
 ## Whop config note
 Whop has no native "qualify-then-pay" gate. Keep the campaign copy explicit about
 qualification, default rate set to non-payable/manual-review where possible, and
-flip the affiliate to 50% via per-email custom rate **only after** qualification.
-Admin rule: *do not approve commission payout until one of the two gates is met.*
+flip the affiliate to 50% via per-email custom rate **only after** qualification
+for Whop-native affiliates. For Stripe Connect affiliates, keep payouts in
+manual/review state until qualification is met, then pay through their connected
+Stripe account. Admin rule: *do not approve commission payout until one of the two gates is met.*
 
 ## Out of scope for now (no build during Railway unless Daniel approves)
 Qualification-state storage, reading Whop verified views, counting paid referrals,

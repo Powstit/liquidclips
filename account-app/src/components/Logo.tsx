@@ -1,4 +1,4 @@
-// The junior/employee mark — fuchsia pill, white tile, ink slash.
+// The liquid/clips mark — fuchsia pill, white tile, ink slash.
 // Mirrors partner-app/src/components/Logo.tsx exactly so brand reads the same
 // across every surface (marketing, partner dashboard, account dashboard).
 import Link from "next/link";
@@ -13,7 +13,7 @@ export function Logo({ href = "/" }: { href?: string }) {
         /
       </span>
       <span>
-        junior<span className="text-ink">/</span>employee
+        liquid<span className="text-ink">/</span>clips
       </span>
     </Link>
   );

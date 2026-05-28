@@ -55,6 +55,19 @@ class Settings(BaseSettings):
     public_site_url: str = "https://jnremployee.com"
     account_site_url: str = "https://account.jnremployee.com"
     app_download_url: str = "https://jnremployee.com/download"
+    whop_manage_url: str = "https://whop.com/jnremployee"
+    whop_partner_dashboard_url: str = "https://partner.jnremployee.com"
+    whop_payouts_url: str = "https://whop.com/dashboard/payouts"
+    stripe_connect_onboarding_url: str = "https://account.jnremployee.com/dashboard#payouts"
+
+    # Stripe Connect — Express accounts for non-Whop affiliate payouts. When
+    # stripe_secret_key is empty, the onboarding endpoint returns 503; Whop
+    # affiliates still work because they use the Whop partner dashboard URL.
+    stripe_secret_key: str = ""
+    stripe_connect_webhook_secret: str = ""   # whsec_… for /webhooks/stripe-connect
+    stripe_connect_default_country: str = "GB"
+    stripe_connect_return_url: str = "https://account.jnremployee.com/dashboard?stripe_return=1"
+    stripe_connect_refresh_url: str = "https://account.jnremployee.com/dashboard?stripe_refresh=1"
 
     # PostHog — observability only (funnel events, attribution debugging).
     # Backend uses the PROJECT key, same as the frontends — there's no need

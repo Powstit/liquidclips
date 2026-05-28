@@ -806,7 +806,7 @@ def _try_cloud_transcribe(project: Project) -> dict[str, Any] | None:
         return None
     try:
         from secrets_store import get_secret
-        jwt = get_secret("JUNIOR_LICENSE_JWT")
+        jwt = get_secret("LICENSE_JWT")
     except Exception:
         jwt = None
     if not jwt:

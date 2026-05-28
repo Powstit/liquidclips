@@ -9,8 +9,8 @@ Status as of 2026-05-25. P0 = must fix before wide launch.
 | P0-1 | Remove stale JWT-paste copy | ✅ DONE (commit 6192034) — all 8 strings → "Sign in to Junior" |
 | P0-2 | No-JWT export bypass | ✅ DONE (6192034) — `guardQuota` blocks unactivated users → Sign in before pipeline |
 | P0-5 | Schema safety | ✅ DONE (6192034) — idempotent `ADD COLUMN IF NOT EXISTS` for all incremental prod columns |
-| P0-3 | Postiz publish/schedule/drip | ⏳ DECISION: **beta-label + disable**. Execution pending (see below) |
-| P0-4 | Hosted transcribe/AI | ⏳ DECISION: **recopy to local**. Execution pending (see below) |
+| P0-3 | Postiz publish/schedule/drip | ✅ DONE (audited 2026-05-28). UI gated via `PUBLISHING_ENABLED=false` in flags.ts; ResultsGrid + UploadTab show "beta / coming soon" cards in prod. Backend `_fire_schedule` has early-return on `not postiz.is_live()`. `postiz.publish_now` exists and raises `NotImplementedError` (defensive — never reached). Marketing + account-app fully beta-labeled. |
+| P0-4 | Hosted transcribe/AI | ✅ DONE (audited 2026-05-28). Backend `_HOSTED_AI_LIVE = bool(MODAL_TRANSCRIBE_URL or REPLICATE_API_TOKEN)` → false in prod, forces `hosted_transcribe = hosted_llm = false` for ALL tiers (overrides per-tier claims). Desktop `HOSTED_LLM_ENABLED=false`. Settings + FirstRun + marketing + account-app all copy "Hosted AI (no key needed) is in private beta". |
 | P0-6 | Fresh-Mac first-run test | ⏳ needs a clean machine (script below) |
 
 ### Verified findings (the "prove it" results)

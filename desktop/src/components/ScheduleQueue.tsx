@@ -59,7 +59,7 @@ export function ScheduleQueue() {
       const { value: jwt } = await sidecar.licenseJwtRead();
       if (!jwt) {
         setError(
-          "Sign in to Junior to see your queue — use the Sign in button in the top bar.",
+          "Sign in to Liquid Clips to see your queue — use the Sign in button in the top bar.",
         );
         return;
       }

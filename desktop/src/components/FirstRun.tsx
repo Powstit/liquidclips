@@ -32,7 +32,7 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
 
   async function save() {
     if (!key.trim()) {
-      setError("Paste a key first. Or click 'Sign in with Junior account' to use embedded keys.");
+      setError("Paste a key first. Or click 'Sign in with Liquid Clips account' to use embedded keys.");
       return;
     }
     if (!key.startsWith("sk-")) {
@@ -66,7 +66,7 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
           Drop a video to start.
         </h1>
         <p className="mt-3 max-w-[520px] font-sans text-[17px] leading-relaxed text-text-secondary">
-          Your videos never leave your machine. Junior transcribes locally, picks the best moments,
+          Your videos never leave your machine. Liquid Clips transcribes locally, picks the best moments,
           cuts them vertical with captions, and writes everything your video needs to publish.
         </p>
 
@@ -78,8 +78,8 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
             Add your OpenAI key to power clip selection.
           </h2>
           <p className="mt-1 font-sans text-[13px] text-text-secondary">
-            Junior runs locally — every plan uses your own OpenAI key for clip selection today.
-            Stored encrypted in your OS keychain, sent only to OpenAI when Junior calls it.
+            Liquid Clips runs locally — every plan uses your own OpenAI key for clip selection today.
+            Stored encrypted in your OS keychain, sent only to OpenAI when Liquid Clips calls it.
             Hosted AI (no key needed) is in private beta.
           </p>
           <div className="mt-4 flex items-center gap-3">
@@ -116,10 +116,10 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
 
         <div className="mt-4 rounded-3xl border border-line bg-paper p-7">
           <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-            02 — sign in to Junior
+            02 — sign in to Liquid Clips
           </div>
           <h2 className="mt-2 font-display text-[22px] font-semibold tracking-[-0.015em] text-ink">
-            Sign in with your Junior account.
+            Sign in with your Liquid Clips account.
           </h2>
           <p className="mt-1 max-w-[440px] font-sans text-[13px] text-text-secondary">
             Sign in to activate your plan and unlock the Earn tab. Until hosted AI leaves private
@@ -145,7 +145,7 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
           </button>
           {act.kind === "waiting" && (
             <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-              complete sign-in in your browser — Junior activates automatically
+              complete sign-in in your browser — Liquid Clips activates automatically
             </p>
           )}
           {act.kind === "activating" && (

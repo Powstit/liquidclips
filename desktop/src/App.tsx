@@ -16,7 +16,9 @@ import { Settings } from "./components/Settings";
 import { sidecar, visibleStagesFor, pipelineStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
 import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
 import { initDeepLinks, setOnActivated } from "./lib/activation";
-import { HOSTED_LLM_ENABLED } from "./lib/flags";
+import { HOSTED_LLM_ENABLED, BROWSE_PANEL_ENABLED } from "./lib/flags";
+import { BrowseRewardsPanel } from "./components/BrowseRewardsPanel";
+import { useBrowsePanel, reconcileBrowsePanel } from "./lib/browse";
 import { reportDesktopError } from "./lib/telemetry";
 import { applyUpdate, checkForUpdate, type UpdateState } from "./lib/updater";
 import { TranscriptResult, LiftingProgress } from "./components/TranscriptResult";
@@ -127,7 +129,7 @@ export default function App() {
       setInboxOpen(false);
     });
 
-    // Activation bridge: register the junior:// deep-link listener once so a
+    // Activation bridge: register the liquidclips:// deep-link listener once so a
     // license can land even if the user navigated away from the sign-in screen,
     // and wire the success hook. On activation we flip the whole app to
     // signed-in + re-sync — no restart, and we leave the current view alone so
@@ -225,7 +227,7 @@ export default function App() {
   }
 
   async function guardQuota(): Promise<boolean> {
-    // Exporting requires a Junior account: the 100-free-export pass is tracked
+    // Exporting requires a Liquid Clips account: the 100-free-export pass is tracked
     // server-side against the license JWT. No JWT = not activated, so we send
     // the user to sign in rather than letting exports run uncapped/untracked
     // (the "free forever" bypass). Sign-in is free — it just makes them a known
@@ -477,7 +479,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-paper text-ink">
+    <MainShell>
       <header className="flex items-center justify-between border-b border-line px-6 py-4">
         <div className="flex items-center gap-6">
           <Logo />
@@ -530,7 +532,7 @@ export default function App() {
             <button
               onClick={() => setView({ kind: "first-run" })}
               className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-fuchsia-soft/30 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep transition-colors hover:bg-fuchsia hover:text-white"
-              aria-label="Sign in to Junior"
+              aria-label="Sign in to Liquid Clips"
             >
               <LogIn className="h-3.5 w-3.5" strokeWidth={2} />
               Sign in
@@ -665,7 +667,7 @@ export default function App() {
             note="Private posts and login-walled videos can't be lifted. Public reels / shorts / posts work."
             onRetry={() => void onPasteUrl(view.url, "")}
             onDismiss={() => setView({ kind: "empty" })}
-            subject={`Junior — lift failed for ${view.url}`}
+            subject={`Liquid Clips — lift failed for ${view.url}`}
           />
         )}
 
@@ -725,7 +727,7 @@ export default function App() {
             retryLabel="Retry from failed stage"
             onDismiss={() => setView({ kind: "empty" })}
             dismissLabel="Drop another"
-            subject={`Junior — pipeline failed on ${view.project.source_filename}`}
+            subject={`Liquid Clips — pipeline failed on ${view.project.source_filename}`}
           />
         )}
 
@@ -763,7 +765,7 @@ export default function App() {
       {needsActivation && (
         <div className="flex items-center justify-between border-t border-fuchsia-soft bg-fuchsia-soft/40 px-6 py-2">
           <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
-            ● Your Junior session ended — sign in again to sync
+            ● Your Liquid Clips session ended — sign in again to sync
           </div>
           <button
             onClick={() => { setNeedsActivation(false); setView({ kind: "first-run" }); }}
@@ -777,7 +779,7 @@ export default function App() {
       {updateBanner.kind === "available" && (
         <div className="flex items-center justify-between border-t border-fuchsia-soft bg-fuchsia-soft/40 px-6 py-2">
           <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
-            ● Junior {updateBanner.update.version} ready — auto-update available
+            ● Liquid Clips {updateBanner.update.version} ready — auto-update available
           </div>
           <button
             onClick={async () => {
@@ -838,7 +840,31 @@ export default function App() {
         />
       )}
       {inboxOpen && <NotificationSheet onClose={() => setInboxOpen(false)} />}
-    </div>
+    </MainShell>
+  );
+}
+
+// Wraps the main app surface. When the Browse Rewards side panel is open it
+// adds right padding equal to the panel width so the workspace doesn't get
+// covered, and mounts the panel's chrome bar. The native child webview is
+// owned by Rust (src-tauri/src/browse.rs) and floats over the right gutter.
+function MainShell({ children }: { children: React.ReactNode }) {
+  const { open } = useBrowsePanel();
+  // On boot, sync React's open-state with whatever Rust currently has so HMR
+  // reloads recover gracefully (the native webview survives a JS reload).
+  useEffect(() => {
+    void reconcileBrowsePanel();
+  }, []);
+  return (
+    <>
+      <div
+        className="flex h-full flex-col bg-paper text-ink transition-[padding] duration-200"
+        style={{ paddingRight: open ? 480 : 0 }}
+      >
+        {children}
+      </div>
+      {BROWSE_PANEL_ENABLED && <BrowseRewardsPanel />}
+    </>
   );
 }
 
@@ -872,7 +898,7 @@ function formatEta(seconds: number): string {
 }
 
 // Regex-match a yt-dlp-compatible URL out of a bounty description. Covers the
-// platforms yt-dlp resolves cleanly + that Junior's pipeline already handles.
+// platforms yt-dlp resolves cleanly + that our pipeline already handles.
 function NavTab({
   label,
   active,

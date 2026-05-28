@@ -2,7 +2,7 @@
 
 Honest ETA before any pipeline runs. Picks the fastest path (serial vs chunked
 transcribe) by modelling each stage's cost, then sums them. Calibrates per-machine
-from the last 10 runs stored in ~/Junior/.metrics.json.
+from the last 10 runs stored in ~/LiquidClips/.metrics.json.
 
 Inputs: probe (duration, file size), hardware (cores, mac_silicon), network
 (upload Mbps from cached speedtest).
@@ -21,11 +21,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from project import JUNIOR_HOME
+from project import CLIPS_HOME
 
 
-METRICS_FILE = JUNIOR_HOME / ".metrics.json"
-SPEEDTEST_FILE = JUNIOR_HOME / ".speedtest.json"
+METRICS_FILE = CLIPS_HOME / ".metrics.json"
+SPEEDTEST_FILE = CLIPS_HOME / ".speedtest.json"
 SPEEDTEST_TTL_SECONDS = 7 * 24 * 3600  # 1 week
 
 

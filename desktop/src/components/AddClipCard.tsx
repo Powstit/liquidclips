@@ -110,7 +110,7 @@ function AddClipDialog({
         </div>
 
         <h2 className="font-display text-[26px] font-semibold leading-[1.1] tracking-[-0.025em] text-ink">
-          Pick the bit Junior missed.
+          Pick the bit Liquid Clips missed.
         </h2>
 
         {sourceDuration > 0 && (

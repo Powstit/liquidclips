@@ -59,7 +59,7 @@ export function ManualBountyPrompt({
       return;
     }
     if (!sourceUrl.trim()) {
-      setError("Source URL is required — that's the video Junior actually cuts.");
+      setError("Source URL is required — that's the video Liquid Clips actually cuts.");
       return;
     }
     if (!isSupportedSourceUrl(sourceUrl)) {

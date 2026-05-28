@@ -5,9 +5,9 @@ import { Clock, Send, X, CheckCircle2, ExternalLink, Copy } from "lucide-react";
 import { sidecar, type LocalScheduleItem } from "../../lib/sidecar";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
 
-// Web composer URLs per platform. Junior copies the caption to the user's
+// Web composer URLs per platform. Liquid Clips copies the caption to the user's
 // clipboard and opens the platform's upload/composer page in the browser —
-// the user pastes + posts manually. This is the "Junior reminds, you post"
+// the user pastes + posts manually. This is the "Liquid Clips reminds, you post"
 // product position: no auth tokens, no posting API, runs offline.
 //
 // Notes:
@@ -58,7 +58,7 @@ function whenRelative(iso: string): string {
 
 /**
  * Local-schedule list — the home of "Assisted Autopost." Pulls from the
- * sidecar's $JUNIOR_HOME/.schedule.json store, groups items by status
+ * sidecar's $CLIPS_HOME/.schedule.json store, groups items by status
  * (Due now → Upcoming → Posted), and gives each pending item a one-click
  * "copy caption, open platform" affordance.
  *
@@ -165,7 +165,7 @@ export function LocalQueue() {
         <p className="mt-2 max-w-[420px] mx-auto font-sans text-[13px] text-text-secondary">
           From a finished Workspace project, hit{" "}
           <span className="font-medium text-ink">Drip across ▾</span> to fill this with optimally-timed
-          reminders. Junior tells you when to post, you keep control of the actual post.
+          reminders. Liquid Clips tells you when to post, you keep control of the actual post.
         </p>
       </div>
     );

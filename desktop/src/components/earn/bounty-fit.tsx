@@ -76,7 +76,7 @@ export function computeBountyFit(clip: Clip, project: Project): BountyFit | null
     label: "Length matches brief",
     ok: lengthOk,
     detail: lengthDetail,
-    hint: "Junior read a duration rule out of the brief and compared this clip's length. No rule found = nothing to fail.",
+    hint: "Liquid Clips read a duration rule out of the brief and compared this clip's length. No rule found = nothing to fail.",
     weight: 30,
   });
 
@@ -119,7 +119,7 @@ export function computeBountyFit(clip: Clip, project: Project): BountyFit | null
     label: "CTA / rule keywords",
     ok: kwOk,
     detail: kwDetail,
-    hint: "Junior scans the brief for required hashtags, @mentions or 'link in bio' and checks your clip's caption uses them.",
+    hint: "Liquid Clips scans the brief for required hashtags, @mentions or 'link in bio' and checks your clip's caption uses them.",
     weight: 25,
   });
 

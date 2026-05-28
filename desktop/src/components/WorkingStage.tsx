@@ -66,7 +66,7 @@ export function WorkingStage({
 
   // Stage progress arrives via Tauri events the Python sidecar emits between
   // segments / clips. Previously we polled .progress.json on disk, but the
-  // default fs scope can't read ~/Junior/projects/* so every poll silently
+  // default fs scope can't read ~/LiquidClips/projects/* so every poll silently
   // failed and the bar never showed.
   useEffect(() => {
     let cancelled = false;

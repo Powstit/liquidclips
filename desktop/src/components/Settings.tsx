@@ -108,9 +108,9 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
           <Section eyebrow="api keys" title="Bring your own.">
             <p className="font-sans text-[13px] text-text-secondary">
               <strong className="text-ink">An OpenAI key is required for clip selection</strong> on
-              every plan today — Junior runs locally and hosted AI (no key needed) is in private beta.
+              every plan today — Liquid Clips runs locally and hosted AI (no key needed) is in private beta.
               Stored encrypted in your OS keychain, decrypted in-memory at call time.
-              Never sent to Junior's servers, never logged.
+              Never sent to our servers, never logged.
             </p>
             {secrets && (
               <div className="flex flex-col gap-2">
@@ -141,14 +141,14 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
           <ConnectionsSection />
 
 
-          <Section eyebrow="output folder" title="Where Junior writes everything.">
-            <Row label="Folder" value="~/Junior" mono />
+          <Section eyebrow="output folder" title="Where Liquid Clips writes everything.">
+            <Row label="Folder" value="~/LiquidClips" mono />
             <p className="font-sans text-[13px] text-text-secondary">
               Every project gets its own subfolder with source, audio, transcript, clips, thumbnails,
-              and metadata. Open it any time and find every asset Junior made.
+              and metadata. Open it any time and find every asset the app made.
             </p>
             <button
-              onClick={() => void openExternal(`${homeDir()}/Junior`)}
+              onClick={() => void openExternal(`${homeDir()}/LiquidClips`)}
               className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia"
             >
               Open in Finder →
@@ -165,7 +165,7 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
             </p>
           </Section>
 
-          <Section eyebrow="updates" title="Junior updates itself.">
+          <Section eyebrow="updates" title="Liquid Clips updates itself.">
             <p className="font-sans text-[13px] text-text-secondary">
               We push new builds in the background. Check now, or wait for the next launch ping.
             </p>
@@ -214,8 +214,8 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
             </div>
           </Section>
 
-          <Section eyebrow="about" title='"Made with Junior" + privacy.'>
-            <Toggle label="Show 'Made with Junior' watermark on clips" defaultOn={false} />
+          <Section eyebrow="about" title='"Made with Liquid Clips" + privacy.'>
+            <Toggle label="Show 'Made with Liquid Clips' watermark on clips" defaultOn={false} />
             <Toggle label="Send anonymous telemetry (no video content, no transcripts)" defaultOn={false} />
             <Row label="Version" value={APP_VERSION} mono />
             {hw && <Row label="Machine" value={`${hw.ram_gb}GB RAM · ${hw.cpu_count} CPU · ${hw.free_disk_gb}GB free`} />}
@@ -241,16 +241,16 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
 
           <Section eyebrow="sign out" title="Step away cleanly.">
             <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-              Signs you out of Junior, clears the license JWT from your keychain,
+              Signs you out of Liquid Clips, clears the license JWT from your keychain,
               and returns to the first-run screen. Your projects on disk stay
               put — sign back in any time to keep working.
             </p>
             <button
               onClick={async () => {
-                if (!confirm("Sign out of Junior? You'll sign in again to come back in.")) return;
+                if (!confirm("Sign out of Liquid Clips? You'll sign in again to come back in.")) return;
                 // Clear license JWT + close. App.tsx watches for sign-out and re-routes.
                 try {
-                  await sidecar.secretDelete("JUNIOR_LICENSE_JWT");
+                  await sidecar.secretDelete("LICENSE_JWT");
                 } catch {
                   // Best-effort — the JWT might already be gone.
                 }
@@ -259,7 +259,7 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
               }}
               className="self-start rounded-full border border-line bg-paper px-5 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:border-[#DC2626] hover:text-[#DC2626]"
             >
-              Sign out of Junior
+              Sign out of Liquid Clips
             </button>
           </Section>
         </div>
@@ -436,9 +436,9 @@ function ConnectionsSection() {
   }
 
   return (
-    <Section eyebrow="connected accounts" title="Where Junior posts on your behalf.">
+    <Section eyebrow="connected accounts" title="Where Liquid Clips posts on your behalf.">
       <p className="font-sans text-[13px] text-text-secondary">
-        Each account stays under your control — Junior reads the handle back from your platform; your password never touches us.
+        Each account stays under your control — Liquid Clips reads the handle back from your platform; your password never touches us.
       </p>
 
       {loading ? (
@@ -534,7 +534,7 @@ function Toggle({ label, defaultOn }: { label: string; defaultOn: boolean }) {
 
 function homeDir(): string {
   // Tauri exposes the home dir on demand; this is the simple form for the
-  // "Open in Finder" button — we always read/write ~/Junior on macOS.
+  // "Open in Finder" button — we always read/write ~/LiquidClips on macOS.
   return "/Users";
 }
 
@@ -598,7 +598,7 @@ function WhoAmISection() {
 
   if (loading) {
     return (
-      <Section eyebrow="account" title="Who Junior thinks you are.">
+      <Section eyebrow="account" title="Who Liquid Clips thinks you are.">
         <p className="font-mono text-[12px] text-text-tertiary">
           Reading from backend<span className="blink">_</span>
         </p>
@@ -608,7 +608,7 @@ function WhoAmISection() {
 
   if (!me) {
     return (
-      <Section eyebrow="account" title="Who Junior thinks you are.">
+      <Section eyebrow="account" title="Who Liquid Clips thinks you are.">
         <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
           Couldn't reach the backend. Sign in via{" "}
           <a
@@ -624,7 +624,7 @@ function WhoAmISection() {
   }
 
   return (
-    <Section eyebrow="account" title="Who Junior thinks you are.">
+    <Section eyebrow="account" title="Who Liquid Clips thinks you are.">
       <p className="font-sans text-[12px] text-text-secondary">
         Source of truth: junior-backend. Use this row when something looks off
         — backend wins over Clerk metadata or anything cached locally.
@@ -797,7 +797,7 @@ function WhopConnectionRow() {
 
 // Beta dignity: a place to email support and copy diagnostic info into the
 // clipboard so a user can paste it back into the email. Logs live in
-// ~/Junior/ — the project folder + .progress.json per run — so we point
+// ~/LiquidClips/ — the project folder + .progress.json per run — so we point
 // users there for full traces rather than shipping log files to the
 // clipboard (privacy + size).
 function SupportSection() {
@@ -811,11 +811,11 @@ function SupportSection() {
   async function buildDiagnostic(): Promise<string> {
     const ua = typeof navigator !== "undefined" ? navigator.userAgent : "n/a";
     const lines = [
-      `Junior version: ${APP_VERSION}`,
+      `Liquid Clips version: ${APP_VERSION}`,
       `Platform: ${hw?.platform ?? "unknown"}`,
       `RAM: ${hw?.ram_gb ?? "?"} GB · CPUs: ${hw?.cpu_count ?? "?"} · Free disk: ${hw?.free_disk_gb ?? "?"} GB`,
       hw?.warnings?.length ? `Warnings: ${hw.warnings.join(", ")}` : "",
-      `Logs folder: ~/Junior/projects/<slug>/.progress.json (per run)`,
+      `Logs folder: ~/LiquidClips/projects/<slug>/.progress.json (per run)`,
       `User agent: ${ua}`,
       `Time: ${new Date().toISOString()}`,
     ].filter(Boolean);
@@ -835,7 +835,7 @@ function SupportSection() {
 
   async function onReportIssue() {
     const dump = await buildDiagnostic();
-    const subject = encodeURIComponent(`Junior ${APP_VERSION} — issue report`);
+    const subject = encodeURIComponent(`Liquid Clips ${APP_VERSION} — issue report`);
     const body = encodeURIComponent(
       "Describe what you were doing when the issue happened:\n\n\n" +
         "--- diagnostic (please keep) ---\n" +

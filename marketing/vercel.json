@@ -2,6 +2,18 @@
   "cleanUrls": true,
   "redirects": [
     {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "jnremployee.com" }],
+      "destination": "https://liquidclips.app/$1",
+      "permanent": true
+    },
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "www.jnremployee.com" }],
+      "destination": "https://liquidclips.app/$1",
+      "permanent": true
+    },
+    {
       "source": "/affiliate",
       "destination": "/affiliates",
       "permanent": false

@@ -57,12 +57,12 @@ export function RewardClipsPanel() {
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
           <span className="inline-flex items-center gap-1">
             reward clips
-            <InfoHint text="Reward Clips connect a Whop Content Reward clip to a Junior tracking link." />
+            <InfoHint text="Reward Clips connect a Whop Content Reward clip to a Liquid Clips tracking link." />
           </span>
           <span className="text-text-tertiary/60">·</span>
           <span className="inline-flex items-center gap-1">
             tracking links
-            <InfoHint text="Tracking Links measure clicks from links or QR codes you create in Junior." />
+            <InfoHint text="Tracking Links measure clicks from links or QR codes you create in Liquid Clips." />
           </span>
         </div>
         <button
@@ -175,7 +175,7 @@ function RewardClipRow({ clip }: { clip: RewardClipBlock }) {
               <QrCode
                 value={tl.short_url}
                 size={168}
-                caption="Scan to try Junior"
+                caption="Scan to try Liquid Clips"
                 downloadName={`junior-${clip.id}`}
               />
             </div>

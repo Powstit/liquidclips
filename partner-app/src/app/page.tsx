@@ -202,7 +202,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
             </div>
             <div>
               <dt className="font-medium text-ink">Who pays me?</dt>
-              <dd className="mt-1 text-text-secondary">Whop handles affiliate payouts. Complete your Whop payout setup.</dd>
+              <dd className="mt-1 text-text-secondary">Whop handles affiliate payouts. Complete your payout setup there, including Stripe Connect if Whop prompts for it.</dd>
             </div>
             <div>
               <dt className="font-medium text-ink">Do free signups count?</dt>
@@ -283,7 +283,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
               Join the build community →
             </a>
             <a className="text-fuchsia hover:underline" href="https://whop.com/dashboard" target="_blank" rel="noopener noreferrer">
-              Set up payouts →
+              Set up Whop payouts / Stripe Connect →
             </a>
           </div>
         </div>

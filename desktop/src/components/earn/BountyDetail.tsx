@@ -1,8 +1,10 @@
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, PanelRightOpen } from "lucide-react";
 import type { WhopBounty } from "../../lib/sidecar";
 import { PlatformIcon } from "../PlatformIcon";
 import { allowedPlatforms, formatPayout, whopBountyUrl } from "./types";
+import { openBrowsePanel } from "../../lib/browse";
+import { BROWSE_PANEL_ENABLED } from "../../lib/flags";
 
 // Detail view: 3 columns — Source · Rules · Money. Then one CTA. Designed
 // for fast decision-making, not exploration.
@@ -40,12 +42,18 @@ export function BountyDetail({
         </div>
         {briefUrl && (
           <button
-            onClick={() => void openExternal(briefUrl)}
+            onClick={() =>
+              void (BROWSE_PANEL_ENABLED ? openBrowsePanel(briefUrl) : openExternal(briefUrl))
+            }
             className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
-            title="Open the brand's brief on Whop. Use this when the source video lives in a discussion post Junior can't read directly."
+            title={BROWSE_PANEL_ENABLED
+              ? "Open the brand's brief in the side panel — clip alongside it."
+              : "Open the brand's brief on Whop. Use this when the source video lives in a discussion post Liquid Clips can't read directly."}
           >
-            Open brief on Whop
-            <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
+            {BROWSE_PANEL_ENABLED ? "Open brief in panel" : "Open brief on Whop"}
+            {BROWSE_PANEL_ENABLED
+              ? <PanelRightOpen className="h-3.5 w-3.5" strokeWidth={2} />
+              : <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />}
           </button>
         )}
       </header>
@@ -142,7 +150,7 @@ export function BountyDetail({
         Start clipping →
       </button>
       <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-        Junior imports the source, runs your pipeline, and tags every clip with this reward.
+        Liquid Clips imports the source, runs your pipeline, and tags every clip with this reward.
       </p>
     </div>
   );

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openBrowsePanel, closeBrowsePanel, useBrowsePanel, WHOP_REWARDS_URL } from "../../lib/browse";
+import { BROWSE_PANEL_ENABLED } from "../../lib/flags";
 import { sidecar, type WhopBounty, type WhopSubmission, type BountyContext, type BountyProjectSummary } from "../../lib/sidecar";
 import { useActivation } from "../../lib/activation";
 import { inWhopIframe } from "../../lib/whop-iframe";
@@ -96,9 +98,9 @@ export function EarnTab({
     }
   }
 
-  // Initial load: gate Available bounties on **Junior activation**, not on
+  // Initial load: gate Available bounties on **Liquid Clips activation**, not on
   // local Whop OAuth. Public bounty browsing now goes through the backend
-  // proxy (server-side App API Key) and only requires a JUNIOR_LICENSE_JWT.
+  // proxy (server-side App API Key) and only requires a LICENSE_JWT.
   // The local Whop OAuth token is reserved for future per-user actions.
   async function bootstrap() {
     setBountyError(null);
@@ -111,7 +113,7 @@ export function EarnTab({
     } catch (e) {
       setAuthed(false);
       setAuthSource("none");
-      setBountyError(`Couldn't talk to the Junior helper: ${String(e)}`);
+      setBountyError(`Couldn't talk to the Liquid Clips helper: ${String(e)}`);
       return;
     }
     if (!activated) return;
@@ -156,7 +158,7 @@ export function EarnTab({
 
   async function refreshSubmissions() {
     // We track submission IDs locally — Whop's public API doesn't list a
-    // user's submissions, only lookup-by-id. Junior remembers what it has
+    // user's submissions, only lookup-by-id. Liquid Clips remembers what it has
     // submitted on the user's behalf.
     const ids = readSubmissionIds();
     const results: WhopSubmission[] = [];
@@ -189,13 +191,13 @@ export function EarnTab({
     return (
       <div className="w-full max-w-[640px]">
         <p className="font-mono text-[12px] text-text-tertiary">
-          Checking your Junior license<span className="blink">_</span>
+          Checking your Liquid Clips license<span className="blink">_</span>
         </p>
       </div>
     );
   }
 
-  // Junior not activated → user hasn't connected the desktop to a Junior
+  // Liquid Clips not activated → user hasn't connected the desktop to a Liquid Clips
   // account yet. Public bounty browsing needs the license JWT (backend
   // proxy auth), so we route to the activation flow. Whop OAuth is a
   // separate optional step that lives in Settings → Connections.
@@ -281,13 +283,13 @@ export function EarnTab({
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
           <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
           earn
-          <InfoHint text="Content Reward stats help you pick work. Whop tracks reward payouts; Junior helps prepare submissions." />
+          <InfoHint text="Content Reward stats help you pick work. Whop tracks reward payouts; Liquid Clips helps prepare submissions." />
         </div>
         <h1 className="font-display text-[28px] font-semibold leading-tight tracking-[-0.025em] text-ink">
           Whop Content Rewards you can work on now.
         </h1>
         <p className="max-w-[640px] font-sans text-[13px] leading-relaxed text-text-secondary">
-          Whop tracks reward payouts. Junior helps you make, publish, and prepare submissions.
+          Whop tracks reward payouts. Liquid Clips helps you make, publish, and prepare submissions.
         </p>
         <ConnectionBadge source={authSource} />
 
@@ -303,7 +305,7 @@ export function EarnTab({
               {bountyError}
             </pre>
             <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-              Common cause: the OAuth scope Junior asked for doesn't cover Content Rewards yet — known limitation, fixing next.
+              Common cause: the OAuth scope Liquid Clips asked for doesn't cover Content Rewards yet — known limitation, fixing next.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
@@ -347,13 +349,19 @@ export function EarnTab({
           </button>
         ))}
         <span className="ml-auto pb-3 pl-2">
-          <InfoHint text="Available rewards come from Whop. Junior keeps the brief attached while you clip." />
+          <InfoHint text="Available rewards come from Whop. Liquid Clips keeps the brief attached while you clip." />
         </span>
       </nav>
 
       <div className="mt-6 flex flex-col gap-4">
         {subTab === "available" && (
           <>
+            {/* SPIKE 2026-05-28: Browse Rewards in-app side panel feasibility.
+                Gated behind BROWSE_PANEL_ENABLED (default OFF) so 0.4.34 ships
+                clean for App Store review. Local dev: set VITE_BROWSE_PANEL=1
+                in .env.local. Flesh out for 0.4.35 with browser chrome, URL
+                filter for commerce paths, bounty auto-fill. */}
+            {BROWSE_PANEL_ENABLED && <BrowsePanelToggle />}
             <AffiliateHero onSignIn={onSignIn} />
             <EarnMoneyCockpit
               bounties={bounties}
@@ -496,7 +504,7 @@ function EarnMoneyCockpit({
             Pick the clip most likely to get paid.
           </h2>
           <p className="mt-1 max-w-[620px] font-sans text-[13px] leading-relaxed text-text-secondary">
-            Junior ranks rewards by fit, payout, open spots and approval risk. Whop still tracks views and pays you; this is your work queue.
+            Liquid Clips ranks rewards by fit, payout, open spots and approval risk. Whop still tracks views and pays you; this is your work queue.
           </p>
         </div>
         <button
@@ -554,13 +562,13 @@ function MoneyTile({ label, value }: { label: string; value: string }) {
 function EarnHowItWorks() {
   const [open, setOpen] = useState(false);
   const steps = [
-    "Activate Junior — sign in to connect this desktop to your account.",
+    "Activate Liquid Clips — sign in to connect this desktop to your account.",
     "Open Earn and browse live Whop Content Rewards.",
     "Pick a reward — payout, platforms, spots, and rules stay attached.",
     "Paste a source link or upload your own video.",
-    "Generate clips — Junior cuts, captions, and reframes for you.",
+    "Generate clips — Liquid Clips cuts, captions, and reframes for you.",
     "Submit on Whop — post your clip, then paste the submission link to track it.",
-    "Share your tracked link / QR on eligible Junior promo clips to earn referrals.",
+    "Share your tracked link / QR on eligible Liquid Clips promo clips to earn referrals.",
     "Track your partner progress in the partner dashboard.",
   ];
   return (
@@ -612,7 +620,7 @@ function BountyProjectCard({
             text={
               project.done
                 ? "Clips are rendered. Open it to publish and prepare your Whop submission."
-                : "Junior was still working when you left. Open it to finish or re-run any stage."
+                : "Liquid Clips was still working when you left. Open it to finish or re-run any stage."
             }
           />
         </div>
@@ -645,7 +653,7 @@ function ConnectionBadge({
   if (source === "none") return null;
   if (source === "iframe") {
     // Honest framing: the iframe bridge is scaffolding until the @whop/iframe +
-    // server-side x-whop-user-token bridge ships in a web build of Junior.
+    // server-side x-whop-user-token bridge ships in a web build of Liquid Clips.
     // Do not claim "connected through Whop" here — that promise belongs to
     // the production app-registration path, not this stub.
     return (
@@ -697,7 +705,7 @@ function WhopIframeFailed({ onRetry }: { onRetry: () => void }) {
         </p>
       </div>
       <p className="max-w-[480px] font-sans text-[13px] leading-relaxed text-text-secondary">
-        Junior runs inside Whop as a community app. Open Junior from your Whop
+        Liquid Clips runs inside Whop as a community app. Open Liquid Clips from your Whop
         community to pick up your session automatically — no key to paste, no
         sign-in to repeat.
       </p>
@@ -714,7 +722,7 @@ function WhopIframeFailed({ onRetry }: { onRetry: () => void }) {
           rel="noopener noreferrer"
           className="rounded-full border border-line bg-paper px-4 py-2.5 font-sans text-[13px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
         >
-          Open Junior in Whop ↗
+          Open Liquid Clips in Whop ↗
         </a>
       </div>
     </div>
@@ -722,7 +730,7 @@ function WhopIframeFailed({ onRetry }: { onRetry: () => void }) {
 }
 
 
-// Junior isn't activated on this desktop yet — no license JWT in the keychain,
+// Liquid Clips isn't activated on this desktop yet — no license JWT in the keychain,
 // so the backend bounty proxy has nothing to authenticate with. Activation is
 // the same flow as FirstRun: sign in at account.jnremployee.com, which writes
 // the license JWT back via the activation deep link. Connecting Whop for
@@ -759,13 +767,13 @@ function ActivateJuniorSplash({
           /
         </span>
         <p className="font-mono text-[16px] leading-none text-ink">
-          Activate Junior to browse Content Rewards.
+          Activate Liquid Clips to browse Content Rewards.
           <span className="blink ml-[2px] text-fuchsia">_</span>
         </p>
       </div>
       <p className="max-w-[480px] font-sans text-[13px] leading-relaxed text-text-secondary">
-        Content Rewards load once this desktop is activated against your Junior account.
-        Sign in at account.jnremployee.com — Junior writes your license to the OS
+        Content Rewards load once this desktop is activated against your Liquid Clips account.
+        Sign in at account.jnremployee.com — Liquid Clips writes your license to the OS
         keychain and the list loads. Connecting Whop is a separate, optional step
         in Settings → Connections.
       </p>
@@ -786,7 +794,7 @@ function ActivateJuniorSplash({
             ? "Activating…"
             : act.kind === "error"
             ? "Try again →"
-            : "Activate Junior →"}
+            : "Activate Liquid Clips →"}
         </button>
         <button
           onClick={async () => {
@@ -805,7 +813,7 @@ function ActivateJuniorSplash({
       </div>
       {act.kind === "waiting" && (
         <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-          complete sign-in in your browser — Junior activates automatically
+          complete sign-in in your browser — Liquid Clips activates automatically
         </p>
       )}
       {act.kind === "error" && (
@@ -816,7 +824,7 @@ function ActivateJuniorSplash({
 }
 
 
-// Persist the submission IDs Junior has captured so polling survives reloads.
+// Persist the submission IDs Liquid Clips has captured so polling survives reloads.
 export function rememberSubmissionId(id: string) {
   if (typeof window === "undefined") return;
   const cur = readSubmissionIds();
@@ -850,4 +858,51 @@ function readSubmissionIds(): string[] {
   } catch {
     return [];
   }
+}
+
+// Entry point for the Browse Rewards side panel. Open-state is hoisted into
+// the singleton store in src/lib/browse.ts so the panel chrome (rendered by
+// App.tsx -> BrowseRewardsPanel) stays in sync regardless of which tab the
+// user is on when they toggle. The native child webview is owned by Rust.
+function BrowsePanelToggle() {
+  const { open } = useBrowsePanel();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function toggle() {
+    setBusy(true);
+    setErr(null);
+    try {
+      if (open) {
+        await closeBrowsePanel();
+      } else {
+        await openBrowsePanel(WHOP_REWARDS_URL);
+      }
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-line bg-paper/60 p-4">
+      <div className="flex-1">
+        <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+          in-app browser
+        </div>
+        <div className="font-sans text-[13px] text-ink">
+          Browse Whop Content Rewards alongside your clipping workspace.
+        </div>
+        {err && <div className="mt-1 font-mono text-[11px] text-[#DC2626]">{err}</div>}
+      </div>
+      <button
+        onClick={() => void toggle()}
+        disabled={busy}
+        className="shrink-0 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-white transition-all hover:bg-fuchsia-bright disabled:opacity-40"
+      >
+        {busy ? "…" : open ? "Close panel" : "Browse Rewards →"}
+      </button>
+    </div>
+  );
 }

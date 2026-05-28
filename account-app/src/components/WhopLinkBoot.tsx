@@ -7,9 +7,9 @@ const BACKEND = process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "http://localhost:
 
 // Auto-link fallback for the affiliate → Whop-checkout flow.
 //
-// When someone buys a Junior plan through an affiliate's Whop checkout, the Whop
+// When someone buys a Liquid Clips plan through an affiliate's Whop checkout, the Whop
 // membership webhook stashes a pending membership keyed by email (the buyer has
-// no Junior account yet). Whop's post-checkout redirect to /get is finicky, so
+// no Liquid Clips account yet). Whop's post-checkout redirect to /get is finicky, so
 // rather than depend on it, we link the moment a signed-in user loads ANY account
 // page: call /onboarding/link-whop, which matches the pending membership by email
 // and applies the tier. The endpoint is idempotent and a no-op when nothing is

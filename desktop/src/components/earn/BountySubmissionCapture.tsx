@@ -138,7 +138,7 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
             after you submit on whop
           </p>
           <p className="font-sans text-[13px] text-ink">
-            Paste the submission URL here so Junior can track approval and payout.
+            Paste the submission URL here so Liquid Clips can track approval and payout.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

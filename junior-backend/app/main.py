@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.cron import start_cron, stop_cron
 from app.db import Base, engine
-from app.routes import admin, affiliate, connections, desktop, me, notifications, onboarding, publish, redirect, reward_clips, schedules, sync, telemetry, transcribe, updates, usage, webhooks_clerk, webhooks_whop, whop
+from app.routes import admin, affiliate, connections, desktop, me, notifications, onboarding, publish, redirect, reward_clips, schedules, stripe_connect, sync, telemetry, transcribe, updates, usage, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -46,6 +46,12 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS starter_exports_used integer NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_affiliate_id varchar",
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_whop_affiliate_id ON users (whop_affiliate_id) WHERE whop_affiliate_id IS NOT NULL",
+        # Stripe Connect Express — payout rail for non-Whop affiliates.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_connect_account_id varchar",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_stripe_connect_account_id ON users (stripe_connect_account_id) WHERE stripe_connect_account_id IS NOT NULL",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_connect_status varchar NOT NULL DEFAULT 'none'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_connect_payouts_enabled boolean NOT NULL DEFAULT false",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_connect_charges_enabled boolean NOT NULL DEFAULT false",
         # schedules — retry policy + postiz result columns added after it shipped
         "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS status varchar NOT NULL DEFAULT 'pending'",
         "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS postiz_post_id varchar",
@@ -87,6 +93,8 @@ app.add_middleware(
 
 app.include_router(webhooks_clerk.router)
 app.include_router(webhooks_whop.router)
+app.include_router(webhooks_stripe.router)
+app.include_router(stripe_connect.router)
 app.include_router(desktop.router)
 app.include_router(sync.router)
 app.include_router(schedules.router)

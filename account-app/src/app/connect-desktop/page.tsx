@@ -5,7 +5,7 @@ import { SignIn, useUser } from "@clerk/nextjs";
 
 // /connect-desktop — the browser half of the desktop activation bridge.
 //
-// The Junior desktop opens this URL with a one-time ?challenge=<nonce>. Flow:
+// The Liquid Clips desktop opens this URL with a one-time ?challenge=<nonce>. Flow:
 //   1. Not signed in → embedded Clerk sign-in, returns right back here.
 //   2. Signed in → POST /api/desktop/connect { challenge } (server mints the
 //      license JWT against the VERIFIED Clerk session).
@@ -61,7 +61,7 @@ export default function ConnectDesktopPage() {
     if (!challenge) {
       setPhase({
         k: "error",
-        msg: "Missing activation code. Re-open this from the Junior desktop app’s Sign in button.",
+        msg: "Missing activation code. Re-open this from the Liquid Clips desktop app’s Sign in button.",
       });
       return;
     }
@@ -107,13 +107,13 @@ export default function ConnectDesktopPage() {
           /* best-effort */
         }
         setPhase({ k: "ready", deepLink });
-        // Hand back to the desktop. The OS shows an "Open Junior?" prompt; the
+        // Hand back to the desktop. The OS shows an "Open Liquid Clips?" prompt; the
         // manual button below is the fallback if the auto-redirect is blocked.
         window.location.href = deepLink;
       } catch {
         setPhase({
           k: "error",
-          msg: "Couldn’t reach Junior’s servers. Check your connection and retry.",
+          msg: "Couldn’t reach Liquid Clips’s servers. Check your connection and retry.",
         });
       }
     })();
@@ -122,7 +122,7 @@ export default function ConnectDesktopPage() {
   if (phase.k === "need_signin") {
     const back = `/connect-desktop?challenge=${encodeURIComponent(challenge)}`;
     return (
-      <Shell eyebrow="connect desktop" title="Sign in to activate Junior.">
+      <Shell eyebrow="connect desktop" title="Sign in to activate Liquid Clips.">
         <SignIn
           routing="hash"
           signUpUrl="/sign-up"
@@ -137,7 +137,7 @@ export default function ConnectDesktopPage() {
     <Shell
       eyebrow="connect desktop"
       title={
-        phase.k === "error" ? "Activation hit a snag." : "Activating Junior on this device…"
+        phase.k === "error" ? "Activation hit a snag." : "Activating Liquid Clips on this device…"
       }
     >
       <div className="flex w-full max-w-[440px] flex-col items-center gap-5">
@@ -149,7 +149,7 @@ export default function ConnectDesktopPage() {
         <p className="text-center font-mono text-[12px] uppercase tracking-[0.14em] text-text-secondary">
           {phase.k === "loading" && "preparing…"}
           {phase.k === "minting" && "issuing your license…"}
-          {phase.k === "ready" && "returning you to Junior…"}
+          {phase.k === "ready" && "returning you to Liquid Clips…"}
           {phase.k === "error" && phase.msg}
         </p>
 
@@ -158,12 +158,12 @@ export default function ConnectDesktopPage() {
             href={phase.deepLink}
             className="rounded-full bg-ink px-5 py-2.5 font-sans text-[14px] font-medium text-paper transition-colors hover:bg-fuchsia"
           >
-            Open Junior →
+            Open Liquid Clips →
           </a>
         )}
         {phase.k === "ready" && (
           <p className="text-center font-sans text-[12px] text-text-tertiary">
-            If nothing happened, click “Open Junior”. You can close this tab once
+            If nothing happened, click “Open Liquid Clips”. You can close this tab once
             the desktop says you’re signed in.
           </p>
         )}

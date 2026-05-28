@@ -6,7 +6,7 @@ Two distinct auth axes, do not confuse them:
      Routes through junior-backend's /whop/* proxy. Backend holds the App
      API Key server-side because Whop's public-graphql rejects user OAuth
      tokens for publicBounties* queries ("must provide a valid App API
-     Key"). Desktop only needs a JUNIOR_LICENSE_JWT in the keychain to use
+     Key"). Desktop only needs a LICENSE_JWT in the keychain to use
      these — i.e. "is Junior activated?", NOT "did the user finish Whop
      OAuth?". See _backend_get() below.
 
@@ -157,7 +157,7 @@ def _license_jwt() -> str | None:
     junior-backend's /whop/* proxy endpoints."""
     try:
         from secrets_store import get_secret
-        return get_secret("JUNIOR_LICENSE_JWT")
+        return get_secret("LICENSE_JWT")
     except Exception:
         return None
 

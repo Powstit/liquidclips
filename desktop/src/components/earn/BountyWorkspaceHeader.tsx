@@ -62,7 +62,7 @@ export function BountyWorkspaceHeader({ project }: { project: Project }) {
         <div className="rounded-xl border border-line bg-paper/60 px-3 py-2.5">
           <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
             payout
-            <InfoHint text="Per 1,000 views on an approved clip. Whop measures the views and pays out — Junior just helps you qualify." />
+            <InfoHint text="Per 1,000 views on an approved clip. Whop measures the views and pays out — Liquid Clips just helps you qualify." />
           </div>
           <div className="mt-1 font-display text-[16px] font-semibold text-ink">
             {project.whop_bounty_reward_per_unit != null
@@ -92,7 +92,7 @@ export function BountyWorkspaceHeader({ project }: { project: Project }) {
         <div className="rounded-xl border border-line bg-paper/60 px-3 py-2.5">
           <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
             source
-            <InfoHint text="The video Junior clipped from — the link you gave at setup, or a local upload." />
+            <InfoHint text="The video Liquid Clips clipped from — the link you gave at setup, or a local upload." />
           </div>
           <div className="mt-1 truncate font-mono text-[12px] text-ink" title={source ?? "local upload"}>
             {source ?? "local upload"}

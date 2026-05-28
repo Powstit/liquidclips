@@ -29,7 +29,7 @@ import traceback
 from pathlib import Path
 from typing import Any, Callable
 
-from project import JUNIOR_HOME, Project
+from project import CLIPS_HOME, Project
 import stages
 
 VERSION = "0.3.0"  # multi-ratio (9:16/1:1/4:5), hook overlay, b-roll, YT extras
@@ -167,8 +167,8 @@ def method_list_bounty_projects(_params: dict[str, Any]) -> dict[str, Any]:
     """List local projects linked to a Whop bounty, newest first. Powers the
     Earn → In progress tab so a clipper can resume bounty work. Reads each
     project.json directly (cheap) rather than fully hydrating Project objects."""
-    from project import JUNIOR_HOME
-    root = JUNIOR_HOME / "projects"
+    from project import CLIPS_HOME
+    root = CLIPS_HOME / "projects"
     out: list[dict[str, Any]] = []
     if root.is_dir():
         for proj_dir in root.iterdir():
@@ -237,11 +237,11 @@ def method_openai_key_status(_params: dict[str, Any]) -> dict[str, Any]:
 
 
 def method_secret_get(params: dict[str, Any]) -> dict[str, Any]:
-    """Return the value of a stored secret. RESTRICTED to JUNIOR_LICENSE_JWT —
+    """Return the value of a stored secret. RESTRICTED to LICENSE_JWT —
     other secrets stay sidecar-side only so the React layer can't leak them."""
     name = params.get("name")
-    if name != "JUNIOR_LICENSE_JWT":
-        raise ValueError("secret_get only accepts JUNIOR_LICENSE_JWT")
+    if name != "LICENSE_JWT":
+        raise ValueError("secret_get only accepts LICENSE_JWT")
     from secrets_store import get_secret
     return {"name": name, "value": get_secret(name)}
 
@@ -250,7 +250,7 @@ def method_secret_set(params: dict[str, Any]) -> dict[str, Any]:
     name = params.get("name")
     value = params.get("value")
     if not isinstance(name, str) or name not in (
-        "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "JUNIOR_LICENSE_JWT", "JUNIOR_WHOP_TOKEN",
+        "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LICENSE_JWT", "JUNIOR_WHOP_TOKEN",
     ):
         raise ValueError(f"unknown or unsupported secret name: {name}")
     if not isinstance(value, str):
@@ -491,7 +491,7 @@ class _SidecarSafeLogger:
 
 def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
     """Download a URL (YouTube / Twitch / podcast feed / anything yt-dlp supports)
-    into ~/Junior/inbox/, then create a Project around the resulting file.
+    into ~/LiquidClips/inbox/, then create a Project around the resulting file.
 
     Best-mp4 preference so the rest of the pipeline (ffmpeg, OpenCV) doesn't
     have to deal with unusual codecs.
@@ -516,7 +516,7 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
     if intent not in ("clips", "youtube", "both"):
         raise ValueError("intent must be one of: clips, youtube, both")
 
-    inbox = JUNIOR_HOME / "inbox"
+    inbox = CLIPS_HOME / "inbox"
     inbox.mkdir(parents=True, exist_ok=True)
 
     # yt-dlp output template — slug-safe filename derived from the video title.
@@ -619,10 +619,10 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("lift_transcript requires `url` (str)")
     url = url.strip()
 
-    # Workspace under ~/Junior/transcripts/<token>/. Token is the URL slug yt-dlp
+    # Workspace under ~/LiquidClips/transcripts/<token>/. Token is the URL slug yt-dlp
     # exposes as info.id, but we don't know that until after probe — so use a
     # temp short token, rename after.
-    transcripts_root = JUNIOR_HOME / "transcripts"
+    transcripts_root = CLIPS_HOME / "transcripts"
     transcripts_root.mkdir(parents=True, exist_ok=True)
 
     # Probe first (no download) — gives us title/duration/thumbnail to render
@@ -883,7 +883,7 @@ def method_whop_session_status(_params: dict[str, Any]) -> dict[str, Any]:
     import whop_client
     try:
         from secrets_store import get_secret
-        has_license = bool(get_secret("JUNIOR_LICENSE_JWT"))
+        has_license = bool(get_secret("LICENSE_JWT"))
     except Exception:
         has_license = False
     source = whop_client.token_source()
@@ -1133,7 +1133,7 @@ def method_drip_plan(params: dict[str, Any]) -> dict[str, Any]:
 # ── local schedule (Assisted Autopost) ─────────────────────────────────
 #
 # All five methods sit on top of local_schedule.py which file-stores in
-# $JUNIOR_HOME/.schedule.json. Used by the Upload tab and DripCalendar to
+# $CLIPS_HOME/.schedule.json. Used by the Upload tab and DripCalendar to
 # track "what I told Junior to remind me to post, when, where". Distinct
 # from the backend /schedules/* Postiz queue — local is always-available,
 # Postiz is the paid auto-publish layer.
@@ -1352,7 +1352,7 @@ def handle(line: str) -> None:
 
 
 def main() -> None:
-    log(f"junior sidecar v{VERSION} ready  (JUNIOR_HOME={JUNIOR_HOME})")
+    log(f"junior sidecar v{VERSION} ready  (CLIPS_HOME={CLIPS_HOME})")
     for line in sys.stdin:
         line = line.strip()
         if not line:

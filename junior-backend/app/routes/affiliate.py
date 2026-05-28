@@ -33,7 +33,6 @@ from app.routes.usage import starter_export_remaining
 router = APIRouter(prefix="/affiliate", tags=["affiliate"])
 
 WHOP_AFFILIATES_URL = "https://api.whop.com/api/v1/affiliates"
-PARTNER_DASHBOARD_URL = "https://partner.jnremployee.com"
 QUALIFY_PAID_REFERRALS = 2       # 50% recurring kicks in from customer 3 after qualifying
 QUALIFY_VERIFIED_VIEWS = 11000   # OR this many Whop-verified views (Whop owns view truth)
 
@@ -56,7 +55,26 @@ class AffiliateBlock(BaseModel):
     monthly_recurring_revenue_usd: str | None
     total_referral_earnings_usd: str | None
     qualification: Qualification | None
-    partner_dashboard_url: str = PARTNER_DASHBOARD_URL
+    partner_dashboard_url: str
+    payout_provider: str  # "whop" | "stripe_connect"
+    payout_status: str    # ready | setup_required | unavailable
+    payout_setup_url: str
+
+
+class PaymentRoute(BaseModel):
+    key: str
+    label: str
+    provider: str
+    status: str
+    manage_url: str
+    helper: str
+    in_app: bool
+
+
+class PaymentVisibility(BaseModel):
+    app_subscription: PaymentRoute
+    reward_payouts: PaymentRoute
+    affiliate_payouts: PaymentRoute
 
 
 class CustomerBlock(BaseModel):
@@ -76,6 +94,7 @@ class CustomerBlock(BaseModel):
 class AffiliateMeResponse(BaseModel):
     customer: CustomerBlock
     affiliate: AffiliateBlock
+    payments: PaymentVisibility
 
 
 def _require_internal(secret_header: str | None) -> None:
@@ -129,6 +148,9 @@ def build_affiliate_me_response(user: User, db: Session | None = None) -> Affili
         or is_admin
         or (user.subscription_status == "active" and user.tier != "free")
     )
+    settings = get_settings()
+    billing_provider = "whop" if user.whop_user_id else "clerk"
+    account_url = f"{settings.account_site_url.rstrip('/')}/dashboard"
 
     customer = CustomerBlock(
         tier=eff_tier,
@@ -136,7 +158,7 @@ def build_affiliate_me_response(user: User, db: Session | None = None) -> Affili
         founder=eff_founder,
         admin_override=is_admin,
         can_earn=can_earn,
-        billing_provider="whop" if user.whop_user_id else "clerk",
+        billing_provider=billing_provider,
         is_trial=user.subscription_status == "trialing",
         remaining_exports=None if is_admin else starter_export_remaining(user),
         paid_until=user.paid_until.isoformat() if user.paid_until else None,
@@ -166,12 +188,16 @@ def build_affiliate_me_response(user: User, db: Session | None = None) -> Affili
         affiliate = AffiliateBlock(
             connected=True,
             affiliate_id=aff_id,
-            referral_url=f"{get_settings().account_site_url}/checkout?a={aff_id}",
+            referral_url=f"{settings.account_site_url}/checkout?a={aff_id}",
             status=aff.get("status"),
             active_members_count=active,
             total_referrals_count=aff.get("total_referrals_count"),
             monthly_recurring_revenue_usd=aff.get("monthly_recurring_revenue_usd"),
             total_referral_earnings_usd=aff.get("total_referral_earnings_usd"),
+            partner_dashboard_url=settings.whop_partner_dashboard_url,
+            payout_provider="whop",
+            payout_status="ready",
+            payout_setup_url=settings.whop_partner_dashboard_url,
             qualification=Qualification(
                 paid_referrals_count=paid_count,
                 verified_views_count=None,
@@ -179,6 +205,15 @@ def build_affiliate_me_response(user: User, db: Session | None = None) -> Affili
             ),
         )
     else:
+        # Non-Whop affiliate → Stripe Connect payout rail. The persisted
+        # stripe_connect_status (kept honest by app/routes/webhooks_stripe.py)
+        # decides the surface state: "active" → ready, anything else still
+        # needs onboarding clicks. The setup URL always points at the account
+        # dashboard, which renders the "Set up Stripe Connect" CTA that calls
+        # /me/affiliate/stripe-connect/onboarding and redirects to Stripe's
+        # hosted page.
+        sc_status = (user.stripe_connect_status or "none").lower()
+        payout_status = "ready" if sc_status == "active" else "setup_required"
         affiliate = AffiliateBlock(
             connected=False,
             affiliate_id=None,
@@ -189,9 +224,51 @@ def build_affiliate_me_response(user: User, db: Session | None = None) -> Affili
             monthly_recurring_revenue_usd=None,
             total_referral_earnings_usd=None,
             qualification=None,
+            partner_dashboard_url=settings.whop_partner_dashboard_url,
+            payout_provider="stripe_connect",
+            payout_status=payout_status,
+            payout_setup_url=settings.stripe_connect_onboarding_url,
         )
 
-    return AffiliateMeResponse(customer=customer, affiliate=affiliate)
+    payments = PaymentVisibility(
+        app_subscription=PaymentRoute(
+            key="app_subscription",
+            label="Liquid Clips subscription",
+            provider="Whop" if billing_provider == "whop" else "Stripe via Clerk",
+            status=customer.subscription_status,
+            manage_url=settings.whop_manage_url if billing_provider == "whop" else account_url,
+            helper=(
+                "Whop owns this subscription and receipt. Manage card, cancel, or change plan on Whop."
+                if billing_provider == "whop"
+                else "Stripe powers card billing through Clerk. Manage plan and payment method in your Liquid Clips account."
+            ),
+            in_app=True,
+        ),
+        reward_payouts=PaymentRoute(
+            key="reward_payouts",
+            label="Whop Content Reward payouts",
+            provider="Whop",
+            status="offloaded",
+            manage_url=settings.whop_payouts_url,
+            helper="Whop verifies reward views, approvals, and payouts. Liquid Clips shows the brief and submission status only.",
+            in_app=False,
+        ),
+        affiliate_payouts=PaymentRoute(
+            key="affiliate_payouts",
+            label="Affiliate commissions",
+            provider="Whop payouts" if affiliate.payout_provider == "whop" else "Stripe Connect",
+            status=affiliate.payout_status,
+            manage_url=affiliate.payout_setup_url,
+            helper=(
+                "Whop tracks referrals and handles payout setup for Whop affiliates."
+                if affiliate.payout_provider == "whop"
+                else "No Whop affiliate account is linked. Set up Stripe Connect so Liquid Clips can pay affiliate commissions directly."
+            ),
+            in_app=False,
+        ),
+    )
+
+    return AffiliateMeResponse(customer=customer, affiliate=affiliate, payments=payments)
 
 
 @router.get("/me", response_model=AffiliateMeResponse)

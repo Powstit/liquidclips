@@ -14,7 +14,7 @@ import { track } from "@/lib/analytics";
 //      scoped to .jnremployee.com) so attribution survives the redirect even
 //      though the buyer may have arrived without ever hitting the marketing JS.
 //   2) Link the just-purchased Whop plan to the signed-in Clerk account by
-//      POSTing { clerk_user_id, email } to the Junior backend, then confirming
+//      POSTing { clerk_user_id, email } to the Liquid Clips backend, then confirming
 //      the plan is live and pointing the buyer at the download.
 
 // --- first-touch affiliate capture --------------------------------------
@@ -197,9 +197,9 @@ export default function GetPage() {
       <footer className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
         <span>account.jnremployee.com</span>
         <div className="flex flex-wrap gap-5">
-          <a href="https://jnremployee.com" className="hover:text-ink">jnremployee.com →</a>
-          <a href="https://jnremployee.com/refunds" className="hover:text-ink">refunds</a>
-          <a href="https://jnremployee.com/privacy" className="hover:text-ink">privacy</a>
+          <a href="https://liquidclips.app" className="hover:text-ink">liquidclips.app →</a>
+          <a href="https://liquidclips.app/refunds" className="hover:text-ink">refunds</a>
+          <a href="https://liquidclips.app/privacy" className="hover:text-ink">privacy</a>
         </div>
       </footer>
     </div>
@@ -229,8 +229,8 @@ function SignedOutPanel({ claimToken }: { claimToken: string | null }) {
       </h2>
       <p className="mt-3 max-w-[520px] font-sans text-[15px] leading-relaxed text-text-secondary">
         {claimToken
-          ? "Sign in to the Junior account you want the purchase attached to, then we'll finish the claim automatically."
-          : "Your purchase is safe. Create your Junior account (or sign in) and we'll link the plan you just bought to it automatically — then you're ready to download."}
+          ? "Sign in to the Liquid Clips account you want the purchase attached to, then we'll finish the claim automatically."
+          : "Your purchase is safe. Create your Liquid Clips account (or sign in) and we'll link the plan you just bought to it automatically — then you're ready to download."}
       </p>
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
         <Link
@@ -263,7 +263,7 @@ function SignedInPanel({ link, clerkUserId, email }: { link: LinkState; clerkUse
         </h2>
         <p className="mt-3 max-w-[520px] font-sans text-[15px] leading-relaxed text-text-secondary">
           Your plan is linked to this account. Grab the app and start clipping — your tier
-          unlocks the moment you sign in on the desktop. Junior runs locally, so you&apos;ll add
+          unlocks the moment you sign in on the desktop. Liquid Clips runs locally, so you&apos;ll add
           your own OpenAI key for clip selection (hosted AI is in private beta).
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
@@ -272,7 +272,7 @@ function SignedInPanel({ link, clerkUserId, email }: { link: LinkState; clerkUse
             onClick={() => track("desktop_download_clicked", { source: "get" })}
             className="w-full rounded-full bg-ink px-6 py-3 text-center font-sans text-[15px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] sm:w-auto"
           >
-            Download Junior →
+            Download Liquid Clips →
           </Link>
           <Link
             href="/dashboard"
@@ -434,7 +434,7 @@ function ClaimForm({ clerkUserId, signedInEmail }: { clerkUserId: string; signed
         </button>
       </div>
       <p className="mt-3 max-w-[520px] font-sans text-[12px] leading-relaxed text-text-tertiary">
-        Use this only if you paid on Whop with a different email than your Junior account. We&apos;ll
+        Use this only if you paid on Whop with a different email than your Liquid Clips account. We&apos;ll
         send a secure claim link to the Whop purchase email.
       </p>
     </form>
@@ -460,7 +460,7 @@ function RedeemPanel({ redeem }: { redeem: RedeemState }) {
             onClick={() => track("desktop_download_clicked", { source: "claim" })}
             className="w-full rounded-full bg-ink px-6 py-3 text-center font-sans text-[15px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] sm:w-auto"
           >
-            Download Junior →
+            Download Liquid Clips →
           </Link>
           <Link
             href="/dashboard"

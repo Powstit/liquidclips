@@ -1,11 +1,11 @@
 """
-Junior project folder manager.
+Liquid Clips project folder manager.
 
-Per spec §1.6, every run gets its own folder under ~/Junior/projects/[slug]/.
+Per spec §1.6, every run gets its own folder under ~/LiquidClips/projects/[slug]/.
 The folder layout is non-negotiable — users open it in Finder and find every
-asset Junior made. That's the trust moat.
+asset the app made. That's the trust moat.
 
-  ~/Junior/projects/[slug]/
+  ~/LiquidClips/projects/[slug]/
     source/original.mp4
     audio/audio.wav
     transcript/transcript.json
@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-JUNIOR_HOME = Path(os.environ.get("JUNIOR_HOME", str(Path.home() / "Junior")))
+CLIPS_HOME = Path(os.environ.get("CLIPS_HOME", str(Path.home() / "LiquidClips")))
 
 STAGES = ("ingest", "audio", "transcribe", "llm", "cut", "reframe", "thumbs")
 
@@ -113,7 +113,7 @@ class Project:
         bounty: dict[str, Any] | None = None,
         projects_root: Path | None = None,
     ) -> "Project":
-        root_base = projects_root or (JUNIOR_HOME / "projects")
+        root_base = projects_root or (CLIPS_HOME / "projects")
         root_base.mkdir(parents=True, exist_ok=True)
         filename = Path(source_path).name
         slug = slugify(Path(source_path).stem)
@@ -153,7 +153,7 @@ class Project:
 
     @classmethod
     def load(cls, slug: str, projects_root: Path | None = None) -> "Project":
-        root_base = projects_root or (JUNIOR_HOME / "projects")
+        root_base = projects_root or (CLIPS_HOME / "projects")
         root = root_base / slug
         with (root / "project.json").open("r", encoding="utf-8") as f:
             data = json.load(f)

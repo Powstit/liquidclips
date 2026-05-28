@@ -7,20 +7,20 @@ import { track } from "@/lib/analytics";
 // The Whop Solo plan carries a 30-day free trial, so "30 days free then $29.99"
 // is enforced by Whop. The 100-clip cap is an in-app soft limit (no auto-bill),
 // so the copy says the paid plan starts after 30 days; if 100 clips are used
-// first, Junior asks the user to continue on Solo. Growth/Autopilot are in-app
+// first, Liquid Clips asks the user to continue on Solo. Growth/Autopilot are in-app
 // upgrades later — not shown here. Embed carries ?a=<affiliateId> + returns to /get.
 const SOLO_PLAN_ID = process.env.NEXT_PUBLIC_WHOP_SOLO_PLAN_ID ?? "plan_qe8AFXj9J3SWi";
 
 const STEPS = [
   { t: "Upload your video", d: "Drop in a podcast, stream, or long recording from your computer.", icon: "upload" },
-  { t: "Junior finds clip moments", d: "It scans for the best moments — hooks, punchlines, payoffs.", icon: "spark" },
+  { t: "Liquid Clips finds clip moments", d: "It scans for the best moments — hooks, punchlines, payoffs.", icon: "spark" },
   { t: "Export ready-to-post clips", d: "Captioned, reframed, hook-burned — ready for Shorts, TikTok, Reels.", icon: "scissors" },
-  { t: "Download app + keep clipping", d: "Create your account, download Junior, and clip as much as you want.", icon: "download" },
+  { t: "Download app + keep clipping", d: "Create your account, download Liquid Clips, and clip as much as you want.", icon: "download" },
 ] as const;
 
 const FAQ = [
-  { q: "When am I billed?", a: "Your Solo plan starts after 30 days. If you use all 100 free exports before then, Junior will ask you to continue on Solo ($29.99/mo). Cancel anytime before the trial ends." },
-  { q: "Can I download the app after checkout?", a: "Yes. After checkout, create or sign in to your Junior account and download the desktop app." },
+  { q: "When am I billed?", a: "Your Solo plan starts after 30 days. If you use all 100 free exports before then, Liquid Clips will ask you to continue on Solo ($29.99/mo). Cancel anytime before the trial ends." },
+  { q: "Can I download the app after checkout?", a: "Yes. After checkout, create or sign in to your Liquid Clips account and download the desktop app." },
   { q: "Do I need a YouTube channel?", a: "No. You can clip local videos, client videos, podcasts, or Whop Content Rewards." },
   { q: "Can I upgrade later?", a: "Yes. Growth and Autopilot are available as upgrades once you've started." },
   { q: "Who handles payment?", a: "Whop handles secure checkout and billing for affiliate purchases." },
@@ -131,7 +131,7 @@ export default function CheckoutPage() {
             Turn long videos into paid-ready clips.
           </h1>
           <p className="mt-4 max-w-xl text-text-secondary sm:text-lg">
-            Start with <strong className="text-ink">100 free clip exports</strong>. Junior runs on your computer, finds the best moments, captions them, and exports ready-to-post clips.
+            Start with <strong className="text-ink">100 free clip exports</strong>. Liquid Clips runs on your computer, finds the best moments, captions them, and exports ready-to-post clips.
           </p>
           <div className="mt-7 flex flex-wrap items-center gap-3">
             <a href="#start" onClick={() => track("checkout_cta_clicked", { source: "hero", has_affiliate: hasAffiliate })} className="rounded-full bg-ink px-6 py-3.5 text-sm font-semibold text-paper transition-colors hover:bg-fuchsia">
@@ -175,7 +175,7 @@ export default function CheckoutPage() {
               "Import long videos from your computer",
               "Generate clips, captions, hooks, and exports",
               "Use clips for YouTube Shorts, TikTok, Reels, or Whop Content Rewards",
-              "Download Junior after creating your account",
+              "Download Liquid Clips after creating your account",
             ].map((b) => (
               <li key={b} className="flex gap-2.5"><span className="mt-1 text-fuchsia">✓</span><span>{b}</span></li>
             ))}
@@ -212,7 +212,7 @@ export default function CheckoutPage() {
         <div className="jnr-in rounded-3xl border border-line bg-ink px-6 py-9 text-paper sm:px-10">
           <h2 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">Built for creators and clippers.</h2>
           <p className="mt-3 max-w-2xl text-paper/75">
-            Your source files stay local. Junior helps you turn recordings into clips you can post, submit, or use to win clients.
+            Your source files stay local. Liquid Clips helps you turn recordings into clips you can post, submit, or use to win clients.
           </p>
           <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 font-mono text-[12px] text-paper/85">
             {["Local-first desktop app", "No per-minute upload meter", "100 free clips included", "Secure Whop billing", "Download after signup"].map((t) => (
