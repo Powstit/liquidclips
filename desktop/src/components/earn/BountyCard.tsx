@@ -38,7 +38,7 @@ export function BountyCard({
   const briefUrl = whopBountyUrl(bounty);
 
   return (
-    <article className="rounded-2xl border border-line bg-paper p-5 shadow-[var(--shadow-e1)] transition-all duration-200 hover:-translate-y-[2px] hover:border-fuchsia/40 hover:shadow-[var(--shadow-e2)]">
+    <article className="group rounded-2xl border border-line bg-paper p-5 shadow-[var(--shadow-e1)] transition-all duration-200 hover:-translate-y-[2px] hover:border-fuchsia-soft hover:shadow-[var(--shadow-e2)]">
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* PRIMARY: opportunity score chip + the big money figure */}
         <div className="flex flex-wrap items-center gap-3">
@@ -77,16 +77,21 @@ export function BountyCard({
         </span>
       </div>
 
-      <div className="mt-3 flex items-start gap-3">
+      <div className="mt-3 flex items-start gap-3.5">
         {bounty.thumbnail && (
-          <img
-            src={bounty.thumbnail}
-            alt=""
-            loading="lazy"
-            className="h-12 w-12 shrink-0 rounded-lg border border-line object-cover"
-          />
+          // Fixed-dimension frame so a hovered card never reflows its
+          // neighbours. Image scale + brightness/saturation lift on the
+          // article's group-hover live inside the overflow-hidden box.
+          <div className="h-24 w-24 shrink-0 overflow-hidden rounded-lg border border-line bg-paper-warm/40">
+            <img
+              src={bounty.thumbnail}
+              alt=""
+              loading="lazy"
+              className="h-full w-full object-cover transition duration-200 ease-out group-hover:scale-[1.02] group-hover:brightness-110 group-hover:saturate-[1.1]"
+            />
+          </div>
         )}
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h3 className="font-display text-[18px] font-semibold leading-tight tracking-[-0.015em] text-ink">
             {bounty.title}
           </h3>

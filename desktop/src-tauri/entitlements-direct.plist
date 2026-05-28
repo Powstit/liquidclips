@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Hardened-runtime entitlements for DIRECT DISTRIBUTION via Developer ID.
+       NOT to be used for Mac App Store builds — MAS requires sandbox entitlements
+       (com.apple.security.app-sandbox) and a separate provisioning profile; see
+       scoping report in this thread's history for the MAS migration plan.
+
+       Notarization requires hardened runtime, which by default blocks JIT,
+       unsigned-memory execution, and loading unsigned dylibs. Junior needs
+       relaxed flags in those areas because of the Python sidecar (numpy/torch
+       JIT compilation, faster-whisper's CTranslate2 backend, etc.) and the
+       WebView's V8 JIT. -->
+
+  <!-- WebView needs JIT for V8 + WebAssembly. Tauri's bundled WKWebView
+       inherits the system rules, but enabling explicitly is safer + faster. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+
+  <!-- Python's numpy/torch/faster-whisper-CTranslate2 stack compiles small
+       optimized routines at runtime into unsigned memory pages. Without this,
+       transcription would crash on first model load under hardened runtime. -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+
+  <!-- The Python sidecar dynamically loads dylibs from site-packages
+       (whisper.cpython-*.so, cv2.cpython-*.so, etc.) which are not signed by
+       our Team. Library validation would block them otherwise. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+
+  <!-- yt-dlp + some Python deps read DYLD_* environment variables for plugin
+       resolution; needed at sidecar startup. -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+</dict>
+</plist>

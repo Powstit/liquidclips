@@ -57,7 +57,11 @@
     ],
     "category": "Productivity",
     "shortDescription": "Your AI editor. Lives on your computer.",
-    "longDescription": "Junior turns long-form recordings into ready-to-post short clips. Local-first processing, scheduled posting, your files stay on your machine."
+    "longDescription": "Junior turns long-form recordings into ready-to-post short clips. Local-first processing, scheduled posting, your files stay on your machine.",
+    "macOS": {
+      "entitlements": "./entitlements-direct.plist",
+      "minimumSystemVersion": "11.0"
+    }
   },
   "plugins": {
     "updater": {

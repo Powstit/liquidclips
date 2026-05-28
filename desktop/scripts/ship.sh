@@ -136,32 +136,30 @@ step "Running scripts/release.sh (tauri build + sign + upload — ~7 min)"
 ./scripts/release.sh
 
 # ── verify the manifest actually serves the new version ─────────────────
-step "Verifying $BASE/updates/latest.json"
+# Universal builds are uploaded under BOTH darwin-x86_64 and darwin-aarch64
+# (release.sh fan-outs the same artifact to both target slots). Verify both
+# so a half-failed upload doesn't slip through.
+step "Verifying $BASE/updates/latest.json (both arches)"
 
-HOST_TRIPLE="$(rustc -vV | awk -F': ' '/host:/ {print $2}')"
-case "$HOST_TRIPLE" in
-  aarch64-apple-darwin) TARGET="darwin-aarch64" ;;
-  x86_64-apple-darwin)  TARGET="darwin-x86_64" ;;
-  *) TARGET="$HOST_TRIPLE" ;;
-esac
+for TARGET in darwin-x86_64 darwin-aarch64; do
+  # Hit the manifest with current_version=0.0.0 so we always get a body back
+  # (the endpoint returns 204 when current_version == manifest version).
+  MANIFEST_URL="$BASE/updates/latest.json?target=$TARGET&current_version=0.0.0"
+  RESPONSE="$(curl -sS --max-time 15 "$MANIFEST_URL")"
+  if [ -z "$RESPONSE" ]; then
+    fail "manifest endpoint returned empty body for $TARGET — backend may be cold or down"
+  fi
 
-# Hit the manifest with current_version=0.0.0 so we always get a body back
-# (the endpoint returns 204 when current_version == manifest version).
-MANIFEST_URL="$BASE/updates/latest.json?target=$TARGET&current_version=0.0.0"
-RESPONSE="$(curl -sS --max-time 15 "$MANIFEST_URL")"
-if [ -z "$RESPONSE" ]; then
-  fail "manifest endpoint returned empty body — backend may be cold or down"
-fi
-
-REPORTED_VERSION="$(echo "$RESPONSE" | jq -r '.version // empty')"
-if [ -z "$REPORTED_VERSION" ]; then
-  echo "$RESPONSE" | head -20 >&2
-  fail "manifest didn't parse as JSON / missing .version"
-fi
-if [ "$REPORTED_VERSION" != "$VERSION" ]; then
-  fail "manifest reports $REPORTED_VERSION, expected $VERSION — upload didn't land"
-fi
-ok "manifest live: $VERSION for $TARGET"
+  REPORTED_VERSION="$(echo "$RESPONSE" | jq -r '.version // empty')"
+  if [ -z "$REPORTED_VERSION" ]; then
+    echo "$RESPONSE" | head -20 >&2
+    fail "manifest didn't parse as JSON / missing .version for $TARGET"
+  fi
+  if [ "$REPORTED_VERSION" != "$VERSION" ]; then
+    fail "manifest reports $REPORTED_VERSION for $TARGET, expected $VERSION — upload didn't land"
+  fi
+  ok "manifest live: $VERSION for $TARGET"
+done
 
 # ── push to origin so the commit + version bump are durable ─────────────
 # Push is best-effort: the ship has already landed on the live manifest
