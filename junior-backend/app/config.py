@@ -42,21 +42,24 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
 
-    # Resend — transactional onboarding email. Free dev tier is 100/day; pro
-    # tier kicks in when we wire billing properly. Domain jnremployee.com is
-    # verified in Resend already; the from address must be on a verified domain.
+    # Resend — transactional onboarding email. Friendly name says "Liquid Clips"
+    # (what recipients see). Actual sending domain stays on the Resend-verified
+    # `jnremployee.com` until DNS records add `liquidclips.app` to Resend
+    # (verified domains: GET https://api.resend.com/domains). Switching the
+    # domain alone breaks delivery — Resend silently drops sends from
+    # unverified senders.
     resend_api_key: str = ""
-    resend_from: str = "Junior <hello@jnremployee.com>"
+    resend_from: str = "Liquid Clips <hello@jnremployee.com>"
     resend_reply_to: str = "danieldiyepriye@gmail.com"
 
     # Public site URL — used inside email templates for absolute links to
     # /privacy /terms /unsubscribe etc. so creators can verify the brand in
     # any mail client.
-    public_site_url: str = "https://jnremployee.com"
+    public_site_url: str = "https://liquidclips.app"
     account_site_url: str = "https://account.jnremployee.com"
-    app_download_url: str = "https://jnremployee.com/download"
+    app_download_url: str = "https://liquidclips.app/download"
     whop_manage_url: str = "https://whop.com/jnremployee"
-    whop_partner_dashboard_url: str = "https://partner.jnremployee.com"
+    whop_partner_dashboard_url: str = "https://partner.liquidclips.app"
     whop_payouts_url: str = "https://whop.com/dashboard/payouts"
     stripe_connect_onboarding_url: str = "https://account.jnremployee.com/dashboard#payouts"
 

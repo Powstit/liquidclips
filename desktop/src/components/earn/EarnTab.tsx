@@ -356,11 +356,8 @@ export function EarnTab({
       <div className="mt-6 flex flex-col gap-4">
         {subTab === "available" && (
           <>
-            {/* SPIKE 2026-05-28: Browse Rewards in-app side panel feasibility.
-                Gated behind BROWSE_PANEL_ENABLED (default OFF) so 0.4.34 ships
-                clean for App Store review. Local dev: set VITE_BROWSE_PANEL=1
-                in .env.local. Flesh out for 0.4.35 with browser chrome, URL
-                filter for commerce paths, bounty auto-fill. */}
+            {/* Browse Rewards side panel. BROWSE_PANEL_ENABLED now defaults on;
+                set VITE_BROWSE_PANEL=0 only for one-off QA builds. */}
             {BROWSE_PANEL_ENABLED && <BrowsePanelToggle />}
             <AffiliateHero onSignIn={onSignIn} />
             <EarnMoneyCockpit

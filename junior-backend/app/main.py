@@ -77,9 +77,9 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="Junior Backend",
+    title="Liquid Clips Backend",
     version="0.1.0",
-    description="License issuance, tier resolution, webhook reconciliation for Junior.",
+    description="License issuance, tier resolution, webhook reconciliation for Liquid Clips.",
     lifespan=lifespan,
 )
 
