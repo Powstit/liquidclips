@@ -173,7 +173,7 @@ def _handle_user_created(db: Session, data: dict) -> None:
         db,
         user_id=user.id,
         category="junior_message",
-        title="Junior's ready.",
+        title="Liquid Clips is ready.",
         body=(
             "Drop a recording in and I'll cut it. 100 free clip exports to start, your keys, "
             "your files. When you outgrow it, upgrading is one click."

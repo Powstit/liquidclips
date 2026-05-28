@@ -337,7 +337,7 @@ def _handle_membership_valid(db: Session, data: dict) -> None:
             user_id=user.id,
             category="founder",
             title=f"Welcome, founder seat #{_seat_count(db)}.",
-            body="Channel tier locked for you forever. Junior's yours from day one of every sprint.",
+            body="Channel tier locked for you forever. Liquid Clips is yours from day one of every sprint.",
             priority="high",
             external_dedup_key=f"whop-founder-{event_id}" if event_id else None,
         )
@@ -545,7 +545,7 @@ def _fire_affiliate_lifecycle_emails(db: Session, *, buyer_affiliate_id: str) ->
             user_id=referrer.id,
             category="affiliate",
             title="First paid referral landed.",
-            body="Someone you referred just converted to a paid Junior plan. Commission is live on Whop's cycle.",
+            body="Someone you referred just converted to a paid Liquid Clips plan. Commission is live on Whop's cycle.",
             priority="medium",
             external_dedup_key=f"first-paid-referral-{referrer.id}",
         )

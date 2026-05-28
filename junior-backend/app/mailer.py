@@ -125,7 +125,7 @@ def send_founder_welcome(email: str, *, first_name: str | None = None) -> None:
 
 def send_license_activated(email: str, *, machine_label: str | None = None, first_name: str | None = None) -> None:
     """Sent first time a desktop binary calls /desktop/connect for a user.
-    A privacy/security signal more than a marketing one — 'we noticed Junior
+    A privacy/security signal more than a marketing one — 'we noticed Liquid Clips
     started on Mac Air, was that you?'"""
     ctx = MailContext.build()
     subject, html, text = render_license_activated(
@@ -146,7 +146,7 @@ def send_bounty_approved(email: str, *, bounty_title: str, payout: str, first_na
 
 
 def send_affiliate_qualified(email: str, *, first_name: str | None = None) -> None:
-    """Sent ONCE to a Junior affiliate the first time they cross the 2-paid-
+    """Sent ONCE to a Liquid Clips affiliate the first time they cross the 2-paid-
     referrals qualification threshold. Caller deduplicates via Notification's
     `external_dedup_key` so a webhook retry can't re-send it. Never fired by
     a dashboard read — the trigger lives in the paid-conversion webhook."""
@@ -156,7 +156,7 @@ def send_affiliate_qualified(email: str, *, first_name: str | None = None) -> No
 
 
 def send_first_paid_referral(email: str, *, first_name: str | None = None) -> None:
-    """Sent ONCE to a Junior affiliate the first time one of their referrals
+    """Sent ONCE to a Liquid Clips affiliate the first time one of their referrals
     converts to a paid plan. Dedupe lives on the caller side (Notification
     row with a per-affiliate dedup_key). Deliberately carries NO PII about
     the buyer — just the affiliate's own count."""
@@ -175,15 +175,15 @@ def send_whop_claim_link(email: str, *, claim_url: str, first_name: str | None =
 
 
 def render_whop_claim(*, email: str, claim_url: str, first_name: str | None, ctx: MailContext) -> tuple[str, str, str]:
-    subject = "Claim your Junior purchase"
+    subject = "Claim your Liquid Clips purchase"
     body = f"""
 <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">secure claim · expires in 20 min</p>
 <h1 style="font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
-  Link your Whop purchase to Junior.
+  Link your Whop purchase to Liquid Clips.
 </h1>
 <p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
-  Someone asked to attach a Junior purchase made with <strong style="color:{INK};">this email</strong> to a Junior account that signed up with a different address. If that was you, confirm below — the link works once and expires in 20 minutes.
+  Someone asked to attach a Liquid Clips purchase made with <strong style="color:{INK};">this email</strong> to a Liquid Clips account that signed up with a different address. If that was you, confirm below — the link works once and expires in 20 minutes.
 </p>
 <p style="margin:0 0 16px;">{_btn("Claim my purchase →", claim_url)}</p>
 <p style="font-size:13px;line-height:1.6;color:{TEXT_TERTIARY};margin:18px 0 0;">
@@ -191,11 +191,11 @@ def render_whop_claim(*, email: str, claim_url: str, first_name: str | None, ctx
 </p>
 """
     text = (
-        f"Claim your Junior purchase\n\n{_greeting(first_name)}\n\n"
-        "Someone asked to attach a Junior purchase made with this email to a Junior account "
+        f"Claim your Liquid Clips purchase\n\n{_greeting(first_name)}\n\n"
+        "Someone asked to attach a Liquid Clips purchase made with this email to a Liquid Clips account "
         "that signed up with a different address. If that was you, confirm here:\n\n"
         f"{claim_url}\n\n"
-        "This link works once and expires in 20 minutes. If you didn't request it, ignore this email.\n— Junior"
+        "This link works once and expires in 20 minutes. If you didn't request it, ignore this email.\n— Liquid Clips"
     )
     return subject, _shell(subject, body, ctx=ctx), text
 
@@ -214,7 +214,7 @@ TEXT_TERTIARY = "#8A8590"
 
 
 def _shell(title: str, body_html: str, *, ctx: MailContext) -> str:
-    """Wrap a content fragment in the Junior email chrome — brand mark at
+    """Wrap a content fragment in the Liquid Clips email chrome — brand mark at
     top, content card, footer with legal links. Inline styles only."""
     return f"""<!DOCTYPE html>
 <html><head>
@@ -229,7 +229,7 @@ def _shell(title: str, body_html: str, *, ctx: MailContext) -> str:
           <table role="presentation" cellpadding="0" cellspacing="0" border="0">
             <tr>
               <td style="background:{FUCHSIA};color:{PAPER};font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-weight:700;font-size:18px;line-height:1;text-align:center;width:36px;height:36px;border-radius:8px;">/</td>
-              <td style="padding-left:12px;font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:{TEXT_TERTIARY};">junior</td>
+              <td style="padding-left:12px;font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:{TEXT_TERTIARY};">liquid/clips</td>
             </tr>
           </table>
         </td></tr>
@@ -239,7 +239,7 @@ def _shell(title: str, body_html: str, *, ctx: MailContext) -> str:
       </table>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;margin-top:18px;">
         <tr><td align="center" style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:{TEXT_TERTIARY};line-height:1.6;">
-          <a href="{ctx.site_url}" style="color:{TEXT_TERTIARY};text-decoration:none;">jnremployee.com</a>
+          <a href="{ctx.site_url}" style="color:{TEXT_TERTIARY};text-decoration:none;">liquidclips.app</a>
           &nbsp;·&nbsp;
           <a href="{ctx.site_url}/privacy" style="color:{TEXT_TERTIARY};text-decoration:none;">privacy</a>
           &nbsp;·&nbsp;
@@ -267,14 +267,14 @@ def _btn(label: str, url: str) -> str:
 
 
 def render_welcome(*, email: str, first_name: str | None, ctx: MailContext) -> tuple[str, str, str]:
-    subject = "Welcome to Junior."
+    subject = "Welcome to Liquid Clips."
     body = f"""
 <h1 style="font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 12px;color:{INK};">
-  Welcome to Junior.
+  Welcome to Liquid Clips.
 </h1>
 <p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
-  Junior turns long videos into ready-to-post shorts — local-first, your files never leave your machine unless you publish them. You're set up with <strong style="color:{INK};">100 free clip exports</strong> to start.
+  Liquid Clips turns long videos into ready-to-post shorts — local-first, your files never leave your machine unless you publish them. You're set up with <strong style="color:{INK};">100 free clip exports</strong> to start.
 </p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
   Two next steps that take about 90 seconds combined:
@@ -283,28 +283,28 @@ def render_welcome(*, email: str, first_name: str | None, ctx: MailContext) -> t
   <li><strong>Download the desktop app</strong> — drag a video in, get back clips with captions, thumbnails, and titles.</li>
   <li><strong>Open the Earn tab</strong> from inside your Whop community to see live Content Rewards bounties you can clip for.</li>
 </ol>
-<p style="margin:0 0 16px;">{_btn("Download Junior →", ctx.download_url)}</p>
+<p style="margin:0 0 16px;">{_btn("Download Liquid Clips →", ctx.download_url)}</p>
 <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
   100 free clip exports · cancel anytime · your files stay on your machine
 </p>
 """
     text = (
-        f"Welcome to Junior.\n\n{_greeting(first_name)}\n\n"
-        "Junior turns long videos into ready-to-post shorts — local-first, "
+        f"Welcome to Liquid Clips.\n\n{_greeting(first_name)}\n\n"
+        "Liquid Clips turns long videos into ready-to-post shorts — local-first, "
         "your files never leave your machine unless you publish them. "
         "You're set up with 100 free clip exports to start.\n\n"
-        f"1. Download Junior after signing into your account: {ctx.download_url}\n"
+        f"1. Download Liquid Clips after signing into your account: {ctx.download_url}\n"
         "2. Open the Earn tab inside your Whop community for live Content Rewards bounties.\n\n"
         "Reply to this email to reach us directly.\n"
-        "— Junior"
+        "— Liquid Clips"
     )
-    return subject, _shell("Welcome to Junior", body, ctx=ctx), text
+    return subject, _shell("Welcome to Liquid Clips", body, ctx=ctx), text
 
 
 def render_subscription_activated(*, email: str, tier: str, first_name: str | None, ctx: MailContext, trial: bool = False) -> tuple[str, str, str]:
     pretty = {"solo": "Solo", "growth": "Growth", "autopilot": "Autopilot"}.get(tier, tier.capitalize())
     if trial:
-        # Affiliate / Whop-trial starter pass — NOT yet a paid Solo. Junior caps
+        # Affiliate / Whop-trial starter pass — NOT yet a paid Solo. Liquid Clips caps
         # at 100 successful exports; Whop bills $29.99 after the 30-day trial.
         subject = "Your 100 free clip exports are ready."
         body = f"""
@@ -317,12 +317,12 @@ def render_subscription_activated(*, email: str, tier: str, first_name: str | No
   You're in — <strong style="color:{INK};">$0 today</strong>. Your Solo plan starts after 30 days, unless you cancel.
 </p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
-  Use your <strong style="color:{INK};">100 free clip exports</strong> however you like. If you use all 100 free exports first, Junior will ask you to continue on Solo before exporting more.
+  Use your <strong style="color:{INK};">100 free clip exports</strong> however you like. If you use all 100 free exports first, Liquid Clips will ask you to continue on Solo before exporting more.
 </p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
-  Download Junior after signing into your account, then drop in a video and start exporting.
+  Download Liquid Clips after signing into your account, then drop in a video and start exporting.
 </p>
-<p style="margin:0 0 16px;">{_btn("Download Junior →", ctx.download_url)}</p>
+<p style="margin:0 0 16px;">{_btn("Download Liquid Clips →", ctx.download_url)}</p>
 <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
   $0 today · Solo $29.99/mo after 30 days unless you cancel · cancel any time
 </p>
@@ -331,9 +331,9 @@ def render_subscription_activated(*, email: str, tier: str, first_name: str | No
             f"Your 100 free clip exports are ready.\n\n{_greeting(first_name)}\n\n"
             "You're in — $0 today. Your Solo plan starts after 30 days, unless you cancel.\n\n"
             "Use your 100 free clip exports however you like. If you use all 100 free exports "
-            "first, Junior will ask you to continue on Solo before exporting more.\n\n"
-            f"Download Junior after signing into your account: {ctx.download_url}\n\n"
-            "Reply to this email to reach us directly.\n— Junior"
+            "first, Liquid Clips will ask you to continue on Solo before exporting more.\n\n"
+            f"Download Liquid Clips after signing into your account: {ctx.download_url}\n\n"
+            "Reply to this email to reach us directly.\n— Liquid Clips"
         )
         return subject, _shell(subject, body, ctx=ctx), text
     pitch = {
@@ -341,18 +341,18 @@ def render_subscription_activated(*, email: str, tier: str, first_name: str | No
         "growth": "Hosted transcribe + LLM, four platform connections, multi-platform publish + schedule.",
         "autopilot": "Drip-mode across every platform, unlimited connections, project memory, founder community.",
     }.get(tier, "Your new plan is active.")
-    subject = f"Junior {pretty} is live."
+    subject = f"Liquid Clips {pretty} is live."
     body = f"""
 <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">subscription active</p>
 <h1 style="font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
-  Junior {pretty} is live.
+  Liquid Clips {pretty} is live.
 </h1>
 <p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
   {pitch}
 </p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
-  Open Junior on your machine — it'll pick up your new plan on next launch (or hit Sync in Settings to flip immediately).
+  Open Liquid Clips on your machine — it'll pick up your new plan on next launch (or hit Sync in Settings to flip immediately).
 </p>
 <p style="margin:0 0 16px;">{_btn("Open dashboard →", f"{ctx.account_url}/dashboard")}</p>
 <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
@@ -360,12 +360,12 @@ def render_subscription_activated(*, email: str, tier: str, first_name: str | No
 </p>
 """
     text = (
-        f"Junior {pretty} is live.\n\n{_greeting(first_name)}\n\n"
+        f"Liquid Clips {pretty} is live.\n\n{_greeting(first_name)}\n\n"
         f"{pitch}\n\n"
-        "Open Junior to pick up the new plan automatically, or click Sync in Settings.\n"
+        "Open Liquid Clips to pick up the new plan automatically, or click Sync in Settings.\n"
         f"Dashboard: {ctx.account_url}/dashboard\n\n"
         "Reply to this email to reach us directly.\n"
-        "— Junior"
+        "— Liquid Clips"
     )
     return subject, _shell(subject, body, ctx=ctx), text
 
@@ -378,7 +378,7 @@ def render_subscription_canceled(*, email: str, paid_until_iso: str | None, firs
             nice_date = datetime.fromisoformat(paid_until_iso.replace("Z", "+00:00")).strftime("%-d %b %Y")
         except Exception:
             nice_date = ""
-    subject = "Junior — your plan is set to end."
+    subject = "Liquid Clips — your plan is set to end."
     until_line = (
         f"You keep full access until <strong style=\"color:{INK};\">{nice_date}</strong>."
         if nice_date else
@@ -391,7 +391,7 @@ def render_subscription_canceled(*, email: str, paid_until_iso: str | None, firs
 </h1>
 <p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
-  Your Junior subscription has been canceled and won't renew. {until_line} After that you'll drop to the Free plan — your projects on disk stay put.
+  Your Liquid Clips subscription has been canceled and won't renew. {until_line} After that you'll drop to the Free plan — your projects on disk stay put.
 </p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
   If something specifically didn't work, reply to this email — it goes straight to us and we read every one.
@@ -400,11 +400,11 @@ def render_subscription_canceled(*, email: str, paid_until_iso: str | None, firs
 """
     text = (
         f"Sorry to see you go.\n\n{_greeting(first_name)}\n\n"
-        "Your Junior subscription has been canceled and won't renew. "
+        "Your Liquid Clips subscription has been canceled and won't renew. "
         + (f"You keep full access until {nice_date}. " if nice_date else "You keep full access until the end of your current billing period. ")
         + "After that you'll drop to Free.\n\n"
         "If something didn't work, reply to this email — we read every one.\n"
-        f"Reactivate: {ctx.account_url}/upgrade\n\n— Junior"
+        f"Reactivate: {ctx.account_url}/upgrade\n\n— Liquid Clips"
     )
     return subject, _shell(subject, body, ctx=ctx), text
 
@@ -423,7 +423,7 @@ def render_founder_welcome(*, email: str, first_name: str | None, ctx: MailConte
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
   We'll send you the Slack invite within 24 hours. In the meantime, the app is yours — download it, drop a video, and let me know what's worth shipping next.
 </p>
-<p style="margin:0 0 16px;">{_btn("Download Junior →", ctx.download_url)}</p>
+<p style="margin:0 0 16px;">{_btn("Download Liquid Clips →", ctx.download_url)}</p>
 <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
   thank you. — daniel
 </p>
@@ -440,7 +440,7 @@ def render_founder_welcome(*, email: str, first_name: str | None, ctx: MailConte
 
 
 def render_license_activated(*, email: str, machine_label: str | None, first_name: str | None, ctx: MailContext) -> tuple[str, str, str]:
-    subject = "Junior just activated on a new machine."
+    subject = "Liquid Clips just activated on a new machine."
     # Plain label for the headline (no HTML), bold-styled inline string for the body.
     machine_plain = machine_label or "a new machine"
     machine_inline = (
@@ -451,7 +451,7 @@ def render_license_activated(*, email: str, machine_label: str | None, first_nam
     body = f"""
 <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{TEXT_TERTIARY};margin:0 0 8px;">activation confirmed</p>
 <h1 style="font-family:'Fraunces',Georgia,serif;font-size:26px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
-  Junior activated on {machine_plain}.
+  Liquid Clips activated on {machine_plain}.
 </h1>
 <p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
@@ -460,10 +460,10 @@ def render_license_activated(*, email: str, machine_label: str | None, first_nam
 <p style="margin:0 0 16px;">{_btn("Open dashboard →", f"{ctx.account_url}/dashboard")}</p>
 """
     text = (
-        f"Junior activated on {machine_label or 'a new machine'}.\n\n{_greeting(first_name)}\n\n"
+        f"Liquid Clips activated on {machine_label or 'a new machine'}.\n\n{_greeting(first_name)}\n\n"
         "We just issued a license JWT to this machine. If that was you, ignore. "
         "If not, sign out from every device on your dashboard.\n"
-        f"Dashboard: {ctx.account_url}/dashboard\n\n— Junior"
+        f"Dashboard: {ctx.account_url}/dashboard\n\n— Liquid Clips"
     )
     return subject, _shell(subject, body, ctx=ctx), text
 
@@ -471,11 +471,11 @@ def render_license_activated(*, email: str, machine_label: str | None, first_nam
 def render_affiliate_qualified(*, email: str, first_name: str | None, ctx: MailContext) -> tuple[str, str, str]:
     # Deliberately carries no count of buyers, no buyer emails, no PII beyond
     # the affiliate's own context. Whop owns the source of truth for payouts.
-    subject = "You unlocked Junior referrals."
+    subject = "You unlocked Liquid Clips referrals."
     body = f"""
 <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">referrals · 50% recurring active</p>
 <h1 style="font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
-  You unlocked Junior referrals.
+  You unlocked Liquid Clips referrals.
 </h1>
 <p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
@@ -490,11 +490,11 @@ def render_affiliate_qualified(*, email: str, first_name: str | None, ctx: MailC
 </p>
 """
     text = (
-        f"You unlocked Junior referrals.\n\n{_greeting(first_name)}\n\n"
+        f"You unlocked Liquid Clips referrals.\n\n{_greeting(first_name)}\n\n"
         "Two paid referrals confirmed — 50% recurring is active on every customer you refer "
         "from here. Lifetime commission, not just first month.\n\n"
         f"Earn dashboard: {ctx.account_url}/dashboard\n\n"
-        "Payouts via Whop. Reply to this email any time.\n— Junior"
+        "Payouts via Whop. Reply to this email any time.\n— Liquid Clips"
     )
     return subject, _shell(subject, body, ctx=ctx), text
 
@@ -502,7 +502,7 @@ def render_affiliate_qualified(*, email: str, first_name: str | None, ctx: MailC
 def render_first_paid_referral(*, email: str, first_name: str | None, ctx: MailContext) -> tuple[str, str, str]:
     # Deliberately carries no buyer email, no platform handle, no transcript or
     # caption fragment. The affiliate sees their own dashboard for the count.
-    subject = "Your first paid Junior referral landed."
+    subject = "Your first paid Liquid Clips referral landed."
     body = f"""
 <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">first paid referral</p>
 <h1 style="font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
@@ -510,7 +510,7 @@ def render_first_paid_referral(*, email: str, first_name: str | None, ctx: MailC
 </h1>
 <p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
-  Someone you referred just converted to a paid Junior plan. Commission is live on Whop's payout cycle from here.
+  Someone you referred just converted to a paid Liquid Clips plan. Commission is live on Whop's payout cycle from here.
 </p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
   One more paid referral unlocks the <strong style="color:{INK};">50% recurring</strong> rate on every customer you refer — lifetime, not just first month.
@@ -522,11 +522,11 @@ def render_first_paid_referral(*, email: str, first_name: str | None, ctx: MailC
 """
     text = (
         f"First paid referral landed.\n\n{_greeting(first_name)}\n\n"
-        "Someone you referred just converted to a paid Junior plan. "
+        "Someone you referred just converted to a paid Liquid Clips plan. "
         "Commission is live on Whop's payout cycle.\n\n"
         "One more paid referral unlocks the 50% recurring rate — lifetime, not just first month.\n\n"
         f"Earn dashboard: {ctx.account_url}/dashboard\n\n"
-        "Payouts via Whop. Reply to this email any time.\n— Junior"
+        "Payouts via Whop. Reply to this email any time.\n— Liquid Clips"
     )
     return subject, _shell(subject, body, ctx=ctx), text
 
@@ -546,14 +546,14 @@ def render_bounty_approved(*, email: str, bounty_title: str, payout: str, first_
   Your reward clip for <strong style="color:{INK};">{bounty_title}</strong> passed Whop's review. Payouts flow through Whop's rails on their cycle — track it on your Whop dashboard.
 </p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
-  Junior's Earn tab now shows this in the Approved column. Want to claim another Content Reward? Open the tab and pick the highest fit-score one matching your platforms.
+  Liquid Clips's Earn tab now shows this in the Approved column. Want to claim another Content Reward? Open the tab and pick the highest fit-score one matching your platforms.
 </p>
-<p style="margin:0 0 16px;">{_btn("Open Junior · Earn →", f"{ctx.download_url}")}</p>
+<p style="margin:0 0 16px;">{_btn("Open Liquid Clips · Earn →", f"{ctx.download_url}")}</p>
 """
     text = (
         f"Reward clip approved · est. {payout}.\n\n{_greeting(first_name)}\n\n"
         f"Your reward clip for {bounty_title} passed Whop's review. "
         "Payouts flow through Whop on their cycle.\n\n"
-        f"Open Junior · Earn: {ctx.download_url}\n\n— Junior"
+        f"Open Liquid Clips · Earn: {ctx.download_url}\n\n— Liquid Clips"
     )
     return subject, _shell(subject, body, ctx=ctx), text
