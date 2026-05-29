@@ -80,14 +80,21 @@ pub fn run() {
             })?;
             app.manage(state);
 
-            // Browse Rewards panel: keep the child webview pinned to the
-            // right edge when the main window resizes. No-op when the panel
-            // isn't open. Registered once here so we never stack listeners.
+            // Browse Rewards is an in-window native child webview pinned to
+            // the right edge. Keep it attached as the main window moves,
+            // resizes, or changes scale factor across displays.
             if let Some(main) = app.get_window("main") {
                 let panel_app_handle = app.handle().clone();
                 main.on_window_event(move |event| {
-                    if matches!(event, tauri::WindowEvent::Resized(_)) {
-                        browse::reposition_panel(&panel_app_handle);
+                    use tauri::WindowEvent;
+                    match event {
+                        WindowEvent::Resized(_)
+                        | WindowEvent::Moved(_)
+                        | WindowEvent::ScaleFactorChanged { .. }
+                        | WindowEvent::Focused(true) => {
+                            browse::reposition_panel(&panel_app_handle);
+                        }
+                        _ => {}
                     }
                 });
             }
