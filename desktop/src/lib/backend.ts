@@ -615,6 +615,12 @@ export type AffiliateCustomer = {
   paid_until: string | null;
   whop_connected: boolean;
   referrer_affiliate_id: string | null;
+  // Optional — backend may add the customer's display name + avatar URL
+  // (Clerk image_url for Stripe customers, Whop profile_picture for Whop).
+  // GIF avatars supported natively via <img>. Until backend exposes these,
+  // the UI shows initials derived from `name` or `•` if both are absent.
+  name?: string | null;
+  image_url?: string | null;
 };
 
 export type PaymentRoute = {

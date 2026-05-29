@@ -46,9 +46,12 @@ const REL_FILE = "submissions.json";
 // ---------- file IO --------------------------------------------------------
 
 async function ensureAppDataDir(): Promise<void> {
-  const dirExists = await exists("", { baseDir: BaseDirectory.AppData });
-  if (!dirExists) {
+  // Mirror briefs.ts — mkdir+recursive is idempotent. Tolerate empty-path
+  // edge case in any Tauri version; writeTextFile will surface real failures.
+  try {
     await mkdir("", { baseDir: BaseDirectory.AppData, recursive: true });
+  } catch {
+    /* no-op — see briefs.ts ensureAppDataDir for rationale */
   }
 }
 
