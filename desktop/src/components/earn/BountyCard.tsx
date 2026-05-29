@@ -46,7 +46,7 @@ export function BountyCard({
 
   return (
     <article
-      className={`group flex flex-col gap-3 rounded-2xl border bg-paper p-4 transition-all duration-200 hover:-translate-y-[2px] ${
+      className={`group flex h-full flex-col gap-3 rounded-2xl border bg-paper p-4 transition-all duration-200 hover:-translate-y-[2px] ${
         hot
           ? "border-fuchsia/40 shadow-[var(--glow-sm)] hover:shadow-[var(--glow-md)]"
           : "border-line shadow-[var(--shadow-e1)] hover:border-fuchsia/40 hover:shadow-[var(--shadow-e2)]"

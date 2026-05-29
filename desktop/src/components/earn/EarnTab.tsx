@@ -314,10 +314,13 @@ export function EarnTab({
 
           {subTab === "available" && (
             <>
-              <div className="flex flex-col gap-1">
-                <h1 className="font-display text-[20px] font-semibold leading-tight tracking-[-0.015em] text-ink">
+              <div className="flex flex-col gap-1.5">
+                <h1 className="font-display text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink">
                   Pick a campaign. Clip. Get paid.
                 </h1>
+                <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+                  open campaigns · pulled from whop
+                </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
