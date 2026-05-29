@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Liquid Clips Sprint Board</title>
+  <style>
+    :root {
+      --ink: #0a0a0f;
+      --paper: #faf7f2;
+      --line: rgba(10, 10, 15, 0.12);
+      --muted: rgba(10, 10, 15, 0.58);
+      --fuchsia: #ff1a8c;
+      --soft: rgba(255, 26, 140, 0.12);
+      --ok: #0f8a4b;
+      --warn: #b7791f;
+      --bad: #c92a2a;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); }
+    header { position: sticky; top: 0; z-index: 10; background: rgba(250,247,242,.92); backdrop-filter: blur(18px); border-bottom: 1px solid var(--line); }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 24px; }
+    .top { display: flex; justify-content: space-between; gap: 20px; align-items: center; }
+    h1 { margin: 0; font-size: 30px; letter-spacing: -0.02em; }
+    .sub { margin-top: 8px; color: var(--muted); line-height: 1.45; }
+    .pill { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px; font-size: 13px; background: white; }
+    .grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 18px; align-items: start; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    section { background: white; border: 1px solid var(--line); border-radius: 16px; padding: 18px; box-shadow: 0 8px 28px rgba(10,10,15,.06); margin-bottom: 18px; }
+    h2 { margin: 0 0 12px; font-size: 18px; letter-spacing: -0.01em; }
+    h3 { margin: 18px 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+    .flow { display: flex; flex-wrap: wrap; gap: 8px; }
+    .node { border: 1px solid var(--line); border-radius: 999px; padding: 9px 12px; background: #fff; font-size: 13px; }
+    .node.hot { background: var(--soft); border-color: rgba(255,26,140,.35); }
+    .arrow { color: var(--muted); align-self: center; }
+    label.item { display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; padding: 10px 0; border-top: 1px solid rgba(10,10,15,.07); align-items: start; }
+    label.item:first-of-type { border-top: 0; }
+    input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--fuchsia); margin-top: 1px; }
+    .item-title { font-weight: 650; }
+    .item-note { color: var(--muted); font-size: 13px; margin-top: 3px; line-height: 1.4; }
+    .tag { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; border-radius: 999px; padding: 4px 8px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+    .tag.p0 { color: var(--bad); border-color: rgba(201,42,42,.28); background: rgba(201,42,42,.06); }
+    .tag.p1 { color: var(--warn); border-color: rgba(183,121,31,.28); background: rgba(183,121,31,.07); }
+    .tag.done { color: var(--ok); border-color: rgba(15,138,75,.28); background: rgba(15,138,75,.07); }
+    .bar { height: 10px; border-radius: 999px; background: rgba(10,10,15,.08); overflow: hidden; margin-top: 10px; }
+    .fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--fuchsia), #c70066); transition: width .2s ease; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 10px; border-top: 1px solid rgba(10,10,15,.08); vertical-align: top; }
+    th { color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: 11px; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    button { border: 1px solid var(--line); background: white; border-radius: 999px; padding: 9px 12px; cursor: pointer; font-weight: 650; }
+    button.primary { background: var(--ink); color: white; border-color: var(--ink); }
+    .small { font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap top">
+      <div>
+        <h1>Liquid Clips Sprint Board</h1>
+        <div class="sub">One visible checklist for the 0.4.34 release, reward-clipping workflow, payouts, Google Drive, and creator-demo readiness.</div>
+      </div>
+      <div>
+        <div class="pill"><strong id="count">0/0</strong> complete</div>
+        <div class="bar"><div id="fill" class="fill"></div></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section>
+      <h2>End-to-end flow</h2>
+      <div class="flow">
+        <span class="node hot">Install</span><span class="arrow">→</span>
+        <span class="node hot">Sign in</span><span class="arrow">→</span>
+        <span class="node hot">Browse Rewards</span><span class="arrow">→</span>
+        <span class="node">Save Brief</span><span class="arrow">→</span>
+        <span class="node">Import Assets</span><span class="arrow">→</span>
+        <span class="node">Generate Batch</span><span class="arrow">→</span>
+        <span class="node">Export</span><span class="arrow">→</span>
+        <span class="node">Post URL</span><span class="arrow">→</span>
+        <span class="node">Track Payout</span>
+      </div>
+      <p class="small">Hot nodes are the current 0.4.34-v2 QA focus. The rest is the next workflow pass.</p>
+    </section>
+
+    <div class="grid">
+      <div>
+        <section data-group="release">
+          <h2>Phase 0: installed app reliability</h2>
+          <label class="item"><input type="checkbox" data-id="rel-1"><div><div class="item-title">Installed app shows v0.4.34</div><div class="item-note">Header pill and Info.plist both match.</div></div><span class="tag p0">P0</span></label>
+          <label class="item"><input type="checkbox" data-id="rel-2"><div><div class="item-title">Running PID is from /Applications</div><div class="item-note">No dev bundle or stale old app is being tested.</div></div><span class="tag p0">P0</span></label>
+          <label class="item"><input type="checkbox" data-id="rel-3"><div><div class="item-title">Quit kills desktop and sidecar</div><div class="item-note">No orphan Python sidecar after Cmd+Q/local install.</div></div><span class="tag p0">P0</span></label>
+          <label class="item"><input type="checkbox" data-id="rel-4"><div><div class="item-title">local-install.sh verifies source and installed bundle</div><div class="item-note">Local QA path is reliable before any creator demo.</div></div><span class="tag done">done</span></label>
+        </section>
+
+        <section data-group="auth">
+          <h2>Phase 1: auth and activation</h2>
+          <label class="item"><input type="checkbox" data-id="auth-1"><div><div class="item-title">Sign in opens account.jnremployee.com/connect-desktop</div><div class="item-note">Browser auth is expected for Google/email.</div></div><span class="tag p0">P0</span></label>
+          <label class="item"><input type="checkbox" data-id="auth-2"><div><div class="item-title">Account app emits liquidclips://activate</div><div class="item-note">No stale junior:// activation links.</div></div><span class="tag p0">P0</span></label>
+          <label class="item"><input type="checkbox" data-id="auth-3"><div><div class="item-title">Liquid Clips receives token and unlocks</div><div class="item-note">Top nav changes to Account without restart.</div></div><span class="tag p0">P0</span></label>
+          <label class="item"><input type="checkbox" data-id="auth-4"><div><div class="item-title">No macOS App Store / no application handler error</div><div class="item-note">Scheme registration works.</div></div><span class="tag p0">P0</span></label>
+        </section>
+
+        <section data-group="browser">
+          <h2>Phase 2: Browse Rewards workbench</h2>
+          <label class="item"><input type="checkbox" data-id="br-1"><div><div class="item-title">560px right browser pane opens</div><div class="item-note">Installed build only, not dev window.</div></div><span class="tag p0">P0</span></label>
+          <label class="item"><input type="checkbox" data-id="br-2"><div><div class="item-title">Right browser scrolls independently</div><div class="item-note">Whop page scrolls from top to bottom.</div></div><span class="tag p0">P0</span></label>
+          <label class="item"><input type="checkbox" data-id="br-3"><div><div class="item-title">Left Earn workspace stays stable</div><div class="item-note">Right pane scroll does not drag the left list.</div></div><span class="tag p0">P0</span></label>
+          <label class="item"><input type="checkbox" data-id="br-4"><div><div class="item-title">URL bar accepts Whop, clipping.net, klipy.com, opus.pro</div><div class="item-note">Typed domain + Enter navigates in panel.</div></div><span class="tag p0">P0</span></label>
+          <label class="item"><input type="checkbox" data-id="br-5"><div><div class="item-title">Open brief opens inside panel</div><div class="item-note">No external browser tab for bounty cards.</div></div><span class="tag p0">P0</span></label>
+          <label class="item"><input type="checkbox" data-id="br-6"><div><div class="item-title">Resize keeps pane pinned to right edge</div><div class="item-note">Bounds recalc works after resize/move/focus.</div></div><span class="tag p0">P0</span></label>
+        </section>
+      </div>
+
+      <div>
+        <section data-group="campaign">
+          <h2>Phase 3: campaign brief v1</h2>
+          <label class="item"><input type="checkbox" data-id="camp-1"><div><div class="item-title">Save campaign URL as brief</div><div class="item-note">Manual v1 is acceptable.</div></div><span class="tag p1">next</span></label>
+          <label class="item"><input type="checkbox" data-id="camp-2"><div><div class="item-title">Brief stores payout, platforms, rules, source link</div><div class="item-note">The brief is the campaign's work order.</div></div><span class="tag p1">next</span></label>
+          <label class="item"><input type="checkbox" data-id="camp-3"><div><div class="item-title">Campaign context strip appears in Build/Clips</div><div class="item-note">Rules stay visible while generating/exporting.</div></div><span class="tag p1">next</span></label>
+        </section>
+
+        <section data-group="drive">
+          <h2>Phase 4: Google Drive import/export</h2>
+          <label class="item"><input type="checkbox" data-id="drive-1"><div><div class="item-title">Paste Drive source URL into brief</div><div class="item-note">Minimum v1: store/open the campaign asset link.</div></div><span class="tag p1">next</span></label>
+          <label class="item"><input type="checkbox" data-id="drive-2"><div><div class="item-title">Open/download Drive source assets</div><div class="item-note">Fallback can be manual browser download first.</div></div><span class="tag p1">next</span></label>
+          <label class="item"><input type="checkbox" data-id="drive-3"><div><div class="item-title">Export campaign folder locally</div><div class="item-note">`~/Liquid Clips/rewards/campaign/date/exports`.</div></div><span class="tag p0">P0</span></label>
+          <label class="item"><input type="checkbox" data-id="drive-4"><div><div class="item-title">Optional upload exports to Google Drive</div><div class="item-note">P1 automation, not required for first local demo.</div></div><span class="tag p1">later</span></label>
+        </section>
+
+        <section data-group="payout">
+          <h2>Phase 5: payouts and onboarding</h2>
+          <label class="item"><input type="checkbox" data-id="pay-1"><div><div class="item-title">Payout route card visible</div><div class="item-note">Whop rewards vs external platforms vs Stripe Connect.</div></div><span class="tag p0">P0</span></label>
+          <label class="item"><input type="checkbox" data-id="pay-2"><div><div class="item-title">Stripe Connect status states shown</div><div class="item-note">Not started, onboarding, pending, restricted, ready.</div></div><span class="tag p0">P0</span></label>
+          <label class="item"><input type="checkbox" data-id="pay-3"><div><div class="item-title">Open Express Dashboard action</div><div class="item-note">Do not build custom Stripe dashboard yet.</div></div><span class="tag p1">next</span></label>
+          <label class="item"><input type="checkbox" data-id="pay-4"><div><div class="item-title">Submission tracker records post URL and payout estimate</div><div class="item-note">Manual v1 before social APIs.</div></div><span class="tag p1">next</span></label>
+        </section>
+
+        <section data-group="creator">
+          <h2>Phase 6: creator-demo readiness</h2>
+          <label class="item"><input type="checkbox" data-id="creator-1"><div><div class="item-title">Demo script uses honest language</div><div class="item-note">No guarantees, no full automation claims.</div></div><span class="tag p0">P0</span></label>
+          <label class="item"><input type="checkbox" data-id="creator-2"><div><div class="item-title">Uncle Daniel video topics selected</div><div class="item-note">Use the 60-topic doc as source.</div></div><span class="tag p1">next</span></label>
+          <label class="item"><input type="checkbox" data-id="creator-3"><div><div class="item-title">Landing page matches reward-clipping voice</div><div class="item-note">Campaign command center, not generic AI editor.</div></div><span class="tag p1">next</span></label>
+        </section>
+      </div>
+    </div>
+
+    <section>
+      <h2>Release decision table</h2>
+      <table>
+        <thead><tr><th>Decision</th><th>Allowed when</th><th>Blocked by</th></tr></thead>
+        <tbody>
+          <tr><td>Daniel local QA</td><td>Installed app shows v0.4.34 and no stale PIDs</td><td>Build/install uncertainty</td></tr>
+          <tr><td>Creator demo</td><td>Auth + Browse Rewards + local export smoke test pass</td><td>Broken browser pane or unclear demo language</td></tr>
+          <tr><td>Public paid user push</td><td>Campaign brief + export + payout route clarity pass</td><td>Missing money loop</td></tr>
+          <tr><td>Production manifest update</td><td>Signed/notarized build passes local QA</td><td>Unverified 0.4.34 build</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Board controls</h2>
+      <div class="actions">
+        <button class="primary" id="copy">Copy current status</button>
+        <button id="reset">Reset checkboxes</button>
+      </div>
+      <p class="small">Checkboxes save in this browser with localStorage.</p>
+    </section>
+  </main>
+
+  <script>
+    const boxes = Array.from(document.querySelectorAll('input[type="checkbox"][data-id]'));
+    const key = 'liquid-clips-sprint-board-v1';
+    const saved = JSON.parse(localStorage.getItem(key) || '{}');
+    boxes.forEach(box => { box.checked = Boolean(saved[box.dataset.id]); });
+
+    function update() {
+      const state = {};
+      boxes.forEach(box => { state[box.dataset.id] = box.checked; });
+      localStorage.setItem(key, JSON.stringify(state));
+      const done = boxes.filter(b => b.checked).length;
+      document.getElementById('count').textContent = done + '/' + boxes.length;
+      document.getElementById('fill').style.width = Math.round((done / boxes.length) * 100) + '%';
+    }
+
+    boxes.forEach(box => box.addEventListener('change', update));
+    update();
+
+    document.getElementById('reset').addEventListener('click', () => {
+      if (!confirm('Reset all sprint board checkboxes?')) return;
+      boxes.forEach(box => { box.checked = false; });
+      update();
+    });
+
+    document.getElementById('copy').addEventListener('click', async () => {
+      const lines = boxes.map(box => {
+        const item = box.closest('.item');
+        const title = item.querySelector('.item-title').textContent.trim();
+        return `${box.checked ? '[x]' : '[ ]'} ${title}`;
+      });
+      await navigator.clipboard.writeText(lines.join('\n'));
+      alert('Copied sprint status.');
+    });
+  </script>
+</body>
+</html>
