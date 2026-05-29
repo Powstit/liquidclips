@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { sidecar, type WhopBounty, type WhopSubmission, type BountyContext, type BountyProjectSummary } from "../../lib/sidecar";
 import { useActivation } from "../../lib/activation";
 import { inWhopIframe } from "../../lib/whop-iframe";
@@ -10,17 +9,13 @@ import { BountyFilters } from "./BountyFilters";
 import { BountyDetail } from "./BountyDetail";
 import { SubmittedList } from "./SubmittedList";
 import { ApprovedList } from "./ApprovedList";
-import { AffiliateHero } from "./AffiliateHero";
 import { RewardClipsPanel } from "./RewardClipsPanel";
-import { SavedBriefsRow } from "./SavedBriefs";
-import { TrackedSubmissionsTable } from "./TrackedSubmissions";
+import { EarnLayout } from "./EarnLayout";
+import { EarnTickerStrip } from "./EarnTickerStrip";
+import { EarnIconRail } from "./EarnIconRail";
+import { EarnSidebar } from "./EarnSidebar";
 import {
   matchesFilter,
-  formatBudget,
-  formatPayout,
-  moneySymbol,
-  openBudget,
-  opportunityScore,
   sortBounties,
   type ConnectedPlatform,
   type EarnTab as EarnSubTab,
@@ -278,322 +273,150 @@ export function EarnTab({
   const approved = submissions.filter((s) => s.status === "approved" || s.status === "denied");
 
   return (
-    <div className="w-full max-w-[920px]">
-      <header className="flex flex-col gap-2">
-        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
-          <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-          earn
-          <InfoHint text="Content Reward stats help you pick work. Whop tracks reward payouts; Liquid Clips helps prepare submissions." />
-        </div>
-        <h1 className="font-display text-[28px] font-semibold leading-tight tracking-[-0.025em] text-ink">
-          Whop Content Rewards you can work on now.
-        </h1>
-        <p className="max-w-[640px] font-sans text-[13px] leading-relaxed text-text-secondary">
-          Whop tracks reward payouts. Liquid Clips helps you make, publish, and prepare submissions.
-        </p>
-        <ConnectionBadge source={authSource} />
+    <EarnLayout
+      ticker={<EarnTickerStrip />}
+      rail={<EarnIconRail value={subTab} onChange={setSubTab} onSignIn={onSignIn} />}
+      main={
+        <div className="flex flex-col gap-4">
+          <ConnectionBadge source={authSource} />
 
-        {bountyError && (
-          <div className="mt-3 rounded-2xl border border-[#DC2626]/40 bg-[#DC2626]/5 p-4">
-            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#DC2626]">
-              connected — but Whop wouldn't return Content Rewards
+          {bountyError && (
+            <div className="rounded-2xl border border-[#DC2626]/40 bg-[#DC2626]/5 p-4">
+              <div className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-[#F87171]">
+                connected — but Whop wouldn't return Content Rewards
+              </div>
+              <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
+                Your sign-in worked. The fetch came back with this error:
+              </p>
+              <pre className="mt-2 max-h-[140px] overflow-auto rounded-lg border border-line bg-paper-warm/40 p-2.5 font-mono text-[11px] text-text-secondary">
+                {bountyError}
+              </pre>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => void bootstrap()}
+                  className="rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-secondary hover:border-fuchsia hover:text-ink"
+                >
+                  Retry
+                </button>
+                <button
+                  onClick={() => setManualOpen(true)}
+                  className="rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-white hover:bg-fuchsia-bright"
+                >
+                  Paste a reward manually →
+                </button>
+              </div>
             </div>
-            <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
-              Your sign-in worked. The Content Rewards fetch came back with this error:
-            </p>
-            <pre className="mt-2 max-h-[140px] overflow-auto rounded-lg border border-line bg-paper-warm/40 p-2.5 font-mono text-[11px] text-text-secondary">
-              {bountyError}
-            </pre>
-            <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-              Common cause: the OAuth scope Liquid Clips asked for doesn't cover Content Rewards yet — known limitation, fixing next.
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => void bootstrap()}
-                className="rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:border-fuchsia hover:text-ink"
-              >
-                Retry
-              </button>
-              <button
-                onClick={() => setManualOpen(true)}
-                className="rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-white hover:bg-fuchsia-bright"
-              >
-                Paste a reward manually →
-              </button>
-            </div>
-          </div>
-        )}
+          )}
 
-        {manualOpen && (
-          <div className="mt-4">
+          {manualOpen && (
             <ManualBountyPrompt onSubmit={handleManualSubmit} onCancel={() => setManualOpen(false)} />
-          </div>
-        )}
-      </header>
+          )}
 
-      <nav className="mt-6 flex items-center gap-0.5 border-b border-line font-mono text-[11px] uppercase tracking-[0.14em]">
-        {(["available", "in_progress", "submitted", "approved"] as EarnSubTab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setSubTab(t)}
-            className={`relative px-4 py-3 transition-colors ${
-              subTab === t
-                ? "text-ink"
-                : "text-text-tertiary hover:text-ink"
-            }`}
-          >
-            {t.replace("_", " ")}
-            {subTab === t && (
-              <span className="absolute inset-x-3 bottom-[-1px] h-[2px] rounded-full bg-fuchsia" />
-            )}
-          </button>
-        ))}
-        <span className="ml-auto pb-3 pl-2">
-          <InfoHint text="Available rewards come from Whop. Liquid Clips keeps the brief attached while you clip." />
-        </span>
-      </nav>
+          {subTab === "available" && (
+            <>
+              <div className="flex flex-col gap-1">
+                <h1 className="font-display text-[20px] font-semibold leading-tight tracking-[-0.015em] text-ink">
+                  Pick a campaign. Clip. Get paid.
+                </h1>
+              </div>
 
-      <div className="mt-6 flex flex-col gap-4">
-        {subTab === "available" && (
-          <>
-            {/* Browser controls live in the chrome bar above the embedded
-                webview (BrowseRewardsPanel.tsx). Fuchsia edge tab in App.tsx
-                is the open trigger. */}
-            <AffiliateHero onSignIn={onSignIn} />
-            <EarnMoneyCockpit
-              bounties={bounties}
-              filtered={filtered}
-              submissions={submissions}
-              projects={bountyProjects}
-              connectedPlatforms={filterPlatforms}
-            />
-            <SavedBriefsRow />
-            <TrackedSubmissionsTable />
-            <EarnHowItWorks />
-            <div className="flex flex-col gap-2">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                spellCheck={false}
-                placeholder="Search Content Rewards by title or brand…"
-                className="w-full rounded-full border border-line bg-paper px-4 py-2.5 font-sans text-[13px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
-              />
               <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  spellCheck={false}
+                  placeholder="Search campaigns…"
+                  className="min-w-[200px] flex-1 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none focus:shadow-[var(--glow-sm)]"
+                />
                 <input
                   value={addUrl}
                   onChange={(e) => { setAddUrl(e.target.value); setAddError(null); }}
                   onKeyDown={(e) => { if (e.key === "Enter") void handleAddByLink(); }}
                   spellCheck={false}
-                  placeholder="Paste a Whop reward link or ID to add it…"
-                  className="min-w-[240px] flex-1 rounded-full border border-line bg-paper px-4 py-2 font-mono text-[12px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
+                  placeholder="Paste reward link…"
+                  className="min-w-[180px] flex-1 rounded-full border border-line bg-paper px-4 py-2 font-mono text-[11px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
                 />
                 <button
                   onClick={() => void handleAddByLink()}
                   disabled={!addUrl.trim() || adding}
-                  className="shrink-0 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-white transition-all hover:bg-fuchsia-bright disabled:opacity-40"
+                  className="shrink-0 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-white transition-all hover:bg-fuchsia-bright disabled:opacity-40"
                 >
-                  {adding ? "Adding…" : "Add reward"}
+                  {adding ? "Adding…" : "Add"}
                 </button>
               </div>
-              {addError && <p className="font-mono text-[11px] text-[#DC2626]">{addError}</p>}
-            </div>
-            <BountyFilters
-              sort={sort}
-              onSortChange={setSort}
-              filterPlatforms={filterPlatforms}
-              onPlatformToggle={(p) =>
-                setFilterPlatforms((cur) =>
-                  cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p],
-                )
-              }
-              openOnly={openOnly}
-              onOpenOnlyChange={setOpenOnly}
-            />
-            <div className="grid grid-cols-1 gap-3 mt-3">
-              {filtered.map((b) => (
-                <BountyCard
-                  key={b.id}
-                  bounty={b}
-                  connectedPlatforms={filterPlatforms}
-                  onOpen={() => setActiveBountyId(b.id)}
-                  onStart={() => onStartBounty(b)}
-                />
-              ))}
+              {addError && <p className="font-mono text-[11px] text-[#F87171]">{addError}</p>}
+
+              <BountyFilters
+                sort={sort}
+                onSortChange={setSort}
+                filterPlatforms={filterPlatforms}
+                onPlatformToggle={(p) =>
+                  setFilterPlatforms((cur) =>
+                    cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p],
+                  )
+                }
+                openOnly={openOnly}
+                onOpenOnlyChange={setOpenOnly}
+              />
+
+              <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+                {filtered.map((b) => (
+                  <BountyCard
+                    key={b.id}
+                    bounty={b}
+                    connectedPlatforms={filterPlatforms}
+                    onOpen={() => setActiveBountyId(b.id)}
+                    onStart={() => onStartBounty(b)}
+                  />
+                ))}
+              </div>
               {filtered.length === 0 && (
-                <div className="flex flex-col items-start gap-3">
-                  <p className="font-mono text-[12px] text-text-tertiary">
-                    No Content Rewards match these filters. Loosen the platform list or turn off "open only".
+                <div className="flex flex-col items-start gap-2 rounded-2xl border border-dashed border-line bg-paper-elev/40 p-4">
+                  <p className="font-sans text-[13px] text-text-secondary">
+                    No campaigns match these filters.
                   </p>
                   <button
                     onClick={() => setManualOpen(true)}
-                    className="rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:border-fuchsia hover:text-ink"
+                    className="rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-secondary hover:border-fuchsia hover:text-ink"
                   >
                     Paste a reward manually →
                   </button>
                 </div>
               )}
+            </>
+          )}
+
+          {subTab === "in_progress" && (
+            <div className="flex flex-col gap-3">
+              <h1 className="font-display text-[20px] font-semibold leading-tight tracking-[-0.015em] text-ink">
+                In progress
+              </h1>
+              {bountyProjects.length === 0 ? (
+                <p className="font-sans text-[13px] text-text-secondary">
+                  Campaigns you start show here so you can pick up where you left off.
+                </p>
+              ) : (
+                bountyProjects.map((p) => (
+                  <BountyProjectCard key={p.slug} project={p} onResume={() => onResumeProject(p.slug)} />
+                ))
+              )}
             </div>
-          </>
-        )}
+          )}
 
-        {subTab === "in_progress" && (
-          <div className="flex flex-col gap-3">
-            {bountyProjects.length === 0 ? (
-              <p className="font-mono text-[12px] text-text-tertiary">
-                Reward projects you start show here so you can pick up where you left off. Start one from Available to fill this up.
-              </p>
-            ) : (
-              bountyProjects.map((p) => (
-                <BountyProjectCard key={p.slug} project={p} onResume={() => onResumeProject(p.slug)} />
-              ))
-            )}
-          </div>
-        )}
+          {subTab === "submitted" && (
+            <SubmittedList items={submitted} lastChecked={lastChecked} />
+          )}
 
-        {subTab === "submitted" && (
-          <SubmittedList items={submitted} lastChecked={lastChecked} />
-        )}
+          {subTab === "approved" && <ApprovedList items={approved} />}
 
-        {subTab === "approved" && <ApprovedList items={approved} />}
-      </div>
-
-      {/* Reward Clips · Tracking Links — read-only list of clips the user has
-          generated from Content Rewards. Sits below the subtab content so it's
-          visible regardless of which subtab is selected. Empty when no clips
-          have been generated yet — creation happens in the clip pipeline. */}
-      <RewardClipsPanel />
-    </div>
-  );
-}
-
-function EarnMoneyCockpit({
-  bounties,
-  filtered,
-  submissions,
-  projects,
-  connectedPlatforms,
-}: {
-  bounties: WhopBounty[];
-  filtered: WhopBounty[];
-  submissions: WhopSubmission[];
-  projects: BountyProjectSummary[];
-  connectedPlatforms: ConnectedPlatform[];
-}) {
-  const openRewards = bounties.filter((b) => b.spotsRemaining > 0);
-  const top = [...filtered].sort((a, b) => opportunityScore(b, connectedPlatforms) - opportunityScore(a, connectedPlatforms))[0];
-  const topPayout = [...openRewards].sort((a, b) => b.rewardPerUnitAmount - a.rewardPerUnitAmount)[0];
-  const inReview = submissions.filter((s) => ["submitted", "claimed", "pending"].includes(s.status));
-  const approved = submissions.filter((s) => s.status === "approved");
-  const approvedTotal = approved.reduce((sum, s) => {
-    const n = Number.parseFloat((s.formattedPayoutAmount ?? "").replace(/[^\d.]/g, ""));
-    return sum + (Number.isFinite(n) ? n : 0);
-  }, 0);
-  const topSym = top ? moneySymbol(top.currency) : "$";
-  const totalOpenBudget = openRewards.reduce((sum, b) => sum + openBudget(b), 0);
-  const readyProjects = projects.filter((p) => p.done).length;
-
-  return (
-    <section className="rounded-3xl border border-fuchsia-soft bg-gradient-to-br from-fuchsia-soft/45 via-paper to-paper-warm/50 p-5 shadow-[0_18px_60px_rgba(15,15,18,0.08)]">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep">
-            money cockpit
-          </div>
-          <h2 className="mt-1 font-display text-[24px] font-semibold tracking-[-0.02em] text-ink">
-            Pick the clip most likely to get paid.
-          </h2>
-          <p className="mt-1 max-w-[620px] font-sans text-[13px] leading-relaxed text-text-secondary">
-            Liquid Clips ranks rewards by fit, payout, open spots and approval risk. Whop still tracks views and pays you; this is your work queue.
-          </p>
+          {/* Reward Clips · Tracking Links — read-only list of clips the user
+              has generated from Content Rewards. Always visible at the bottom
+              regardless of sub-tab. */}
+          <RewardClipsPanel />
         </div>
-        <button
-          onClick={() => void openExternal("https://partner.jnremployee.com").catch(() => undefined)}
-          className="rounded-full border border-fuchsia-soft bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
-        >
-          Referral dashboard ↗
-        </button>
-      </div>
-
-      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <MoneyTile label="open rewards" value={`${openRewards.length}`} />
-        <MoneyTile label="open budget" value={`${topSym}${totalOpenBudget.toFixed(0)}`} />
-        <MoneyTile label="highest payout" value={topPayout ? formatPayout(topPayout) : "—"} />
-        <MoneyTile label="in review" value={`${inReview.length}`} />
-        <MoneyTile label="approved" value={`${topSym}${approvedTotal.toFixed(2)}`} />
-      </div>
-
-      {top && (
-        <div className="mt-4 rounded-2xl border border-line bg-paper/80 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
-                best chance now · score {opportunityScore(top, connectedPlatforms)}
-              </div>
-              <div className="mt-0.5 truncate font-display text-[18px] font-semibold tracking-[-0.01em] text-ink">
-                {top.title}
-              </div>
-              <div className="mt-1 font-mono text-[11px] text-text-tertiary">
-                {formatPayout(top)} · {top.spotsRemaining} spots left · {formatBudget(top)} open budget
-              </div>
-            </div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-              {readyProjects} ready project{readyProjects === 1 ? "" : "s"} waiting to submit
-            </div>
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function MoneyTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-line bg-paper/75 px-3 py-3">
-      <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-text-tertiary">{label}</div>
-      <div className="mt-1 truncate font-display text-[18px] font-semibold tracking-[-0.02em] text-ink">{value}</div>
-    </div>
-  );
-}
-
-
-// First-earning path, collapsible so it stays out of the way for returning
-// clippers. Makes the "how do I actually earn?" journey obvious in one place.
-function EarnHowItWorks() {
-  const [open, setOpen] = useState(false);
-  const steps = [
-    "Activate Liquid Clips — sign in to connect this desktop to your account.",
-    "Open Earn and browse live Whop Content Rewards.",
-    "Pick a reward — payout, platforms, spots, and rules stay attached.",
-    "Paste a source link or upload your own video.",
-    "Generate clips — Liquid Clips cuts, captions, and reframes for you.",
-    "Submit on Whop — post your clip, then paste the submission link to track it.",
-    "Share your tracked link / QR on eligible Liquid Clips promo clips to earn referrals.",
-    "Track your partner progress in the partner dashboard.",
-  ];
-  return (
-    <div className="rounded-2xl border border-line bg-paper-warm/40">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-2 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary hover:text-ink"
-      >
-        <span className="flex items-center gap-2">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" /> how earning works
-        </span>
-        <span className="text-text-tertiary">{open ? "▾" : "▸"}</span>
-      </button>
-      {open && (
-        <ol className="flex flex-col gap-2 px-4 pb-4">
-          {steps.map((s, i) => (
-            <li key={i} className="flex items-start gap-3 font-sans text-[13px] leading-relaxed text-ink">
-              <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-fuchsia-soft font-mono text-[10px] font-bold text-fuchsia-deep">
-                {i + 1}
-              </span>
-              <span>{s}</span>
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
+      }
+      sidebar={<EarnSidebar />}
+    />
   );
 }
 

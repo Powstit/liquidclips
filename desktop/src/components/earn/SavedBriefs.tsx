@@ -34,26 +34,36 @@ const PLATFORM_LABEL: Record<AllowedPlatform, string> = {
   x: "X",
 };
 
-export function SavedBriefsRow() {
+export function SavedBriefsRow({
+  compact,
+  limit,
+  headerLabel = "your campaigns",
+}: {
+  compact?: boolean;
+  limit?: number;
+  headerLabel?: string;
+} = {}) {
   const { briefs, loading, error } = useBriefs();
   const { active } = useActiveBrief();
   const [editing, setEditing] = useState<CampaignBrief | null>(null);
   const [detail, setDetail] = useState<CampaignBrief | null>(null);
   const [creating, setCreating] = useState(false);
 
+  const visible = limit ? briefs.slice(0, limit) : briefs;
+
   return (
     <section className="flex flex-col gap-2">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
-            saved briefs
+            {headerLabel}
           </span>
           {!loading && briefs.length > 0 && (
             <Pill tone="neutral">{briefs.length}</Pill>
           )}
         </div>
         <Button variant="secondary" size="sm" leadingIcon={<Plus size={12} />} onClick={() => setCreating(true)}>
-          Add brief
+          Add
         </Button>
       </header>
 
@@ -77,17 +87,35 @@ export function SavedBriefsRow() {
         </Card>
       )}
 
-      {briefs.length > 0 && (
-        <div className="flex gap-3 overflow-x-auto pb-1">
-          {briefs.map((b) => (
-            <BriefCard
-              key={b.id}
-              brief={b}
-              isActive={active?.id === b.id}
-              onOpen={() => setDetail(b)}
-            />
-          ))}
-        </div>
+      {visible.length > 0 && (
+        compact ? (
+          <div className="flex flex-col gap-1">
+            {visible.map((b) => (
+              <CompactBriefRow
+                key={b.id}
+                brief={b}
+                isActive={active?.id === b.id}
+                onOpen={() => setDetail(b)}
+              />
+            ))}
+            {limit && briefs.length > limit && (
+              <span className="px-2 pt-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+                +{briefs.length - limit} more
+              </span>
+            )}
+          </div>
+        ) : (
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            {visible.map((b) => (
+              <BriefCard
+                key={b.id}
+                brief={b}
+                isActive={active?.id === b.id}
+                onOpen={() => setDetail(b)}
+              />
+            ))}
+          </div>
+        )
       )}
 
       {creating && (
@@ -115,6 +143,37 @@ export function SavedBriefsRow() {
         />
       )}
     </section>
+  );
+}
+
+function CompactBriefRow({
+  brief,
+  isActive,
+  onOpen,
+}: {
+  brief: CampaignBrief;
+  isActive: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors ${
+        isActive
+          ? "border-fuchsia bg-fuchsia-soft/30"
+          : "border-line bg-paper-elev hover:border-fuchsia/40"
+      }`}
+    >
+      <span className="flex-1 truncate font-sans text-[12px] text-ink">
+        {brief.title || "Untitled brief"}
+      </span>
+      {brief.payout_label && (
+        <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-fuchsia-deep">
+          {brief.payout_label.replace(/\s+/g, "")}
+        </span>
+      )}
+    </button>
   );
 }
 

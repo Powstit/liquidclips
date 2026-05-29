@@ -19,6 +19,13 @@ import { useBriefs } from "../../lib/briefs";
 import { openBrowsePanel } from "../../lib/browse";
 import { SubmissionForm } from "./SubmissionForm";
 
+// 6-tone status ladder (locked 2026-05-29):
+//   paid + approved  = success green   ("money in your account")
+//   submitted        = fuchsia          ("in flight" — brand pulse for the
+//                                       money-pending state)
+//   posted           = info blue        (live but not yet submitted)
+//   draft            = neutral grey     (not real yet)
+//   rejected         = danger red       (terminal fail)
 const STATUS_TONE: Record<SubmissionStatus, "neutral" | "fuchsia" | "success" | "warning" | "danger" | "info"> = {
   draft: "neutral",
   posted: "info",
@@ -36,7 +43,17 @@ const PLATFORM_LABEL: Record<string, string> = {
   other: "Other",
 };
 
-export function TrackedSubmissionsTable() {
+export function TrackedSubmissionsTable({
+  compact,
+  limit,
+  headerLabel = "your clips",
+  showSummary = true,
+}: {
+  compact?: boolean;
+  limit?: number;
+  headerLabel?: string;
+  showSummary?: boolean;
+} = {}) {
   const { submissions, loading, error } = useSubmissions();
   const { briefs } = useBriefs();
   const briefTitle = useMemo(() => {
@@ -48,6 +65,7 @@ export function TrackedSubmissionsTable() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ClipSubmission | null>(null);
 
+  const visible = limit ? submissions.slice(0, limit) : submissions;
   const views = useMemo(() => totalViews(submissions), [submissions]);
   const paid = useMemo(() => totalActualPayout(submissions), [submissions]);
 
@@ -56,15 +74,15 @@ export function TrackedSubmissionsTable() {
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
-            tracked submissions
+            {headerLabel}
           </span>
           {submissions.length > 0 && <Pill tone="neutral">{submissions.length}</Pill>}
-          {views > 0 && (
+          {showSummary && views > 0 && (
             <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
               · {views.toLocaleString()} views
             </span>
           )}
-          {paid > 0 && (
+          {showSummary && paid > 0 && (
             <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-fuchsia-deep">
               · ${paid.toFixed(2)} paid
             </span>
@@ -76,7 +94,7 @@ export function TrackedSubmissionsTable() {
           leadingIcon={<Plus size={12} />}
           onClick={() => setCreating(true)}
         >
-          Track submission
+          Log a post
         </Button>
       </header>
 
@@ -89,35 +107,52 @@ export function TrackedSubmissionsTable() {
       {!loading && submissions.length === 0 && !error && (
         <Card padding="md" className="border-dashed">
           <p className="font-sans text-[13px] text-ink">
-            No submissions tracked yet.
+            No clips logged yet.
           </p>
           <p className="mt-1 font-sans text-[12px] text-text-secondary">
-            After you post a clip, click <span className="font-mono text-fuchsia-deep">Track submission</span>{" "}
-            to record the post URL and update its status as it moves
-            posted → submitted → approved → paid.
+            After you post, click <span className="font-mono text-fuchsia-deep">Log a post</span>{" "}
+            to track the link and watch it move posted → submitted → paid.
           </p>
         </Card>
       )}
 
-      {submissions.length > 0 && (
-        <Card padding="none" elevation="rest" className="overflow-hidden">
-          <div className="grid grid-cols-[80px_100px_1fr_90px_110px_60px] items-center gap-3 border-b border-line bg-paper-elev/60 px-4 py-2 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
-            <span>status</span>
-            <span>platform</span>
-            <span>brief · post</span>
-            <span className="text-right">views</span>
-            <span className="text-right">payout</span>
-            <span />
+      {visible.length > 0 && (
+        compact ? (
+          <div className="flex flex-col gap-1">
+            {visible.map((s) => (
+              <CompactSubmissionRow
+                key={s.id}
+                submission={s}
+                briefTitle={briefTitle.get(s.brief_id ?? "") ?? null}
+                onEdit={() => setEditing(s)}
+              />
+            ))}
+            {limit && submissions.length > limit && (
+              <span className="px-2 pt-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+                +{submissions.length - limit} more
+              </span>
+            )}
           </div>
-          {submissions.map((s) => (
-            <SubmissionRow
-              key={s.id}
-              submission={s}
-              briefTitle={briefTitle.get(s.brief_id ?? "") ?? null}
-              onEdit={() => setEditing(s)}
-            />
-          ))}
-        </Card>
+        ) : (
+          <Card padding="none" elevation="rest" className="overflow-hidden">
+            <div className="grid grid-cols-[80px_100px_1fr_90px_110px_60px] items-center gap-3 border-b border-line bg-paper-elev/60 px-4 py-2 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+              <span>status</span>
+              <span>platform</span>
+              <span>brief · post</span>
+              <span className="text-right">views</span>
+              <span className="text-right">payout</span>
+              <span />
+            </div>
+            {visible.map((s) => (
+              <SubmissionRow
+                key={s.id}
+                submission={s}
+                briefTitle={briefTitle.get(s.brief_id ?? "") ?? null}
+                onEdit={() => setEditing(s)}
+              />
+            ))}
+          </Card>
+        )
       )}
 
       {creating && (
@@ -135,6 +170,32 @@ export function TrackedSubmissionsTable() {
         />
       )}
     </section>
+  );
+}
+
+function CompactSubmissionRow({
+  submission,
+  briefTitle,
+  onEdit,
+}: {
+  submission: ClipSubmission;
+  briefTitle: string | null;
+  onEdit: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onEdit}
+      className="flex items-center gap-2 rounded-md border border-line bg-paper-elev px-2 py-1.5 text-left hover:border-fuchsia/40"
+    >
+      <Pill tone={STATUS_TONE[submission.status]}>{submission.status}</Pill>
+      <span className="flex-1 truncate font-sans text-[12px] text-ink">
+        {briefTitle ?? <span className="text-text-tertiary">— Unattached —</span>}
+      </span>
+      <span className="font-mono text-[10px] text-text-tertiary">
+        {PLATFORM_LABEL[submission.platform] ?? submission.platform}
+      </span>
+    </button>
   );
 }
 
