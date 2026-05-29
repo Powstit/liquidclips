@@ -318,18 +318,29 @@ def stage_transcribe(project: Project, model_size: str | None = None) -> dict[st
     except ValueError:
         _threads_env = 0
     cpu_threads = _threads_env or min(8, max(2, os.cpu_count() or 4))
+    # num_workers > 1 lets faster-whisper batch-decode in parallel — meaningful
+    # speedup on long audio at the cost of ~1x model memory per worker. Two
+    # workers is the sweet spot on tiny (75 MB × 2) without thrashing RAM.
+    num_workers = max(1, min(2, (os.cpu_count() or 2) // 4))
     model = WhisperModel(
         bundled or model_size,
         device="cpu",
         compute_type="int8",
         cpu_threads=cpu_threads,
-        num_workers=1,
+        num_workers=num_workers,
     )
+    # Perf tuning (2026-05-28): tiny + beam_size=1 (greedy) is 2-3x faster than
+    # the default beam_size=5 with a negligible WER hit at our content profile
+    # (mostly clean podcast/long-form). condition_on_previous_text=False kills
+    # the chain-dependency between segments — both faster and removes the
+    # hallucination-cascade failure mode we hit on long videos.
     segments, info = model.transcribe(
         str(audio_path),
         word_timestamps=True,
         vad_filter=True,
         vad_parameters={"min_silence_duration_ms": 500},
+        beam_size=1,
+        condition_on_previous_text=False,
     )
 
     segments_list: list[dict[str, Any]] = []
