@@ -38,7 +38,9 @@ export function Card({
   ...rest
 }: Props) {
   const cls = [
-    "rounded-2xl border bg-paper-elev transition-all duration-200",
+    // `isolate` creates a new stacking context so the card's content can't
+    // leak under sibling/ancestor compositing surfaces (modal scrims, etc).
+    "isolate rounded-2xl border bg-paper-elev transition-all duration-200",
     elevations[elevation],
     paddings[padding],
     hoverable && "hover:border-fuchsia/40 hover:shadow-[var(--shadow-e2)]",
@@ -48,7 +50,9 @@ export function Card({
     .filter(Boolean)
     .join(" ");
   return (
-    <div className={cls} {...rest}>
+    // Inline style is a hard backstop against any rule that could blank
+    // `bg-paper-elev` via class-order shenanigans — modals must never bleed.
+    <div className={cls} style={{ backgroundColor: "var(--color-paper-elev)" }} {...rest}>
       {children}
     </div>
   );

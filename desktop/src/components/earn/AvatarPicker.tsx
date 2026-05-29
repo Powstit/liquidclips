@@ -4,7 +4,14 @@
 // catalog as a grid; unlocked tiles are clickable, locked tiles are dimmed
 // and show the unlock threshold on hover/title. Selection persists to
 // $APPDATA/avatar_choice.json via setChosenAvatarId.
+//
+// Portaled to document.body so it escapes the stacking contexts of any
+// modal it might be triggered from (e.g. AffiliateHeroPopover) — without
+// the portal, two backdrop-blur layers create nested stacking contexts and
+// the picker visually clashes with the surrounding modal.
 
+import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Lock, X } from "lucide-react";
 import { Button, Card, IconButton, Pill } from "../primitives";
 import { Avatar } from "../primitives";
@@ -28,14 +35,28 @@ export function AvatarPicker({
   const { avatarId } = useChosenAvatarId();
   const next = nextUnlock(earnedUsd);
 
+  // Esc to close + lock background scroll while the picker is open.
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKey(e: KeyboardEvent): void {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
   async function pick(id: string): Promise<void> {
     await setChosenAvatarId(id);
     onClose();
   }
 
-  return (
+  const overlay = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-6 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-paper/90 p-6"
       onClick={onClose}
     >
       <Card
@@ -143,4 +164,8 @@ export function AvatarPicker({
       </Card>
     </div>
   );
+
+  // Render outside the React tree so the picker isn't trapped under a
+  // parent modal's stacking context or clipped by an ancestor's overflow.
+  return createPortal(overlay, document.body);
 }
