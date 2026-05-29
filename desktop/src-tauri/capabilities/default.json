@@ -2,10 +2,12 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default capabilities for the Liquid Clips desktop window",
-  "windows": ["main"],
+  "windows": ["main", "browse_browser"],
   "permissions": [
     "core:default",
     "core:window:default",
+    "core:window:allow-create",
+    "core:window:allow-close",
     "core:event:default",
     "core:webview:default",
     "core:path:default",

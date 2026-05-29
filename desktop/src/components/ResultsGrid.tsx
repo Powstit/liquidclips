@@ -13,6 +13,7 @@ import { UpgradeLockCard } from "./UpgradeLockCard";
 import { AddClipCard } from "./AddClipCard";
 import { YouTubeView } from "./YouTubeView";
 import { BountySubmissionCapture } from "./earn/BountySubmissionCapture";
+import { CampaignContextStrip } from "./earn/CampaignContextStrip";
 import { BountyWorkspaceHeader } from "./earn/BountyWorkspaceHeader";
 import { sidecar, type DripSlot } from "../lib/sidecar";
 import { PUBLISHING_ENABLED } from "../lib/flags";
@@ -81,6 +82,10 @@ export function ResultsGrid({
       <BountyWorkspaceHeader project={project} />
 
       <BountySubmissionCapture project={project} />
+
+      <div className="mb-4">
+        <CampaignContextStrip />
+      </div>
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-4">

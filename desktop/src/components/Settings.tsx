@@ -9,7 +9,7 @@ import pkg from "../../package.json";
 const APP_VERSION: string = pkg.version;
 const SUPPORT_EMAIL = "support@jnremployee.com";
 import { syncStatus, backend, meStatus, type SyncStatus, type MeStatus, type PlatformConnection, type ConnectionPlatform } from "../lib/backend";
-import { applyUpdate, checkForUpdate, type UpdateState } from "../lib/updater";
+import { applyUpdate, checkForUpdate, readLastUpdateCheck, type LastUpdateCheck, type UpdateState } from "../lib/updater";
 import { PlatformIcon } from "./PlatformIcon";
 
 // Settings panel per spec §3.8 screen 8 — one scrollable page.
@@ -26,12 +26,14 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
   const [editingKey, setEditingKey] = useState<SecretName | null>(null);
   const [draftValue, setDraftValue] = useState("");
   const [updateState, setUpdateState] = useState<UpdateState>({ kind: "idle" });
+  const [lastUpdateCheck, setLastUpdateCheck] = useState<LastUpdateCheck | null>(() => readLastUpdateCheck());
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const [syncChecked, setSyncChecked] = useState(false);
 
   async function onCheckForUpdate() {
     setUpdateState({ kind: "checking" });
     setUpdateState(await checkForUpdate());
+    setLastUpdateCheck(readLastUpdateCheck());
   }
 
   async function onApplyUpdate() {
@@ -45,6 +47,7 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
     void syncStatus()
       .then(setSync)
       .finally(() => setSyncChecked(true));
+    void onCheckForUpdate();
   }, []);
 
   async function saveSecret(name: SecretName) {
@@ -167,7 +170,8 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
 
           <Section eyebrow="updates" title="Liquid Clips updates itself.">
             <p className="font-sans text-[13px] text-text-secondary">
-              We push new builds in the background. Check now, or wait for the next launch ping.
+              Liquid Clips checks the signed update manifest every time the app opens. Settings runs the same check
+              again so you can verify the current install without guessing.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -203,7 +207,7 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
               )}
               {updateState.kind === "installing" && (
                 <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
-                  installing — junior will relaunch
+                  installing — Liquid Clips will relaunch
                 </span>
               )}
               {updateState.kind === "error" && (
@@ -212,6 +216,17 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
                 </span>
               )}
             </div>
+            {lastUpdateCheck && (
+              <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                Last manifest check: {new Date(lastUpdateCheck.checkedAt).toLocaleString()}
+                {" · "}
+                {lastUpdateCheck.kind === "available"
+                  ? `update ${lastUpdateCheck.version} ready`
+                  : lastUpdateCheck.kind === "up-to-date"
+                  ? "up to date"
+                  : "error"}
+              </p>
+            )}
           </Section>
 
           <Section eyebrow="about" title='"Made with Liquid Clips" + privacy.'>
