@@ -57,12 +57,16 @@ const REL_FILE = "briefs.json";
 // ---------- file IO --------------------------------------------------------
 
 async function ensureAppDataDir(): Promise<void> {
-  // Tauri creates $APPDATA on demand, but on a clean macOS install the
-  // directory may not exist yet. exists() with a path of "" checks the
-  // base dir itself.
-  const dirExists = await exists("", { baseDir: BaseDirectory.AppData });
-  if (!dirExists) {
+  // $APPDATA (~/Library/Application Support/<bundle id>/ on macOS) may not
+  // exist on first launch. mkdir with recursive:true is idempotent — if the
+  // directory is already there, this is a no-op. Wrapped in try/catch
+  // because some Tauri versions reject empty-path resolution; either way
+  // writeTextFile will either succeed (dir exists) or fail loudly.
+  try {
     await mkdir("", { baseDir: BaseDirectory.AppData, recursive: true });
+  } catch {
+    /* either the dir already exists or the empty-path call wasn't valid —
+       the subsequent writeTextFile will tell us if it's a real problem. */
   }
 }
 

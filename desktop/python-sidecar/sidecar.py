@@ -646,21 +646,64 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
     workdir.mkdir(parents=True, exist_ok=True)
 
     # Download poster (fast — usually <200KB) so the UI has a local file to
-    # render via convertFileSrc instead of a remote IG CDN URL that needs auth.
+    # render via convertFileSrc instead of a remote CDN URL that needs auth.
+    #
+    # Per-platform headers — using IG's referer for YouTube CDN (i.ytimg.com)
+    # returns 403, which left the preview empty for every YouTube script.
+    # We try the primary thumbnail first, then fall back to (a) other entries
+    # in info["thumbnails"] and (b) for YouTube specifically, the standard
+    # i.ytimg.com/vi/<id>/{maxres,hq,sd,mq}default.jpg URL pattern.
     poster_path: str | None = None
-    thumb_url = info.get("thumbnail")
-    if isinstance(thumb_url, str) and thumb_url.startswith("http"):
+
+    def _referer_for(u: str) -> str | None:
+        u = u.lower()
+        if "ytimg" in u or "youtube" in u or "ggpht" in u:
+            return "https://www.youtube.com/"
+        if "tiktok" in u or "tiktokcdn" in u:
+            return "https://www.tiktok.com/"
+        if "twimg" in u or "x.com" in u or "twitter" in u:
+            return "https://x.com/"
+        if "cdninstagram" in u or "instagram" in u:
+            return "https://www.instagram.com/"
+        return None
+
+    def _try_download(u: str) -> bool:
+        nonlocal poster_path
         try:
             poster_file = workdir / "poster.jpg"
-            req = urllib.request.Request(
-                thumb_url,
-                headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.instagram.com/"},
-            )
+            headers = {"User-Agent": "Mozilla/5.0", "Accept": "image/*"}
+            ref = _referer_for(u)
+            if ref:
+                headers["Referer"] = ref
+            req = urllib.request.Request(u, headers=headers)
             with urllib.request.urlopen(req, timeout=8) as r, open(poster_file, "wb") as f:
                 f.write(r.read())
             poster_path = str(poster_file)
+            return True
         except Exception as e:
-            log(f"poster download failed (non-fatal): {e}")
+            log(f"poster fetch failed for {u[:80]} (non-fatal): {e}")
+            return False
+
+    candidates: list[str] = []
+    primary = info.get("thumbnail")
+    if isinstance(primary, str) and primary.startswith("http"):
+        candidates.append(primary)
+    # yt-dlp returns ordered thumbnails (typically low → high res). Try the
+    # last few first so we get the largest if the primary fails.
+    for t in reversed(info.get("thumbnails") or []):
+        u = t.get("url") if isinstance(t, dict) else None
+        if isinstance(u, str) and u.startswith("http") and u not in candidates:
+            candidates.append(u)
+    # YouTube fallback: even if yt-dlp doesn't expose a working URL, the
+    # standard i.ytimg.com pattern usually returns 200 for any public video.
+    platform_hint = (info.get("extractor_key") or info.get("extractor") or "").lower()
+    if "youtube" in platform_hint and video_id:
+        for variant in ("maxresdefault", "hqdefault", "sddefault", "mqdefault"):
+            candidates.append(f"https://i.ytimg.com/vi/{video_id}/{variant}.jpg")
+
+    for url_attempt in candidates:
+        if _try_download(url_attempt):
+            break
 
     # Now grab audio-only — typically 30-80× smaller than the video, so
     # download finishes in 2-5s for a 75s reel. ffmpeg post-processes to wav.

@@ -13,6 +13,8 @@
     "core:path:default",
     "dialog:default",
     "fs:default",
+    "fs:allow-appdata-write-recursive",
+    "fs:allow-appdata-meta-recursive",
     "shell:default",
     "shell:allow-open",
     "clipboard-manager:allow-write-text",

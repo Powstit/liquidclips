@@ -8,7 +8,7 @@
 // rule survives narrow window resizes. Above 1100px both rails are always
 // visible.
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 
 type Props = {
@@ -18,12 +18,28 @@ type Props = {
   sidebar: ReactNode;
 };
 
-const SIDEBAR_BREAKPOINT_PX = 1100;
+const SIDEBAR_AUTOHIDE_BELOW = 1100;
 
 export function EarnLayout({ ticker, rail, main, sidebar }: Props) {
-  // Open by default on first paint; user can collapse to maximise grid width
-  // in narrow windows.
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Auto-hide the sidebar on narrow viewports; the toggle button lets the
+  // user pop it back open. Tailwind arbitrary breakpoint classes don't
+  // evaluate template-interpolated strings, so we drive the breakpoint via
+  // a resize listener instead of a `min-[1100px]` class.
+  const [sidebarOpen, setSidebarOpen] = useState(
+    typeof window === "undefined" ? true : window.innerWidth >= SIDEBAR_AUTOHIDE_BELOW,
+  );
+
+  useEffect(() => {
+    function onResize(): void {
+      // Only collapse on narrowing; never force-open when the user has
+      // explicitly closed it on a wide viewport.
+      if (window.innerWidth < SIDEBAR_AUTOHIDE_BELOW) {
+        setSidebarOpen(false);
+      }
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -43,26 +59,26 @@ export function EarnLayout({ ticker, rail, main, sidebar }: Props) {
         <main className="relative min-w-0 flex-1 overflow-y-auto">
           <div className="px-5 py-4">{main}</div>
 
-          {/* Narrow-window sidebar toggle — sits inside the main pane so users
-              can find it even when the sidebar is hidden. Hidden on wide. */}
           <button
             type="button"
             onClick={() => setSidebarOpen((v) => !v)}
             title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
             aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-            className={`absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-line bg-paper text-text-secondary transition-colors hover:border-fuchsia hover:text-fuchsia min-[${SIDEBAR_BREAKPOINT_PX}px]:hidden`}
+            className="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-line bg-paper text-text-secondary transition-colors hover:border-fuchsia hover:text-fuchsia"
           >
             {sidebarOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
           </button>
         </main>
 
-        {/* Right sidebar — collapses below the breakpoint when closed */}
+        {/* Right sidebar — collapses to 0 width when closed. The inner
+            fixed-width content is hidden via overflow-hidden so it doesn't
+            spill out during the transition. */}
         <aside
-          className={`shrink-0 overflow-y-auto border-l border-line bg-paper-elev/30 transition-[width,opacity] duration-200 ${
-            sidebarOpen ? "w-[300px] opacity-100" : "w-0 opacity-0"
+          className={`shrink-0 overflow-hidden border-l border-line bg-paper-elev/30 transition-[width,opacity] duration-200 ${
+            sidebarOpen ? "w-[300px] opacity-100" : "w-0 border-l-0 opacity-0"
           }`}
         >
-          <div className="w-[300px] px-4 py-4">{sidebar}</div>
+          <div className="h-full w-[300px] overflow-y-auto px-4 py-4">{sidebar}</div>
         </aside>
       </div>
     </div>
