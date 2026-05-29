@@ -1,7 +1,14 @@
+// BountyCard — Earn → Open campaigns grid tile (~280px wide).
+//
+// Tightened for the 3-column auto-fit grid: payout-first hierarchy, thumbnail
+// header, title + brand under it, fit/effort/risk reduced to compact pills,
+// description dropped (lives in BountyDetail when opened). Primary action
+// `Start` + secondary `Brief` inline at the bottom.
+
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import type { WhopBounty } from "../../lib/sidecar";
 import { PlatformIcon } from "../PlatformIcon";
-import { Sparkles, Users, Wallet, ArrowRight, ExternalLink, PanelRightOpen } from "lucide-react";
+import { Sparkles, Users, Wallet, ArrowRight } from "lucide-react";
 import { openBrowsePanel } from "../../lib/browse";
 import { BROWSE_PANEL_ENABLED } from "../../lib/flags";
 import {
@@ -16,9 +23,6 @@ import {
   whopBountyUrl,
   type ConnectedPlatform,
 } from "./types";
-
-// One bounty card in the Earn / Available list. Answers the three questions
-// at a glance: Can I earn? Can I finish fast? Will it get approved?
 
 export function BountyCard({
   bounty,
@@ -38,101 +42,103 @@ export function BountyCard({
   const risk = approvalRisk(bounty);
   const label = opportunityLabel(score);
   const briefUrl = whopBountyUrl(bounty);
+  const hot = score >= 78;
 
   return (
-    <article className="group rounded-2xl border border-line bg-paper p-5 shadow-[var(--shadow-e1)] transition-all duration-200 hover:-translate-y-[2px] hover:border-fuchsia-soft hover:shadow-[var(--shadow-e2)]">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* PRIMARY: opportunity score chip + the big money figure */}
-        <div className="flex flex-wrap items-center gap-3">
-          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ${
-            score >= 78
-              ? "border-fuchsia-soft bg-fuchsia-soft/40 text-fuchsia-deep shadow-[var(--glow-sm)]"
-              : score >= 58
-              ? "border-line bg-paper-warm/40 text-ink"
-              : "border-line bg-paper-warm/40 text-text-tertiary"
-          }`}>
-            {score >= 78 && <Sparkles className="h-3 w-3" strokeWidth={2.25} />}
-            {label} · {score}
-          </span>
-          <span className="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink tabular-nums">
+    <article
+      className={`group flex flex-col gap-3 rounded-2xl border bg-paper p-4 transition-all duration-200 hover:-translate-y-[2px] ${
+        hot
+          ? "border-fuchsia/40 shadow-[var(--glow-sm)] hover:shadow-[var(--glow-md)]"
+          : "border-line shadow-[var(--shadow-e1)] hover:border-fuchsia/40 hover:shadow-[var(--shadow-e2)]"
+      }`}
+    >
+      {/* Thumbnail + payout overlay */}
+      <div className="relative h-[110px] overflow-hidden rounded-xl border border-line bg-paper-warm/40">
+        {bounty.thumbnail ? (
+          <img
+            src={bounty.thumbnail}
+            alt=""
+            loading="lazy"
+            className="h-full w-full object-cover transition duration-200 ease-out group-hover:scale-[1.03] group-hover:brightness-110"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+            no thumbnail
+          </div>
+        )}
+        <div className="absolute inset-x-2 bottom-2 flex items-end justify-between gap-2">
+          <span className="rounded-md bg-paper/90 px-2 py-1 font-display text-[18px] font-semibold leading-none tracking-[-0.01em] text-ink shadow-[var(--shadow-e1)] tabular-nums">
             {formatPayout(bounty)}
           </span>
+          <span
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[var(--tracking-eyebrow)] ${
+              hot
+                ? "border-fuchsia/40 bg-fuchsia text-white"
+                : score >= 58
+                  ? "border-line bg-paper text-ink"
+                  : "border-line bg-paper text-text-tertiary"
+            }`}
+          >
+            {hot && <Sparkles size={9} strokeWidth={2.5} />}
+            {label} · {score}
+          </span>
         </div>
-        <span className="flex items-center gap-1.5">
+      </div>
+
+      {/* Title + brand + via Whop */}
+      <div className="flex flex-col gap-0.5">
+        <h3 className="line-clamp-2 font-display text-[14px] font-semibold leading-tight tracking-[-0.01em] text-ink">
+          {bounty.title}
+        </h3>
+        <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+          @{bounty.user.username ?? "unknown"} · via Whop
+        </p>
+      </div>
+
+      {/* Compact stats: spots / budget / platform icons */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+        <span className="inline-flex items-center gap-1">
+          <Users size={11} strokeWidth={2} />
+          <span className="tabular-nums text-ink">{bounty.spotsRemaining}</span>
+          <span>spots</span>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Wallet size={11} strokeWidth={2} />
+          <span className="tabular-nums text-ink">{formatBudget(bounty)}</span>
+        </span>
+        <span className="ml-auto inline-flex items-center gap-1">
           {platforms.map((p) => (
-            <PlatformIcon key={p} id={p} className="h-3.5 w-3.5 text-text-tertiary" />
+            <PlatformIcon key={p} id={p} className="h-3 w-3 text-text-tertiary" />
           ))}
         </span>
       </div>
 
-      {/* Secondary stats with icons */}
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] uppercase tracking-[0.1em] text-text-tertiary">
-        <span className="inline-flex items-center gap-1.5">
-          <Users className="h-3.5 w-3.5" strokeWidth={2} />
-          <span className="tabular-nums text-ink">{bounty.spotsRemaining}</span>
-          <span>of {bounty.acceptedSubmissionsLimit} spots</span>
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Wallet className="h-3.5 w-3.5" strokeWidth={2} />
-          <span className="tabular-nums text-ink">{formatBudget(bounty)}</span>
-          <span>open</span>
-        </span>
+      {/* Quality pills */}
+      <div className="flex flex-wrap items-center gap-1.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)]">
+        <QualityPill label="fit" value={`${fit}`} tone={fit >= 80 ? "good" : fit >= 60 ? "ok" : "warn"} />
+        <QualityPill label="effort" value={effort} tone={effort === "low" ? "good" : effort === "med" ? "ok" : "warn"} />
+        <QualityPill label="risk" value={risk} tone={risk === "low" ? "good" : risk === "med" ? "ok" : "warn"} />
       </div>
 
-      <div className="mt-3 flex items-start gap-3.5">
-        {bounty.thumbnail && (
-          // Fixed-dimension frame so a hovered card never reflows its
-          // neighbours. Image scale + brightness/saturation lift on the
-          // article's group-hover live inside the overflow-hidden box.
-          <div className="h-24 w-24 shrink-0 overflow-hidden rounded-lg border border-line bg-paper-warm/40">
-            <img
-              src={bounty.thumbnail}
-              alt=""
-              loading="lazy"
-              className="h-full w-full object-cover transition duration-200 ease-out group-hover:scale-[1.02] group-hover:brightness-110 group-hover:saturate-[1.1]"
-            />
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <h3 className="font-display text-[18px] font-semibold leading-tight tracking-[-0.015em] text-ink">
-            {bounty.title}
-          </h3>
-          <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.1em] text-text-tertiary">
-            by @{bounty.user.username ?? "unknown"}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-3 font-mono text-[10px] uppercase tracking-[0.08em]">
-        <Pill label="fit" value={`${fit}`} tone={fit >= 80 ? "good" : fit >= 60 ? "ok" : "warn"} />
-        <Pill label="effort" value={effort} tone={effort === "low" ? "good" : effort === "med" ? "ok" : "warn"} />
-        <Pill label="approval risk" value={risk} tone={risk === "low" ? "good" : risk === "med" ? "ok" : "warn"} />
-      </div>
-
-      <p className="mt-3 max-w-[680px] line-clamp-3 font-sans text-[13px] leading-relaxed text-text-secondary">
-        {bounty.description}
-      </p>
-
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      {/* Actions */}
+      <div className="mt-auto flex items-center gap-1.5">
         <button
           onClick={onStart}
-          className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-fuchsia px-3 py-1.5 font-sans text-[12px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
         >
-          Start clipping
-          <ArrowRight className="h-4 w-4" strokeWidth={2.25} />
+          Start
+          <ArrowRight size={12} strokeWidth={2.25} />
         </button>
         <button
           onClick={onOpen}
-          className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
+          className="rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-[12px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
+          title="Open card details"
         >
           Details
         </button>
         {briefUrl && (
           <button
             onClick={async () => {
-              // Try the in-app panel first; if Rust rejects (e.g. webview
-              // creation fails, missing capability), fall through to the
-              // system browser so the user can still reach the brief.
               if (BROWSE_PANEL_ENABLED) {
                 try {
                   await openBrowsePanel(briefUrl);
@@ -147,15 +153,10 @@ export function BountyCard({
                 console.error("[earn] Failed to open brief externally:", e);
               }
             }}
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 font-sans text-[12px] font-medium text-text-secondary hover:text-fuchsia-deep"
-            title={BROWSE_PANEL_ENABLED
-              ? "Open the brand's brief in the side panel — clip alongside it."
-              : "Open the brand's brief on Whop in your browser. Useful when the source video lives in a discussion post Liquid Clips can't read."}
+            className="rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
+            title="Open the brand's brief in the side panel"
           >
-            Open brief
-            {BROWSE_PANEL_ENABLED
-              ? <PanelRightOpen className="h-3.5 w-3.5" strokeWidth={2} />
-              : <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />}
+            Brief
           </button>
         )}
       </div>
@@ -163,15 +164,23 @@ export function BountyCard({
   );
 }
 
-function Pill({ label, value, tone }: { label: string; value: string; tone: "good" | "ok" | "warn" }) {
+function QualityPill({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "good" | "ok" | "warn";
+}) {
   const cls =
     tone === "good"
-      ? "border-fuchsia-soft bg-fuchsia-soft/30 text-fuchsia-deep"
+      ? "border-fuchsia/30 bg-fuchsia-soft/30 text-fuchsia-deep"
       : tone === "ok"
-      ? "border-line bg-paper-warm/40 text-text-secondary"
-      : "border-line bg-paper-warm/40 text-text-tertiary";
+        ? "border-line bg-paper-warm/40 text-text-secondary"
+        : "border-line bg-paper-warm/40 text-text-tertiary";
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 ${cls}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 ${cls}`}>
       <span className="text-text-tertiary">{label}</span>
       <span className="text-ink">{value}</span>
     </span>
