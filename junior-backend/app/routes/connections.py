@@ -153,7 +153,7 @@ async def oauth_callback(
 
     if error or not code:
         return RedirectResponse(
-            url=f"junior://oauth-result?status=denied&reason={error or 'no_code'}",
+            url=f"liquidclips://oauth-result?status=denied&reason={error or 'no_code'}",
             status_code=302,
         )
 
@@ -161,7 +161,7 @@ async def oauth_callback(
         token_payload = await postiz.exchange_code(code)
     except Exception as exc:  # noqa: BLE001
         return RedirectResponse(
-            url=f"junior://oauth-result?status=error&reason=exchange_failed",
+            url=f"liquidclips://oauth-result?status=error&reason=exchange_failed",
             status_code=302,
         )
 
@@ -181,7 +181,7 @@ async def oauth_callback(
         ))
     db.commit()
 
-    return RedirectResponse(url="junior://oauth-result?status=connected", status_code=302)
+    return RedirectResponse(url="liquidclips://oauth-result?status=connected", status_code=302)
 
 
 @router.get("/connections", response_model=ConnectionsListResponse)
