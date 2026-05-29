@@ -1,9 +1,7 @@
 // Browse Rewards panel — TS bridge + singleton open-state store.
 //
-// The native child webview is owned by Rust (see src-tauri/src/browse.rs);
-// React owns a 44px chrome bar on top (back/forward/refresh/close). State
-// is hoisted out of any single component so the chrome stays mounted even
-// when the user navigates away from the Earn tab that opened it.
+// Rust owns the native child webview inside the main Liquid Clips window.
+// React owns the controls in Earn, outside the webview's right-side bounds.
 
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";

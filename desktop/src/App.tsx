@@ -16,9 +16,9 @@ import { Settings } from "./components/Settings";
 import { sidecar, visibleStagesFor, pipelineStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
 import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
 import { initDeepLinks, setOnActivated } from "./lib/activation";
-import { HOSTED_LLM_ENABLED, BROWSE_PANEL_ENABLED } from "./lib/flags";
+import { HOSTED_LLM_ENABLED } from "./lib/flags";
+import { closeBrowsePanel, openBrowsePanel, reconcileBrowsePanel, useBrowsePanel, WHOP_REWARDS_URL } from "./lib/browse";
 import { BrowseRewardsPanel } from "./components/BrowseRewardsPanel";
-import { useBrowsePanel, reconcileBrowsePanel } from "./lib/browse";
 import { reportDesktopError } from "./lib/telemetry";
 import { applyUpdate, checkForUpdate, type UpdateState } from "./lib/updater";
 import { TranscriptResult, LiftingProgress } from "./components/TranscriptResult";
@@ -110,10 +110,17 @@ export default function App() {
       }
     })();
 
-    // Auto-check for updates on launch (silent — only surfaces if there is one).
+    // Auto-check for updates on every launch. We surface every result briefly so
+    // Daniel can tell the installed app really hit the update manifest.
     (async () => {
+      setUpdateBanner({ kind: "checking" });
       const state = await checkForUpdate();
-      if (state.kind === "available") setUpdateBanner(state);
+      setUpdateBanner(state);
+      if (state.kind === "up-to-date") {
+        window.setTimeout(() => {
+          setUpdateBanner((current) => (current.kind === "up-to-date" ? { kind: "idle" } : current));
+        }, 5000);
+      }
     })();
 
     // Whop iframe auth bridge — captures the user session token from the
@@ -793,6 +800,18 @@ export default function App() {
         </div>
       )}
 
+      {updateBanner.kind === "checking" && (
+        <div className="border-t border-line bg-paper px-6 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+          ● checking Liquid Clips updates…
+        </div>
+      )}
+
+      {updateBanner.kind === "up-to-date" && (
+        <div className="border-t border-line bg-paper px-6 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+          ✓ Liquid Clips is up to date
+        </div>
+      )}
+
       {updateBanner.kind === "downloading" && (
         <div className="border-t border-fuchsia-soft bg-fuchsia-soft/40 px-6 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
           ↓ downloading update…
@@ -844,14 +863,11 @@ export default function App() {
   );
 }
 
-// Wraps the main app surface. When the Browse Rewards side panel is open it
-// adds right padding equal to the panel width so the workspace doesn't get
-// covered, and mounts the panel's chrome bar. The native child webview is
-// owned by Rust (src-tauri/src/browse.rs) and floats over the right gutter.
+// Wraps the main app surface. Browse Rewards is a native child webview pinned
+// inside the same Liquid Clips window frame; padding keeps the React workbench
+// from sitting underneath the right browser pane.
 function MainShell({ children }: { children: React.ReactNode }) {
   const { open } = useBrowsePanel();
-  // On boot, sync React's open-state with whatever Rust currently has so HMR
-  // reloads recover gracefully (the native webview survives a JS reload).
   useEffect(() => {
     void reconcileBrowsePanel();
   }, []);
@@ -859,12 +875,43 @@ function MainShell({ children }: { children: React.ReactNode }) {
     <>
       <div
         className="flex h-full flex-col bg-paper text-ink transition-[padding] duration-200"
-        style={{ paddingRight: open ? 480 : 0 }}
+        style={{ paddingRight: open ? 566 : 0 }}
       >
         {children}
       </div>
-      {BROWSE_PANEL_ENABLED && <BrowseRewardsPanel />}
+      <BrowserEdgeTab open={open} />
+      <BrowseRewardsPanel />
     </>
+  );
+}
+
+function BrowserEdgeTab({ open }: { open: boolean }) {
+  const [busy, setBusy] = useState(false);
+
+  async function toggle() {
+    setBusy(true);
+    try {
+      if (open) {
+        await closeBrowsePanel();
+      } else {
+        await openBrowsePanel(WHOP_REWARDS_URL);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void toggle()}
+      disabled={busy}
+      title={open ? "Close browser" : "Open browser"}
+      className="fixed top-1/2 z-40 flex -translate-y-1/2 items-center gap-2 rounded-l-xl border border-r-0 border-fuchsia/70 bg-fuchsia px-2.5 py-4 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[0_14px_40px_rgba(255,26,140,0.3)] transition-[right,opacity,background-color] duration-200 hover:bg-fuchsia-bright disabled:opacity-50"
+      style={{ right: open ? 566 : 0, writingMode: "vertical-rl" }}
+    >
+      {busy ? "…" : open ? "Close" : "Browse"}
+    </button>
   );
 }
 

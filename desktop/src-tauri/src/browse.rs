@@ -1,19 +1,9 @@
-// Browse Rewards side panel — v1 (graduated from 2026-05-28 spike).
+// Browse Rewards — in-window browser pane.
 //
-// Tauri child webview pinned to the right edge of the main window. Renders
-// a 480px-wide real WKWebView (macOS) / WebView2 (Windows) sliding in from
-// the right. React owns the top 44px chrome bar (back/forward/refresh/close
-// buttons); the native webview owns the rest of the panel area.
-//
-// Hardening (for production with BROWSE_PANEL_ENABLED=true):
-// - URL filter in `on_navigation` blocks any path containing commerce
-//   segments (/checkout, /pay, /billing, /upgrade, /subscribe, /purchase)
-//   and bounces them to the system browser via shell.open(). This is the
-//   App Store Guideline 3.1.1 mitigation — embedded webviews must not
-//   facilitate purchase of digital goods outside IAP.
-// - Window resize listener (registered once in lib.rs setup) repositions
-//   the panel webview so it stays pinned to the right edge.
-// - Back/forward/reload commands inject window.history JS into the webview.
+// Whop blocks ordinary iframes, so this has to be a native Tauri child
+// webview. The important layout rule is: React controls live in the Earn tab
+// on the left, while the native webview owns only the right pane. We do not
+// place React chrome under the webview.
 
 use tauri::{
     webview::WebviewBuilder, AppHandle, LogicalPosition, LogicalSize, Manager, WebviewUrl,
@@ -21,11 +11,12 @@ use tauri::{
 use tauri_plugin_shell::ShellExt;
 
 pub const PANEL_LABEL: &str = "browse_panel";
-pub const PANEL_WIDTH: f64 = 480.0;
-pub const CHROME_HEIGHT: f64 = 44.0;
+pub const PANEL_WIDTH: f64 = 560.0;
+const RESIZE_GUTTER: f64 = 6.0;
+// Reserved for the React chrome bar (BrowseRewardsPanel.tsx). The native
+// webview slides down by this much so the chrome sits above it.
+const CHROME_HEIGHT: f64 = 72.0;
 
-/// Path substrings that must NEVER load inside the embedded webview.
-/// Any navigation containing one of these gets bounced to the system browser.
 const BLOCKED_PATH_FRAGMENTS: &[&str] = &[
     "/checkout",
     "/pay",
@@ -47,18 +38,16 @@ fn panel_bounds(app: &AppHandle) -> Option<(LogicalPosition<f64>, LogicalSize<f6
     let scale = main.scale_factor().ok()?;
     let logical_width = size.width as f64 / scale;
     let logical_height = size.height as f64 / scale;
-    let panel_x = (logical_width - PANEL_WIDTH).max(0.0);
-    let panel_y = CHROME_HEIGHT;
-    let panel_h = (logical_height - CHROME_HEIGHT).max(0.0);
+    let width = PANEL_WIDTH.min((logical_width - RESIZE_GUTTER).max(320.0));
+    let x = (logical_width - width - RESIZE_GUTTER).max(0.0);
+    let height = (logical_height - CHROME_HEIGHT).max(280.0);
+
     Some((
-        LogicalPosition::new(panel_x, panel_y),
-        LogicalSize::new(PANEL_WIDTH, panel_h),
+        LogicalPosition::new(x, CHROME_HEIGHT),
+        LogicalSize::new(width, height),
     ))
 }
 
-/// Re-pin the panel webview to the right edge after a window resize.
-/// No-op when the panel isn't open. Wire this into the main window's
-/// `on_window_event` once in lib.rs setup.
 pub fn reposition_panel(app: &AppHandle) {
     let Some(wv) = app.get_webview(PANEL_LABEL) else { return };
     let Some((pos, size)) = panel_bounds(app) else { return };
@@ -72,28 +61,28 @@ pub async fn open_browse_panel(app: AppHandle, url: String) -> Result<(), String
         .parse()
         .map_err(|e| format!("invalid url: {e}"))?;
 
-    // Commerce URL passed in directly → bounce, don't open the panel.
     if is_commerce_url(&parsed_url) {
         let _ = app.shell().open(parsed_url.to_string(), None);
         return Ok(());
     }
 
-    // Already open → just navigate (preserves login + cookies).
     if let Some(existing) = app.get_webview(PANEL_LABEL) {
         existing
             .navigate(parsed_url)
             .map_err(|e| format!("navigate failed: {e}"))?;
+        reposition_panel(&app);
         return Ok(());
     }
 
-    let (pos, size) = panel_bounds(&app).ok_or_else(|| "main window not found".to_string())?;
-    let main = app.get_window("main").ok_or_else(|| "main window not found".to_string())?;
+    let main = app
+        .get_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+    let (pos, size) = panel_bounds(&app).ok_or_else(|| "main window bounds unavailable".to_string())?;
 
     let app_for_filter = app.clone();
     let builder = WebviewBuilder::new(PANEL_LABEL, WebviewUrl::External(parsed_url))
         .on_navigation(move |nav_url| {
             if is_commerce_url(nav_url) {
-                // Block in-panel; open in the system browser instead.
                 let target = nav_url.to_string();
                 let app = app_for_filter.clone();
                 tauri::async_runtime::spawn(async move {
@@ -106,7 +95,7 @@ pub async fn open_browse_panel(app: AppHandle, url: String) -> Result<(), String
 
     main.add_child(builder, pos, size)
         .map_err(|e| format!("add_child failed: {e}"))?;
-
+    reposition_panel(&app);
     Ok(())
 }
 

@@ -11,12 +11,43 @@ export type UpdateState =
   | { kind: "installing" }
   | { kind: "error"; message: string };
 
+export type LastUpdateCheck = {
+  checkedAt: string;
+  kind: "available" | "up-to-date" | "error";
+  version?: string;
+  message?: string;
+};
+
+export const LAST_UPDATE_CHECK_KEY = "liquidclips:last-update-check";
+
+function rememberUpdateCheck(state: LastUpdateCheck) {
+  try {
+    localStorage.setItem(LAST_UPDATE_CHECK_KEY, JSON.stringify(state));
+  } catch {
+    /* localStorage can be unavailable in test/web shims */
+  }
+}
+
+export function readLastUpdateCheck(): LastUpdateCheck | null {
+  try {
+    const raw = localStorage.getItem(LAST_UPDATE_CHECK_KEY);
+    return raw ? (JSON.parse(raw) as LastUpdateCheck) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function checkForUpdate(): Promise<UpdateState> {
   try {
     const update = await check();
-    if (!update) return { kind: "up-to-date" };
+    if (!update) {
+      rememberUpdateCheck({ checkedAt: new Date().toISOString(), kind: "up-to-date" });
+      return { kind: "up-to-date" };
+    }
+    rememberUpdateCheck({ checkedAt: new Date().toISOString(), kind: "available", version: update.version });
     return { kind: "available", update };
   } catch (e) {
+    rememberUpdateCheck({ checkedAt: new Date().toISOString(), kind: "error", message: String(e) });
     void reportDesktopError("update_failed", { route: "update", error_code: "check_failed", message: String(e) });
     return { kind: "error", message: String(e) };
   }

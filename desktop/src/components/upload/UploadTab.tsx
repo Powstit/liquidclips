@@ -6,6 +6,7 @@ import { PUBLISHING_ENABLED } from "../../lib/flags";
 import { PlatformIcon } from "../PlatformIcon";
 import { ScheduleQueue } from "../ScheduleQueue";
 import { LocalQueue } from "./LocalQueue";
+import { CampaignContextStrip } from "../earn/CampaignContextStrip";
 
 const PLATFORM_ORDER: ConnectionPlatform[] = ["youtube", "tiktok", "instagram", "x"];
 
@@ -77,6 +78,8 @@ export function UploadTab({
           Manage connections
         </button>
       </header>
+
+      <CampaignContextStrip />
 
       {/* Connected-platforms chip rail — 4 fixed slots, fuchsia when connected,
           dim when not. Reads at a glance whether the queue can actually fire. */}

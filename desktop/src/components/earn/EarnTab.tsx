@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { openBrowsePanel, closeBrowsePanel, useBrowsePanel, WHOP_REWARDS_URL } from "../../lib/browse";
-import { BROWSE_PANEL_ENABLED } from "../../lib/flags";
 import { sidecar, type WhopBounty, type WhopSubmission, type BountyContext, type BountyProjectSummary } from "../../lib/sidecar";
 import { useActivation } from "../../lib/activation";
 import { inWhopIframe } from "../../lib/whop-iframe";
@@ -14,6 +12,8 @@ import { SubmittedList } from "./SubmittedList";
 import { ApprovedList } from "./ApprovedList";
 import { AffiliateHero } from "./AffiliateHero";
 import { RewardClipsPanel } from "./RewardClipsPanel";
+import { SavedBriefsRow } from "./SavedBriefs";
+import { TrackedSubmissionsTable } from "./TrackedSubmissions";
 import {
   matchesFilter,
   formatBudget,
@@ -356,9 +356,9 @@ export function EarnTab({
       <div className="mt-6 flex flex-col gap-4">
         {subTab === "available" && (
           <>
-            {/* Browse Rewards side panel. BROWSE_PANEL_ENABLED now defaults on;
-                set VITE_BROWSE_PANEL=0 only for one-off QA builds. */}
-            {BROWSE_PANEL_ENABLED && <BrowsePanelToggle />}
+            {/* Browser controls live in the chrome bar above the embedded
+                webview (BrowseRewardsPanel.tsx). Fuchsia edge tab in App.tsx
+                is the open trigger. */}
             <AffiliateHero onSignIn={onSignIn} />
             <EarnMoneyCockpit
               bounties={bounties}
@@ -367,6 +367,8 @@ export function EarnTab({
               projects={bountyProjects}
               connectedPlatforms={filterPlatforms}
             />
+            <SavedBriefsRow />
+            <TrackedSubmissionsTable />
             <EarnHowItWorks />
             <div className="flex flex-col gap-2">
               <input
@@ -857,49 +859,3 @@ function readSubmissionIds(): string[] {
   }
 }
 
-// Entry point for the Browse Rewards side panel. Open-state is hoisted into
-// the singleton store in src/lib/browse.ts so the panel chrome (rendered by
-// App.tsx -> BrowseRewardsPanel) stays in sync regardless of which tab the
-// user is on when they toggle. The native child webview is owned by Rust.
-function BrowsePanelToggle() {
-  const { open } = useBrowsePanel();
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function toggle() {
-    setBusy(true);
-    setErr(null);
-    try {
-      if (open) {
-        await closeBrowsePanel();
-      } else {
-        await openBrowsePanel(WHOP_REWARDS_URL);
-      }
-    } catch (e) {
-      setErr(String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-3 rounded-2xl border border-line bg-paper/60 p-4">
-      <div className="flex-1">
-        <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
-          in-app browser
-        </div>
-        <div className="font-sans text-[13px] text-ink">
-          Browse Whop Content Rewards alongside your clipping workspace.
-        </div>
-        {err && <div className="mt-1 font-mono text-[11px] text-[#DC2626]">{err}</div>}
-      </div>
-      <button
-        onClick={() => void toggle()}
-        disabled={busy}
-        className="shrink-0 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-white transition-all hover:bg-fuchsia-bright disabled:opacity-40"
-      >
-        {busy ? "…" : open ? "Close panel" : "Browse Rewards →"}
-      </button>
-    </div>
-  );
-}

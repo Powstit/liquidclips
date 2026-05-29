@@ -129,9 +129,24 @@ export function BountyCard({
         </button>
         {briefUrl && (
           <button
-            onClick={() =>
-              void (BROWSE_PANEL_ENABLED ? openBrowsePanel(briefUrl) : openExternal(briefUrl))
-            }
+            onClick={async () => {
+              // Try the in-app panel first; if Rust rejects (e.g. webview
+              // creation fails, missing capability), fall through to the
+              // system browser so the user can still reach the brief.
+              if (BROWSE_PANEL_ENABLED) {
+                try {
+                  await openBrowsePanel(briefUrl);
+                  return;
+                } catch (e) {
+                  console.error("[earn] Browse panel failed, falling back to system browser:", e);
+                }
+              }
+              try {
+                await openExternal(briefUrl);
+              } catch (e) {
+                console.error("[earn] Failed to open brief externally:", e);
+              }
+            }}
             className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 font-sans text-[12px] font-medium text-text-secondary hover:text-fuchsia-deep"
             title={BROWSE_PANEL_ENABLED
               ? "Open the brand's brief in the side panel — clip alongside it."
