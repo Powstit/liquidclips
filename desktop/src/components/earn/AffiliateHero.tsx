@@ -23,6 +23,9 @@ import {
 } from "../../lib/backend";
 import { QrCode } from "../QrCode";
 import { InfoHint } from "../InfoHint";
+import { Avatar } from "../primitives";
+import { useChosenAvatarId } from "../../lib/avatarChoice";
+import { AvatarPicker } from "./AvatarPicker";
 
 // AffiliateHero — top-of-Earn referral dashboard (0.4.30).
 //
@@ -359,19 +362,41 @@ function Dashboard({
 }) {
   const pastDue = variant === "past-due";
   const earned = formatMoney(affiliate.total_referral_earnings_usd);
+  const earnedUsd = Number(affiliate.total_referral_earnings_usd) || 0;
   const mrr = formatMoney(affiliate.monthly_recurring_revenue_usd);
   const active = affiliate.active_members_count ?? 0;
   const total = affiliate.total_referrals_count ?? 0;
   const isFounder = customer.founder;
   const isAdmin = customer.admin_override;
   const isStripe = customer.billing_provider === "clerk";
+  const { avatarId } = useChosenAvatarId();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Founders + admins get a free pass on the unlock ladder so their picker
+  // shows everything as available.
+  const pickerEarned = isFounder || isAdmin ? Number.POSITIVE_INFINITY : earnedUsd;
 
   return (
     <Shell tone={pastDue ? "warn" : isFounder || isAdmin ? "fuchsia" : "neutral"}>
       <div className="flex items-start justify-between gap-3">
-        <Eyebrow hint="Your default referral link and QR. Use campaign links later when you want separate tracking.">
-          your referral business
-        </Eyebrow>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            title="Choose your avatar"
+            className="rounded-full transition-transform hover:scale-[1.06] focus:outline-none focus-visible:shadow-[var(--glow-sm)]"
+          >
+            <Avatar
+              avatarId={avatarId}
+              src={customer.image_url}
+              name={customer.name}
+              size="sm"
+              ring={isFounder || isAdmin}
+            />
+          </button>
+          <Eyebrow hint="Your default referral link and QR. Use campaign links later when you want separate tracking.">
+            your referral business
+          </Eyebrow>
+        </div>
         <div className="flex items-center gap-2">
           {(isFounder || isAdmin) && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-fuchsia-soft/30 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
@@ -470,6 +495,12 @@ function Dashboard({
           </p>
         )}
       </div>
+      {pickerOpen && (
+        <AvatarPicker
+          earnedUsd={pickerEarned}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </Shell>
   );
 }
@@ -528,7 +559,8 @@ function PaymentRoutingRow({
           className="text-left transition-colors hover:text-fuchsia-deep"
           title={r.helper}
         >
-          <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-text-tertiary">
+          <div className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-text-tertiary">
+            <ProviderBadge provider={r.provider} />
             {r.provider}
           </div>
           <div className="mt-1 font-sans text-[12px] font-medium text-ink">{r.label}</div>
@@ -538,6 +570,34 @@ function PaymentRoutingRow({
         </button>
       ))}
     </div>
+  );
+}
+
+// Small monogram badges so the provider eyebrow is scannable as a brand,
+// not just a text string. Brand-palette-safe: text colour stays on the
+// fuchsia / ink scale; the chip background uses a subdued tint per provider
+// for instant differentiation without smuggling new accent colours in.
+function ProviderBadge({ provider }: { provider: string }) {
+  const p = provider.toLowerCase();
+  let letter = "•";
+  let tone = "bg-paper-elev text-text-secondary border-line";
+  if (p.startsWith("stripe")) {
+    letter = "S";
+    tone = "bg-[#635BFF]/15 text-[#A29BFF] border-[#635BFF]/30";
+  } else if (p.startsWith("whop")) {
+    letter = "W";
+    tone = "bg-[#FF6B35]/15 text-[#FF9F76] border-[#FF6B35]/30";
+  } else if (p.startsWith("clerk")) {
+    letter = "C";
+    tone = "bg-fuchsia-soft text-fuchsia-deep border-fuchsia/30";
+  }
+  return (
+    <span
+      className={`inline-flex h-4 w-4 items-center justify-center rounded-full border font-mono text-[8px] font-semibold ${tone}`}
+      aria-hidden
+    >
+      {letter}
+    </span>
   );
 }
 

@@ -99,7 +99,7 @@ function Tile({
       </span>
       <span
         className={`font-display text-[18px] font-semibold tracking-[-0.01em] ${valueColor} ${
-          pulse ? "pulse-dot" : ""
+          pulse ? "animate-pulse" : ""
         }`}
       >
         {value}
