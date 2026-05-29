@@ -689,3 +689,40 @@ function formatMoney(usd: string | null): string {
     maximumFractionDigits: n >= 100 ? 0 : 2,
   });
 }
+
+// ---------- popover wrapper for the redesigned Earn icon rail ------------
+// The rail's Link icon opens the full AffiliateHero inside a centered modal
+// instead of taking up vertical space in the main feed. State + caching
+// already lives in the component; the wrapper just controls visibility.
+
+export function AffiliateHeroPopover({
+  onClose,
+  onSignIn,
+}: {
+  onClose: () => void;
+  onSignIn?: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-6 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-[720px] rounded-3xl border border-line bg-paper-elev shadow-[var(--shadow-e3)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md text-text-secondary hover:bg-paper-warm hover:text-ink"
+        >
+          ✕
+        </button>
+        <div className="max-h-[80vh] overflow-y-auto p-4">
+          <AffiliateHero onSignIn={onSignIn} />
+        </div>
+      </div>
+    </div>
+  );
+}
