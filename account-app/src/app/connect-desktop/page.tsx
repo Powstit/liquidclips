@@ -98,7 +98,7 @@ export default function ConnectDesktopPage() {
           setPhase({ k: "error", msg: "Activation response was incomplete. Please try again." });
           return;
         }
-        const deepLink = `junior://activate?token=${encodeURIComponent(
+        const deepLink = `liquidclips://activate?token=${encodeURIComponent(
           data.license_jwt,
         )}&challenge=${encodeURIComponent(challenge)}`;
         try {

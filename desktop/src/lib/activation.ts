@@ -67,7 +67,12 @@ async function handleDeepLink(urls: string[]): Promise<void> {
     } catch {
       continue;
     }
-    if (u.protocol !== "liquidclips:" || u.hostname !== "activate") continue;
+    // Accept both schemes during the rebrand transition: liquidclips:// is
+    // the current canonical scheme, junior:// is the legacy fallback the
+    // account-app emitted pre-rebrand. Either scheme + hostname=activate is
+    // a valid activation link as long as the challenge matches.
+    if (u.protocol !== "liquidclips:" && u.protocol !== "junior:") continue;
+    if (u.hostname !== "activate") continue;
     if (!pendingChallenge) return; // nothing in flight — ignore stray/old links
 
     const token = u.searchParams.get("token");
