@@ -19,6 +19,15 @@ use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, Command};
 use tokio::sync::{oneshot, Mutex};
+use tokio::time::{timeout, Duration};
+
+// Default per-call timeout. Without this, a hung Python sidecar (e.g.,
+// faster-whisper looping on bad audio) leaves rx.await pending forever and
+// the frontend's invoke() never resolves. 300s is generous enough for any
+// legitimate single sidecar method (pipeline stages don't run inside a
+// single call — they're separate calls per stage). See
+// docs/TRANSCRIPT_HANG_REPORT.md tier 1 fix C.
+const SIDECAR_CALL_TIMEOUT_SECS: u64 = 300;
 
 #[derive(Serialize)]
 struct Request<'a> {
@@ -160,7 +169,7 @@ impl SidecarState {
         let (tx, rx) = oneshot::channel::<Result<Value>>();
         self.pending.lock().await.insert(id, tx);
 
-        let req = Request { id, method, params };
+        let req = Request { id, method, params: params.clone() };
         let mut line = serde_json::to_vec(&req)?;
         line.push(b'\n');
 
@@ -170,7 +179,28 @@ impl SidecarState {
             stdin.flush().await?;
         }
 
-        rx.await.map_err(|_| anyhow!("sidecar response channel closed"))?
+        // Wrap rx.await in a hard timeout so a hung sidecar can't leave the
+        // frontend invoke() pending forever. On timeout we also evict the
+        // pending entry so the slot doesn't leak if a late response arrives.
+        let method_label = req.method.to_string();
+        let result = timeout(
+            Duration::from_secs(SIDECAR_CALL_TIMEOUT_SECS),
+            rx,
+        )
+        .await;
+
+        match result {
+            Ok(Ok(inner)) => inner,
+            Ok(Err(_)) => Err(anyhow!("sidecar response channel closed")),
+            Err(_) => {
+                self.pending.lock().await.remove(&id);
+                Err(anyhow!(
+                    "sidecar call '{}' timed out after {}s",
+                    method_label,
+                    SIDECAR_CALL_TIMEOUT_SECS
+                ))
+            }
+        }
     }
 }
 

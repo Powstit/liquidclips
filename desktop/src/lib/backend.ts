@@ -91,28 +91,48 @@ async function authedFetch(path: string, init: RequestInit & { jwt?: string | nu
   if (!jwt) {
     throw new UnauthorizedError("not activated — sign in to Junior to continue.");
   }
-  let res: Response;
-  try {
-    res = await fetch(`${BACKEND_URL}${path}`, {
-      ...rest,
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${jwt}`,
-        ...(headers ?? {}),
-      },
-    });
-  } catch (e) {
-    // Network failure → backend unreachable / offline. Report + raise a typed
-    // error so screens show a friendly retry state, not a raw stack trace.
-    void reportDesktopError("backend_offline", {
-      route: routeFor(path),
-      error_code: (e as Error)?.name ?? "NetworkError",
-      message: String(e),
-    });
-    throw new BackendOfflineError("can't reach Junior — check your connection and retry.");
+  // Retry transient failures (network drop, 5xx, 429) with exponential backoff.
+  // Only retries idempotent reads; non-GET requests bail on the first failure
+  // so we don't double-submit (e.g. duplicate notification dismiss).
+  const method = (rest.method ?? "GET").toUpperCase();
+  const idempotent = method === "GET" || method === "HEAD";
+  const maxAttempts = idempotent ? 3 : 1;
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(`${BACKEND_URL}${path}`, {
+        ...rest,
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${jwt}`,
+          ...(headers ?? {}),
+        },
+      });
+    } catch (e) {
+      lastErr = e;
+      if (attempt < maxAttempts - 1) {
+        // exponential backoff: 200ms, 600ms
+        await new Promise((r) => window.setTimeout(r, 200 * Math.pow(3, attempt)));
+        continue;
+      }
+      void reportDesktopError("backend_offline", {
+        route: routeFor(path),
+        error_code: (e as Error)?.name ?? "NetworkError",
+        message: String(e),
+      });
+      throw new BackendOfflineError("can't reach Junior — check your connection and retry.");
+    }
+    // 429 + 5xx are transient — retry on idempotent reads.
+    if (idempotent && (res.status === 429 || (res.status >= 500 && res.status <= 599)) && attempt < maxAttempts - 1) {
+      await new Promise((r) => window.setTimeout(r, 200 * Math.pow(3, attempt)));
+      continue;
+    }
+    if (res.status === 401) await handleUnauthorized(routeFor(path));
+    return res;
   }
-  if (res.status === 401) await handleUnauthorized(routeFor(path));
-  return res;
+  // Shouldn't reach — loop always returns or throws — but TS needs a path.
+  throw new BackendOfflineError(`backend unreachable after ${maxAttempts} attempts: ${String(lastErr)}`);
 }
 
 export type NotificationDto = {

@@ -13,6 +13,8 @@ import { NotificationBell } from "./components/NotificationBell";
 import { NotificationSheet } from "./components/NotificationSheet";
 import { UploadTab } from "./components/upload/UploadTab";
 import { PayoutsTab } from "./components/payouts/PayoutsTab";
+import { InvadersOverlay } from "./components/invaders/InvadersOverlay";
+import { closeInvaders } from "./lib/invaders/store";
 import { Settings } from "./components/Settings";
 import { sidecar, visibleStagesFor, pipelineStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
 import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
@@ -208,6 +210,17 @@ export default function App() {
       void unlistenPromise.then((un) => un());
     };
   }, [pendingBrief]);
+
+  // Autoclose Invaders when the pipeline reaches any terminal state — the
+  // user came here to clip, not to play. Game state inside the overlay still
+  // persists internally for the session (high score is on disk), so reopening
+  // resumes from a fresh wave 1.
+  useEffect(() => {
+    const terminalKinds: View["kind"][] = ["results", "lifted", "failed", "canceled", "empty", "earn", "upload", "payouts"];
+    if (terminalKinds.includes(view.kind)) {
+      closeInvaders();
+    }
+  }, [view.kind]);
 
   async function runPipelineFromUrl(url: string, brief: string = "", intent: Intent = "both", bounty?: BountyContext) {
     let unlistenProgress: (() => void) | null = null;
@@ -450,7 +463,20 @@ export default function App() {
       unlistenProgress = await onLiftProgress((p) => {
         setView((v) => (v.kind === "lifting" ? { ...v, progress: p } : v));
       });
-      const result = await sidecar.liftTranscript(url);
+      // Frontend-side belt-and-braces timeout (150s). The Rust call() has its
+      // own 300s ceiling; this fires first so the user sees a clear UI error
+      // before the lower-level "channel closed" message lands. See
+      // docs/TRANSCRIPT_HANG_REPORT.md tier 1 fix D.
+      const TIMEOUT_MS = 150_000;
+      const result = await Promise.race([
+        sidecar.liftTranscript(url),
+        new Promise<never>((_, reject) =>
+          window.setTimeout(
+            () => reject(new Error("Transcription timed out — try a shorter video or check the URL.")),
+            TIMEOUT_MS,
+          ),
+        ),
+      ]);
       setView({ kind: "lifted", result });
     } catch (e) {
       console.error("[lift] failed:", e);
@@ -665,6 +691,13 @@ export default function App() {
             url={view.url}
             phase={view.progress?.phase ?? "downloading"}
             percent={view.progress?.percent ?? null}
+            onCancel={() => {
+              // Best-effort cancel: writes marker file in sidecar; the running
+              // lift_transcript polls it every 2s and raises. UI flips to
+              // empty immediately rather than waiting for the RPC to return.
+              void sidecar.liftCancel().catch(() => undefined);
+              setView({ kind: "empty" });
+            }}
           />
         )}
 
@@ -869,6 +902,11 @@ export default function App() {
         />
       )}
       {inboxOpen && <NotificationSheet onClose={() => setInboxOpen(false)} />}
+      {/* Invaders overlay — portals to document.body so it's not affected by
+          MainShell padding when the browse panel is open. Triggered manually
+          from JuniorLoader / WorkingStage; auto-closes when the pipeline
+          reaches a terminal state (see autoclose effect at App top). */}
+      <InvadersOverlay />
     </MainShell>
   );
 }

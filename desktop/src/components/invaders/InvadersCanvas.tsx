@@ -13,6 +13,15 @@ export function InvadersCanvas({ state, onStep, width, height }: Props) {
   const rafRef = useRef<number>(0);
   const prevRef = useRef<number>(0);
 
+  // Latest state + onStep live in refs so the canvas setup effect only runs
+  // when the canvas size changes — not on every state mutation (which would
+  // be 60Hz, tearing down and re-creating the RAF loop + canvas dimensions
+  // every frame and pegging CPU).
+  const stateRef = useRef(state);
+  const onStepRef = useRef(onStep);
+  useEffect(() => { stateRef.current = state; }, [state]);
+  useEffect(() => { onStepRef.current = onStep; }, [onStep]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -25,19 +34,20 @@ export function InvadersCanvas({ state, onStep, width, height }: Props) {
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
     canvas.style.imageRendering = "pixelated";
-    ctx.scale(dpr, dpr);
 
     function frame(ts: number) {
       if (!prevRef.current) prevRef.current = ts;
       const dtMs = ts - prevRef.current;
       prevRef.current = ts;
-      onStep(dtMs);
+      onStepRef.current(dtMs);
 
-      // draw
+      // setTransform replaces the matrix entirely (it doesn't multiply), so
+      // bracketing each draw with save/setTransform/draw/restore keeps the
+      // scale at exactly dpr×dpr per frame regardless of any state changes.
       const c = canvas!.getContext("2d")!;
       c.save();
       c.setTransform(dpr, 0, 0, dpr, 0, 0);
-      draw(c, state, width, height);
+      draw(c, stateRef.current, width, height);
       c.restore();
 
       rafRef.current = requestAnimationFrame(frame);
@@ -48,7 +58,7 @@ export function InvadersCanvas({ state, onStep, width, height }: Props) {
       cancelAnimationFrame(rafRef.current);
       prevRef.current = 0;
     };
-  }, [width, height, onStep, state]);
+  }, [width, height]);
 
   return <canvas ref={canvasRef} className="rounded-lg" />;
 }

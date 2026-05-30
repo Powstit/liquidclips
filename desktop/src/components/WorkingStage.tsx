@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { onStageProgress, type Project, type StageName, type StageProgress } from "../lib/sidecar";
+import { InvadersTrigger } from "./invaders/InvadersTrigger";
 
 type ProgressBlob = StageProgress;
 
@@ -269,13 +270,16 @@ export function WorkingStage({
         <span className="tabular-nums">Elapsed {formatElapsed(elapsed)}</span>
         <span>·</span>
         <span>{currentIdx + 1} / {stages.length}</span>
-        <button
-          onClick={requestCancel}
-          disabled={cancelRequested}
-          className="ml-auto rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors hover:border-[#DC2626] hover:text-[#DC2626] disabled:opacity-50"
-        >
-          {cancelRequested ? "Cancelling…" : "Cancel"}
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <InvadersTrigger />
+          <button
+            onClick={requestCancel}
+            disabled={cancelRequested}
+            className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors hover:border-[#DC2626] hover:text-[#DC2626] disabled:opacity-50"
+          >
+            {cancelRequested ? "Cancelling…" : "Cancel"}
+          </button>
+        </div>
         {etaCompleteAt !== null && (
           <>
             <span>·</span>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { InvadersTrigger } from "./invaders/InvadersTrigger";
 
 // Brand-voice typing loader. Per spec §3.9 — first-person past tense for done,
 // plain-verb for in-progress, no exclamation, specifics over vibes. Used
@@ -80,6 +81,7 @@ export function JuniorLoader({
           <div className="working-stage-shimmer h-full w-1/3 rounded-full" />
         </div>
       )}
+      <InvadersTrigger />
     </div>
   );
 }

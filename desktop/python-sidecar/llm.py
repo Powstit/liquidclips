@@ -311,9 +311,10 @@ def pick_clips_from_transcript(
     from openai import OpenAI
     # Cap each request + cap SDK-level retries. Without these the SDK silently
     # retries with exponential backoff on a flaky connection — observed to take
-    # 6+ minutes with zero UI feedback. timeout=45 + max_retries=1 caps any
-    # single clip-pick at ~90s worst case.
-    client = OpenAI(api_key=api_key, timeout=45.0, max_retries=1)
+    # 6+ minutes with zero UI feedback. timeout=45 + max_retries=2 caps any
+    # single clip-pick at ~135s worst case (3 attempts × 45s); bumped from
+    # max_retries=1 so transient 429s don't surface as user-visible failures.
+    client = OpenAI(api_key=api_key, timeout=45.0, max_retries=2)
     model = os.environ.get("JUNIOR_LLM_MODEL", "gpt-4o-mini")
     user_message = _build_user_message(transcript, brief)
 
