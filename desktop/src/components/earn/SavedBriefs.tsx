@@ -69,7 +69,7 @@ export function SavedBriefsRow({
 
       {error && (
         <div className="rounded-md border border-[#DC2626]/40 bg-[#DC2626]/10 px-3 py-2 font-mono text-[11px] text-[#F87171]">
-          Couldn't load briefs · {error}
+          Couldn't load campaigns · {error}
         </div>
       )}
 
@@ -77,11 +77,10 @@ export function SavedBriefsRow({
         <Card padding="md" className="border-dashed">
           <div className="flex flex-col items-start gap-2">
             <p className="font-sans text-[13px] text-ink">
-              No briefs saved yet.
+              No campaigns saved yet.
             </p>
             <p className="font-sans text-[12px] text-text-secondary">
-              Open the in-app browser, find a reward campaign, and save it as
-              a brief to keep the rules + payout beside your clipping workspace.
+              Open the in-app browser, find a reward campaign, and save it to keep the rules + payout beside your clipping workspace.
             </p>
           </div>
         </Card>
@@ -166,7 +165,7 @@ function CompactBriefRow({
       }`}
     >
       <span className="flex-1 truncate font-sans text-[12px] text-ink">
-        {brief.title || "Untitled brief"}
+        {brief.title || "Untitled campaign"}
       </span>
       {brief.payout_label && (
         <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-fuchsia-deep">
@@ -198,7 +197,7 @@ function BriefCard({
     >
       <div className="flex items-start justify-between gap-2">
         <h3 className="line-clamp-2 font-sans text-[14px] font-medium text-ink">
-          {brief.title || "Untitled brief"}
+          {brief.title || "Untitled campaign"}
         </h3>
         {isActive && <Pill tone="fuchsia">Active</Pill>}
       </div>
@@ -280,10 +279,10 @@ function BriefDetailModal({
         <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div className="flex flex-col gap-2">
             <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
-              campaign brief
+              campaign
             </span>
             <h2 className="font-sans text-[18px] font-medium text-ink">
-              {brief.title || "Untitled brief"}
+              {brief.title || "Untitled campaign"}
             </h2>
             <div className="flex flex-wrap items-center gap-1.5">
               {brief.payout_label && <Pill tone="fuchsia">{brief.payout_label}</Pill>}
@@ -406,7 +405,7 @@ function BriefDetailModal({
               </Button>
             )}
             <Button variant="secondary" size="sm" onClick={() => void toggleActive()}>
-              {isActive ? "Stop using" : "Use this brief"}
+              {isActive ? "Stop using" : "Use this campaign"}
             </Button>
             <Button
               variant="primary"

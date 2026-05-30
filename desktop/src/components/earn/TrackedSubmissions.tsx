@@ -43,6 +43,16 @@ const PLATFORM_LABEL: Record<string, string> = {
   other: "Other",
 };
 
+// Hover help so a first-time clipper knows what each status actually means.
+const STATUS_HELP: Record<SubmissionStatus, string> = {
+  draft: "Not posted anywhere yet — just a placeholder.",
+  posted: "Live on the platform — paste the post URL here.",
+  submitted: "Submitted to Whop, waiting on their review.",
+  approved: "Whop approved it — payout in the next cycle.",
+  rejected: "Whop rejected this clip. See notes for the reason.",
+  paid: "Money in your account. ",
+};
+
 export function TrackedSubmissionsTable({
   compact,
   limit,
@@ -188,7 +198,7 @@ function CompactSubmissionRow({
       onClick={onEdit}
       className="flex items-center gap-2 rounded-md border border-line bg-paper-elev px-2 py-1.5 text-left hover:border-fuchsia/40"
     >
-      <Pill tone={STATUS_TONE[submission.status]}>{submission.status}</Pill>
+      <Pill tone={STATUS_TONE[submission.status]} title={STATUS_HELP[submission.status]}>{submission.status}</Pill>
       <span className="flex-1 truncate font-sans text-[12px] text-ink">
         {briefTitle ?? <span className="text-text-tertiary">— Unattached —</span>}
       </span>
@@ -233,7 +243,7 @@ function SubmissionRow({
 
   return (
     <div className="grid grid-cols-[80px_100px_1fr_90px_110px_60px] items-center gap-3 border-b border-line px-4 py-2.5 text-[12px] last:border-b-0 hover:bg-paper-elev/40">
-      <Pill tone={STATUS_TONE[submission.status]}>{submission.status}</Pill>
+      <Pill tone={STATUS_TONE[submission.status]} title={STATUS_HELP[submission.status]}>{submission.status}</Pill>
       <span className="font-mono text-[11px] uppercase tracking-[var(--tracking-eyebrow)] text-text-secondary">
         {PLATFORM_LABEL[submission.platform] ?? submission.platform}
       </span>

@@ -38,13 +38,17 @@ const STEPS: Array<{ title: string; detail: string }> = [
 export function EarnHowItWorksPopover({ onClose }: { onClose: () => void }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
+      // Fully opaque scrim — bg-paper at 100% so behind-content can't bleed
+      // through and the popover font never clashes with the page font behind.
+      className="fixed inset-0 z-50 flex items-start justify-start bg-paper p-6"
       onClick={onClose}
     >
       <Card
         elevation="raised"
         padding="none"
-        className="flex max-h-[80vh] w-full max-w-[480px] flex-col overflow-hidden"
+        // Anchored to the left edge of the viewport (ml-[80px] clears the
+        // 60px icon rail + 20px breathing room). max-h leaves footer space.
+        className="ml-[80px] mt-[80px] flex max-h-[calc(100vh-160px)] w-full max-w-[440px] flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
