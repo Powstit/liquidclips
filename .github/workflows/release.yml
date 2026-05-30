@@ -1,0 +1,56 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: install frontend dependencies
+        run: npm install
+        working-directory: ./desktop
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        with:
+          projectPath: ./desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Liquid Clips ${{ github.ref_name }}'
+          releaseBody: |
+            **What’s new**
+            See [CHANGELOG.md](./CHANGELOG.md) for full details.
+
+            **Install**
+            1. Download `Liquid.Clips_*_universal.dmg`
+            2. Open the DMG, drag **Liquid Clips** to **Applications**
+            3. Double-click from Applications (first launch may need Right-click → Open because the app is not yet notarized by Apple — this is normal for beta builds)
+          releaseDraft: true
+          prerelease: false
+          args: '--target universal-apple-darwin'

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0",
   "productName": "Liquid Clips",
-  "version": "0.4.34",
+  "version": "0.4.36",
   "identifier": "app.liquidclips.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -60,7 +60,8 @@
     "longDescription": "Liquid Clips turns long-form recordings into ready-to-post short clips. Local-first processing, scheduled posting, your files stay on your machine.",
     "macOS": {
       "entitlements": "./entitlements-direct.plist",
-      "minimumSystemVersion": "11.0"
+      "minimumSystemVersion": "11.0",
+      "signingIdentity": "-"
     }
   },
   "plugins": {
