@@ -109,6 +109,10 @@ export function InvadersOverlay() {
     setState((prev) => {
       if (!prev) return prev;
       savedRef.current = false;
+      // Clear any keys the user was holding when they hit game-over so
+      // the new round doesn't inherit phantom movement.
+      inputRef.current = { left: false, right: false, fire: false };
+      firePrevRef.current = false;
       return reset(prev);
     });
   }

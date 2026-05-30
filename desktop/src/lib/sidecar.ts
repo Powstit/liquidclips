@@ -244,6 +244,10 @@ export const sidecar = {
     fields: { title?: string; description?: string; pinned_comment?: string },
   ) => sidecarCall<{ project: Project }>("update_clip_meta", { slug, idx, ...fields }),
   liftTranscript: (url: string) => sidecarCall<LiftTranscriptResult>("lift_transcript", { url }),
+  // Write the lift-cancel marker so an in-flight lift_transcript raises at
+  // its next 2s poll. Safe to call even when nothing is running — just
+  // writes a marker that the next lift_transcript will clear on start.
+  liftCancel: () => sidecarCall<{ ok: boolean }>("lift_cancel", {}),
   getYoutubeExtras: (slug: string) =>
     sidecarCall<{ youtube: YouTubeExtras }>("get_youtube_extras", { slug }),
   updateYoutubeExtras: (slug: string, fields: Partial<YouTubeExtras>) =>

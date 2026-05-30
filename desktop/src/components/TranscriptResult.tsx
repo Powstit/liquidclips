@@ -16,10 +16,16 @@ export function TranscriptResult({
   onDone: () => void;
 }) {
   const [copied, setCopied] = useState<"transcript" | "caption" | null>(null);
+  // Defensive — if the sidecar payload is missing fields the type promised
+  // (e.g. partial JSON, schema drift after sidecar upgrade), we render with
+  // fallbacks instead of throwing a TypeError that React 18 surfaces as a
+  // fully blank app window.
+  const meta = result.meta ?? ({} as Partial<LiftTranscriptResult["meta"]>);
+  const segments = Array.isArray(result.segments) ? result.segments : [];
   const platform = result.platform === "link" ? "instagram" : (result.platform as PlatformId);
-  const posterSrc = result.meta.poster_path ? convertFileSrc(result.meta.poster_path) : null;
-  const title = result.meta.title || "Untitled";
-  const uploader = result.meta.uploader || "—";
+  const posterSrc = meta.poster_path ? convertFileSrc(meta.poster_path) : null;
+  const title = meta.title || "Untitled";
+  const uploader = meta.uploader || "—";
 
   async function copy(kind: "transcript" | "caption", text: string) {
     try {
@@ -42,7 +48,7 @@ export function TranscriptResult({
             Transcript ready.
           </h2>
           <p className="mt-1 font-mono text-[11px] text-text-tertiary">
-            {formatDuration(result.duration)} · {(result.language || "unknown").toUpperCase()} · {result.segments.length} segment{result.segments.length === 1 ? "" : "s"}
+            {formatDuration(result.duration ?? 0)} · {(result.language || "unknown").toUpperCase()} · {segments.length} segment{segments.length === 1 ? "" : "s"}
           </p>
         </div>
         <button
@@ -80,28 +86,28 @@ export function TranscriptResult({
               {uploader}
             </p>
             <button
-              onClick={() => void openExternal(result.meta.source_url)}
+              onClick={() => void openExternal(meta.source_url ?? "")}
               className="mt-3 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-fuchsia-deep hover:text-fuchsia"
             >
               View original ↗
             </button>
           </div>
 
-          {result.meta.description && (
+          {meta.description && (
             <div className="rounded-2xl border border-line bg-paper-warm/40 p-4">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
                   Original caption
                 </span>
                 <button
-                  onClick={() => void copy("caption", result.meta.description!)}
+                  onClick={() => void copy("caption", meta.description!)}
                   className="rounded-full border border-line bg-paper px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary hover:border-fuchsia hover:text-ink"
                 >
                   {copied === "caption" ? "copied" : "copy"}
                 </button>
               </div>
               <p className="mt-2 whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-ink line-clamp-[12]">
-                {result.meta.description}
+                {meta.description}
               </p>
             </div>
           )}
@@ -121,7 +127,7 @@ export function TranscriptResult({
           </div>
 
           <div className="mt-4 space-y-3">
-            {result.segments.map((seg, i) => (
+            {segments.map((seg, i) => (
               <div
                 key={i}
                 className="grid grid-cols-[60px_1fr] gap-3 border-b border-line/50 pb-3 last:border-0 last:pb-0"
@@ -134,7 +140,7 @@ export function TranscriptResult({
                 </p>
               </div>
             ))}
-            {result.segments.length === 0 && (
+            {segments.length === 0 && (
               <p className="font-mono text-[12px] text-text-tertiary">
                 No speech detected. The video might be silent or music-only.
               </p>
@@ -150,10 +156,15 @@ export function LiftingProgress({
   url,
   phase,
   percent,
+  onCancel,
 }: {
   url: string;
   phase: "downloading" | "transcribing" | "done";
   percent: number | null;
+  // Optional. When provided, a Cancel button renders in the header. App.tsx
+  // wires this to sidecar.liftCancel() which writes a cancel marker the
+  // running lift_transcript polls every 2s.
+  onCancel?: () => void;
 }) {
   const label =
     phase === "downloading"
@@ -165,9 +176,19 @@ export function LiftingProgress({
   return (
     <div className="w-full max-w-[520px]">
       <div className="rounded-2xl border border-line bg-paper p-6 shadow-[0_2px_12px_rgba(15,15,18,0.04)]">
-        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
-          <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-          {label}
+        <div className="flex items-center justify-between gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
+          <span className="flex items-center gap-2">
+            <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
+            {label}
+          </span>
+          {onCancel && (
+            <button
+              onClick={onCancel}
+              className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors hover:border-[#DC2626] hover:text-[#DC2626]"
+            >
+              Cancel
+            </button>
+          )}
         </div>
         <h2 className="mt-3 font-display text-[22px] font-semibold leading-tight tracking-[-0.02em] text-ink">
           Lifting the transcript.
@@ -204,7 +225,8 @@ export function LiftingProgress({
 
 function buildPlainText(result: LiftTranscriptResult): string {
   if (result.text && result.text.trim()) return result.text;
-  return result.segments.map((s) => s.text).join(" ");
+  const segs = Array.isArray(result.segments) ? result.segments : [];
+  return segs.map((s) => s.text).join(" ");
 }
 
 function formatTimestamp(seconds: number): string {

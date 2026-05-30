@@ -626,6 +626,24 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("lift_transcript requires `url` (str)")
     url = url.strip()
 
+    # Cancel mechanism — file marker pattern, matches pipeline stages'
+    # project.is_canceled() but works without a Project (lift_transcript is a
+    # direct method, not a stage). The frontend writes this marker via
+    # method_lift_cancel; we clear it on start + check between major steps.
+    cancel_marker = CLIPS_HOME / ".lift_cancel"
+    try:
+        cancel_marker.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    def _check_lift_canceled():
+        if cancel_marker.is_file():
+            try:
+                cancel_marker.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise RuntimeError("Transcription canceled by user.")
+
     # Workspace under ~/LiquidClips/transcripts/<token>/. Token is the URL slug yt-dlp
     # exposes as info.id, but we don't know that until after probe — so use a
     # temp short token, rename after.
@@ -794,34 +812,118 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
         else:
             audio_wav = src
 
+    _check_lift_canceled()
+
+    # Reject audio longer than 30 minutes for the lift-transcript fast path —
+    # the full pipeline handles long-form. Without this guard a clipper drops
+    # a 2h podcast URL and faster-whisper tiny grinds for 20+ min before the
+    # 120s timeout we just added kicks in (still better than hanging forever
+    # but a worse UX than failing fast).
+    try:
+        probe_result = subprocess.run(
+            [stages.ffprobe_bin(), "-v", "error", "-show_entries",
+             "format=duration", "-of", "json", str(audio_wav)],
+            capture_output=True, text=True, timeout=10,
+        )
+        if probe_result.returncode == 0:
+            probe_data = json.loads(probe_result.stdout or "{}")
+            audio_seconds = float(probe_data.get("format", {}).get("duration") or 0)
+            log(f"[lift_transcript] audio duration {audio_seconds:.1f}s")
+            if audio_seconds > 1800:
+                raise ValueError(
+                    f"Video is {int(audio_seconds // 60)} minutes — use the Clip flow "
+                    f"for content longer than 30 minutes."
+                )
+    except (subprocess.TimeoutExpired, ValueError):
+        raise
+    except Exception as e:
+        log(f"[lift_transcript] ffprobe duration check skipped: {e}")
+
     # Transcribe — same model + settings as stage_transcribe local path.
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
     from faster_whisper import WhisperModel
     from stages import _bundled_whisper_model_path
 
-    emit({"event": "lift_progress", "data": {"phase": "transcribing", "percent": 0}})
+    # Pre-transcribe heartbeat: model load can take 5-15s on first call. Without
+    # this the UI shows "downloading" → silence → spinner-of-doom, then the
+    # transcribing % suddenly jumps. The "loading model" note tells the user
+    # the app didn't hang.
+    emit({"event": "lift_progress", "data": {
+        "phase": "transcribing",
+        "percent": 0,
+        "note": "loading model",
+    }})
 
     model_size = os.environ.get("JUNIOR_WHISPER_MODEL", "tiny")
     bundled = _bundled_whisper_model_path() if model_size == "tiny" else None
-    model = WhisperModel(bundled or model_size, device="cpu", compute_type="int8")
-    segments_iter, t_info = model.transcribe(
-        str(audio_wav),
-        word_timestamps=False,
-        vad_filter=True,
-        vad_parameters={"min_silence_duration_ms": 500},
-    )
 
-    segments_list: list[dict[str, Any]] = []
-    total_text: list[str] = []
+    # HANG FIX (TRANSCRIPT_HANG_REPORT.md tier 1): wrap model.transcribe() in a
+    # ThreadPoolExecutor with a hard 120s ceiling. faster-whisper's
+    # vad_filter=True can loop infinitely on music-only / corrupt audio; setting
+    # it to False is the recommended #1 mitigation. Without this wrapper, a hang
+    # in transcribe() freezes the whole RPC channel — no return = UI stuck
+    # forever on the "Transcribing" spinner.
+    def _do_transcribe() -> tuple[list[dict[str, Any]], list[str], Any]:
+        log("[lift_transcript] model loading")
+        m = WhisperModel(bundled or model_size, device="cpu", compute_type="int8")
+        log("[lift_transcript] model loaded, starting transcribe")
+        seg_iter, info_local = m.transcribe(
+            str(audio_wav),
+            word_timestamps=False,
+            # vad_filter=False — the #1 reported faster-whisper hang source.
+            # tiny model is fast enough to process full audio without VAD.
+            vad_filter=False,
+        )
+        local_segments: list[dict[str, Any]] = []
+        local_text: list[str] = []
+        dur_local = float(info_local.duration or info.get("duration") or 0)
+        for seg in seg_iter:
+            text = seg.text.strip()
+            local_segments.append({"start": seg.start, "end": seg.end, "text": text})
+            local_text.append(text)
+            if dur_local > 0:
+                emit({"event": "lift_progress", "data": {
+                    "phase": "transcribing",
+                    "percent": min(99.0, (float(seg.end) / dur_local) * 100.0),
+                }})
+        return local_segments, local_text, info_local
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_do_transcribe)
+            # Poll for cancel every 2s while transcribe runs in the background
+            # thread. Whisper itself can't be interrupted mid-call, but cancel
+            # fires immediately after the current segment OR at the 120s ceiling.
+            elapsed = 0.0
+            poll_step = 2.0
+            segments_list = None
+            while True:
+                try:
+                    segments_list, total_text, t_info = future.result(timeout=poll_step)
+                    break
+                except FutureTimeoutError:
+                    elapsed += poll_step
+                    if elapsed >= 120:
+                        raise RuntimeError(
+                            "Transcription timed out after 120s — audio may be too long or contain no speech"
+                        )
+                    if cancel_marker.is_file():
+                        try:
+                            cancel_marker.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                        # We can't interrupt whisper mid-call cleanly; the
+                        # thread will keep running until model.transcribe()
+                        # returns, but we raise here so the RPC returns now
+                        # instead of waiting for the natural finish.
+                        raise RuntimeError("Transcription canceled by user.")
+    except FutureTimeoutError:
+        raise RuntimeError(
+            "Transcription timed out after 120s — audio may be too long or contain no speech"
+        )
+
     duration = float(t_info.duration or info.get("duration") or 0)
-    for seg in segments_iter:
-        text = seg.text.strip()
-        segments_list.append({"start": seg.start, "end": seg.end, "text": text})
-        total_text.append(text)
-        if duration > 0:
-            emit({"event": "lift_progress", "data": {
-                "phase": "transcribing",
-                "percent": min(99.0, (float(seg.end) / duration) * 100.0),
-            }})
+    log(f"[lift_transcript] transcribe done, {len(segments_list)} segments, duration={duration:.1f}s")
 
     full_text = " ".join(total_text).strip()
 
@@ -868,6 +970,19 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
 
     emit({"event": "lift_progress", "data": {"phase": "done", "percent": 100}})
     return payload
+
+
+def method_lift_cancel(_params: dict[str, Any]) -> dict[str, Any]:
+    """Write the lift-cancel marker file. The running lift_transcript polls
+    this file every 2s during the transcribe phase and raises mid-call if it
+    sees the marker. Used by the LiftingProgress Cancel button."""
+    marker = CLIPS_HOME / ".lift_cancel"
+    try:
+        CLIPS_HOME.mkdir(parents=True, exist_ok=True)
+        marker.touch()
+    except OSError as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True}
 
 
 def method_whop_list_bounties(params: dict[str, Any]) -> dict[str, Any]:
@@ -1362,6 +1477,7 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "whop_oauth_status": method_whop_oauth_status,
     "whop_oauth_cancel": method_whop_oauth_cancel,
     "lift_transcript": method_lift_transcript,
+    "lift_cancel": method_lift_cancel,
     "apply_overlay": method_apply_overlay,
     "drip_plan": method_drip_plan,
     "local_schedule_list": method_local_schedule_list,
