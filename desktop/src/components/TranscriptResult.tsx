@@ -174,16 +174,28 @@ export function LiftingProgress({
         </h2>
         <p className="mt-1 truncate font-mono text-[11px] text-text-tertiary">{url}</p>
 
-        <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-paper-warm">
-          <div
-            className="h-full rounded-full bg-fuchsia transition-all duration-300"
-            style={{ width: `${pct ?? (phase === "downloading" ? 25 : 65)}%` }}
-          />
+        <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-paper-elev/60">
+          {pct != null ? (
+            <div
+              className="h-full rounded-full transition-all duration-300"
+              style={{
+                width: `${pct}%`,
+                background: "var(--grad-fuchsia)",
+                boxShadow: "var(--glow-sm)",
+              }}
+            />
+          ) : (
+            // Indeterminate phase — shimmer instead of a fake fixed %.
+            <div className="working-stage-shimmer h-full w-1/3 rounded-full" />
+          )}
         </div>
-        <div className="mt-2 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
-          <span>1 · download</span>
-          <span>2 · transcribe</span>
-          <span>3 · done</span>
+        <div className="mt-2 flex items-center justify-between font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+          <span className={phase === "downloading" ? "text-fuchsia-deep" : ""}>1 · download</span>
+          <span className={phase === "transcribing" ? "text-fuchsia-deep" : ""}>2 · transcribe</span>
+          <span className={phase === "done" ? "text-fuchsia-deep" : ""}>3 · done</span>
+          {pct != null && (
+            <span className="ml-2 text-fuchsia-deep tabular-nums">{Math.round(pct)}%</span>
+          )}
         </div>
       </div>
     </div>

@@ -57,12 +57,27 @@ export function JuniorLoader({
           {detail}
         </p>
       )}
-      {typeof percent === "number" && (
-        <div className="h-[3px] w-full max-w-[520px] overflow-hidden rounded-full bg-line">
-          <div
-            className="h-full bg-fuchsia transition-[width] duration-200 ease-out"
-            style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
-          />
+      {typeof percent === "number" ? (
+        <div className="flex w-full max-w-[520px] flex-col gap-1.5">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-paper-elev/60">
+            <div
+              className="h-full rounded-full transition-[width] duration-200 ease-out"
+              style={{
+                width: `${Math.min(100, Math.max(0, percent))}%`,
+                background: "var(--grad-fuchsia)",
+                boxShadow: "var(--glow-sm)",
+              }}
+            />
+          </div>
+          <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-fuchsia-deep">
+            {Math.round(Math.min(100, Math.max(0, percent)))}%
+          </span>
+        </div>
+      ) : (
+        // Indeterminate state — show the shimmer so the user sees motion
+        // even when the sidecar can't emit a measurable percent.
+        <div className="h-1.5 w-full max-w-[520px] overflow-hidden rounded-full bg-paper-elev/60">
+          <div className="working-stage-shimmer h-full w-1/3 rounded-full" />
         </div>
       )}
     </div>

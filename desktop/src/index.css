@@ -113,3 +113,18 @@ pre {
 .blink {
   animation: blink 1s steps(1) infinite;
 }
+
+/* Indeterminate progress shimmer — used by WorkingStage / JuniorLoader when
+   a stage doesn't emit a measurable percent (LLM round-trip, audio extract).
+   A 33% fuchsia gradient bar slides left-to-right inside the track so the
+   user can see "something is happening" without lying about the %. */
+@keyframes working-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(330%); }
+}
+
+.working-stage-shimmer {
+  background: var(--grad-fuchsia);
+  box-shadow: var(--glow-sm);
+  animation: working-shimmer 1.6s ease-in-out infinite;
+}
