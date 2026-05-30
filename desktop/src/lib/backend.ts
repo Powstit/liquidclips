@@ -301,10 +301,44 @@ export const backend = {
       const body = await res.json().catch(() => ({}));
       throw new QuotaExceededError(body.detail || "Publishing requires Solo or higher.");
     }
+    if (res.status === 412) {
+      // Backend: no social_connections row yet. Surface a clear next step
+      // instead of dumping the raw 412 body to the user.
+      throw new Error("Connect a social profile in Settings → Connections before publishing.");
+    }
     if (!res.ok) {
       throw new Error(`publish-now failed: HTTP ${res.status} ${await res.text()}`);
     }
-    return (await res.json()) as PublishedTarget[];
+    // P1 (Ayrshare) returns {results: [{platform, post_url, post_id, status, error}]}.
+    // Translate to the legacy PublishedTarget[] shape so PublishModal doesn't have
+    // to know about the swap. Failed-platform entries become a thrown error so the
+    // modal's error banner shows up.
+    const body = await res.json() as { results?: Array<{ platform: string; post_url: string | null; post_id: string | null; status: string; error?: string | null }> } | PublishedTarget[];
+    const results = Array.isArray(body) ? body : (body.results ?? []);
+    const ok: PublishedTarget[] = [];
+    const failed: string[] = [];
+    for (const r of results) {
+      // Legacy shape — keep as-is.
+      if ("posted_at" in r && r.posted_at) {
+        ok.push(r as PublishedTarget);
+        continue;
+      }
+      const ayr = r as { platform: string; post_url: string | null; post_id: string | null; status: string; error?: string | null };
+      if (ayr.status === "published" && ayr.post_url) {
+        ok.push({
+          platform: ayr.platform,
+          post_url: ayr.post_url,
+          posted_at: new Date().toISOString(),
+          postiz_post_id: ayr.post_id ?? "",
+        });
+      } else {
+        failed.push(`${ayr.platform}: ${ayr.error || ayr.status}`);
+      }
+    }
+    if (ok.length === 0 && failed.length > 0) {
+      throw new Error(`publish failed — ${failed.join(" · ")}`);
+    }
+    return ok;
   },
 
   scheduleOne: async (
@@ -590,6 +624,11 @@ export type MeStatus = {
   whop_backend_key_configured: boolean;
   // Mirrors SyncStatus.remaining_exports — null = unlimited (paid/founder).
   remaining_exports: number | null;
+  // P2 matrix v2 — social-account ceiling. tier base + 5 per prepaid pack
+  // ($40 each). Founders / admins are uncapped (returned as 9999 sentinel).
+  account_limit: number;
+  extra_accounts_purchased: number;
+  clips_created: number;
 };
 
 // ── Affiliate / referral dashboard (0.4.30) ─────────────────────────────
@@ -684,6 +723,66 @@ export async function meStatus(): Promise<MeStatus | null> {
   } catch {
     return null;
   }
+}
+
+// ── Social connections (P1 — Ayrshare) ─────────────────────────────────
+//
+// One profile key per user. Set via Settings → Connections; PublishModal
+// reads `platforms` to pre-fill checkboxes and 412s the user back to
+// Settings if they try to publish without one.
+
+export type SocialConnectionState = {
+  connected: boolean;
+  profile_key_set: boolean;
+  platforms: string[];
+  active: boolean;
+};
+
+export async function socialGetConnection(): Promise<SocialConnectionState | null> {
+  if (isWebPreview()) {
+    return { connected: true, profile_key_set: true, platforms: ["tiktok", "youtube"], active: true };
+  }
+  try {
+    const res = await authedFetch("/social/connections");
+    if (!res.ok) return null;
+    return (await res.json()) as SocialConnectionState;
+  } catch {
+    return null;
+  }
+}
+
+export async function socialConnect(profileKey: string): Promise<SocialConnectionState> {
+  if (isWebPreview()) {
+    return { connected: true, profile_key_set: true, platforms: ["tiktok", "youtube"], active: true };
+  }
+  const res = await authedFetch("/social/connect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile_key: profileKey }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`connect failed: HTTP ${res.status} ${body}`);
+  }
+  return (await res.json()) as SocialConnectionState;
+}
+
+export async function socialRefreshPlatforms(): Promise<SocialConnectionState> {
+  if (isWebPreview()) {
+    return { connected: true, profile_key_set: true, platforms: ["tiktok", "youtube"], active: true };
+  }
+  const res = await authedFetch("/social/refresh-platforms", { method: "POST" });
+  if (!res.ok) throw new Error(`refresh failed: HTTP ${res.status}`);
+  return (await res.json()) as SocialConnectionState;
+}
+
+export async function socialDisconnectPlatform(platform: string): Promise<SocialConnectionState> {
+  if (isWebPreview()) {
+    return { connected: true, profile_key_set: true, platforms: ["youtube"], active: true };
+  }
+  const res = await authedFetch(`/social/disconnect/${encodeURIComponent(platform)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`disconnect failed: HTTP ${res.status}`);
+  return (await res.json()) as SocialConnectionState;
 }
 
 // ── Web preview: platform connections ───────────────────────────────────

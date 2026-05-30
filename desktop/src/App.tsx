@@ -61,6 +61,10 @@ export { inWhopIframe };
 export default function App() {
   const [view, setView] = useState<View>({ kind: "empty" });
   const [sidecarStatus, setSidecarStatus] = useState<"booting" | "ready" | "failed">("booting");
+  // Has the user dismissed the splash (via Continue or Skip on the embedded
+  // Invaders game)? Splash stays mounted until both sidecar is ready AND
+  // this flips true — gives the user a guaranteed window to play.
+  const [splashAcked, setSplashAcked] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [bootChecked, setBootChecked] = useState(false);
@@ -463,16 +467,16 @@ export default function App() {
       unlistenProgress = await onLiftProgress((p) => {
         setView((v) => (v.kind === "lifting" ? { ...v, progress: p } : v));
       });
-      // Frontend-side belt-and-braces timeout (150s). The Rust call() has its
-      // own 300s ceiling; this fires first so the user sees a clear UI error
-      // before the lower-level "channel closed" message lands. See
-      // docs/TRANSCRIPT_HANG_REPORT.md tier 1 fix D.
-      const TIMEOUT_MS = 150_000;
+      // Frontend-side belt-and-braces timeout (1h). The Python sidecar emits
+      // a clearer scaled-to-duration timeout for honest UX before this fires;
+      // this is just the absolute floor so the invoke promise can never hang
+      // forever. User can hit Cancel any time — that path returns immediately.
+      const TIMEOUT_MS = 60 * 60 * 1000;
       const result = await Promise.race([
         sidecar.liftTranscript(url),
         new Promise<never>((_, reject) =>
           window.setTimeout(
-            () => reject(new Error("Transcription timed out — try a shorter video or check the URL.")),
+            () => reject(new Error("Transcription took longer than 1 hour — give up and try a shorter video.")),
             TIMEOUT_MS,
           ),
         ),
@@ -486,12 +490,20 @@ export default function App() {
     }
   }
 
-  // Splash — sidecar still booting (or already failed). Masks the blank-window
-  // gap between window-open and the first useful render.
-  if (!bootChecked || sidecarStatus === "booting") {
+  // Splash — sidecar still booting OR user hasn't dismissed the embedded
+  // Invaders game yet. Even when the sidecar comes up fast, the splash
+  // holds for the user to play one round + see Continue light up. They can
+  // click Skip any time. Failed sidecar bypasses the game entirely.
+  const sidecarReady = bootChecked && sidecarStatus === "ready";
+  const splashShouldShow = !bootChecked || sidecarStatus !== "ready" || !splashAcked;
+  if (splashShouldShow) {
     return (
       <div className="flex h-full flex-col bg-paper text-ink">
-        <Splash failed={sidecarStatus === "failed"} />
+        <Splash
+          failed={sidecarStatus === "failed"}
+          ready={sidecarReady}
+          onContinue={() => setSplashAcked(true)}
+        />
       </div>
     );
   }

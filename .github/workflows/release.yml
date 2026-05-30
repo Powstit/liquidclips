@@ -30,6 +30,42 @@ jobs:
         run: npm install
         working-directory: ./desktop
 
+      # Sidecar binaries are .gitignored (ffmpeg 76MB, ffprobe 76MB,
+      # whisper-tiny 75MB) so CI must fetch them before tauri-action — the
+      # bundle.resources entries in tauri.conf.json hard-require these paths.
+      # Falling back to brew + huggingface_hub keeps the workflow
+      # self-contained (no third-party CDN auth, no LFS).
+      - name: fetch ffmpeg + ffprobe (sidecar binaries)
+        run: |
+          set -euo pipefail
+          mkdir -p desktop/python-sidecar/bin
+          # macos-latest runners are arm64; brew provides arm64 binaries.
+          # x86_64 mac users will need to bring their own ffmpeg until we
+          # lipo universal builds in a follow-up.
+          brew install ffmpeg
+          cp -f "$(brew --prefix)/bin/ffmpeg"  desktop/python-sidecar/bin/ffmpeg
+          cp -f "$(brew --prefix)/bin/ffprobe" desktop/python-sidecar/bin/ffprobe
+          chmod +x desktop/python-sidecar/bin/ffmpeg desktop/python-sidecar/bin/ffprobe
+          ls -lah desktop/python-sidecar/bin/
+
+      - name: fetch faster-whisper-tiny model
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --break-system-packages huggingface_hub
+          python3 - <<'PY'
+          from huggingface_hub import snapshot_download
+          import shutil, os
+          dest = "desktop/python-sidecar/models/faster-whisper-tiny"
+          os.makedirs(dest, exist_ok=True)
+          src = snapshot_download(
+              repo_id="Systran/faster-whisper-tiny",
+              allow_patterns=["config.json", "model.bin", "tokenizer.json", "vocabulary.txt"],
+          )
+          for fname in ("config.json", "model.bin", "tokenizer.json", "vocabulary.txt"):
+              shutil.copy(os.path.join(src, fname), os.path.join(dest, fname))
+          PY
+          ls -lah desktop/python-sidecar/models/faster-whisper-tiny/
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

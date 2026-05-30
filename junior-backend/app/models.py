@@ -49,6 +49,17 @@ class User(Base):
     # are unlimited. Incremented only on a successful export via /usage/clip-exported.
     starter_exports_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # P2 — tier matrix v2 (Free/Solo/Pro/Agency + Founder).
+    # ip_address captured at signup; same IP creating a second Free account is
+    # gated by clips_created summed across all users on that IP. active_at
+    # ticks on each clip export and feeds the Founder-flash-sale unlock at
+    # active_users >= 2,000. extra_accounts_purchased adds 5 per prepaid pack
+    # bought ($40 each) on top of the tier's base account limit.
+    ip_address: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    clips_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    extra_accounts_purchased: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
@@ -146,14 +157,9 @@ NOTIFICATION_CATEGORIES = (
 
 
 class PostizConnection(Base):
-    """A user's Postiz identity — one per Junior user, established once on first
-    Connect-platform action. Holds the pos_* access token used for every
-    subsequent publish + integration call.
-
-    The token never expires until the user revokes from their Postiz
-    settings (per Postiz OAuth2 docs). When a revocation webhook lands we
-    flip `active=False` and require re-auth before next publish.
-    """
+    """LEGACY — kept so existing rows don't 500 on table reflection. Replaced
+    by SocialConnection at P1 (Ayrshare). Do not write to this table from new
+    code paths."""
 
     __tablename__ = "postiz_connections"
 
@@ -161,6 +167,25 @@ class PostizConnection(Base):
     postiz_org_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     postiz_stripe_cus: Mapped[str | None] = mapped_column(String, nullable=True)
     access_token: Mapped[str] = mapped_column(Text, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class SocialConnection(Base):
+    """A user's Ayrshare profile — one row per Junior user, established when
+    they paste their Ayrshare Profile Key. Profile key is the bearer for all
+    publish + analytics calls. connected_platforms mirrors what's linked on
+    Ayrshare's side so the desktop can render platform chips without an
+    extra round-trip on every PublishModal open.
+    """
+
+    __tablename__ = "social_connections"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    ayrshare_profile_key: Mapped[str] = mapped_column(String, nullable=False)
+    connected_platforms: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)

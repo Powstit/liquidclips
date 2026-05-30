@@ -814,11 +814,13 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
 
     _check_lift_canceled()
 
-    # Reject audio longer than 30 minutes for the lift-transcript fast path —
-    # the full pipeline handles long-form. Without this guard a clipper drops
-    # a 2h podcast URL and faster-whisper tiny grinds for 20+ min before the
-    # 120s timeout we just added kicks in (still better than hanging forever
-    # but a worse UX than failing fast).
+    # Probe audio duration so we can scale the transcribe timeout proportional
+    # to length. tiny model runs at ~5x real-time on CPU; budget 10x for safety
+    # plus 60s for model load. Floor at 180s for short clips, hard ceiling at
+    # 3600s (1 hour wall-clock) so a truly broken file can't hang the sidecar
+    # forever even with cancel + heartbeats. Earlier 30-min hard-reject was
+    # over-cautious and blocked legitimate long-form content.
+    transcribe_timeout = 180
     try:
         probe_result = subprocess.run(
             [stages.ffprobe_bin(), "-v", "error", "-show_entries",
@@ -829,13 +831,11 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
             probe_data = json.loads(probe_result.stdout or "{}")
             audio_seconds = float(probe_data.get("format", {}).get("duration") or 0)
             log(f"[lift_transcript] audio duration {audio_seconds:.1f}s")
-            if audio_seconds > 1800:
-                raise ValueError(
-                    f"Video is {int(audio_seconds // 60)} minutes — use the Clip flow "
-                    f"for content longer than 30 minutes."
-                )
-    except (subprocess.TimeoutExpired, ValueError):
-        raise
+            if audio_seconds > 0:
+                transcribe_timeout = max(180, min(3600, int(audio_seconds * 0.2 + 60)))
+                log(f"[lift_transcript] transcribe timeout set to {transcribe_timeout}s")
+    except subprocess.TimeoutExpired:
+        log("[lift_transcript] ffprobe timed out — using default 180s transcribe budget")
     except Exception as e:
         log(f"[lift_transcript] ffprobe duration check skipped: {e}")
 
@@ -892,8 +892,9 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(_do_transcribe)
             # Poll for cancel every 2s while transcribe runs in the background
-            # thread. Whisper itself can't be interrupted mid-call, but cancel
-            # fires immediately after the current segment OR at the 120s ceiling.
+            # thread. Whisper can't be interrupted mid-call cleanly, but cancel
+            # fires at the next 2s tick. Hard ceiling = transcribe_timeout
+            # (scaled to audio length above).
             elapsed = 0.0
             poll_step = 2.0
             segments_list = None
@@ -903,23 +904,19 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
                     break
                 except FutureTimeoutError:
                     elapsed += poll_step
-                    if elapsed >= 120:
+                    if elapsed >= transcribe_timeout:
                         raise RuntimeError(
-                            "Transcription timed out after 120s — audio may be too long or contain no speech"
+                            f"Transcription timed out after {transcribe_timeout}s — audio may be corrupt or contain no speech"
                         )
                     if cancel_marker.is_file():
                         try:
                             cancel_marker.unlink(missing_ok=True)
                         except OSError:
                             pass
-                        # We can't interrupt whisper mid-call cleanly; the
-                        # thread will keep running until model.transcribe()
-                        # returns, but we raise here so the RPC returns now
-                        # instead of waiting for the natural finish.
                         raise RuntimeError("Transcription canceled by user.")
     except FutureTimeoutError:
         raise RuntimeError(
-            "Transcription timed out after 120s — audio may be too long or contain no speech"
+            f"Transcription timed out after {transcribe_timeout}s — audio may be corrupt or contain no speech"
         )
 
     duration = float(t_info.duration or info.get("duration") or 0)
