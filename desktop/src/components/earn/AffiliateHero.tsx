@@ -21,6 +21,7 @@ import {
   type AffiliateMeResponse,
   type PaymentVisibility,
 } from "../../lib/backend";
+import { Pencil } from "lucide-react";
 import { QrCode } from "../QrCode";
 import { InfoHint } from "../InfoHint";
 import { Avatar } from "../primitives";
@@ -436,8 +437,8 @@ function Dashboard({
           <button
             type="button"
             onClick={() => setPickerOpen(true)}
-            title="Choose your avatar"
-            className="rounded-full transition-transform hover:scale-[1.06] focus:outline-none focus-visible:shadow-[var(--glow-sm)]"
+            title="Choose your avatar — earn more to unlock more"
+            className="group relative rounded-full transition-transform hover:scale-[1.06] focus:outline-none focus-visible:shadow-[var(--glow-sm)]"
           >
             <Avatar
               avatarId={avatarId}
@@ -446,6 +447,15 @@ function Dashboard({
               size="sm"
               ring={isFounder || isAdmin}
             />
+            {/* Pencil overlay only on hover — signals "this is clickable, not
+                just a profile picture." Background opaque so it reads over
+                any avatar art behind it. */}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-ink/60 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+            >
+              <Pencil size={11} className="text-white" strokeWidth={2.5} />
+            </span>
           </button>
           <Eyebrow hint="Your default referral link and QR. Use campaign links later when you want separate tracking.">
             your referral business
