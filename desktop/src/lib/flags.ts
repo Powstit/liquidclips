@@ -1,12 +1,14 @@
 // Build-time capability flags for honest launch posture.
 //
-// Publishing (publish-now / schedule / drip) runs through the hidden Postiz
-// engine, which is NOT deployed to prod yet: no POSTIZ_CLIENT_ID/SECRET set,
-// the cron fire path is a stub, and media isn't uploaded at schedule time. Until
-// that path is configured + verified end-to-end, publishing ships DISABLED with
-// a clear Beta notice — never a silent stub that pretends to post. Flip to true
-// once the real Postiz path is live and tested (see docs/launch-hardening-checklist.md).
-export const PUBLISHING_ENABLED: boolean = false;
+// Publishing (publish-now / schedule / drip) runs through Ayrshare as of P1
+// (2026-05-30, see docs/CLAUDE_BUILD_BRIEF.md). Each user pastes their
+// Ayrshare Profile Key into Settings → Connections, which the backend stores
+// in social_connections. Publish features now flip themselves on/off via the
+// backend's `built` flag (AYRSHARE_API_KEY presence on Railway), so this
+// constant is the UI's *show the surface at all* switch. Leave true: the
+// surface should be visible everywhere, individual actions degrade to 503/412
+// (Connect first / Server beta) at call time.
+export const PUBLISHING_ENABLED: boolean = true;
 
 // Hosted LLM (Liquid Clips supplies the model credits so users don't bring an OpenAI
 // key) is NOT built — the desktop always resolves the key locally

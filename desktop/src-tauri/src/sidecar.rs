@@ -23,11 +23,12 @@ use tokio::time::{timeout, Duration};
 
 // Default per-call timeout. Without this, a hung Python sidecar (e.g.,
 // faster-whisper looping on bad audio) leaves rx.await pending forever and
-// the frontend's invoke() never resolves. 300s is generous enough for any
-// legitimate single sidecar method (pipeline stages don't run inside a
-// single call — they're separate calls per stage). See
-// docs/TRANSCRIPT_HANG_REPORT.md tier 1 fix C.
-const SIDECAR_CALL_TIMEOUT_SECS: u64 = 300;
+// the frontend's invoke() never resolves. 3600s (1h) covers long-form
+// lift_transcript (up to ~5h source content at 5x real-time). Python side
+// has its own scaled-to-duration ceiling that fires first for honest UX;
+// this is just the safety net so Rust never blocks the chain indefinitely.
+// See docs/TRANSCRIPT_HANG_REPORT.md tier 1 fix C.
+const SIDECAR_CALL_TIMEOUT_SECS: u64 = 3600;
 
 #[derive(Serialize)]
 struct Request<'a> {

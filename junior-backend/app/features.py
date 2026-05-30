@@ -33,13 +33,21 @@ class Feature(TypedDict):
     sprint: str | None  # which sprint delivers it; None = ships when toggled
 
 
-# Tier-by-tier feature flag matrix. Keep keys snake_case + stable — code reads them.
+# Tier-by-tier feature flag matrix v2 (Daniel's decision 2026-05-31).
+# Free / Solo $29 / Pro $79 / Agency $149 + locked Founder flash-sale.
+# `accounts_included` is the per-tier social-account base; users buy
+# +5 packs for $40 each (stored as extra_accounts_purchased). Legacy
+# "growth" / "autopilot" / "channel" tiers all alias to the new names
+# during the launch transition — see _LEGACY_TIER_ALIASES below.
 FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
     "free": {
-        "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},  # unlimited; free is gated by the 100 clip-export starter pass
+        "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},  # gated by clips_per_ip starter pass
+        "clips_per_ip":             {"value": 100,   "built": True,  "sprint": None},  # IP-summed quota, anti-farming
+        "accounts_included":        {"value": 1,     "built": True,  "sprint": None},
         "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
         "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
+        "watermark":                {"value": True,  "built": True,  "sprint": None},
         "byo_openai_key_required":  {"value": True,  "built": True,  "sprint": None},
         "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
         "hosted_llm":               {"value": False, "built": False, "sprint": "S5"},
@@ -48,81 +56,99 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
         "publish_multi_platform":   {"value": False, "built": True,  "sprint": None},
         "schedule_one":             {"value": False, "built": True,  "sprint": None},
         "drip_scheduling":          {"value": False, "built": True,  "sprint": None},
+        "sub_accounts":             {"value": False, "built": False, "sprint": "v1.1"},
+        "white_label":              {"value": False, "built": False, "sprint": "v1.1"},
         "priority_support":         {"value": False, "built": False, "sprint": "S6"},
-        "project_memory":           {"value": False, "built": False, "sprint": "v1.2"},
-        "cross_platform_timing":    {"value": False, "built": False, "sprint": "v1.2"},
-        "founder_community":        {"value": False, "built": False, "sprint": "S6"},
     },
     "solo": {
         "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},  # unlimited
+        "clips_per_ip":             {"value": None,  "built": True,  "sprint": None},  # IP gate doesn't apply to paid
+        "accounts_included":        {"value": 5,     "built": True,  "sprint": None},
         "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
         "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
+        "watermark":                {"value": False, "built": True,  "sprint": None},
         "byo_openai_key_required":  {"value": True,  "built": True,  "sprint": None},
         "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
         "hosted_llm":               {"value": False, "built": False, "sprint": "S5"},
-        "platform_connections_max": {"value": 2,     "built": True,  "sprint": None},
+        "platform_connections_max": {"value": 1,     "built": True,  "sprint": None},  # publish to ONE platform at a time
         "publish_now":              {"value": True,  "built": True,  "sprint": None},
-        "publish_multi_platform":   {"value": False, "built": True,  "sprint": None},  # one at a time on Solo
-        "schedule_one":             {"value": False, "built": True,  "sprint": None},  # Growth+
-        "drip_scheduling":          {"value": False, "built": True,  "sprint": None},  # Autopilot only
+        "publish_multi_platform":   {"value": False, "built": True,  "sprint": None},  # Pro+
+        "schedule_one":             {"value": False, "built": True,  "sprint": None},  # Pro+
+        "drip_scheduling":          {"value": False, "built": True,  "sprint": None},  # Pro+
+        "sub_accounts":             {"value": False, "built": False, "sprint": "v1.1"},
+        "white_label":              {"value": False, "built": False, "sprint": "v1.1"},
         "priority_support":         {"value": False, "built": False, "sprint": "S6"},
-        "project_memory":           {"value": False, "built": False, "sprint": "v1.2"},
-        "cross_platform_timing":    {"value": False, "built": False, "sprint": "v1.2"},
-        "founder_community":        {"value": False, "built": False, "sprint": "S6"},
     },
-    "growth": {
-        "video_quota_monthly":      {"value": 200,   "built": True,  "sprint": None},  # soft cap, hosted key
+    "pro": {
+        "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},
+        "clips_per_ip":             {"value": None,  "built": True,  "sprint": None},
+        "accounts_included":        {"value": 10,    "built": True,  "sprint": None},
         "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
         "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
-        "byo_openai_key_required":  {"value": False, "built": True,  "sprint": None},
-        "hosted_transcribe":        {"value": True,  "built": True,  "sprint": None},
-        "hosted_llm":               {"value": True,  "built": True,  "sprint": None},
-        "platform_connections_max": {"value": 4,     "built": True,  "sprint": None},
-        "publish_now":              {"value": True,  "built": True,  "sprint": None},
-        "publish_multi_platform":   {"value": True,  "built": True,  "sprint": None},
-        "schedule_one":             {"value": True,  "built": True,  "sprint": None},
-        "drip_scheduling":          {"value": False, "built": True,  "sprint": None},  # Autopilot only
-        "priority_support":         {"value": True,  "built": False, "sprint": "S6"},
-        "project_memory":           {"value": False, "built": False, "sprint": "v1.2"},
-        "cross_platform_timing":    {"value": False, "built": False, "sprint": "v1.2"},
-        "founder_community":        {"value": False, "built": False, "sprint": "S6"},
-    },
-    "autopilot": {
-        "video_quota_monthly":      {"value": 500,   "built": True,  "sprint": None},  # soft cap, hosted key
-        "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
-        "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
-        "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
-        "byo_openai_key_required":  {"value": False, "built": True,  "sprint": None},
-        "hosted_transcribe":        {"value": True,  "built": True,  "sprint": None},
-        "hosted_llm":               {"value": True,  "built": True,  "sprint": None},
-        "platform_connections_max": {"value": None,  "built": True,  "sprint": None},  # unlimited
+        "watermark":                {"value": False, "built": True,  "sprint": None},
+        "byo_openai_key_required":  {"value": True,  "built": True,  "sprint": None},
+        "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
+        "hosted_llm":               {"value": False, "built": False, "sprint": "S5"},
+        "platform_connections_max": {"value": None,  "built": True,  "sprint": None},  # all platforms
         "publish_now":              {"value": True,  "built": True,  "sprint": None},
         "publish_multi_platform":   {"value": True,  "built": True,  "sprint": None},
         "schedule_one":             {"value": True,  "built": True,  "sprint": None},
         "drip_scheduling":          {"value": True,  "built": True,  "sprint": None},
+        "sub_accounts":             {"value": False, "built": False, "sprint": "v1.1"},
+        "white_label":              {"value": False, "built": False, "sprint": "v1.1"},
         "priority_support":         {"value": True,  "built": False, "sprint": "S6"},
-        "project_memory":           {"value": True,  "built": False, "sprint": "v1.2"},
-        "cross_platform_timing":    {"value": True,  "built": False, "sprint": "v1.2"},
-        "founder_community":        {"value": True,  "built": False, "sprint": "S6"},
+    },
+    "agency": {
+        "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},
+        "clips_per_ip":             {"value": None,  "built": True,  "sprint": None},
+        "accounts_included":        {"value": 25,    "built": True,  "sprint": None},
+        "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
+        "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
+        "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
+        "watermark":                {"value": False, "built": True,  "sprint": None},
+        "byo_openai_key_required":  {"value": True,  "built": True,  "sprint": None},
+        "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
+        "hosted_llm":               {"value": False, "built": False, "sprint": "S5"},
+        "platform_connections_max": {"value": None,  "built": True,  "sprint": None},
+        "publish_now":              {"value": True,  "built": True,  "sprint": None},
+        "publish_multi_platform":   {"value": True,  "built": True,  "sprint": None},
+        "schedule_one":             {"value": True,  "built": True,  "sprint": None},
+        "drip_scheduling":          {"value": True,  "built": True,  "sprint": None},
+        "sub_accounts":             {"value": True,  "built": False, "sprint": "v1.1"},  # gate exists, UI lands v1.1
+        "white_label":              {"value": True,  "built": False, "sprint": "v1.1"},
+        "priority_support":         {"value": True,  "built": False, "sprint": "S6"},
     },
 }
 
 
-# --- Launch-hardening override (Codex 2k audit, 2026-05-25) -------------------
-# These features are NOT live in prod yet, so force built=False everywhere until
-# the real path ships + is verified — keeping routes honest (503 "beta") instead
-# of silently stubbing/over-promising. The matrix above keeps the *intended*
-# entitlement (value) so flipping a feature live later is a one-line removal here.
-#   - Publishing (publish/schedule/drip): the hidden Postiz engine isn't deployed
-#     (no POSTIZ_CLIENT_ID/SECRET, cron fire path is a stub, no media upload).
-#   - hosted_transcribe / hosted_llm: no MODAL_TRANSCRIBE_URL / REPLICATE path
-#     configured — transcription falls back to local on-device whisper, which
-#     works; the "hosted/cloud AI" claim does not.
-# Each entry is auto-promoted to built=True at import IF its prod path is wired,
-# so production config (not a redeploy of this file) is what turns them on.
-_PUBLISHING_LIVE = bool(os.environ.get("POSTIZ_CLIENT_ID") and os.environ.get("POSTIZ_CLIENT_SECRET"))
+# Legacy tier names from 0.4.x. Webhooks may still set these — alias to new
+# tier names so existing rows + Whop-side titles continue to work without a
+# data migration pass.
+_LEGACY_TIER_ALIASES = {
+    "channel": "pro",
+    "growth": "pro",
+    "autopilot": "agency",
+}
+
+
+def _resolve_tier(tier: str | None) -> str:
+    if not tier:
+        return "free"
+    return _LEGACY_TIER_ALIASES.get(tier, tier)
+
+
+# --- Launch-hardening override (Codex 2k audit + P1 Ayrshare swap) ----------
+# Publishing is now powered by Ayrshare (P1 sprint, 2026-05-31). When
+# AYRSHARE_API_KEY is set, all publish features promote to built=True. Until
+# Railway has the env var, routes return 503 "beta" instead of silently
+# stubbing.
+#
+# hosted_transcribe / hosted_llm stay gated until MODAL/REPLICATE wires up —
+# transcription falls back to local on-device whisper which works, but the
+# "hosted/cloud AI" claim doesn't.
+_PUBLISHING_LIVE = bool(os.environ.get("AYRSHARE_API_KEY"))
 _HOSTED_AI_LIVE = bool(os.environ.get("MODAL_TRANSCRIBE_URL") or os.environ.get("REPLICATE_API_TOKEN"))
 _NOT_LIVE_UNLESS = {
     "publish_now": _PUBLISHING_LIVE,
@@ -178,12 +204,24 @@ def is_admin_email(email: str | None) -> bool:
 def tier_features(tier: str, founder: bool = False) -> dict[str, Any]:
     """Flatten the matrix for a given tier into {feature_name: value}.
 
-    Founders get all of Autopilot's entitlements regardless of which tier their
-    Whop product technically slots into — they paid £500 once for the lock.
+    Founders unlock the full Agency block regardless of which Whop product
+    they bought into. Legacy tier names ("growth", "autopilot", "channel")
+    alias to the v2 matrix via _LEGACY_TIER_ALIASES.
     """
-    effective = "autopilot" if founder else tier
+    effective = "agency" if founder else _resolve_tier(tier)
     block = FEATURES_BY_TIER.get(effective) or FEATURES_BY_TIER["free"]
     return {k: v["value"] for k, v in block.items()}
+
+
+def account_limit(tier: str, extra_packs: int = 0, founder: bool = False) -> int:
+    """Total social-account limit for a user. Tier base + 5 per prepaid pack.
+    Founders are uncapped (treated as ∞ → sentinel 9999 so callers don't have
+    to special-case)."""
+    if founder:
+        return 9999
+    base_val = tier_features(tier, founder=False).get("accounts_included")
+    base = int(base_val) if isinstance(base_val, (int, float)) else 1
+    return base + max(0, int(extra_packs)) * 5
 
 
 def has_feature(tier: str, feature: str, founder: bool = False) -> bool:
@@ -209,13 +247,13 @@ def is_feature_built(tier: str, feature: str) -> bool:
     """Whether the implementation actually exists today. Routes serving an
     un-built feature should 503 with a 'Coming Sprint X' body even if the
     entitlement says the user has it."""
-    block = FEATURES_BY_TIER.get(tier) or {}
+    block = FEATURES_BY_TIER.get(_resolve_tier(tier)) or {}
     f = block.get(feature)
     return bool(f and f.get("built"))
 
 
 def feature_sprint(tier: str, feature: str) -> str | None:
     """Which sprint delivers an un-built feature, for honest error bodies."""
-    block = FEATURES_BY_TIER.get(tier) or {}
+    block = FEATURES_BY_TIER.get(_resolve_tier(tier)) or {}
     f = block.get(feature)
     return f.get("sprint") if f else None

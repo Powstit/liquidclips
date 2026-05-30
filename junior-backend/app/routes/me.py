@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
-from app.features import is_admin_email
+from app.features import account_limit as _account_limit, is_admin_email
 from app.models import User
 from app.routes.usage import starter_export_remaining
 
@@ -46,6 +46,13 @@ class MeResponse(BaseModel):
 
     # Starter pass — remaining free clip exports (null = unlimited / paid).
     remaining_exports: int | None
+
+    # P2 matrix v2 — social-account ceiling for this user. tier base +
+    # 5 per prepaid account pack ($40 each). Founders / admins are uncapped
+    # (returned as 9999 sentinel so the desktop doesn't have to special-case).
+    account_limit: int
+    extra_accounts_purchased: int
+    clips_created: int
 
     # Whop integration auth state — backend doesn't store the desktop's
     # OAuth token (that's keychain-local), but it can confirm whether the
@@ -86,6 +93,13 @@ def me(
         subscription_status="admin" if is_admin else (raw.subscription_status if raw else user.subscription_status),
         billing_provider="whop" if user.whop_user_id else "clerk",
         remaining_exports=None if is_admin else starter_export_remaining(raw or user),
+        account_limit=_account_limit(
+            effective_tier,
+            extra_packs=(raw.extra_accounts_purchased if raw else 0),
+            founder=effective_founder,
+        ),
+        extra_accounts_purchased=(raw.extra_accounts_purchased if raw else 0),
+        clips_created=(raw.clips_created if raw else (user.clips_created or 0)),
         whop_backend_key_configured=bool(get_settings().whop_api_key),
     )
 

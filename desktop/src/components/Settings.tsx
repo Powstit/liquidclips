@@ -11,6 +11,7 @@ const SUPPORT_EMAIL = "support@jnremployee.com";
 import { syncStatus, backend, meStatus, type SyncStatus, type MeStatus, type PlatformConnection, type ConnectionPlatform } from "../lib/backend";
 import { applyUpdate, checkForUpdate, readLastUpdateCheck, type LastUpdateCheck, type UpdateState } from "../lib/updater";
 import { PlatformIcon } from "./PlatformIcon";
+import AyrshareConnectionPanel from "./AyrshareConnectionPanel";
 
 // Settings panel per spec §3.8 screen 8 — one scrollable page.
 // Opens as a modal sheet from the gear icon in the header.
@@ -456,6 +457,8 @@ function ConnectionsSection() {
         Each account stays under your control — Liquid Clips reads the handle back from your platform; your password never touches us.
       </p>
 
+      <AyrshareConnectionPanel />
+
       {loading ? (
         <p className="font-mono text-[12px] text-text-tertiary">
           Reading your connections<span className="blink">_</span>
@@ -659,6 +662,15 @@ function WhoAmISection() {
         <DebugRow label="Raw tier (db)" value={`${me.raw_tier}${me.raw_founder ? " · founder" : ""}`} />
         <DebugRow label="Subscription" value={me.subscription_status} />
         <DebugRow label="Billing provider" value={me.billing_provider} />
+        <DebugRow
+          label="Account limit"
+          value={
+            me.account_limit >= 9999
+              ? "unlimited"
+              : `${me.account_limit}${me.extra_accounts_purchased > 0 ? ` · ${me.extra_accounts_purchased} extra pack${me.extra_accounts_purchased === 1 ? "" : "s"}` : ""}`
+          }
+        />
+        <DebugRow label="Clips exported (lifetime)" value={String(me.clips_created)} />
         <DebugRow
           label="Whop Content Rewards auth"
           value={

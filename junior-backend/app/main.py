@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.cron import start_cron, stop_cron
 from app.db import Base, engine
-from app.routes import admin, affiliate, connections, desktop, me, notifications, onboarding, publish, redirect, reward_clips, schedules, stripe_connect, sync, telemetry, transcribe, updates, usage, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, affiliate, connections, desktop, me, notifications, onboarding, publish, redirect, reward_clips, schedules, social, stripe_connect, sync, telemetry, transcribe, updates, usage, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -59,6 +59,31 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS error text",
         "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS retry_count integer NOT NULL DEFAULT 0",
         "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS next_retry_at timestamptz",
+        # P2 — tier matrix v2 (Free / Solo / Pro / Agency + prepaid packs).
+        # IP captured at signup gates the 100-clip free quota across all
+        # accounts on that IP. clips_created is the canonical counter (was
+        # starter_exports_used). active_at tracks the 2,000-user threshold
+        # for the Founder flash-sale unlock.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS ip_address varchar",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS clips_created integer NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS active_at timestamptz",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS extra_accounts_purchased integer NOT NULL DEFAULT 0",
+        "CREATE INDEX IF NOT EXISTS ix_users_ip_address ON users (ip_address) WHERE ip_address IS NOT NULL",
+        # Legacy tier rename — "channel" was the 0.4.x name for what is now "pro"
+        # in the v2 matrix. Idempotent because rerun affects zero rows after first pass.
+        "UPDATE users SET tier = 'pro' WHERE tier = 'channel'",
+        # P1 — Ayrshare replaces Postiz. social_connections lives alongside the
+        # legacy postiz_connections table (which becomes inert). One row per
+        # Junior user; profile_key is opaque to us, returned by Ayrshare on
+        # link. connected_platforms is a JSON array of strings (tiktok, etc).
+        """CREATE TABLE IF NOT EXISTS social_connections (
+            user_id varchar PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            ayrshare_profile_key varchar NOT NULL,
+            connected_platforms jsonb NOT NULL DEFAULT '[]'::jsonb,
+            active boolean NOT NULL DEFAULT true,
+            connected_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        )""",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -104,6 +129,7 @@ app.include_router(notifications.router)
 app.include_router(transcribe.router)
 app.include_router(telemetry.router)
 app.include_router(publish.router)
+app.include_router(social.router)
 app.include_router(connections.router)
 app.include_router(whop.router)
 app.include_router(me.router)
@@ -116,4 +142,19 @@ app.include_router(reward_clips.router)
 
 @app.get("/healthcheck")
 def healthcheck() -> dict:
-    return {"status": "ok", "service": "junior-backend", "version": "0.1.0"}
+    from app import ayrshare as _ayr
+    return {
+        "status": "ok",
+        "service": "junior-backend",
+        "version": "0.1.0",
+        # Surface integration health so Railway alerts can fire on a missing
+        # AYRSHARE_API_KEY without us having to add a separate readiness probe.
+        # `null` = not configured (publishing in beta); `true` = key set.
+        "ayrshare_configured": _ayr.is_configured(),
+    }
+
+
+# /health alias — Railway's default healthcheck path. Same body as /healthcheck.
+@app.get("/health")
+def health() -> dict:
+    return healthcheck()

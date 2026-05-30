@@ -3,6 +3,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { Logo } from "./Logo";
+import { SplashGame } from "./invaders/SplashGame";
 import splashArt from "../assets/brand/splash.jpg";
 
 // Shown while the sidecar is booting (ping + secretsStatus + whisper warmup).
@@ -18,7 +19,19 @@ const TICKS = [
 
 const SUPPORT_EMAIL = "support@jnremployee.com";
 
-export function Splash({ failed = false }: { failed?: boolean }) {
+export function Splash({
+  failed = false,
+  ready = false,
+  onContinue,
+}: {
+  failed?: boolean;
+  // True once App.tsx says the sidecar booted and bootChecked is set.
+  // SplashGame uses this to enable the Continue button.
+  ready?: boolean;
+  // Required when the embedded game is shown. Parent flips its
+  // splashAcked state so the splash unmounts.
+  onContinue?: () => void;
+}) {
   const [i, setI] = useState(0);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -133,17 +146,27 @@ export function Splash({ failed = false }: { failed?: boolean }) {
       <div className="splash-mark-anim relative z-10 animate-[splash-mark-in_0.6s_ease-out]">
         <Logo />
       </div>
-      <div className="relative z-10 flex w-[280px] flex-col items-center gap-4">
-        <div className="h-[3px] w-full overflow-hidden rounded-full bg-paper/20">
-          <div
-            className="splash-bar-anim h-full bg-paper animate-[splash-bar_1.4s_ease-in-out_infinite]"
-            style={{ width: "40%" }}
-          />
+
+      {/* Pink Invaders inline during boot. Daniel's call: purposefully hold
+          the splash for ≥8s so the user gets one shot at the high-score
+          dopamine hit while the sidecar warms up. Continue button enables
+          when sidecar is ready AND minimum hold has elapsed; Skip is always
+          available for power users. */}
+      {onContinue ? (
+        <SplashGame ready={ready} onContinue={onContinue} />
+      ) : (
+        <div className="relative z-10 flex w-[280px] flex-col items-center gap-4">
+          <div className="h-[3px] w-full overflow-hidden rounded-full bg-paper/20">
+            <div
+              className="splash-bar-anim h-full bg-paper animate-[splash-bar_1.4s_ease-in-out_infinite]"
+              style={{ width: "40%" }}
+            />
+          </div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper/80">
+            {TICKS[i]}
+          </p>
         </div>
-        <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper/80">
-          {TICKS[i]}
-        </p>
-      </div>
+      )}
 
       <style>{splashStyle}</style>
     </div>

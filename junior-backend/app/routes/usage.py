@@ -16,8 +16,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from sqlalchemy import func as _sqlfunc
+
 from app.db import get_db
 from app.deps import current_user
+from app.features import account_limit as _account_limit
 from app.models import Usage, User
 
 router = APIRouter(prefix="/usage", tags=["usage"])
@@ -44,7 +47,23 @@ def _quota_for_tier(tier: str) -> int | None:
     return None
 
 
-STARTER_EXPORT_CAP = 100
+STARTER_EXPORT_CAP = 100  # personal cap (legacy starter pass) — still enforced
+IP_POOL_EXPORT_CAP = 100  # P2: total free exports allowed across all accounts on one IP
+
+
+def ip_pool_clips_used(db: Session, ip: str | None) -> int:
+    """Sum clips_created across every Free/trial account on a given IP. The P2
+    matrix gates free-tier exports on this pool so a single IP can't farm
+    multiple free accounts past the 100-clip ceiling. Returns 0 if ip is None
+    (e.g. dev curl with no client info — fail open in dev)."""
+    if not ip:
+        return 0
+    row = (
+        db.query(_sqlfunc.coalesce(_sqlfunc.sum(User.clips_created), 0))
+        .filter(User.ip_address == ip, User.tier == "free", User.founder_flag.is_(False))
+        .scalar()
+    )
+    return int(row or 0)
 
 
 def starter_export_remaining(user: User) -> int | None:
@@ -141,9 +160,22 @@ def clip_exported(
 ) -> ExportStatus:
     """Called by the desktop AFTER a successful clip export (never on previews,
     drafts, or failed exports). Increments the starter counter for free/starter
-    users and returns remaining free exports. 402 once 100 are used → desktop shows
-    the 'continue on Solo' prompt. Paid tiers/founders never count and never block."""
+    users and returns remaining free exports.
+
+    Two gates for free/starter users:
+      1. Personal: 100 clips/lifetime per account (starter_exports_used).
+      2. IP pool (P2 matrix): 100 clips/lifetime SHARED across all free
+         accounts on the same originating IP. Stops single-IP signup farming.
+
+    Whichever is lower wins. Paid tiers / founders never count and never block.
+    """
     remaining = starter_export_remaining(user)  # None = unlimited (paid/founder)
+    # Free-tier IP-pool ceiling — only applies when the personal cap is active.
+    if remaining is not None:
+        ip_used = ip_pool_clips_used(db, user.ip_address)
+        ip_remaining = max(0, IP_POOL_EXPORT_CAP - ip_used)
+        if ip_remaining < remaining:
+            remaining = ip_remaining
     if remaining is not None and remaining <= 0:
         # 402 — starter cap exhausted. Fire before raising so the event lands
         # even if the caller doesn't see the exception body.
@@ -161,10 +193,24 @@ def clip_exported(
             status.HTTP_402_PAYMENT_REQUIRED,
             "You've used your 100 free clips. Continue on Solo ($29.99/mo) to keep exporting.",
         )
+    # Always bump the P2 v2 canonical export counter + activity timestamp,
+    # regardless of tier — feeds Founder flash-sale threshold (active_users >=
+    # 2,000) and the per-IP pool. Paid tiers don't count toward the personal
+    # starter cap, but they DO count toward active_users.
+    user.clips_created = (user.clips_created or 0) + 1
+    user.active_at = datetime.now(timezone.utc)
     if remaining is not None:
         user.starter_exports_used = (user.starter_exports_used or 0) + 1
-        db.commit()
+    db.commit()
+    if remaining is not None:
         remaining = starter_export_remaining(user)
+        # Reapply IP-pool ceiling so the desktop reflects the shared pool, not
+        # just this account's personal balance.
+        if remaining is not None:
+            ip_used = ip_pool_clips_used(db, user.ip_address)
+            ip_remaining = max(0, IP_POOL_EXPORT_CAP - ip_used)
+            if ip_remaining < remaining:
+                remaining = ip_remaining
         if user.clerk_id:
             from app import analytics
             # Record the successful export increment.

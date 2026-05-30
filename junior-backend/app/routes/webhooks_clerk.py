@@ -88,7 +88,7 @@ async def clerk_webhook(
     recognized = event_type in _KNOWN
     try:
         if event_type == "user.created":
-            _handle_user_created(db, data)
+            _handle_user_created(db, data, _client_ip(request))
         elif event_type == "user.updated":
             _handle_user_updated(db, data)
         elif event_type == "user.deleted":
@@ -141,7 +141,23 @@ def _primary_email(data: dict) -> str:
     return addrs[0].get("email_address", "") if addrs else ""
 
 
-def _handle_user_created(db: Session, data: dict) -> None:
+def _client_ip(request: Request) -> str | None:
+    """Best-effort IP capture for free-tier abuse gating. Prefer X-Forwarded-For
+    (Railway/Cloudflare set this) then request.client. Trim port if present.
+    Returns None for the dev curl path with no client info."""
+    xff = request.headers.get("x-forwarded-for") or request.headers.get("X-Forwarded-For")
+    if xff:
+        # Take the first hop, that's the originating client.
+        return xff.split(",")[0].strip() or None
+    real = request.headers.get("x-real-ip") or request.headers.get("X-Real-IP")
+    if real:
+        return real.strip() or None
+    if request.client and request.client.host:
+        return request.client.host
+    return None
+
+
+def _handle_user_created(db: Session, data: dict, ip_address: str | None = None) -> None:
     clerk_id = data.get("id")
     if not clerk_id:
         return
@@ -157,6 +173,7 @@ def _handle_user_created(db: Session, data: dict) -> None:
         tier="free",
         subscription_status="trial",
         affiliate_id=affiliate_id,
+        ip_address=ip_address,
     )
     db.add(user)
     db.flush()
@@ -218,7 +235,9 @@ def _handle_user_updated(db: Session, data: dict) -> None:
     user = db.query(User).filter_by(clerk_id=clerk_id).one_or_none()
     if not user:
         # Webhook arrived out of order — create the user via the same path.
-        _handle_user_created(db, data)
+        # No request context here; IP is captured only on the canonical
+        # user.created delivery.
+        _handle_user_created(db, data, ip_address=None)
         return
     new_email = _primary_email(data)
     if new_email and new_email != user.email:

@@ -24,85 +24,51 @@ log = logging.getLogger("junior.cron")
 
 
 def _fire_schedule(row_id: str) -> None:
-    """Run the upload + publish for a single schedule row.
+    """Reconcile a single schedule row.
 
-    Right now this is a stub — it transitions pending → scheduled without
-    making any external call. Sprint 5 replaces the body with:
-        1. POST to Postiz internal API: {post_id, scheduled_at, platform}
-        2. Mark row as 'scheduled' + record postiz_post_id.
+    Under the P1 Ayrshare design, scheduling is NATIVE on Ayrshare's side:
+    the desktop POSTs to /publish-now with `scheduled_at` set, Ayrshare
+    queues + fires the post itself, and the returned post id is cached on
+    the row. The cron worker is no longer the firing engine — it's a
+    reconciliation poll that:
+
+      - Marks rows past `scheduled_for` with no Ayrshare id as failed (the
+        Ayrshare submission never happened, so we won't recover by retrying
+        a fire-from-Railway path we don't have).
+      - Leaves Ayrshare-tracked rows alone (their published-state flips via
+        the analytics polling path; not implemented yet).
+
+    Legacy Postiz path is removed. Existing pending rows from before the
+    migration are surfaced to the user as "needs re-scheduling" — better
+    than silent stub-publish.
     """
-    import asyncio
-    from app import postiz
-    # Publishing is in beta until Postiz is deployed (POSTIZ_CLIENT_ID/SECRET).
-    # Don't stub-fire: it would emit a fake "published" notification and call the
-    # not-yet-implemented postiz.publish_now. Leave the row pending; it fires for
-    # real once Postiz is live. (Schedule creation is also 503'd in beta, so no
-    # new rows accrue here.)
-    if not postiz.is_live():
-        return
     with session_scope() as db:
         row = db.get(Schedule, row_id)
-        if not row:
+        if not row or row.status != "pending":
             return
-        if row.status != "pending":
+        # If Ayrshare returned a post id at schedule-create time, the post
+        # is in Ayrshare's queue. Nothing for us to do until the analytics
+        # reconciler polls it.
+        if row.postiz_post_id:
             return
-        try:
-            row.status = "uploading"
-            db.flush()
-            # Real Postiz path (or stub when POSTIZ_INTERNAL_URL not set).
-            # The upload happened earlier when the schedule was created — we
-            # only call publish_now() here. (Sprint 5.6 will move the upload
-            # into the schedule creation handler; until then, we accept a
-            # synthetic post_id from the stub.)
-            if not row.postiz_post_id:
-                # First-time fire — desktop didn't upload at schedule time yet.
-                # Fall back to a stub id so the publish call works against the
-                # stub backend during development.
-                row.postiz_post_id = f"stub_{row.id[:10]}"
-            published = asyncio.run(postiz.publish_now(
-                user_id=row.user_id,
-                postiz_post_id=row.postiz_post_id,
-                platform=row.platform,
-            ))
-            row.post_url = published.get("post_url")
-            row.status = "published"
-            row.error = None
-            write_notification(
-                db,
-                user_id=row.user_id,
-                category="post_published",
-                title=f"Published clip {row.clip_idx + 1:02d} → {row.platform}",
-                body=f"\"{row.clip_title}\" live at {row.post_url}",
-                priority="medium",
-                external_dedup_key=f"sched-{row.id}",
-                action_kind="open_url",
-                action_data={"url": row.post_url},
-            )
-        except Exception as e:  # noqa: BLE001
-            from datetime import timedelta
-            row.status = "failed"
-            row.retry_count = (row.retry_count or 0) + 1
-            row.error = f"{type(e).__name__}: {e}"
-            attempt_idx = row.retry_count - 1  # zero-based
-            if attempt_idx < len(RETRY_BACKOFFS_MIN):
-                backoff = RETRY_BACKOFFS_MIN[attempt_idx]
-                row.next_retry_at = datetime.now(timezone.utc) + timedelta(minutes=backoff)
-                retry_note = f" Retry in {backoff} min ({row.retry_count}/{MAX_RETRIES})."
-            else:
-                row.next_retry_at = None
-                retry_note = f" No retries left after {MAX_RETRIES} attempts."
-            write_notification(
-                db,
-                user_id=row.user_id,
-                category="post_failed",
-                title=f"Clip {row.clip_idx + 1:02d} didn't post to {row.platform}",
-                body=f"{type(e).__name__}: {e}.{retry_note}",
-                priority="high",
-                # Unique key per attempt so each retry surfaces a fresh row.
-                external_dedup_key=f"sched-fail-{row.id}-{row.retry_count}",
-                action_kind="open_clip",
-                action_data={"project_slug": row.project_slug, "clip_idx": row.clip_idx},
-            )
+        # No Ayrshare id + scheduled_for is in the past -> this row was
+        # created under the legacy Postiz path that never went live. Surface
+        # it cleanly instead of stub-firing.
+        row.status = "failed"
+        row.error = "Scheduling backend changed; please re-schedule this clip from Liquid Clips."
+        row.retry_count = MAX_RETRIES  # no retries — user action required
+        row.next_retry_at = None
+        write_notification(
+            db,
+            user_id=row.user_id,
+            category="post_failed",
+            title=f"Clip {row.clip_idx + 1:02d} → {row.platform} needs re-scheduling",
+            body=f"\"{row.clip_title}\" was queued under the old publisher. Re-schedule it from Liquid Clips and it'll post normally.",
+            priority="high",
+            external_dedup_key=f"sched-legacy-{row.id}",
+            action_kind="open_clip",
+            action_data={"project_slug": row.project_slug, "clip_idx": row.clip_idx},
+        )
 
 
 MAX_RETRIES = 3
