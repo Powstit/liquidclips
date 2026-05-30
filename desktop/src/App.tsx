@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import { LayoutGrid, Wallet, UploadCloud, Settings as SettingsIcon, LogIn, UserCircle2, type LucideIcon } from "lucide-react";
+import { LayoutGrid, Wallet, UploadCloud, Banknote, Settings as SettingsIcon, LogIn, UserCircle2, type LucideIcon } from "lucide-react";
 import { Logo } from "./components/Logo";
 import { DropZone } from "./components/DropZone";
 import { WorkingStage } from "./components/WorkingStage";
@@ -12,6 +12,7 @@ import { Splash } from "./components/Splash";
 import { NotificationBell } from "./components/NotificationBell";
 import { NotificationSheet } from "./components/NotificationSheet";
 import { UploadTab } from "./components/upload/UploadTab";
+import { PayoutsTab } from "./components/payouts/PayoutsTab";
 import { Settings } from "./components/Settings";
 import { sidecar, visibleStagesFor, pipelineStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
 import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
@@ -33,6 +34,7 @@ import type { WhopBounty } from "./lib/sidecar";
 
 type View =
   | { kind: "first-run" }
+  | { kind: "payouts" }
   | { kind: "empty" }
   | { kind: "quota" }
   | { kind: "earn" }
@@ -493,7 +495,7 @@ export default function App() {
           <nav className="flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.12em]">
             <NavTab
               label="Workspace"
-              active={view.kind !== "earn" && view.kind !== "upload" && view.kind !== "bounty-setup"}
+              active={view.kind !== "earn" && view.kind !== "upload" && view.kind !== "bounty-setup" && view.kind !== "payouts"}
               onClick={() => setView({ kind: "empty" })}
               Icon={LayoutGrid}
             />
@@ -508,6 +510,12 @@ export default function App() {
               active={view.kind === "upload"}
               onClick={() => setView({ kind: "upload" })}
               Icon={UploadCloud}
+            />
+            <NavTab
+              label="Payouts"
+              active={view.kind === "payouts"}
+              onClick={() => setView({ kind: "payouts" })}
+              Icon={Banknote}
             />
           </nav>
         </div>
@@ -560,6 +568,8 @@ export default function App() {
         {view.kind === "upload" && (
           <UploadTab onOpenSettings={() => setSettingsOpen(true)} />
         )}
+
+        {view.kind === "payouts" && <PayoutsTab />}
 
         {view.kind === "earn" && (
           <EarnTab
