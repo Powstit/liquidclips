@@ -118,23 +118,46 @@ export function BrowseRewardsPanel() {
         >
           {busy ? "…" : "Go"}
         </button>
-        <ChromeIconButton
+        <button
+          type="button"
           onClick={() => setShowSaveForm(true)}
           disabled={busy}
-          label="Save as brief"
+          title="Save this page as a campaign"
+          className="inline-flex h-7 items-center gap-1 rounded-md border border-line bg-paper px-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-secondary transition-colors enabled:hover:border-fuchsia enabled:hover:text-fuchsia disabled:cursor-not-allowed disabled:opacity-35"
         >
-          <BookmarkPlus size={14} />
-        </ChromeIconButton>
+          <BookmarkPlus size={12} />
+          Save
+        </button>
         <ChromeIconButton onClick={() => void close()} disabled={busy} label="Close browser">
           <X size={14} />
         </ChromeIconButton>
       </div>
       <div className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-text-tertiary">
         <span>quick</span>
-        <QuickLink label="Whop Rewards" url={WHOP_REWARDS_URL} onOpen={go} />
-        <QuickLink label="Clipping.net" url="https://clipping.net" onOpen={go} />
-        <QuickLink label="Klipy" url="https://klipy.com" onOpen={go} />
-        <QuickLink label="Opus" url="https://opus.pro" onOpen={go} />
+        <QuickLink
+          label="Whop Rewards"
+          url={WHOP_REWARDS_URL}
+          title="Browse Whop's official Content Rewards campaigns"
+          onOpen={go}
+        />
+        <QuickLink
+          label="Clipping.net"
+          url="https://clipping.net"
+          title="Browse Clipping.net — independent reward platform"
+          onOpen={go}
+        />
+        <QuickLink
+          label="Klipy"
+          url="https://klipy.com"
+          title="Browse Klipy — TikTok / Shorts campaign marketplace"
+          onOpen={go}
+        />
+        <QuickLink
+          label="Opus"
+          url="https://opus.pro"
+          title="Browse Opus.pro — AI clipping platform with campaigns"
+          onOpen={go}
+        />
         {err && <span className="ml-auto truncate text-[#DC2626]">{err}</span>}
       </div>
       {showSaveForm && (
@@ -177,16 +200,19 @@ function ChromeIconButton({
 function QuickLink({
   label,
   url,
+  title,
   onOpen,
 }: {
   label: string;
   url: string;
+  title?: string;
   onOpen: (url: string) => Promise<void>;
 }) {
   return (
     <button
       type="button"
       onClick={() => void onOpen(url)}
+      title={title ?? label}
       className="rounded-full border border-line px-2 py-0.5 text-text-secondary transition-colors hover:border-fuchsia hover:text-fuchsia"
     >
       {label}

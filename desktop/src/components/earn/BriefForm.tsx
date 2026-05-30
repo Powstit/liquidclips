@@ -129,7 +129,7 @@ export function BriefForm({ brief, initialSourceUrl, onClose, onSaved }: BriefFo
         <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line bg-paper-elev/95 px-5 py-3 backdrop-blur-[20px]">
           <div className="flex items-center gap-2">
             <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
-              {editing ? "edit brief" : "save campaign brief"}
+              {editing ? "edit campaign" : "save campaign"}
             </span>
             {!editing && initialSourceUrl && <Pill tone="fuchsia">from browser</Pill>}
           </div>
@@ -262,7 +262,7 @@ export function BriefForm({ brief, initialSourceUrl, onClose, onSaved }: BriefFo
             Cancel
           </Button>
           <Button variant="primary" onClick={() => void save()} disabled={!canSubmit || busy} loading={busy}>
-            {editing ? "Save changes" : "Save brief"}
+            {editing ? "Save changes" : "Save campaign"}
           </Button>
         </footer>
       </Card>

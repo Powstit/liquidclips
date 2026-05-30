@@ -7,11 +7,14 @@ import { CheckCircle2, Clock4, Link as LinkIcon, Send, Target } from "lucide-rea
 import { AffiliateHeroPopover, useAffiliateAttention } from "./AffiliateHero";
 import type { EarnTab as EarnSubTab } from "./types";
 
-const ITEMS: Array<{ id: EarnSubTab; label: string; icon: ReactNode }> = [
-  { id: "available", label: "Open campaigns", icon: <Target size={16} /> },
-  { id: "in_progress", label: "In progress", icon: <Clock4 size={16} /> },
-  { id: "submitted", label: "Submitted", icon: <Send size={16} /> },
-  { id: "approved", label: "Approved", icon: <CheckCircle2 size={16} /> },
+// Tooltip = the long form; chip = the 6-char-or-less label that sits under
+// the icon, so a first-time clipper doesn't have to hover to understand
+// what they're looking at.
+const ITEMS: Array<{ id: EarnSubTab; label: string; chip: string; icon: ReactNode }> = [
+  { id: "available",   label: "Open campaigns", chip: "Open",   icon: <Target size={14} /> },
+  { id: "in_progress", label: "In progress",    chip: "Doing",  icon: <Clock4 size={14} /> },
+  { id: "submitted",   label: "Posted clips",   chip: "Posted", icon: <Send size={14} /> },
+  { id: "approved",    label: "Approved",       chip: "Paid",   icon: <CheckCircle2 size={14} /> },
 ];
 
 export function EarnIconRail({
@@ -37,6 +40,7 @@ export function EarnIconRail({
             key={it.id}
             active={active}
             label={it.label}
+            chip={it.chip}
             onClick={() => onChange(it.id)}
           >
             {it.icon}
@@ -51,10 +55,11 @@ export function EarnIconRail({
             ? "Earn $ for invites · Connect Stripe to receive payout"
             : "Earn $ for invites"
         }
+        chip="Invite"
         onClick={() => setAffiliateOpen(true)}
         dot={affiliateAttention}
       >
-        <LinkIcon size={16} />
+        <LinkIcon size={14} />
       </RailButton>
       <div className="mt-auto" />
       {affiliateOpen && (
@@ -67,12 +72,16 @@ export function EarnIconRail({
 function RailButton({
   children,
   label,
+  chip,
   active,
   onClick,
   dot,
 }: {
   children: ReactNode;
   label: string;
+  // 4-6 char label rendered visibly under the icon. Kids shouldn't need to
+  // hover to learn the rail.
+  chip: string;
   active: boolean;
   onClick: () => void;
   // Optional small fuchsia dot in the top-right corner of the button — used
@@ -85,16 +94,21 @@ function RailButton({
       onClick={onClick}
       title={label}
       aria-label={label}
-      className={`relative mb-1 inline-flex h-10 w-10 items-center justify-center rounded-xl border transition-colors duration-150 ${
+      className={`relative mb-1.5 flex w-12 flex-col items-center gap-0.5 rounded-xl border py-1.5 transition-colors duration-150 ${
         active
           ? "border-fuchsia bg-fuchsia-soft text-fuchsia-deep shadow-[var(--glow-sm)]"
           : "border-transparent text-text-secondary hover:bg-paper-elev hover:text-ink"
       }`}
     >
-      {children}
+      <span className="inline-flex h-5 w-5 items-center justify-center">
+        {children}
+      </span>
+      <span className="font-mono text-[8px] uppercase tracking-[0.04em] leading-none">
+        {chip}
+      </span>
       {dot && (
         <span
-          className="pulse-dot absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-fuchsia ring-2 ring-paper"
+          className="pulse-dot absolute right-1 top-1 h-2 w-2 rounded-full bg-fuchsia ring-2 ring-paper"
           aria-hidden
         />
       )}
