@@ -84,18 +84,23 @@ AYRSHARE_API_KEY=your_api_key_here
 
 ## P2: New Tier Matrix + Per-Account Pricing — REVENUE MODEL
 
-**Current tiers:** Free → Solo $29 → Growth $49 → Autopilot $99
+**Current tiers:** Free → Solo $29 → Growth $49 → Autopilot $99 (plus hidden Founder £500)
 
-**New tiers (Daniel's decision):**
+**New tiers (Daniel's decision, 2026-05-31):**
 
-| Tier | Monthly | Clips | Accounts | Publish | Schedule | Drip |
-|------|---------|-------|----------|---------|----------|------|
-| **Free** | $0 | 100 | 1 (watermarked) | ❌ | ❌ | ❌ |
-| **Solo** | $29.99 | Unlimited | 5 | Now, 1 platform | ❌ | ❌ |
-| **Pro** | $79 | Unlimited | 10 | Now, all platforms | ✅ | ✅ Drip |
-| **Agency** | $149 | Unlimited | 25 | All + sub-accounts | ✅ | ✅ Drip |
+| Tier | Monthly | Clips | Accounts | Publish | Schedule | Drip | Status |
+|------|---------|-------|----------|---------|----------|------|--------|
+| **Free** | $0 | 100/IP | 1 (watermarked) | ❌ | ❌ | ❌ | **Live now** |
+| **Solo** | $29.99 | Unlimited | 5 | Now, 1 platform | ❌ | ❌ | **Live now** |
+| **Pro** | $79 | Unlimited | 10 | Now, all platforms | ✅ | ✅ Drip | **Live now** |
+| **Agency** | $149 | Unlimited | 25 | All + sub-accounts | ✅ | ✅ Drip | **Live now** |
+| **Founder (flash)** | £500 lifetime | Unlimited | Unlimited | Everything | ✅ | ✅ Drip | **Locked until 2,000 active users** |
 
-**Per-account overage:** $8 for each account beyond tier limit.
+**Per-account overage:** $8 for each account beyond tier limit. Prepaid packs of 5 for $40.
+
+**Free tier anti-abuse:** 100 clips per IP address. Same IP trying a second Free account = paywall. Backend stores `ip_address` on `users` table, `clips_created` counter. `check_ip_quota(ip)` returns remaining or `0` with upsell.
+
+**Founder tier strategy:** Sunset the £500 standing offer. Convert to a 48-hour flash sale triggered automatically when `active_users >= 2,000`. Limited to first 200 buyers. After 48h or 200 sales, tier disappears forever. Scarcity + social proof = conversion. At <2,000 users it's just a discount with no urgency.
 
 **Files to modify:**
 
@@ -111,12 +116,7 @@ AYRSHARE_API_KEY=your_api_key_here
 | `desktop/src/lib/backend.ts` | Add `purchaseAccountPack()` endpoint (if doing prepaid packs). Or just show upgrade prompt. |
 | `desktop/src/App.tsx` | Read account limit from sync status. Block connect if at limit with upsell. |
 
-**Billing architecture decision needed:**
-- **Option A (simplest):** Whop handles subscription tiers. Overage is manual (invoice at month end) or ignored for now.
-- **Option B (best):** Stripe metered billing for overages. Whop for base tier. Backend calls Stripe to update subscription item quantity when accounts change.
-- **Option C (Daniel's preference, per previous message):** Prepaid account packs — user buys "+5 accounts for $40" that never expire. Simplest for v1.
-
-**Recommendation:** Option C for ship. User buys account packs. Backend tracks `extra_accounts_purchased`. No metered billing complexity.
+**Billing architecture (decided 2026-05-31):** Prepaid account packs for v1 — user buys "+5 accounts for $40" that never expire. Backend tracks `extra_accounts_purchased`. No metered billing complexity. Stripe metered later if volume demands.
 
 ---
 
@@ -241,11 +241,30 @@ AYRSHARE_API_KEY=your_api_key_here
 
 ## Open Questions for Daniel (Answer Before Claude Starts)
 
-1. **Billing for overages:** Prepaid account packs ($40 for 5 extras), or Stripe metered, or ignore for v1?
-2. **Ayrshare tier:** Launch ($299/10 profiles), Business ($599/30), or start with Premium ($149/1 brand) and upgrade when you hit 10 users?
-3. **Windows build:** Is it needed for Whop community launch, or Mac-only first?
-4. **Founder tier:** Keep the £500 lifetime deal, or sunset it?
-5. **Free tier clip limit:** Keep 100 lifetime, or 100/month, or 3/month (current coded cap)?
+**ANSWERED 2026-05-31:**
+
+1. **Billing for overages:** Prepaid account packs ($40 for 5 extras), or Stripe metered, or ignore for v1?  
+   → **Prepaid packs for v1** — simplest. Metered Stripe later if volume demands.
+
+2. **Ayrshare tier:** Launch ($299/10 profiles), Business ($599/30), or start with Premium ($149/1 brand) and upgrade when you hit 10 users?  
+   → **Business plan is LIVE** — Claude installed via MCP, API key already in env. $599/mo, 30 profiles included.
+
+3. **Windows build:** Is it needed for Whop community launch, or Mac-only first?  
+   → **Mac only for now.** Windows later.
+
+4. **Founder tier:** Keep the £500 lifetime deal, or sunset it?  
+   → **REMOVE for launch.** Lifetime pass is a flash-sale play only — activate when 2,000 active users hit the platform. At that scale scarcity creates FOMO. Below 2,000 users it's just discounted revenue with no urgency.
+
+5. **Free tier clip limit:** Keep 100 lifetime, or 100/month, or 3/month (current coded cap)?  
+   → **100 clips per IP address** — anti-abuse mechanism. Same IP creating a second account hits the paywall. Prevents the "unlimited free accounts" exploit without adding complex device fingerprinting.
+
+**NEW REQUIREMENTS:**
+
+6. **IP-based free tier gating:** Backend must track IP → clip count. When a user on Free hits 100 clips, check if that IP has other Free accounts. If yes, force upgrade. Implementation: `user.clips_created` counter in DB, `ip_address` field on signup, `check_ip_quota()` helper.
+
+7. **Lifetime pass (future):** When active_users ≥ 2,000, trigger a 48-hour flash sale: £500 lifetime Founder access to Autopilot tier forever. Limited to first 200 buyers. After 48h or 200 sales, tier disappears forever. Backend checks `user_count >= 2000` and `flash_sale_active` flag.
+
+8. **Platform:** Mac-only build for Whop community launch. Windows build is post-2,000-users milestone.
 
 ---
 
