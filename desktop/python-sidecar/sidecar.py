@@ -563,6 +563,13 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
         "concurrent_fragment_downloads": 4,
         "logger": _SidecarSafeLogger(),    # any logged line goes to stderr, never stdout
         "progress_hooks": [_on_progress],
+        # Without socket_timeout yt-dlp blocks the entire pipeline if YouTube /
+        # IG / TikTok rate-limits or anti-bots the connection — user sees a
+        # silent indefinite spinner. 20s gives slow networks a chance; retries
+        # cover transient failures.
+        "socket_timeout": 20,
+        "retries": 3,
+        "fragment_retries": 5,
     }
     ffmpeg_location = _yt_dlp_ffmpeg_location()
     if ffmpeg_location:
@@ -633,6 +640,9 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
         "noprogress": True,
         "skip_download": True,
         "logger": _SidecarSafeLogger(),
+        # Same hang guard as the download paths.
+        "socket_timeout": 15,
+        "retries": 2,
     }
     with contextlib.redirect_stdout(sys.stderr):
         with yt_dlp.YoutubeDL(probe_opts) as ydl:
@@ -740,6 +750,11 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
         "noprogress": True,
         "logger": _SidecarSafeLogger(),
         "progress_hooks": [_on_progress],
+        # Match the ingest path — without socket_timeout the lift-transcript
+        # request to YouTube / IG / TikTok hangs forever on rate-limit.
+        "socket_timeout": 20,
+        "retries": 3,
+        "fragment_retries": 5,
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "wav",

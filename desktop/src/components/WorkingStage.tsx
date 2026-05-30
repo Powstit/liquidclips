@@ -231,10 +231,14 @@ export function WorkingStage({
                 </div>
                 {pct !== null && (
                   <>
-                    <div className="ml-6 h-1 w-[440px] max-w-full overflow-hidden rounded-full bg-line">
+                    <div className="ml-6 h-1.5 w-[440px] max-w-full overflow-hidden rounded-full bg-paper-elev/60">
                       <div
-                        className="h-full bg-fuchsia transition-all duration-500"
-                        style={{ width: `${pct}%` }}
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${pct}%`,
+                          background: "var(--grad-fuchsia)",
+                          boxShadow: "var(--glow-sm)",
+                        }}
                       />
                     </div>
                     {progress!.last_text && (
@@ -243,6 +247,11 @@ export function WorkingStage({
                       </p>
                     )}
                   </>
+                )}
+                {pct === null && (
+                  <div className="ml-6 h-1.5 w-[440px] max-w-full overflow-hidden rounded-full bg-paper-elev/60">
+                    <div className="working-stage-shimmer h-full w-1/3 rounded-full" />
+                  </div>
                 )}
               </li>
             );
