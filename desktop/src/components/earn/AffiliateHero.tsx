@@ -63,6 +63,58 @@ type FetchState =
 const CACHE_TTL_MS = 60_000;
 let _cache: { at: number; data: AffiliateMeResponse } | null = null;
 
+// Cross-component live signal for "Stripe Connect needs the user's attention
+// right now" — true when the user is on the stripe_connect rail, has earned
+// money, but hasn't finished onboarding. The EarnIconRail Link icon shows a
+// fuchsia dot when this is true so the action is reachable from anywhere in
+// the app, not only when the Affiliate popover is open.
+const attentionListeners = new Set<(needs: boolean) => void>();
+let _attention = false;
+
+function setAttention(next: boolean): void {
+  if (next === _attention) return;
+  _attention = next;
+  for (const l of attentionListeners) l(next);
+}
+
+function computeAttention(data: AffiliateMeResponse | null): boolean {
+  if (!data) return false;
+  const earned = Number(data.affiliate.total_referral_earnings_usd) || 0;
+  return (
+    data.affiliate.payout_provider === "stripe_connect" &&
+    data.affiliate.payout_status === "setup_required" &&
+    earned > 0
+  );
+}
+
+export function useAffiliateAttention(): boolean {
+  const [needs, setNeeds] = useState(_attention);
+  useEffect(() => {
+    attentionListeners.add(setNeeds);
+    setNeeds(_attention);
+    // Best-effort fetch on first mount in case AffiliateHero hasn't been
+    // opened yet (the rail dot needs to be honest from first paint).
+    if (!_cache) {
+      meAffiliate()
+        .then((data) => {
+          if (data) {
+            _cache = { at: Date.now(), data };
+            setAttention(computeAttention(data));
+          }
+        })
+        .catch(() => {
+          /* signed-out / offline → attention stays false */
+        });
+    } else {
+      setAttention(computeAttention(_cache.data));
+    }
+    return () => {
+      attentionListeners.delete(setNeeds);
+    };
+  }, []);
+  return needs;
+}
+
 export function AffiliateHero({ onSignIn }: { onSignIn?: () => void }) {
   const [state, setState] = useState<FetchState>(() =>
     _cache && Date.now() - _cache.at < CACHE_TTL_MS
@@ -79,10 +131,12 @@ export function AffiliateHero({ onSignIn }: { onSignIn?: () => void }) {
         return;
       }
       _cache = { at: Date.now(), data };
+      setAttention(computeAttention(data));
       setState({ kind: "ok", data });
     } catch (e) {
       if (e instanceof UnauthorizedError) {
         setState({ kind: "signed-out" });
+        setAttention(false);
         return;
       }
       setState({ kind: "error", message: (e as Error).message });
@@ -429,6 +483,31 @@ function Dashboard({
         </div>
       )}
 
+      {/* Stripe Connect setup callout — only fires when the user has actually
+          earned commission but hasn't finished onboarding. Without earnings the
+          banner is noise; with earnings it's the most urgent action on the page. */}
+      {!pastDue &&
+        affiliate.payout_provider === "stripe_connect" &&
+        affiliate.payout_status === "setup_required" &&
+        earnedUsd > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-fuchsia bg-fuchsia-soft/40 px-4 py-3 shadow-[var(--glow-sm)]">
+          <Banknote className="h-4 w-4 shrink-0 text-fuchsia-deep" strokeWidth={2.25} />
+          <p className="flex-1 font-sans text-[12px] leading-snug text-ink">
+            <span className="font-medium">{earned} ready</span> &mdash; connect Stripe to receive your affiliate payouts.
+          </p>
+          <button
+            onClick={() =>
+              void openExternal(
+                affiliate.payout_setup_url || "https://account.jnremployee.com/dashboard#payouts",
+              )
+            }
+            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-3.5 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+          >
+            Connect Stripe →
+          </button>
+        </div>
+      )}
+
       {/* 2x2 figures grid. tabular-nums so they don't jitter on refresh. */}
       <div className="mt-5 grid grid-cols-2 gap-x-8 gap-y-5">
         <Figure
@@ -552,23 +631,36 @@ function PaymentRoutingRow({
 
   return (
     <div className="mt-4 grid gap-2 rounded-xl border border-line bg-paper px-3 py-3 sm:grid-cols-3">
-      {rows.map((r) => (
-        <button
-          key={r.key}
-          onClick={() => void openExternal(r.manage_url)}
-          className="text-left transition-colors hover:text-fuchsia-deep"
-          title={r.helper}
-        >
-          <div className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-text-tertiary">
-            <ProviderBadge provider={r.provider} />
-            {r.provider}
-          </div>
-          <div className="mt-1 font-sans text-[12px] font-medium text-ink">{r.label}</div>
-          <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
-            {r.in_app ? "manage" : "opens outside"} · {r.status}
-          </div>
-        </button>
-      ))}
+      {rows.map((r) => {
+        const needsAttention = r.status === "setup_required";
+        return (
+          <button
+            key={r.key}
+            onClick={() => void openExternal(r.manage_url)}
+            className={`rounded-lg p-2 text-left transition-colors -m-2 ${
+              needsAttention
+                ? "bg-fuchsia-soft/40 ring-1 ring-fuchsia/40 hover:bg-fuchsia-soft/60"
+                : "hover:text-fuchsia-deep"
+            }`}
+            title={r.helper}
+          >
+            <div className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-text-tertiary">
+              <ProviderBadge provider={r.provider} />
+              {r.provider}
+            </div>
+            <div className="mt-1 font-sans text-[12px] font-medium text-ink">{r.label}</div>
+            <div
+              className={`mt-0.5 font-mono text-[10px] uppercase tracking-[0.08em] ${
+                needsAttention ? "font-semibold text-fuchsia-deep" : "text-text-tertiary"
+              }`}
+            >
+              {needsAttention
+                ? "setup needed →"
+                : `${r.in_app ? "manage" : "opens outside"} · ${r.status}`}
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }
