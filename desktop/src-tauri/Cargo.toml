@@ -1,8 +1,8 @@
 [package]
 name = "junior-desktop"
 version = "0.1.0"
-description = "Junior — your AI editor. Lives on your computer."
-authors = ["Junior"]
+description = "Liquid Clips — your AI editor. Lives on your computer."
+authors = ["Liquid Clips"]
 edition = "2021"
 
 [lib]
