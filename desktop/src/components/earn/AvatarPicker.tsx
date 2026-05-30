@@ -56,7 +56,7 @@ export function AvatarPicker({
 
   const overlay = (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-paper/90 p-6"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
       onClick={onClose}
     >
       <Card

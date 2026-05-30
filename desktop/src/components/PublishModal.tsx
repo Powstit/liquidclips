@@ -243,7 +243,7 @@ export function PublishModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/85 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
       onClick={connectingPlatform || busy ? undefined : onClose}
     >
       <div
@@ -503,7 +503,7 @@ function UpgradeWall({
       : "Scheduling is on Growth+.";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-paper/85 p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md" onClick={onClose}>
       <div
         className="flex w-full max-w-[480px] flex-col gap-5 rounded-2xl bg-paper p-7 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
