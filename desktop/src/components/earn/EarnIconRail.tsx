@@ -4,7 +4,7 @@
 
 import { useState, type ReactNode } from "react";
 import { CheckCircle2, Clock4, Link as LinkIcon, Send, Target } from "lucide-react";
-import { AffiliateHeroPopover } from "./AffiliateHero";
+import { AffiliateHeroPopover, useAffiliateAttention } from "./AffiliateHero";
 import type { EarnTab as EarnSubTab } from "./types";
 
 const ITEMS: Array<{ id: EarnSubTab; label: string; icon: ReactNode }> = [
@@ -24,6 +24,9 @@ export function EarnIconRail({
   onSignIn?: () => void;
 }) {
   const [affiliateOpen, setAffiliateOpen] = useState(false);
+  // Fuchsia dot on the Link icon when the user has earned affiliate $$$ but
+  // hasn't finished Stripe Connect onboarding. Live signal, not a one-shot.
+  const affiliateAttention = useAffiliateAttention();
 
   return (
     <div className="flex h-full flex-col items-center py-3">
@@ -43,8 +46,13 @@ export function EarnIconRail({
       <div className="my-2 h-px w-8 bg-line" />
       <RailButton
         active={affiliateOpen}
-        label="Earn $ for invites"
+        label={
+          affiliateAttention
+            ? "Earn $ for invites · Connect Stripe to receive payout"
+            : "Earn $ for invites"
+        }
         onClick={() => setAffiliateOpen(true)}
+        dot={affiliateAttention}
       >
         <LinkIcon size={16} />
       </RailButton>
@@ -61,11 +69,15 @@ function RailButton({
   label,
   active,
   onClick,
+  dot,
 }: {
   children: ReactNode;
   label: string;
   active: boolean;
   onClick: () => void;
+  // Optional small fuchsia dot in the top-right corner of the button — used
+  // to flag "this surface needs your attention" without opening it.
+  dot?: boolean;
 }) {
   return (
     <button
@@ -73,13 +85,19 @@ function RailButton({
       onClick={onClick}
       title={label}
       aria-label={label}
-      className={`mb-1 inline-flex h-10 w-10 items-center justify-center rounded-xl border transition-colors duration-150 ${
+      className={`relative mb-1 inline-flex h-10 w-10 items-center justify-center rounded-xl border transition-colors duration-150 ${
         active
           ? "border-fuchsia bg-fuchsia-soft text-fuchsia-deep shadow-[var(--glow-sm)]"
           : "border-transparent text-text-secondary hover:bg-paper-elev hover:text-ink"
       }`}
     >
       {children}
+      {dot && (
+        <span
+          className="pulse-dot absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-fuchsia ring-2 ring-paper"
+          aria-hidden
+        />
+      )}
     </button>
   );
 }
