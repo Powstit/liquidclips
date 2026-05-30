@@ -44,7 +44,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'Liquid Clips ${{ github.ref_name }}'
           releaseBody: |
-            **What’s new**
+            **What's new**
             See [CHANGELOG.md](./CHANGELOG.md) for full details.
 
             **Install**
