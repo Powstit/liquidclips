@@ -29,7 +29,11 @@ export function allowedPlatforms(b: WhopBounty): ConnectedPlatform[] {
 
 export function formatPayout(b: WhopBounty): string {
   const sym = b.currency === "GBP" ? "£" : b.currency === "USD" ? "$" : "";
-  return `${sym}${b.rewardPerUnitAmount.toFixed(2)} / 1k views`;
+  // Coerce: Whop occasionally returns null even though the type says number.
+  const r = typeof b.rewardPerUnitAmount === "number" && Number.isFinite(b.rewardPerUnitAmount)
+    ? b.rewardPerUnitAmount
+    : 0;
+  return `${sym}${r.toFixed(2)} / 1k views`;
 }
 
 export function moneySymbol(currency: string): string {

@@ -268,7 +268,7 @@ function BriefDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/85 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
       onClick={onClose}
     >
       <Card

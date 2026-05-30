@@ -85,7 +85,7 @@ export function DripCalendar({
   }, [slots, days]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-paper/85 p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md" onClick={onClose}>
       <div
         className="flex h-full max-h-[92vh] w-full max-w-[1240px] flex-col overflow-hidden rounded-2xl bg-paper shadow-2xl"
         onClick={(e) => e.stopPropagation()}

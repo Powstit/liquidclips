@@ -21,6 +21,16 @@ export function BountyDetail({
   const platforms = allowedPlatforms(bounty);
   const sym = bounty.currency === "GBP" ? "£" : bounty.currency === "USD" ? "$" : "";
   const briefUrl = whopBountyUrl(bounty);
+  // Whop's API occasionally returns null for numeric fields the TS type
+  // marks as non-null. Coerce here so a single missing value can't TypeError
+  // and blank the whole detail view.
+  const num = (v: unknown, d = 0): number =>
+    typeof v === "number" && Number.isFinite(v) ? v : d;
+  const spotsRemaining = num(bounty.spotsRemaining);
+  const spotsLimit = num(bounty.acceptedSubmissionsLimit);
+  const budget = num(bounty.budgetAmount);
+  const views = num(bounty.viewCount);
+  const totalPaid = num(bounty.totalPaid);
 
   return (
     <div className="flex w-full max-w-[1080px] flex-col gap-6">
@@ -132,23 +142,23 @@ export function BountyDetail({
             <div className="flex items-center justify-between">
               <span>spots left</span>
               <span className="text-ink">
-                {bounty.spotsRemaining} of {bounty.acceptedSubmissionsLimit}
+                {spotsRemaining} of {spotsLimit}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span>budget</span>
               <span className="text-ink">
-                {sym}{bounty.budgetAmount.toFixed(0)}
+                {sym}{budget.toFixed(0)}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span>views so far</span>
-              <span className="text-ink">{bounty.viewCount.toLocaleString()}</span>
+              <span className="text-ink">{views.toLocaleString()}</span>
             </div>
             <div className="flex items-center justify-between">
               <span>paid so far</span>
               <span className="text-ink">
-                {sym}{bounty.totalPaid.toFixed(2)}
+                {sym}{totalPaid.toFixed(2)}
               </span>
             </div>
           </div>
