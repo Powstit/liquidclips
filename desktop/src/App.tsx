@@ -492,6 +492,12 @@ export default function App() {
     let unlistenProgress: (() => void) | null = null;
     const myGen = ++liftGenRef.current;
     setView({ kind: "lifting", url });
+    // Sprint #26 telemetry — lift funnel events. host derived from URL
+    // because hostname alone isn't PII (forbidden-keys filter strips path/slug).
+    let host = "unknown";
+    try { host = new URL(url).hostname.replace(/^www\./, ""); } catch {}
+    const startMs = performance.now();
+    trackEvent("lift_started", { source_host: host });
     try {
       unlistenProgress = await onLiftProgress((p) => {
         if (liftGenRef.current !== myGen) return;
@@ -512,9 +518,24 @@ export default function App() {
         ),
       ]);
       if (liftGenRef.current === myGen) setView({ kind: "lifted", result });
+      trackEvent("lift_completed", {
+        source_host: host,
+        duration_s: result.duration ?? null,
+        segments: Array.isArray(result.segments) ? result.segments.length : 0,
+        wall_ms: Math.round(performance.now() - startMs),
+        language: result.language ?? null,
+      });
     } catch (e) {
       console.error("[lift] failed:", e);
-      if (liftGenRef.current === myGen) {
+      // Distinguish cancel vs error — generation mismatch implies user hit Cancel.
+      if (liftGenRef.current !== myGen) {
+        trackEvent("lift_canceled", { source_host: host, wall_ms: Math.round(performance.now() - startMs) });
+      } else {
+        trackEvent("lift_failed", {
+          source_host: host,
+          wall_ms: Math.round(performance.now() - startMs),
+          error_code: e instanceof SidecarError ? e.code : null,
+        });
         setView({ kind: "lift-failed", url, error: humanIngestError(e) });
       }
     } finally {
