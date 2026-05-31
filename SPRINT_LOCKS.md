@@ -3,7 +3,7 @@
 Read this BEFORE editing any high-conflict file (see `~/Desktop/COMPLETION_SPRINT.md` for the list).
 
 ## Active locks
-- [CLAUDE · 2026-06-01 02:00] item #18a icon batch + #18 game phase 1 — wiring BadgeShelf + AchievementToast + TierAvatar; editing desktop/src/App.tsx, desktop/src/components/Settings.tsx, desktop/src/components/earn/AffiliateHero.tsx (+ NEW: BadgeShelf.tsx, AchievementToast.tsx, TierAvatar.tsx, lib/achievements.ts)
+*(none)*
 
 ## Lock format
 - `[AGENT · YYYY-MM-DD HH:MM] item #N <name> — editing <file paths comma-separated>`
