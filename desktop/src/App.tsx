@@ -32,7 +32,7 @@ import { BountySourceSetup } from "./components/earn/BountySourceSetup";
 import { extractSourceUrls } from "./lib/sourceParser";
 import { track as trackEvent, trackFirstBountyWorkspace } from "./lib/analytics";
 import { FailureCard } from "./components/FailureCard";
-import type { WhopBounty } from "./lib/sidecar";
+import { SidecarError, type WhopBounty } from "./lib/sidecar";
 
 type View =
   | { kind: "first-run" }
@@ -44,6 +44,8 @@ type View =
   | { kind: "bounty-setup"; bounty: WhopBounty }
   | { kind: "choosing-intent"; source: { kind: "file"; path: string } | { kind: "url"; url: string }; brief: string; bounty?: WhopBounty }
   | { kind: "downloading"; url: string; progress?: IngestProgress; intent: Intent }
+  | { kind: "ingest-failed"; url: string; error: string; intent: Intent }
+  | { kind: "deps-missing"; missing: string[]; errors: Record<string, string>; python: string }
   | { kind: "lifting"; url: string; progress?: LiftProgress }
   | { kind: "lifted"; result: LiftTranscriptResult }
   | { kind: "lift-failed"; url: string; error: string }
@@ -93,7 +95,26 @@ export default function App() {
     (async () => {
       try {
         await sidecar.ping();
+        // Preflight every heavy import before the user can paste a URL —
+        // catches the "system Python missing yt-dlp / faster-whisper" silent
+        // hang at boot instead of mid-pipeline. Failure routes to the
+        // remediation card; sidecar still reports "ready" so the splash can
+        // render the card cleanly instead of an "app broken" fallback.
         setSidecarStatus("ready");
+        try {
+          const deps = await sidecar.checkDeps();
+          if (!deps.ok) {
+            setView({
+              kind: "deps-missing",
+              missing: deps.missing,
+              errors: deps.errors,
+              python: deps.python,
+            });
+          }
+        } catch {
+          // check_deps itself failed — sidecar is too broken to even probe.
+          // Fall through; pipeline calls will surface their own errors.
+        }
         sidecar.preloadWhisper().catch(() => undefined);
         // Check for a license JWT in the keychain. Presence = signed in. We
         // don't validate the JWT here — that's the backend's job on /sync.
@@ -246,7 +267,9 @@ export default function App() {
       await runRemainingStages(project);
     } catch (e) {
       console.error("[pipeline] URL ingest failed:", e);
-      setView({ kind: "empty" });
+      // Mirror the lift-failed path so the user sees an actionable
+      // FailureCard instead of the screen silently resetting to empty.
+      setView({ kind: "ingest-failed", url, intent, error: humanIngestError(e) });
     } finally {
       unlistenProgress?.();
     }
@@ -484,7 +507,7 @@ export default function App() {
       setView({ kind: "lifted", result });
     } catch (e) {
       console.error("[lift] failed:", e);
-      setView({ kind: "lift-failed", url, error: String(e) });
+      setView({ kind: "lift-failed", url, error: humanIngestError(e) });
     } finally {
       unlistenProgress?.();
     }
@@ -738,6 +761,36 @@ export default function App() {
             message="Fetching from the source"
             detail={formatDownloadDetail(view.url, view.progress)}
             percent={view.progress?.percent ?? undefined}
+            onCancel={() => {
+              void sidecar.liftCancel().catch(() => undefined);
+              setView({ kind: "empty" });
+            }}
+          />
+        )}
+
+        {view.kind === "ingest-failed" && (
+          <FailureCard
+            eyebrow="couldn't download this one"
+            heading="That link didn't import."
+            url={view.url}
+            error={view.error}
+            note="Private / login-walled posts can't be fetched. Public YouTube / TikTok / IG reels should work."
+            onRetry={() => void runPipelineFromUrl(view.url, "", view.intent)}
+            onDismiss={() => setView({ kind: "empty" })}
+            subject={`Liquid Clips — ingest failed for ${view.url}`}
+          />
+        )}
+
+        {view.kind === "deps-missing" && (
+          <DepsMissingCard
+            missing={view.missing}
+            errors={view.errors}
+            python={view.python}
+            onRetry={async () => {
+              const deps = await sidecar.checkDeps().catch(() => null);
+              if (deps?.ok) setView({ kind: "empty" });
+              else if (deps) setView({ kind: "deps-missing", ...deps });
+            }}
           />
         )}
 
@@ -972,6 +1025,93 @@ function BrowserEdgeTab({ open }: { open: boolean }) {
     >
       {busy ? "…" : open ? "Close" : "Browse"}
     </button>
+  );
+}
+
+// Map raw sidecar / yt-dlp errors to one-line copy a human can act on. Falls
+// back to the raw string if no pattern matches — better an ugly error than a
+// silent reset to empty (which is what we did before P0 #2).
+function humanIngestError(e: unknown): string {
+  // SidecarError carries the sidecar's pre-classified human message — prefer it.
+  if (e instanceof SidecarError) return e.human;
+  const raw = e instanceof Error ? e.message : String(e);
+  if (/ModuleNotFoundError|No module named/.test(raw)) {
+    return "The sidecar is missing a required Python package. Open Settings → Diagnose, or reinstall the app.";
+  }
+  if (/Private video|members-only|login required|sign in to confirm/i.test(raw)) {
+    return "That source is private / login-walled. Public links work; private ones don't.";
+  }
+  if (/Video unavailable|removed by/i.test(raw)) {
+    return "The source video is unavailable (removed, geo-blocked, or age-restricted).";
+  }
+  if (/HTTP Error 429|rate.?limit/i.test(raw)) {
+    return "The source is rate-limiting us. Wait a minute and try again.";
+  }
+  if (/network|socket|timed out|TimeoutError|Connection/i.test(raw)) {
+    return "Network timeout reaching the source. Check your connection and try again.";
+  }
+  return raw;
+}
+
+// P0 #1 — actionable remediation card when the sidecar's Python env is
+// missing a required package. The bundled .app does NOT ship a venv (we
+// rely on the user's system Python), so a fresh Mac can hit this on first
+// run. Surfaces the exact pip command so the user can self-heal.
+function DepsMissingCard({
+  missing,
+  errors,
+  python,
+  onRetry,
+}: {
+  missing: string[];
+  errors: Record<string, string>;
+  python: string;
+  onRetry: () => void | Promise<void>;
+}) {
+  const pipCmd = `"${python}" -m pip install --break-system-packages ${missing.join(" ")}`;
+  return (
+    <div className="w-full max-w-[720px] rounded-3xl border border-fuchsia-soft bg-paper-elev p-7">
+      <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
+        sidecar can't start the pipeline
+      </div>
+      <h2 className="mt-2 font-display text-[26px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">
+        Liquid Clips needs a few Python packages that aren't installed yet.
+      </h2>
+      <p className="mt-2 max-w-[560px] font-sans text-[13px] leading-relaxed text-text-secondary">
+        The clip pipeline runs on your system Python and {missing.length === 1 ? "one package is" : `${missing.length} packages are`} missing:
+        <span className="ml-1 font-mono text-ink">{missing.join(", ")}</span>.
+      </p>
+      <p className="mt-4 font-mono text-[11px] uppercase tracking-[0.1em] text-text-tertiary">
+        run in Terminal to fix
+      </p>
+      <pre className="mt-1 select-all overflow-x-auto rounded-lg border border-line bg-paper p-3 font-mono text-[12px] leading-relaxed text-ink">
+        {pipCmd}
+      </pre>
+      <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
+        once that finishes, click retry
+      </p>
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          onClick={() => void onRetry()}
+          className="rounded-full bg-fuchsia px-5 py-2 font-mono text-[11px] uppercase tracking-[0.1em] text-paper hover:bg-fuchsia/90"
+        >
+          retry
+        </button>
+        <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
+          python: {python.replace(/^.*\//, "…/")}
+        </span>
+      </div>
+      {Object.keys(errors).length > 0 && (
+        <details className="mt-4">
+          <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
+            raw import errors
+          </summary>
+          <pre className="mt-2 overflow-x-auto rounded-lg border border-line bg-paper p-2 font-mono text-[10px] leading-relaxed text-text-tertiary">
+            {Object.entries(errors).map(([k, v]) => `${k}: ${v}`).join("\n")}
+          </pre>
+        </details>
+      )}
+    </div>
   );
 }
 

@@ -44,6 +44,15 @@ struct Response {
     result: Option<Value>,
     #[serde(default)]
     error: Option<String>,
+    // P0 #4 — structured error envelope from the Python sidecar. When
+    // present we forward the whole envelope (JSON-encoded) so the frontend
+    // can render `human` in the FailureCard and key UI off `code`.
+    #[serde(default)]
+    human: Option<String>,
+    #[serde(default)]
+    code: Option<String>,
+    #[serde(default)]
+    technical: Option<String>,
 }
 
 type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value>>>>>;
@@ -129,7 +138,20 @@ impl SidecarState {
                             };
                             if let Some(tx) = waiter {
                                 let result = if let Some(err) = resp.error {
-                                    Err(anyhow!(err))
+                                    // If the sidecar attached a structured envelope (human/code/technical),
+                                    // serialize the whole thing into the error message. The frontend's
+                                    // sidecarCall wrapper detects the "ENV:{...}" prefix and parses it.
+                                    if resp.human.is_some() || resp.code.is_some() {
+                                        let env = serde_json::json!({
+                                            "error": err,
+                                            "human": resp.human,
+                                            "code": resp.code,
+                                            "technical": resp.technical,
+                                        });
+                                        Err(anyhow!(format!("ENV:{}", env)))
+                                    } else {
+                                        Err(anyhow!(err))
+                                    }
                                 } else {
                                     Ok(resp.result.unwrap_or(Value::Null))
                                 };
