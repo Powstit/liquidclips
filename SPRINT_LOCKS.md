@@ -3,7 +3,7 @@
 Read this BEFORE editing any high-conflict file (see `~/Desktop/COMPLETION_SPRINT.md` for the list).
 
 ## Active locks
-- [CLAUDE · 2026-05-31 23:45] item #25 error audit — editing desktop/src/lib/sidecar.ts, desktop/src/components/Settings.tsx, plus ~10 small components (replace setError(String(e)) → setError(humanError(e)))
+*(none)*
 
 ## Lock format
 - `[AGENT · YYYY-MM-DD HH:MM] item #N <name> — editing <file paths comma-separated>`
