@@ -937,6 +937,12 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
             # vad_filter=False — the #1 reported faster-whisper hang source.
             # tiny model is fast enough to process full audio without VAD.
             vad_filter=False,
+            # beam_size=1 (greedy) is 3-5x faster than the default beam=5
+            # with negligible WER hit on clean podcast/long-form audio.
+            # condition_on_previous_text=False kills the chain dependency
+            # between segments — same fix stages.py already shipped.
+            beam_size=1,
+            condition_on_previous_text=False,
         )
         local_segments: list[dict[str, Any]] = []
         local_text: list[str] = []
@@ -961,6 +967,11 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
             # (scaled to audio length above).
             elapsed = 0.0
             poll_step = 2.0
+            # Heartbeat % so the UI shows motion even before the first segment
+            # arrives (beam search on the first chunk can take 30-60s on long
+            # audio). Walks toward an estimated total based on audio duration
+            # but caps at 90% so the real segment-driven % can take over.
+            est_total_s = max(60.0, float(info.get("duration") or 60) / 5.0)
             segments_list = None
             while True:
                 try:
@@ -978,6 +989,14 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
                         except OSError:
                             pass
                         raise RuntimeError("Transcription canceled by user.")
+                    # Heartbeat — the worker emits real per-segment % as
+                    # they land, which will overwrite this. Caps at 90 so the
+                    # real value can finish the climb to 100.
+                    pct = min(90.0, (elapsed / est_total_s) * 100.0)
+                    emit({"event": "lift_progress", "data": {
+                        "phase": "transcribing",
+                        "percent": pct,
+                    }})
     except FutureTimeoutError:
         raise RuntimeError(
             f"Transcription timed out after {transcribe_timeout}s — audio may be corrupt or contain no speech"
