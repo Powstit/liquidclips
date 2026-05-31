@@ -16,6 +16,8 @@ import { PayoutsTab } from "./components/payouts/PayoutsTab";
 import { InvadersOverlay } from "./components/invaders/InvadersOverlay";
 import { closeInvaders } from "./lib/invaders/store";
 import { Settings } from "./components/Settings";
+import { AchievementToast } from "./components/AchievementToast";
+import { recordAchievement } from "./lib/achievements";
 import { sidecar, visibleStagesFor, pipelineStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
 import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
 import { initDeepLinks, setOnActivated } from "./lib/activation";
@@ -525,6 +527,10 @@ export default function App() {
         wall_ms: Math.round(performance.now() - startMs),
         language: result.language ?? null,
       });
+      // Sprint #18a — first successful lift unlocks the "First Clip" badge.
+      // Toast appears top-right via AchievementToast. recordAchievement is
+      // dedup'd via localStorage so this is safe to call every time.
+      recordAchievement("first_clip");
     } catch (e) {
       console.error("[lift] failed:", e);
       // Distinguish cancel vs error — generation mismatch implies user hit Cancel.
@@ -1007,6 +1013,9 @@ export default function App() {
           from JuniorLoader / WorkingStage; auto-closes when the pipeline
           reaches a terminal state (see autoclose effect at App top). */}
       <InvadersOverlay />
+      {/* Achievement unlock toasts (sprint #18a) — global mount, listens on
+          the achievements bus, slides in for ~5s when a badge unlocks. */}
+      <AchievementToast />
     </MainShell>
   );
 }
