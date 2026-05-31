@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { sidecar, type DripSlot, type Project } from "../lib/sidecar";
+import { sidecar, humanError, type DripSlot, type Project } from "../lib/sidecar";
 import { PlatformIcon, type PlatformId } from "./PlatformIcon";
 
 // Spec §1.5 preview calendar — 14-day grid (or 7/21/28 depending on weeks
@@ -46,7 +46,7 @@ export function DripCalendar({
         if (!cancelled) setSlots(r.slots);
       })
       .catch((e) => {
-        if (!cancelled) setError(String(e));
+        if (!cancelled) setError(humanError(e));
       });
     return () => {
       cancelled = true;
@@ -59,7 +59,7 @@ export function DripCalendar({
     try {
       await onConfirm(slots);
     } catch (e) {
-      setError(String(e));
+      setError(humanError(e));
     } finally {
       setBusy(false);
     }

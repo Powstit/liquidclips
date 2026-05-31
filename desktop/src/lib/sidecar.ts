@@ -15,6 +15,50 @@ export class SidecarError extends Error {
     this.technical = env.technical || env.error;
   }
 }
+
+/**
+ * Sprint #25 — convert any thrown value into a single human-readable line.
+ * Replaces `setError(String(e))` everywhere. Prefers SidecarError.human
+ * (sidecar pre-classified messages), then pattern-matches common Python /
+ * Tauri / network failures, falls back to the raw string. Never returns
+ * "ModuleNotFoundError: ..." or similar to a user.
+ */
+export function humanError(e: unknown): string {
+  if (e instanceof SidecarError) return e.human;
+  const raw = e instanceof Error ? e.message : String(e);
+  // Common pre-classified patterns we still want to humanise even when the
+  // error didn't come through SidecarError (e.g. raw Tauri invoke failures,
+  // fetch errors, parse errors).
+  if (/ModuleNotFoundError|No module named/i.test(raw)) {
+    return "The sidecar is missing a required Python package. Open Settings → Diagnose, or reinstall the app.";
+  }
+  if (/Private video|members-only|login required|sign in to confirm/i.test(raw)) {
+    return "That source is private or login-walled. Public links work; private ones don't.";
+  }
+  if (/Video unavailable|removed by/i.test(raw)) {
+    return "The source video is unavailable (removed, geo-blocked, or age-restricted).";
+  }
+  if (/HTTP Error 429|rate.?limit/i.test(raw)) {
+    return "The source is rate-limiting us. Wait a minute and try again.";
+  }
+  if (/socket|timed out|TimeoutError|Connection refused|Connection reset|Network is unreachable|Failed to fetch/i.test(raw)) {
+    return "Network timeout. Check your connection and try again.";
+  }
+  if (/HTTP 401|unauthor[is]z/i.test(raw)) {
+    return "Sign in again — your session expired.";
+  }
+  if (/HTTP 403/i.test(raw)) {
+    return "The server refused that request — check tier or permissions.";
+  }
+  if (/HTTP 404/i.test(raw)) {
+    return "Not found.";
+  }
+  if (/HTTP 50[0-9]/i.test(raw)) {
+    return "Server hiccup. Try again in a moment.";
+  }
+  // Strip the noisy "Error: " prefix that Tauri / browser sometimes prepends.
+  return raw.replace(/^Error:\s*/i, "");
+}
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export async function sidecarCall<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
