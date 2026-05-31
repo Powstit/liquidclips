@@ -123,9 +123,10 @@ function draw(
   h: number,
   sprites: Sprites,
 ) {
-  // background
-  ctx.fillStyle = "#0B0B10";
-  ctx.fillRect(0, 0, w, h);
+  // Sprint #18 — transparent canvas. clearRect (vs solid fillRect) lets the
+  // app background show through the game layer, so the game feels integrated
+  // with the workspace instead of a popup that blanks the screen.
+  ctx.clearRect(0, 0, w, h);
 
   // invaders — sprite scaled up from collision-box (24×16) to visual (32×32)
   // so the wasp art reads at the splash canvas size; collision math is

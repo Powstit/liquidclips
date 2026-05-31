@@ -22,6 +22,7 @@ import {
   type PaymentVisibility,
 } from "../../lib/backend";
 import { Pencil } from "lucide-react";
+import { TierAvatar, tierForEarnings, nextTierMilestone } from "../TierAvatar";
 import { QrCode } from "../QrCode";
 import { InfoHint } from "../InfoHint";
 import { Avatar } from "../primitives";
@@ -462,6 +463,20 @@ function Dashboard({
           </Eyebrow>
         </div>
         <div className="flex items-center gap-2">
+          {(() => {
+            // Sprint #18a — Earner-tier rank emblem. Climbs with lifetime
+            // affiliate USD. Hover for the next milestone.
+            const t = tierForEarnings(earnedUsd);
+            const milestone = nextTierMilestone(earnedUsd);
+            const title = milestone
+              ? `Tier: ${t}. Next: ${milestone.next} at $${milestone.min_usd}`
+              : `Tier: ${t} — top rank`;
+            return (
+              <span title={title} className="inline-flex items-center">
+                <TierAvatar tier={t} size={36} />
+              </span>
+            );
+          })()}
           {(isFounder || isAdmin) && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-fuchsia-soft/30 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
               <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />

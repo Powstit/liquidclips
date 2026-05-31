@@ -117,11 +117,48 @@ export function InvadersOverlay() {
     });
   }
 
+  // Sprint #18 — auto-collapse the Browse Rewards side panel while the game
+  // is open so the user gets the full canvas, not a split screen. Restore
+  // on unmount only if WE closed it (track the prior state via a ref so we
+  // don't reopen a panel the user explicitly closed before opening the game).
+  useEffect(() => {
+    if (!open) return;
+    let weClosedIt = false;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { closeBrowsePanel, isBrowsePanelOpenInRust, openBrowsePanel } = await import("../../lib/browse");
+        const wasOpen = await isBrowsePanelOpenInRust();
+        if (cancelled) return;
+        if (wasOpen) {
+          await closeBrowsePanel();
+          weClosedIt = true;
+        }
+        // Restore handler stored on the effect closure
+        (window as any).__liquidclips_restore_browse = async () => {
+          if (weClosedIt) {
+            try { await openBrowsePanel(); } catch { /* noop */ }
+          }
+        };
+      } catch {
+        /* browse panel unavailable — game still works */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      const restore = (window as any).__liquidclips_restore_browse;
+      if (typeof restore === "function") {
+        void restore();
+        delete (window as any).__liquidclips_restore_browse;
+      }
+    };
+  }, [open]);
+
   if (!open || !state) return null;
 
   const overlay = (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-paper p-6"
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-paper/30 p-6 backdrop-blur-md"
       onClick={closeInvaders}
     >
       <Card

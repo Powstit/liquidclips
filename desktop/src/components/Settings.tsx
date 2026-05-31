@@ -12,6 +12,7 @@ import { syncStatus, backend, meStatus, type SyncStatus, type MeStatus, type Pla
 import { applyUpdate, checkForUpdate, readLastUpdateCheck, type LastUpdateCheck, type UpdateState } from "../lib/updater";
 import { PlatformIcon } from "./PlatformIcon";
 import AyrshareConnectionPanel from "./AyrshareConnectionPanel";
+import { BadgeShelf } from "./BadgeShelf";
 
 // Settings panel per spec §3.8 screen 8 — one scrollable page.
 // Opens as a modal sheet from the gear icon in the header.
@@ -679,6 +680,9 @@ function WhoAmISection() {
               : `backend key missing — desktop session: ${whopSource}`
           }
         />
+      </div>
+      <div className="mt-6">
+        <BadgeShelf />
       </div>
     </Section>
   );
