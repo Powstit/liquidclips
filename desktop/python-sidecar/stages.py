@@ -1138,9 +1138,26 @@ def stage_reframe(project: Project) -> dict[str, Any]:
                     vf = f"{vf},{_subtitles_filter(clip_srt)}"
                 if hook_path is not None:
                     vf = f"{vf},{_drawtext_hook_filter(hook_path, out_w)}"
-                run_ffmpeg([
+                # Sprint #14 Voice enhancement — applied during the SAME encode
+                # so we don't double-re-encode. afftdn removes background hiss /
+                # noise via spectral gating; loudnorm normalises to EBU R128
+                # broadcast standard (-16 LUFS) so quiet-and-loud-section
+                # podcasts come out at consistent volume. Both are pure ffmpeg
+                # filters — no new deps. Opt-out via env var if a clip is music-
+                # heavy and the noise reduction muddies it.
+                af_voice = os.environ.get("JUNIOR_VOICE_ENHANCE", "1").strip()
+                af_chain = (
+                    "afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11"
+                    if af_voice not in ("0", "false", "off")
+                    else None
+                )
+                cmd = [
                     "-i", cut_path,
                     "-vf", vf,
+                ]
+                if af_chain:
+                    cmd += ["-af", af_chain]
+                cmd += [
                     "-c:v", "libx264",
                     "-preset", "veryfast",
                     "-crf", "22",
@@ -1148,7 +1165,8 @@ def stage_reframe(project: Project) -> dict[str, Any]:
                     "-b:a", "128k",
                     "-movflags", "+faststart",
                     str(out_path),
-                ])
+                ]
+                run_ffmpeg(cmd)
             ratio_paths[f"{key}_path"] = str(out_path)
 
         done_counter["n"] += 1
