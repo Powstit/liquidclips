@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { sidecar, type Project } from "../lib/sidecar";
+import { sidecar, humanError, type Project } from "../lib/sidecar";
 
 // Tile at the end of the clips grid. Tap → trim-by-timestamps dialog. Sends
 // the bounds to the sidecar's add_clip RPC which ffmpegs a slice from the
@@ -90,7 +90,7 @@ function AddClipDialog({
       const r = await sidecar.addClip(project.slug, startS, endS, title.trim() || "Manual clip");
       onAdded(r.project);
     } catch (e) {
-      setError(String(e));
+      setError(humanError(e));
       setBusy(false);
     }
   }

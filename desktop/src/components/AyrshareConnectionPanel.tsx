@@ -39,7 +39,7 @@ export default function AyrshareConnectionPanel() {
       setState(s);
       if (s?.profile_key_set) setShowInput(false);
     } catch (e) {
-      setError(String(e));
+      setError(humanError(e));
     } finally {
       setLoading(false);
     }

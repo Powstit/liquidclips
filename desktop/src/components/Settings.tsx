@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { sidecar, type HardwareInfo, type SecretName } from "../lib/sidecar";
+import { sidecar, humanError, type HardwareInfo, type SecretName } from "../lib/sidecar";
 
 // Single source of truth — pulled from package.json so a stale constant can't
 // land in the Settings → About row again after a ship.
@@ -408,7 +408,7 @@ function ConnectionsSection() {
       setMaxConnections(list.max_connections);
       setCanConnectMore(list.can_connect_more);
     } catch (e) {
-      setError(String(e));
+      setError(humanError(e));
     } finally {
       setLoading(false);
     }
@@ -430,7 +430,7 @@ function ConnectionsSection() {
       }
       await load();
     } catch (e) {
-      setError(String(e));
+      setError(humanError(e));
     } finally {
       setConnecting(null);
     }
@@ -751,7 +751,7 @@ function WhopConnectionRow() {
         }
       }
     } catch (e) {
-      setError(String(e).replace(/^Error:\s*/i, ""));
+      setError(humanError(e));
     } finally {
       setPhase("idle");
     }

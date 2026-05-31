@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { backend, type NotificationDto } from "../lib/backend";
-import { sidecar } from "../lib/sidecar";
+import { sidecar, humanError } from "../lib/sidecar";
 
 const CATEGORY_LABELS: Record<NotificationDto["category"], string> = {
   system_update: "update",
@@ -41,7 +41,7 @@ export function NotificationSheet({ onClose }: { onClose: () => void }) {
       setItems(list);
       setError(null);
     } catch (e) {
-      setError(String(e));
+      setError(humanError(e));
     }
   }, []);
 

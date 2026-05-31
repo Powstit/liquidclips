@@ -4,6 +4,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { Clock, Send, X, CheckCircle2, ExternalLink, Copy } from "lucide-react";
 import { sidecar, type LocalScheduleItem } from "../../lib/sidecar";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
+import { humanError } from "../../lib/sidecar";
 
 // Web composer URLs per platform. Liquid Clips copies the caption to the user's
 // clipboard and opens the platform's upload/composer page in the browser —
@@ -76,7 +77,7 @@ export function LocalQueue() {
       setItems(items);
       setError(null);
     } catch (e) {
-      setError(String(e));
+      setError(humanError(e));
     }
   }, []);
 

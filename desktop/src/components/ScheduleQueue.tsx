@@ -3,6 +3,7 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { backend, type ScheduleDto } from "../lib/backend";
 import { sidecar } from "../lib/sidecar";
 import { PlatformIcon, type PlatformId } from "./PlatformIcon";
+import { humanError } from "../lib/sidecar";
 
 const KNOWN_PLATFORMS: PlatformId[] = ["youtube", "tiktok", "instagram", "x"];
 
@@ -67,7 +68,7 @@ export function ScheduleQueue() {
       setItems(list);
       setError(null);
     } catch (e) {
-      setError(String(e));
+      setError(humanError(e));
     }
   }, []);
 

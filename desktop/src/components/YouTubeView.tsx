@@ -4,6 +4,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { sidecar, type Project, type ScoredTitle, type YouTubeExtras } from "../lib/sidecar";
 import { InfoTip } from "./InfoTip";
 import { PlatformIcon } from "./PlatformIcon";
+import { humanError } from "../lib/sidecar";
 
 // YouTube long-form upload prep. Built to beat TubeBuddy / VidIQ / 1of10 on
 // the things that actually move CTR: scored title variants with reasoning,
@@ -33,7 +34,7 @@ export function YouTubeView({ project }: { project: Project }) {
         setData(res.youtube);
         setSavedData(res.youtube);
       })
-      .catch((e) => !cancelled && setError(String(e)));
+      .catch((e) => !cancelled && setError(humanError(e)));
     return () => {
       cancelled = true;
     };
@@ -54,7 +55,7 @@ export function YouTubeView({ project }: { project: Project }) {
       setSaveState("saved");
       window.setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 1800);
     } catch (e) {
-      setError(String(e));
+      setError(humanError(e));
       setSaveState("idle");
     }
   }
