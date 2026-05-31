@@ -3,8 +3,7 @@
 Read this BEFORE editing any high-conflict file (see `~/Desktop/COMPLETION_SPRINT.md` for the list).
 
 ## Active locks
-- [CODEX · 2026-05-31 23:00] items #1 + #9 + #21 + #22 Apple notarization/xattr/privacy/entitlements — editing .github/workflows/release.yml, desktop/scripts/notarize.sh, desktop/src-tauri/tauri.conf.json, desktop/src-tauri/PrivacyInfo.xcprivacy, desktop/src-tauri/entitlements-direct.plist
-- [CODEX · 2026-05-31 23:20] item #11 account-app v2 pricing — editing account-app/src/components/PricingCards.tsx, account-app/src/components/PricingComparison.tsx, account-app/src/app/upgrade/page.tsx, account-app/src/app/dashboard/page.tsx, account-app/src/app/download/page.tsx, account-app/src/app/checkout/page.tsx
+- [CLAUDE · 2026-05-31 23:45] item #25 error audit — editing desktop/src/lib/sidecar.ts, desktop/src/components/Settings.tsx, plus ~10 small components (replace setError(String(e)) → setError(humanError(e)))
 
 ## Lock format
 - `[AGENT · YYYY-MM-DD HH:MM] item #N <name> — editing <file paths comma-separated>`
