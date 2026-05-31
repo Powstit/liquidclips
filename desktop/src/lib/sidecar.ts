@@ -26,6 +26,11 @@ export class SidecarError extends Error {
 export function humanError(e: unknown): string {
   if (e instanceof SidecarError) return e.human;
   const raw = e instanceof Error ? e.message : String(e);
+  // Catch the unhelpful String() coercions of non-Error throwables so the
+  // user never sees "null" / "undefined" / "[object Object]" as a message.
+  if (!raw || raw === "null" || raw === "undefined" || raw === "[object Object]") {
+    return "Something went wrong.";
+  }
   // Common pre-classified patterns we still want to humanise even when the
   // error didn't come through SidecarError (e.g. raw Tauri invoke failures,
   // fetch errors, parse errors).
@@ -44,7 +49,7 @@ export function humanError(e: unknown): string {
   if (/socket|timed out|TimeoutError|Connection refused|Connection reset|Network is unreachable|Failed to fetch/i.test(raw)) {
     return "Network timeout. Check your connection and try again.";
   }
-  if (/HTTP 401|unauthor[is]z/i.test(raw)) {
+  if (/HTTP 401|unauthori[sz]/i.test(raw)) {
     return "Sign in again — your session expired.";
   }
   if (/HTTP 403/i.test(raw)) {

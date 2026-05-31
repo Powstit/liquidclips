@@ -525,7 +525,7 @@ class _SidecarSafeLogger:
         sys.stderr.write(f"[yt-dlp ERR] {msg}\n")
 
 
-def _yt_dlp_base_opts(*, with_progress: bool = False) -> dict[str, Any]:
+def _yt_dlp_base_opts() -> dict[str, Any]:
     """Shared yt-dlp opts every call site merges in. Centralises:
       - socket_timeout / retries (was inconsistent across ingest + probe + lift
         download — sprint #27 bug audit #9)
