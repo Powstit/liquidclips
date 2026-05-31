@@ -749,6 +749,18 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
             return "https://www.instagram.com/"
         return None
 
+    # The framework Python 3.13 we run under doesn't ship a working system
+    # CA bundle, so urllib HTTPS calls fail with CERTIFICATE_VERIFY_FAILED.
+    # Use certifi's bundle (already a transitive dep of openai/requests).
+    # Without this every YouTube/IG/TikTok thumbnail silently 404s and the
+    # transcript card renders without a poster.
+    import ssl as _ssl
+    try:
+        import certifi as _certifi
+        _ssl_ctx = _ssl.create_default_context(cafile=_certifi.where())
+    except Exception:
+        _ssl_ctx = _ssl.create_default_context()
+
     def _try_download(u: str) -> bool:
         nonlocal poster_path
         try:
@@ -758,7 +770,7 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
             if ref:
                 headers["Referer"] = ref
             req = urllib.request.Request(u, headers=headers)
-            with urllib.request.urlopen(req, timeout=8) as r, open(poster_file, "wb") as f:
+            with urllib.request.urlopen(req, timeout=8, context=_ssl_ctx) as r, open(poster_file, "wb") as f:
                 f.write(r.read())
             poster_path = str(poster_file)
             return True
@@ -907,6 +919,14 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
     from faster_whisper import WhisperModel
     from stages import _bundled_whisper_model_path
+    import threading
+    # Once the worker emits its first real per-segment progress event, this
+    # flag flips and the poll-loop heartbeat shuts up. Without it, the two
+    # emitters (heartbeat = wall-clock estimate, worker = audio position)
+    # fight over the same `percent` field and the bar bounces backwards
+    # (regression shipped in 0.4.42).
+    first_segment_event = threading.Event()
+    transcribe_start_ms = time.monotonic()
 
     # Pre-transcribe heartbeat: model load can take 5-15s on first call. Without
     # this the UI shows "downloading" → silence → spinner-of-doom, then the
@@ -952,9 +972,21 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
             local_segments.append({"start": seg.start, "end": seg.end, "text": text})
             local_text.append(text)
             if dur_local > 0:
+                # Mark first real progress so the poll-loop heartbeat shuts up
+                # — prevents the bounce-backwards bar regression from 0.4.42.
+                first_segment_event.set()
+                pct = min(99.0, (float(seg.end) / dur_local) * 100.0)
+                # ETA derived from measured speed (not the heartbeat's optimistic
+                # 5x guess): wall-clock per audio-second × remaining audio.
+                wall_elapsed = time.monotonic() - transcribe_start_ms
+                eta_s = None
+                if seg.end and seg.end > 0:
+                    speed = wall_elapsed / float(seg.end)
+                    eta_s = max(0, int((dur_local - float(seg.end)) * speed))
                 emit({"event": "lift_progress", "data": {
                     "phase": "transcribing",
-                    "percent": min(99.0, (float(seg.end) / dur_local) * 100.0),
+                    "percent": pct,
+                    "eta_s": eta_s,
                 }})
         return local_segments, local_text, info_local
 
@@ -989,14 +1021,18 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
                         except OSError:
                             pass
                         raise RuntimeError("Transcription canceled by user.")
-                    # Heartbeat — the worker emits real per-segment % as
-                    # they land, which will overwrite this. Caps at 90 so the
-                    # real value can finish the climb to 100.
-                    pct = min(90.0, (elapsed / est_total_s) * 100.0)
-                    emit({"event": "lift_progress", "data": {
-                        "phase": "transcribing",
-                        "percent": pct,
-                    }})
+                    # Heartbeat — fills the silent gap BEFORE the first real
+                    # segment arrives. Suppresses itself the moment the worker
+                    # sets first_segment_event so the two emitters never fight
+                    # over the same `percent` field.
+                    if not first_segment_event.is_set():
+                        pct = min(90.0, (elapsed / est_total_s) * 100.0)
+                        eta_s = max(0, int(est_total_s - elapsed))
+                        emit({"event": "lift_progress", "data": {
+                            "phase": "transcribing",
+                            "percent": pct,
+                            "eta_s": eta_s,
+                        }})
     except FutureTimeoutError:
         raise RuntimeError(
             f"Transcription timed out after {transcribe_timeout}s — audio may be corrupt or contain no speech"

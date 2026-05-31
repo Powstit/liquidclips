@@ -735,6 +735,7 @@ export default function App() {
             url={view.url}
             phase={view.progress?.phase ?? "downloading"}
             percent={view.progress?.percent ?? null}
+            etaS={view.progress?.eta_s ?? null}
             onCancel={() => {
               // Best-effort cancel: writes marker file in sidecar; the running
               // lift_transcript polls it every 2s and raises. Bump the gen

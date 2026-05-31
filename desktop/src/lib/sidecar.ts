@@ -472,6 +472,10 @@ export type LiftProgress = {
   downloaded_bytes?: number;
   total_bytes?: number | null;
   percent?: number | null;
+  // Seconds remaining (transcribe phase only). Derived from measured speed
+  // once real segments flow; from a heartbeat estimate before that. UI
+  // formats as "~N min left" — honest expectation beats a silent bar.
+  eta_s?: number | null;
 };
 
 export function onLiftProgress(cb: (p: LiftProgress) => void): Promise<UnlistenFn> {
