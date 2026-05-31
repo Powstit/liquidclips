@@ -1097,6 +1097,29 @@ def stage_reframe(project: Project) -> dict[str, Any]:
         raise FileNotFoundError("transcript.srt missing — stage 3 must run before reframe")
 
     has_subtitles_filter = _ffmpeg_has_filter("subtitles")
+
+    # Sprint #2 Animated captions — load the word-level transcript ONCE here
+    # (rather than per-clip) and let each clip slice its own ASS file from it.
+    # Opt-out via env var; opt-in is default ON. Falls back to the SRT-based
+    # static captions automatically if word-level data isn't present (e.g.,
+    # legacy projects transcribed without word_timestamps=True).
+    animated_captions_on = os.environ.get("JUNIOR_ANIMATED_CAPTIONS", "1").strip() not in ("0", "false", "off")
+    transcript_segments: list[dict[str, Any]] | None = None
+    if animated_captions_on:
+        try:
+            import json as _json
+            from captions import has_word_level_data
+            transcript_json_path = project.root / "transcript" / "transcript.json"
+            if transcript_json_path.exists():
+                with transcript_json_path.open("r", encoding="utf-8") as f:
+                    tj = _json.load(f)
+                segs = tj.get("segments") if isinstance(tj, dict) else None
+                if isinstance(segs, list) and has_word_level_data(segs):
+                    transcript_segments = segs
+        except Exception as exc:  # noqa: BLE001
+            import sys as _sys
+            _sys.stderr.write(f"[reframe] animated-caption preflight skipped: {exc}\n")
+            transcript_segments = None
     total = max(1, len(project.clips))
     workers = max(1, (os.cpu_count() or 4) - 1)
     # Resolve formats per-run so the env can change without a sidecar restart
@@ -1119,6 +1142,25 @@ def stage_reframe(project: Project) -> dict[str, Any]:
         _slice_srt_for_clip(transcript_srt, clip_srt, clip["start"], clip["end"])
         clip_vtt = clip_srt.with_suffix(".vtt")
         _srt_to_vtt(clip_srt, clip_vtt)
+
+        # Sprint #2 — emit per-clip ASS file with word-by-word karaoke fill
+        # when word-level transcript data is available. The reframe ffmpeg
+        # filter below picks ASS over SRT when this file exists.
+        clip_ass: Path | None = None
+        if transcript_segments is not None:
+            try:
+                from captions import generate_ass
+                clip_ass = Path(cut_path).with_name(Path(cut_path).stem + ".ass")
+                generate_ass(
+                    transcript_segments,
+                    clip_start=float(clip["start"]),
+                    clip_end=float(clip["end"]),
+                    out_path=clip_ass,
+                )
+            except Exception as exc:  # noqa: BLE001
+                import sys as _sys
+                _sys.stderr.write(f"[reframe] ASS generation failed for clip {idx} (falling back to SRT): {exc}\n")
+                clip_ass = None
 
         # Face detection — compute once per clip, reuse for all ratios.
         cap_size = _probe_dimensions(cut_path)
@@ -1158,7 +1200,13 @@ def stage_reframe(project: Project) -> dict[str, Any]:
                 # Build the video filter chain that goes AFTER any silence-skip.
                 vf_after = _build_crop_filter(cap_size, face_cx, out_w, out_h, aw, ah)
                 if has_subtitles_filter:
-                    vf_after = f"{vf_after},{_subtitles_filter(clip_srt)}"
+                    # Prefer animated ASS captions (sprint #2) when the file
+                    # exists for this clip. Otherwise fall back to the
+                    # static SRT-based captions the pipeline always emitted.
+                    if clip_ass is not None and clip_ass.exists():
+                        vf_after = f"{vf_after},{_ass_subtitles_filter(clip_ass)}"
+                    else:
+                        vf_after = f"{vf_after},{_subtitles_filter(clip_srt)}"
                 if hook_path is not None:
                     vf_after = f"{vf_after},{_drawtext_hook_filter(hook_path, out_w)}"
 
@@ -1223,7 +1271,9 @@ def stage_reframe(project: Project) -> dict[str, Any]:
             **ratio_paths,
             "srt_path": str(clip_srt),
             "vtt_path": str(clip_vtt),
+            "ass_path": str(clip_ass) if clip_ass is not None and clip_ass.exists() else None,
             "captions_burned": has_subtitles_filter,
+            "captions_animated": clip_ass is not None and clip_ass.exists(),
             "hook_text": hook_text or None,
         }
 
@@ -1250,6 +1300,16 @@ def _subtitles_filter(clip_srt: Path) -> str:
         "Alignment=2\\,MarginV=80"
     )
     return f"subtitles={srt_for_filter}:force_style={style}"
+
+
+def _ass_subtitles_filter(clip_ass: Path) -> str:
+    """Sprint #2 — ffmpeg's `ass` filter (or `subtitles=...:filename` with
+    explicit ASS) burns in word-by-word animated captions from a .ass file.
+    The style + karaoke timing live inside the ASS file itself, so no
+    `force_style` overrides needed here. Escapes colons in the path so the
+    ffmpeg filter parser doesn't treat them as filter argument separators."""
+    ass_for_filter = str(clip_ass).replace("\\", "\\\\").replace(":", "\\:")
+    return f"ass={ass_for_filter}"
 
 
 def _extract_hook_text(clip: dict[str, Any]) -> str:
