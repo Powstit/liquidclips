@@ -6,6 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
+    "beforeBundleCommand": "bash ../scripts/strip-xattrs.sh",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },

@@ -174,11 +174,35 @@ impl SidecarState {
             }
         });
 
-        // Reap the child quietly when it exits — we keep kill_on_drop above.
-        tokio::spawn(async move {
-            let status = child.wait().await;
-            eprintln!("[sidecar] process exited: {:?}", status);
-        });
+        // Reap the child when it exits + drain any pending futures so a
+        // sidecar crash doesn't leave RPC awaits hanging until the 3600s
+        // wall-clock timeout fires. Also emit `sidecar:died` so the UI can
+        // hard-fail visibly (sprint #27 — bug audit #12).
+        {
+            let pending = pending.clone();
+            let app_handle = app.clone();
+            tokio::spawn(async move {
+                let status = child.wait().await;
+                eprintln!("[sidecar] process exited: {:?}", status);
+                // Drain pending: reject each with a clear error so callers
+                // can surface "sidecar crashed" instead of sitting idle.
+                let mut map = pending.lock().await;
+                let waiters: Vec<_> = map.drain().collect();
+                let exit_code = match &status {
+                    Ok(s) => format!("{:?}", s.code()),
+                    Err(e) => format!("wait error: {}", e),
+                };
+                let msg = format!("sidecar crashed (exit={}); restart the app", exit_code);
+                for (_, tx) in waiters {
+                    let _ = tx.send(Err(anyhow!(msg.clone())));
+                }
+                // Tell the UI so it can route to a "needs restart" surface
+                // instead of leaving the user staring at a spinner.
+                if let Err(e) = app_handle.emit("sidecar:died", &msg) {
+                    eprintln!("[sidecar] failed to emit died event: {}", e);
+                }
+            });
+        }
 
         Ok(Self {
             next_id: AtomicU64::new(1),

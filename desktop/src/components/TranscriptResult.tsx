@@ -178,7 +178,11 @@ export function LiftingProgress({
       : phase === "transcribing"
       ? "Transcribing"
       : "Finishing up";
-  const pct = percent != null ? Math.min(100, Math.max(0, percent)) : null;
+  // Unified 0-100% across the whole lift so the bar climbs once instead of
+  // resetting when the phase flips (which read as "the app lied — it said
+  // 100% but there was more"). Weights: download is fast (~30s), transcribe
+  // is the time sink (~5 min). Download = 0-20%, transcribe = 20-100%.
+  const unifiedPct = computeUnifiedPct(phase, percent);
   return (
     <div className="w-full max-w-[520px]">
       <div className="rounded-2xl border border-line bg-paper p-6 shadow-[0_2px_12px_rgba(15,15,18,0.04)]">
@@ -202,11 +206,11 @@ export function LiftingProgress({
         <p className="mt-1 truncate font-mono text-[11px] text-text-tertiary">{url}</p>
 
         <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-paper-elev/60">
-          {pct != null ? (
+          {unifiedPct != null ? (
             <div
               className="h-full rounded-full transition-all duration-300"
               style={{
-                width: `${pct}%`,
+                width: `${unifiedPct}%`,
                 background: "var(--grad-fuchsia)",
                 boxShadow: "var(--glow-sm)",
               }}
@@ -220,8 +224,8 @@ export function LiftingProgress({
           <span className={phase === "downloading" ? "text-fuchsia-deep" : ""}>1 · download</span>
           <span className={phase === "transcribing" ? "text-fuchsia-deep" : ""}>2 · transcribe</span>
           <span className={phase === "done" ? "text-fuchsia-deep" : ""}>3 · done</span>
-          {pct != null && (
-            <span className="ml-2 text-fuchsia-deep tabular-nums">{Math.round(pct)}%</span>
+          {unifiedPct != null && (
+            <span className="ml-2 text-fuchsia-deep tabular-nums">{Math.round(unifiedPct)}%</span>
           )}
         </div>
         {phase === "transcribing" && typeof etaS === "number" && etaS > 0 && (
@@ -263,4 +267,20 @@ function formatEta(seconds: number): string {
   if (seconds < 60) return `${Math.max(1, Math.round(seconds))}s`;
   const m = Math.round(seconds / 60);
   return m === 1 ? "1 min" : `${m} min`;
+}
+
+// Bar shows a single monotonic 0-100% across the whole lift. Per-phase
+// weights: download is short (~30s), transcribe is the time sink. Keeps the
+// bar from hitting 100% then visibly resetting when the phase flips, which
+// reads as "the app lied — there's more work after it said done."
+function computeUnifiedPct(
+  phase: "downloading" | "transcribing" | "done",
+  percent: number | null,
+): number | null {
+  if (phase === "done") return 100;
+  if (percent == null) return null;
+  const p = Math.min(100, Math.max(0, percent));
+  if (phase === "downloading") return p * 0.2;
+  if (phase === "transcribing") return 20 + p * 0.8;
+  return p;
 }
