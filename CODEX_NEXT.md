@@ -179,3 +179,81 @@ Claude ran a focused audit on commit `89362a9` + your uncommitted worktree chang
 - `PrivacyInfo.xcprivacy` is in `bundle.resources` array (tauri.conf.json:58) — will land in `Contents/Resources/`.
 
 **Bottom line:** Notarization plumbing is solid. Three blockers to fix before any signed/notarized release: Pro/Agency unbuyable (#1), updater pubkey/secret mismatch risk (#2), PrivacyInfo missing required APIs (#3). Touch those first.
+
+---
+
+# 🎯 NEXT BATCH FOR CODEX — pick in this order (added 2026-06-01 02:30)
+
+You're free, Claude has been ploughing the bottom + middle of the sprint. Sprint state right now: **21/32 items done**, 11 left.
+
+**Of the 11 remaining, 5 are yours:**
+
+## Priority order (do top first, work down)
+
+### 🔴 PRIORITY 1 — close the 3 audit blockers from your prior session
+
+Before any new work, address the 3 SHIP-BLOCKERS I flagged earlier in this doc (scroll up to the audit section). Quick recap:
+
+| # | What | Effort |
+|---|---|---|
+| Audit #1 | Set `NEXT_PUBLIC_CLERK_PRO_PLAN_ID` + `..._AGENCY_PLAN_ID` on Vercel — OR change disabled-button copy from "Opening soon" → "Join waitlist" | 15 min |
+| Audit #2 | Verify GH secret `TAURI_SIGNING_PRIVATE_KEY` matches the pubkey baked at `tauri.conf.json:74` (fingerprint `B1E037066BFCE444`) | 10 min |
+| Audit #3 | Add `NSPrivacyAccessedAPITypes` to `PrivacyInfo.xcprivacy` with at least `NSPrivacyAccessedAPICategoryUserDefaults` (reason `CA92.1`) + `NSPrivacyAccessedAPICategoryFileTimestamp` (reason `C617.1`) | 30 min |
+
+These ship-block any signed/notarized release. **Do them first.**
+
+### 🔴 PRIORITY 2 — Tier 1 items still open (3 of yours)
+
+| Sprint # | Item | Effort | Notes |
+|---|---|---|---|
+| **#4** | mlx-whisper Apple Silicon speedup | 6-8 hr | Biggest competitive win still pending. After this lands, a 42-min YouTube transcribes in ~2-3 min instead of 7-9. Architecture: add `mlx-whisper` dep, convert tiny model to mlx format once (one-off script), conditional code path picks mlx on arm64 / falls back to faster-whisper on x86_64. Lives in `python-sidecar/sidecar.py` `_do_transcribe` + new `whisper_backend.py`. |
+| **#6** | Onboarding + first-run polish | 6-10 hr | Public-launch gating. Today's `FirstRun.tsx` is unpolished — no welcome card, no LLM-key vs hosted explanation, no "drop your first video" hand-hold. Touch: `src/components/FirstRun.tsx`, `src/App.tsx` (sign-in flow), new `src/components/onboarding/*`. Daniel records the demo video referencing this onboarding — see `~/Desktop/RECORDING_GUIDE.md`. |
+| **#8** | Hosted LLM proxy + tier-gate | 4-6 hr | $79 Pro tier doesn't have a unique value prop until this ships (Free is BYO OpenAI key; Pro+ gets hosted). New `junior-backend/app/routes/proxy_llm.py` route validates license JWT + tier ≥ Pro + monthly token quota + forwards to OpenAI with our org key. Desktop `python-sidecar/llm.py` branches on tier from `/me`. |
+
+### 🟡 PRIORITY 3 — Tier 3 doc work (1 of yours)
+
+| Sprint # | Item | Effort | Notes |
+|---|---|---|---|
+| **#19** | Help center / docs on marketing site | 4-6 hr | You shipped #7 marketing site already. Add `/docs` subroute with: Getting Started, Tier Comparison, BYO API key guide, Supported URL sources, Troubleshooting, Auto-updates. Markdown-driven with MDX or similar. |
+
+### 🟡 PRIORITY 4 — bonus, optional polish (helps stickiness)
+
+| Idea | Effort | Why |
+|---|---|---|
+| Audit Claude's recent commits (`737b081`, `c5d34a9`, `fa9d13c`, `86edf41`) for bugs — return the favour. Especially the new `captions.py` ASS generator + the silence/voice ffmpeg chain. | 1-2 hr | Same value as my audit of you — catches regressions before public ship. |
+| Visually review the 19 gpt-image-1 sprites in `desktop/src/assets/{tiers,badges,icons/caption-styles,sponsored}/`. Flag any that look off-brand or low-quality so Claude can regenerate before launch. | 30 min | Daniel wants polished UI — second pair of eyes catches what one agent misses. |
+| Pull Codex's uncommitted worktree into a proper commit. As of now `git status` shows ~9 files modified that you've never committed (release.yml, account-app pages, etc). They're real work but invisible in `git log`. | 30 min | All your prior work lives in the worktree as "uncommitted" per your own handoff entries — get it permanent. |
+
+## Reference docs you should know about (NEW since last session)
+
+- **`~/Desktop/RECORDING_GUIDE.md`** (NEW) — Daniel's step-by-step recording guide for the marketing-site demo video. Includes the 90-second script + 7 shot list + post-production checklist. Reference this when polishing `#6 onboarding` so the demo's "first-run flow" shot actually matches reality.
+- **`~/Desktop/jnr/desktop/src/lib/achievements.ts`** (NEW) — pub/sub achievement system shipped in `86edf41`. If your `#6 onboarding` flow adds new milestone moments (e.g. "first sign-in"), call `recordAchievement(id)` from there. New ids go in the union type + the `ACHIEVEMENTS` map.
+- **`~/Desktop/jnr/desktop/src/components/TierAvatar.tsx`** (NEW) — earnings-tier emblem component. If you build the leaderboard rank display (sprint #14a — Claude owns it, but you might cross paths), reuse `tierForEarnings(lifetime_usd)` so the tier band logic stays consistent.
+
+## What Claude is doing while you're on this
+
+Bottom-up sweep through Tier 3, in this rough order:
+- ✅ #20 Recording guide — JUST SHIPPED to `~/Desktop/RECORDING_GUIDE.md`
+- #16 brief bar removal (workspace UX)
+- #17 Settings cleanup (drop legacy Postiz tiles)
+- #15 Sponsored Clips carousel (depends on the placeholder sprite that just landed)
+- #14a Earnings leaderboard (backend route + frontend panel)
+- #12 Stripe Connect + Whop sign-in polish
+- #3 PublishModal Ayrshare refactor (the BIG one — 8-10 hr)
+
+We won't collide IF you take Tier 1 items (#4 / #6 / #8) and stay in your domain. Lockfile + handoff log = source of truth.
+
+## When you ship a batch
+
+Update `~/Desktop/jnr/SPRINT_HANDOFF.md` at the top with:
+- Items shipped (commit shas)
+- Files touched
+- Anything blocked
+- Lock release confirmation
+- Next item
+
+Same protocol as before. Don't break the chain.
+
+---
+
+*Updated 2026-06-01 02:30 by Claude. Sprint at 21/32 done (66%). Don't push without pulling first.*
