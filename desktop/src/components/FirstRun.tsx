@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { sidecar, type HardwareInfo } from "../lib/sidecar";
+import { sidecar, humanError, type HardwareInfo } from "../lib/sidecar";
 import { useActivation } from "../lib/activation";
 import { Logo } from "./Logo";
 
@@ -45,7 +45,7 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
       await sidecar.secretSet("OPENAI_API_KEY", key.trim());
       onComplete();
     } catch (e) {
-      setError(String(e));
+      setError(humanError(e));
     } finally {
       setBusy(false);
     }

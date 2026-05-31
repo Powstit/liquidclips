@@ -17,6 +17,7 @@
 import { useEffect, useState } from "react";
 import { BaseDirectory, exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { appDataDir } from "@tauri-apps/api/path";
+import { humanError } from "./sidecar";
 
 export type PayoutProvider =
   | "whop"
@@ -233,7 +234,7 @@ export function useBriefs(): {
         setError(null);
       })
       .catch((e) => {
-        setError(String(e));
+        setError(humanError(e));
       })
       .finally(() => setLoading(false));
   }

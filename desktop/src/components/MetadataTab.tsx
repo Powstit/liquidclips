@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { sidecar } from "../lib/sidecar";
+import { sidecar, humanError } from "../lib/sidecar";
 import { CopyButton } from "./CopyButton";
 
 const TAB_TO_FILE: Record<string, string> = {
@@ -24,7 +24,7 @@ export function MetadataTab({ slug, tab }: { slug: string; tab: string }) {
         if (!cancelled) setMetadata(res.metadata);
       })
       .catch((e) => {
-        if (!cancelled) setError(String(e));
+        if (!cancelled) setError(humanError(e));
       });
     return () => {
       cancelled = true;

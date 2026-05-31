@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 import { BaseDirectory, exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import type { AllowedPlatform } from "./briefs";
+import { humanError } from "./sidecar";
 
 export type SubmissionStatus =
   | "draft"
@@ -166,7 +167,7 @@ export function useSubmissions(briefId?: string): {
       setSubmissions(s);
       setError(null);
     })
-      .catch((e) => setError(String(e)))
+      .catch((e) => setError(humanError(e)))
       .finally(() => setLoading(false));
   }
 
