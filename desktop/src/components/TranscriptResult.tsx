@@ -4,6 +4,7 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { LiftTranscriptResult } from "../lib/sidecar";
 import { PlatformIcon, type PlatformId } from "./PlatformIcon";
+import { InvadersTrigger } from "./invaders/InvadersTrigger";
 
 // Result screen for the "Lift transcript" path. No clipping, no LLM — just the
 // transcript, the poster, the original caption, and a clean way to copy/open.
@@ -217,6 +218,12 @@ export function LiftingProgress({
           {pct != null && (
             <span className="ml-2 text-fuchsia-deep tabular-nums">{Math.round(pct)}%</span>
           )}
+        </div>
+        {/* Invaders trigger — long lifts (esp. ~30min audio) sit at the
+            transcribe stage for minutes; give the user something to do
+            instead of staring at a 0% bar. */}
+        <div className="mt-4">
+          <InvadersTrigger />
         </div>
       </div>
     </div>
