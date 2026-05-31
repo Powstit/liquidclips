@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { sidecar, type Project, type ScoredTitle, type YouTubeExtras } from "../lib/sidecar";
+import { sidecar, humanError, type Project, type ScoredTitle, type YouTubeExtras } from "../lib/sidecar";
 import { InfoTip } from "./InfoTip";
 import { PlatformIcon } from "./PlatformIcon";
-import { humanError } from "../lib/sidecar";
 
 // YouTube long-form upload prep. Built to beat TubeBuddy / VidIQ / 1of10 on
 // the things that actually move CTR: scored title variants with reasoning,
