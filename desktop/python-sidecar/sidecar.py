@@ -1030,6 +1030,14 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
         log(f"transcript write failed (non-fatal): {e}")
 
     emit({"event": "lift_progress", "data": {"phase": "done", "percent": 100}})
+    # Clean up the cancel marker on successful exit — was only cleared at the
+    # start of the next lift, so a leftover from a cancel-that-fired-too-late
+    # would sit on disk and could trip the shared marker check in ingest_url
+    # on the next URL paste.
+    try:
+        cancel_marker.unlink(missing_ok=True)
+    except OSError:
+        pass
     return payload
 
 
