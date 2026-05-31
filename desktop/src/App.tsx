@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { LayoutGrid, Wallet, UploadCloud, Banknote, Settings as SettingsIcon, LogIn, UserCircle2, type LucideIcon } from "lucide-react";
@@ -62,6 +62,11 @@ export { inWhopIframe };
 
 export default function App() {
   const [view, setView] = useState<View>({ kind: "empty" });
+  // Generation guard for lift_transcript — bumped on every new lift and on
+  // Cancel. Inflight awaits compare against the captured generation before
+  // touching view state, so an abandoned Promise can't yank the user back
+  // onto a stale "lifted" / "lift-failed" screen.
+  const liftGenRef = useRef(0);
   const [sidecarStatus, setSidecarStatus] = useState<"booting" | "ready" | "failed">("booting");
   // Has the user dismissed the splash (via Continue or Skip on the embedded
   // Invaders game)? Splash stays mounted until both sidecar is ready AND
@@ -485,9 +490,11 @@ export default function App() {
 
   async function onLiftTranscript(url: string) {
     let unlistenProgress: (() => void) | null = null;
+    const myGen = ++liftGenRef.current;
     setView({ kind: "lifting", url });
     try {
       unlistenProgress = await onLiftProgress((p) => {
+        if (liftGenRef.current !== myGen) return;
         setView((v) => (v.kind === "lifting" ? { ...v, progress: p } : v));
       });
       // Frontend-side belt-and-braces timeout (1h). The Python sidecar emits
@@ -504,10 +511,12 @@ export default function App() {
           ),
         ),
       ]);
-      setView({ kind: "lifted", result });
+      if (liftGenRef.current === myGen) setView({ kind: "lifted", result });
     } catch (e) {
       console.error("[lift] failed:", e);
-      setView({ kind: "lift-failed", url, error: humanIngestError(e) });
+      if (liftGenRef.current === myGen) {
+        setView({ kind: "lift-failed", url, error: humanIngestError(e) });
+      }
     } finally {
       unlistenProgress?.();
     }
@@ -728,8 +737,12 @@ export default function App() {
             percent={view.progress?.percent ?? null}
             onCancel={() => {
               // Best-effort cancel: writes marker file in sidecar; the running
-              // lift_transcript polls it every 2s and raises. UI flips to
-              // empty immediately rather than waiting for the RPC to return.
+              // lift_transcript polls it every 2s and raises. Bump the gen
+              // counter FIRST so the abandoned Promise's setView calls become
+              // no-ops when the sidecar finally returns — without this, a
+              // transcribe that finishes inside the 2s polling window will
+              // yank you back to a "lifted" view after you'd hit Cancel.
+              liftGenRef.current += 1;
               void sidecar.liftCancel().catch(() => undefined);
               setView({ kind: "empty" });
             }}
