@@ -10,10 +10,15 @@ export function JuniorLoader({
   message,
   detail,
   percent,
+  onCancel,
 }: {
   message: string;
   detail?: string;
   percent?: number;
+  // P1 #5 — surface a Cancel button on the download stage too (lift already
+  // had one). When provided, renders a small Cancel pill next to the trigger
+  // so a 4-hour throttled download is actually escapable from the UI.
+  onCancel?: () => void;
 }) {
   const [typed, setTyped] = useState("");
 
@@ -81,7 +86,17 @@ export function JuniorLoader({
           <div className="working-stage-shimmer h-full w-1/3 rounded-full" />
         </div>
       )}
-      <InvadersTrigger />
+      <div className="flex items-center gap-3">
+        <InvadersTrigger />
+        {onCancel && (
+          <button
+            onClick={onCancel}
+            className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:border-[#DC2626] hover:text-[#DC2626]"
+          >
+            cancel
+          </button>
+        )}
+      </div>
     </div>
   );
 }
