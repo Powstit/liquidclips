@@ -157,11 +157,16 @@ export function LiftingProgress({
   url,
   phase,
   percent,
+  etaS,
   onCancel,
 }: {
   url: string;
   phase: "downloading" | "transcribing" | "done";
   percent: number | null;
+  // Seconds remaining. Sidecar emits this on every transcribe progress event;
+  // we format as "~3 min left" so the user has an honest expectation instead
+  // of guessing from the bar alone.
+  etaS?: number | null;
   // Optional. When provided, a Cancel button renders in the header. App.tsx
   // wires this to sidecar.liftCancel() which writes a cancel marker the
   // running lift_transcript polls every 2s.
@@ -219,6 +224,11 @@ export function LiftingProgress({
             <span className="ml-2 text-fuchsia-deep tabular-nums">{Math.round(pct)}%</span>
           )}
         </div>
+        {phase === "transcribing" && typeof etaS === "number" && etaS > 0 && (
+          <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+            ~{formatEta(etaS)} left
+          </p>
+        )}
         {/* Invaders trigger — long lifts (esp. ~30min audio) sit at the
             transcribe stage for minutes; give the user something to do
             instead of staring at a 0% bar. */}
@@ -246,4 +256,11 @@ function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return m > 0 ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`;
+}
+
+// Human-readable countdown for the transcribe ETA. <60s → "Ns", <60m → "Nmin".
+function formatEta(seconds: number): string {
+  if (seconds < 60) return `${Math.max(1, Math.round(seconds))}s`;
+  const m = Math.round(seconds / 60);
+  return m === 1 ? "1 min" : `${m} min`;
 }
