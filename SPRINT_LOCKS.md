@@ -3,7 +3,7 @@
 Read this BEFORE editing any high-conflict file (see `~/Desktop/COMPLETION_SPRINT.md` for the list).
 
 ## Active locks
-- [CLAUDE · 2026-06-01 01:20] items #2 + #13 + #14 (animated captions / silence removal / voice enhancement) — editing desktop/python-sidecar/stages.py, desktop/python-sidecar/sidecar.py (METHODS), desktop/src/components/ClipPreview.tsx, desktop/src/lib/sidecar.ts, plus NEW desktop/python-sidecar/captions.py + desktop/python-sidecar/silence.py
+*(none)*
 
 ## Lock format
 - `[AGENT · YYYY-MM-DD HH:MM] item #N <name> — editing <file paths comma-separated>`
