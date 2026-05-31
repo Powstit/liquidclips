@@ -20,9 +20,39 @@
 // filenames, transcripts, tokens, or JWTs.
 
 // Closed funnel vocabulary — the desktop-emitted subset of the full chain.
+// Sprint #26 adds the lift + publish + caption-style + leaderboard verbs so
+// the full launch funnel can be measured once Phase 2 wires a real sink.
 export type DesktopAnalyticsEvent =
   | "first_bounty_workspace_created"
-  | "bounty_clip_exported";
+  | "bounty_clip_exported"
+  // Lift transcript flow (Script mode)
+  | "lift_started"
+  | "lift_completed"
+  | "lift_failed"
+  | "lift_canceled"
+  // Clip pipeline flow
+  | "pipeline_started"
+  | "pipeline_completed"
+  | "pipeline_failed"
+  | "clip_exported"
+  // Publishing flow (Ayrshare)
+  | "publish_attempted"
+  | "publish_success"
+  | "publish_failed"
+  // Settings / connections
+  | "ayrshare_profile_connected"
+  | "ayrshare_profile_disconnected"
+  | "openai_key_saved"
+  // Caption styles (sprint #2 lands these properly)
+  | "caption_style_changed"
+  | "caption_style_default_set"
+  // Game engagement (Invaders splash + mid-pipeline)
+  | "invaders_opened"
+  | "invaders_closed"
+  | "invaders_new_high_score"
+  // Earn / leaderboard (sprint #14a lands the surface)
+  | "leaderboard_viewed"
+  | "leaderboard_rank_changed";
 
 const FORBIDDEN_KEYS = new Set([
   "email", "user_email", "primary_email",
