@@ -17,6 +17,21 @@ Each session appends a new entry at the top. Format:
 
 ---
 
+## 2026-06-01 00:25 — CLAUDE
+- **Items shipped (4 in this batch):** #23 CHANGELOG catch-up (e8585f9), #25 error message audit (b41a1b2), #26 telemetry sanity (68c55e1) — plus all locks released.
+- **Sprint progress:** 8 items done by Claude tonight (#23, #24, #25, #26, #27, #28, #29, #30). Codex shipped #1, #5, #9, #11, #21, #22 (per his handoff entry + git log). Remaining: 32 − 14 = 18 items.
+- **Files touched this batch:**
+  - `CHANGELOG.md` — 8 releases + Unreleased v0.5.0 plan
+  - `desktop/src/lib/sidecar.ts` — `humanError()` helper added
+  - `desktop/src/lib/analytics.ts` — DesktopAnalyticsEvent vocabulary expanded
+  - `desktop/src/App.tsx` — lift_started / completed / failed / canceled track calls
+  - 10 components + 2 lib files — `setError(String(e))` → `setError(humanError(e))`
+- **In flight:** none. All locks released.
+- **Next session (per master sprint, bottom-up):** #20 Recording guide (RECORDING_GUIDE.md), then #15 Sponsored Clips carousel, #16 brief bar removal, #17 Settings legacy cleanup, #18 game phase 1, #18a icon batch.
+- **For Codex / Kimi when returning:** Tier 1 items #2 (animated captions), #3 (PublishModal Ayrshare refactor), #4 (mlx-whisper), #6 (onboarding), #7 (marketing site), #8 (hosted LLM proxy) are all ready to pick up. None blocked.
+
+---
+
 ## 2026-05-31 23:30 — CLAUDE
 - **Items shipped (merged to main):** #24 lift speed micro-wins (commit `018b2b7`). #27 bug audit followups confirmed at HEAD via Codex's `89362a9` (parallel implementation collided cleanly).
 - **Files touched:** `desktop/python-sidecar/sidecar.py` only (the 3 #24 micro-wins). Released lock on stages.py + sidecar.rs (no longer needed — Codex's commit covered them).
@@ -26,6 +41,17 @@ Each session appends a new entry at the top. Format:
   - Codex's commit `89362a9` had release.yml line 88 typo: "Liquid **Claps**" → should be "Liquid Clips". Pre-existing in Codex's branch, not mine — fix on next touch of release.yml.
   - Codex's commit included the unified-bar work I flagged in the prior handoff (TranscriptResult.tsx) — that's now at HEAD. Item #2 (animated captions) builds on top of it cleanly.
 - **Next session:** continue bottom-up — #23 CHANGELOG catch-up → #25 error message audit → #26 telemetry sanity.
+
+---
+
+## 2026-05-31 23:45 — CODEX
+- **Items touched:** #1 Apple notarization, #5 updater smoke check, #9 xattr-on-build, #11 account-app v2 pricing, #21 privacy manifest, #22 hardened runtime entitlements.
+- **Items shipped (merged to main):** none — changes are staged nowhere and remain uncommitted in the shared worktree.
+- **Files touched:** `.github/workflows/release.yml`, `desktop/scripts/notarize.sh`, `desktop/scripts/strip-xattrs.sh`, `desktop/src-tauri/{tauri.conf.json,entitlements-direct.plist,PrivacyInfo.xcprivacy}`, `account-app/src/components/{PricingCards,PricingComparison}.tsx`, `account-app/src/app/{page,upgrade,dashboard,download,checkout}/page.tsx`, `SPRINT_LOCKS.md`.
+- **What changed:** release CI now imports the Developer ID cert, builds signed universal macOS, notarizes/staples/verifies before draft release upload; local notarize script supports either keychain profile or CI Apple credentials; `.xcprivacy` is bundled and stripped of xattrs; DYLD entitlement removed after no `DYLD_*` usage was found. Account-app public pricing now presents Free / Solo / Pro / Agency, removes Founder from customer-facing surfaces, normalizes legacy `growth/channel → pro` and `autopilot → agency`, and adds the prepaid +5 account-pack cross-sell on Solo/Pro. Public billing guard added: Pro/Agency checkout buttons stay disabled until `NEXT_PUBLIC_CLERK_PRO_PLAN_ID` and `NEXT_PUBLIC_CLERK_AGENCY_PLAN_ID` are set, so we do not display $79/$149 while accidentally charging legacy Clerk prices.
+- **Validation:** `bash -n` for notarize/xattr scripts, workflow YAML parse, `tauri.conf.json` JSON parse, `plutil -lint` on plist files, `git diff --check`, targeted account-app ESLint on changed pricing/dashboard/download/page/upgrade files, and `npm run build` in `account-app` all pass.
+- **Known blockers / caveats:** `/latest.json` updater endpoints return HTTP 204 for `darwin-aarch64` until a signed artifact/manifest is uploaded, so #5 cannot be fully proven yet. Full `npm run lint` in account-app still fails on pre-existing `react-hooks/set-state-in-effect` issues in checkout/connect/sign-up; I did not broaden scope to fix them. Pro/Agency purchase is intentionally blocked until the final Clerk plan IDs/prices are configured via env.
+- **Lockfile status:** released CODEX locks. Re-read `SPRINT_LOCKS.md` before touching high-conflict files.
 
 ---
 
@@ -41,4 +67,3 @@ Each session appends a new entry at the top. Format:
 - **Next session:** pick up #27 bug audit followups, then #24 lift speed micro-wins, then #23 CHANGELOG catch-up.
 
 ---
-

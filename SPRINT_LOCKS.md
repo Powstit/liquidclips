@@ -3,7 +3,7 @@
 Read this BEFORE editing any high-conflict file (see `~/Desktop/COMPLETION_SPRINT.md` for the list).
 
 ## Active locks
-- [CLAUDE · 2026-06-01 00:10] item #26 telemetry sanity — editing desktop/src/lib/analytics.ts + desktop/src/App.tsx (add lift_started / lift_completed / lift_failed track calls; no UI change)
+*(none)*
 
 ## Lock format
 - `[AGENT · YYYY-MM-DD HH:MM] item #N <name> — editing <file paths comma-separated>`
