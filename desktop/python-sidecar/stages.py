@@ -334,11 +334,16 @@ def stage_transcribe(project: Project, model_size: str | None = None) -> dict[st
     # (mostly clean podcast/long-form). condition_on_previous_text=False kills
     # the chain-dependency between segments — both faster and removes the
     # hallucination-cascade failure mode we hit on long videos.
+    # vad_filter=False: the Silero VAD that ships with faster-whisper has a
+    # known infinite-loop failure mode on music-only / corrupt / noisy audio
+    # (148% CPU forever, no progress). lift_transcript shipped the same fix
+    # 2026-05-28; this is the equivalent for the main clip pipeline. Without
+    # the VAD the segmentation is slightly noisier but the run actually
+    # completes — and segment splitting is good enough at our content profile.
     segments, info = model.transcribe(
         str(audio_path),
         word_timestamps=True,
-        vad_filter=True,
-        vad_parameters={"min_silence_duration_ms": 500},
+        vad_filter=False,
         beam_size=1,
         condition_on_previous_text=False,
     )

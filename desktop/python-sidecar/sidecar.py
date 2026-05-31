@@ -79,6 +79,42 @@ def method_ping(_params: dict[str, Any]) -> dict[str, Any]:
     return {"pong": True, "version": VERSION}
 
 
+# Heavy modules are imported lazily inside method bodies so the sidecar
+# can boot even when one is missing. The cost: an ImportError on the first
+# real call would surface as a raw Python traceback (or silently hang
+# upstream). This preflight method imports all required deps once on the
+# splash boot path so we can render an actionable remediation card BEFORE
+# the user pastes a URL — no more "downloading…" stuck forever.
+def method_check_deps(_params: dict[str, Any]) -> dict[str, Any]:
+    """Probe every heavy import the pipeline depends on.
+
+    Returns {"ok": bool, "missing": [...], "errors": {mod: "msg"}, "python": "..."}.
+    """
+    required = [
+        ("yt_dlp", "yt-dlp"),
+        ("faster_whisper", "faster-whisper"),
+        ("openai", "openai"),
+        ("cv2", "opencv-python"),
+        ("pydantic", "pydantic"),
+        ("psutil", "psutil"),
+        ("keyring", "keyring"),
+    ]
+    missing: list[str] = []
+    errors: dict[str, str] = {}
+    for mod_name, pip_name in required:
+        try:
+            __import__(mod_name)
+        except Exception as exc:  # noqa: BLE001 — preflight; any failure counts
+            missing.append(pip_name)
+            errors[pip_name] = f"{type(exc).__name__}: {exc}"
+    return {
+        "ok": not missing,
+        "missing": missing,
+        "errors": errors,
+        "python": sys.executable,
+    }
+
+
 def method_probe(params: dict[str, Any]) -> dict[str, Any]:
     path = params.get("path")
     if not isinstance(path, str) or not path:
@@ -522,6 +558,16 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
     # yt-dlp output template — slug-safe filename derived from the video title.
     out_template = str(inbox / "%(title).200B [%(id)s].%(ext)s")
 
+    # P0 #3 — share the .lift_cancel marker with method_lift_transcript so one
+    # Cancel button kills whichever flow is running. Cleared on start; raised
+    # from inside the progress hook so a multi-minute download is actually
+    # killable mid-flight (was previously uninterruptible — yt-dlp blocks).
+    cancel_marker = CLIPS_HOME / ".lift_cancel"
+    try:
+        cancel_marker.unlink(missing_ok=True)
+    except OSError:
+        pass
+
     # Progress hook — fires several times per second while yt-dlp downloads.
     # We throttle to ~4 events/sec so the RPC channel doesn't flood, and emit
     # a distinct "event" envelope (no `id`) that the Rust pump turns into a
@@ -529,6 +575,14 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
     progress_state = {"last_emit": 0.0}
 
     def _on_progress(d: dict[str, Any]) -> None:
+        # Polled mid-download for the cancel marker — raising here causes
+        # yt-dlp to unwind cleanly and bubble the exception out of extract_info.
+        if cancel_marker.is_file():
+            try:
+                cancel_marker.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise RuntimeError("Download canceled by user.")
         status = d.get("status")
         now = time.monotonic()
         if status == "downloading" and (now - progress_state["last_emit"]) < 0.25:
@@ -739,6 +793,16 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
     progress_state = {"last_emit": 0.0}
 
     def _on_progress(d: dict[str, Any]) -> None:
+        # P0 #3 — poll the cancel marker inside the download hook so a
+        # 3-hour podcast is killable mid-flight. The marker is set up
+        # earlier in this method (cancel_marker) — raising here unwinds
+        # yt-dlp cleanly and bubbles to the outer try/except.
+        if cancel_marker.is_file():
+            try:
+                cancel_marker.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise RuntimeError("Download canceled by user.")
         status = d.get("status")
         now = time.monotonic()
         if status == "downloading" and (now - progress_state["last_emit"]) < 0.25:
@@ -1443,6 +1507,7 @@ def _run_stage(project: Project, stage: str) -> None:
 
 METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "ping": method_ping,
+    "check_deps": method_check_deps,
     "probe": method_probe,
     "start_run": method_start_run,
     "ingest_url": method_ingest_url,
@@ -1519,7 +1584,72 @@ def handle(line: str) -> None:
         emit({"id": req_id, "result": result})
     except Exception as e:  # noqa: BLE001
         log(traceback.format_exc())
-        emit({"id": req_id, "error": f"{type(e).__name__}: {e}"})
+        # P0 #4 — structured error envelope. Frontend prefers `human` when
+        # present (renders in FailureCard); falls back to `error` for back-compat.
+        # `technical` carries the raw exception string for the Diagnose details panel.
+        envelope = _classify_error(e, method)
+        emit({"id": req_id, "error": envelope["error"], "human": envelope["human"], "code": envelope["code"], "technical": envelope["technical"]})
+
+
+# Coarse error classifier — pattern-matches the most common pipeline failures
+# to a human-readable line + a stable error code the UI can branch on. New
+# patterns slot in here; the default keeps the raw exception so we never lose
+# information.
+def _classify_error(e: Exception, method: str) -> dict[str, str]:
+    raw = f"{type(e).__name__}: {e}"
+    s = str(e).lower()
+    if isinstance(e, ModuleNotFoundError) or "no module named" in s:
+        return {
+            "code": "deps_missing",
+            "human": "The sidecar can't find a required Python package. Open Settings → Diagnose, or reinstall.",
+            "error": raw,
+            "technical": raw,
+        }
+    if "canceled by user" in s:
+        return {"code": "canceled", "human": "Canceled.", "error": raw, "technical": raw}
+    if "private video" in s or "members-only" in s or "login required" in s or "sign in to confirm" in s:
+        return {
+            "code": "private_source",
+            "human": "That source is private / login-walled. Public links work; private ones don't.",
+            "error": raw,
+            "technical": raw,
+        }
+    if "video unavailable" in s or "removed by" in s:
+        return {
+            "code": "source_unavailable",
+            "human": "The source video is unavailable (removed, geo-blocked, or age-restricted).",
+            "error": raw,
+            "technical": raw,
+        }
+    if "http error 429" in s or "rate limit" in s or "rate-limit" in s:
+        return {
+            "code": "rate_limited",
+            "human": "The source is rate-limiting us. Wait a minute and try again.",
+            "error": raw,
+            "technical": raw,
+        }
+    if "filenotfound" in type(e).__name__.lower() and ("ffmpeg" in s or "ffprobe" in s):
+        return {
+            "code": "ffmpeg_missing",
+            "human": "ffmpeg isn't installed. Install via Homebrew: brew install ffmpeg",
+            "error": raw,
+            "technical": raw,
+        }
+    if "socket" in s or "timed out" in s or "timeout" in s or "connection" in s:
+        return {
+            "code": "network",
+            "human": "Network timeout. Check your connection and try again.",
+            "error": raw,
+            "technical": raw,
+        }
+    if "model.bin" in s or "unable to open model" in s:
+        return {
+            "code": "model_missing",
+            "human": "The whisper model is missing or corrupt. Reinstall the app.",
+            "error": raw,
+            "technical": raw,
+        }
+    return {"code": "unknown", "human": raw, "error": raw, "technical": raw}
 
 
 def main() -> None:

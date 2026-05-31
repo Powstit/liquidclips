@@ -1,8 +1,42 @@
 import { invoke } from "@tauri-apps/api/core";
+
+// P0 #4 — when the Python sidecar attaches a structured error envelope it
+// arrives here as a Rust anyhow message prefixed "ENV:{json...}". Caller
+// catches SidecarError and reads .human (friendly) and .code (stable key).
+export class SidecarError extends Error {
+  code: string | null;
+  human: string;
+  technical: string;
+  constructor(env: { error: string; human?: string | null; code?: string | null; technical?: string | null }) {
+    super(env.human || env.error);
+    this.name = "SidecarError";
+    this.code = env.code ?? null;
+    this.human = env.human || env.error;
+    this.technical = env.technical || env.error;
+  }
+}
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export async function sidecarCall<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
-  return invoke<T>("sidecar_call", { method, params });
+  try {
+    return await invoke<T>("sidecar_call", { method, params });
+  } catch (e) {
+    const raw = e instanceof Error ? e.message : String(e);
+    // Structured envelope from the Python sidecar (see _classify_error +
+    // sidecar.rs JSON-prefix). When present we throw SidecarError so the
+    // FailureCard can render `human` instead of the raw exception string.
+    const envIdx = raw.indexOf("ENV:");
+    if (envIdx >= 0) {
+      try {
+        const env = JSON.parse(raw.slice(envIdx + 4));
+        throw new SidecarError(env);
+      } catch (parseErr) {
+        if (parseErr instanceof SidecarError) throw parseErr;
+        // fall through with raw
+      }
+    }
+    throw e;
+  }
 }
 
 export type IngestProgress = {
@@ -199,6 +233,12 @@ export type HardwareInfo = {
 
 export const sidecar = {
   ping: () => sidecarCall<{ pong: true; version: string }>("ping"),
+  checkDeps: () => sidecarCall<{
+    ok: boolean;
+    missing: string[];
+    errors: Record<string, string>;
+    python: string;
+  }>("check_deps"),
   probe: (path: string) => sidecarCall<{ duration_seconds: number; width: number; height: number; format: string; size_bytes: number }>("probe", { path }),
   startRun: (sourcePath: string, brief?: string, intent: Intent = "both", bounty?: BountyContext) =>
     sidecarCall<{ project: Project }>("start_run", {
