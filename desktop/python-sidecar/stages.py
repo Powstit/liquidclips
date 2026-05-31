@@ -1129,43 +1129,89 @@ def stage_reframe(project: Project) -> dict[str, Any]:
         hook_text = _extract_hook_text(clip)
         hook_path = _write_hook_textfile(project.root, idx, hook_text) if hook_text else None
 
+        # Sprint #13 Silence removal — detect once per clip (silencedetect is
+        # ~0.5s per audio-minute) so we don't repeat the scan per output format.
+        # Opt-out via env var; opt-in is default ON.
+        silence_remove_on = os.environ.get("JUNIOR_SILENCE_REMOVE", "1").strip() not in ("0", "false", "off")
+        silence_select_pair: tuple[str, str] | None = None
+        if silence_remove_on:
+            try:
+                from silence import detect_silent_intervals, cuttable_intervals, build_select_filters, silence_savings_s
+                raw = detect_silent_intervals(cut_path, ffmpeg_bin())
+                cuttable = cuttable_intervals(raw)
+                silence_select_pair = build_select_filters(cuttable)
+                if cuttable:
+                    saved = silence_savings_s(cuttable)
+                    _emit_stage_progress("reframe", done_counter["n"], total,
+                        last_text=f"clip {idx:02d} — trimming {saved:.1f}s of dead air"[:140])
+            except Exception as exc:  # noqa: BLE001
+                # Silence detection is best-effort — failure must not block the
+                # encode. Log to stderr; pipeline continues without trimming.
+                import sys as _sys
+                _sys.stderr.write(f"[reframe] silence-detect skipped for clip {idx}: {exc}\n")
+                silence_select_pair = None
+
         ratio_paths: dict[str, str] = {}
         for key, out_w, out_h, aw, ah, suffix in formats:
             out_path = Path(cut_path).with_name(Path(cut_path).stem + suffix + ".mp4")
             if not out_path.exists():
-                vf = _build_crop_filter(cap_size, face_cx, out_w, out_h, aw, ah)
+                # Build the video filter chain that goes AFTER any silence-skip.
+                vf_after = _build_crop_filter(cap_size, face_cx, out_w, out_h, aw, ah)
                 if has_subtitles_filter:
-                    vf = f"{vf},{_subtitles_filter(clip_srt)}"
+                    vf_after = f"{vf_after},{_subtitles_filter(clip_srt)}"
                 if hook_path is not None:
-                    vf = f"{vf},{_drawtext_hook_filter(hook_path, out_w)}"
-                # Sprint #14 Voice enhancement — applied during the SAME encode
-                # so we don't double-re-encode. afftdn removes background hiss /
+                    vf_after = f"{vf_after},{_drawtext_hook_filter(hook_path, out_w)}"
+
+                # Sprint #14 Voice enhancement — afftdn removes background hiss /
                 # noise via spectral gating; loudnorm normalises to EBU R128
-                # broadcast standard (-16 LUFS) so quiet-and-loud-section
-                # podcasts come out at consistent volume. Both are pure ffmpeg
-                # filters — no new deps. Opt-out via env var if a clip is music-
-                # heavy and the noise reduction muddies it.
+                # broadcast standard (-16 LUFS) so quiet-and-loud-section podcasts
+                # come out at consistent volume. Pure ffmpeg, zero deps. Opt-out
+                # via JUNIOR_VOICE_ENHANCE=0 for music-heavy sources.
                 af_voice = os.environ.get("JUNIOR_VOICE_ENHANCE", "1").strip()
                 af_chain = (
                     "afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11"
                     if af_voice not in ("0", "false", "off")
                     else None
                 )
-                cmd = [
-                    "-i", cut_path,
-                    "-vf", vf,
-                ]
-                if af_chain:
-                    cmd += ["-af", af_chain]
-                cmd += [
-                    "-c:v", "libx264",
-                    "-preset", "veryfast",
-                    "-crf", "22",
-                    "-c:a", "aac",
-                    "-b:a", "128k",
-                    "-movflags", "+faststart",
-                    str(out_path),
-                ]
+
+                if silence_select_pair is not None:
+                    # Sprint #13 — silence-removal path. Use filter_complex to
+                    # apply select/aselect to both streams in sync, then chain the
+                    # video filter + audio enhancement filters. setpts/asetpts is
+                    # baked into build_select_filters so the output is gap-free.
+                    vselect, aselect = silence_select_pair
+                    a_chain_full = aselect + ("," + af_chain if af_chain else "")
+                    filter_complex = f"[0:v]{vselect},{vf_after}[v];[0:a]{a_chain_full}[a]"
+                    cmd = [
+                        "-i", cut_path,
+                        "-filter_complex", filter_complex,
+                        "-map", "[v]", "-map", "[a]",
+                        "-c:v", "libx264",
+                        "-preset", "veryfast",
+                        "-crf", "22",
+                        "-c:a", "aac",
+                        "-b:a", "128k",
+                        "-movflags", "+faststart",
+                        str(out_path),
+                    ]
+                else:
+                    # No silence to skip — simpler -vf / -af path (no
+                    # filter_complex overhead). Identical encode output.
+                    cmd = [
+                        "-i", cut_path,
+                        "-vf", vf_after,
+                    ]
+                    if af_chain:
+                        cmd += ["-af", af_chain]
+                    cmd += [
+                        "-c:v", "libx264",
+                        "-preset", "veryfast",
+                        "-crf", "22",
+                        "-c:a", "aac",
+                        "-b:a", "128k",
+                        "-movflags", "+faststart",
+                        str(out_path),
+                    ]
                 run_ffmpeg(cmd)
             ratio_paths[f"{key}_path"] = str(out_path)
 
