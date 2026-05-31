@@ -11,7 +11,7 @@ const CATEGORY_LABELS: Record<NotificationDto["category"], string> = {
   billing: "billing",
   affiliate: "affiliate",
   founder: "founder",
-  junior_message: "junior",
+  junior_message: "liquid clips",
   pipeline_event: "pipeline",
 };
 
@@ -153,7 +153,7 @@ function NotificationRow({
             /
           </span>
           <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
-            junior · {timeAgo(n.created_at)}
+            liquid clips · {timeAgo(n.created_at)}
           </span>
           {unread && <span className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />}
         </div>
