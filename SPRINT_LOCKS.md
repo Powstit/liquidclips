@@ -4,6 +4,7 @@ Read this BEFORE editing any high-conflict file (see `~/Desktop/COMPLETION_SPRIN
 
 ## Active locks
 - [KIMI · 2026-05-31 22:20] item #1 Apple notarization — editing desktop/src-tauri/tauri.conf.json, .github/workflows/release.yml, scripts/notarize.sh
+- [CLAUDE · 2026-05-31 22:35] items #27 + #24 — editing desktop/python-sidecar/sidecar.py, desktop/python-sidecar/stages.py, desktop/src-tauri/src/sidecar.rs
 
 ## Lock format
 - `[AGENT · YYYY-MM-DD HH:MM] item #N <name> — editing <file paths comma-separated>`
