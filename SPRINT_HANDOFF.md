@@ -17,6 +17,18 @@ Each session appends a new entry at the top. Format:
 
 ---
 
+## 2026-06-01 00:45 — CLAUDE (post-audit cleanup + Codex handoff)
+- **Self-audit on session 2:** Spawned a focused bug audit on commits 68c55e1 / b41a1b2 / 018b2b7 / e8585f9. Found 5 minor bugs (no ship-blockers, tsc clean throughout). Fixed in commit `2d042eb`:
+  1. `humanError` regex bug — `unauthor[is]z` matched impossible strings → fixed to `unauthori[sz]`
+  2. `humanError` returned literal `"null"` / `"undefined"` / `"[object Object]"` for non-Error throws → added early-return "Something went wrong."
+  3. `_yt_dlp_base_opts(with_progress=False)` had a dead kwarg → removed
+  4. Three components (ScheduleQueue, YouTubeView, upload/LocalQueue) had duplicate `humanError` imports from b41a1b2's awk inject → merged into existing sidecar import
+  5. `AyrshareConnectionPanel` had a local `humanError` shadowing the shared one → renamed to `ayrshareError` (Ayrshare-specific 503 framing genuinely unique)
+- **Created `~/Desktop/jnr/CODEX_NEXT.md`** — directed handoff for Codex with priority list, guard rails, and quality gates. READ THAT before next Codex session.
+- **Tonight's total: 9 items shipped by Claude** (#23, #24, #25, #26, #27, #28, #29, #30 + 2d042eb cleanup). 14 sprint items done overall. 18 remaining.
+
+---
+
 ## 2026-06-01 00:25 — CLAUDE
 - **Items shipped (4 in this batch):** #23 CHANGELOG catch-up (e8585f9), #25 error message audit (b41a1b2), #26 telemetry sanity (68c55e1) — plus all locks released.
 - **Sprint progress:** 8 items done by Claude tonight (#23, #24, #25, #26, #27, #28, #29, #30). Codex shipped #1, #5, #9, #11, #21, #22 (per his handoff entry + git log). Remaining: 32 − 14 = 18 items.
