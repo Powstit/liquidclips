@@ -39,7 +39,7 @@ export default function AyrshareConnectionPanel() {
       setState(s);
       if (s?.profile_key_set) setShowInput(false);
     } catch (e) {
-      setError(humanError(e));
+      setError(ayrshareError(e));
     } finally {
       setLoading(false);
     }
@@ -59,7 +59,7 @@ export default function AyrshareConnectionPanel() {
       setProfileKey("");
       setShowInput(false);
     } catch (e) {
-      setError(humanError(e));
+      setError(ayrshareError(e));
     } finally {
       setBusy(false);
     }
@@ -72,7 +72,7 @@ export default function AyrshareConnectionPanel() {
       const next = await backend.socialRefreshPlatforms();
       setState(next);
     } catch (e) {
-      setError(humanError(e));
+      setError(ayrshareError(e));
     } finally {
       setBusy(false);
     }
@@ -85,7 +85,7 @@ export default function AyrshareConnectionPanel() {
       const next = await backend.socialDisconnectPlatform(platform);
       setState(next);
     } catch (e) {
-      setError(humanError(e));
+      setError(ayrshareError(e));
     } finally {
       setBusy(false);
     }
@@ -219,7 +219,12 @@ export default function AyrshareConnectionPanel() {
   );
 }
 
-function humanError(e: unknown): string {
+// Ayrshare-specific error mapping. Kept local (rather than calling the shared
+// humanError) because the 503 → "AYRSHARE_API_KEY not set" framing is unique
+// to this panel and the shared helper doesn't know the context. Renamed from
+// `humanError` to avoid shadowing the shared one if future refactors want to
+// import it here too.
+function ayrshareError(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   if (msg.includes("503")) return "Publishing isn't live on the server yet (AYRSHARE_API_KEY not set).";
   if (msg.includes("400") || msg.includes("404"))
