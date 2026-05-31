@@ -525,6 +525,32 @@ class _SidecarSafeLogger:
         sys.stderr.write(f"[yt-dlp ERR] {msg}\n")
 
 
+def _yt_dlp_base_opts(*, with_progress: bool = False) -> dict[str, Any]:
+    """Shared yt-dlp opts every call site merges in. Centralises:
+      - socket_timeout / retries (was inconsistent across ingest + probe + lift
+        download — sprint #27 bug audit #9)
+      - quiet / no_warnings / noprogress / logger (no stdout contamination)
+      - cookiefile if JUNIOR_COOKIES_FILE env points at a Netscape-format
+        cookies.txt file that exists. Required for most IG/TikTok posts +
+        login-walled YouTube videos since 2024 — without it those URLs
+        silently 401 (sprint #27 bug audit #11). Settings UI for this lands
+        in a follow-up; env var path is the v1.
+    """
+    opts: dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "noprogress": True,
+        "logger": _SidecarSafeLogger(),
+        "socket_timeout": 20,
+        "retries": 3,
+        "fragment_retries": 5,
+    }
+    cookies_path = os.environ.get("JUNIOR_COOKIES_FILE", "").strip()
+    if cookies_path and os.path.isfile(cookies_path):
+        opts["cookiefile"] = cookies_path
+    return opts
+
+
 def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
     """Download a URL (YouTube / Twitch / podcast feed / anything yt-dlp supports)
     into ~/LiquidClips/inbox/, then create a Project around the resulting file.
@@ -607,23 +633,13 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
     # higher-resolution source just gets downsampled in stage 6. Capping
     # gives us 3-5× faster downloads for long videos.
     ydl_opts = {
+        **_yt_dlp_base_opts(),
         "format": "best[height<=1080][ext=mp4]/best[height<=1080]/best",
         "merge_output_format": "mp4",
         "outtmpl": out_template,
         "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
-        "noprogress": True,                # don't spam progress to stdout
         "concurrent_fragment_downloads": 4,
-        "logger": _SidecarSafeLogger(),    # any logged line goes to stderr, never stdout
         "progress_hooks": [_on_progress],
-        # Without socket_timeout yt-dlp blocks the entire pipeline if YouTube /
-        # IG / TikTok rate-limits or anti-bots the connection — user sees a
-        # silent indefinite spinner. 20s gives slow networks a chance; retries
-        # cover transient failures.
-        "socket_timeout": 20,
-        "retries": 3,
-        "fragment_retries": 5,
     }
     ffmpeg_location = _yt_dlp_ffmpeg_location()
     if ffmpeg_location:
@@ -707,14 +723,8 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
     # Probe first (no download) — gives us title/duration/thumbnail to render
     # the preview card instantly before audio download begins.
     probe_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "noprogress": True,
+        **_yt_dlp_base_opts(),
         "skip_download": True,
-        "logger": _SidecarSafeLogger(),
-        # Same hang guard as the download paths.
-        "socket_timeout": 15,
-        "retries": 2,
     }
     with contextlib.redirect_stdout(sys.stderr):
         with yt_dlp.YoutubeDL(probe_opts) as ydl:
@@ -836,19 +846,11 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
         })
 
     ydl_opts = {
+        **_yt_dlp_base_opts(),
         "format": "bestaudio/best",
         "outtmpl": audio_out_template,
         "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
-        "noprogress": True,
-        "logger": _SidecarSafeLogger(),
         "progress_hooks": [_on_progress],
-        # Match the ingest path — without socket_timeout the lift-transcript
-        # request to YouTube / IG / TikTok hangs forever on rate-limit.
-        "socket_timeout": 20,
-        "retries": 3,
-        "fragment_retries": 5,
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "wav",
@@ -1564,8 +1566,12 @@ def _run_stage(project: Project, stage: str) -> None:
                     "cpu_count": os.cpu_count() or 0,
                 },
             )
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            # Calibration is best-effort but `except: pass` made every
+            # predictor.py / disk-write failure invisible during debugging
+            # (sprint #27 bug audit #14). Log to stderr so it's visible in
+            # `npm run tauri dev` without ever affecting pipeline flow.
+            log(f"[calibration] record_run failed (non-fatal): {type(exc).__name__}: {exc}")
 
 
 METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {

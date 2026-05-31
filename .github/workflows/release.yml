@@ -66,6 +66,21 @@ jobs:
           PY
           ls -lah desktop/python-sidecar/models/faster-whisper-tiny/
 
+      # xattr strip: prevents codesign "resource fork" failure on bundled files
+      # that were fetched from brew/huggingface and carry macOS quarantine/Finder metadata.
+      - name: strip extended attributes from bundled files
+        run: |
+          set -euo pipefail
+          xattr -cr desktop/python-sidecar/bin/
+          xattr -cr desktop/python-sidecar/models/
+          xattr -cr desktop/python-sidecar/*.py
+          xattr -cr desktop/src/
+          xattr -cr desktop/public/
+          xattr -cr desktop/assets/
+          xattr -cr desktop/src-tauri/icons/
+          xattr -cr desktop/src-tauri/entitlements*
+          echo "✓ xattrs stripped"
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -85,8 +100,24 @@ jobs:
 
             **Install**
             1. Download `Liquid.Clips_*_universal.dmg`
-            2. Open the DMG, drag **Liquid Clips** to **Applications**
-            3. Double-click from Applications (first launch may need Right-click → Open because the app is not yet notarized by Apple — this is normal for beta builds)
+            2. Open the DMG, drag **Liquid Claps** to **Applications**
+            3. Double-click from Applications — the app is signed and notarized by Apple
           releaseDraft: true
           prerelease: false
           args: '--target universal-apple-darwin'
+
+      # Notarize the .dmg after tauri-action builds it
+      - name: notarize .dmg
+        run: |
+          set -euo pipefail
+          DMG=$(ls desktop/src-tauri/target/release/bundle/dmg/*.dmg | head -1)
+          if [ -z "$DMG" ]; then
+            echo "✗ No .dmg found" >&2
+            exit 1
+          fi
+          echo "=== Notarizing $(basename "$DMG") ==="
+          xcrun notarytool submit "$DMG" \
+            --keychain-profile "LIQUIDCLIPS_NOTARY" \
+            --wait
+          xcrun stapler staple "$DMG"
+          echo "✓ Notarized and stapled: $(basename "$DMG")"

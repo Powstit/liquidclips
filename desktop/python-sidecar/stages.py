@@ -98,15 +98,30 @@ def _bundled_whisper_model_path() -> str | None:
 
     Dev:        <repo>/python-sidecar/models/faster-whisper-tiny
     Prod .app:  <Resources>/_up_/python-sidecar/models/faster-whisper-tiny
+
+    Integrity check (sprint #27): verify ALL four files exist + `model.bin` is
+    at least 30MB. A half-downloaded HuggingFace cache (model.bin smaller than
+    expected) used to surface as an opaque "Unable to open model.bin" mid-
+    pipeline; now we refuse to claim the dir is valid and `WhisperModel("tiny")`
+    falls through to the HF cache or downloads fresh.
     """
     here = Path(__file__).resolve().parent
     candidates = [
         here / "models" / "faster-whisper-tiny",
         here.parent / "_up_" / "python-sidecar" / "models" / "faster-whisper-tiny",
     ]
+    required = ("model.bin", "config.json", "tokenizer.json", "vocabulary.txt")
     for c in candidates:
-        if (c / "model.bin").is_file():
-            return str(c)
+        if not all((c / fname).is_file() for fname in required):
+            continue
+        # model.bin for tiny should be ~75MB; reject anything <30MB as a
+        # truncated download.
+        try:
+            if (c / "model.bin").stat().st_size < 30 * 1024 * 1024:
+                continue
+        except OSError:
+            continue
+        return str(c)
     return None
 
 
