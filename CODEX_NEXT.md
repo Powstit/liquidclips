@@ -131,3 +131,51 @@ Then ping Daniel with a one-line summary: "Codex finished items #X #Y #Z, tsc + 
 ---
 
 *Last updated: 2026-06-01 00:45 by Claude Opus 4.7 (1M context). Ship safely.*
+
+---
+
+# 🔍 AUDIT — Codex's prior session (added 2026-06-01 01:05)
+
+Claude ran a focused audit on commit `89362a9` + your uncommitted worktree changes (#1, #5, #9, #11, #21, #22). Most of your work is SOLID — listed at the end. Eleven findings worth your attention before you ship the next pass:
+
+## 🔴 SHIP-BLOCKERS (would fail the first signed/notarized release attempt)
+
+1. **`account-app/src/components/PricingCards.tsx:34-35`** — `PRO_PLAN_ID` / `AGENCY_PLAN_ID` have NO fallback default. Buttons render as **"Opening soon" (disabled)** unless `NEXT_PUBLIC_CLERK_PRO_PLAN_ID` / `..._AGENCY_PLAN_ID` are set on Vercel. Your handoff said "Pro/Agency reuse existing production Clerk plan IDs during the transition" — that's FALSE in code. Either set the env vars OR change copy to "Join waitlist."
+
+2. **`.github/workflows/release.yml:91-96` + `tauri.conf.json:74`** — Tauri updater `pubkey` baked into the config MUST match the private key in `TAURI_SIGNING_PRIVATE_KEY` GH secret. If they don't, every installed user's auto-update will reject signature verification and the app silently stops updating after first ship. Confirm GH secret matches pubkey fingerprint `B1E037066BFCE444` before tagging.
+
+3. **`desktop/src-tauri/PrivacyInfo.xcprivacy`** — missing `NSPrivacyAccessedAPITypes`. Apple now requires apps touching Required Reason APIs (UserDefaults, file timestamps, system boot time, disk space, active keyboard) to declare them. WKWebView uses UserDefaults at minimum. Currently only `NSPrivacyCollectedDataTypes` is declared. App Store review (and increasingly Gatekeeper) will reject. Add at least `NSPrivacyAccessedAPICategoryUserDefaults` reason `CA92.1` and `NSPrivacyAccessedAPICategoryFileTimestamp` reason `C617.1`.
+
+## 🟠 WILL-BITE-SOON
+
+4. **`account-app/src/app/upgrade/page.tsx:44`** — legacy users see literal "Currently on Growth" / "Autopilot" in the header copy. `capitalise(currentTier)` bypasses the `publicTierName` normalizer used elsewhere on the page. Wrap with same normalizer.
+
+5. **`account-app/src/app/upgrade/page.tsx:54-62` + `PricingCards.tsx:66,82`** — prepaid +5 account-pack cross-sell is display-only text. Shows "$40 / +5" with no checkout target, no Stripe price ID, no button. Backend `account_limit(tier, extra_packs)` accepts the value but the purchase path is missing entirely. Either ship a real `CheckoutButton` with a Clerk add-on plan ID, or remove the copy until the flow exists.
+
+6. **`.github/workflows/release.yml:38-49`** — `brew install ffmpeg` on macos-latest is arm64-only. Universal build (`--target universal-apple-darwin`) bundles an arm64 ffmpeg into the x86_64 slice → x86_64 Mac users will hit "Bad CPU type in executable" on first lift. Your inline comment acknowledges this but the artifact still ships as `universal.dmg`. Either lipo arm64 + x86_64 ffmpegs, or rename target/artifact to `aarch64-apple-darwin`.
+
+7. **`desktop/src/components/Settings.tsx:19`** — `type Tier = "free" | "solo" | "growth" | "autopilot"` — desktop still uses legacy names. You normalized account-app but desktop is untouched. A user upgraded to `tier="pro"` will silently fall through to the "free" branch because `"pro"` isn't in the union. Add `"pro" | "agency"` + audit other desktop references.
+
+8. **`desktop/scripts/strip-xattrs.sh:7-26`** — runs from `desktop/` cwd. Misses `src-tauri/target/release/junior-desktop` (the compiled Rust binary). `beforeBundleCommand` runs AFTER cargo build, so the binary is on disk and CAN carry xattrs. Add `xattr -cr src-tauri/target/release/ 2>/dev/null || true` at the end.
+
+## 🟡 MINOR
+
+9. **`account-app/src/components/AffiliateCard.tsx:80`** + **`desktop/src/components/Settings.tsx:660-662`** — still reference `founder` flag in UI labels. "Founder removed from UI" is account-app-only so far.
+
+10. **Installed 0.4.43** lacks `PrivacyInfo.xcprivacy` in `Contents/Resources/` — built before your manifest landed. Not a Codex bug; Daniel can't verify manifest until next ship.
+
+11. **`desktop/src-tauri/tauri.conf.json:82-84`** — deep-link scheme still includes `"junior"` alongside `"liquidclips"`. Probably intentional back-compat. Confirm with the rebrand memo.
+
+## ✅ SOLID (no action needed)
+
+- `notarize.sh` — clean: `--wait`, fallback to keychain profile locally vs CI Apple credentials, extracts submission ID, fetches log on rejection, staples + verifies with `spctl --assess`, correct exit codes.
+- `release.yml` notarize step — runs AFTER tauri-action produces the .dmg (line 98), uses `find` not `ls`, fail-fast.
+- Developer ID cert import — uses `apple-actions/import-codesign-certs@v3` with `.p12` + password from secrets, NOT a keychain profile. Correct.
+- `entitlements-direct.plist` — DYLD removed (no `DYLD_*` usage in sidecar or rust). JIT + unsigned-memory + library-validation kept with inline justifications.
+- "Liquid **Claps**" typo I flagged earlier — already fixed in your diff (line 131 now reads "Liquid Clips"). ✓
+- Both `PrivacyInfo.xcprivacy` and `entitlements-direct.plist` pass `plutil -lint`.
+- `normalizeTier()` (dashboard) + `normalizePlanSlug()` (PricingCards) both handle `growth/channel → pro` and `autopilot → agency`. Matches backend `_LEGACY_TIER_ALIASES`.
+- Solo plan ID has a working real default (`cplan_3E4VBeiWtZP0CJsvPwrIz91uDFk`) — most-clicked tier ships working.
+- `PrivacyInfo.xcprivacy` is in `bundle.resources` array (tauri.conf.json:58) — will land in `Contents/Resources/`.
+
+**Bottom line:** Notarization plumbing is solid. Three blockers to fix before any signed/notarized release: Pro/Agency unbuyable (#1), updater pubkey/secret mismatch risk (#2), PrivacyInfo missing required APIs (#3). Touch those first.
