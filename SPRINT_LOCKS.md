@@ -3,7 +3,7 @@
 Read this BEFORE editing any high-conflict file (see `~/Desktop/COMPLETION_SPRINT.md` for the list).
 
 ## Active locks
-*(none)*
+- [CLAUDE · 2026-06-01 09:00] item #14a Earnings leaderboard — editing desktop/src/components/earn/AffiliateHero.tsx, desktop/src/lib/backend.ts, junior-backend/app/routes/affiliate.py (or new leaderboard.py router), junior-backend/app/main.py (router register). Plus NEW desktop/src/components/earn/Leaderboard.tsx
 
 ## Lock format
 - `[AGENT · YYYY-MM-DD HH:MM] item #N <name> — editing <file paths comma-separated>`
