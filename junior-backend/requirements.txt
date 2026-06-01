@@ -10,6 +10,7 @@ cryptography>=43
 python-dotenv>=1.0
 svix>=1.40
 httpx>=0.28
+openai>=1.50
 apscheduler>=3.10
 resend>=2.4
 posthog>=3.5
