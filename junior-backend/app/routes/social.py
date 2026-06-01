@@ -102,26 +102,31 @@ def connect(
         )
     key = body.profile_key.strip()
     platforms = _fetch_active_platforms(key)
-    if not platforms:
-        # Profile key was rejected by Ayrshare OR has zero linked accounts.
-        # Either way the user needs to fix something before we save it.
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "We couldn't find any linked platforms on that profile key. "
-            "Link an account on your Ayrshare dashboard, then try again.",
-        )
+    # We used to 400 here when platforms.length == 0, but that blocks the
+    # legitimate "user pastes their valid profile key BEFORE linking accounts"
+    # flow — most users paste the key first, then link socials on Ayrshare,
+    # then come back and refresh. Save the key with `active=False` and
+    # connected_platforms=[] so /social/refresh-platforms can flip it active
+    # later when they finish linking on Ayrshare's hosted page.
+    #
+    # We still validate the key is non-empty + that Ayrshare's reply was
+    # parseable (no exception) — _fetch_active_platforms returns [] for both
+    # "no platforms yet" and "invalid key", so we can't perfectly distinguish.
+    # That's OK: an invalid key just means the user sees zero platforms in
+    # PublishModal and tries again. No worse than the previous 400.
 
     row = db.get(SocialConnection, user.id)
+    is_active = bool(platforms)  # active only when ≥1 linked platform
     if row:
         row.ayrshare_profile_key = key
         row.connected_platforms = platforms
-        row.active = True
+        row.active = is_active
     else:
         row = SocialConnection(
             user_id=user.id,
             ayrshare_profile_key=key,
             connected_platforms=platforms,
-            active=True,
+            active=is_active,
         )
         db.add(row)
     db.commit()
