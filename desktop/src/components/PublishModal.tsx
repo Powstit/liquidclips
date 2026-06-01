@@ -3,32 +3,59 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import {
   backend,
   QuotaExceededError,
+  socialGetConnection,
   type ConnectionPlatform,
-  type PlatformConnection,
   type PublishedTarget,
+  type SocialConnectionState,
 } from "../lib/backend";
-import { sidecar, type Clip } from "../lib/sidecar";
-import { PlatformIcon, type PlatformId } from "./PlatformIcon";
+import { sidecar, humanError, type Clip } from "../lib/sidecar";
+import { PlatformIcon } from "./PlatformIcon";
 import { InfoTip } from "./InfoTip";
 import { useTier, TIER_COPY, type PublishCapability } from "../lib/useTier";
 
-// Customer-facing publish surface. The word "Postiz" appears nowhere — to the
-// customer, Liquid Clips owns the entire publishing path. Underneath, every action
-// routes through Liquid Clips Backend which talks to a hidden self-hosted Postiz.
-//
-// Three modes:
-//   publish-now: post immediately to N platforms (multi-platform = Growth+)
-//   schedule-one: pick one platform + a date/time (Growth+)
-// Drip-across lives in DripCalendar; both gate on the same connection store.
+/*
+ * Sprint #3 — Ayrshare-native PublishModal.
+ *
+ * Previously this modal drove the LEGACY Postiz per-account OAuth integration
+ * model: pick `Set<integration_id>` from `backend.connections.list(jwt)`,
+ * each platform had its own OAuth connect flow, multi-account dropdowns,
+ * etc.
+ *
+ * Today's backend (/publish-now) is Ayrshare-only. One Profile Key per user,
+ * a set of `platforms[]` to fan out to in a single backend call. The OAuth
+ * to each platform happens on Ayrshare's hosted linking page — not in our
+ * app. So the modal collapses to:
+ *
+ *   1. Fetch the user's social connection state (GET /social/connections)
+ *   2. If not connected → show a "Connect first" card with deep link to
+ *      Settings → Connections
+ *   3. If connected → render platform checkboxes from `state.platforms`
+ *   4. Submit calls backend.publishNow which posts to /publish-now with the
+ *      platform array. Backend returns per-platform PublishedTarget[].
+ *
+ * Three modes:
+ *   publish-now : post immediately
+ *   schedule-one: pick one platform + a datetime, backend stores a row
+ *                 (sprint #3 keeps the schedule path text-only for now;
+ *                  the Ayrshare-native schedule wiring lands in a follow-up)
+ */
 
 export type PublishModalMode = "publish-now" | "schedule-one";
 
-const ALL_PLATFORMS: { id: ConnectionPlatform; label: string; oneLine: string }[] = [
-  { id: "youtube",   label: "YouTube",   oneLine: "Vertical Shorts under 60s." },
-  { id: "tiktok",    label: "TikTok",    oneLine: "Up to 3min vertical." },
-  { id: "instagram", label: "Instagram", oneLine: "Reels + Feed posts." },
-  { id: "x",         label: "X",         oneLine: "Vertical or square under 2:20." },
-];
+const ALL_PLATFORM_LABELS: Record<ConnectionPlatform, { label: string; oneLine: string }> = {
+  youtube:   { label: "YouTube",   oneLine: "Vertical Shorts under 60s." },
+  tiktok:    { label: "TikTok",    oneLine: "Up to 3min vertical." },
+  instagram: { label: "Instagram", oneLine: "Reels + Feed posts." },
+  x:         { label: "X",         oneLine: "Vertical or square under 2:20." },
+};
+
+// Ayrshare may report platforms we don't render an icon for (LinkedIn, FB,
+// Threads, etc). Stay forward-compatible: any platform string we don't
+// recognise still gets a generic tile.
+function platformLabel(p: string): string {
+  const key = p.toLowerCase() as ConnectionPlatform;
+  return ALL_PLATFORM_LABELS[key]?.label ?? (p[0]?.toUpperCase() + p.slice(1));
+}
 
 export function PublishModal({
   clip,
@@ -37,6 +64,7 @@ export function PublishModal({
   mode,
   onClose,
   onDone,
+  onOpenSettings,
 }: {
   clip: Clip;
   clipIdx: number;
@@ -44,12 +72,14 @@ export function PublishModal({
   mode: PublishModalMode;
   onClose: () => void;
   onDone: (msg: string) => void;
+  // Wired by App.tsx — lets the "Connect a profile" empty-state route the
+  // user to Settings → Connections without manual nav.
+  onOpenSettings?: () => void;
 }) {
   const tier = useTier();
-  const [connections, setConnections] = useState<PlatformConnection[]>([]);
-  const [connectionsLoading, setConnectionsLoading] = useState(true);
-  const [connectingPlatform, setConnectingPlatform] = useState<ConnectionPlatform | null>(null);
-  const [picked, setPicked] = useState<Set<string>>(new Set()); // integration_ids
+  const [connection, setConnection] = useState<SocialConnectionState | null>(null);
+  const [connectionLoading, setConnectionLoading] = useState(true);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [scheduleAt, setScheduleAt] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
@@ -59,106 +89,70 @@ export function PublishModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Esc closes only when nothing else is in flight — preserves the loader
-  // feeling like a real OAuth handoff that you can't interrupt.
+  // Esc closes unless we're mid-publish — preserves the "this is real, don't
+  // bail" feeling once a network call is in flight.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !connectingPlatform && !busy) onClose();
+      if (e.key === "Escape" && !busy) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, connectingPlatform, busy]);
+  }, [onClose, busy]);
 
-  // Load connections once tier is known. Free-tier never even queries — the
-  // upgrade wall takes over the whole modal.
   const cap: PublishCapability = mode === "publish-now" ? "publish_now_single" : "schedule_one";
   const hasCapability = tier.can(cap);
 
+  // Load the user's social connection state once per mount when the tier
+  // entitles publishing. Free-tier renders the upgrade wall first and never
+  // hits the network.
   useEffect(() => {
     if (!hasCapability) {
-      setConnectionsLoading(false);
+      setConnectionLoading(false);
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        const { value: jwt } = await sidecar.licenseJwtRead();
-        if (!jwt) {
-          setConnections([]);
-          return;
-        }
-        const list = await backend.connections.list(jwt);
-        if (!cancelled) setConnections(list.connections);
+        const state = await socialGetConnection();
+        if (!cancelled) setConnection(state);
       } catch (e) {
-        if (!cancelled) setError(String(e));
+        if (!cancelled) setError(humanError(e));
       } finally {
-        if (!cancelled) setConnectionsLoading(false);
+        if (!cancelled) setConnectionLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [hasCapability]);
 
-  // Vertical (reframed) is required — every platform expects 9:16.
   const videoPath = clip.vertical_path;
+  const platforms = connection?.platforms ?? [];
 
-  async function connect(platform: ConnectionPlatform) {
-    setConnectingPlatform(platform);
-    setError(null);
-    try {
-      const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) throw new Error("Sign in to Liquid Clips first — use the Sign in button in the top bar.");
-      const { redirect_url } = await backend.connections.startConnect(jwt, platform);
-      // In production this opens an external browser tab for the OAuth
-      // consent. The preview shim returns a dummy URL and the platform is
-      // already optimistically added to the connections list.
-      if (redirect_url.startsWith("http")) {
-        await openExternal(redirect_url).catch(() => undefined);
-      }
-      // Refresh the live list — in production the desktop polls after the
-      // deep-link callback; in preview the list updates instantly.
-      const list = await backend.connections.list(jwt);
-      setConnections(list.connections);
-    } catch (e) {
-      if (e instanceof QuotaExceededError) {
-        setError(e.message);
+  function togglePick(platform: string) {
+    setPicked((cur) => {
+      const next = new Set(cur);
+      if (mode === "schedule-one") return new Set([platform]);
+      if (next.has(platform)) {
+        next.delete(platform);
+      } else if (!tier.can("publish_now_multi") && next.size >= 1) {
+        // Solo tier — single platform at a time. Replace selection rather
+        // than reject so the click still "does something."
+        return new Set([platform]);
       } else {
-        setError(String(e));
+        next.add(platform);
       }
-    } finally {
-      setConnectingPlatform(null);
-    }
-  }
-
-  async function disconnect(integration_id: string) {
-    const { value: jwt } = await sidecar.licenseJwtRead();
-    if (!jwt) return;
-    if (!confirm("Disconnect this account?")) return;
-    await backend.connections.disconnect(jwt, integration_id);
-    setConnections((cur) => cur.filter((c) => c.integration_id !== integration_id));
-    setPicked((cur) => {
-      const next = new Set(cur);
-      next.delete(integration_id);
-      return next;
-    });
-  }
-
-  function togglePick(integration_id: string) {
-    setPicked((cur) => {
-      const next = new Set(cur);
-      if (mode === "schedule-one") return new Set([integration_id]);
-      if (next.has(integration_id)) next.delete(integration_id);
-      else if (!tier.can("publish_now_multi") && next.size >= 1) {
-        // Solo single-platform cap — replace selection rather than add.
-        return new Set([integration_id]);
-      }
-      else next.add(integration_id);
       return next;
     });
   }
 
   async function submit() {
+    if (!videoPath) {
+      setError("This clip has no rendered file yet. Re-cut from the editor first.");
+      return;
+    }
+    if (picked.size === 0) {
+      setError("Pick at least one platform.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -166,32 +160,30 @@ export function PublishModal({
       if (!jwt) {
         throw new Error("Sign in to Liquid Clips first — use the Sign in button in the top bar.");
       }
-      if (!videoPath) {
-        throw new Error("This clip has no rendered file yet. Re-cut from the editor first.");
-      }
-      if (picked.size === 0) {
-        throw new Error("Pick at least one account.");
-      }
-      const picks = connections.filter((c) => picked.has(c.integration_id));
-      const platforms = picks.map((p) => p.platform);
 
       if (mode === "publish-now") {
+        // Backend translates the new Ayrshare {results:[...]} shape into the
+        // legacy PublishedTarget[] format inside backend.publishNow, so the
+        // summary string format below stays unchanged.
         const results = await backend.publishNow(jwt, {
           filePath: videoPath,
           title: clip.title,
           description: clip.description,
-          platforms: platforms.filter((p): p is "youtube" | "tiktok" | "x" => p !== "instagram"),
+          // backend.publishNow currently constrains platforms to the legacy
+          // {youtube,tiktok,x} subset for back-compat. Coerce here; backend
+          // ignores unknown platforms with a 400.
+          platforms: Array.from(picked).filter((p): p is "youtube" | "tiktok" | "x" =>
+            p === "youtube" || p === "tiktok" || p === "x",
+          ),
         });
-        const igPicked = picks.filter((p) => p.platform === "instagram");
-        if (igPicked.length > 0) {
-          onDone(
-            `${summarisePublish(results)} · Instagram queued for next sprint.`,
-          );
+        const ig = Array.from(picked).filter((p) => p === "instagram").length;
+        if (ig > 0) {
+          onDone(`${summarisePublish(results)} · Instagram queued for next sprint.`);
         } else {
           onDone(summarisePublish(results));
         }
       } else {
-        const platform = picks[0].platform;
+        const platform = Array.from(picked)[0];
         if (platform === "instagram") {
           throw new Error("Scheduling to Instagram is coming next sprint.");
         }
@@ -204,11 +196,11 @@ export function PublishModal({
           platform: platform as "youtube" | "tiktok" | "x",
           scheduledFor,
         });
-        onDone(`Scheduled for ${new Date(scheduleAt).toLocaleString()} on ${platform}.`);
+        onDone(`Scheduled for ${new Date(scheduleAt).toLocaleString()} on ${platformLabel(platform)}.`);
       }
     } catch (e) {
       if (e instanceof QuotaExceededError) setError(e.message);
-      else setError(String(e));
+      else setError(humanError(e));
     } finally {
       setBusy(false);
     }
@@ -227,24 +219,71 @@ export function PublishModal({
     );
   }
 
+  // No social profile connected — route the user to Settings to paste their
+  // Ayrshare Profile Key. This is the new "empty state" of publishing; the
+  // backend 412s any /publish-now call without a connection, so we catch it
+  // proactively in the UI instead of letting the round-trip fail.
+  if (!connectionLoading && (!connection?.profile_key_set || platforms.length === 0)) {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
+        onClick={onClose}
+      >
+        <div
+          className="flex w-full max-w-[480px] flex-col gap-5 rounded-2xl bg-paper p-7 shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+            <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
+            connect first
+          </div>
+          <h2 className="font-display text-[24px] font-semibold leading-[1.1] tracking-[-0.025em] text-ink">
+            Link a social profile to publish.
+          </h2>
+          <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+            Liquid Clips publishes through Ayrshare. Link your accounts on
+            ayrshare.com once, paste your Profile Key into Settings, then come
+            back here and pick where this clip goes.
+          </p>
+          {connection?.profile_key_set && platforms.length === 0 && (
+            <p className="rounded-xl border border-line bg-paper-warm/40 p-3 font-mono text-[11px] leading-relaxed text-text-secondary">
+              Your Profile Key is saved but Ayrshare reports no linked
+              platforms yet. Hit <span className="font-semibold">Refresh</span>
+              {" "}in the Ayrshare panel after linking.
+            </p>
+          )}
+          <div className="flex items-center justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia"
+            >
+              Maybe later
+            </button>
+            <button
+              onClick={() => {
+                onClose();
+                onOpenSettings?.();
+              }}
+              className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+            >
+              Open Settings →
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const headline = mode === "publish-now" ? "Send it." : "Send it later.";
   const eyebrow = mode === "publish-now" ? "publish now" : "schedule one";
   const cta = mode === "publish-now"
-    ? `Publish to ${picked.size} account${picked.size === 1 ? "" : "s"} →`
+    ? `Publish to ${picked.size} platform${picked.size === 1 ? "" : "s"} →`
     : "Schedule →";
-
-  // Group connections by platform so multi-account picking lives inline.
-  const byPlatform = new Map<ConnectionPlatform, PlatformConnection[]>();
-  for (const c of connections) {
-    const arr = byPlatform.get(c.platform) ?? [];
-    arr.push(c);
-    byPlatform.set(c.platform, arr);
-  }
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
-      onClick={connectingPlatform || busy ? undefined : onClose}
+      onClick={busy ? undefined : onClose}
     >
       <div
         className="relative flex w-full max-w-[640px] flex-col gap-5 rounded-2xl bg-paper p-7 shadow-2xl"
@@ -278,52 +317,40 @@ export function PublishModal({
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
               <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-                {mode === "publish-now" ? "where" : "which account"}
+                {mode === "publish-now" ? "where" : "which platform"}
               </span>
               <InfoTip text={
                 tier.can("publish_now_multi")
-                  ? "Click an account to select it. Pick multiple to fan out across platforms in one shot. Right-click an account to disconnect."
-                  : "Solo posts to one platform at a time. Upgrade to Growth for multi-platform publishing."
+                  ? "Pick one or more platforms. Liquid Clips fans out to each via Ayrshare in one shot."
+                  : "Solo posts to one platform at a time. Upgrade to Pro for multi-platform publishing."
               } />
             </div>
-            {tier.maxConnections !== null && (
+            {connectionLoading ? (
               <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
-                {connections.length}/{tier.maxConnections} connected
+                checking…
+              </span>
+            ) : (
+              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
+                {platforms.length} linked
               </span>
             )}
           </div>
 
-          {connectionsLoading ? (
+          {connectionLoading ? (
             <p className="font-mono text-[12px] text-text-tertiary">
-              Reading your connections<span className="blink">_</span>
+              Reading your social profile<span className="blink">_</span>
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {ALL_PLATFORMS.map((p) => {
-                const accounts = byPlatform.get(p.id) ?? [];
-                const isConnecting = connectingPlatform === p.id;
-                return (
-                  <PlatformTile
-                    key={p.id}
-                    platform={p}
-                    accounts={accounts}
-                    pickedIds={picked}
-                    isConnecting={isConnecting}
-                    canConnect={tier.maxConnections === null || connections.length < tier.maxConnections}
-                    onConnect={() => void connect(p.id)}
-                    onPick={togglePick}
-                    onDisconnect={(id) => void disconnect(id)}
-                  />
-                );
-              })}
+              {platforms.map((p) => (
+                <PlatformTile
+                  key={p}
+                  platform={p}
+                  picked={picked.has(p)}
+                  onPick={() => togglePick(p)}
+                />
+              ))}
             </div>
-          )}
-
-          {tier.maxConnections !== null && connections.length >= tier.maxConnections && (
-            <p className="mt-3 font-mono text-[11px] text-text-tertiary">
-              You've used all {tier.maxConnections} connection slots for {TIER_COPY[tier.tier].name}.
-              Upgrade to {TIER_COPY[tier.requiredTierFor("any_connection")].name} for more.
-            </p>
           )}
         </div>
 
@@ -344,143 +371,61 @@ export function PublishModal({
         <div className="mt-2 flex items-center justify-end gap-3">
           <button
             onClick={onClose}
-            disabled={!!connectingPlatform || busy}
+            disabled={busy}
             className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={() => void submit()}
-            disabled={busy || picked.size === 0 || !videoPath || !!connectingPlatform}
+            disabled={busy || picked.size === 0 || !videoPath}
             className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50"
           >
             {busy ? (mode === "publish-now" ? "Publishing…" : "Scheduling…") : cta}
           </button>
         </div>
-
-        {connectingPlatform && <ConnectingOverlay platform={connectingPlatform} />}
       </div>
     </div>
   );
 }
 
-// ── platform tile (with multi-account dropdown when relevant) ───────────
+// ── platform tile (simple — just shows platform name + checkbox) ───────
 
 function PlatformTile({
   platform,
-  accounts,
-  pickedIds,
-  isConnecting,
-  canConnect,
-  onConnect,
+  picked,
   onPick,
-  onDisconnect,
 }: {
-  platform: { id: ConnectionPlatform; label: string; oneLine: string };
-  accounts: PlatformConnection[];
-  pickedIds: Set<string>;
-  isConnecting: boolean;
-  canConnect: boolean;
-  onConnect: () => void;
-  onPick: (integration_id: string) => void;
-  onDisconnect: (integration_id: string) => void;
+  platform: string;
+  picked: boolean;
+  onPick: () => void;
 }) {
-  const connected = accounts.length > 0;
-  const anyPicked = accounts.some((a) => pickedIds.has(a.integration_id));
-
-  if (!connected) {
-    return (
-      <button
-        onClick={onConnect}
-        disabled={isConnecting || !canConnect}
-        title={canConnect ? `Connect ${platform.label} — ${platform.oneLine}` : "Connection cap reached for your tier"}
-        className={`group flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed bg-paper-warm/30 px-3 py-4 transition-all ${
-          canConnect
-            ? "border-line text-text-tertiary hover:border-fuchsia hover:text-ink"
-            : "border-line text-text-tertiary opacity-50"
-        } disabled:opacity-50`}
-      >
-        <PlatformIcon id={platform.id} className="h-7 w-7" />
-        <span className="font-sans text-[12px] font-medium leading-none">{platform.label}</span>
-        <span className="font-mono text-[10px] uppercase leading-none tracking-[0.08em]">
-          {canConnect ? "Connect" : "Locked"}
-        </span>
-      </button>
-    );
-  }
-
-  // One account: simple toggle tile.
-  if (accounts.length === 1) {
-    const account = accounts[0];
-    const picked = pickedIds.has(account.integration_id);
-    return (
-      <button
-        onClick={() => onPick(account.integration_id)}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          onDisconnect(account.integration_id);
-        }}
-        title={`Posting as ${account.account_handle}. Right-click to disconnect.`}
-        aria-pressed={picked}
-        className={`group flex flex-col items-center justify-center gap-1.5 rounded-xl border px-3 py-4 transition-all ${
-          picked
-            ? "border-fuchsia bg-fuchsia text-white shadow-[0_8px_24px_rgba(255,26,140,0.25)]"
-            : "border-line bg-paper text-ink hover:border-fuchsia"
-        }`}
-      >
-        <PlatformIcon id={platform.id} className="h-7 w-7" />
-        <span className="font-sans text-[12px] font-medium leading-none">{platform.label}</span>
-        <span className={`font-mono text-[10px] uppercase leading-none tracking-[0.08em] ${picked ? "text-white/80" : "text-text-secondary"}`}>
-          {account.account_handle}
-        </span>
-      </button>
-    );
-  }
-
-  // Multi-account: dropdown inline. Tile shows the picked account if any.
-  const pickedAccount = accounts.find((a) => pickedIds.has(a.integration_id));
+  const known = platform as ConnectionPlatform;
+  const label = ALL_PLATFORM_LABELS[known]?.label ?? platformLabel(platform);
+  const oneLine = ALL_PLATFORM_LABELS[known]?.oneLine ?? "Connected via Ayrshare.";
+  const iconId = (platform === "x" || platform === "youtube" || platform === "tiktok" || platform === "instagram")
+    ? platform : "instagram"; // fallback icon for unknown platforms
   return (
-    <div className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border px-3 py-3 transition-all ${
-      anyPicked
-        ? "border-fuchsia bg-fuchsia-soft/40"
-        : "border-line bg-paper"
-    }`}>
-      <PlatformIcon id={platform.id} className="h-6 w-6 text-ink" />
-      <span className="font-sans text-[11px] font-medium leading-none text-ink">{platform.label}</span>
-      <select
-        value={pickedAccount?.integration_id ?? ""}
-        onChange={(e) => {
-          if (e.target.value) onPick(e.target.value);
-        }}
-        className="w-full rounded border border-line bg-paper px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary focus:border-fuchsia focus:outline-none"
-      >
-        <option value="" disabled>pick an account</option>
-        {accounts.map((a) => (
-          <option key={a.integration_id} value={a.integration_id}>
-            {a.account_handle}
-          </option>
-        ))}
-      </select>
-    </div>
+    <button
+      onClick={onPick}
+      title={`Picked = ${picked ? "yes" : "no"}. ${oneLine}`}
+      aria-pressed={picked}
+      className={`group flex flex-col items-center justify-center gap-1.5 rounded-xl border px-3 py-4 transition-all ${
+        picked
+          ? "border-fuchsia bg-fuchsia text-white shadow-[0_8px_24px_rgba(255,26,140,0.25)]"
+          : "border-line bg-paper text-ink hover:border-fuchsia"
+      }`}
+    >
+      <PlatformIcon id={iconId as "youtube" | "tiktok" | "instagram" | "x"} className="h-7 w-7" />
+      <span className="font-sans text-[12px] font-medium leading-none">{label}</span>
+      <span className={`font-mono text-[10px] uppercase leading-none tracking-[0.08em] ${picked ? "text-white/80" : "text-text-secondary"}`}>
+        {picked ? "selected" : "tap to pick"}
+      </span>
+    </button>
   );
 }
 
-function ConnectingOverlay({ platform }: { platform: PlatformId }) {
-  return (
-    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 rounded-2xl bg-paper/95 backdrop-blur-sm">
-      <PlatformIcon id={platform} className="h-12 w-12 text-ink" />
-      <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-        <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-        connecting {platform}
-      </div>
-      <p className="max-w-[300px] text-center font-sans text-[13px] text-text-secondary">
-        Opening the {platform} sign-in. Liquid Clips reads your handle back when you finish — your password never touches Liquid Clips.
-      </p>
-    </div>
-  );
-}
-
-// ── upgrade wall ───────────────────────────────────────────────────────
+// ── upgrade wall — unchanged from prior version ────────────────────────
 
 function UpgradeWall({
   onClose,

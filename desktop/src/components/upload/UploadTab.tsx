@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { UploadCloud, CalendarClock, Settings2, Zap } from "lucide-react";
-import { backend, type ConnectionsList, type ConnectionPlatform } from "../../lib/backend";
+import { socialGetConnection, type ConnectionPlatform, type SocialConnectionState } from "../../lib/backend";
 import { sidecar } from "../../lib/sidecar";
 import { PUBLISHING_ENABLED } from "../../lib/flags";
 import { PlatformIcon } from "../PlatformIcon";
@@ -26,7 +26,12 @@ export function UploadTab({
    *  We bubble the request up rather than re-implementing it inline. */
   onOpenSettings: () => void;
 }) {
-  const [connections, setConnections] = useState<ConnectionsList | null>(null);
+  // Sprint #3 — swapped from legacy `backend.connections.list` (Postiz era,
+  // per-account OAuth integration model) to `socialGetConnection` which
+  // reflects the Ayrshare profile + the platforms the user has linked on
+  // Ayrshare's hosted dashboard. The chip rail now stays in sync with the
+  // actual publishing path.
+  const [connection, setConnection] = useState<SocialConnectionState | null>(null);
   const [authed, setAuthed] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -40,10 +45,10 @@ export function UploadTab({
           return;
         }
         setAuthed(true);
-        const list = await backend.connections.list(jwt);
-        if (!cancelled) setConnections(list);
+        const state = await socialGetConnection();
+        if (!cancelled) setConnection(state);
       } catch {
-        if (!cancelled) setConnections(null);
+        if (!cancelled) setConnection(null);
       }
     })();
     return () => {
@@ -51,7 +56,7 @@ export function UploadTab({
     };
   }, []);
 
-  const connected = new Set((connections?.connections ?? []).map((c) => c.platform));
+  const connected = new Set((connection?.platforms ?? []).map((p) => p.toLowerCase()));
 
   return (
     <div className="flex w-full max-w-[920px] flex-col gap-7">
@@ -87,9 +92,7 @@ export function UploadTab({
         <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
           connected accounts
           <span className="ml-auto font-mono text-[10px] text-text-tertiary">
-            {connections
-              ? `${connections.connection_count}${connections.max_connections != null ? ` / ${connections.max_connections}` : ""}`
-              : "—"}
+            {connection ? `${connection.platforms.length} linked` : "—"}
           </span>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
