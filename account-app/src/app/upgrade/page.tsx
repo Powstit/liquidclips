@@ -13,7 +13,7 @@ import { ComparisonToggle } from "@/components/ComparisonToggle";
 
 export const metadata = {
   title: "Upgrade Liquid Clips",
-  description: "Pick a plan to unlock publishing, scheduling, and drip-mode.",
+  description: "Pick a plan to unlock publishing, scheduling, and hosted AI.",
 };
 
 export default async function UpgradePage() {
@@ -24,7 +24,7 @@ export default async function UpgradePage() {
   const user = await currentUser();
   const currentTier =
     ((user?.publicMetadata?.tier as string | undefined) ?? "free") as
-      | "free" | "solo" | "growth" | "autopilot";
+      | "free" | "solo" | "growth" | "autopilot" | "pro" | "agency";
 
   return (
     <div className="min-h-screen bg-paper">
@@ -41,7 +41,7 @@ export default async function UpgradePage() {
             Liquid Clips bills monthly via Clerk. Switch plans or cancel any time from your dashboard.
             Currently on{" "}
             <span className="font-medium text-ink">
-              {currentTier === "free" ? "Free" : capitalise(currentTier)}
+              {publicTierName(currentTier)}
             </span>
             .
           </p>
@@ -53,18 +53,12 @@ export default async function UpgradePage() {
 
         <section className="rounded-2xl border border-line bg-paper-warm/30 p-6">
           <h2 className="font-display text-[18px] font-semibold tracking-[-0.015em] text-ink">
-            Want lifetime access?
+            Need more social accounts?
           </h2>
           <p className="mt-2 font-sans text-[14px] leading-relaxed text-text-secondary">
-            Founder Lifetime is a one-time $500 — locks in Autopilot forever, no recurring charge.
-            Sold through Whop because Clerk only handles recurring plans.
+            Solo includes 5 connected social accounts, Pro includes 10, and Agency includes
+            25 for client-heavy teams.
           </p>
-          <a
-            href="https://liquidclips.app/founder"
-            className="mt-4 inline-flex items-center gap-2 rounded-full bg-ink px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)]"
-          >
-            Founder Lifetime — $500 →
-          </a>
         </section>
       </main>
     </div>
@@ -72,12 +66,17 @@ export default async function UpgradePage() {
 
 }
 
-function capitalise(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+// PricingCards uses public v2 slugs. Legacy backend/Clerk names are normalized
+// here so existing users see the correct v2 label.
+function tierToSlug(tier: "free" | "solo" | "growth" | "autopilot" | "pro" | "agency"): string {
+  if (tier === "free") return "free_user";
+  if (tier === "growth") return "pro";
+  if (tier === "autopilot") return "agency";
+  return tier;
 }
 
-// PricingCards uses Clerk plan slugs (free_user, solo, growth, autopilot)
-// while the rest of the codebase uses tier names. Translate here.
-function tierToSlug(tier: "free" | "solo" | "growth" | "autopilot"): string {
-  return tier === "free" ? "free_user" : tier;
+function publicTierName(tier: "free" | "solo" | "growth" | "autopilot" | "pro" | "agency"): string {
+  const slug = tierToSlug(tier);
+  if (slug === "free_user") return "Free";
+  return slug.charAt(0).toUpperCase() + slug.slice(1);
 }

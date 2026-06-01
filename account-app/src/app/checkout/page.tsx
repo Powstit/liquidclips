@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import { track } from "@/lib/analytics";
 
-// Affiliate growth offer = ONE offer: 100 free clips, then Solo $29.99/mo.
+// Affiliate starter offer = ONE offer: 100 free clips, then Solo $29.99/mo.
 // The Whop Solo plan carries a 30-day free trial, so "30 days free then $29.99"
 // is enforced by Whop. The 100-clip cap is an in-app soft limit (no auto-bill),
 // so the copy says the paid plan starts after 30 days; if 100 clips are used
-// first, Liquid Clips asks the user to continue on Solo. Growth/Autopilot are in-app
+// first, Liquid Clips asks the user to continue on Solo. Pro/Agency are in-app
 // upgrades later — not shown here. Embed carries ?a=<affiliateId> + returns to /get.
 const SOLO_PLAN_ID = process.env.NEXT_PUBLIC_WHOP_SOLO_PLAN_ID ?? "plan_qe8AFXj9J3SWi";
 
@@ -22,7 +22,7 @@ const FAQ = [
   { q: "When am I billed?", a: "Your Solo plan starts after 30 days. If you use all 100 free exports before then, Liquid Clips will ask you to continue on Solo ($29.99/mo). Cancel anytime before the trial ends." },
   { q: "Can I download the app after checkout?", a: "Yes. After checkout, create or sign in to your Liquid Clips account and download the desktop app." },
   { q: "Do I need a YouTube channel?", a: "No. You can clip local videos, client videos, podcasts, or Whop Content Rewards." },
-  { q: "Can I upgrade later?", a: "Yes. Growth and Autopilot are available as upgrades once you've started." },
+  { q: "Can I upgrade later?", a: "Yes. Pro and Agency are available as upgrades once you've started." },
   { q: "Who handles payment?", a: "Whop handles secure checkout and billing for affiliate purchases." },
 ] as const;
 

@@ -54,7 +54,8 @@
       "../python-sidecar/models/faster-whisper-tiny/config.json",
       "../python-sidecar/models/faster-whisper-tiny/model.bin",
       "../python-sidecar/models/faster-whisper-tiny/tokenizer.json",
-      "../python-sidecar/models/faster-whisper-tiny/vocabulary.txt"
+      "../python-sidecar/models/faster-whisper-tiny/vocabulary.txt",
+      "PrivacyInfo.xcprivacy"
     ],
     "category": "Productivity",
     "shortDescription": "Your AI editor. Lives on your computer.",

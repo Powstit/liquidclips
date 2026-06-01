@@ -29,9 +29,5 @@
   <key>com.apple.security.cs.disable-library-validation</key>
   <true/>
 
-  <!-- yt-dlp + some Python deps read DYLD_* environment variables for plugin
-       resolution; needed at sidecar startup. -->
-  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
-  <true/>
 </dict>
 </plist>
