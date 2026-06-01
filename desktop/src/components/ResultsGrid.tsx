@@ -26,10 +26,14 @@ export function ResultsGrid({
   project,
   onDropAnother,
   onProjectChange,
+  onOpenSettings,
 }: {
   project: Project;
   onDropAnother: () => void;
   onProjectChange: (p: Project) => void;
+  // Sprint #3 — PublishModal needs a way to route the user to Settings →
+  // Connections when they hit publish without a connected Ayrshare profile.
+  onOpenSettings?: () => void;
 }) {
   const intent = project.intent ?? "both";
   const defaultTab: Tab = intent === "youtube" ? "youtube" : "clips";
@@ -325,6 +329,7 @@ export function ResultsGrid({
           projectSlug={project.slug}
           mode={publishModal.mode}
           onClose={() => setPublishModal(null)}
+          onOpenSettings={onOpenSettings}
           onDone={(msg) => {
             setPublishModal(null);
             // For bounty projects, the publish is only half the job — nudge the
