@@ -920,6 +920,7 @@ export default function App() {
             project={view.project}
             onDropAnother={() => setView({ kind: "empty" })}
             onProjectChange={(p) => setView({ kind: "results", project: p })}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
         )}
       </main>
