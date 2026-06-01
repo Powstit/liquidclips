@@ -21,19 +21,30 @@ export type PublishCapability =
 // Tier → capability matrix. Mirrors backend/app/features.py — when that
 // changes, this must change too. Keeping it client-side means the upgrade
 // walls render instantly without a backend roundtrip.
+//
+// Public-facing tiers are Free / Solo / Pro / Agency (matches account-app
+// PricingCards.tsx + marketing). Legacy growth/autopilot rows remain so the
+// backend's _LEGACY_TIER_ALIASES (growth→pro, autopilot→agency) keep working
+// during the rename transition; they share the Pro/Agency capability sets.
 const PUBLISH_MATRIX: Record<Tier, Record<PublishCapability, boolean>> = {
   free:      { publish_now_single: false, publish_now_multi: false, schedule_one: false, drip_scheduling: false, any_connection: false },
   solo:      { publish_now_single: true,  publish_now_multi: false, schedule_one: false, drip_scheduling: false, any_connection: true },
-  growth:    { publish_now_single: true,  publish_now_multi: true,  schedule_one: true,  drip_scheduling: false, any_connection: true },
+  pro:       { publish_now_single: true,  publish_now_multi: true,  schedule_one: true,  drip_scheduling: true,  any_connection: true },
+  agency:    { publish_now_single: true,  publish_now_multi: true,  schedule_one: true,  drip_scheduling: true,  any_connection: true },
+  // legacy aliases — same capabilities as their v2 successor
+  growth:    { publish_now_single: true,  publish_now_multi: true,  schedule_one: true,  drip_scheduling: true,  any_connection: true },
   autopilot: { publish_now_single: true,  publish_now_multi: true,  schedule_one: true,  drip_scheduling: true,  any_connection: true },
 };
 
 // Max connected accounts per tier — matches features.py.
 const MAX_CONNECTIONS: Record<Tier, number | null> = {
   free: 0,
-  solo: 2,
-  growth: 4,
-  autopilot: null, // unlimited
+  solo: 5,
+  pro: 10,
+  agency: 25,
+  // legacy aliases
+  growth: 10,
+  autopilot: 25,
 };
 
 export type TierState = {
@@ -74,10 +85,10 @@ export function useTier(): TierState {
     loading,
     can: (cap) => PUBLISH_MATRIX[tier][cap],
     requiredTierFor: (cap) => {
-      for (const t of ["solo", "growth", "autopilot"] as Tier[]) {
+      for (const t of ["solo", "pro", "agency"] as Tier[]) {
         if (PUBLISH_MATRIX[t][cap]) return t;
       }
-      return "autopilot";
+      return "agency";
     },
     maxConnections: MAX_CONNECTIONS[tier],
   };
@@ -87,10 +98,15 @@ export const FREE_TIER_VISIBLE_CLIPS = FREE_CLIPS_VISIBLE;
 
 // Marketing copy for upgrade walls — tier name + price tagline.
 // Prices are USD-native — match account-app PricingCards + marketing exactly
-// (Solo $29.99, Growth $99.99, Autopilot $199.99). No GBP conversion layer.
+// (Solo $29.99, Pro $79.99, Agency $149). Legacy growth/autopilot aliases
+// alias to Pro/Agency copy so the backend's _LEGACY_TIER_ALIASES path still
+// renders sensibly in the desktop.
 export const TIER_COPY: Record<Tier, { name: string; price: string; pitch: string }> = {
-  free:      { name: "Free",      price: "free",            pitch: "100 free clip exports — no card." },
-  solo:      { name: "Solo",      price: "$29.99/mo",       pitch: "Continue clipping with Solo." },
-  growth:    { name: "Growth",    price: "$99.99/mo",       pitch: "Upgrade to Growth for higher monthly limits and advanced clipping." },
-  autopilot: { name: "Autopilot", price: "$199.99/mo",      pitch: "Upgrade to Autopilot for the highest limits and priority support." },
+  free:      { name: "Free",      price: "free",        pitch: "100 free clip exports — no card." },
+  solo:      { name: "Solo",      price: "$29.99/mo",   pitch: "Unlimited clips for one creator." },
+  pro:       { name: "Pro",       price: "$79.99/mo",   pitch: "Hosted AI + multi-platform publishing + the Partner Deck." },
+  agency:    { name: "Agency",    price: "$149/mo",     pitch: "For client accounts, sub-accounts, and white-label teams." },
+  // legacy aliases — render as the v2 tier
+  growth:    { name: "Pro",       price: "$79.99/mo",   pitch: "Hosted AI + multi-platform publishing + the Partner Deck." },
+  autopilot: { name: "Agency",    price: "$149/mo",     pitch: "For client accounts, sub-accounts, and white-label teams." },
 };

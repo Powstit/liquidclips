@@ -5,10 +5,13 @@ import growthIcon from "../assets/tiers/growth.png";
 import autopilotIcon from "../assets/tiers/autopilot.png";
 
 // Generated tier badges (A3). One source of truth so pricing walls, the plan
-// row, and upgrade CTAs all show the same mark for a tier.
+// row, and upgrade CTAs all show the same mark for a tier. Pro/Agency reuse
+// the growth/autopilot art until dedicated badges ship — same visual class.
 const ICONS: Record<Tier, string> = {
   free: freeIcon,
   solo: soloIcon,
+  pro: growthIcon,
+  agency: autopilotIcon,
   growth: growthIcon,
   autopilot: autopilotIcon,
 };

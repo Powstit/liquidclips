@@ -521,7 +521,11 @@ export class BackendOfflineError extends Error {
   readonly kind = "backend_offline" as const;
 }
 
-export type Tier = "free" | "solo" | "growth" | "autopilot";
+// Tier names match junior-backend/app/features.py FEATURES_BY_TIER. Legacy
+// 'growth' / 'autopilot' are kept here for backend compatibility — the
+// _LEGACY_TIER_ALIASES map on the backend converts them to 'pro' / 'agency'
+// transparently. Public-facing copy in TIER_COPY (useTier.ts) uses Pro / Agency.
+export type Tier = "free" | "solo" | "pro" | "agency" | "growth" | "autopilot";
 
 export type FeatureMap = {
   video_quota_monthly: number | null;        // null = unlimited

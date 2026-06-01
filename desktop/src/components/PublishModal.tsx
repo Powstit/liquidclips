@@ -12,6 +12,7 @@ import { sidecar, humanError, type Clip } from "../lib/sidecar";
 import { PlatformIcon } from "./PlatformIcon";
 import { InfoTip } from "./InfoTip";
 import { useTier, TIER_COPY, type PublishCapability } from "../lib/useTier";
+import type { Tier } from "../lib/backend";
 
 /*
  * Sprint #3 — Ayrshare-native PublishModal.
@@ -435,8 +436,8 @@ function UpgradeWall({
 }: {
   onClose: () => void;
   mode: PublishModalMode;
-  currentTier: "free" | "solo" | "growth" | "autopilot";
-  requiredTier: "free" | "solo" | "growth" | "autopilot";
+  currentTier: Tier;
+  requiredTier: Tier;
 }) {
   const cur = TIER_COPY[currentTier];
   const req = TIER_COPY[requiredTier];

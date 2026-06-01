@@ -69,22 +69,22 @@ export function MinecraftChallengeCard({
       </div>
       <div className="relative z-10 flex flex-col gap-3 p-7">
         <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-fuchsia px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-paper">
-          <Zap size={11} strokeWidth={2.5} /> sponsored campaign
+          <Zap size={11} strokeWidth={2.5} /> beta · submission intake
         </span>
         <h2 className="font-display text-[28px] font-semibold leading-tight tracking-[-0.02em] text-paper">
-          Get paid to clip Minecraft<br />story moments
+          Submit your Minecraft<br />story clips
         </h2>
         <p className="max-w-xl font-sans text-[14px] leading-relaxed text-paper/85">
-          Spot betrayal, war, friendship, plot twists. Clip them. Earn{" "}
-          <span className="font-semibold text-fuchsia">$2.50 per 1,000 views</span>
-          {" "}+ daily and weekly winner bonuses.
+          Spot betrayal, war, friendship, plot twists. Clip them. Accepted clips land in the Whop reward queue at{" "}
+          <span className="font-semibold text-fuchsia">$2.50 per 1,000 verified views</span>
+          {" "}once the campaign opens. Submissions reviewed manually until then.
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <span className="rounded-full bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink shadow-[0_8px_24px_rgba(255,26,140,0.3)] group-hover:bg-fuchsia group-hover:text-paper transition-colors">
-            Open the challenge →
+            Open submission portal →
           </span>
           <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-paper/60">
-            4-week test · $4,900 budget · payouts via Whop
+            beta · payouts via Whop after campaign goes live
           </span>
         </div>
       </div>
