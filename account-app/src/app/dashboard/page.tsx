@@ -62,12 +62,11 @@ export default async function DashboardPage() {
   if (!user) redirect("/sign-in");
 
   const clerkAffiliateId = (user.unsafeMetadata?.affiliate_id as string | undefined) ?? null;
-  const clerkTier = ((user.publicMetadata?.tier as string | undefined) ?? "free") as
-    | "free" | "solo" | "growth" | "autopilot";
+  const clerkTier = ((user.publicMetadata?.tier as string | undefined) ?? "free") as TierName;
 
   // Backend is the source of truth — Clerk metadata is NOT written on Whop
-  // trial/paid/founder transitions (see docs/customer-journey.md split-brain),
-  // so a linked trial/paid/founder can read "free" from Clerk. Fetch the real
+  // trial/paid transitions (see docs/customer-journey.md split-brain),
+  // so a linked trial/paid account can read "free" from Clerk. Fetch the real
   // state server-to-server; the secret never reaches the browser. Degrade to
   // Clerk metadata if the backend is unreachable.
   const BACKEND_URL = process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "https://api.jnremployee.com";
@@ -94,11 +93,9 @@ export default async function DashboardPage() {
   const clerkIsAdmin = !!primaryEmail && adminList.includes(primaryEmail);
 
   const isAdmin = c?.admin_override ?? clerkIsAdmin;
-  const tier = (c?.tier ?? (clerkIsAdmin ? "autopilot" : clerkTier)) as
-    | "free" | "solo" | "growth" | "autopilot";
+  const tier = normalizeTier(c?.tier ?? (clerkIsAdmin ? "agency" : clerkTier));
   const isFree = tier === "free";
   const effectiveTier = tier;
-  const effectiveFounder = c?.founder ?? (clerkIsAdmin ? true : user.publicMetadata?.founder === true);
   const affiliateId = c?.referrer_affiliate_id ?? clerkAffiliateId;
 
   const subStatus = c?.subscription_status ?? (isAdmin ? "admin" : "—");
@@ -120,13 +117,7 @@ export default async function DashboardPage() {
     user.username ??
     user.primaryEmailAddress?.emailAddress?.split("@")[0] ??
     "there";
-  const tierDisplay = isFree ? "Free" : capitalise(tier);
-
-  // Founder is a one-time $500 tier, still sold through Whop (Clerk Billing is
-  // recurring-only). Affiliate ID is baked first-touch per oauth-billing.md §6.
-  const founderUrl = affiliateId
-    ? `https://liquidclips.app/founder?a=${encodeURIComponent(affiliateId)}`
-    : "https://liquidclips.app/founder";
+  const tierDisplay = publicTierName(tier);
 
   return (
     <div className="mx-auto max-w-[1080px] px-6 py-12 sm:py-16">
@@ -175,7 +166,7 @@ export default async function DashboardPage() {
               num="02"
               eyebrow="unlock"
               title="Outgrow free."
-              sub="Pick a plan below. Founder · $500 is a separate one-time tier on Whop."
+              sub="Pick a plan below. Solo is for one creator, Pro adds hosted AI and multi-platform publishing, Agency is for client-heavy teams."
               actions={[
                 {
                   label: "See plans ↓",
@@ -184,7 +175,6 @@ export default async function DashboardPage() {
                   event: "upgrade_viewed",
                   eventProperties: { source: "dashboard_card_02_unlock" },
                 },
-                { label: "Founder · $500", href: founderUrl, external: true },
               ]}
               accent="fuchsia"
             />
@@ -260,8 +250,8 @@ export default async function DashboardPage() {
             </h2>
           </div>
           <p className="hidden max-w-[360px] font-sans text-[12px] text-text-secondary sm:block">
-            Use these values to debug "I don't know what account I'm signed in
-            as." Backend wins over everything else.
+            Use these values to debug &quot;I don&apos;t know what account I&apos;m signed in
+            as.&quot; Backend wins over everything else.
           </p>
         </div>
         <div className="mt-4 grid grid-cols-1 gap-1 rounded-3xl border border-line bg-paper-warm/40 p-5 font-mono text-[12px] sm:grid-cols-2">
@@ -270,7 +260,7 @@ export default async function DashboardPage() {
           <DebugLine label="Referred by (affiliate id)" value={affiliateId ?? "—"} mono />
           <DebugLine
             label="Effective tier"
-            value={`${effectiveTier}${isAdmin ? " · admin override" : ""}${effectiveFounder ? " · founder" : ""}`}
+            value={`${publicTierName(effectiveTier)}${isAdmin ? " · admin override" : ""}`}
             accent={!!isAdmin}
           />
           <DebugLine label="Subscription status" value={subStatus} />
@@ -435,8 +425,21 @@ function Card({
   );
 }
 
-function capitalise(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+type TierName = "free" | "solo" | "growth" | "channel" | "autopilot" | "pro" | "agency";
+type PublicTierName = "free" | "solo" | "pro" | "agency";
+
+function normalizeTier(tier: string | undefined): PublicTierName {
+  if (tier === "growth" || tier === "channel") return "pro";
+  if (tier === "autopilot") return "agency";
+  if (tier === "solo" || tier === "pro" || tier === "agency") return tier;
+  return "free";
+}
+
+function publicTierName(tier: PublicTierName): string {
+  if (tier === "free") return "Free";
+  if (tier === "solo") return "Solo";
+  if (tier === "pro") return "Pro";
+  return "Agency";
 }
 
 function PaymentVisibilitySection({ payments }: { payments: PaymentVisibility }) {

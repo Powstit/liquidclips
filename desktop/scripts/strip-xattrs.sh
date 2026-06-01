@@ -23,5 +23,7 @@ xattr -cr dist/ 2>/dev/null || true
 # Tauri resources
 xattr -cr src-tauri/icons/ 2>/dev/null || true
 xattr -cr src-tauri/entitlements* 2>/dev/null || true
+xattr -cr src-tauri/*.xcprivacy 2>/dev/null || true
+xattr -cr src-tauri/target/release/ 2>/dev/null || true
 
 echo "✓ xattrs stripped"

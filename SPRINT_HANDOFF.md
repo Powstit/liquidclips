@@ -17,6 +17,28 @@ Each session appends a new entry at the top. Format:
 
 ---
 
+## 2026-06-01 08:27 — CODEX
+- **Items touched:** #8 hosted LLM proxy + release audit followups.
+- **Items shipped (merged to main):** none — changes remain uncommitted in the shared worktree.
+- **Files touched:** `.github/workflows/release.yml`; `junior-backend/app/routes/proxy_llm.py`; `junior-backend/app/{features,main,models}.py`; `junior-backend/{requirements.txt,.env.example}`; `desktop/python-sidecar/llm.py`. No high-conflict files touched and no locks were needed.
+- **What changed:** release CI now preflights the updater signing secret against the pubkey baked into `tauri.conf.json` by signing/verifying a canary file; CI release target is now honest `aarch64-apple-darwin` until universal ffmpeg/ffprobe sidecars exist. Backend now has `/proxy/llm/clip-bundle` for Pro/Agency hosted AI, with license-JWT auth, tier gate, OpenAI server key use, and a monthly token bucket (`llm_usage_month`, `llm_tokens_used`). Desktop `llm.py` keeps BYO OpenAI first and falls back to hosted AI when no local key exists and the signed-in tier is Pro/Agency/admin.
+- **Validation:** workflow YAML parses; `git diff --check` passes; `PYTHONPYCACHEPREFIX=/private/tmp/jnr-pycache python3 -m py_compile junior-backend/app/*.py junior-backend/app/routes/*.py desktop/python-sidecar/*.py` passes; direct import of `app.routes.proxy_llm` in the backend venv passes. Full `app.main` import in the local backend venv is blocked by a stale/missing venv dependency (`stripe`) even though `requirements.txt` includes it.
+- **Known blockers / caveats:** hosted AI needs `OPENAI_API_KEY` set on Railway before `hosted_llm` reports built/live. The signing preflight proves the secret/pubkey match only when the GitHub release workflow runs; we still cannot read the secret locally. Pro/Agency checkout still needs verified Clerk plan IDs to become purchasable.
+- **Lockfile status:** no active CODEX locks. Re-read `SPRINT_LOCKS.md` before touching high-conflict files.
+
+---
+
+## 2026-05-31 18:52 — CODEX
+- **Items touched:** #7 marketing site; release-readiness followups from `CODEX_NEXT.md` audit.
+- **Items shipped (merged to main):** none — changes remain uncommitted in the shared worktree.
+- **Files touched:** new `liquidclips-marketing/` Next app; `desktop/src-tauri/PrivacyInfo.xcprivacy`; `desktop/scripts/strip-xattrs.sh`; `account-app/src/app/upgrade/page.tsx`; `account-app/src/components/PricingCards.tsx`. No high-conflict files touched and no locks were needed.
+- **What changed:** built a standalone Next/Vercel marketing site with home, privacy, and terms routes; copied existing product imagery into `public/`; added launch-tier pricing copy for Free/Solo/Pro/Agency; removed public-facing legacy tier wording; added local `.gitignore`; documented Vercel deploy/env notes. Followup pass added Apple required-reason API declarations for UserDefaults + file timestamps, strips xattrs from the built Rust release folder, normalizes legacy Growth/Autopilot labels on `/upgrade`, and removes display-only +5 account-pack purchase copy until there is a real checkout path.
+- **Validation:** `npm run lint` and `npm run build` pass in `liquidclips-marketing/`; `npx eslint src/app/upgrade/page.tsx src/components/PricingCards.tsx` passes; `npm run build` passes in `account-app/`; `plutil -lint desktop/src-tauri/PrivacyInfo.xcprivacy` and `bash -n desktop/scripts/strip-xattrs.sh` pass. Dev server served `/`, `/privacy`, and `/terms` with HTTP 200 during route smoke checks before the final copy tweak.
+- **Known blockers / caveats:** set `NEXT_PUBLIC_DOWNLOAD_DMG_URL` after the notarized DMG/release exists. Pro/Agency checkout still requires verified `NEXT_PUBLIC_CLERK_PRO_PLAN_ID` and `NEXT_PUBLIC_CLERK_AGENCY_PLAN_ID` env values; until then the account app honestly shows waitlist buttons. Visual screenshot capture via macOS `screencapture` failed in this environment, so do one human browser pass before public launch. Updater pubkey/secret match still needs Daniel/GitHub secret verification.
+- **Lockfile status:** no active CODEX locks. Re-read `SPRINT_LOCKS.md` before touching high-conflict files.
+
+---
+
 ## 2026-06-01 00:45 — CLAUDE (post-audit cleanup + Codex handoff)
 - **Self-audit on session 2:** Spawned a focused bug audit on commits 68c55e1 / b41a1b2 / 018b2b7 / e8585f9. Found 5 minor bugs (no ship-blockers, tsc clean throughout). Fixed in commit `2d042eb`:
   1. `humanError` regex bug — `unauthor[is]z` matched impossible strings → fixed to `unauthori[sz]`

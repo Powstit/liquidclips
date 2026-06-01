@@ -24,14 +24,38 @@ jobs:
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: aarch64-apple-darwin
 
       - name: install frontend dependencies
         run: npm install
         working-directory: ./desktop
 
+      - name: verify updater signing key matches tauri pubkey
+        working-directory: ./desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          brew install minisign
+          CANARY="$(mktemp)"
+          PUBKEY_FILE="$(mktemp)"
+          SIG_FILE="$(mktemp)"
+          printf 'liquid-clips-updater-key-check\n' > "$CANARY"
+          npx tauri signer sign "$CANARY"
+          node -e "const fs=require('fs'); const c=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8')); fs.writeFileSync(process.argv[1], Buffer.from(c.plugins.updater.pubkey, 'base64'));" "$PUBKEY_FILE"
+          base64 -d -i "$CANARY.sig" > "$SIG_FILE"
+          minisign -Vm "$CANARY" -x "$SIG_FILE" -p "$PUBKEY_FILE"
+          EXPECTED='B1E037066BFCE444'
+          ACTUAL="$(base64 -d -i "$PUBKEY_FILE" | sed -n 's/^untrusted comment: minisign public key: //p')"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "✗ updater pubkey fingerprint mismatch: expected $EXPECTED, got $ACTUAL" >&2
+            exit 1
+          fi
+          echo "✓ updater signing secret matches tauri pubkey $ACTUAL"
+
       # Sidecar binaries are .gitignored (ffmpeg 76MB, ffprobe 76MB,
-      # whisper-tiny 75MB) so CI must fetch them before tauri-action — the
+      # whisper-tiny 75MB) so CI must fetch them before the Tauri build — the
       # bundle.resources entries in tauri.conf.json hard-require these paths.
       # Falling back to brew + huggingface_hub keeps the workflow
       # self-contained (no third-party CDN auth, no LFS).
@@ -40,8 +64,8 @@ jobs:
           set -euo pipefail
           mkdir -p desktop/python-sidecar/bin
           # macos-latest runners are arm64; brew provides arm64 binaries.
-          # x86_64 mac users will need to bring their own ffmpeg until we
-          # lipo universal builds in a follow-up.
+          # Keep the release target aarch64 until we fetch/lipo universal
+          # sidecar binaries too.
           brew install ffmpeg
           cp -f "$(brew --prefix)/bin/ffmpeg"  desktop/python-sidecar/bin/ffmpeg
           cp -f "$(brew --prefix)/bin/ffprobe" desktop/python-sidecar/bin/ffprobe
@@ -79,45 +103,58 @@ jobs:
           xattr -cr desktop/assets/
           xattr -cr desktop/src-tauri/icons/
           xattr -cr desktop/src-tauri/entitlements*
+          xattr -cr desktop/src-tauri/*.xcprivacy
+          xattr -cr desktop/src-tauri/target/release/ 2>/dev/null || true
           echo "✓ xattrs stripped"
 
-      - uses: tauri-apps/tauri-action@v0
+      - name: import Developer ID certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: build signed Apple Silicon app
+        working-directory: ./desktop
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri -- build --target aarch64-apple-darwin
+
+      - name: notarize and staple .dmg
+        env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        with:
-          projectPath: ./desktop
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Liquid Clips ${{ github.ref_name }}'
-          releaseBody: |
-            **What's new**
-            See [CHANGELOG.md](./CHANGELOG.md) for full details.
-
-            **Install**
-            1. Download `Liquid.Clips_*_universal.dmg`
-            2. Open the DMG, drag **Liquid Claps** to **Applications**
-            3. Double-click from Applications — the app is signed and notarized by Apple
-          releaseDraft: true
-          prerelease: false
-          args: '--target universal-apple-darwin'
-
-      # Notarize the .dmg after tauri-action builds it
-      - name: notarize .dmg
         run: |
           set -euo pipefail
-          DMG=$(ls desktop/src-tauri/target/release/bundle/dmg/*.dmg | head -1)
+          DMG=$(find desktop/src-tauri/target -path '*/bundle/dmg/*.dmg' -type f | head -1)
           if [ -z "$DMG" ]; then
             echo "✗ No .dmg found" >&2
             exit 1
           fi
-          echo "=== Notarizing $(basename "$DMG") ==="
-          xcrun notarytool submit "$DMG" \
-            --keychain-profile "LIQUIDCLIPS_NOTARY" \
-            --wait
-          xcrun stapler staple "$DMG"
-          echo "✓ Notarized and stapled: $(basename "$DMG")"
+          desktop/scripts/notarize.sh "$DMG"
+
+      - name: verify notarized installer
+        run: |
+          set -euo pipefail
+          DMG=$(find desktop/src-tauri/target -path '*/bundle/dmg/*.dmg' -type f | head -1)
+          spctl --assess -vv --type install "$DMG"
+
+      - name: create draft GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Liquid Clips ${{ github.ref_name }}
+          draft: true
+          prerelease: false
+          body: |
+            **What's new**
+            See [CHANGELOG.md](./CHANGELOG.md) for full details.
+
+            **Install**
+            1. Download `Liquid.Clips_*_aarch64.dmg`
+            2. Open the DMG, drag **Liquid Clips** to **Applications**
+            3. Double-click from Applications — the app is signed and notarized by Apple.
+          files: |
+            desktop/src-tauri/target/**/bundle/dmg/*.dmg
+            desktop/src-tauri/target/**/bundle/macos/*.app.tar.gz
+            desktop/src-tauri/target/**/bundle/macos/*.app.tar.gz.sig

@@ -27,13 +27,13 @@ export default async function DownloadPage() {
 
       <p className="mt-6 max-w-[620px] font-sans text-[18px] leading-relaxed text-text-secondary">
         Signed, notarised installers ship at the end of the build. While you wait — sign in,
-        try the simulator at app.jnremployee.com, and reserve your founder seat.
+        try the simulator at app.jnremployee.com, and choose the plan that fits your workflow.
       </p>
 
       <p className="mt-4 max-w-[620px] rounded-2xl border border-line bg-paper-warm/50 px-4 py-3 font-sans text-[14px] leading-relaxed text-text-secondary">
-        <strong className="text-ink">What you'll need:</strong> Liquid Clips runs locally on your machine.
-        You'll add your own OpenAI key to power clip selection — hosted AI (no key needed) is in
-        private beta and rolling out soon.
+        <strong className="text-ink">What you&apos;ll need:</strong> Liquid Clips runs locally on your machine.
+        Free and Solo users can add their own OpenAI key to power clip selection. Hosted AI for
+        Pro and Agency is in private beta and rolling out soon.
       </p>
 
       {onWaitlist ? (
@@ -43,10 +43,10 @@ export default async function DownloadPage() {
             waitlist confirmed
           </div>
           <h2 className="mt-2 font-display text-[28px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">
-            You're on the list.
+            You&apos;re on the list.
           </h2>
           <p className="mt-3 max-w-[520px] font-sans text-[15px] leading-relaxed text-text-secondary">
-            We'll email <span className="font-mono text-[14px] text-ink">{email}</span> the moment installers
+            We&apos;ll email <span className="font-mono text-[14px] text-ink">{email}</span> the moment installers
             are signed and ready. No spam, just the launch note.
           </p>
         </div>
@@ -59,7 +59,7 @@ export default async function DownloadPage() {
             Tell us where to send it.
           </h2>
           <p className="mt-3 max-w-[520px] font-sans text-[15px] leading-relaxed text-text-secondary">
-            Sign up takes 20 seconds — you'll get the install link the moment it ships, plus a free tier
+            Sign up takes 20 seconds — you&apos;ll get the install link the moment it ships, plus a free tier
             you can try in the simulator today.
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
@@ -96,25 +96,22 @@ export default async function DownloadPage() {
 
       <section className="mt-16 rounded-3xl border border-fuchsia-soft bg-fuchsia-soft/30 p-8">
         <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
-          founder — 2,000 seats
+          launch plans
         </div>
         <h2 className="mt-2 max-w-[640px] font-display text-[32px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">
-          Get installer day one. Lock <em className="not-italic text-fuchsia">Autopilot forever</em> for $500.
+          Get installer day one. Start free, then upgrade when the workflow pays for itself.
         </h2>
         <p className="mt-3 max-w-[560px] font-sans text-[15px] leading-relaxed text-text-secondary">
-          Founders are first in line for every release, every sprint update, every feature drop.
-          Autopilot tier never expires — when drip-mode and project memory ship, you already have them.
-          Refund window is 30 days, no questions.
+          Free includes 100 clip exports. Solo is for one creator, Pro adds hosted AI and
+          multi-platform publishing, and Agency is built for client-heavy teams.
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <a
-            href="https://whop.com/jnremployee"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/dashboard#plans"
             className="w-full rounded-full bg-ink px-6 py-3 text-center font-sans text-[15px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] sm:w-auto"
           >
-            Reserve a Founder seat →
-          </a>
+            See plans →
+          </Link>
           {!onWaitlist && (
             <Link
               href="/sign-up"

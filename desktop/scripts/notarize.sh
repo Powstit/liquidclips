@@ -10,7 +10,9 @@
 #     --team-id "KT68NGT4LX" \
 #     --password "<app-specific-password>"
 #
-# The keychain profile "LIQUIDCLIPS_NOTARY" is referenced below.
+# The keychain profile "LIQUIDCLIPS_NOTARY" is used locally. In GitHub Actions,
+# set APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID and the script will use those
+# directly instead.
 # Generate the app-specific password at: https://appleid.apple.com
 
 set -euo pipefail
@@ -21,14 +23,20 @@ if [ -z "$DMG" ] || [ ! -f "$DMG" ]; then
   exit 1
 fi
 
-PROFILE="LIQUIDCLIPS_NOTARY"
-BUNDLE_ID="com.junior-employee.liquidclips"
+PROFILE="${NOTARY_KEYCHAIN_PROFILE:-LIQUIDCLIPS_NOTARY}"
+
+NOTARY_ARGS=()
+if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+  NOTARY_ARGS=(--apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID")
+else
+  NOTARY_ARGS=(--keychain-profile "$PROFILE")
+fi
 
 echo "=== Submitting $(basename "$DMG") to Apple notarytool ==="
 
 # Submit and capture submission ID
 SUBMISSION=$(xcrun notarytool submit "$DMG" \
-  --keychain-profile "$PROFILE" \
+  "${NOTARY_ARGS[@]}" \
   --wait \
   2>&1)
 
@@ -43,14 +51,14 @@ fi
 echo "✓ Submission ID: $ID"
 
 # Check final status
-STATUS=$(xcrun notarytool info "$ID" --keychain-profile "$PROFILE" 2>&1)
+STATUS=$(xcrun notarytool info "$ID" "${NOTARY_ARGS[@]}" 2>&1)
 if echo "$STATUS" | grep -q "status: Accepted"; then
   echo "✓ Notarization accepted"
 else
   echo "✗ Notarization failed or rejected:" >&2
   echo "$STATUS" >&2
   # Fetch logs for debugging
-  xcrun notarytool log "$ID" --keychain-profile "$PROFILE" 2>&1 || true
+  xcrun notarytool log "$ID" "${NOTARY_ARGS[@]}" 2>&1 || true
   exit 1
 fi
 
@@ -60,6 +68,6 @@ xcrun stapler staple "$DMG"
 
 # Verify
 echo "=== Verification ==="
-spctl --assess -v --type install "$DMG" || true
+spctl --assess -vv --type install "$DMG"
 
 echo "✓ $(basename "$DMG") is notarized and stapled."

@@ -293,7 +293,110 @@ def resolve_openai_key() -> str | None:
 
 
 def openai_key_available() -> bool:
-    return bool(resolve_openai_key())
+    return bool(resolve_openai_key() or _hosted_llm_maybe_available())
+
+
+def _license_jwt() -> str | None:
+    try:
+        from secrets_store import get_secret
+        return get_secret("LICENSE_JWT")
+    except Exception:
+        return None
+
+
+def _backend_url() -> str:
+    return os.environ.get("JUNIOR_BACKEND_URL", "http://localhost:8000")
+
+
+def _hosted_llm_maybe_available() -> bool:
+    jwt_token = _license_jwt()
+    if not jwt_token:
+        return False
+    try:
+        import httpx
+        with httpx.Client(timeout=2.0) as client:
+            resp = client.get(
+                f"{_backend_url()}/me",
+                headers={"Authorization": f"Bearer {jwt_token}"},
+            )
+    except Exception:
+        return False
+    if resp.status_code != 200:
+        return False
+    body = resp.json()
+    tier = str(body.get("effective_tier") or body.get("raw_tier") or "free")
+    return bool(body.get("effective_founder")) or tier in {"pro", "agency", "autopilot"}
+
+
+def _call_hosted_with_retry(model: str, user_message: str, intent: str) -> "ClipBundle":
+    """Call junior-backend's Pro+ hosted LLM proxy.
+
+    The backend holds the OpenAI key, validates the license JWT + tier, and
+    returns the same ClipBundle schema used locally. Free/Solo users still need
+    a BYO key, so backend 403s are turned into an upgrade/BYO-key hint.
+    """
+    import httpx
+
+    jwt_token = _license_jwt()
+    if not jwt_token:
+        raise RuntimeError(
+            "No OpenAI key available. Open Settings → API keys to paste one, "
+            "or sign in with a Pro/Agency license to use hosted AI."
+        )
+
+    payload = {
+        "intent": intent,
+        "system_prompt": _system_prompt_for(intent),
+        "user_message": user_message,
+        "model": model,
+        "temperature": 0.4,
+        "max_completion_tokens": _MAX_COMPLETION_TOKENS,
+    }
+    try:
+        with httpx.Client(timeout=150.0) as client:
+            resp = client.post(
+                f"{_backend_url()}/proxy/llm/clip-bundle",
+                json=payload,
+                headers={"Authorization": f"Bearer {jwt_token}"},
+            )
+    except httpx.HTTPError as e:
+        raise RuntimeError(f"Couldn't reach hosted AI: {e}") from e
+
+    if resp.status_code == 403:
+        raise RuntimeError("Hosted AI requires Pro or Agency. Add your own OpenAI key or upgrade.")
+    if resp.status_code == 402:
+        raise RuntimeError("Hosted AI monthly quota reached. Add your own OpenAI key to keep going.")
+    if resp.status_code == 503:
+        raise RuntimeError("Hosted AI is not configured yet. Add your own OpenAI key in Settings.")
+    if resp.status_code != 200:
+        raise RuntimeError(f"Hosted AI failed: HTTP {resp.status_code} — {resp.text[:240]}")
+
+    body = resp.json()
+    return ClipBundle.model_validate(body.get("bundle") or {})
+
+
+def _call_hosted_split(model: str, user_message: str) -> "ClipBundle":
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        f_clips = pool.submit(_call_hosted_with_retry, model, user_message, "clips")
+        f_yt = pool.submit(_call_hosted_with_retry, model, user_message, "youtube")
+        clips_bundle = f_clips.result()
+        yt_bundle = f_yt.result()
+
+    return ClipBundle(
+        clips=clips_bundle.clips,
+        chapters=yt_bundle.chapters,
+        description=yt_bundle.description,
+        video_title_variants=yt_bundle.video_title_variants,
+        scored_titles=yt_bundle.scored_titles,
+        tags=yt_bundle.tags,
+        hashtags=yt_bundle.hashtags,
+        pinned_video_comment=yt_bundle.pinned_video_comment,
+        end_screen_ctas=yt_bundle.end_screen_ctas,
+        tweet_thread=yt_bundle.tweet_thread,
+        linkedin_post=yt_bundle.linkedin_post,
+    )
 
 
 def pick_clips_from_transcript(
@@ -302,30 +405,30 @@ def pick_clips_from_transcript(
     intent: str = "both",
 ) -> dict[str, Any]:
     api_key = resolve_openai_key()
-    if not api_key:
-        raise RuntimeError(
-            "No OpenAI key available. Open Settings → API keys to paste one, "
-            "or set OPENAI_API_KEY in the shell that launches Junior."
-        )
-
-    from openai import OpenAI
-    # Cap each request + cap SDK-level retries. Without these the SDK silently
-    # retries with exponential backoff on a flaky connection — observed to take
-    # 6+ minutes with zero UI feedback. timeout=45 + max_retries=2 caps any
-    # single clip-pick at ~135s worst case (3 attempts × 45s); bumped from
-    # max_retries=1 so transient 429s don't surface as user-visible failures.
-    client = OpenAI(api_key=api_key, timeout=45.0, max_retries=2)
     model = os.environ.get("JUNIOR_LLM_MODEL", "gpt-4o-mini")
     user_message = _build_user_message(transcript, brief)
 
-    # "Both" intent produces clips + YouTube extras + scored titles + chapters +
-    # tweet thread + LinkedIn post in one structured response. For long videos
-    # that can blow gpt-4o-mini's 16384 completion-token cap. Split into two
-    # parallel calls so each fits comfortably; merge the bundles after.
-    if intent == "both":
-        bundle = _call_split(client, model, user_message)
+    if api_key:
+        from openai import OpenAI
+        # Cap each request + cap SDK-level retries. Without these the SDK silently
+        # retries with exponential backoff on a flaky connection — observed to take
+        # 6+ minutes with zero UI feedback. timeout=45 + max_retries=2 caps any
+        # single clip-pick at ~135s worst case (3 attempts × 45s); bumped from
+        # max_retries=1 so transient 429s don't surface as user-visible failures.
+        client = OpenAI(api_key=api_key, timeout=45.0, max_retries=2)
+        # "Both" intent produces clips + YouTube extras + scored titles + chapters +
+        # tweet thread + LinkedIn post in one structured response. For long videos
+        # that can blow gpt-4o-mini's 16384 completion-token cap. Split into two
+        # parallel calls so each fits comfortably; merge the bundles after.
+        if intent == "both":
+            bundle = _call_split(client, model, user_message)
+        else:
+            bundle = _call_with_retry(client, model, user_message, intent)
     else:
-        bundle = _call_with_retry(client, model, user_message, intent)
+        if intent == "both":
+            bundle = _call_hosted_split(model, user_message)
+        else:
+            bundle = _call_hosted_with_retry(model, user_message, intent)
 
     # Normalise each clip to the 30-75s window. The LLM consistently picks
     # short clips even when the prompt forbids it, so we auto-extend instead
