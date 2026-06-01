@@ -53,12 +53,14 @@ class User(Base):
     # ip_address captured at signup; same IP creating a second Free account is
     # gated by clips_created summed across all users on that IP. active_at
     # ticks on each clip export and feeds the Founder-flash-sale unlock at
-    # active_users >= 2,000. extra_accounts_purchased adds 5 per prepaid pack
-    # bought ($40 each) on top of the tier's base account limit.
+    # active_users >= 2,000. extra_accounts_purchased adds 1 social account
+    # per Account Pack unit ($6/mo Clerk add-on) on top of the tier's base.
     ip_address: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     clips_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     extra_accounts_purchased: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    llm_usage_month: Mapped[str | None] = mapped_column(String, nullable=True)
+    llm_tokens_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)

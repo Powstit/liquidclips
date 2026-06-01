@@ -79,7 +79,7 @@ Pending: `/leaderboard/earnings` (sprint #14a), `/proxy/llm` for hosted LLM (spr
 
 Defined in `app/features.py FEATURES_BY_TIER`. Each tier has `clips_per_ip`, `accounts_included`, `watermark`, `sub_accounts`, `white_label`, plus the existing feature flags (publish_now, schedule_one, drip_scheduling, hosted_transcribe, hosted_llm, etc).
 
-`account_limit(tier, extra_packs, founder)` helper returns the social-account ceiling. Prepaid account packs add 5 per pack.
+`account_limit(tier, extra_packs, founder)` helper returns the social-account ceiling. Each Account Pack unit ($6/mo Clerk add-on) adds 1 extra account (was 5 per $40 pack pre-2026-06-01 — switched to per-account economics when the per-pack price proved unprofitable).
 
 ## Ayrshare integration
 

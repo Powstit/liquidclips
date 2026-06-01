@@ -48,8 +48,9 @@ class MeResponse(BaseModel):
     remaining_exports: int | None
 
     # P2 matrix v2 — social-account ceiling for this user. tier base +
-    # 5 per prepaid account pack ($40 each). Founders / admins are uncapped
-    # (returned as 9999 sentinel so the desktop doesn't have to special-case).
+    # 1 per Account Pack unit ($6/mo each via Clerk). Founders / admins are
+    # uncapped (returned as 9999 sentinel so the desktop doesn't have to
+    # special-case).
     account_limit: int
     extra_accounts_purchased: int
     clips_created: int
