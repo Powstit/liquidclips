@@ -81,6 +81,12 @@ async def lifespan(_app: FastAPI):
         # Legacy tier rename — "channel" was the 0.4.x name for what is now "pro"
         # in the v2 matrix. Idempotent because rerun affects zero rows after first pass.
         "UPDATE users SET tier = 'pro' WHERE tier = 'channel'",
+        # Backfill stripe_connect_* NULLs that crept in pre-migration. The
+        # NOT NULL DEFAULT 'none' only applies to NEW rows; rows created
+        # before the ALTER ran can have NULL. Pydantic then 500s on /status.
+        "UPDATE users SET stripe_connect_status = 'none' WHERE stripe_connect_status IS NULL",
+        "UPDATE users SET stripe_connect_payouts_enabled = false WHERE stripe_connect_payouts_enabled IS NULL",
+        "UPDATE users SET stripe_connect_charges_enabled = false WHERE stripe_connect_charges_enabled IS NULL",
         # P1 — Ayrshare replaces Postiz. social_connections lives alongside the
         # legacy postiz_connections table (which becomes inert). One row per
         # Junior user; profile_key is opaque to us, returned by Ayrshare on

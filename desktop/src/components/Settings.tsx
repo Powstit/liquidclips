@@ -8,7 +8,7 @@ import { sidecar, humanError, type HardwareInfo, type SecretName } from "../lib/
 import pkg from "../../package.json";
 const APP_VERSION: string = pkg.version;
 const SUPPORT_EMAIL = "support@jnremployee.com";
-import { syncStatus, meStatus, type SyncStatus, type MeStatus } from "../lib/backend";
+import { syncStatus, meStatus, meAffiliate, type SyncStatus, type MeStatus } from "../lib/backend";
 import { applyUpdate, checkForUpdate, readLastUpdateCheck, type LastUpdateCheck, type UpdateState } from "../lib/updater";
 import AyrshareConnectionPanel from "./AyrshareConnectionPanel";
 import { getTelemetryConsent, setTelemetryConsent } from "../lib/telemetry";
@@ -144,6 +144,8 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
           </Section>
 
           <ConnectionsSection />
+
+          <AffiliatePayoutsSection />
 
 
           <Section eyebrow="output folder" title="Where Liquid Clips writes everything.">
@@ -400,6 +402,134 @@ function ConnectionsSection() {
       <AyrshareConnectionPanel />
 
       <WhopConnectionRow />
+    </Section>
+  );
+}
+
+
+// Affiliate payouts explainer (Daniel feedback 2026-06-01) — crystal clear
+// "how you get paid" by RAIL. Whop users see Whop's process. Stripe Connect
+// users see Stripe's bank-capture flow + their current status. Not-yet-signed-
+// in users see a generic "how it works" explainer.
+function AffiliatePayoutsSection() {
+  type Aff = Awaited<ReturnType<typeof meAffiliate>>;
+  const [data, setData] = useState<Aff | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void meAffiliate()
+      .then((d) => { if (!cancelled) { setData(d); setLoading(false); } })
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <Section eyebrow="affiliate payouts" title="How you get paid.">
+        <p className="font-mono text-[11px] text-text-tertiary">Reading your account<span className="blink">_</span></p>
+      </Section>
+    );
+  }
+
+  // Not signed in / no JWT → generic explainer
+  if (!data) {
+    return (
+      <Section eyebrow="affiliate payouts" title="How you get paid.">
+        <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+          Liquid Clips pays affiliates two ways. If you signed up via Whop, payouts run through Whop on their schedule. If you signed up via Clerk, you connect a bank account through Stripe and payouts arrive on Stripe's schedule. Sign in to see your specific setup.
+        </p>
+      </Section>
+    );
+  }
+
+  const aff = data.affiliate;
+  const customer = data.customer;
+  const isWhop = aff.payout_provider === "whop";
+  const isStripe = aff.payout_provider === "stripe_connect";
+  const earned = aff.total_referral_earnings_usd
+    ? `$${Number(aff.total_referral_earnings_usd).toFixed(2)}`
+    : "$0";
+
+  if (isWhop) {
+    return (
+      <Section eyebrow="affiliate payouts · whop rail" title="How you get paid through Whop.">
+        <div className="rounded-2xl border border-fuchsia/40 bg-fuchsia-soft/30 p-4">
+          <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-fuchsia-deep">
+            you're on the whop rail
+          </p>
+          <p className="mt-2 font-sans text-[14px] leading-relaxed text-ink">
+            Whop tracks every paid referral on your link and pays you <strong>50% recurring</strong> on every customer you refer to Liquid Clips, for the lifetime of their subscription.
+          </p>
+          <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
+            Lifetime earned: <span className="font-medium text-ink">{earned}</span>. Whop holds your KYC + bank details and runs payouts on their schedule (typically monthly, after a hold period for chargebacks). You don't enter bank details with Liquid Clips — Whop owns that surface.
+          </p>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <a
+            onClick={() => void openExternal(aff.partner_dashboard_url)}
+            className="cursor-pointer rounded-full bg-ink px-4 py-2 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia"
+          >
+            Open Whop partner dashboard →
+          </a>
+          <a
+            onClick={() => void openExternal("https://whop.com/dashboard/payouts")}
+            className="cursor-pointer rounded-full border border-line bg-paper px-4 py-2 font-sans text-[12px] font-medium text-ink hover:border-fuchsia"
+          >
+            Manage card + payout settings →
+          </a>
+        </div>
+        <p className="mt-2 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+          your referral link · {aff.referral_url ?? "open dashboard to copy"}
+        </p>
+      </Section>
+    );
+  }
+
+  if (isStripe) {
+    const needsBank = aff.payout_status === "setup_required";
+    return (
+      <Section eyebrow="affiliate payouts · stripe connect" title="How you get paid through Stripe.">
+        <div className={`rounded-2xl border p-4 ${needsBank ? "border-fuchsia bg-fuchsia-soft/40" : "border-line bg-paper-warm/40"}`}>
+          <p className={`font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] ${needsBank ? "text-fuchsia-deep" : "text-text-tertiary"}`}>
+            you're on the stripe connect rail
+          </p>
+          <p className="mt-2 font-sans text-[14px] leading-relaxed text-ink">
+            Liquid Clips pays you <strong>50% recurring</strong> on every customer you refer, the lifetime of their subscription. Bank details + KYC run through Stripe Connect Express — Stripe holds the credentials, not us.
+          </p>
+          {needsBank ? (
+            <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
+              <strong className="text-fuchsia-deep">Action needed:</strong> set up your bank account so commissions have somewhere to land. Stripe handles the entire flow on their hosted onboarding (name, address, SSN/ID where required, account number, sort code). Takes ~3 minutes.
+            </p>
+          ) : (
+            <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
+              Bank setup is complete. Lifetime earned: <span className="font-medium text-ink">{earned}</span>. Stripe runs payouts on their standard schedule (every 2-7 days depending on your country, after a 7-day rolling hold for new accounts).
+            </p>
+          )}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <a
+            onClick={() => void openExternal(aff.payout_setup_url || "https://account.jnremployee.com/dashboard#payouts")}
+            className={`cursor-pointer rounded-full px-4 py-2 font-sans text-[12px] font-medium ${needsBank ? "bg-fuchsia text-paper hover:bg-fuchsia-bright" : "border border-line bg-paper text-ink hover:border-fuchsia"}`}
+          >
+            {needsBank ? "Set up Stripe payouts →" : "Manage Stripe payouts →"}
+          </a>
+        </div>
+        {customer.referrer_affiliate_id && (
+          <p className="mt-2 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+            referred by · {customer.referrer_affiliate_id}
+          </p>
+        )}
+      </Section>
+    );
+  }
+
+  // Fallback — shouldn't normally fire
+  return (
+    <Section eyebrow="affiliate payouts" title="How you get paid.">
+      <p className="font-sans text-[13px] text-text-secondary">
+        We couldn't determine your payout rail. Try signing out and back in, or open Settings → Connections to set up Whop / Stripe.
+      </p>
     </Section>
   );
 }

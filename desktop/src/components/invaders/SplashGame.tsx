@@ -30,6 +30,11 @@ export function SplashGame({
   const [highScore, setHighScoreState] = useState(0);
   const [newBest, setNewBest] = useState(false);
   const [minHoldDone, setMinHoldDone] = useState(false);
+  // Daniel's call (2026-06-01): game starts PAUSED — invaders sit still,
+  // ship sits still, "Press SPACE to play" overlay shows. First spacebar
+  // press starts the game (Chrome dino pattern). Subsequent spacebar
+  // presses act as the fire input as usual.
+  const [started, setStarted] = useState(false);
   const inputRef = useRef<Input>({ left: false, right: false, fire: false });
   const firePrevRef = useRef(false);
   const savedRef = useRef(false);
@@ -53,6 +58,12 @@ export function SplashGame({
         inputRef.current.right = true;
       } else if (e.key === " " || e.key === "Spacebar") {
         e.preventDefault();
+        // First spacebar starts the game (Chrome dino pattern). After that,
+        // spacebar fires as normal.
+        if (!started) {
+          setStarted(true);
+          return;
+        }
         if (!firePrevRef.current) {
           inputRef.current.fire = true;
           firePrevRef.current = true;
@@ -77,10 +88,13 @@ export function SplashGame({
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [ready, minHoldDone, onContinue]);
+  }, [ready, minHoldDone, onContinue, started]);
 
   const onStep = useCallback(
     (dtMs: number) => {
+      // Paused state — game frozen until user presses SPACE for the first
+      // time. Render the initial scene unchanged.
+      if (!started) return;
       setState((prev) => {
         if (!prev || prev.status !== "playing") return prev;
         const input = { ...inputRef.current };
@@ -101,7 +115,7 @@ export function SplashGame({
         return next;
       });
     },
-    [highScore, newBest],
+    [highScore, newBest, started],
   );
 
   function handleReplay() {
@@ -135,8 +149,27 @@ export function SplashGame({
         )}
       </div>
 
-      <div className="relative rounded-xl border border-fuchsia/40 bg-[#0B0B10] p-2 shadow-[var(--glow-md)]">
+      <div className="relative rounded-xl p-2">
         <InvadersCanvas state={state} onStep={onStep} width={480} height={320} />
+
+        {/* Paused-state overlay — Chrome dinosaur pattern. Game waits here
+            until the user presses SPACE for the first time. The animate-pulse
+            on the keycap makes the prompt feel alive without being noisy. */}
+        {!started && state.status === "playing" && (
+          <div className="absolute inset-2 flex flex-col items-center justify-center gap-3 rounded-xl">
+            <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-paper/70">
+              ready
+            </span>
+            <div className="flex items-center gap-2 font-mono text-[12px] uppercase tracking-[var(--tracking-eyebrow)] text-paper">
+              press
+              <kbd className="inline-grid h-7 min-w-[64px] place-items-center rounded-md border border-paper/40 bg-paper/10 px-3 font-sans text-[11px] font-medium text-paper animate-pulse">
+                space
+              </kbd>
+              to play
+            </div>
+          </div>
+        )}
+
         {state.status === "game-over" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-xl bg-paper/85 backdrop-blur-sm">
             <span className="font-mono text-[12px] uppercase tracking-[var(--tracking-eyebrow)] text-ink">
