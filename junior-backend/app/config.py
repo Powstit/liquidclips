@@ -59,7 +59,13 @@ class Settings(BaseSettings):
     account_site_url: str = "https://account.jnremployee.com"
     app_download_url: str = "https://liquidclips.app/download"
     whop_manage_url: str = "https://whop.com/jnremployee"
-    whop_partner_dashboard_url: str = "https://partner.liquidclips.app"
+    # partner.liquidclips.app was a planned subdomain that never had a Vercel
+    # deployment, so clicks from AffiliateHero / PayoutsTab landed on a
+    # Vercel DEPLOYMENT_NOT_FOUND. Pointing at the working jnremployee.com
+    # partner redirect chain (307 → /affiliates) until partner.liquidclips.app
+    # ships a real deployment. Override per-env on Railway via
+    # WHOP_PARTNER_DASHBOARD_URL when ready.
+    whop_partner_dashboard_url: str = "https://partner.jnremployee.com"
     whop_payouts_url: str = "https://whop.com/dashboard/payouts"
     stripe_connect_onboarding_url: str = "https://account.jnremployee.com/dashboard#payouts"
 
