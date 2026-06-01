@@ -177,22 +177,13 @@ export type PublishedTarget = {
   postiz_post_id: string;
 };
 
+// Platform-name union used as a label-key throughout the publish UI.
+// The legacy per-platform OAuth model (PlatformConnection / ConnectionsList /
+// backend.connections.{list,startConnect,disconnect}) was removed when
+// PublishModal moved to Ayrshare in sprint #3 — Ayrshare's /social endpoints
+// returning { platforms: string[] } are the new source of truth (see
+// socialGetConnection / SocialConnectionState below).
 export type ConnectionPlatform = "youtube" | "tiktok" | "instagram" | "x";
-
-export type PlatformConnection = {
-  integration_id: string;
-  platform: ConnectionPlatform;
-  label: string;
-  account_handle: string;
-  disabled: boolean;
-};
-
-export type ConnectionsList = {
-  connections: PlatformConnection[];
-  connection_count: number;
-  max_connections: number | null;
-  can_connect_more: boolean;
-};
 
 // --- Reward Clips + Tracking Links (mirrors junior-backend/app/routes/reward_clips.py)
 export type TrackingLinkBlock = {
@@ -243,32 +234,6 @@ export type RewardClipPatchInput = {
 
 export const backend = {
   health: () => fetch(`${BACKEND_URL}/healthcheck`).then((r) => r.json()),
-
-  connections: {
-    list: async (jwt: string): Promise<ConnectionsList> => {
-      if (isWebPreview()) return previewConnectionsList();
-      const res = await authedFetch("/connections", { jwt });
-      if (!res.ok) throw new Error(`connections list failed: HTTP ${res.status}`);
-      return (await res.json()) as ConnectionsList;
-    },
-    startConnect: async (jwt: string, platform: ConnectionPlatform): Promise<{ redirect_url: string }> => {
-      if (isWebPreview()) return previewStartConnect(platform);
-      const res = await authedFetch(`/connections/${platform}/connect`, { method: "POST", jwt });
-      if (res.status === 402) {
-        const body = await res.json().catch(() => ({}));
-        throw new QuotaExceededError(body.detail || "Upgrade to add another connection.");
-      }
-      if (!res.ok) throw new Error(`connect failed: HTTP ${res.status}`);
-      return res.json();
-    },
-    disconnect: async (jwt: string, integrationId: string) => {
-      if (isWebPreview()) {
-        previewDisconnectPlatform(integrationId);
-        return;
-      }
-      await authedFetch(`/connections/${integrationId}`, { method: "DELETE", jwt });
-    },
-  },
 
   publishNow: async (
     jwt: string,
@@ -783,48 +748,6 @@ export async function socialDisconnectPlatform(platform: string): Promise<Social
   const res = await authedFetch(`/social/disconnect/${encodeURIComponent(platform)}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`disconnect failed: HTTP ${res.status}`);
   return (await res.json()) as SocialConnectionState;
-}
-
-// ── Web preview: platform connections ───────────────────────────────────
-
-const PREVIEW_CONNECTIONS_KEY = "junior:preview-connections:v1";
-
-function previewConnectionsList(): ConnectionsList {
-  const stored = previewLoad<PlatformConnection[]>(PREVIEW_CONNECTIONS_KEY, () => []);
-  // Free preview shows up to 4 platforms once connected; the demo tier in
-  // previewSyncStatus() is Solo (2 cap) — readable across both.
-  const status = previewSyncStatus();
-  const max = status.features.platform_connections_max;
-  return {
-    connections: stored,
-    connection_count: stored.length,
-    max_connections: max,
-    can_connect_more: max == null || stored.length < max,
-  };
-}
-
-async function previewStartConnect(platform: ConnectionPlatform): Promise<{ redirect_url: string }> {
-  // Simulate the time the real OAuth handshake takes, then optimistically
-  // add the connection to the local store so the picker updates as if the
-  // user returned from a real consent flow.
-  await new Promise((r) => setTimeout(r, 1500));
-  const stored = previewLoad<PlatformConnection[]>(PREVIEW_CONNECTIONS_KEY, () => []);
-  if (!stored.some((c) => c.platform === platform)) {
-    stored.push({
-      integration_id: `int_preview_${platform}_${Math.random().toString(36).slice(2, 8)}`,
-      platform,
-      label: ({ youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", x: "X" })[platform],
-      account_handle: "@youraccount",
-      disabled: false,
-    });
-    previewSave(PREVIEW_CONNECTIONS_KEY, stored);
-  }
-  return { redirect_url: "preview://connected" };
-}
-
-function previewDisconnectPlatform(integrationId: string) {
-  const stored = previewLoad<PlatformConnection[]>(PREVIEW_CONNECTIONS_KEY, () => []);
-  previewSave(PREVIEW_CONNECTIONS_KEY, stored.filter((c) => c.integration_id !== integrationId));
 }
 
 // ── Web preview demo data ───────────────────────────────────────────────
