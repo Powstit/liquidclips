@@ -257,3 +257,101 @@ Same protocol as before. Don't break the chain.
 ---
 
 *Updated 2026-06-01 02:30 by Claude. Sprint at 21/32 done (66%). Don't push without pulling first.*
+
+---
+
+# 🔄 UPDATE 2026-06-01 06:00 — Codex morning batch (after Claude's overnight Clerk work)
+
+Read this section BEFORE you continue. State has moved.
+
+## What changed overnight
+
+1. **Audit blocker #1 (Pro/Agency plan IDs) is CLOSED.** Daniel + Claude created the live Clerk plans in the dashboard last night. PricingCards.tsx now has the real IDs as defaults (commit `8ab031e`), so `NEXT_PUBLIC_CLERK_PRO_PLAN_ID` / `..._AGENCY_PLAN_ID` env vars are now OPTIONAL — they only matter if Vercel wants to override (e.g., for a test-mode plan). **Do not redo this work.**
+   - Live IDs (pinned in PricingCards.tsx): Solo `cplan_3E4VBeiWtZP0CJsvPwrIz91uDFk` · Pro `cplan_3EV9Jjn8qLG130iSSRpAUOmqAfm` ($79.99) · Agency `cplan_3E4VBfKWkQlIuYRQG0YE5LfJPjx` ($149) · Account Pack `cplan_3EV9znSsguzmwoQoEr5kXpumkfM` ($6/mo per +5 accts)
+   - Clerk Backend Billing API is **read-only** (`Allow: GET` only) — confirmed via raw API probe. Any future plan edits must happen in the dashboard.
+   - Growth ($99.99) plan **still publicly visible** in Clerk dashboard — Daniel will hide it manually (one click). Backend aliases handle existing customers.
+
+## What you must do (in this order, with guardrails)
+
+### 🔴 1. Verify the Tauri updater pubkey/secret pair (~30 min) — AUDIT BLOCKER #2
+
+**Why this matters:** if `tauri.conf.json:74` `plugins.updater.pubkey` doesn't correspond to the private key in GH secret `TAURI_SIGNING_PRIVATE_KEY`, every installed user's auto-update will reject the signature and the app silently stops updating. After first ship there's no remote recovery — you'd need to push a new build via a different channel and beg users to manually download.
+
+**Approach** (pick A or B):
+
+- **Option A — Verify the existing pair without changes** (preferred if pubkey/secret already match):
+  - Trigger a CI workflow_dispatch on `release.yml` with a dry-run flag (or push a `v0.5.0-rc1` tag to actually exercise sign + verify)
+  - The Tauri signer logs the public-key fingerprint when it signs. Compare against the `pubkey` literal in `tauri.conf.json`.
+  - If they match, mark this blocker closed in your handoff.
+- **Option B — Regenerate fresh keypair, atomic commit** (preferred if any doubt or first-ship anyway):
+  - Locally: `cargo tauri signer generate -w ~/.junior-updater/junior-updater.key` (or wherever the existing key lives)
+  - Take the printed public key → paste into `tauri.conf.json` `plugins.updater.pubkey` (the existing base64 blob)
+  - Take the private key file → base64-encode → paste into GH secret `TAURI_SIGNING_PRIVATE_KEY` (overwrite)
+  - Commit BOTH in the same PR — one without the other = silent breakage
+  - Confirm with a workflow_dispatch on `release.yml` that signs a test bundle
+
+**Guardrails:**
+- ⚠️ **DO NOT** change the pubkey in `tauri.conf.json` without ALSO updating the GH secret in the same atomic step. Single-side change = every future installer's update path is dead until you push a new build via a different distribution channel.
+- ⚠️ **DO NOT** keep a copy of the private key in the repo — only in the GH secret + `~/.junior-updater/junior-updater.key` (already in .gitignore).
+- ⚠️ **DO NOT** mint a new keypair if the old one still works — once a user has installed 0.4.43 (Daniel's local Mac) their app has the OLD pubkey embedded. A pubkey swap means his installed app rejects the next update. He'd need to manually download the new DMG. **Confirm with Daniel before regenerating.**
+
+### 🔴 2. Add `NSPrivacyAccessedAPITypes` to PrivacyInfo.xcprivacy (~30 min) — AUDIT BLOCKER #3
+
+Already detailed earlier in this doc (audit section). Add:
+- `NSPrivacyAccessedAPICategoryUserDefaults` reason `CA92.1` (WKWebView uses it)
+- `NSPrivacyAccessedAPICategoryFileTimestamp` reason `C617.1` (Python sidecar reads file mtime for project tracking)
+
+**Guardrails:**
+- ⚠️ **DO NOT invent reason codes.** Apple publishes the EXACT allowed strings at developer.apple.com/documentation/bundleresources/describing_use_of_required_reason_api. Wrong reason = notarize accepts, App Store review rejects (if you ever submit there).
+- ⚠️ **DO NOT add categories the app doesn't actually use.** Each declaration is a privacy promise; over-declaring is worse than under-declaring because it makes diff'ing future audits hard.
+- ⚠️ **Run `plutil -lint PrivacyInfo.xcprivacy`** after every edit. A broken plist silently disables the manifest on first install.
+
+### 🟠 3. Marketing site DMG URL — `NEXT_PUBLIC_DOWNLOAD_DMG_URL` (~15 min)
+
+Don't wait for the first signed release. Use GitHub's auto-maintained `releases/latest` redirect:
+
+```
+https://github.com/Powstit/Jnr-employee/releases/latest/download/Liquid.Clips_universal.dmg
+```
+
+GitHub redirects `releases/latest/download/<filename>` to whatever the latest published release attaches. When v0.5.0 ships, this URL silently starts working — no env var swap needed.
+
+**Guardrails:**
+- ⚠️ **DO NOT hardcode a specific version URL** (`releases/download/v0.5.0/...`). Every tag bump breaks it.
+- ⚠️ **DO NOT hide the Download button** behind a feature flag — better to ship the link pointing at a 404 (so visitors who try too early see a clear error) than to make Daniel coordinate a Vercel redeploy alongside every release. The 404 is acceptable for 0 days because no public traffic exists yet.
+- ⚠️ Filename in the URL must match what `tauri-bundler` actually produces. Check `release.yml`'s artifact naming. If Tauri produces `Liquid Clips_0.5.0_universal.dmg` (with a space + version), URL-encode: `Liquid%20Clips_universal.dmg` won't auto-update across versions. Easiest: rename the asset in `release.yml` to `Liquid.Clips_universal.dmg` so the slug stays stable across releases.
+
+### 🟡 4. Visual QA pass — NEEDS DANIEL, NOT YOU
+
+Codex, you can't do this — your previous `screencapture` failed in the runtime sandbox. Daniel does it manually. Your job: write Daniel a tight checklist of what to verify:
+
+In `~/Desktop/jnr/SPRINT_HANDOFF.md` append a section titled "Marketing site visual QA — Daniel, 5 min". Include:
+- `cd ~/Desktop/jnr/liquidclips-marketing && npm run dev` → open localhost
+- Test routes: `/`, `/privacy`, `/terms`, plus the Download button click
+- Test screens: 1920×1080 (desktop), 768×1024 (iPad), 390×844 (iPhone 15) — Chrome DevTools device emulation works
+- Confirm: no broken images, hover states fire, Download button has the right URL, Open Graph preview renders if you paste the localhost URL into Slack
+- Lighthouse score: Performance >= 90, Accessibility >= 95. Reject the release if either falls short.
+
+---
+
+## After these 4, your Tier 1 queue continues
+
+Per the priority list above (scroll up):
+- **#4** mlx-whisper (6-8 hr) — biggest competitive win left
+- **#6** Onboarding polish (6-10 hr)
+- **#8** Hosted LLM proxy (4-6 hr)
+- **#19** Help center / docs (4-6 hr)
+
+## Reminder of the FILE OWNERSHIP for your batch
+
+- `tauri.conf.json`, `release.yml`, `notarize.sh`, `entitlements*.plist`, `PrivacyInfo.xcprivacy` — yours
+- `python-sidecar/sidecar.py` `_do_transcribe` (for mlx) — yours, BUT take the lock in SPRINT_LOCKS.md first; Claude touches the same file
+- `liquidclips-marketing/` — yours
+- `FirstRun.tsx` + `onboarding/*` — yours
+- `proxy_llm.py` (new backend route) — yours
+
+Stay out of: `lib/sidecar.ts`, `lib/backend.ts`, `App.tsx`, `Settings.tsx`, `ClipPreview.tsx`, `python-sidecar/stages.py`, `python-sidecar/captions.py`, `python-sidecar/silence.py`, `lib/achievements.ts`, `BadgeShelf.tsx`, `TierAvatar.tsx`, `AchievementToast.tsx`, `earn/AffiliateHero.tsx` — Claude just shipped substantial work in those.
+
+---
+
+*Updated 2026-06-01 06:00 by Claude. Sprint at 22/32 done. Don't push without pulling first.*
