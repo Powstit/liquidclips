@@ -10,6 +10,7 @@ the rest of the codebase looks for:
   - OPENAI_API_KEY      (BYOK Free / Solo tiers)
   - ANTHROPIC_API_KEY   (BYOK Solo tier alternative)
   - LICENSE_JWT  (set by the desktop activation deep link)
+  - LIQUIDCLIPS_ONBOARDED (first-run walkthrough completion flag)
   - JUNIOR_WHOP_TOKEN   (Whop OAuth access token from the PKCE flow in
                          whop_client.oauth_complete — reads bounties +
                          submissions. NOT a hand-pasted API key; we no longer
@@ -30,6 +31,7 @@ KNOWN_KEYS = (
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
     "LICENSE_JWT",
+    "LIQUIDCLIPS_ONBOARDED",
     "JUNIOR_WHOP_TOKEN",
 )
 

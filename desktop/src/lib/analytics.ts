@@ -32,6 +32,7 @@ export type DesktopAnalyticsEvent =
   | "lift_canceled"
   // Clip pipeline flow
   | "pipeline_started"
+  | "pipeline_transcribe_completed"
   | "pipeline_completed"
   | "pipeline_failed"
   | "clip_exported"
@@ -43,6 +44,10 @@ export type DesktopAnalyticsEvent =
   | "ayrshare_profile_connected"
   | "ayrshare_profile_disconnected"
   | "openai_key_saved"
+  // First-run onboarding
+  | "onboarding_card_1_shown"
+  | "onboarding_card_4_completed"
+  | "onboarding_skipped_at_card_N"
   // Caption styles (sprint #2 lands these properly)
   | "caption_style_changed"
   | "caption_style_default_set"

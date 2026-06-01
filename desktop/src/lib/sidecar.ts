@@ -270,6 +270,7 @@ export type SecretName =
   | "OPENAI_API_KEY"
   | "ANTHROPIC_API_KEY"
   | "LICENSE_JWT"
+  | "LIQUIDCLIPS_ONBOARDED"
   | "JUNIOR_WHOP_TOKEN";
 
 export type HardwareInfo = {

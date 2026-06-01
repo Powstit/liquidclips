@@ -286,7 +286,7 @@ def method_secret_set(params: dict[str, Any]) -> dict[str, Any]:
     name = params.get("name")
     value = params.get("value")
     if not isinstance(name, str) or name not in (
-        "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LICENSE_JWT", "JUNIOR_WHOP_TOKEN",
+        "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LICENSE_JWT", "LIQUIDCLIPS_ONBOARDED", "JUNIOR_WHOP_TOKEN",
     ):
         raise ValueError(f"unknown or unsupported secret name: {name}")
     if not isinstance(value, str):
