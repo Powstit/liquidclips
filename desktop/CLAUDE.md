@@ -18,8 +18,8 @@ React 18 + Vite + Tailwind 4   ⇄   Tauri 2 (Rust)   ⇄   Python sidecar (stdi
 ## Current version & shipping state
 
 - **v0.4.43** installed locally (2026-05-31). First properly Apple-signed build (`Developer ID Application: KT68NGT4LX → Apple Root CA`).
-- **Notarization NOT yet done** — Gatekeeper still warns on first run. Sprint item #1.
-- **CI not producing artifacts** — `.github/workflows/release.yml` exists but xattr issue blocks. Sprint items #1 + #9.
+- **Release CI is unblocked** — `.github/workflows/release.yml` builds signed artifacts, verifies the updater signing key, notarizes + staples the DMG, and opens a draft GitHub release.
+- **Auto-updater still needs one live rehearsal** — run the v0.4.99 test below from Daniel's chosen clean release commit before cutting v0.5.0.
 
 ## Major surfaces
 
@@ -56,12 +56,36 @@ React 18 + Vite + Tailwind 4   ⇄   Tauri 2 (Rust)   ⇄   Python sidecar (stdi
 ```bash
 npm install                              # one-time
 npm run tauri dev                        # hot-reload dev
-npm run tauri build -- --bundles app     # release build (then xattr -cr + manual sign — see scripts/local-install.sh)
+npm run tauri build -- --bundles app     # release build; CI handles sign/notarize/staple for tagged releases
 bash scripts/local-install.sh            # atomic quit + replace + relaunch in /Applications
 bash scripts/bump_patch.sh               # bump patch version in package.json + tauri.conf.json
 ```
 
-Apple cert is in login keychain (`Developer ID Application: daniel diyepriye dokubo (KT68NGT4LX)`). `tauri.conf.json:signingIdentity` already set; future builds will use it automatically once the xattr-on-build root cause is fixed (sprint #9).
+Apple cert is in login keychain (`Developer ID Application: daniel diyepriye dokubo (KT68NGT4LX)`) for local builds. CI signs with the imported Developer ID cert, strips resource forks before signing, notarizes the DMG, staples it, and uploads the updater artifacts to a draft GitHub release.
+
+### Auto-updater live rehearsal
+
+Run this once from a clean release candidate commit before v0.5.0. Do not reuse the tag after publishing; delete and recreate only while the draft release remains private.
+
+```bash
+git status --short
+git tag v0.4.99
+git push origin v0.4.99
+```
+
+Then in GitHub Actions:
+
+1. Wait for `.github/workflows/release.yml` to finish green.
+2. Open the draft `v0.4.99` release and confirm these assets exist:
+   - `.dmg`
+   - `.dmg.sig`
+   - `.app.tar.gz`
+   - `.app.tar.gz.sig`
+   - `latest.json`
+3. Publish the draft release.
+4. Install the previous public app build, launch it, and watch for the updater prompt.
+5. Accept the update and confirm `/Applications/Liquid Clips.app` relaunches without Gatekeeper warnings.
+6. Archive the result in `SPRINT_HANDOFF.md`, then delete the rehearsal release/tag before the real v0.5.0 cut if Daniel does not want `v0.4.99` visible.
 
 ## Toolchain
 

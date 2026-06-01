@@ -46,6 +46,7 @@ export function Footer() {
           </div>
           <div>
             <h4>Trust</h4>
+            <Link href="/help">Help center</Link>
             <Link href="/privacy">Privacy</Link>
             <Link href="/terms">Terms</Link>
             <a href={`mailto:${supportEmail}`}>Support</a>

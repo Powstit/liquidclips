@@ -14,8 +14,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable
 
-from project import CLIPS_HOME
-
 SegmentCallback = Callable[[dict[str, Any], float], None]
 
 

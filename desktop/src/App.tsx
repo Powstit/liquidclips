@@ -15,6 +15,7 @@ import { NotificationSheet } from "./components/NotificationSheet";
 import { UploadTab } from "./components/upload/UploadTab";
 import { PayoutsTab } from "./components/payouts/PayoutsTab";
 import { InvadersOverlay } from "./components/invaders/InvadersOverlay";
+import { OnboardingOverlay } from "./components/onboarding/OnboardingOverlay";
 import { closeInvaders } from "./lib/invaders/store";
 import { Settings } from "./components/Settings";
 import { AchievementToast } from "./components/AchievementToast";
@@ -36,6 +37,8 @@ import { extractSourceUrls } from "./lib/sourceParser";
 import { track as trackEvent, trackFirstBountyWorkspace } from "./lib/analytics";
 import { FailureCard } from "./components/FailureCard";
 import { SidecarError, type WhopBounty } from "./lib/sidecar";
+
+const SAMPLE_ONBOARDING_URL = "https://www.youtube.com/watch?v=jNQXAC9IVRw";
 
 type View =
   | { kind: "first-run" }
@@ -93,6 +96,7 @@ export default function App() {
   // the export gate. Updated from /sync on boot and from each clip-exported
   // call so the "X free exports left" line stays honest within a session.
   const [remainingExports, setRemainingExports] = useState<number | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Verify sidecar + warm-load whisper. We DON'T force first-run anymore —
   // the app opens straight into the empty/workspace view so the flow is
@@ -118,6 +122,13 @@ export default function App() {
               errors: deps.errors,
               python: deps.python,
             });
+          } else {
+            const { secrets } = await sidecar.secretsStatus();
+            const firstRun =
+              !secrets.LIQUIDCLIPS_ONBOARDED &&
+              !secrets.LICENSE_JWT &&
+              !secrets.OPENAI_API_KEY;
+            setShowOnboarding(firstRun);
           }
         } catch {
           // check_deps itself failed — sidecar is too broken to even probe.
@@ -491,6 +502,11 @@ export default function App() {
     setView({ kind: "choosing-intent", source: { kind: "url", url }, brief });
   }
 
+  async function completeOnboarding() {
+    setShowOnboarding(false);
+    await sidecar.secretSet("LIQUIDCLIPS_ONBOARDED", "v1").catch(() => undefined);
+  }
+
   async function onLiftTranscript(url: string) {
     let unlistenProgress: (() => void) | null = null;
     const myGen = ++liftGenRef.current;
@@ -521,13 +537,20 @@ export default function App() {
         ),
       ]);
       if (liftGenRef.current === myGen) setView({ kind: "lifted", result });
+      const transcribeEngine = result.transcribe_engine ?? result.meta?.transcribe_engine ?? null;
+      trackEvent("pipeline_transcribe_completed", {
+        source_host: host,
+        duration_s: result.duration ?? null,
+        segments: Array.isArray(result.segments) ? result.segments.length : 0,
+        engine: transcribeEngine,
+      });
       trackEvent("lift_completed", {
         source_host: host,
         duration_s: result.duration ?? null,
         segments: Array.isArray(result.segments) ? result.segments.length : 0,
         wall_ms: Math.round(performance.now() - startMs),
         language: result.language ?? null,
-        engine: result.transcribe_engine ?? result.meta?.transcribe_engine ?? null,
+        engine: transcribeEngine,
       });
       // Sprint #18a — first successful lift unlocks the "First Clip" badge.
       // Toast appears top-right via AchievementToast. recordAchievement is
@@ -575,7 +598,9 @@ export default function App() {
       <div className="flex h-full flex-col bg-paper text-ink">
         <FirstRun
           onComplete={() => {
+            void sidecar.secretSet("LIQUIDCLIPS_ONBOARDED", "v1").catch(() => undefined);
             setView({ kind: "empty" });
+            setShowOnboarding(false);
             setNeedsActivation(false); // fresh JWT written → clear the prompt; polls recover
             // Activation usually writes the license JWT during FirstRun.
             // Re-poll so the nav swaps Sign in → Account without a relaunch.
@@ -1021,6 +1046,13 @@ export default function App() {
           from JuniorLoader / WorkingStage; auto-closes when the pipeline
           reaches a terminal state (see autoclose effect at App top). */}
       <InvadersOverlay />
+      {showOnboarding && (
+        <OnboardingOverlay
+          onComplete={completeOnboarding}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onTrySample={() => onPasteUrl(SAMPLE_ONBOARDING_URL, "")}
+        />
+      )}
       {/* Achievement unlock toasts (sprint #18a) — global mount, listens on
           the achievements bus, slides in for ~5s when a badge unlocks. */}
       <AchievementToast />

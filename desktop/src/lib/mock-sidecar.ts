@@ -290,7 +290,7 @@ export async function mockSidecarCall<T>(method: string, params: Record<string, 
       return { pong: true, version: "preview-0.3.0" } as T;
 
     case "secrets_status":
-      return { secrets: { OPENAI_API_KEY: true, ANTHROPIC_API_KEY: false, LICENSE_JWT: true } } as T;
+      return { secrets: { OPENAI_API_KEY: true, ANTHROPIC_API_KEY: false, LICENSE_JWT: true, LIQUIDCLIPS_ONBOARDED: true } } as T;
 
     case "openai_key_status":
       return { available: true } as T;
