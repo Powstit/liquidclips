@@ -406,3 +406,57 @@ class WebhookEventLog(Base):
     error: Mapped[str | None] = mapped_column(String, nullable=True)            # short sanitized
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
     handled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CampaignSubmission(Base):
+    """A clipper's submission to a sponsored Liquid Clips campaign
+    (sprint #14c — Minecraft Story Clip Challenge being the first).
+
+    The flow:
+      1. Clipper exports a clip via Liquid Lift (clean if paid tier, watermarked
+         if free).
+      2. Posts the clip to TikTok / Instagram Reels / YouTube Shorts.
+      3. Submits the public clip URL + metadata via POST /submissions.
+      4. Backend downloads the clip via yt-dlp, runs watermark_detector.
+      5. Watermarked → rejected with `upgrade` reason. Clean → status=pending
+         (manual mod review until Whop campaign forwarding is wired).
+      6. (Future) on accept, forward to the Whop campaign for view-payout.
+
+    NO clip BYTES are stored — only the public URL + metadata. The clip lives
+    on TikTok/Reels/YouTube; we just track its existence + status.
+    """
+
+    __tablename__ = "campaign_submissions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    campaign_id: Mapped[str] = mapped_column(String, nullable=False, index=True)  # whop campaign id OR slug (e.g. "minecraft_v1")
+
+    clip_url: Mapped[str] = mapped_column(String, nullable=False)               # the public posted clip url
+    source_url: Mapped[str | None] = mapped_column(String, nullable=True)       # long-form source video
+    moment_type: Mapped[str] = mapped_column(String, nullable=False)            # betrayal | war | villain_speech | etc
+    hook_timestamp: Mapped[str | None] = mapped_column(String, nullable=True)   # hh:mm:ss within clipper's clip
+    why_this_moment: Mapped[str | None] = mapped_column(Text, nullable=True)    # clipper's narration
+
+    permission_type: Mapped[str] = mapped_column(String, nullable=False)        # my_own_footage | creator_licensed | transformative_commentary
+    disclosure_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    # Watermark detector result snapshot (JSON-serialised WatermarkResult).
+    # Kept for audit + mod review even after status flips.
+    watermark_check: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # status: submitted (initial after watermark pass)
+    #       | rejected (auto or manual — see rejection_reason)
+    #       | accepted (mod approved → will forward to Whop)
+    #       | forwarded (sent to Whop, awaiting view-payout)
+    #       | paid (Whop confirmed payout — view-RPM verified)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="submitted", index=True)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Filled when the submission graduates to Whop's content reward queue
+    whop_submission_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    verified_views: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    payout_usd_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)

@@ -696,6 +696,182 @@ export async function meStatus(): Promise<MeStatus | null> {
 // reads `platforms` to pre-fill checkboxes and 412s the user back to
 // Settings if they try to publish without one.
 
+// ── Sponsored Campaigns + Submissions (sprint #14c) ─────────────────────
+// Minecraft Story Clip Challenge is the first wrapped campaign. Clipper
+// exports a clip via Liquid Lift, posts it publicly, submits the URL here.
+// Backend runs watermark detection — Free-tier exports are blocked at this
+// step, which is the conversion engine.
+
+export type MomentType =
+  | "betrayal" | "war_declaration" | "villain_speech" | "underdog_victory"
+  | "emotional_confession" | "friendship" | "moral_choice" | "final_battle"
+  | "plot_twist" | "lore_reveal" | "funny_moment";
+
+export type PermissionType = "my_own_footage" | "creator_licensed" | "transformative_commentary";
+
+export type CampaignDescriptor = {
+  id: string;
+  title: string;
+  tagline: string;
+  payout_model: "rpm" | "flat";
+  rpm_usd: number;
+  daily_bonus_usd: number;
+  weekly_bonus_usd: number;
+  total_budget_usd: number;
+  moment_types: MomentType[];
+  platforms: string[];
+  min_age: number;
+  disclosure_tag_required: boolean;
+  whop_campaign_id: string | null;
+};
+
+export type SubmissionResponse = {
+  id: string;
+  status: "submitted" | "rejected" | "accepted" | "forwarded" | "paid";
+  campaign_id: string;
+  clip_url: string;
+  moment_type: string;
+  watermark_detected: boolean;
+  watermark_reason: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+};
+
+export type SubmissionCreateInput = {
+  campaign_id: string;
+  clip_url: string;
+  source_url?: string;
+  moment_type: MomentType;
+  hook_timestamp?: string;
+  why_this_moment?: string;
+  permission_type: PermissionType;
+  disclosure_confirmed: boolean;
+};
+
+export class WatermarkDetectedError extends Error {
+  upgradeUrl: string;
+  submissionId: string;
+  constructor(reason: string, upgradeUrl: string, submissionId: string) {
+    super(reason);
+    this.name = "WatermarkDetectedError";
+    this.upgradeUrl = upgradeUrl;
+    this.submissionId = submissionId;
+  }
+}
+
+export async function listActiveCampaigns(): Promise<CampaignDescriptor[]> {
+  if (isWebPreview()) {
+    return [{
+      id: "minecraft_v1",
+      title: "Minecraft Story Clip Challenge",
+      tagline: "Get paid to clip the moments stories turn",
+      payout_model: "rpm",
+      rpm_usd: 2.5,
+      daily_bonus_usd: 50,
+      weekly_bonus_usd: 250,
+      total_budget_usd: 4900,
+      moment_types: ["betrayal", "war_declaration", "villain_speech", "underdog_victory", "emotional_confession", "friendship", "moral_choice", "final_battle", "plot_twist", "lore_reveal", "funny_moment"],
+      platforms: ["tiktok", "instagram", "youtube_shorts"],
+      min_age: 18,
+      disclosure_tag_required: true,
+      whop_campaign_id: null,
+    }];
+  }
+  try {
+    const res = await authedFetch("/submissions/campaigns/active");
+    if (!res.ok) return [];
+    return (await res.json()) as CampaignDescriptor[];
+  } catch {
+    return [];
+  }
+}
+
+export async function createSubmission(input: SubmissionCreateInput): Promise<SubmissionResponse> {
+  if (isWebPreview()) {
+    return {
+      id: "sub_preview_demo",
+      status: "submitted",
+      campaign_id: input.campaign_id,
+      clip_url: input.clip_url,
+      moment_type: input.moment_type,
+      watermark_detected: false,
+      watermark_reason: null,
+      rejection_reason: null,
+      created_at: new Date().toISOString(),
+    };
+  }
+  const res = await authedFetch("/submissions", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (res.status === 422) {
+    const body = await res.json().catch(() => ({}));
+    const detail = body.detail ?? {};
+    if (detail.code === "watermark_detected") {
+      throw new WatermarkDetectedError(
+        detail.message ?? "Watermark detected — re-export without watermark and try again.",
+        detail.upgrade_url ?? "https://account.jnremployee.com/upgrade?reason=watermark",
+        detail.submission_id ?? "",
+      );
+    }
+    throw new Error(detail.message ?? body.detail ?? `HTTP ${res.status}`);
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `Submission failed: HTTP ${res.status}`);
+  }
+  return (await res.json()) as SubmissionResponse;
+}
+
+export async function listMySubmissions(): Promise<SubmissionResponse[]> {
+  if (isWebPreview()) return [];
+  try {
+    const res = await authedFetch("/submissions/me");
+    if (!res.ok) return [];
+    return (await res.json()) as SubmissionResponse[];
+  } catch {
+    return [];
+  }
+}
+
+// ── Doctrine library (Uncle Daniel — sprint #14c) ───────────────────────
+
+export type DoctrineEpisode = {
+  id: string;
+  episode_number: number | null;
+  title: string;
+  category: string | null;
+  description: string | null;
+  thumbnail_url: string | null;
+  youtube_url: string | null;
+  duration_min: number | null;
+  published: boolean;
+};
+
+export async function listDoctrineEpisodes(category?: string): Promise<DoctrineEpisode[]> {
+  if (isWebPreview()) return [];
+  try {
+    const path = category ? `/doctrine/episodes?category=${encodeURIComponent(category)}` : "/doctrine/episodes";
+    const res = await authedFetch(path);
+    if (!res.ok) return [];
+    return (await res.json()) as DoctrineEpisode[];
+  } catch {
+    return [];
+  }
+}
+
+export async function listDoctrineCategories(): Promise<string[]> {
+  if (isWebPreview()) return [];
+  try {
+    const res = await authedFetch("/doctrine/categories");
+    if (!res.ok) return [];
+    return (await res.json()) as string[];
+  } catch {
+    return [];
+  }
+}
+
 export type LeaderboardEntry = {
   rank: number;
   display_handle: string;
