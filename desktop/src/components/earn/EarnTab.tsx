@@ -479,7 +479,30 @@ function ConnectionBadge({
 }: {
   source: "iframe" | "env_user" | "keychain" | "seller_key" | "none";
 }) {
-  if (source === "none") return null;
+  if (source === "none") {
+    // Activated, but no Whop session — surface a clear CTA so users know where
+    // to go. Settings → Connections has the actual sign-in button (opens
+    // whop.com/oauth in the browser, deep-links the token back to keychain).
+    return (
+      <div className="mt-2 flex flex-wrap items-center gap-3 rounded-2xl border border-fuchsia/40 bg-fuchsia-soft/30 px-4 py-3">
+        <span className="inline-block h-2 w-2 rounded-full bg-fuchsia" aria-hidden />
+        <p className="flex-1 font-sans text-[13px] leading-snug text-ink">
+          <span className="font-medium">Sign in with Whop</span> to load reward campaigns here. One-time browser sign-in — tokens never leave your machine.
+        </p>
+        <button
+          onClick={() => {
+            // Settings drawer holds the connect flow (WhopConnectionRow). The
+            // Earn tab doesn't have its own connect surface today — keeps
+            // session lifecycle in one place.
+            window.dispatchEvent(new CustomEvent("junior:open-settings", { detail: { section: "connections" } }));
+          }}
+          className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright"
+        >
+          Sign in with Whop →
+        </button>
+      </div>
+    );
+  }
   if (source === "iframe") {
     // Honest framing: the iframe bridge is scaffolding until the @whop/iframe +
     // server-side x-whop-user-token bridge ships in a web build of Liquid Clips.
