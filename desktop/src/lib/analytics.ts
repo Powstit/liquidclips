@@ -57,7 +57,20 @@ export type DesktopAnalyticsEvent =
   | "invaders_new_high_score"
   // Earn / leaderboard (sprint #14a lands the surface)
   | "leaderboard_viewed"
-  | "leaderboard_rank_changed";
+  | "leaderboard_rank_changed"
+  // Minecraft Story Clip Challenge funnel (sprint #14c)
+  | "mc_challenge_card_viewed"
+  | "mc_challenge_card_clicked"
+  | "mc_submission_portal_opened"
+  | "mc_submission_attempted"
+  | "mc_submission_blocked_watermark"
+  | "mc_submission_accepted"
+  | "mc_submission_failed_network"
+  | "mc_upgrade_cta_clicked"
+  // Doctrine library
+  | "doctrine_library_opened"
+  | "doctrine_episode_clicked"
+  | "doctrine_category_filtered";
 
 const FORBIDDEN_KEYS = new Set([
   "email", "user_email", "primary_email",

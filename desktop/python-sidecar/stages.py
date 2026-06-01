@@ -1213,10 +1213,12 @@ def stage_reframe(project: Project) -> dict[str, Any]:
                 # Sprint #14c — Free-tier watermark. The watermark IS the
                 # conversion engine for the Minecraft Story Clip Challenge:
                 # submitted clips must be clean, so a Free user who wants
-                # rewards has to upgrade. Gated on JUNIOR_FREE_WATERMARK=1
-                # which the Rust shell sets per the license tier check.
+                # rewards has to upgrade. Tier check is server-authoritative
+                # (cannot be bypassed by the desktop) — _should_watermark()
+                # queries /sync and reads features.watermark. JUNIOR_FREE_WATERMARK
+                # env var is an override for local testing.
                 # Signature MUST match junior-backend/app/watermark_detector.py.
-                if os.environ.get("JUNIOR_FREE_WATERMARK", "").strip() in ("1", "true"):
+                if _should_watermark():
                     vf_after = f"{vf_after},{_liquid_lift_watermark_filter(out_w, out_h)}"
 
                 # Sprint #14 Voice enhancement — afftdn removes background hiss /
@@ -1371,6 +1373,82 @@ def _drawtext_hook_filter(hook_path: Path, out_w: int) -> str:
         f":y=h*0.08"
         f":enable='lt(t,2)'"
     )
+
+
+_WATERMARK_TIER_CACHE: dict[str, object] = {"checked_at": 0.0, "result": None}
+_WATERMARK_CACHE_TTL_S = 600
+
+
+def _should_watermark() -> bool:
+    """Decide whether to burn the Liquid Lift watermark onto exports.
+
+    Server-authoritative — queries the backend `/sync` endpoint and reads
+    `features.watermark`. Free tier → True (burn watermark). Solo/Pro/Agency
+    → False (clean export). Result is cached for 10 minutes to avoid hammering
+    the backend on every clip.
+
+    Override paths (local testing only):
+      • JUNIOR_FREE_WATERMARK=1  → forces watermark on
+      • JUNIOR_FREE_WATERMARK=0  → forces watermark off
+
+    Failure mode: if /sync is unreachable or no JWT exists, returns True
+    (watermark on) to fail SAFE — better to over-watermark and lose a
+    submission than to give a free clipper a clean export.
+    """
+    import time as _time
+
+    env_override = os.environ.get("JUNIOR_FREE_WATERMARK", "").strip().lower()
+    if env_override in ("1", "true"):
+        return True
+    if env_override in ("0", "false"):
+        return False
+
+    now = _time.monotonic()
+    if (
+        _WATERMARK_TIER_CACHE["result"] is not None
+        and (now - float(_WATERMARK_TIER_CACHE["checked_at"])) < _WATERMARK_CACHE_TTL_S
+    ):
+        return bool(_WATERMARK_TIER_CACHE["result"])
+
+    try:
+        from secrets_store import get_secret  # type: ignore
+
+        jwt_token = get_secret("LICENSE_JWT")
+    except Exception:
+        jwt_token = None
+
+    if not jwt_token:
+        # No license → treat as free → watermark on
+        _WATERMARK_TIER_CACHE["result"] = True
+        _WATERMARK_TIER_CACHE["checked_at"] = now
+        return True
+
+    backend_url = os.environ.get("JUNIOR_BACKEND_URL", "http://localhost:8000")
+    try:
+        import httpx
+
+        with httpx.Client(timeout=4.0) as client:
+            r = client.get(
+                f"{backend_url}/sync",
+                headers={"Authorization": f"Bearer {jwt_token}"},
+            )
+        if r.status_code != 200:
+            _WATERMARK_TIER_CACHE["result"] = True
+            _WATERMARK_TIER_CACHE["checked_at"] = now
+            return True
+        body = r.json() or {}
+        features = body.get("features") or {}
+        # features.watermark is the canonical tier→watermark mapping (free=True,
+        # solo+=False). See junior-backend/app/features.py.
+        wm = bool(features.get("watermark", True))
+        _WATERMARK_TIER_CACHE["result"] = wm
+        _WATERMARK_TIER_CACHE["checked_at"] = now
+        return wm
+    except Exception:
+        # Network/SSL failure → fail safe (watermark on)
+        _WATERMARK_TIER_CACHE["result"] = True
+        _WATERMARK_TIER_CACHE["checked_at"] = now
+        return True
 
 
 def _liquid_lift_watermark_filter(out_w: int, out_h: int) -> str:

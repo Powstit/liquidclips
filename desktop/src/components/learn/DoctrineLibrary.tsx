@@ -17,6 +17,7 @@ import {
   listDoctrineCategories,
   type DoctrineEpisode,
 } from "../../lib/backend";
+import { track } from "../../lib/analytics";
 
 export function DoctrineLibrary() {
   const [episodes, setEpisodes] = useState<DoctrineEpisode[]>([]);
@@ -25,6 +26,7 @@ export function DoctrineLibrary() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    track("doctrine_library_opened");
     let cancelled = false;
     void (async () => {
       const [eps, cats] = await Promise.all([
@@ -38,6 +40,11 @@ export function DoctrineLibrary() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  function handleCategoryChange(c: string | null) {
+    setSelectedCategory(c);
+    track("doctrine_category_filtered", { category: c ?? "all" });
+  }
 
   const filteredEpisodes = useMemo(() => {
     if (!selectedCategory) return episodes;
@@ -72,14 +79,14 @@ export function DoctrineLibrary() {
           <CategoryChip
             label="All"
             active={selectedCategory === null}
-            onClick={() => setSelectedCategory(null)}
+            onClick={() => handleCategoryChange(null)}
           />
           {categories.map((c) => (
             <CategoryChip
               key={c}
               label={c}
               active={selectedCategory === c}
-              onClick={() => setSelectedCategory(c)}
+              onClick={() => handleCategoryChange(c)}
             />
           ))}
         </div>
@@ -124,7 +131,13 @@ function EpisodeCard({ episode }: { episode: DoctrineEpisode }) {
     <button
       type="button"
       onClick={() => {
-        if (canOpen) void openExternal(episode.youtube_url!);
+        if (canOpen) {
+          track("doctrine_episode_clicked", {
+            episode_number: episode.episode_number ?? undefined,
+            category: episode.category ?? undefined,
+          });
+          void openExternal(episode.youtube_url!);
+        }
       }}
       disabled={!canOpen}
       className="group relative flex flex-col gap-3 overflow-hidden rounded-2xl border border-line bg-paper p-4 text-left transition-all hover:border-fuchsia/60 hover:shadow-[var(--glow-sm)] disabled:cursor-default disabled:hover:border-line disabled:hover:shadow-none"

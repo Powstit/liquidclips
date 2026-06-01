@@ -557,3 +557,124 @@ def render_bounty_approved(*, email: str, bounty_title: str, payout: str, first_
         f"Open Liquid Clips · Earn: {ctx.download_url}\n\n— Liquid Clips"
     )
     return subject, _shell(subject, body, ctx=ctx), text
+
+
+# ── Minecraft Story Clip Challenge — sprint #14c ─────────────────────────
+#
+# The 6-template funnel for the first Liquid Clips wrapped campaign. Templates
+# live as HTML files in app/email_templates/minecraft_challenge/ so designers
+# can iterate without touching Python. We do simple {{var}} substitution at
+# send time — no template engine dep, no Mustache library, no Jinja.
+
+from pathlib import Path as _Path
+
+
+_MC_TEMPLATE_DIR = _Path(__file__).parent / "email_templates" / "minecraft_challenge"
+
+# Subject lines pulled from each template's HTML <!-- subject: ... --> comment
+# (kept in sync as a fallback in case the comment parsing ever drifts).
+_MC_SUBJECTS = {
+    "challenge_join":       "You're in. Read this before your first clip.",
+    "first_export":         "You exported your first clip. Read this before you post.",
+    "watermark_rejected":   "Your clip didn't qualify. Here's why.",
+    "upgrade_confirmed":    "Clean export unlocked. Now go finish what you started.",
+    "first_acceptance":     "Your first clip got accepted.",
+    "leaderboard_placement": "You're in the top 10 this week.",
+}
+
+_MC_FILES = {
+    "challenge_join":       "01_challenge_join.html",
+    "first_export":         "02_first_export.html",
+    "watermark_rejected":   "03_watermark_rejected.html",
+    "upgrade_confirmed":    "04_upgrade_confirmed.html",
+    "first_acceptance":     "05_first_acceptance.html",
+    "leaderboard_placement": "06_leaderboard_placement.html",
+}
+
+
+def _mc_render(template_key: str, variables: dict[str, str]) -> tuple[str, str, str]:
+    """Load a Minecraft Challenge HTML template, substitute {{var}} placeholders.
+
+    Returns (subject, html, text). The text fallback is a derived plain-text
+    version stripped of HTML — minimal effort since the campaign is HTML-first.
+    """
+    import re
+
+    fname = _MC_FILES[template_key]
+    raw = (_MC_TEMPLATE_DIR / fname).read_text(encoding="utf-8")
+
+    # Substitute {{var}} placeholders — escapes left raw because email HTML
+    # control over output is the whole point.
+    html = raw
+    for k, v in variables.items():
+        html = html.replace("{{" + k + "}}", v)
+
+    # Strip any {{remaining}} placeholders that the caller didn't provide,
+    # so we never ship literal {{handle}} text in a customer email.
+    html = re.sub(r"{{[a-z_]+}}", "", html)
+
+    subject = _MC_SUBJECTS[template_key]
+    text = _html_to_text(html)
+    return subject, html, text
+
+
+def _html_to_text(html: str) -> str:
+    """Crude HTML → text for the plain-text MIME part. Strips tags + collapses
+    whitespace. Good enough for Gmail's text view; the campaign optimises for
+    the HTML side."""
+    import re
+    # Drop <style>, <script>, and HTML comments first
+    s = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.S | re.I)
+    s = re.sub(r"<script[^>]*>.*?</script>", "", s, flags=re.S | re.I)
+    s = re.sub(r"<!--.*?-->", "", s, flags=re.S)
+    s = re.sub(r"<[^>]+>", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def send_mc_challenge_join(email: str, *, first_name: str | None = None) -> None:
+    subject, html, text = _mc_render("challenge_join", {
+        "first_name": first_name or "clipper",
+    })
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="mc_challenge_join")
+
+
+def send_mc_first_export(email: str, *, first_name: str | None = None, upgrade_url: str = "https://account.jnremployee.com/upgrade") -> None:
+    subject, html, text = _mc_render("first_export", {
+        "first_name": first_name or "clipper",
+        "upgrade_url": upgrade_url,
+    })
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="mc_first_export")
+
+
+def send_mc_watermark_rejected(email: str, *, first_name: str | None, rejection_reason: str, upgrade_url: str = "https://account.jnremployee.com/upgrade?reason=watermark") -> None:
+    subject, html, text = _mc_render("watermark_rejected", {
+        "first_name": first_name or "clipper",
+        "rejection_reason": rejection_reason,
+        "upgrade_url": upgrade_url,
+    })
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="mc_watermark_rejected")
+
+
+def send_mc_upgrade_confirmed(email: str, *, first_name: str | None = None) -> None:
+    subject, html, text = _mc_render("upgrade_confirmed", {
+        "first_name": first_name or "clipper",
+    })
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="mc_upgrade_confirmed")
+
+
+def send_mc_first_acceptance(email: str, *, first_name: str | None, moment_label: str = "story moment") -> None:
+    subject, html, text = _mc_render("first_acceptance", {
+        "first_name": first_name or "clipper",
+        "moment_label": moment_label,
+    })
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="mc_first_acceptance")
+
+
+def send_mc_leaderboard_placement(email: str, *, handle: str, rank: int, earnings_usd: str) -> None:
+    subject, html, text = _mc_render("leaderboard_placement", {
+        "handle": handle,
+        "rank": str(rank),
+        "earnings_usd": earnings_usd,
+    })
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="mc_leaderboard_placement")

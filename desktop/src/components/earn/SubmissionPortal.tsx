@@ -23,6 +23,7 @@ import {
 } from "../../lib/backend";
 import heroImg from "../../assets/minecraft/hero.png";
 import momentsGrid from "../../assets/minecraft/moments-grid.png";
+import { track } from "../../lib/analytics";
 
 const MOMENT_LABELS: Record<MomentType, string> = {
   betrayal: "Betrayal",
@@ -66,6 +67,7 @@ export function SubmissionPortal({ onClose }: { onClose: () => void }) {
   const [disclosureConfirmed, setDisclosureConfirmed] = useState(false);
 
   useEffect(() => {
+    track("mc_submission_portal_opened");
     let cancelled = false;
     void (async () => {
       const campaigns = await listActiveCampaigns();
@@ -79,6 +81,7 @@ export function SubmissionPortal({ onClose }: { onClose: () => void }) {
 
   async function submit() {
     if (!campaign) return;
+    track("mc_submission_attempted", { campaign_id: campaign.id, moment_type: momentType });
     setState({ kind: "submitting" });
     try {
       const result = await createSubmission({
@@ -91,12 +94,15 @@ export function SubmissionPortal({ onClose }: { onClose: () => void }) {
         permission_type: permissionType,
         disclosure_confirmed: disclosureConfirmed,
       });
+      track("mc_submission_accepted", { campaign_id: campaign.id, moment_type: momentType });
       setState({ kind: "success", submissionId: result.id });
     } catch (e) {
       if (e instanceof WatermarkDetectedError) {
+        track("mc_submission_blocked_watermark", { campaign_id: campaign.id });
         setState({ kind: "watermarked", reason: e.message, upgradeUrl: e.upgradeUrl });
         return;
       }
+      track("mc_submission_failed_network", { campaign_id: campaign.id });
       setState({ kind: "error", message: e instanceof Error ? e.message : String(e) });
     }
   }
@@ -362,7 +368,10 @@ function WatermarkedState({
       </p>
       <div className="mt-3 flex flex-wrap items-center justify-center gap-3">
         <button
-          onClick={() => void openExternal(upgradeUrl)}
+          onClick={() => {
+            track("mc_upgrade_cta_clicked", { source: "watermark_rejected" });
+            void openExternal(upgradeUrl);
+          }}
           className="inline-flex items-center gap-2 rounded-full bg-fuchsia px-6 py-3 font-sans text-[14px] font-medium text-paper hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
         >
           Upgrade to remove watermark
