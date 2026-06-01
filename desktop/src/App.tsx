@@ -86,6 +86,15 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [submissionPortalOpen, setSubmissionPortalOpen] = useState(false);
+
+  // Sprint #14c — global "open Settings" bus so any component (e.g. the
+  // Earn-tab ConnectionBadge "Sign in with Whop" CTA) can pop Settings open
+  // without prop-drilling setSettingsOpen everywhere.
+  useEffect(() => {
+    const open = () => setSettingsOpen(true);
+    window.addEventListener("junior:open-settings", open);
+    return () => window.removeEventListener("junior:open-settings", open);
+  }, []);
   const [bootChecked, setBootChecked] = useState(false);
   const [updateBanner, setUpdateBanner] = useState<UpdateState>({ kind: "idle" });
   // Set when the backend rejects our license JWT (401). backend.ts has already

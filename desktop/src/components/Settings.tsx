@@ -663,13 +663,13 @@ function WhopConnectionRow() {
             /
           </span>
           <div>
-            <div className="font-sans text-[14px] font-medium text-ink">Whop</div>
+            <div className="font-sans text-[14px] font-medium text-ink">Whop — Content Rewards</div>
             <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
               {status === "loading"
-                ? "checking…"
+                ? "checking your session…"
                 : connected
-                  ? `connected · ${sourceLabel}`
-                  : "not connected · Content Rewards source"}
+                  ? `signed in · ${sourceLabel}`
+                  : "sign in to load reward campaigns in the Earn tab"}
             </div>
           </div>
         </div>
@@ -684,9 +684,10 @@ function WhopConnectionRow() {
           <button
             onClick={() => void connect()}
             disabled={phase === "awaiting"}
-            className="rounded-full border border-line bg-paper px-3.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:border-fuchsia hover:text-ink disabled:opacity-40"
+            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright disabled:opacity-40"
+            title="Opens whop.com in your browser to authorize Liquid Clips"
           >
-            {phase === "awaiting" ? "awaiting browser…" : "connect"}
+            {phase === "awaiting" ? "waiting for browser…" : "Sign in with Whop →"}
           </button>
         )}
       </div>
