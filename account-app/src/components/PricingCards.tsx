@@ -39,9 +39,10 @@ const PRO_PLAN_ID =
   process.env.NEXT_PUBLIC_CLERK_PRO_PLAN_ID ?? "cplan_3EV9Jjn8qLG130iSSRpAUOmqAfm";
 const AGENCY_PLAN_ID =
   process.env.NEXT_PUBLIC_CLERK_AGENCY_PLAN_ID ?? "cplan_3E4VBfKWkQlIuYRQG0YE5LfJPjx";
-// Account Pack — $6/mo per +5 social accounts add-on. Wired here as a const
-// for the eventual +5 purchase flow in Settings; PricingCards doesn't render
-// it as a card today (it's an upsell shown at the account-limit wall later).
+// Account Pack — $6/mo per extra social account add-on (one Clerk subscription
+// quantity = one additional account). Wired here as a const for the eventual
+// purchase flow in Settings; PricingCards doesn't render it as a card today
+// (it's an upsell shown at the account-limit wall later).
 export const ACCOUNT_PACK_PLAN_ID =
   process.env.NEXT_PUBLIC_CLERK_ACCOUNT_PACK_PLAN_ID ?? "cplan_3EV9znSsguzmwoQoEr5kXpumkfM";
 

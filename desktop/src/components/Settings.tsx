@@ -668,7 +668,7 @@ function WhoAmISection() {
           value={
             me.account_limit >= 9999
               ? "unlimited"
-              : `${me.account_limit}${me.extra_accounts_purchased > 0 ? ` · ${me.extra_accounts_purchased} extra pack${me.extra_accounts_purchased === 1 ? "" : "s"}` : ""}`
+              : `${me.account_limit}${me.extra_accounts_purchased > 0 ? ` · +${me.extra_accounts_purchased} extra account${me.extra_accounts_purchased === 1 ? "" : "s"}` : ""}`
           }
         />
         <DebugRow label="Clips exported (lifetime)" value={String(me.clips_created)} />

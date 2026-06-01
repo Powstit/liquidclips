@@ -36,9 +36,11 @@ class Feature(TypedDict):
 # Tier-by-tier feature flag matrix v2 (Daniel's decision 2026-05-31).
 # Free / Solo $29 / Pro $79 / Agency $149 + locked Founder flash-sale.
 # `accounts_included` is the per-tier social-account base; users buy
-# +5 packs for $40 each (stored as extra_accounts_purchased). Legacy
-# "growth" / "autopilot" / "channel" tiers all alias to the new names
-# during the launch transition — see _LEGACY_TIER_ALIASES below.
+# extra accounts via the Clerk Account Pack add-on at $6/mo per extra
+# account (one quantity on the subscription = one extra social account,
+# stored as extra_accounts_purchased). Legacy "growth" / "autopilot" /
+# "channel" tiers all alias to the new names during the launch
+# transition — see _LEGACY_TIER_ALIASES below.
 FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
     "free": {
         "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},  # gated by clips_per_ip starter pass
@@ -90,7 +92,7 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
         "watermark":                {"value": False, "built": True,  "sprint": None},
         "byo_openai_key_required":  {"value": True,  "built": True,  "sprint": None},
         "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
-        "hosted_llm":               {"value": False, "built": False, "sprint": "S5"},
+        "hosted_llm":               {"value": True,  "built": False, "sprint": "S5"},
         "platform_connections_max": {"value": None,  "built": True,  "sprint": None},  # all platforms
         "publish_now":              {"value": True,  "built": True,  "sprint": None},
         "publish_multi_platform":   {"value": True,  "built": True,  "sprint": None},
@@ -110,7 +112,7 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
         "watermark":                {"value": False, "built": True,  "sprint": None},
         "byo_openai_key_required":  {"value": True,  "built": True,  "sprint": None},
         "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
-        "hosted_llm":               {"value": False, "built": False, "sprint": "S5"},
+        "hosted_llm":               {"value": True,  "built": False, "sprint": "S5"},
         "platform_connections_max": {"value": None,  "built": True,  "sprint": None},
         "publish_now":              {"value": True,  "built": True,  "sprint": None},
         "publish_multi_platform":   {"value": True,  "built": True,  "sprint": None},
@@ -149,18 +151,22 @@ def _resolve_tier(tier: str | None) -> str:
 # transcription falls back to local on-device whisper which works, but the
 # "hosted/cloud AI" claim doesn't.
 _PUBLISHING_LIVE = bool(os.environ.get("AYRSHARE_API_KEY"))
-_HOSTED_AI_LIVE = bool(os.environ.get("MODAL_TRANSCRIBE_URL") or os.environ.get("REPLICATE_API_TOKEN"))
+_HOSTED_TRANSCRIBE_LIVE = bool(os.environ.get("MODAL_TRANSCRIBE_URL") or os.environ.get("REPLICATE_API_TOKEN"))
+_HOSTED_LLM_LIVE = bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
 _NOT_LIVE_UNLESS = {
     "publish_now": _PUBLISHING_LIVE,
     "publish_multi_platform": _PUBLISHING_LIVE,
     "schedule_one": _PUBLISHING_LIVE,
     "drip_scheduling": _PUBLISHING_LIVE,
-    "hosted_transcribe": _HOSTED_AI_LIVE,
-    "hosted_llm": _HOSTED_AI_LIVE,
+    "hosted_transcribe": _HOSTED_TRANSCRIBE_LIVE,
+    "hosted_llm": _HOSTED_LLM_LIVE,
 }
 for _block in FEATURES_BY_TIER.values():
     for _feat, _live in _NOT_LIVE_UNLESS.items():
-        if _feat in _block and not _live:
+        if _feat in _block and _live:
+            _block[_feat]["built"] = True
+            _block[_feat]["sprint"] = None
+        elif _feat in _block and not _live:
             _block[_feat]["built"] = False
             if _block[_feat].get("sprint") is None:
                 _block[_feat]["sprint"] = "beta"
@@ -214,14 +220,20 @@ def tier_features(tier: str, founder: bool = False) -> dict[str, Any]:
 
 
 def account_limit(tier: str, extra_packs: int = 0, founder: bool = False) -> int:
-    """Total social-account limit for a user. Tier base + 5 per prepaid pack.
+    """Total social-account limit for a user. Tier base + 1 per Account Pack
+    quantity (the $6/mo Clerk add-on grants one extra social account per unit).
     Founders are uncapped (treated as ∞ → sentinel 9999 so callers don't have
-    to special-case)."""
+    to special-case).
+
+    NOTE: the parameter is still named `extra_packs` for backwards-compat with
+    callers, but the unit is "extra accounts" 1:1 since 2026-06-01 (was 5 per
+    pack — the per-5 economics were unprofitable at $6).
+    """
     if founder:
         return 9999
     base_val = tier_features(tier, founder=False).get("accounts_included")
     base = int(base_val) if isinstance(base_val, (int, float)) else 1
-    return base + max(0, int(extra_packs)) * 5
+    return base + max(0, int(extra_packs))
 
 
 def has_feature(tier: str, feature: str, founder: bool = False) -> bool:
