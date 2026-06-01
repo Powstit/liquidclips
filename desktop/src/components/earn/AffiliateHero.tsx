@@ -149,6 +149,25 @@ export function AffiliateHero({ onSignIn }: { onSignIn?: () => void }) {
     void load();
   }, [load]);
 
+  // Sprint #12 — refresh when the user returns from external onboarding
+  // (Stripe Connect or Whop affiliate sign-up). Two paths:
+  //  • deep-link callback `liquidclips://payout-return` → dispatches
+  //    `junior:payout-updated` (see lib/activation.ts).
+  //  • window focus — the bulletproof fallback if the user comes back via
+  //    Cmd+Tab without clicking a deep-link.
+  // Both are debounced via the cached state — load() is cheap and idempotent.
+  useEffect(() => {
+    const refresh = () => void load();
+    window.addEventListener("junior:payout-updated", refresh);
+    window.addEventListener("junior:whop-auth", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.removeEventListener("junior:payout-updated", refresh);
+      window.removeEventListener("junior:whop-auth", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [load]);
+
   // ── state → card mapping ───────────────────────────────────────────────
   if (state.kind === "loading") return <LoadingCard />;
   if (state.kind === "signed-out") return <SignedOutCard onSignIn={onSignIn} />;
@@ -582,18 +601,44 @@ function Dashboard({
 
       <PaymentRoutingRow customer={customer} affiliate={affiliate} payments={payments} />
 
+      {/* Sprint #12 polish — when Stripe payouts are live (status=active and
+          earnings > 0), show a calm confirmation chip so the user trusts
+          money is moving without having to leave the app. */}
+      {affiliate.payout_provider === "stripe_connect" &&
+        affiliate.payout_status === "ready" &&
+        earnedUsd > 0 && (
+          <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-line bg-paper-warm/50 px-3 py-1.5 font-sans text-[11px] text-text-secondary">
+            <span className="h-1.5 w-1.5 rounded-full bg-fuchsia" aria-hidden />
+            Stripe payouts active — commissions land within 7 days of conversion.
+          </div>
+        )}
+
       <div className="mt-5 flex items-center justify-between gap-3 border-t border-line pt-4">
         <div className="flex items-center gap-2">
           <button
-            onClick={() => void openExternal(affiliate.partner_dashboard_url)}
+            onClick={() =>
+              void openExternal(
+                affiliate.payout_provider === "stripe_connect"
+                  ? affiliate.payout_setup_url || "https://account.jnremployee.com/dashboard#payouts"
+                  : affiliate.partner_dashboard_url,
+              )
+            }
             className="inline-flex items-center gap-1.5 font-sans text-[12px] font-medium text-text-secondary hover:text-fuchsia-deep"
           >
-            Open partner dashboard
+            {affiliate.payout_provider === "stripe_connect"
+              ? "Manage Stripe payouts"
+              : "Open Whop partner dashboard"}
             <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
           </button>
-          <InfoHint text="Open the full partner dashboard for payout setup, terms, and deeper affiliate tools." />
+          <InfoHint
+            text={
+              affiliate.payout_provider === "stripe_connect"
+                ? "Stripe handles your payout schedule and bank details. You can update either at any time."
+                : "Whop hosts referral tracking, payout setup, and partner terms."
+            }
+          />
         </div>
-        {isStripe && (
+        {isStripe && affiliate.payout_provider === "whop" && (
           <p className="text-right font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
             Whop powers referral tracking and payouts; your Liquid Clips plan stays on Stripe.
           </p>
