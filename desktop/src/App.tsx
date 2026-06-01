@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import { LayoutGrid, Wallet, UploadCloud, Banknote, Settings as SettingsIcon, LogIn, UserCircle2, type LucideIcon } from "lucide-react";
+import { LayoutGrid, Wallet, UploadCloud, Banknote, BookOpen, Settings as SettingsIcon, LogIn, UserCircle2, type LucideIcon } from "lucide-react";
 import { Logo } from "./components/Logo";
 import { DropZone } from "./components/DropZone";
 import { SponsoredClipsCarousel } from "./components/workspace/SponsoredClipsCarousel";
+import { LiquidLiftBanner } from "./components/workspace/LiquidLiftBanner";
+import { MinecraftChallengeCard } from "./components/earn/MinecraftChallengeCard";
+import { SubmissionPortal } from "./components/earn/SubmissionPortal";
+import { LearnTab } from "./components/learn/LearnTab";
 import { WorkingStage } from "./components/WorkingStage";
 import { ResultsGrid } from "./components/ResultsGrid";
 import { FirstRun } from "./components/FirstRun";
@@ -46,6 +50,7 @@ type View =
   | { kind: "empty" }
   | { kind: "quota" }
   | { kind: "earn" }
+  | { kind: "learn" }
   | { kind: "upload" }
   | { kind: "bounty-setup"; bounty: WhopBounty }
   | { kind: "choosing-intent"; source: { kind: "file"; path: string } | { kind: "url"; url: string }; brief: string; bounty?: WhopBounty }
@@ -80,6 +85,7 @@ export default function App() {
   const [splashAcked, setSplashAcked] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
+  const [submissionPortalOpen, setSubmissionPortalOpen] = useState(false);
   const [bootChecked, setBootChecked] = useState(false);
   const [updateBanner, setUpdateBanner] = useState<UpdateState>({ kind: "idle" });
   // Set when the backend rejects our license JWT (401). backend.ts has already
@@ -260,7 +266,7 @@ export default function App() {
   // persists internally for the session (high score is on disk), so reopening
   // resumes from a fresh wave 1.
   useEffect(() => {
-    const terminalKinds: View["kind"][] = ["results", "lifted", "failed", "canceled", "empty", "earn", "upload", "payouts"];
+    const terminalKinds: View["kind"][] = ["results", "lifted", "failed", "canceled", "empty", "earn", "learn", "upload", "payouts"];
     if (terminalKinds.includes(view.kind)) {
       closeInvaders();
     }
@@ -619,7 +625,7 @@ export default function App() {
           <nav className="flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.12em]">
             <NavTab
               label="Workspace"
-              active={view.kind !== "earn" && view.kind !== "upload" && view.kind !== "bounty-setup" && view.kind !== "payouts"}
+              active={view.kind !== "earn" && view.kind !== "learn" && view.kind !== "upload" && view.kind !== "bounty-setup" && view.kind !== "payouts"}
               onClick={() => setView({ kind: "empty" })}
               Icon={LayoutGrid}
             />
@@ -628,6 +634,12 @@ export default function App() {
               active={view.kind === "earn" || view.kind === "bounty-setup"}
               onClick={() => setView({ kind: "earn" })}
               Icon={Wallet}
+            />
+            <NavTab
+              label="Learn"
+              active={view.kind === "learn"}
+              onClick={() => setView({ kind: "learn" })}
+              Icon={BookOpen}
             />
             <NavTab
               label="Upload"
@@ -694,6 +706,8 @@ export default function App() {
         )}
 
         {view.kind === "payouts" && <PayoutsTab />}
+
+        {view.kind === "learn" && <LearnTab />}
 
         {view.kind === "earn" && (
           <EarnTab
@@ -768,6 +782,12 @@ export default function App() {
 
         {view.kind === "empty" && bootChecked && (
           <div className="flex w-full max-w-[720px] flex-col items-stretch gap-5">
+            {/* Sprint #14c — Liquid Lift sub-brand cue (dismissable, persists) */}
+            <LiquidLiftBanner />
+            {/* Sprint #14c — Featured wrapped campaign: Minecraft Story Clip
+                Challenge. Tap → opens the submission portal. The $2.50 RPM
+                hero converts attention into clipping behavior. */}
+            <MinecraftChallengeCard onOpen={() => setSubmissionPortalOpen(true)} variant="full" />
             {/* Sprint #15 — Sponsored Clips carousel sits ABOVE the DropZone,
                 replacing the legacy brief input. Click → Earn tab. */}
             <SponsoredClipsCarousel onOpenEarn={() => setView({ kind: "earn" })} />
@@ -1056,6 +1076,12 @@ export default function App() {
       {/* Achievement unlock toasts (sprint #18a) — global mount, listens on
           the achievements bus, slides in for ~5s when a badge unlocks. */}
       <AchievementToast />
+      {/* Sprint #14c — Submission portal modal for the Minecraft Story Clip
+          Challenge (or any future wrapped campaign). Triggered from the
+          MinecraftChallengeCard in the empty-workspace view. */}
+      {submissionPortalOpen && (
+        <SubmissionPortal onClose={() => setSubmissionPortalOpen(false)} />
+      )}
     </MainShell>
   );
 }

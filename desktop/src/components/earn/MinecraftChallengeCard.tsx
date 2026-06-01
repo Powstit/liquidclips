@@ -7,8 +7,10 @@
 // the clipping eye. This card converts that latent skill into clipping
 // behavior through the $2.50 RPM offer + the watermark conversion engine.
 
+import { useEffect } from "react";
 import { Trophy, Zap } from "lucide-react";
 import heroImg from "../../assets/minecraft/hero.png";
+import { track } from "../../lib/analytics";
 
 export function MinecraftChallengeCard({
   onOpen,
@@ -17,10 +19,19 @@ export function MinecraftChallengeCard({
   onOpen: () => void;
   variant?: "full" | "compact";
 }) {
+  useEffect(() => {
+    track("mc_challenge_card_viewed", { variant });
+  }, [variant]);
+
+  function handleOpen() {
+    track("mc_challenge_card_clicked", { variant });
+    onOpen();
+  }
+
   if (variant === "compact") {
     return (
       <button
-        onClick={onOpen}
+        onClick={handleOpen}
         className="group relative w-full overflow-hidden rounded-2xl border border-fuchsia/40 bg-gradient-to-br from-fuchsia-soft/30 via-paper to-paper p-4 text-left transition-all hover:border-fuchsia hover:shadow-[var(--glow-md)]"
       >
         <div className="flex items-center gap-3">
@@ -45,7 +56,7 @@ export function MinecraftChallengeCard({
 
   return (
     <button
-      onClick={onOpen}
+      onClick={handleOpen}
       className="group relative w-full overflow-hidden rounded-3xl border border-fuchsia/40 bg-ink text-left transition-all hover:shadow-[0_20px_60px_rgba(255,26,140,0.25)]"
     >
       <div className="absolute inset-0">

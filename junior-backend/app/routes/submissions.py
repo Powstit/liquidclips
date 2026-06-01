@@ -36,6 +36,11 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
+from app.mailer import (
+    send_mc_first_acceptance,
+    send_mc_first_export,
+    send_mc_watermark_rejected,
+)
 from app.models import CampaignSubmission, User
 
 log = logging.getLogger("junior.submissions")
@@ -110,6 +115,39 @@ class CampaignDescriptor(BaseModel):
     min_age: int
     disclosure_tag_required: bool
     whop_campaign_id: str | None
+
+
+def _first_name(user: User) -> str | None:
+    """Best-effort first name from a User row. Email-local-part fallback."""
+    email = user.email or ""
+    if not email:
+        return None
+    local = email.split("@", 1)[0]
+    # Strip everything after first non-letter so "daniel.diyepriye" → "daniel"
+    name = ""
+    for ch in local:
+        if ch.isalpha():
+            name += ch
+        else:
+            break
+    if not name:
+        return None
+    return name[0].upper() + name[1:].lower()
+
+
+_MOMENT_LABELS = {
+    "betrayal": "Betrayal",
+    "war_declaration": "War declaration",
+    "villain_speech": "Villain speech",
+    "underdog_victory": "Underdog victory",
+    "emotional_confession": "Emotional confession",
+    "friendship": "Friendship",
+    "moral_choice": "Moral choice",
+    "final_battle": "Final battle",
+    "plot_twist": "Plot twist",
+    "lore_reveal": "Lore reveal",
+    "funny_moment": "Funny moment",
+}
 
 
 def _to_response(row: CampaignSubmission) -> SubmissionResponse:
@@ -209,6 +247,14 @@ def create_submission(
             db.add(row)
             db.commit()
             db.refresh(row)
+            # Fire the "your clip didn't qualify" email with the upgrade CTA.
+            # Resend send is fire-and-forget — never blocks the API response.
+            if user.email:
+                send_mc_watermark_rejected(
+                    user.email,
+                    first_name=_first_name(user),
+                    rejection_reason=wm.reason,
+                )
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={
@@ -236,12 +282,86 @@ def create_submission(
         db.add(row)
         db.commit()
         db.refresh(row)
+
+        # If this is the user's FIRST submission to this campaign, fire the
+        # "first export" doctrine email. Counts only submissions on this row's
+        # campaign so re-running the same Minecraft Challenge later doesn't
+        # re-trigger the welcome funnel.
+        prior_count = (
+            db.query(func.count(CampaignSubmission.id))
+            .filter(CampaignSubmission.user_id == user.id)
+            .filter(CampaignSubmission.campaign_id == body.campaign_id)
+            .scalar()
+            or 0
+        )
+        if prior_count == 1 and user.email:  # 1 = this submission itself
+            send_mc_first_export(user.email, first_name=_first_name(user))
+
         return _to_response(row)
     finally:
         try:
             Path(clip_path).unlink(missing_ok=True)
         except OSError:
             pass
+
+
+class SubmissionStatusUpdate(BaseModel):
+    status: Literal["accepted", "rejected", "forwarded"]
+    rejection_reason: str | None = None
+
+
+@router.patch("/{submission_id}/status", response_model=SubmissionResponse)
+def update_submission_status(
+    submission_id: str,
+    body: SubmissionStatusUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> SubmissionResponse:
+    """Admin/mod endpoint — flips a submission's status. Fires the relevant
+    Resend template on transitions. Only admins (per is_admin_email) can
+    invoke this; everyone else gets 403.
+    """
+    from app.features import is_admin_email
+
+    if not is_admin_email(user.email):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "admin only")
+
+    row = db.query(CampaignSubmission).filter_by(id=submission_id).one_or_none()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "submission not found")
+
+    prev_status = row.status
+    row.status = body.status
+    if body.rejection_reason is not None:
+        row.rejection_reason = body.rejection_reason
+    db.commit()
+    db.refresh(row)
+
+    # Fire the "your first clip got accepted" doctrine email IF this is the
+    # user's first ever acceptance. Status transition only fires once per
+    # clipper because we check the count BEFORE the row was flipped.
+    if (
+        body.status == "accepted"
+        and prev_status != "accepted"
+    ):
+        prior_accepted = (
+            db.query(func.count(CampaignSubmission.id))
+            .filter(CampaignSubmission.user_id == row.user_id)
+            .filter(CampaignSubmission.status == "accepted")
+            .filter(CampaignSubmission.id != row.id)
+            .scalar()
+            or 0
+        )
+        if prior_accepted == 0:
+            clipper = db.query(User).filter_by(id=row.user_id).one_or_none()
+            if clipper and clipper.email:
+                send_mc_first_acceptance(
+                    clipper.email,
+                    first_name=_first_name(clipper),
+                    moment_label=_MOMENT_LABELS.get(row.moment_type, "story moment"),
+                )
+
+    return _to_response(row)
 
 
 @router.get("/me", response_model=list[SubmissionResponse])
