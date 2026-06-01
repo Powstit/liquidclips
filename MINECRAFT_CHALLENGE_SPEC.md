@@ -35,33 +35,41 @@ This is the **acquisition wedge** for Uncle Daniel's doctrine layer. Liquid Clip
 
 ## 3. Reward economics
 
-**Per-accepted-clip:** £0.50 (base) — flat fee, not view-based, paid weekly via Whop.
+**Payout model:** **$2.50 RPM** (per 1,000 verified views) — view-based, paid via Whop's standard content reward rails. Clippers earn proportional to view performance, not flat per submission.
 
-**Daily best clip:** £25 — selected by Liquid Clips moderation team, posted publicly on the leaderboard.
+**Why RPM, not flat:** aligns clipper incentive with what we actually pay for (attention reaching the brand). A 100-view clip nobody saw earns ~$0.25; a 100k-view clip earns $250; a 1M-view clip earns $2,500. The math self-regulates — only clips that actually drive views drive cost.
 
-**Weekly winner ("Story Eye of the Week"):** £100 — top clipper of the week + featured in Uncle Daniel content + unlocks Tier 2 access (higher-paying non-Minecraft campaigns).
+**Bonus pools (on top of RPM, not instead of):**
 
-**Tier 2 unlock threshold** (auto, no manual review needed once metrics met):
-- 5 accepted clips
+| Bonus | Amount | Trigger |
+|---|---|---|
+| **Daily best clip** | $50 | Highest scoring + most views per 24h window, picked by Liquid Clips mods |
+| **Weekly winner ("Story Eye of the Week")** | $250 | Composite of daily wins + total views + acceptance rate; named publicly on Uncle Daniel channel |
+| **Tier 2 unlock** | feature unlock, not cash | Auto when thresholds hit (see below) |
+
+**Tier 2 unlock threshold** (auto):
+- 5 accepted clips (lifetime)
 - 0 rejected for rule violations
-- At least 1 clip with >10k views on the clipper's submission
+- At least 1 clip with ≥10k verified views
 
 **Test budget (first 4 weeks):**
 
 | Line | Estimate | Notes |
 |---|---|---|
-| Per-clip accepted (200 clips × £0.50) | £100 | Assumes ~50 accepted/week × 4 weeks |
-| Daily best (28 days × £25) | £700 | One pick per day |
-| Weekly winner (4 × £100) | £400 | One per week |
-| **TOTAL test budget** | **£1,200** | Capped — if exhausted early, pause refills |
+| RPM payouts ($2.50 × 1M views) | $2,500 | Assumes ~200 accepted clips × 5k median views = 1M total |
+| Daily best (28 days × $50) | $1,400 | One pick per day |
+| Weekly winner (4 × $250) | $1,000 | One per week |
+| **TOTAL test budget** | **$4,900** | Hard cap — if exhausted before day 28, pause refills |
 
 **Why these numbers work:**
-- £0.50 is high enough to feel "real" for casual clippers but low enough that Liquid Clips MRR can fund it from a single Pro upgrade per ~150 accepted clips
-- £25 daily makes the leaderboard worth grinding for
-- £100 weekly is the visible flagship prize — Uncle Daniel can name the winner on the channel, generating social proof + new entries
-- Total £1,200/4-weeks = £300/week. Break-even at 4 new Solo subscribers/week or 1 new Pro subscriber/week. Conservative.
+- $2.50 RPM is the proven mid-tier rate for TikTok clipping (low = $0.50, high = $5+). Sits in the "feels real" zone without burning Liquid Clips MRR.
+- $50 daily makes the leaderboard worth grinding for; $250 weekly is the visible flagship Uncle Daniel can name-drop on the channel for social proof.
+- $4,900/4-weeks ≈ $1,225/week. Break-even at ~15 new Solo subscribers/week OR 5 new Pro subscribers/week OR a mix. Realistic for a Minecraft-acquisition-engine launch.
+- **Per-view economics:** at $2.50 RPM, every 400 views = $1 paid out. A single Pro upgrade ($79.99) funds 32k views of clipper output. Conversion rate >0.25% on those views = profitable forever.
 
-**If campaign performs:** scale to £2,000/week. If it doesn't (CPM > £6 cost per acquired Liquid Lift trial), pause and re-spec.
+**Anti-fraud / view verification:** Whop already runs view verification on content rewards (cross-references TikTok/Instagram/YouTube API view counts against bot detection). Clips flagged for view manipulation forfeit the RPM payout. Tier 2 unlock requires VERIFIED views, not reported.
+
+**If campaign performs:** scale budget to $10k/week, raise daily best to $100, add a $1k monthly winner. If it doesn't (cost per paid Liquid Lift signup > $40), pause and re-spec.
 
 ---
 
@@ -101,9 +109,9 @@ This is the **acquisition wedge** for Uncle Daniel's doctrine layer. Liquid Clip
 >
 > ## Rewards
 >
-> - **£0.50** per accepted clip
-> - **£25** daily best clip of the day
-> - **£100** weekly "Story Eye of the Week" winner
+> - **$2.50 RPM** per accepted clip
+> - **$50** daily best clip of the day bonus
+> - **$250** weekly "Story Eye of the Week" winner bonus
 > - Top clippers unlock access to higher-paying campaigns
 >
 > ## What counts as a story moment
@@ -228,10 +236,10 @@ When you create the campaign in Whop admin, here's what goes where:
 |---|---|
 | **Campaign name** | Minecraft Story Clip Challenge |
 | **Tagline** | Get paid to clip the moments Minecraft stories turn |
-| **Reward per accepted submission** | £0.50 (or USD equivalent — confirm Whop's currency settings) |
-| **Total campaign budget** | £1,200 |
-| **Daily bonus pool** | £25 (manual award per day) |
-| **Weekly bonus pool** | £100 (manual award per week) |
+| **Payout model** | $2.50 RPM (Whop content reward — per 1,000 verified views) |
+| **Total campaign budget** | $4,900 |
+| **Daily bonus pool** | $50 (manual award per day) |
+| **Weekly bonus pool** | $250 (manual award per week) |
 | **Allowed platforms** | TikTok, Instagram, YouTube Shorts |
 | **Submission form fields** | (copy table from §6) |
 | **Campaign description** | (paste public brief from §5) |
@@ -266,7 +274,7 @@ When you create the campaign in Whop admin, here's what goes where:
 
 **Reward manipulation:** the 10 clips/day cap + the 100-follower threshold blocks burner-account farming. If we see brigading, raise the threshold to 500 followers.
 
-**Budget overrun:** £1,200 hard cap on Whop side. If accepts spike (good problem), pause the campaign on day 21 and decide whether to fund extension from MRR.
+**Budget overrun:** $4,900 hard cap on Whop side. If view payouts spike (good problem), pause the campaign on day 21 and decide whether to fund extension from MRR.
 
 ---
 
@@ -277,7 +285,7 @@ When you create the campaign in Whop admin, here's what goes where:
 | Liquid Lift trial starts via challenge | ≥ 300 | < 80 |
 | Free → paid upgrade rate | ≥ 8% | < 3% |
 | Accepted clip / submission ratio | ≥ 60% | < 30% |
-| Cost per paid Liquid Lift signup | ≤ £15 | > £40 |
+| Cost per paid Liquid Lift signup | ≤ $20 | > $50 |
 | Tier 2 unlocks (clippers who graduate) | ≥ 10 | < 2 |
 | Uncle Daniel YouTube CTR from Minecraft-bridge videos | ≥ 4% | < 1.5% |
 

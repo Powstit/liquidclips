@@ -3,7 +3,7 @@
 Read this BEFORE editing any high-conflict file (see `~/Desktop/COMPLETION_SPRINT.md` for the list).
 
 ## Active locks
-*(none — Codex's #4 mlx work was bundled into Claude's #14a commit 9068b66; see SPRINT_HANDOFF.md)*
+- [CLAUDE · 2026-06-01 12:00] Minecraft Challenge sprint (#14c) — editing desktop/src/lib/backend.ts, junior-backend/app/main.py, junior-backend/app/models.py. New dirs: desktop/src/components/learn/, desktop/src/components/workspace/, junior-backend/app/email_templates/. New files: junior-backend/app/{watermark_detector,notion_client}.py, junior-backend/app/routes/{submissions,doctrine,campaigns}.py, desktop/src/components/earn/{MinecraftChallengeCard,SubmissionPortal}.tsx, desktop/src/components/workspace/LiquidLiftBanner.tsx, desktop/src/components/learn/{LearnTab,DoctrineLibrary}.tsx, desktop/src/lib/submissions.ts, liquidclips-marketing/src/app/lift/minecraft-challenge/page.tsx.
 
 ## Lock format
 - `[AGENT · YYYY-MM-DD HH:MM] item #N <name> — editing <file paths comma-separated>`
