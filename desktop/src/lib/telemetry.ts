@@ -33,6 +33,32 @@ let cpuArch = "unknown";
 let cachedUserRef: string | null = null;
 let metaLoaded = false;
 
+const CONSENT_KEY = "liquidclips:telemetry-consent:v1";
+
+/** True when the user has opted in to anonymous telemetry. Default = false
+ * (opt-in posture). Persists across launches via localStorage so the
+ * Settings toggle is honored unconditionally. */
+export function getTelemetryConsent(): boolean {
+  try {
+    return localStorage.getItem(CONSENT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Persist the user's consent choice from the Settings toggle. */
+export function setTelemetryConsent(allow: boolean): void {
+  try {
+    if (allow) {
+      localStorage.setItem(CONSENT_KEY, "1");
+    } else {
+      localStorage.removeItem(CONSENT_KEY);
+    }
+  } catch {
+    /* localStorage unavailable — silently keep the in-memory default */
+  }
+}
+
 /** Set the internal user id (backend user id / clerk id — NOT a JWT) for
  * grouping in Admin HQ. Best-effort; safe to leave unset. */
 export function setTelemetryUserRef(ref: string | null): void {
@@ -65,6 +91,13 @@ export type DesktopErrorReport = {
 };
 
 export async function reportDesktopError(event: string, opts: DesktopErrorReport = {}): Promise<void> {
+  // Privacy: honor the Settings → telemetry consent toggle. Default is opt-out
+  // (getTelemetryConsent() returns false until the user flips the switch),
+  // matching the Liquid Clips local-first positioning. The reporter goes
+  // completely silent when consent is absent — no fetch, no log.
+  if (!getTelemetryConsent()) {
+    return;
+  }
   try {
     await loadMeta();
     const body = {

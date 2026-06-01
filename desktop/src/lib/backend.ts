@@ -684,7 +684,17 @@ export async function meStatus(): Promise<MeStatus | null> {
   try {
     const res = await authedFetch("/me");
     if (!res.ok) return null;
-    return (await res.json()) as MeStatus;
+    const body = (await res.json()) as MeStatus;
+    // Wire backend_user_id into the telemetry user_ref so Admin HQ can group
+    // errors by user without us sending an email / JWT / Clerk id. Best-effort —
+    // the import is deferred so we don't bring telemetry into the web preview.
+    try {
+      const { setTelemetryUserRef } = await import("./telemetry");
+      setTelemetryUserRef(body.backend_user_id ?? null);
+    } catch {
+      /* telemetry module unavailable — silently skip */
+    }
+    return body;
   } catch {
     return null;
   }

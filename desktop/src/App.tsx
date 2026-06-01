@@ -214,6 +214,37 @@ export default function App() {
         .catch(() => undefined);
     });
 
+    // Native-crash recovery (sprint #14c P2 audit fix). The Rust panic hook
+    // in src-tauri/src/lib.rs writes ~/LiquidClips/.last-crash.json when a
+    // hard panic happens. On the NEXT boot we read it, report to Admin HQ,
+    // then delete so we don't double-report. Failure here is silent — the
+    // app must boot even if the crash marker is malformed.
+    void (async () => {
+      try {
+        const { homeDir } = await import("@tauri-apps/api/path");
+        const { readTextFile, remove, exists } = await import("@tauri-apps/plugin-fs");
+        const home = await homeDir();
+        const path = `${home}/LiquidClips/.last-crash.json`;
+        if (await exists(path)) {
+          const raw = await readTextFile(path);
+          const parsed = JSON.parse(raw) as {
+            event?: string;
+            message?: string;
+            file?: string;
+            line?: number;
+            app_version?: string;
+          };
+          void reportDesktopError(parsed.event ?? "rust_panic", {
+            error_code: "RustPanic",
+            message: `${parsed.message ?? "panic"} at ${parsed.file ?? "?"}:${parsed.line ?? 0} (v${parsed.app_version ?? "?"})`,
+          });
+          await remove(path).catch(() => undefined);
+        }
+      } catch {
+        /* crash recovery best-effort — never break boot */
+      }
+    })();
+
     // Catch-all telemetry for UNEXPECTED errors. The known self-heal paths
     // (401, offline, quota) already report + are skipped here to avoid dupes —
     // this surfaces the bugs we don't yet know about so they show in Admin HQ.
