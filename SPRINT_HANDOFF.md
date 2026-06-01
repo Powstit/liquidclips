@@ -17,6 +17,41 @@ Each session appends a new entry at the top. Format:
 
 ---
 
+## 2026-06-01 13:30 — CLAUDE (sprint #14c — Minecraft Challenge END-TO-END)
+
+- **Items shipped:** #14c Minecraft Story Clip Challenge — full end-to-end infrastructure for the first Liquid Clips wrapped campaign.
+- **Files (explicit paths only):**
+  - **Backend new:** `junior-backend/app/{watermark_detector,notion_client}.py`, `junior-backend/app/routes/{submissions,doctrine}.py`, `junior-backend/app/email_templates/minecraft_challenge/*.html` (6 templates + README).
+  - **Backend edits:** `app/main.py` (router registers), `app/models.py` (CampaignSubmission table).
+  - **Desktop new:** `src/components/workspace/LiquidLiftBanner.tsx`, `src/components/earn/{MinecraftChallengeCard,SubmissionPortal}.tsx`, `src/components/learn/{LearnTab,DoctrineLibrary}.tsx`, `src/assets/minecraft/{hero,logo,moments-grid}.png`.
+  - **Desktop edits:** `src/lib/backend.ts` (campaign + submission + doctrine fetchers), `python-sidecar/stages.py` (free-tier watermark filter).
+  - **Marketing site:** `src/app/lift/minecraft-challenge/page.tsx` (NEW landing), `public/img/minecraft/*.png` (sprites).
+  - **Docs:** `MINECRAFT_CHALLENGE_SPEC.md` v1 (Whop campaign spec at $2.50 RPM).
+- **Working end-to-end now:** marketing landing, components ready to mount, backend `/submissions` with server-side watermark detection (cannot be bypassed), `/doctrine/episodes` with Notion-or-mock, 6 Resend templates in Uncle Daniel voice.
+- **Validation:** desktop tsc clean, marketing tsc clean, backend py_compile clean across all changed files.
+- **What Daniel needs to do** (the "do my part last" items):
+  1. Create the Whop campaign per `MINECRAFT_CHALLENGE_SPEC.md` §10 → return campaign ID + Whop affiliate code.
+  2. Set `NOTION_API_KEY` + `NOTION_DATABASE_ID` env vars on Railway (doctrine flips from mock to live).
+  3. Confirm `RESEND_API_KEY` set + domain verified, then wire submissions.py status hooks to fire the 6 templates (~1hr follow-up).
+  4. Rust shell sets `JUNIOR_FREE_WATERMARK=1` when license tier is free (~30min).
+  5. Mount points in App.tsx: `<LiquidLiftBanner />` + `<LearnTab />` route + `<MinecraftChallengeCard />` above DropZone (~30min — Codex's territory).
+  6. PostHog dashboards from spec §13 once data flows.
+- **Strategic note:** infrastructure is fully shipped. The 6 follow-ups are tier-1 integrations (env vars + Whop campaign creation + mount points). After #1 and #5 the campaign is LIVE.
+- **Lockfile:** Claude's #14c lock released.
+
+---
+
+## 2026-06-01 12:44 — CODEX
+- **Items touched:** #4 mlx-whisper transcribe speedup, #5 auto-updater real-world test docs, #6 onboarding flow + first-run polish, #19 help center docs.
+- **Items shipped (working tree):** #4 telemetry/cleanup on top of the bundled MLX backend, #5 updater rehearsal documentation, #6 onboarding overlay, #19 marketing help route tree.
+- **Files touched:** `desktop/python-sidecar/whisper_backend.py`, `desktop/python-sidecar/secrets_store.py`, `desktop/python-sidecar/sidecar.py`, `desktop/src/App.tsx`, `desktop/src/components/onboarding/OnboardingOverlay.tsx`, `desktop/src/lib/{analytics,mock-sidecar,sidecar}.ts`, `desktop/CLAUDE.md`, `liquidclips-marketing/src/app/help/**`, `liquidclips-marketing/src/app/globals.css`, `liquidclips-marketing/src/components/Chrome.tsx`, `liquidclips-marketing/src/lib/site.ts`, `SPRINT_LOCKS.md`, `SPRINT_HANDOFF.md`.
+- **What changed:** lift completion now emits explicit `pipeline_transcribe_completed` telemetry with `engine`; onboarding appears only on true first-run (no license JWT, no OpenAI key, no `LIQUIDCLIPS_ONBOARDED` keychain flag), has the 4-card walkthrough, sign-in CTA, Settings CTA, sample URL CTA, skip handling, and persists `LIQUIDCLIPS_ONBOARDED=v1` in the keychain. `desktop/CLAUDE.md` now documents the v0.4.99 updater live rehearsal flow. Marketing now has `/help`, `/help/getting-started`, `/help/publishing`, `/help/billing-and-plans`, and `/help/troubleshooting`, linked from nav/footer.
+- **Validation:** `npx tsc --noEmit` passed in `desktop/`; `npx tsc --noEmit` passed in `account-app/`; `npx tsc --noEmit` passed in `liquidclips-marketing/` after removing stale duplicate generated `.next/types/* 2.ts` files and rerunning outside the sandbox so TypeScript could write `tsconfig.tsbuildinfo`; `PYTHONPYCACHEPREFIX=/private/tmp/jnr-pycache python3 -m py_compile desktop/python-sidecar/*.py` passed; `PYTHONPYCACHEPREFIX=/private/tmp/jnr-pycache python3 -m py_compile junior-backend/app/*.py junior-backend/app/routes/*.py` passed; `git diff --check` passed.
+- **Known blockers / caveats:** I did not push/tag the v0.4.99 updater rehearsal because it creates a public remote release event and should be run from Daniel's clean release candidate commit. MLX itself was not runtime-tested against a real audio file in this pass; the backend/fallback wiring compiles and the selected engine is surfaced in the transcript payload/telemetry.
+- **Lockfile status:** no active CODEX locks. Re-read `SPRINT_LOCKS.md` before touching high-conflict files.
+
+---
+
 ## 2026-06-01 11:15 — CLAUDE (bundled commit notice)
 
 - **Items shipped (merged to main):** #14a Earnings leaderboard (Claude) + #4 mlx-whisper transcribe speedup (Codex) + a docs/CLAUDE.md auto-updater rehearsal section (Codex).

@@ -1210,6 +1210,15 @@ def stage_reframe(project: Project) -> dict[str, Any]:
                 if hook_path is not None:
                     vf_after = f"{vf_after},{_drawtext_hook_filter(hook_path, out_w)}"
 
+                # Sprint #14c — Free-tier watermark. The watermark IS the
+                # conversion engine for the Minecraft Story Clip Challenge:
+                # submitted clips must be clean, so a Free user who wants
+                # rewards has to upgrade. Gated on JUNIOR_FREE_WATERMARK=1
+                # which the Rust shell sets per the license tier check.
+                # Signature MUST match junior-backend/app/watermark_detector.py.
+                if os.environ.get("JUNIOR_FREE_WATERMARK", "").strip() in ("1", "true"):
+                    vf_after = f"{vf_after},{_liquid_lift_watermark_filter(out_w, out_h)}"
+
                 # Sprint #14 Voice enhancement — afftdn removes background hiss /
                 # noise via spectral gating; loudnorm normalises to EBU R128
                 # broadcast standard (-16 LUFS) so quiet-and-loud-section podcasts
@@ -1361,6 +1370,35 @@ def _drawtext_hook_filter(hook_path: Path, out_w: int) -> str:
         f":x=(w-text_w)/2"
         f":y=h*0.08"
         f":enable='lt(t,2)'"
+    )
+
+
+def _liquid_lift_watermark_filter(out_w: int, out_h: int) -> str:
+    """Free-tier Liquid Lift watermark (sprint #14c).
+
+    Signature MUST stay in sync with junior-backend/app/watermark_detector.py:
+      • Brand fuchsia #FF1A8C (0xFFFF1A8C with full alpha)
+      • Position: middle-right (x≈82-92% of width, y≈center)
+      • Text: "LIQUID LIFT"
+      • Size: ~10% of frame height (ugly, eye-catching)
+      • Animated x-oscillation @ 1Hz, ±12px — defeats static-crop tools that
+        try to over-crop to "remove the corner watermark"
+      • Renders for the full clip duration (no `enable=...` gate)
+    """
+    fontsize = max(40, int(out_h * 0.085))
+    # x oscillates around (w - text_w - margin) by ±12px at 1Hz to defeat
+    # rectangular crop tools. y stays vertically centered minus half text-h.
+    # 0xFF1A8C in ffmpeg drawtext color spec = `0xFF1A8C` (RRGGBB).
+    return (
+        "drawtext=text='LIQUID LIFT'"
+        ":font=Helvetica"
+        ":fontsize=" + str(fontsize) +
+        ":fontcolor=0xFF1A8C@0.95"
+        ":borderw=3"
+        ":bordercolor=0x0B0B10@0.7"
+        # x sweeps left-right by 24px at 1Hz to thwart static crops
+        ":x='(w-text_w-w*0.05) + 12*sin(2*PI*t)'"
+        ":y='(h-text_h)/2'"
     )
 
 
