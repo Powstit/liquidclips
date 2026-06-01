@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { LayoutGrid, Wallet, UploadCloud, Banknote, Settings as SettingsIcon, LogIn, UserCircle2, type LucideIcon } from "lucide-react";
 import { Logo } from "./components/Logo";
 import { DropZone } from "./components/DropZone";
+import { SponsoredClipsCarousel } from "./components/workspace/SponsoredClipsCarousel";
 import { WorkingStage } from "./components/WorkingStage";
 import { ResultsGrid } from "./components/ResultsGrid";
 import { FirstRun } from "./components/FirstRun";
@@ -740,12 +741,17 @@ export default function App() {
         )}
 
         {view.kind === "empty" && bootChecked && (
-          <DropZone
-            onPickFile={pickFile}
-            onPasteUrl={onPasteUrl}
-            onLiftTranscript={(url) => void onLiftTranscript(url)}
-            remainingExports={remainingExports}
-          />
+          <div className="flex w-full max-w-[720px] flex-col items-stretch gap-5">
+            {/* Sprint #15 — Sponsored Clips carousel sits ABOVE the DropZone,
+                replacing the legacy brief input. Click → Earn tab. */}
+            <SponsoredClipsCarousel onOpenEarn={() => setView({ kind: "earn" })} />
+            <DropZone
+              onPickFile={pickFile}
+              onPasteUrl={onPasteUrl}
+              onLiftTranscript={(url) => void onLiftTranscript(url)}
+              remainingExports={remainingExports}
+            />
+          </div>
         )}
 
         {view.kind === "choosing-intent" && (
