@@ -3,7 +3,7 @@
 Read this BEFORE editing any high-conflict file (see `~/Desktop/COMPLETION_SPRINT.md` for the list).
 
 ## Active locks
-*(none)*
+- [CLAUDE · 2026-06-01 08:30] item #17 Settings legacy cleanup — editing desktop/src/components/Settings.tsx, desktop/src/lib/backend.ts (drop legacy Postiz ConnectionsSection + dead types; AyrshareConnectionPanel stays)
 
 ## Lock format
 - `[AGENT · YYYY-MM-DD HH:MM] item #N <name> — editing <file paths comma-separated>`
