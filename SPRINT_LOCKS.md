@@ -3,7 +3,7 @@
 Read this BEFORE editing any high-conflict file (see `~/Desktop/COMPLETION_SPRINT.md` for the list).
 
 ## Active locks
-- [CLAUDE · 2026-06-01 07:50] item #3 PublishModal Ayrshare refactor — editing desktop/src/components/PublishModal.tsx, desktop/src/components/ScheduleQueue.tsx, desktop/src/components/DripCalendar.tsx (drop legacy per-platform integration model, swap for /social/connections + platform checkboxes)
+*(none)*
 
 ## Lock format
 - `[AGENT · YYYY-MM-DD HH:MM] item #N <name> — editing <file paths comma-separated>`
