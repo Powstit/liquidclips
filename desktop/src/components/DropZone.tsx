@@ -17,7 +17,11 @@ export function DropZone({
   // founder / unactivated) — counter is hidden in that case.
   remainingExports?: number | null;
 }) {
-  const [brief, setBrief] = useState("");
+  // Sprint #16 — brief input removed. LLM clip-picker uses the source
+  // title / description for guidance by default; if a power-user wants to
+  // bias selection toward a topic, they can add it to the prompt via a
+  // future hidden "Advanced" toggle. The visual real estate is reclaimed
+  // by the Sponsored Clips carousel that now sits ABOVE the DropZone.
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   // 0.4.29: one URL row, one CTA — the user picks the mode first via a
@@ -36,14 +40,14 @@ export function DropZone({
       return;
     }
     setError(null);
-    if (mode === "clips") onPasteUrl(trimmed, brief);
+    if (mode === "clips") onPasteUrl(trimmed, "");
     else onLiftTranscript(trimmed);
   }
 
   return (
     <div className="flex w-full max-w-[720px] flex-col items-stretch gap-4">
       <button
-        onClick={() => onPickFile(brief)}
+        onClick={() => onPickFile("")}
         className="group flex h-[300px] w-full cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed border-line bg-paper transition-all hover:border-fuchsia hover:bg-fuchsia-soft/20"
       >
         <p className="font-display text-[26px] font-medium tracking-[-0.02em] text-ink">
@@ -107,19 +111,6 @@ export function DropZone({
         {error && (
           <p className="mt-2 font-mono text-[11px] text-[#DC2626]">{error}</p>
         )}
-      </div>
-
-      <div className="rounded-2xl border border-line bg-paper-warm/40 p-4">
-        <label className="block font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-          brief — optional
-        </label>
-        <input
-          type="text"
-          value={brief}
-          onChange={(e) => setBrief(e.target.value)}
-          placeholder="What should Liquid Clips focus on? e.g. 'the personal stories'"
-          className="mt-2 w-full bg-transparent font-sans text-[15px] text-ink placeholder:text-text-tertiary focus:outline-none"
-        />
       </div>
     </div>
   );
