@@ -3,7 +3,7 @@
 Read this BEFORE editing any high-conflict file (see `~/Desktop/COMPLETION_SPRINT.md` for the list).
 
 ## Active locks
-- [CODEX · 2026-06-01 10:08] item #4 mlx-whisper transcribe speedup — editing desktop/python-sidecar/sidecar.py, desktop/python-sidecar/whisper_backend.py, desktop/python-sidecar/requirements.txt, desktop/src/lib/sidecar.ts, desktop/src/App.tsx
+*(none — Codex's #4 mlx work was bundled into Claude's #14a commit 9068b66; see SPRINT_HANDOFF.md)*
 
 ## Lock format
 - `[AGENT · YYYY-MM-DD HH:MM] item #N <name> — editing <file paths comma-separated>`
