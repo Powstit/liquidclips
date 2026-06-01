@@ -696,6 +696,36 @@ export async function meStatus(): Promise<MeStatus | null> {
 // reads `platforms` to pre-fill checkboxes and 412s the user back to
 // Settings if they try to publish without one.
 
+export type LeaderboardEntry = {
+  rank: number;
+  display_handle: string;
+  lifetime_earnings_usd: string;   // stringified decimal
+  paid_referrals: number;
+  is_caller: boolean;
+};
+
+export type LeaderboardResponse = {
+  entries: LeaderboardEntry[];
+  caller_rank: number | null;
+  caller_entry: LeaderboardEntry | null;
+  refreshed_at: string | null;   // ISO timestamp; UI renders relative
+  total_ranked: number;
+};
+
+export async function leaderboardGet(): Promise<LeaderboardResponse | null> {
+  if (isWebPreview()) {
+    // Preview demo: a plausible top-10 board with the caller at rank 4.
+    return previewLeaderboard();
+  }
+  try {
+    const res = await authedFetch("/leaderboard/earnings");
+    if (!res.ok) return null;
+    return (await res.json()) as LeaderboardResponse;
+  } catch {
+    return null;
+  }
+}
+
 export type SocialConnectionState = {
   connected: boolean;
   profile_key_set: boolean;
@@ -952,6 +982,30 @@ function previewDismiss(id: string) {
     PREVIEW_NOTIFICATIONS_KEY,
     cur.filter((n) => n.id !== id),
   );
+}
+
+function previewLeaderboard(): LeaderboardResponse {
+  // 10-entry demo board with the caller (you) at rank 4. Lets the marketing
+  // preview show a realistic surface without standing up the backend.
+  const top: LeaderboardEntry[] = [
+    { rank: 1,  display_handle: "viperclips",    lifetime_earnings_usd: "8420.00", paid_referrals: 47, is_caller: false },
+    { rank: 2,  display_handle: "marquise_m",    lifetime_earnings_usd: "5180.50", paid_referrals: 29, is_caller: false },
+    { rank: 3,  display_handle: "lavendermood",  lifetime_earnings_usd: "3960.00", paid_referrals: 24, is_caller: false },
+    { rank: 4,  display_handle: "you",           lifetime_earnings_usd: "2410.00", paid_referrals: 14, is_caller: true  },
+    { rank: 5,  display_handle: "tcg_skylar",    lifetime_earnings_usd: "1985.75", paid_referrals: 13, is_caller: false },
+    { rank: 6,  display_handle: "kit_atlanta",   lifetime_earnings_usd: "1640.00", paid_referrals: 11, is_caller: false },
+    { rank: 7,  display_handle: "shorts_sage",   lifetime_earnings_usd: "1310.00", paid_referrals:  9, is_caller: false },
+    { rank: 8,  display_handle: "cassiej",       lifetime_earnings_usd: "1190.50", paid_referrals:  8, is_caller: false },
+    { rank: 9,  display_handle: "ringtone_devon",lifetime_earnings_usd: " 980.00", paid_referrals:  7, is_caller: false },
+    { rank: 10, display_handle: "lola_minor",    lifetime_earnings_usd: " 820.25", paid_referrals:  6, is_caller: false },
+  ];
+  return {
+    entries: top,
+    caller_rank: 4,
+    caller_entry: null,
+    refreshed_at: new Date(Date.now() - 1000 * 60 * 47).toISOString(),
+    total_ranked: 312,
+  };
 }
 
 // Helper used by hooks that need the JWT off the keychain.

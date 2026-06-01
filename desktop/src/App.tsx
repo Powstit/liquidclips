@@ -527,6 +527,7 @@ export default function App() {
         segments: Array.isArray(result.segments) ? result.segments.length : 0,
         wall_ms: Math.round(performance.now() - startMs),
         language: result.language ?? null,
+        engine: result.transcribe_engine ?? result.meta?.transcribe_engine ?? null,
       });
       // Sprint #18a — first successful lift unlocks the "First Clip" badge.
       // Toast appears top-right via AchievementToast. recordAchievement is

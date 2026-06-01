@@ -504,6 +504,7 @@ export type LiftTranscriptResult = {
   duration: number;
   text: string;
   segments: { start: number; end: number; text: string }[];
+  transcribe_engine?: "mlx" | "faster-whisper" | string;
   meta: {
     title: string | null;
     uploader: string | null;
@@ -512,6 +513,7 @@ export type LiftTranscriptResult = {
     poster_path: string | null;
     duration_seconds: number;
     source_url: string;
+    transcribe_engine?: "mlx" | "faster-whisper" | string;
   };
 };
 

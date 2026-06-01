@@ -170,6 +170,100 @@ def _billing_sweep_tick() -> None:
         log.info("[billing] swept %d expired paid sub(s) → Free", swept)
 
 
+def _refresh_affiliate_cache_tick() -> None:
+    """Refresh the leaderboard cache (sprint #14a) by re-pulling each linked
+    user's Whop affiliate stats. Runs every 6h. Bounded by 200 users per
+    tick to stay polite to the Whop API; a single failed user must NOT
+    abort the rest.
+
+    Caches:
+      cached_lifetime_earnings_usd  — from Whop total_referral_earnings_usd
+      cached_paid_referrals         — from Whop active_members_count
+      cached_display_handle         — from Whop username or email-derived
+      cached_earnings_at            — now()
+
+    Reads only users with a `whop_affiliate_id` already cached. The first
+    affiliate.py /me hit caches that id, so this tick can never run ahead
+    of a user signing in.
+    """
+    import re
+    from decimal import Decimal, InvalidOperation
+
+    import httpx
+
+    from app.config import get_settings
+    from app.models import User
+
+    s = get_settings()
+    if not s.whop_api_key:
+        return
+
+    refreshed = 0
+    with session_scope() as db:
+        # Take rows whose cache is missing or older than 5h (under the 6h
+        # tick cadence). New users with a fresh affiliate_id but no cached
+        # earnings row yet (cached_earnings_at IS NULL) get picked up
+        # immediately. Bounded by 200 to stay under Whop rate limits.
+        now_aware = datetime.now(timezone.utc)
+        cutoff = now_aware - timedelta(hours=5)
+        candidates: list[User] = (
+            db.query(User)
+            .filter(User.whop_affiliate_id.isnot(None))
+            .filter(
+                (User.cached_earnings_at.is_(None))
+                | (User.cached_earnings_at < cutoff)
+            )
+            .order_by(User.cached_earnings_at.asc().nullsfirst())
+            .limit(200)
+            .all()
+        )
+
+        for u in candidates:
+            try:
+                with httpx.Client(timeout=12.0) as client:
+                    r = client.get(
+                        f"https://api.whop.com/api/v1/affiliates/{u.whop_affiliate_id}",
+                        headers={"Authorization": f"Bearer {s.whop_api_key}"},
+                    )
+                if r.status_code != 200:
+                    # Stamp the row so we don't hammer Whop on the same dead
+                    # affiliate every tick. Cache stays $0 but timestamp moves.
+                    u.cached_earnings_at = now_aware
+                    continue
+                body = r.json() or {}
+            except (httpx.HTTPError, ValueError) as e:
+                log.warning("[leaderboard] whop fetch failed for %s: %s", u.whop_affiliate_id, e)
+                continue
+
+            try:
+                earnings = Decimal(str(body.get("total_referral_earnings_usd") or "0"))
+            except (InvalidOperation, TypeError):
+                earnings = Decimal("0")
+            try:
+                paid = int(body.get("active_members_count") or 0)
+            except (TypeError, ValueError):
+                paid = 0
+
+            # Display handle: Whop username if present, else email local-part
+            # truncated. Never the raw email or a real name.
+            handle = (body.get("username") or "").strip()
+            if not handle and u.email:
+                local = u.email.split("@", 1)[0]
+                # Scrub anything that looks identifying; cap at 12 chars.
+                local = re.sub(r"[^a-z0-9_-]", "", local.lower())[:12] or "anon"
+                handle = local
+            handle = handle[:24] or "anon"
+
+            u.cached_lifetime_earnings_usd = earnings
+            u.cached_paid_referrals = paid
+            u.cached_display_handle = handle
+            u.cached_earnings_at = now_aware
+            refreshed += 1
+
+    if refreshed:
+        log.info("[leaderboard] refreshed %d affiliate cache rows", refreshed)
+
+
 _scheduler: BackgroundScheduler | None = None
 
 
@@ -184,8 +278,9 @@ def start_cron() -> None:
     _scheduler = BackgroundScheduler(timezone="UTC")
     _scheduler.add_job(_tick, "interval", seconds=60, max_instances=1, coalesce=True, id="schedules_tick")
     _scheduler.add_job(_billing_sweep_tick, "interval", seconds=3600, max_instances=1, coalesce=True, id="billing_sweep")
+    _scheduler.add_job(_refresh_affiliate_cache_tick, "interval", seconds=21600, max_instances=1, coalesce=True, id="leaderboard_refresh")
     _scheduler.start()
-    log.info("[cron] started: schedules tick 60s, billing sweep 3600s")
+    log.info("[cron] started: schedules 60s, billing 3600s, leaderboard 21600s")
 
 
 def stop_cron() -> None:
