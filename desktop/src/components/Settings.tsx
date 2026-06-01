@@ -11,6 +11,7 @@ const SUPPORT_EMAIL = "support@jnremployee.com";
 import { syncStatus, meStatus, type SyncStatus, type MeStatus } from "../lib/backend";
 import { applyUpdate, checkForUpdate, readLastUpdateCheck, type LastUpdateCheck, type UpdateState } from "../lib/updater";
 import AyrshareConnectionPanel from "./AyrshareConnectionPanel";
+import { getTelemetryConsent, setTelemetryConsent } from "../lib/telemetry";
 import { BadgeShelf } from "./BadgeShelf";
 
 // Settings panel per spec §3.8 screen 8 — one scrollable page.
@@ -232,7 +233,12 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
 
           <Section eyebrow="about" title='"Made with Liquid Clips" + privacy.'>
             <Toggle label="Show 'Made with Liquid Clips' watermark on clips" defaultOn={false} />
-            <Toggle label="Send anonymous telemetry (no video content, no transcripts)" defaultOn={false} />
+            <Toggle
+              label="Send anonymous telemetry (no video content, no transcripts)"
+              defaultOn={false}
+              initial={() => getTelemetryConsent()}
+              onChange={(next) => setTelemetryConsent(next)}
+            />
             <Row label="Version" value={APP_VERSION} mono />
             {hw && <Row label="Machine" value={`${hw.ram_gb}GB RAM · ${hw.cpu_count} CPU · ${hw.free_disk_gb}GB free`} />}
             <div className="flex flex-wrap gap-3 pt-1">
@@ -399,12 +405,31 @@ function ConnectionsSection() {
 }
 
 
-function Toggle({ label, defaultOn }: { label: string; defaultOn: boolean }) {
-  const [on, setOn] = useState(defaultOn);
-  // v1.0: persistence wires up in Sprint 4.5 alongside the settings table on the backend.
+function Toggle({
+  label,
+  defaultOn,
+  initial,
+  onChange,
+}: {
+  label: string;
+  defaultOn: boolean;
+  /** Read once on mount to hydrate from persisted state (e.g. localStorage).
+   * If provided, takes precedence over defaultOn. */
+  initial?: () => boolean;
+  /** Fired on every flip with the new boolean. Use to persist. */
+  onChange?: (next: boolean) => void;
+}) {
+  const [on, setOn] = useState<boolean>(() => (initial ? initial() : defaultOn));
+  function flip() {
+    setOn((v) => {
+      const next = !v;
+      onChange?.(next);
+      return next;
+    });
+  }
   return (
     <button
-      onClick={() => setOn((v) => !v)}
+      onClick={flip}
       className="flex items-center justify-between gap-3 border-t border-line/60 pt-2 text-left"
     >
       <span className="font-sans text-[13px] text-ink">{label}</span>

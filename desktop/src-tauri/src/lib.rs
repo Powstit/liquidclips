@@ -13,8 +13,64 @@ async fn sidecar_call(
     state.call(&method, params).await.map_err(|e| e.to_string())
 }
 
+/// Native crash reporting (sprint #14c P2 audit fix).
+///
+/// Rust release is built with `panic = "abort"` so unwinding handlers don't
+/// run. Without a panic hook a hard Rust crash kills the process with NO
+/// trace anywhere — Admin HQ sees nothing. This hook captures the panic
+/// message + location and writes it atomically to
+/// ~/LiquidClips/.last-crash.json. The React shell reads + reports +
+/// deletes the file on next boot.
+fn install_native_panic_hook() {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        // Best-effort. NEVER let the hook itself panic or block.
+        let _ = write_crash_marker(info);
+        prev(info);
+    }));
+}
+
+fn write_crash_marker(info: &std::panic::PanicHookInfo) -> std::io::Result<()> {
+    use std::io::Write;
+    let home = std::env::var("HOME").unwrap_or_default();
+    if home.is_empty() {
+        return Ok(());
+    }
+    let dir = std::path::PathBuf::from(&home).join("LiquidClips");
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(".last-crash.json");
+
+    // Sanitize: keep message + location, drop anything that looks PII-ish.
+    let msg = info.payload().downcast_ref::<&str>().copied().unwrap_or_else(|| {
+        info.payload()
+            .downcast_ref::<String>()
+            .map(|s| s.as_str())
+            .unwrap_or("panic with non-string payload")
+    });
+    let (file, line) = info.location().map(|l| (l.file(), l.line())).unwrap_or(("unknown", 0));
+    let app_version = env!("CARGO_PKG_VERSION");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let payload = format!(
+        "{{\"event\":\"rust_panic\",\"message\":{},\"file\":{},\"line\":{},\"app_version\":\"{}\",\"unix_ts\":{}}}",
+        serde_json::to_string(msg).unwrap_or_else(|_| "\"<sanitization-failed>\"".into()),
+        serde_json::to_string(file).unwrap_or_else(|_| "\"<sanitization-failed>\"".into()),
+        line,
+        app_version,
+        now,
+    );
+
+    let mut f = std::fs::File::create(&path)?;
+    f.write_all(payload.as_bytes())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    install_native_panic_hook();
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
