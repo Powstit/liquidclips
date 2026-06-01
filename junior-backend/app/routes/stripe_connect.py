@@ -203,9 +203,12 @@ def get_status(
 ) -> ConnectStatusResponse:
     _require_internal(x_internal_secret)
     user = _get_user_or_404(db, clerk_user_id)
+    # NULL-safe — old rows pre-migration may have NULL for the stripe_connect_*
+    # columns even though the model says NOT NULL DEFAULT 'none'. Coerce
+    # explicitly so Pydantic doesn't 500 on legacy rows.
     return ConnectStatusResponse(
         account_id=user.stripe_connect_account_id,
-        status=user.stripe_connect_status,
-        payouts_enabled=user.stripe_connect_payouts_enabled,
-        charges_enabled=user.stripe_connect_charges_enabled,
+        status=user.stripe_connect_status or "none",
+        payouts_enabled=bool(user.stripe_connect_payouts_enabled),
+        charges_enabled=bool(user.stripe_connect_charges_enabled),
     )
