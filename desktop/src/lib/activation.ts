@@ -72,6 +72,27 @@ async function handleDeepLink(urls: string[]): Promise<void> {
     // account-app emitted pre-rebrand. Either scheme + hostname=activate is
     // a valid activation link as long as the challenge matches.
     if (u.protocol !== "liquidclips:" && u.protocol !== "junior:") continue;
+
+    // Sprint #12 — payout return hook. The account-app's /dashboard page
+    // detects Stripe-Connect return / Whop affiliate sign-in completion and
+    // can redirect to liquidclips://payout-return, which fires a window
+    // event so AffiliateHero refetches /me/affiliate without a page reload.
+    if (u.hostname === "payout-return") {
+      window.dispatchEvent(
+        new CustomEvent("junior:payout-updated", {
+          detail: {
+            source: u.searchParams.get("source") ?? "deep-link",
+          },
+        }),
+      );
+      // also reuse the existing whop-auth bus so any code listening for that
+      // (EarnTab) gets a free refresh on Whop sign-in too.
+      window.dispatchEvent(
+        new CustomEvent("junior:whop-auth", { detail: { source: "deep-link" } }),
+      );
+      return;
+    }
+
     if (u.hostname !== "activate") continue;
     if (!pendingChallenge) return; // nothing in flight — ignore stray/old links
 
