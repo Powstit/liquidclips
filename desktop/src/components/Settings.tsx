@@ -8,9 +8,8 @@ import { sidecar, humanError, type HardwareInfo, type SecretName } from "../lib/
 import pkg from "../../package.json";
 const APP_VERSION: string = pkg.version;
 const SUPPORT_EMAIL = "support@jnremployee.com";
-import { syncStatus, backend, meStatus, type SyncStatus, type MeStatus, type PlatformConnection, type ConnectionPlatform } from "../lib/backend";
+import { syncStatus, meStatus, type SyncStatus, type MeStatus } from "../lib/backend";
 import { applyUpdate, checkForUpdate, readLastUpdateCheck, type LastUpdateCheck, type UpdateState } from "../lib/updater";
-import { PlatformIcon } from "./PlatformIcon";
 import AyrshareConnectionPanel from "./AyrshareConnectionPanel";
 import { BadgeShelf } from "./BadgeShelf";
 
@@ -386,72 +385,6 @@ function SecretRow({
 }
 
 function ConnectionsSection() {
-  const [connections, setConnections] = useState<PlatformConnection[]>([]);
-  const [maxConnections, setMaxConnections] = useState<number | null>(null);
-  const [canConnectMore, setCanConnectMore] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [connecting, setConnecting] = useState<ConnectionPlatform | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const PLATFORMS: ConnectionPlatform[] = ["youtube", "tiktok", "instagram", "x"];
-
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) {
-        setError("Sign in first to manage connections.");
-        return;
-      }
-      const list = await backend.connections.list(jwt);
-      setConnections(list.connections);
-      setMaxConnections(list.max_connections);
-      setCanConnectMore(list.can_connect_more);
-    } catch (e) {
-      setError(humanError(e));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    void load();
-  }, []);
-
-  async function connect(platform: ConnectionPlatform) {
-    setConnecting(platform);
-    try {
-      const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) return;
-      const { redirect_url } = await backend.connections.startConnect(jwt, platform);
-      if (redirect_url.startsWith("http")) {
-        const { open } = await import("@tauri-apps/plugin-shell");
-        await open(redirect_url).catch(() => undefined);
-      }
-      await load();
-    } catch (e) {
-      setError(humanError(e));
-    } finally {
-      setConnecting(null);
-    }
-  }
-
-  async function disconnect(integration_id: string) {
-    if (!confirm("Disconnect this account?")) return;
-    const { value: jwt } = await sidecar.licenseJwtRead();
-    if (!jwt) return;
-    await backend.connections.disconnect(jwt, integration_id);
-    await load();
-  }
-
-  const byPlatform = new Map<ConnectionPlatform, PlatformConnection[]>();
-  for (const c of connections) {
-    const arr = byPlatform.get(c.platform) ?? [];
-    arr.push(c);
-    byPlatform.set(c.platform, arr);
-  }
-
   return (
     <Section eyebrow="connected accounts" title="Where Liquid Clips posts on your behalf.">
       <p className="font-sans text-[13px] text-text-secondary">
@@ -460,68 +393,7 @@ function ConnectionsSection() {
 
       <AyrshareConnectionPanel />
 
-      {loading ? (
-        <p className="font-mono text-[12px] text-text-tertiary">
-          Reading your connections<span className="blink">_</span>
-        </p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <WhopConnectionRow />
-          {PLATFORMS.map((p) => {
-            const accounts = byPlatform.get(p) ?? [];
-            const label = ({ youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", x: "X" })[p];
-            return (
-              <div key={p} className="rounded-xl border border-line bg-paper p-3.5">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <span className="grid h-8 w-8 place-items-center rounded-full bg-ink text-paper">
-                      <PlatformIcon id={p} className="h-4 w-4" />
-                    </span>
-                    <div>
-                      <div className="font-sans text-[14px] font-medium text-ink">{label}</div>
-                      <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-                        {accounts.length === 0
-                          ? "not connected"
-                          : `${accounts.length} account${accounts.length === 1 ? "" : "s"}`}
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => void connect(p)}
-                    disabled={connecting === p || (!canConnectMore && accounts.length === 0)}
-                    className="rounded-full border border-line bg-paper px-3.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:border-fuchsia hover:text-ink disabled:opacity-40"
-                  >
-                    {connecting === p ? "connecting…" : accounts.length === 0 ? "connect" : "add another"}
-                  </button>
-                </div>
-                {accounts.length > 0 && (
-                  <ul className="mt-2 space-y-1 pl-11">
-                    {accounts.map((a) => (
-                      <li key={a.integration_id} className="flex items-center justify-between gap-2 text-[13px]">
-                        <span className="font-mono text-text-secondary">{a.account_handle}</span>
-                        <button
-                          onClick={() => void disconnect(a.integration_id)}
-                          className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary hover:text-[#DC2626]"
-                        >
-                          disconnect
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {error && <p className="font-mono text-[11px] text-[#DC2626]">{error}</p>}
-
-      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-        {maxConnections === null
-          ? `${connections.length} connected · unlimited on your tier`
-          : `${connections.length}/${maxConnections} connected on your tier`}
-      </p>
+      <WhopConnectionRow />
     </Section>
   );
 }
