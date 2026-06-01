@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, Text, func
+from decimal import Decimal
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -61,6 +62,17 @@ class User(Base):
     extra_accounts_purchased: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     llm_usage_month: Mapped[str | None] = mapped_column(String, nullable=True)
     llm_tokens_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Earnings leaderboard cache (sprint #14a). The per-user fetch path in
+    # affiliate.py hits Whop on every request and would rate-limit us
+    # immediately under a leaderboard fanout. cron.py refreshes these every
+    # 6h from Whop's /affiliates/{id} record; routes/leaderboard.py reads
+    # ONLY from this cache so the board is fast + Whop-independent at
+    # request time.
+    cached_lifetime_earnings_usd: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=Decimal("0"))
+    cached_paid_referrals: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cached_display_handle: Mapped[str | None] = mapped_column(String, nullable=True)
+    cached_earnings_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)

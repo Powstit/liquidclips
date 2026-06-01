@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.cron import start_cron, stop_cron
 from app.db import Base, engine
-from app.routes import admin, affiliate, connections, desktop, me, notifications, onboarding, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, sync, telemetry, transcribe, updates, usage, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, affiliate, connections, desktop, leaderboard, me, notifications, onboarding, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, sync, telemetry, transcribe, updates, usage, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -70,6 +70,13 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS extra_accounts_purchased integer NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_usage_month varchar",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_tokens_used integer NOT NULL DEFAULT 0",
+        # Earnings leaderboard cache (sprint #14a). Refreshed every 6h by
+        # app/cron.py:_refresh_affiliate_cache_tick. Read by routes/leaderboard.py.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS cached_lifetime_earnings_usd numeric(10,2) NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS cached_paid_referrals integer NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS cached_display_handle varchar",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS cached_earnings_at timestamptz",
+        "CREATE INDEX IF NOT EXISTS ix_users_cached_earnings ON users (cached_lifetime_earnings_usd DESC) WHERE cached_lifetime_earnings_usd > 0",
         "CREATE INDEX IF NOT EXISTS ix_users_ip_address ON users (ip_address) WHERE ip_address IS NOT NULL",
         # Legacy tier rename — "channel" was the 0.4.x name for what is now "pro"
         # in the v2 matrix. Idempotent because rerun affects zero rows after first pass.
@@ -141,6 +148,7 @@ app.include_router(admin.router)
 app.include_router(redirect.router)
 app.include_router(reward_clips.router)
 app.include_router(proxy_llm.router)
+app.include_router(leaderboard.router)
 
 
 @app.get("/healthcheck")

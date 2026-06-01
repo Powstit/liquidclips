@@ -3,7 +3,7 @@
 // pill background. Bottom icon (Link) opens AffiliateHero as a popover.
 
 import { useState, type ReactNode } from "react";
-import { CheckCircle2, Clock4, Link as LinkIcon, Send, Target } from "lucide-react";
+import { CheckCircle2, Clock4, Link as LinkIcon, Send, Target, Trophy } from "lucide-react";
 import { AffiliateHeroPopover, useAffiliateAttention } from "./AffiliateHero";
 import type { EarnTab as EarnSubTab } from "./types";
 
@@ -15,6 +15,7 @@ const ITEMS: Array<{ id: EarnSubTab; label: string; chip: string; icon: ReactNod
   { id: "in_progress", label: "In progress",    chip: "Doing",  icon: <Clock4 size={14} /> },
   { id: "submitted",   label: "Posted clips",   chip: "Posted", icon: <Send size={14} /> },
   { id: "approved",    label: "Approved",       chip: "Paid",   icon: <CheckCircle2 size={14} /> },
+  { id: "leaderboard", label: "Top affiliates", chip: "Top",    icon: <Trophy size={14} /> },
 ];
 
 export function EarnIconRail({

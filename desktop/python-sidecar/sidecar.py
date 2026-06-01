@@ -949,8 +949,8 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
 
     # Transcribe — same model + settings as stage_transcribe local path.
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
-    from faster_whisper import WhisperModel
     from stages import _bundled_whisper_model_path
+    from whisper_backend import transcribe_auto
     import threading
     # Once the worker emits its first real per-segment progress event, this
     # flag flips and the poll-loop heartbeat shuts up. Without it, the two
@@ -981,56 +981,44 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
     bundled = _bundled_whisper_model_path() if model_size == "tiny" else None
 
     # HANG FIX (TRANSCRIPT_HANG_REPORT.md tier 1): wrap model.transcribe() in a
-    # ThreadPoolExecutor with a hard 120s ceiling. faster-whisper's
+    # ThreadPoolExecutor with a hard timeout. faster-whisper's
     # vad_filter=True can loop infinitely on music-only / corrupt audio; setting
     # it to False is the recommended #1 mitigation. Without this wrapper, a hang
     # in transcribe() freezes the whole RPC channel — no return = UI stuck
     # forever on the "Transcribing" spinner.
-    def _do_transcribe() -> tuple[list[dict[str, Any]], list[str], Any]:
+    def _emit_transcribe_segment(seg: dict[str, Any], dur_local: float) -> None:
+        if dur_local <= 0:
+            return
+        # Mark first real progress so the poll-loop heartbeat shuts up — prevents
+        # the bounce-backwards bar regression from 0.4.42.
+        first_segment_event.set()
+        seg_end = float(seg.get("end") or 0)
+        pct = min(99.0, (seg_end / dur_local) * 100.0)
+        # ETA derived from measured speed (not the heartbeat's optimistic 5x
+        # guess): wall-clock per audio-second × remaining audio.
+        wall_elapsed = time.monotonic() - transcribe_start_ms
+        eta_s = None
+        if seg_end > 0:
+            speed = wall_elapsed / seg_end
+            eta_s = max(0, int((dur_local - seg_end) * speed))
+        emit({"event": "lift_progress", "data": {
+            "phase": "transcribing",
+            "percent": pct,
+            "eta_s": eta_s,
+        }})
+
+    def _do_transcribe() -> tuple[list[dict[str, Any]], list[str], Any, str]:
         log(f"[lift_transcript] model loading ({model_size})")
-        # Sprint #24 micro-win: num_workers=4 lets faster-whisper parallelise
-        # the preprocessing/encoding pipeline across cores. 1.5-2x speed-up on
-        # M-series Macs with no quality cost.
-        m = WhisperModel(bundled or model_size, device="cpu", compute_type="int8", num_workers=4)
-        log("[lift_transcript] model loaded, starting transcribe")
-        seg_iter, info_local = m.transcribe(
-            str(audio_wav),
-            word_timestamps=False,
-            # vad_filter=False — the #1 reported faster-whisper hang source.
-            # tiny model is fast enough to process full audio without VAD.
-            vad_filter=False,
-            # beam_size=1 (greedy) is 3-5x faster than the default beam=5
-            # with negligible WER hit on clean podcast/long-form audio.
-            # condition_on_previous_text=False kills the chain dependency
-            # between segments — same fix stages.py already shipped.
-            beam_size=1,
-            condition_on_previous_text=False,
+        segments, text, info_local, engine_local = transcribe_auto(
+            audio_wav,
+            model_size=model_size,
+            bundled_model=bundled,
+            duration_hint=float(info.get("duration") or 0),
+            on_segment=_emit_transcribe_segment,
+            log=log,
         )
-        local_segments: list[dict[str, Any]] = []
-        local_text: list[str] = []
-        dur_local = float(info_local.duration or info.get("duration") or 0)
-        for seg in seg_iter:
-            text = seg.text.strip()
-            local_segments.append({"start": seg.start, "end": seg.end, "text": text})
-            local_text.append(text)
-            if dur_local > 0:
-                # Mark first real progress so the poll-loop heartbeat shuts up
-                # — prevents the bounce-backwards bar regression from 0.4.42.
-                first_segment_event.set()
-                pct = min(99.0, (float(seg.end) / dur_local) * 100.0)
-                # ETA derived from measured speed (not the heartbeat's optimistic
-                # 5x guess): wall-clock per audio-second × remaining audio.
-                wall_elapsed = time.monotonic() - transcribe_start_ms
-                eta_s = None
-                if seg.end and seg.end > 0:
-                    speed = wall_elapsed / float(seg.end)
-                    eta_s = max(0, int((dur_local - float(seg.end)) * speed))
-                emit({"event": "lift_progress", "data": {
-                    "phase": "transcribing",
-                    "percent": pct,
-                    "eta_s": eta_s,
-                }})
-        return local_segments, local_text, info_local
+        log(f"[lift_transcript] {engine_local} transcribe complete")
+        return segments, text, info_local, engine_local
 
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:
@@ -1049,7 +1037,7 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
             segments_list = None
             while True:
                 try:
-                    segments_list, total_text, t_info = future.result(timeout=poll_step)
+                    segments_list, total_text, t_info, transcribe_engine = future.result(timeout=poll_step)
                     break
                 except FutureTimeoutError:
                     elapsed += poll_step
@@ -1081,7 +1069,7 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
         )
 
     duration = float(t_info.duration or info.get("duration") or 0)
-    log(f"[lift_transcript] transcribe done, {len(segments_list)} segments, duration={duration:.1f}s")
+    log(f"[lift_transcript] transcribe done via {transcribe_engine}, {len(segments_list)} segments, duration={duration:.1f}s")
 
     full_text = " ".join(total_text).strip()
 
@@ -1111,6 +1099,7 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
         "duration": duration,
         "text": full_text,
         "segments": segments_list,
+        "transcribe_engine": transcribe_engine,
         "meta": {
             "title": info.get("title"),
             "uploader": info.get("uploader") or info.get("channel"),
@@ -1119,6 +1108,7 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
             "poster_path": poster_path,
             "duration_seconds": duration,
             "source_url": url,
+            "transcribe_engine": transcribe_engine,
         },
     }
     try:

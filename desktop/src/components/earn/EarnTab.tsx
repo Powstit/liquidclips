@@ -9,6 +9,7 @@ import { BountyFilters } from "./BountyFilters";
 import { BountyDetail } from "./BountyDetail";
 import { SubmittedList } from "./SubmittedList";
 import { ApprovedList } from "./ApprovedList";
+import { Leaderboard } from "./Leaderboard";
 import { RewardClipsPanel } from "./RewardClipsPanel";
 import { EarnLayout } from "./EarnLayout";
 import { EarnTickerStrip } from "./EarnTickerStrip";
@@ -412,10 +413,13 @@ export function EarnTab({
 
           {subTab === "approved" && <ApprovedList items={approved} />}
 
+          {subTab === "leaderboard" && <Leaderboard />}
+
           {/* Reward Clips · Tracking Links — read-only list of clips the user
               has generated from Content Rewards. Always visible at the bottom
-              regardless of sub-tab. */}
-          <RewardClipsPanel />
+              regardless of sub-tab (except leaderboard, which is its own
+              focused view). */}
+          {subTab !== "leaderboard" && <RewardClipsPanel />}
         </div>
       }
       sidebar={<EarnSidebar />}
