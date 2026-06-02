@@ -34,17 +34,29 @@ fi
 
 echo "=== Submitting $(basename "$DMG") to Apple notarytool ==="
 
-# Submit and capture submission ID
+# Submit and capture submission ID. Disable set -e for the submit call so we
+# can ALWAYS print the captured output (auth errors / validation rejections
+# go to stderr and the previous capture-then-set-e flow swallowed them, so
+# CI showed nothing but a bare exit 1).
+set +e
 SUBMISSION=$(xcrun notarytool submit "$DMG" \
   "${NOTARY_ARGS[@]}" \
   --wait \
   2>&1)
+SUBMIT_EXIT=$?
+set -e
+echo "--- notarytool submit output ---"
+echo "$SUBMISSION"
+echo "--- end output (exit=$SUBMIT_EXIT) ---"
+if [ $SUBMIT_EXIT -ne 0 ]; then
+  echo "✗ notarytool submit exited $SUBMIT_EXIT" >&2
+  exit 1
+fi
 
 # Extract submission ID from output
 ID=$(echo "$SUBMISSION" | grep -oE 'id: [a-f0-9-]+' | head -1 | sed 's/id: //')
 if [ -z "$ID" ]; then
-  echo "✗ Could not extract submission ID. Output:" >&2
-  echo "$SUBMISSION" >&2
+  echo "✗ Could not extract submission ID from notarytool output above" >&2
   exit 1
 fi
 
