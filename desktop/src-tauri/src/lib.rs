@@ -1,5 +1,6 @@
 mod browse;
 mod sidecar;
+mod social_link;
 
 use serde_json::Value;
 use tauri::Manager;
@@ -165,6 +166,8 @@ pub fn run() {
             browse::browse_back,
             browse::browse_forward,
             browse::browse_reload,
+            social_link::open_social_link_window,
+            social_link::close_social_link_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running liquid clips desktop");
