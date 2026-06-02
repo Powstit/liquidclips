@@ -87,6 +87,13 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
         </header>
 
         <div className="flex flex-1 flex-col gap-8 px-6 py-8">
+          {/* Sprint #18a — achievement badges live at the TOP of Settings so
+              users see their progress + earned badges first. Hidden when no
+              badges earned yet to avoid an empty-state at the top. */}
+          <Section eyebrow="achievements" title="Your earned badges.">
+            <BadgeShelf />
+          </Section>
+
           <Section eyebrow="account" title="Plan + subscription">
             <Row
               label="Tier"
@@ -707,9 +714,6 @@ function WhoAmISection() {
               : `backend key missing — desktop session: ${whopSource}`
           }
         />
-      </div>
-      <div className="mt-6">
-        <BadgeShelf />
       </div>
     </Section>
   );

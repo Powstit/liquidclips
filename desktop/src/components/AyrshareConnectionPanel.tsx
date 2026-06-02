@@ -4,6 +4,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Link, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 
 import * as backend from "../lib/backend";
+import { PlatformIcon, type PlatformId } from "./PlatformIcon";
 
 const PLATFORM_LABEL: Record<string, string> = {
   tiktok: "TikTok",
@@ -238,22 +239,31 @@ export default function AyrshareConnectionPanel() {
                 Key saved, but Ayrshare reports no linked platforms — link one on their dashboard then refresh.
               </span>
             ) : (
-              platforms.map((p) => (
-                <span
-                  key={p}
-                  className="group inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-ink"
-                >
-                  {prettyPlatform(p)}
-                  <button
-                    onClick={() => void disconnect(p)}
-                    disabled={busy}
-                    title={`Hide ${prettyPlatform(p)} locally`}
-                    className="text-text-tertiary hover:text-[#DC2626] disabled:opacity-30"
+              platforms.map((p) => {
+                const pid = (p.toLowerCase() === "twitter" ? "x" : p.toLowerCase()) as PlatformId;
+                const hasIcon = ["youtube", "tiktok", "instagram", "x"].includes(pid);
+                return (
+                  <span
+                    key={p}
+                    className="group inline-flex items-center gap-2 rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-[12px] font-medium text-ink"
                   >
-                    ×
-                  </button>
-                </span>
-              ))
+                    {hasIcon && (
+                      <span className="grid h-5 w-5 place-items-center rounded-full bg-ink text-paper">
+                        <PlatformIcon id={pid} className="h-3 w-3" />
+                      </span>
+                    )}
+                    <span>{prettyPlatform(p)}</span>
+                    <button
+                      onClick={() => void disconnect(p)}
+                      disabled={busy}
+                      title={`Hide ${prettyPlatform(p)} locally`}
+                      className="ml-1 text-text-tertiary hover:text-[#DC2626] disabled:opacity-30"
+                    >
+                      ×
+                    </button>
+                  </span>
+                );
+              })
             )}
           </div>
           <div className="flex items-center gap-3 pt-1">
