@@ -150,7 +150,7 @@ export function SplashGame({
       </div>
 
       <div className="relative rounded-xl p-2">
-        <InvadersCanvas state={state} onStep={onStep} width={480} height={320} />
+        <InvadersCanvas state={state} onStep={onStep} width={480} height={320} paused={!started} />
 
         {/* Paused-state overlay — Chrome dinosaur pattern. Game waits here
             until the user presses SPACE for the first time. The animate-pulse

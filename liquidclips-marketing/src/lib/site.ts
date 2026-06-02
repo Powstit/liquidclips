@@ -5,12 +5,12 @@ export const supportEmail = "support@liquidclips.app";
 
 export const downloadUrl =
   process.env.NEXT_PUBLIC_DOWNLOAD_DMG_URL ??
-  "https://github.com/junior-app/liquid-clips/releases/latest";
+  "https://github.com/Powstit/Jnr-employee/releases/latest";
 
 export const navLinks = [
   { href: "/#how", label: "How it works" },
   { href: "/#pricing", label: "Pricing" },
-  { href: "/#trust", label: "Trust" },
+  { href: "/download", label: "Download" },
   { href: "/help", label: "Help" },
   { href: "/privacy", label: "Privacy" },
 ];
