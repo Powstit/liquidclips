@@ -200,27 +200,19 @@ def start_link(
         db.commit()
         db.refresh(row)
 
-    # 2) Mint a JWT for the hosted link page. Optional `domain` arg becomes
-    # useful once a Custom Domain (e.g. social.liquidclips.app) is configured
-    # in Ayrshare admin — until then the URL stays on app.ayrshare.com but
-    # the JWT still skips signup. Env override = AYRSHARE_LINK_DOMAIN.
-    domain = os.environ.get("AYRSHARE_LINK_DOMAIN", "").strip() or None
-    try:
-        token_resp = ayrshare.generate_jwt(profile_key, domain=domain)
-    except httpx.HTTPError as exc:
-        log.exception("[social] generate_jwt failed")
-        raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY,
-            "Couldn't mint an Ayrshare linking token. Try again.",
-        ) from exc
-
-    link_url = (token_resp or {}).get("url") or (token_resp or {}).get("link")
-    if not link_url:
-        log.error("[social] Ayrshare generateJWT returned no url: %r", token_resp)
-        raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY,
-            "Ayrshare didn't return a link URL. Try again.",
-        )
+    # 2) Build the hosted-link URL. We use Ayrshare's profileKey query-param
+    # entry point — it accepts just the key and shows the social-accounts
+    # link page directly. The Business-plan generateJWT path needs an org
+    # RSA private key configured in Ayrshare dashboard (manual setup); the
+    # profileKey query-param flow works on every plan and is equally
+    # secure (the key is treated as a bearer credential anyway).
+    #
+    # Custom Domain (e.g. social.liquidclips.app) takes over via
+    # AYRSHARE_LINK_DOMAIN env when configured.
+    domain = (os.environ.get("AYRSHARE_LINK_DOMAIN", "").strip() or "app.ayrshare.com").rstrip("/")
+    if not domain.startswith("http"):
+        domain = f"https://{domain}"
+    link_url = f"{domain}/social-accounts?profileKey={profile_key}"
 
     return StartLinkResponse(link_url=link_url, profile_key_set=True)
 
