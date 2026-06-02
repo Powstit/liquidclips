@@ -74,6 +74,15 @@ class User(Base):
     cached_display_handle: Mapped[str | None] = mapped_column(String, nullable=True)
     cached_earnings_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Stripe Connect Express — payout rail for non-Whop affiliates. Columns
+    # are ALTERed-in via main.py lifespan but were missing from the SQLAlchemy
+    # model, so /stripe-connect/status used to AttributeError-500. Declared
+    # here so the ORM can read them.
+    stripe_connect_account_id: Mapped[str | None] = mapped_column(String, nullable=True, unique=True, index=True)
+    stripe_connect_status: Mapped[str] = mapped_column(String, nullable=False, default="none")
+    stripe_connect_payouts_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    stripe_connect_charges_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
