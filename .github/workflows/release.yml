@@ -99,8 +99,10 @@ jobs:
           xattr -cr desktop/python-sidecar/models/
           xattr -cr desktop/python-sidecar/*.py
           xattr -cr desktop/src/
-          xattr -cr desktop/public/
-          xattr -cr desktop/assets/
+          # desktop/public/ + desktop/assets/ may not exist on every build;
+          # tolerate the absence so set -e doesn't abort.
+          xattr -cr desktop/public/ 2>/dev/null || true
+          xattr -cr desktop/assets/ 2>/dev/null || true
           xattr -cr desktop/src-tauri/icons/
           xattr -cr desktop/src-tauri/entitlements*
           xattr -cr desktop/src-tauri/*.xcprivacy
