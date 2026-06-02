@@ -17,6 +17,7 @@ Routes:
 from __future__ import annotations
 
 import logging
+import os
 from typing import Annotated
 
 import httpx
@@ -132,6 +133,96 @@ def connect(
     db.commit()
     db.refresh(row)
     return _state_from_row(row)
+
+
+class StartLinkResponse(BaseModel):
+    link_url: str
+    profile_key_set: bool
+
+
+@router.post("/start-link", response_model=StartLinkResponse)
+def start_link(
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> StartLinkResponse:
+    """In-app Ayrshare linking (sprint #14d).
+
+    Provisions an Ayrshare sub-profile for this user (or reuses an existing
+    one), mints a short-lived JWT, and returns the hosted-link URL. The
+    desktop opens that URL inside a Tauri WebView so the user can OAuth
+    each platform (TikTok / Reels / YouTube / X) without leaving Liquid Clips
+    or signing up to Ayrshare.
+
+    Idempotent — repeated calls on the same user re-mint a fresh JWT against
+    the SAME profile key, so a closed-and-reopened linking window keeps the
+    same Ayrshare profile lineage.
+    """
+    if not ayrshare.is_configured():
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Publishing is in beta — Ayrshare isn't configured on the server yet.",
+        )
+
+    row = db.get(SocialConnection, user.id)
+
+    # 1) Reuse existing profile_key when present; otherwise create a fresh
+    # one and persist immediately so a backend crash mid-flow doesn't strand
+    # an orphan profile on Ayrshare's side.
+    if row and row.ayrshare_profile_key:
+        profile_key = row.ayrshare_profile_key
+    else:
+        title = f"{user.email or user.id} · liquidclips"
+        try:
+            created = ayrshare.create_profile(title=title, email=user.email)
+        except httpx.HTTPError as exc:
+            log.exception("[social] create_profile failed")
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY,
+                "Ayrshare wouldn't provision a profile right now. Try again in a minute.",
+            ) from exc
+        profile_key = (created or {}).get("profileKey") or (created or {}).get("profile_key")
+        if not profile_key:
+            log.error("[social] Ayrshare returned no profileKey: %r", created)
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY,
+                "Ayrshare returned an unexpected response. Try again.",
+            )
+        if row:
+            row.ayrshare_profile_key = profile_key
+        else:
+            row = SocialConnection(
+                user_id=user.id,
+                ayrshare_profile_key=profile_key,
+                connected_platforms=[],
+                active=False,
+            )
+            db.add(row)
+        db.commit()
+        db.refresh(row)
+
+    # 2) Mint a JWT for the hosted link page. Optional `domain` arg becomes
+    # useful once a Custom Domain (e.g. social.liquidclips.app) is configured
+    # in Ayrshare admin — until then the URL stays on app.ayrshare.com but
+    # the JWT still skips signup. Env override = AYRSHARE_LINK_DOMAIN.
+    domain = os.environ.get("AYRSHARE_LINK_DOMAIN", "").strip() or None
+    try:
+        token_resp = ayrshare.generate_jwt(profile_key, domain=domain)
+    except httpx.HTTPError as exc:
+        log.exception("[social] generate_jwt failed")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "Couldn't mint an Ayrshare linking token. Try again.",
+        ) from exc
+
+    link_url = (token_resp or {}).get("url") or (token_resp or {}).get("link")
+    if not link_url:
+        log.error("[social] Ayrshare generateJWT returned no url: %r", token_resp)
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "Ayrshare didn't return a link URL. Try again.",
+        )
+
+    return StartLinkResponse(link_url=link_url, profile_key_set=True)
 
 
 @router.post("/refresh-platforms", response_model=ConnectionState)

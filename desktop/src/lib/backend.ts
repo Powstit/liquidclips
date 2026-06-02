@@ -923,6 +923,26 @@ export type SocialConnectionState = {
   active: boolean;
 };
 
+/** Sprint #14d — in-app Ayrshare account linking. Calls /social/start-link
+ * which mints an Ayrshare profile + JWT and returns a hosted-link URL.
+ * Desktop opens it in a Tauri WebView via the `open_social_link_window`
+ * Rust command. User never visits ayrshare.com in their browser. */
+export async function socialStartLink(): Promise<{ link_url: string; profile_key_set: boolean }> {
+  if (isWebPreview()) {
+    return { link_url: "https://app.ayrshare.com/auth?demo=1", profile_key_set: true };
+  }
+  const res = await authedFetch("/social/start-link", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `Couldn't start linking: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function socialGetConnection(): Promise<SocialConnectionState | null> {
   if (isWebPreview()) {
     return { connected: true, profile_key_set: true, platforms: ["tiktok", "youtube"], active: true };

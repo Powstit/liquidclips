@@ -68,6 +68,65 @@ def check_key() -> dict[str, Any]:
     return r.json()
 
 
+def create_profile(title: str, email: str | None = None) -> dict[str, Any]:
+    """POST /profiles/profile — provisions a NEW Ayrshare sub-profile under our
+    Business org. Returns {'profileKey': '...', 'refId': '...', 'title': '...'}.
+
+    Used by sprint #14d in-app linking: the user clicks 'Connect socials' in
+    Liquid Clips, we mint a profile via this call, mint a JWT via
+    generate_jwt(), and embed Ayrshare's link page in a Tauri WebView. The
+    user never types a Profile Key — we own the whole lifecycle.
+
+    `title` is what shows in Ayrshare's admin dashboard for tracking (we use
+    "<email> · liquidclips").
+    """
+    body: dict[str, Any] = {"title": title}
+    if email:
+        body["email"] = email
+    r = httpx.post(
+        f"{AYRSHARE_BASE}/profiles/profile",
+        headers=_headers(),
+        json=body,
+        timeout=DEFAULT_TIMEOUT,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def generate_jwt(profile_key: str, *, domain: str | None = None, redirect: str | None = None) -> dict[str, Any]:
+    """POST /profiles/generateJWT — mints a short-lived JWT for the user's
+    profile so they can hit Ayrshare's hosted link page WITHOUT logging in.
+
+    Returns {'token': '<jwt>', 'url': 'https://app.ayrshare.com/auth?...'}.
+    The `url` is what we open in the Tauri WebView. Embedding the JWT means
+    the page knows which profile it's linking accounts TO without any
+    Ayrshare account / signup on the user's side.
+
+    `domain` (optional) — Custom Domain set up in Ayrshare admin
+    (e.g. social.liquidclips.app). Branding becomes ours when set; without
+    it the URL stays on app.ayrshare.com but the JWT still skips signup.
+
+    `redirect` (optional) — where Ayrshare bounces the user after they finish
+    linking. We don't need this for the WebView flow because we listen for
+    the window-close event in Rust instead.
+    """
+    body: dict[str, Any] = {"profileKey": profile_key}
+    if domain:
+        body["domain"] = domain
+    if redirect:
+        body["redirect"] = redirect
+    # generateJWT uses the org key in Authorization, NOT the profile key in
+    # the Profile-Key header — that's why _headers() is called without args.
+    r = httpx.post(
+        f"{AYRSHARE_BASE}/profiles/generateJWT",
+        headers=_headers(),
+        json=body,
+        timeout=DEFAULT_TIMEOUT,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def post(
     text: str,
     platforms: list[str],
