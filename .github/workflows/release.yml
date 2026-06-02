@@ -47,7 +47,7 @@ jobs:
           base64 -d -i "$CANARY.sig" > "$SIG_FILE"
           minisign -Vm "$CANARY" -x "$SIG_FILE" -p "$PUBKEY_FILE"
           EXPECTED='B1E037066BFCE444'
-          ACTUAL="$(base64 -d -i "$PUBKEY_FILE" | sed -n 's/^untrusted comment: minisign public key: //p')"
+          ACTUAL="$(sed -n 's/^untrusted comment: minisign public key: //p' "$PUBKEY_FILE" | tr -d '[:space:]')"
           if [ "$ACTUAL" != "$EXPECTED" ]; then
             echo "✗ updater pubkey fingerprint mismatch: expected $EXPECTED, got $ACTUAL" >&2
             exit 1
