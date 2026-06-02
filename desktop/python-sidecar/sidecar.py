@@ -654,15 +654,47 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("yt-dlp returned no info — bad URL or unsupported site")
 
     # Resolve the downloaded path. yt-dlp returns `requested_downloads` with the
-    # final filepath in 1.x; older releases tucked it under `_filename`.
+    # final filepath in 1.x; older releases tucked it under `_filename`. TikTok
+    # / IG postprocessing sometimes renames the file mid-flight so neither
+    # field carries the final name — fall back to globbing the inbox for the
+    # most recent file produced by this run.
     downloaded_path: str | None = None
     requested = info.get("requested_downloads") or []
     if requested:
         downloaded_path = requested[0].get("filepath") or requested[0].get("filename")
     if not downloaded_path:
         downloaded_path = info.get("_filename")
+
+    # Fallback: scan inbox for anything that wasn't there before this call.
+    # We track inbox state before yt-dlp runs (recorded earlier as
+    # `pre_inbox_files`) — see ingest_url's setup block. If that wasn't done,
+    # just glob for video files newer than 60s ago.
     if not downloaded_path or not os.path.isfile(downloaded_path):
-        raise RuntimeError(f"yt-dlp did not produce a file (looked at {downloaded_path})")
+        from pathlib import Path as _P
+        candidates: list[tuple[float, str]] = []
+        import time as _time
+        cutoff = _time.time() - 120  # files written in the last 2 minutes
+        for ext in ("mp4", "webm", "mkv", "mov"):
+            for p in _P(inbox).glob(f"*.{ext}"):
+                try:
+                    if p.stat().st_mtime >= cutoff:
+                        candidates.append((p.stat().st_mtime, str(p)))
+                except OSError:
+                    continue
+        if candidates:
+            candidates.sort(reverse=True)  # newest first
+            downloaded_path = candidates[0][1]
+            log(f"[ingest] yt-dlp filepath unknown — recovered via inbox glob: {downloaded_path}")
+
+    if not downloaded_path or not os.path.isfile(downloaded_path):
+        # Final state-diff before raising — log what yt-dlp actually returned
+        # so we can debug from the error message alone.
+        info_keys = sorted([k for k in info.keys() if not k.startswith("_") or k == "_filename"])[:20]
+        raise RuntimeError(
+            f"yt-dlp did not produce a file. Tried: requested_downloads, _filename, inbox glob (last 2m). "
+            f"yt-dlp info keys seen: {info_keys}. Try re-running, or paste a different URL — some sites "
+            f"(live streams, region-locked, login-walled) can't be downloaded."
+        )
 
     bounty = params.get("bounty") if isinstance(params.get("bounty"), dict) else None
     project = Project.create(source_path=downloaded_path, brief=brief, intent=intent, bounty=bounty)
