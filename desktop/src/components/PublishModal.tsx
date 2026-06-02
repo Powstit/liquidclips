@@ -4,6 +4,8 @@ import {
   backend,
   QuotaExceededError,
   socialGetConnection,
+  listChannels,
+  type Channel,
   type ConnectionPlatform,
   type PublishedTarget,
   type SocialConnectionState,
@@ -13,6 +15,7 @@ import { PlatformIcon } from "./PlatformIcon";
 import { InfoTip } from "./InfoTip";
 import { useTier, TIER_COPY, type PublishCapability } from "../lib/useTier";
 import type { Tier } from "../lib/backend";
+import { ChannelPicker } from "./schedule/ChannelPicker";
 
 /*
  * Sprint #3 — Ayrshare-native PublishModal.
@@ -81,6 +84,10 @@ export function PublishModal({
   const [connection, setConnection] = useState<SocialConnectionState | null>(null);
   const [connectionLoading, setConnectionLoading] = useState(true);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  // Schedule v2 — channel-aware publish. If user has any active channel, the
+  // modal switches from the legacy platform-multiselect to a ChannelPicker.
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [pickedChannelId, setPickedChannelId] = useState<string | null>(null);
   const [scheduleAt, setScheduleAt] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
@@ -114,8 +121,13 @@ export function PublishModal({
     let cancelled = false;
     (async () => {
       try {
-        const state = await socialGetConnection();
-        if (!cancelled) setConnection(state);
+        const [state, chs] = await Promise.all([
+          socialGetConnection(),
+          listChannels(),
+        ]);
+        if (cancelled) return;
+        setConnection(state);
+        setChannels(chs.filter((c: Channel) => c.status === "active"));
       } catch (e) {
         if (!cancelled) setError(humanError(e));
       } finally {
@@ -150,8 +162,8 @@ export function PublishModal({
       setError("This clip has no rendered file yet. Re-cut from the editor first.");
       return;
     }
-    if (picked.size === 0) {
-      setError("Pick at least one platform.");
+    if (picked.size === 0 && !pickedChannelId) {
+      setError(channels.length > 0 ? "Pick a channel." : "Pick at least one platform.");
       return;
     }
     setBusy(true);
@@ -163,25 +175,35 @@ export function PublishModal({
       }
 
       if (mode === "publish-now") {
-        // Backend translates the new Ayrshare {results:[...]} shape into the
-        // legacy PublishedTarget[] format inside backend.publishNow, so the
-        // summary string format below stays unchanged.
-        const results = await backend.publishNow(jwt, {
-          filePath: videoPath,
-          title: clip.title,
-          description: clip.description,
-          // backend.publishNow currently constrains platforms to the legacy
-          // {youtube,tiktok,x} subset for back-compat. Coerce here; backend
-          // ignores unknown platforms with a 400.
-          platforms: Array.from(picked).filter((p): p is "youtube" | "tiktok" | "x" =>
-            p === "youtube" || p === "tiktok" || p === "x",
-          ),
-        });
-        const ig = Array.from(picked).filter((p) => p === "instagram").length;
-        if (ig > 0) {
-          onDone(`${summarisePublish(results)} · Instagram queued for next sprint.`);
-        } else {
+        // Schedule v2 channel path: pickedChannelId → backend infers platform
+        // + uses the channel's own Ayrshare profile_key. One call = one post
+        // on one handle. To post to multiple handles, the user picks each
+        // channel separately.
+        if (pickedChannelId) {
+          const results = await backend.publishNow(jwt, {
+            filePath: videoPath,
+            title: clip.title,
+            description: clip.description,
+            platforms: [],          // ignored when channelId set
+            channelId: pickedChannelId,
+          });
           onDone(summarisePublish(results));
+        } else {
+          // Legacy path — single SocialConnection profile, comma-separated platforms.
+          const results = await backend.publishNow(jwt, {
+            filePath: videoPath,
+            title: clip.title,
+            description: clip.description,
+            platforms: Array.from(picked).filter((p): p is "youtube" | "tiktok" | "x" =>
+              p === "youtube" || p === "tiktok" || p === "x",
+            ),
+          });
+          const ig = Array.from(picked).filter((p) => p === "instagram").length;
+          if (ig > 0) {
+            onDone(`${summarisePublish(results)} · Instagram queued for next sprint.`);
+          } else {
+            onDone(summarisePublish(results));
+          }
         }
       } else {
         const platform = Array.from(picked)[0];
@@ -341,7 +363,14 @@ export function PublishModal({
             <p className="font-mono text-[12px] text-text-tertiary">
               Reading your social profile<span className="blink">_</span>
             </p>
+          ) : channels.length > 0 ? (
+            // Schedule v2 — channel picker (preferred). One click = one
+            // channel. Each channel posts via its own Ayrshare profile.
+            <ChannelPicker value={pickedChannelId} onChange={setPickedChannelId} />
           ) : (
+            // Legacy path — single Ayrshare profile via SocialConnection,
+            // multiselect platforms. Kept for users who haven't added a
+            // channel yet.
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {platforms.map((p) => (
                 <PlatformTile

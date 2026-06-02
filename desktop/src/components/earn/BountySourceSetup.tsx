@@ -47,7 +47,10 @@ export function BountySourceSetup({
     setError(null);
     const picked = await openDialog({
       multiple: false,
-      filters: [{ name: "Video", extensions: ["mp4", "mov", "mkv", "webm", "avi", "m4v"] }],
+      filters: [
+        { name: "Videos", extensions: ["mp4", "MP4", "mov", "MOV", "mkv", "MKV", "webm", "m4v", "M4V", "avi", "AVI", "hevc"] },
+        { name: "All files", extensions: ["*"] },
+      ],
     });
     if (typeof picked === "string") onContinue({ kind: "file", path: picked });
   }

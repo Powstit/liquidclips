@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import JSON, BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -138,6 +138,15 @@ class Schedule(Base):
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
+    # Schedule v2 (sprint multi-channel): channel_id, per-channel caption,
+    # Ayrshare's scheduled-post id (for cancel) + the final published URL.
+    # platform stays for back-compat with legacy rows; new rows infer it from
+    # the channel.
+    channel_id: Mapped[str | None] = mapped_column(ForeignKey("social_channels.id", ondelete="SET NULL"), nullable=True, index=True)
+    caption_override: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ayrshare_scheduled_post_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    actual_post_url: Mapped[str | None] = mapped_column(String, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
@@ -239,6 +248,53 @@ class PendingWhopMembership(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SocialChannel(Base):
+    """One social channel = one Ayrshare sub-profile = one platform handle
+    (sprint Schedule v2). A user can have N channels; each is created
+    independently via /channels POST → Ayrshare /profiles/profile → user OAuths
+    one social account on the new profile via the in-app Tauri WebView linker.
+
+    Replaces the single-row SocialConnection model for new users. Legacy users
+    with a SocialConnection row get auto-backfilled into a single channel on
+    their first /channels GET (see routes/channels.py for the backfill helper).
+    """
+
+    __tablename__ = "social_channels"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String, nullable=False)                         # user-facing name
+    platform: Mapped[str] = mapped_column(String, nullable=False)                      # tiktok | instagram | youtube | x | linkedin | facebook | threads
+    ayrshare_profile_key: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    ayrshare_ref_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    handle: Mapped[str | None] = mapped_column(String, nullable=True)                  # @username, pulled from Ayrshare /user
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending_link")  # pending_link | active | error | paused | deleted
+    last_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    total_posts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)        # denormalized for fast list views
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class PostAnalytic(Base):
+    """Per-published-post engagement snapshot — refreshed by cron every 30 min
+    for posts in the last 90 days. Reads ONLY from this cache (not Ayrshare
+    directly) so the AnalyticsView renders fast + rate-limit safe."""
+
+    __tablename__ = "post_analytics"
+
+    schedule_id: Mapped[str] = mapped_column(ForeignKey("schedules.id", ondelete="CASCADE"), primary_key=True)
+    channel_id: Mapped[str] = mapped_column(ForeignKey("social_channels.id", ondelete="CASCADE"), nullable=False, index=True)
+    platform: Mapped[str] = mapped_column(String, nullable=False)
+    views: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    likes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    comments: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    shares: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    saves: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    engagement_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    refreshed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class WebhookEvent(Base):

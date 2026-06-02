@@ -41,9 +41,19 @@ export async function pickOverlaySource(opts: {
 
 
 async function pickFileFromDisk(): Promise<string | null> {
+  // Two filter options so the user can switch between "videos only" (the
+  // default-selected hint) and "all files" (the escape hatch). Tauri's
+  // macOS filter greys out anything not matching the listed extensions —
+  // that included perfectly valid videos with uppercase .MP4, iCloud
+  // placeholders, or files dragged in from iMovie/Final Cut that had odd
+  // extensions. Adding the "All files" option lets the user pick anything;
+  // ffmpeg validates the actual codec when the overlay renders.
   const picked = await openDialog({
     multiple: false,
-    filters: [{ name: "Video", extensions: ["mp4", "mov", "mkv", "webm", "m4v"] }],
+    filters: [
+      { name: "Videos", extensions: ["mp4", "MP4", "mov", "MOV", "mkv", "MKV", "webm", "m4v", "M4V", "avi", "AVI", "hevc"] },
+      { name: "All files", extensions: ["*"] },
+    ],
   });
   if (!picked || Array.isArray(picked)) return null;
   return picked as string;

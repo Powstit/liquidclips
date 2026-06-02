@@ -504,7 +504,10 @@ export default function App() {
     setPendingBrief(briefFromUI);
     const picked = await open({
       multiple: false,
-      filters: [{ name: "Video", extensions: ["mp4", "mov", "mkv", "webm", "avi", "m4v"] }],
+      filters: [
+        { name: "Videos", extensions: ["mp4", "MP4", "mov", "MOV", "mkv", "MKV", "webm", "m4v", "M4V", "avi", "AVI", "hevc"] },
+        { name: "All files", extensions: ["*"] },
+      ],
     });
     if (typeof picked === "string") {
       // Route through the intent picker — the pipeline only starts after the

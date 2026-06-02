@@ -159,5 +159,26 @@ def cancel_schedule(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "schedule not found")
     if row.status in ("published", "uploading"):
         raise HTTPException(status.HTTP_409_CONFLICT, f"cannot cancel a {row.status} schedule")
+
+    # Schedule v2: if this row was queued via Ayrshare's native scheduler
+    # (the channel_id + ayrshare_scheduled_post_id path), cancel it on
+    # Ayrshare's side too. Best-effort — flip the local status either way.
+    if row.channel_id and row.ayrshare_scheduled_post_id:
+        from app import ayrshare
+        from app.models import SocialChannel
+        channel = db.get(SocialChannel, row.channel_id)
+        if channel and channel.ayrshare_profile_key:
+            try:
+                ayrshare.cancel_scheduled(channel.ayrshare_profile_key, row.ayrshare_scheduled_post_id)
+            except Exception as exc:  # noqa: BLE001
+                # Log and continue — local cancel still wins. Ayrshare retries
+                # the cancel out of band; worst case the post fires and the
+                # user has a "published" notification mismatch.
+                import logging as _l
+                _l.getLogger("junior.schedules").warning(
+                    "[schedules] ayrshare.cancel_scheduled failed for %s/%s: %s",
+                    channel.ayrshare_profile_key, row.ayrshare_scheduled_post_id, exc,
+                )
+
     row.status = "canceled"
     db.commit()

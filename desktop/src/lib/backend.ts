@@ -241,7 +241,13 @@ export const backend = {
       filePath: string;
       title: string;
       description: string;
+      /** Legacy path: list of platforms to post to via the user's single
+       * SocialConnection profile_key. Ignored when channelId is set. */
       platforms: ("youtube" | "tiktok" | "x")[];
+      /** Schedule v2 channel path: post to this one channel's Ayrshare
+       * profile. Backend infers the single platform from the channel.
+       * When set, `platforms` is ignored. */
+      channelId?: string | null;
       /** Optional ISO-8601 future timestamp. When set, the post is queued
        * via Ayrshare's native scheduler instead of firing immediately. */
       scheduledAt?: string | null;
@@ -259,6 +265,9 @@ export const backend = {
     form.append("title", args.title);
     form.append("description", args.description);
     form.append("platforms", args.platforms.join(","));
+    if (args.channelId) {
+      form.append("channel_id", args.channelId);
+    }
     if (args.scheduledAt) {
       form.append("scheduled_at", args.scheduledAt);
     }
@@ -928,6 +937,162 @@ export type SocialConnectionState = {
   platforms: string[];
   active: boolean;
 };
+
+// ── Schedule v2: multi-channel + analytics ────────────────────────────
+
+export type ChannelPlatform =
+  | "tiktok" | "instagram" | "youtube" | "x" | "linkedin" | "facebook" | "threads";
+
+export type ChannelStatus =
+  | "pending_link" | "active" | "error" | "paused" | "deleted";
+
+export type Channel = {
+  id: string;
+  label: string;
+  platform: ChannelPlatform;
+  handle: string | null;
+  status: ChannelStatus;
+  total_posts: number;
+  last_refreshed_at: string | null;
+  created_at: string;
+};
+
+export type ChannelCreateResponse = {
+  channel: Channel;
+  link_url: string;
+};
+
+export async function listChannels(): Promise<Channel[]> {
+  if (isWebPreview()) return [];
+  try {
+    const res = await authedFetch("/channels");
+    if (!res.ok) return [];
+    return (await res.json()) as Channel[];
+  } catch {
+    return [];
+  }
+}
+
+export async function createChannel(input: { platform: ChannelPlatform; label: string }): Promise<ChannelCreateResponse> {
+  if (isWebPreview()) {
+    return {
+      channel: { id: "ch_preview", label: input.label, platform: input.platform, handle: null, status: "pending_link", total_posts: 0, last_refreshed_at: null, created_at: new Date().toISOString() },
+      link_url: "https://app.ayrshare.com/social-accounts?profileKey=preview",
+    };
+  }
+  const res = await authedFetch("/channels", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `Couldn't create channel: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function patchChannel(id: string, patch: { label?: string; status?: "active" | "paused" }): Promise<Channel> {
+  const res = await authedFetch(`/channels/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `Couldn't update channel: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function deleteChannel(id: string): Promise<void> {
+  const res = await authedFetch(`/channels/${id}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `Couldn't delete channel: HTTP ${res.status}`);
+  }
+}
+
+export async function refreshChannel(id: string): Promise<Channel> {
+  const res = await authedFetch(`/channels/${id}/refresh`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `Couldn't refresh channel: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function relinkChannel(id: string): Promise<{ link_url: string }> {
+  const res = await authedFetch(`/channels/${id}/relink`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `Couldn't relink channel: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+// ── Analytics ─────────────────────────────────────────────────────────
+
+export type AnalyticsWindow = "7d" | "30d" | "90d" | "all";
+
+export type AnalyticsOverview = {
+  window: AnalyticsWindow;
+  total_views: number;
+  total_engagement: number;
+  total_posts: number;
+  best_channel: { id: string; label: string; platform: string; views: number } | null;
+  best_clip: { schedule_id: string; title: string; views: number; platform: string; post_url: string | null } | null;
+};
+
+export type ChannelAnalyticsRow = {
+  channel_id: string;
+  label: string;
+  platform: string;
+  handle: string | null;
+  posts: number;
+  views: number;
+  engagement: number;
+  engagement_rate: number | null;
+};
+
+export type ChannelDetail = {
+  channel_id: string;
+  label: string;
+  platform: string;
+  handle: string | null;
+  window: AnalyticsWindow;
+  total_posts: number;
+  total_views: number;
+  total_engagement: number;
+  top_clips: Array<{ schedule_id: string; clip_title: string; scheduled_for: string | null; post_url: string | null; views: number; likes: number }>;
+};
+
+export async function analyticsOverview(window: AnalyticsWindow = "30d"): Promise<AnalyticsOverview | null> {
+  if (isWebPreview()) return null;
+  try {
+    const res = await authedFetch(`/analytics/overview?window=${window}`);
+    if (!res.ok) return null;
+    return (await res.json()) as AnalyticsOverview;
+  } catch { return null; }
+}
+
+export async function analyticsChannels(window: AnalyticsWindow = "30d"): Promise<ChannelAnalyticsRow[]> {
+  if (isWebPreview()) return [];
+  try {
+    const res = await authedFetch(`/analytics/channels?window=${window}`);
+    if (!res.ok) return [];
+    return (await res.json()) as ChannelAnalyticsRow[];
+  } catch { return []; }
+}
+
+export async function analyticsChannelDetail(id: string, window: AnalyticsWindow = "30d"): Promise<ChannelDetail | null> {
+  if (isWebPreview()) return null;
+  try {
+    const res = await authedFetch(`/analytics/channels/${id}?window=${window}`);
+    if (!res.ok) return null;
+    return (await res.json()) as ChannelDetail;
+  } catch { return null; }
+}
 
 /** Sprint #14d — in-app Ayrshare account linking. Calls /social/start-link
  * which mints an Ayrshare profile + JWT and returns a hosted-link URL.
