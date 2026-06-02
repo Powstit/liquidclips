@@ -242,6 +242,9 @@ export const backend = {
       title: string;
       description: string;
       platforms: ("youtube" | "tiktok" | "x")[];
+      /** Optional ISO-8601 future timestamp. When set, the post is queued
+       * via Ayrshare's native scheduler instead of firing immediately. */
+      scheduledAt?: string | null;
     },
   ): Promise<PublishedTarget[]> => {
     // Tauri lets us POST a file by reading it from the local FS and packing into FormData.
@@ -256,6 +259,9 @@ export const backend = {
     form.append("title", args.title);
     form.append("description", args.description);
     form.append("platforms", args.platforms.join(","));
+    if (args.scheduledAt) {
+      form.append("scheduled_at", args.scheduledAt);
+    }
     const res = await fetch(`${BACKEND_URL}/publish-now`, {
       method: "POST",
       headers: { authorization: `Bearer ${jwt}` },
