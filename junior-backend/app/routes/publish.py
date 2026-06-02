@@ -82,8 +82,16 @@ async def publish_now(
     title: str = Form(...),
     description: str = Form(""),
     platforms: str = Form(..., description="Comma-separated subset of youtube,tiktok,x,instagram,linkedin,facebook"),
+    scheduled_at: str | None = Form(default=None, description="Optional ISO-8601 future timestamp. When set, Ayrshare queues the post and publishes at that time instead of immediately."),
 ) -> PublishResponse:
-    """Upload a clip + publish to one or more platforms immediately."""
+    """Upload a clip + publish to one or more platforms.
+
+    When `scheduled_at` is None → posts immediately.
+    When `scheduled_at` is an ISO-8601 future timestamp → forwards to Ayrshare's
+    native scheduler, which queues the post and fires at the requested time.
+    Ayrshare's post id is returned so the desktop can persist it in the
+    schedules table for cancel/reschedule.
+    """
     _require_paid_tier(user)
     profile_key = _resolve_profile_key(db, user)
 
@@ -109,6 +117,7 @@ async def publish_now(
                 platforms=platform_list,
                 media_urls=[media_url],
                 profile_key=profile_key,
+                scheduled_at=scheduled_at,
             )
         except httpx.HTTPStatusError as exc:
             log.warning("[publish] ayrshare.post HTTPStatusError: %s | body=%s", exc, getattr(exc.response, "text", ""))
