@@ -81,26 +81,49 @@ async def publish_now(
     file: UploadFile = File(...),
     title: str = Form(...),
     description: str = Form(""),
-    platforms: str = Form(..., description="Comma-separated subset of youtube,tiktok,x,instagram,linkedin,facebook"),
+    platforms: str = Form(default="", description="Legacy: comma-separated subset of youtube,tiktok,x,instagram,linkedin,facebook. Used when channel_id is not provided. New code should send channel_id instead."),
+    channel_id: str | None = Form(default=None, description="Schedule v2: the social_channels.id to publish to. When set, platforms is inferred from the channel and profile_key is the channel's own Ayrshare profile (not the legacy SocialConnection.ayrshare_profile_key)."),
     scheduled_at: str | None = Form(default=None, description="Optional ISO-8601 future timestamp. When set, Ayrshare queues the post and publishes at that time instead of immediately."),
 ) -> PublishResponse:
     """Upload a clip + publish to one or more platforms.
 
+    Two routing paths:
+
+    * Channel mode (preferred): pass `channel_id`. Posts go to that one
+      channel's Ayrshare profile + that channel's platform. Each channel =
+      one platform handle, so a single call = a single post on one handle.
+      To post to multiple handles, the desktop loops over channels.
+
+    * Legacy mode (back-compat): pass `platforms` (comma-separated). Uses
+      the user's single SocialConnection.ayrshare_profile_key. Will be
+      removed once everyone has migrated to channels.
+
     When `scheduled_at` is None → posts immediately.
-    When `scheduled_at` is an ISO-8601 future timestamp → forwards to Ayrshare's
-    native scheduler, which queues the post and fires at the requested time.
-    Ayrshare's post id is returned so the desktop can persist it in the
-    schedules table for cancel/reschedule.
+    When `scheduled_at` is an ISO-8601 future timestamp → Ayrshare queues
+    and fires at that time. The Ayrshare post id is persisted to schedules
+    for cancel.
     """
     _require_paid_tier(user)
-    profile_key = _resolve_profile_key(db, user)
 
-    platform_list = [
-        p.strip().lower() for p in platforms.split(",")
-        if p.strip().lower() in SUPPORTED_PLATFORMS
-    ]
-    if not platform_list:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no valid platforms in `platforms`")
+    # Resolve which Ayrshare profile + which platform list to post against.
+    channel = None
+    if channel_id:
+        from app.models import SocialChannel
+        channel = db.get(SocialChannel, channel_id)
+        if not channel or channel.user_id != user.id or channel.status == "deleted":
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "channel not found")
+        if channel.status == "paused":
+            raise HTTPException(status.HTTP_409_CONFLICT, "channel is paused — unpause it before publishing.")
+        profile_key = channel.ayrshare_profile_key
+        platform_list = [channel.platform]
+    else:
+        profile_key = _resolve_profile_key(db, user)
+        platform_list = [
+            p.strip().lower() for p in platforms.split(",")
+            if p.strip().lower() in SUPPORTED_PLATFORMS
+        ]
+        if not platform_list:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no valid platforms in `platforms` (or pass channel_id)")
 
     suffix = os.path.splitext(file.filename or "clip.mp4")[1] or ".mp4"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
@@ -158,6 +181,42 @@ async def publish_now(
                     status="failed",
                     error=str(err),
                 ))
+
+        # Schedule v2: when channel + scheduled_at are set AND Ayrshare
+        # accepted the post, persist a schedules row so the desktop's queue
+        # surface can find it for cancel/edit. Also bumps total_posts on the
+        # channel for the at-a-glance counter.
+        if channel and scheduled_at:
+            from app.models import Schedule
+            scheduled_dt = None
+            try:
+                from datetime import datetime as _dt
+                scheduled_dt = _dt.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+            except Exception:  # noqa: BLE001
+                pass
+            for r in results:
+                if r.status != "published":
+                    continue
+                row = Schedule(
+                    user_id=user.id,
+                    project_slug=getattr(file, "filename", "uploaded"),
+                    clip_idx=0,
+                    clip_title=title,
+                    vertical_path=tmp_path,
+                    platform=r.platform,
+                    scheduled_for=scheduled_dt,
+                    status="scheduled",
+                    channel_id=channel.id,
+                    caption_override=description or None,
+                    ayrshare_scheduled_post_id=r.post_id,
+                    actual_post_url=r.post_url,
+                )
+                db.add(row)
+            channel.total_posts = (channel.total_posts or 0) + sum(1 for r in results if r.status == "published")
+        elif channel:
+            # Immediate publish (no scheduled_at) — still bump the counter.
+            channel.total_posts = (channel.total_posts or 0) + sum(1 for r in results if r.status == "published")
+
         db.commit()
         return PublishResponse(results=results)
     finally:

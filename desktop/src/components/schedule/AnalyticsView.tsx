@@ -1,0 +1,255 @@
+// Analytics sub-tab of Schedule (Schedule v2).
+//
+// Three sections:
+//   1. Overview tiles (total views, total engagement, best channel, best clip)
+//   2. Per-channel table (sortable by views/engagement/posts)
+//   3. Top clips leaderboard (top 10 by views, link to platform post URL)
+//
+// Reads ONLY from post_analytics (refreshed by cron every 30 min). UI shows
+// "Updated X min ago" stamp so the user knows the data is mildly stale.
+
+import { useEffect, useMemo, useState } from "react";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { ArrowUpDown, BarChart3, ExternalLink, Loader2, TrendingUp } from "lucide-react";
+import { PlatformIcon, type PlatformId } from "../PlatformIcon";
+import * as backend from "../../lib/backend";
+import type { AnalyticsOverview, AnalyticsWindow, ChannelAnalyticsRow } from "./types";
+
+const WINDOWS: AnalyticsWindow[] = ["7d", "30d", "90d", "all"];
+const WINDOW_LABELS: Record<AnalyticsWindow, string> = {
+  "7d": "7 days",
+  "30d": "30 days",
+  "90d": "90 days",
+  "all": "All time",
+};
+
+type Sort = "views" | "engagement" | "posts";
+
+export function AnalyticsView() {
+  const [window, setWindow] = useState<AnalyticsWindow>("30d");
+  const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
+  const [channelRows, setChannelRows] = useState<ChannelAnalyticsRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sort, setSort] = useState<Sort>("views");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    void Promise.all([
+      backend.analyticsOverview(window),
+      backend.analyticsChannels(window),
+    ]).then(([o, ch]) => {
+      if (cancelled) return;
+      setOverview(o);
+      setChannelRows(ch);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [window]);
+
+  const sortedChannels = useMemo(() => {
+    const copy = [...channelRows];
+    copy.sort((a, b) => (b[sort] as number) - (a[sort] as number));
+    return copy;
+  }, [channelRows, sort]);
+
+  if (loading) {
+    return (
+      <div className="grid place-items-center py-20">
+        <Loader2 className="h-7 w-7 animate-spin text-fuchsia" />
+      </div>
+    );
+  }
+
+  const noData = !overview || overview.total_posts === 0;
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Window picker */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1 rounded-full border border-line bg-paper p-0.5">
+          {WINDOWS.map((w) => (
+            <button
+              key={w}
+              onClick={() => setWindow(w)}
+              className={`rounded-full px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] transition-colors ${
+                window === w
+                  ? "bg-fuchsia text-paper"
+                  : "text-text-secondary hover:text-ink"
+              }`}
+            >
+              {WINDOW_LABELS[w]}
+            </button>
+          ))}
+        </div>
+        <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+          refreshes every 30 min
+        </span>
+      </div>
+
+      {noData ? (
+        <EmptyAnalytics />
+      ) : (
+        <>
+          {/* Overview tiles */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Tile
+              label="Total views"
+              value={fmtNum(overview!.total_views)}
+              accent
+            />
+            <Tile
+              label="Total engagement"
+              value={fmtNum(overview!.total_engagement)}
+            />
+            <Tile
+              label="Best channel"
+              value={overview!.best_channel?.label ?? "—"}
+              sub={overview!.best_channel ? `${fmtNum(overview!.best_channel.views)} views` : undefined}
+            />
+            <Tile
+              label="Best clip"
+              value={overview!.best_clip?.title ?? "—"}
+              sub={overview!.best_clip ? `${fmtNum(overview!.best_clip.views)} views · ${overview!.best_clip.platform}` : undefined}
+              onClick={overview!.best_clip?.post_url ? () => void openExternal(overview!.best_clip!.post_url!) : undefined}
+            />
+          </div>
+
+          {/* Channels table */}
+          <div className="rounded-2xl border border-line bg-paper">
+            <div className="flex items-center justify-between border-b border-line/60 px-4 py-3">
+              <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+                channels · {WINDOW_LABELS[window].toLowerCase()}
+              </p>
+              <div className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+                <span>sort:</span>
+                {(["views", "engagement", "posts"] as Sort[]).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setSort(s)}
+                    className={`rounded-md px-2 py-0.5 transition-colors ${
+                      sort === s ? "bg-fuchsia-soft text-fuchsia-deep" : "hover:text-ink"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {sortedChannels.length === 0 ? (
+              <p className="px-4 py-6 text-center font-mono text-[11px] text-text-tertiary">
+                no analytics for this window yet
+              </p>
+            ) : (
+              <ul className="divide-y divide-line/40">
+                {sortedChannels.map((c) => (
+                  <li key={c.channel_id} className="flex items-center justify-between gap-4 px-4 py-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <ChannelPlatformBadge platform={c.platform} />
+                      <div className="min-w-0">
+                        <p className="truncate font-sans text-[13px] font-medium text-ink">{c.label}</p>
+                        {c.handle && (
+                          <p className="truncate font-mono text-[10px] text-text-tertiary">{c.handle}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-6 text-right">
+                      <Stat label="posts" value={String(c.posts)} />
+                      <Stat label="views" value={fmtNum(c.views)} />
+                      <Stat label="engage" value={fmtNum(c.engagement)} />
+                      <Stat label="rate" value={c.engagement_rate !== null ? `${c.engagement_rate}%` : "—"} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function EmptyAnalytics() {
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-3xl border border-dashed border-line bg-paper-warm/40 px-8 py-16 text-center">
+      <span className="grid h-12 w-12 place-items-center rounded-full bg-fuchsia text-paper">
+        <BarChart3 size={18} strokeWidth={2.5} />
+      </span>
+      <h3 className="font-display text-[18px] font-semibold tracking-[-0.02em] text-ink">
+        No analytics yet
+      </h3>
+      <p className="max-w-md font-sans text-[13px] leading-relaxed text-text-secondary">
+        Numbers show up here once your first post goes live. Schedule one from the Workspace to get started — analytics refresh every 30 minutes after publish.
+      </p>
+    </div>
+  );
+}
+
+function Tile({
+  label,
+  value,
+  sub,
+  accent,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  accent?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={!onClick}
+      className={`flex flex-col items-start gap-1 rounded-2xl border p-4 text-left transition-colors ${
+        accent
+          ? "border-fuchsia/40 bg-fuchsia-soft/30"
+          : "border-line bg-paper hover:border-fuchsia/40"
+      } ${onClick ? "cursor-pointer hover:shadow-[var(--glow-sm)]" : "cursor-default"}`}
+    >
+      <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+        {label}
+      </p>
+      <p className={`font-display text-[22px] font-semibold leading-tight tracking-[-0.02em] ${accent ? "text-fuchsia-deep" : "text-ink"} truncate w-full`}>
+        {value}
+      </p>
+      {sub && (
+        <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary truncate w-full">
+          {sub} {onClick && <ExternalLink className="inline h-3 w-3" />}
+        </p>
+      )}
+    </button>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col items-end leading-tight">
+      <span className="font-mono text-[9px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">{label}</span>
+      <span className="font-display text-[14px] font-semibold text-ink tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+function ChannelPlatformBadge({ platform }: { platform: string }) {
+  const id = (platform === "twitter" ? "x" : platform) as PlatformId;
+  const known = ["youtube", "tiktok", "instagram", "x"].includes(id);
+  return (
+    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-ink text-paper">
+      {known ? <PlatformIcon id={id} className="h-3.5 w-3.5" /> : (
+        <span className="font-mono text-[10px] uppercase">{platform[0]}</span>
+      )}
+    </span>
+  );
+}
+
+function fmtNum(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+void TrendingUp;
+void ArrowUpDown;

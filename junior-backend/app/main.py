@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.cron import start_cron, stop_cron
 from app.db import Base, engine
-from app.routes import admin, affiliate, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, transcribe, updates, usage, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, affiliate, analytics, channels, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, transcribe, updates, usage, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -99,6 +99,50 @@ async def lifespan(_app: FastAPI):
             connected_at timestamptz NOT NULL DEFAULT now(),
             updated_at timestamptz NOT NULL DEFAULT now()
         )""",
+        # Schedule v2 — multi-channel scheduling. social_channels replaces the
+        # single-row social_connections model. Each row = one Ayrshare sub-
+        # profile = one platform handle. Users add channels one at a time.
+        """CREATE TABLE IF NOT EXISTS social_channels (
+            id varchar PRIMARY KEY,
+            user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            label varchar NOT NULL,
+            platform varchar NOT NULL,
+            ayrshare_profile_key varchar NOT NULL UNIQUE,
+            ayrshare_ref_id varchar,
+            handle varchar,
+            status varchar NOT NULL DEFAULT 'pending_link',
+            last_refreshed_at timestamptz,
+            total_posts integer NOT NULL DEFAULT 0,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now(),
+            UNIQUE (user_id, label)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_social_channels_user ON social_channels (user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_social_channels_status ON social_channels (status)",
+        # schedules extended for channel_id + caption_override + Ayrshare ids
+        "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS channel_id varchar REFERENCES social_channels(id) ON DELETE SET NULL",
+        "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS caption_override text",
+        "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS ayrshare_scheduled_post_id varchar",
+        "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS actual_post_url varchar",
+        "CREATE INDEX IF NOT EXISTS ix_schedules_channel ON schedules (channel_id)",
+        "ALTER TABLE schedules ALTER COLUMN platform DROP NOT NULL",
+        # post_analytics — refreshed by cron every 30 min for the last 90 days
+        # of published rows. Views is bigint because viral can hit >2.1B.
+        """CREATE TABLE IF NOT EXISTS post_analytics (
+            schedule_id varchar PRIMARY KEY REFERENCES schedules(id) ON DELETE CASCADE,
+            channel_id varchar NOT NULL REFERENCES social_channels(id) ON DELETE CASCADE,
+            platform varchar NOT NULL,
+            views bigint NOT NULL DEFAULT 0,
+            likes integer NOT NULL DEFAULT 0,
+            comments integer NOT NULL DEFAULT 0,
+            shares integer NOT NULL DEFAULT 0,
+            saves integer NOT NULL DEFAULT 0,
+            engagement_rate numeric(5,2),
+            refreshed_at timestamptz NOT NULL DEFAULT now(),
+            raw_payload jsonb
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_post_analytics_channel ON post_analytics (channel_id)",
+        "CREATE INDEX IF NOT EXISTS ix_post_analytics_refreshed ON post_analytics (refreshed_at)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -157,6 +201,8 @@ app.include_router(proxy_llm.router)
 app.include_router(leaderboard.router)
 app.include_router(submissions.router)
 app.include_router(doctrine.router)
+app.include_router(channels.router)
+app.include_router(analytics.router)
 
 
 @app.get("/healthcheck")

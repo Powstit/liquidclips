@@ -264,6 +264,139 @@ def _refresh_affiliate_cache_tick() -> None:
         log.info("[leaderboard] refreshed %d affiliate cache rows", refreshed)
 
 
+def _refresh_post_analytics_tick() -> None:
+    """Schedule v2 — pull per-post engagement from Ayrshare for the last 90
+    days of published rows. 30-min cadence + 60-post batch cap = max ~120
+    Ayrshare /analytics/post calls/hr (well under any reasonable rate limit).
+
+    Reads only schedules where channel_id IS NOT NULL (skip legacy single-
+    profile rows). Uses staleness ordering (NULLS FIRST then oldest
+    refreshed_at) so newly-published posts are always picked up first.
+    """
+    from app import ayrshare
+    from app.models import PostAnalytic, Schedule, SocialChannel
+
+    refreshed = 0
+    cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+    with session_scope() as db:
+        candidates: list[tuple[Schedule, SocialChannel]] = (
+            db.query(Schedule, SocialChannel)
+            .join(SocialChannel, SocialChannel.id == Schedule.channel_id)
+            .outerjoin(PostAnalytic, PostAnalytic.schedule_id == Schedule.id)
+            .filter(Schedule.status == "published")
+            .filter(Schedule.created_at >= cutoff)
+            .filter(Schedule.ayrshare_scheduled_post_id.isnot(None))
+            .filter(SocialChannel.status != "deleted")
+            .order_by(PostAnalytic.refreshed_at.asc().nullsfirst())
+            .limit(60)
+            .all()
+        )
+
+        for sched, channel in candidates:
+            try:
+                resp = ayrshare.analytics(channel.ayrshare_profile_key, sched.ayrshare_scheduled_post_id)
+            except Exception as e:  # noqa: BLE001
+                log.warning("[analytics] ayrshare.analytics failed for sched=%s: %s", sched.id, e)
+                continue
+
+            # Ayrshare returns shape like {"<platform>": {"analytics": {"impressions":..., "likes":...}}}
+            per_platform = resp.get(channel.platform, {}) if isinstance(resp, dict) else {}
+            metrics = per_platform.get("analytics") if isinstance(per_platform, dict) else {}
+            if not isinstance(metrics, dict):
+                metrics = {}
+            views = int(metrics.get("impressions") or metrics.get("viewCount") or metrics.get("views") or 0)
+            likes = int(metrics.get("likeCount") or metrics.get("likes") or 0)
+            comments = int(metrics.get("commentCount") or metrics.get("comments") or 0)
+            shares = int(metrics.get("shareCount") or metrics.get("shares") or 0)
+            saves = int(metrics.get("saveCount") or metrics.get("saves") or 0)
+            engagement_rate = None
+            if views > 0:
+                from decimal import Decimal
+                engagement_rate = Decimal(round((likes + comments + shares + saves) / views * 100, 2))
+
+            row = db.get(PostAnalytic, sched.id)
+            if row:
+                row.views = views
+                row.likes = likes
+                row.comments = comments
+                row.shares = shares
+                row.saves = saves
+                row.engagement_rate = engagement_rate
+                row.refreshed_at = datetime.now(timezone.utc)
+                row.raw_payload = resp
+            else:
+                db.add(PostAnalytic(
+                    schedule_id=sched.id,
+                    channel_id=channel.id,
+                    platform=channel.platform,
+                    views=views, likes=likes, comments=comments, shares=shares, saves=saves,
+                    engagement_rate=engagement_rate,
+                    raw_payload=resp,
+                ))
+            refreshed += 1
+
+    if refreshed:
+        log.info("[analytics] refreshed %d post_analytics rows", refreshed)
+
+
+def _refresh_channel_status_tick() -> None:
+    """Schedule v2 — pull each channel's handle + status from Ayrshare every
+    6 hr. Catches disconnects (auth expired, user revoked) so the UI shows
+    a red dot + 'reconnect' CTA instead of silent failures."""
+    import httpx
+    from app import ayrshare
+    from app.models import SocialChannel
+
+    refreshed = 0
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=5)
+    with session_scope() as db:
+        candidates: list[SocialChannel] = (
+            db.query(SocialChannel)
+            .filter(SocialChannel.status.in_(("pending_link", "active", "error")))
+            .filter(
+                (SocialChannel.last_refreshed_at.is_(None))
+                | (SocialChannel.last_refreshed_at < cutoff)
+            )
+            .order_by(SocialChannel.last_refreshed_at.asc().nullsfirst())
+            .limit(100)
+            .all()
+        )
+        for channel in candidates:
+            try:
+                with httpx.Client(timeout=ayrshare.DEFAULT_TIMEOUT) as client:
+                    r = client.get(
+                        f"{ayrshare.AYRSHARE_BASE}/user",
+                        headers=ayrshare._headers(channel.ayrshare_profile_key),
+                    )
+                if r.status_code != 200:
+                    if channel.status != "paused":
+                        channel.status = "error"
+                    channel.last_refreshed_at = datetime.now(timezone.utc)
+                    continue
+                body = r.json()
+                display_names = body.get("displayNames") or {}
+                handle: str | None = None
+                if isinstance(display_names, dict):
+                    handle = display_names.get(channel.platform)
+                active = body.get("activeSocialAccounts") or []
+                if isinstance(active, dict):
+                    handle = handle or active.get(channel.platform)
+                    is_linked = channel.platform in active
+                else:
+                    is_linked = channel.platform in [str(p).lower() for p in (active or [])]
+                channel.handle = handle or channel.handle
+                if channel.status != "paused":
+                    channel.status = "active" if is_linked else "pending_link"
+                channel.last_refreshed_at = datetime.now(timezone.utc)
+                refreshed += 1
+            except Exception as e:  # noqa: BLE001
+                log.warning("[channels] status refresh failed for channel=%s: %s", channel.id, e)
+                continue
+
+    if refreshed:
+        log.info("[channels] refreshed %d channel status rows", refreshed)
+
+
 _scheduler: BackgroundScheduler | None = None
 
 
@@ -279,8 +412,10 @@ def start_cron() -> None:
     _scheduler.add_job(_tick, "interval", seconds=60, max_instances=1, coalesce=True, id="schedules_tick")
     _scheduler.add_job(_billing_sweep_tick, "interval", seconds=3600, max_instances=1, coalesce=True, id="billing_sweep")
     _scheduler.add_job(_refresh_affiliate_cache_tick, "interval", seconds=21600, max_instances=1, coalesce=True, id="leaderboard_refresh")
+    _scheduler.add_job(_refresh_post_analytics_tick, "interval", seconds=1800, max_instances=1, coalesce=True, id="post_analytics_refresh")
+    _scheduler.add_job(_refresh_channel_status_tick, "interval", seconds=21600, max_instances=1, coalesce=True, id="channel_status_refresh")
     _scheduler.start()
-    log.info("[cron] started: schedules 60s, billing 3600s, leaderboard 21600s")
+    log.info("[cron] started: schedules 60s, billing 3600s, leaderboard 21600s, analytics 1800s, channel status 21600s")
 
 
 def stop_cron() -> None:
