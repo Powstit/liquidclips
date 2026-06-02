@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { Logo } from "./Logo";
 import { SplashGame } from "./invaders/SplashGame";
-import splashArt from "../assets/brand/splash.jpg";
+// splash-bg.png is the Higgsfield Nano Banana 2 neon-synthwave cosmic frame —
+// designed to match the final beat of intro.mp4 (fuchsia particle vortex) so
+// the morph from intro → splash reads as one continuous shot.
+import splashArt from "../assets/invaders/splash-bg.png";
+import introVideo from "../assets/intro/intro.mp4";
 
 // Shown while the sidecar is booting (ping + secretsStatus + whisper warmup).
 // Without this the window is blank for 1-3s — looks like the app froze.
@@ -18,6 +22,28 @@ const TICKS = [
 ];
 
 const SUPPORT_EMAIL = "support@jnremployee.com";
+
+// Splash 3-stage flow (Daniel 2026-06-02):
+//   1. intro    — Seedance cinematic 10s video, full-screen, skippable.
+//                 First-launch only — flag persisted in localStorage so it
+//                 doesn't replay every boot.
+//   2. loading  — brand mark + loading bar, 5 seconds minimum.
+//                 The "brand moment" — no game yet, just identity.
+//   3. game     — SplashGame in paused state ("Press SPACE to play").
+//                 Stays until BOTH ready=true AND continue clicked.
+type SplashStage = "intro" | "loading" | "game";
+
+const INTRO_SEEN_KEY = "liquidclips:intro-seen:v1";
+const INTRO_DURATION_MS = 10_000;     // max intro length; video onEnded fires sooner if shorter
+const LOADING_MIN_HOLD_MS = 5_000;    // brand moment
+
+function firstStage(): SplashStage {
+  try {
+    return localStorage.getItem(INTRO_SEEN_KEY) === "1" ? "loading" : "intro";
+  } catch {
+    return "loading";
+  }
+}
 
 export function Splash({
   failed = false,
@@ -34,11 +60,33 @@ export function Splash({
 }) {
   const [i, setI] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [stage, setStage] = useState<SplashStage>(() => firstStage());
+  const introVideoRef = useRef<HTMLVideoElement>(null);
+
   useEffect(() => {
     if (failed) return;
     const t = setInterval(() => setI((n) => (n + 1) % TICKS.length), 700);
     return () => clearInterval(t);
   }, [failed]);
+
+  // Stage advance: intro → loading → game
+  useEffect(() => {
+    if (failed) return;
+    if (stage === "intro") {
+      const t = window.setTimeout(() => advanceFromIntro(), INTRO_DURATION_MS);
+      return () => window.clearTimeout(t);
+    }
+    if (stage === "loading") {
+      const t = window.setTimeout(() => setStage("game"), LOADING_MIN_HOLD_MS);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
+  }, [stage, failed]);
+
+  function advanceFromIntro() {
+    try { localStorage.setItem(INTRO_SEEN_KEY, "1"); } catch { /* sandboxed */ }
+    setStage("loading");
+  }
 
   async function onRestart() {
     try {
@@ -135,6 +183,31 @@ export function Splash({
     );
   }
 
+  // Stage 1 — cinematic intro (Seedance-generated). First-launch only.
+  // Black background, video full-screen, skip button bottom-right.
+  if (stage === "intro") {
+    return (
+      <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-black">
+        <video
+          ref={introVideoRef}
+          src={introVideo}
+          autoPlay
+          muted
+          playsInline
+          onEnded={advanceFromIntro}
+          className="h-full w-full object-cover"
+        />
+        <button
+          onClick={advanceFromIntro}
+          className="absolute bottom-6 right-6 rounded-full border border-paper/40 bg-black/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-paper/80 backdrop-blur-sm hover:border-paper hover:text-paper"
+        >
+          Skip →
+        </button>
+        <style>{splashStyle}</style>
+      </div>
+    );
+  }
+
   return (
     <div
       className="relative flex h-full w-full flex-col items-center justify-center gap-8 overflow-hidden bg-paper"
@@ -147,12 +220,9 @@ export function Splash({
         <Logo />
       </div>
 
-      {/* Pink Invaders inline during boot. Daniel's call: purposefully hold
-          the splash for ≥8s so the user gets one shot at the high-score
-          dopamine hit while the sidecar warms up. Continue button enables
-          when sidecar is ready AND minimum hold has elapsed; Skip is always
-          available for power users. */}
-      {onContinue ? (
+      {/* Stage 2 (loading) = brand moment with loading bar.
+          Stage 3 (game) = SplashGame in paused state with Continue button. */}
+      {stage === "game" && onContinue ? (
         <SplashGame ready={ready} onContinue={onContinue} />
       ) : (
         <div className="relative z-10 flex w-[280px] flex-col items-center gap-4">

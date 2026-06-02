@@ -13,3 +13,16 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+// Asset-as-URL imports — Vite turns the import path into a bundled URL string
+// at build time. vite/client covers common types; we add explicit declarations
+// for video formats used by the Splash intro (Seedance mp4) so tsc accepts
+// `import introVideo from "./intro.mp4"`.
+declare module "*.mp4" {
+  const src: string;
+  export default src;
+}
+declare module "*.webm" {
+  const src: string;
+  export default src;
+}
