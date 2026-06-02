@@ -115,6 +115,22 @@ jobs:
           p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
           p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
 
+      # apple-actions/import-codesign-certs creates signing_temp.keychain but
+      # doesn't always add it to codesign's search list — so `codesign --sign
+      # "Developer ID Application: ..."` returns "no identity found" even
+      # though the cert is imported. Force the keychain to the front of the
+      # user search list and dump identities so we can confirm what's loaded.
+      - name: register codesign keychain + verify identity
+        run: |
+          set -euo pipefail
+          security list-keychains -d user -s signing_temp.keychain login.keychain
+          security default-keychain -d user -s signing_temp.keychain || true
+          security set-keychain-settings -lut 21600 signing_temp.keychain
+          echo "--- identities visible to codesign ---"
+          security find-identity -v -p codesigning
+          echo "--- Developer ID identities ---"
+          security find-identity -v -p codesigning | grep -i "Developer ID" || echo "(no Developer ID match)"
+
       - name: build signed Apple Silicon app
         working-directory: ./desktop
         env:
