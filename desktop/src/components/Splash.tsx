@@ -4,10 +4,12 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { Logo } from "./Logo";
 import { SplashGame } from "./invaders/SplashGame";
-// splash-bg.png is the Higgsfield Nano Banana 2 neon-synthwave cosmic frame —
-// designed to match the final beat of intro.mp4 (fuchsia particle vortex) so
-// the morph from intro → splash reads as one continuous shot.
-import splashArt from "../assets/invaders/splash-bg.png";
+// 2026-06-03 v0.5.0 — Ready Player One redesign:
+// closing-still.png is the bookend frame from the 28s Kade-in-OASIS intro,
+// Kade with five fuchsia coins orbiting around him. Using it as the splash
+// backdrop means the intro video's final beat morphs seamlessly into the
+// static splash, so the cinematic moment never breaks.
+import splashArt from "../assets/intro/closing-still.png";
 import introVideo from "../assets/intro/intro.mp4";
 
 // Shown while the sidecar is booting (ping + secretsStatus + whisper warmup).
@@ -33,8 +35,10 @@ const SUPPORT_EMAIL = "support@jnremployee.com";
 //                 Stays until BOTH ready=true AND continue clicked.
 type SplashStage = "intro" | "loading" | "game";
 
-const INTRO_SEEN_KEY = "liquidclips:intro-seen:v1";
-const INTRO_DURATION_MS = 10_000;     // max intro length; video onEnded fires sooner if shorter
+// 2026-06-03 v0.5.0 — intro is now the 28s Kade-in-OASIS cinematic.
+// Bumped the key so existing v0.4.53 installs replay the new intro once.
+const INTRO_SEEN_KEY = "liquidclips:intro-seen:v2";
+const INTRO_DURATION_MS = 28_500;     // 28s intro + 0.5s buffer; video onEnded fires sooner if shorter
 const LOADING_MIN_HOLD_MS = 5_000;    // brand moment
 
 function firstStage(): SplashStage {

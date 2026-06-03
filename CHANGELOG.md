@@ -28,6 +28,26 @@ Sprint master doc: `~/Desktop/COMPLETION_SPRINT.md` (32 items). Highlights in fl
 - Workspace brief bar → Sponsored Clips carousel
 - Settings → Connections: drop legacy Postiz tiles (Ayrshare panel only)
 
+## [0.5.0] — 2026-06-03 — "Ready Player One"
+
+A cinematic rebrand. Liquid Clips now opens like the OASIS — a 28-second Kade-in-OASIS intro that takes you through music, fashion, gaming and comedy worlds before handing you the keys to the editor.
+
+### Added
+- Cinematic 28s first-launch intro video (Kade, the user-avatar, traveling through five stylised content worlds — music → fashion → gaming → comedy → back to the OASIS with orbiting coins).
+- Locked character bible: Kade, your in-app avatar inside the OASIS. Used as the consistent thread across every new visual.
+- Faint OASIS atmosphere bleeds through every in-app surface so the brand feels continuous from splash → workspace.
+- Liquidclips.app landing now opens with the full cinematic reel as a full-bleed hero.
+- Visual-language doc at `desktop/docs/RPO_VISUAL_LANGUAGE.md` capturing the brand vocabulary, palette, aspect ratios, and asset spec for the rebrand sprint.
+
+### Changed
+- Splash background swapped from `splash-bg.png` to `closing-still.png` so the intro's final beat morphs seamlessly into the static splash with Kade and orbiting coins.
+- Intro duration extended from 10s to 28s; first-launch flag bumped to `liquidclips:intro-seen:v2` so existing installs replay the new reel once.
+
+### Notes
+- All visuals generated with Higgsfield Nano Banana Pro (stills) + Seedance 2.0 (video) against locked OASIS + Kade references.
+- Logo, brand fuchsia (`#FF1A8C`), and the entire token palette are unchanged.
+- v0.5.x will iterate per-surface ambient backdrops + HUD chrome — this release ships the front-door reskin and the cinematic moment.
+
 ## [0.4.53] — 2026-06-02
 
 ### Added
