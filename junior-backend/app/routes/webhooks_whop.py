@@ -367,16 +367,29 @@ def _handle_membership_valid(db: Session, data: dict) -> None:
 
     # Branded onboarding email. Founder gets the special welcome; everyone
     # else gets the standard "your plan is live" copy. Non-blocking.
-    from app.mailer import send_founder_welcome, send_subscription_activated
+    from app.mailer import send_admin_paid_customer_alert, send_founder_welcome, send_subscription_activated
     first_name = (data.get("user") or {}).get("first_name")
     if user.founder_flag and founder:
         send_founder_welcome(user.email, first_name=first_name if isinstance(first_name, str) else None)
+        send_admin_paid_customer_alert(
+            customer_email=user.email,
+            tier=tier,
+            source="founder_unlock",
+            monthly_usd="£1 commit",
+            note=f"founder seat #{_seat_count(db)} of 2000",
+        )
     else:
         send_subscription_activated(
             user.email,
             tier=tier,
             first_name=first_name if isinstance(first_name, str) else None,
             trial=(user.subscription_status == "trialing"),
+        )
+        send_admin_paid_customer_alert(
+            customer_email=user.email,
+            tier=tier,
+            source="whop_subscription_active",
+            note=("trialing" if user.subscription_status == "trialing" else None),
         )
 
     # PostHog: paid membership went valid via Whop. Distinct event from the
@@ -490,6 +503,16 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
         subscription_status="active",
         founder=user.founder_flag,
         whop_user_id=user.whop_user_id,
+    )
+
+    # Admin alert — Daniel gets pinged on every successful invoice. First-paid
+    # conversions and renewals both fire, but the `note` distinguishes them.
+    from app.mailer import send_admin_paid_customer_alert
+    send_admin_paid_customer_alert(
+        customer_email=user.email,
+        tier=user.tier,
+        source="whop_payment_succeeded",
+        note=("first paid invoice" if not was_paid_before else "renewal"),
     )
 
     # PostHog: trial→paid conversion. User is now "active" (true paid). Keyed

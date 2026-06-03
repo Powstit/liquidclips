@@ -174,6 +174,102 @@ def send_whop_claim_link(email: str, *, claim_url: str, first_name: str | None =
     _async(_send, to=email, subject=subject, html=html, text=text, tag="whop_claim")
 
 
+# --- internal admin alerts ---------------------------------------------
+# These don't go to customers — they go to Daniel (and any other addresses
+# in settings.admin_emails). One alert per paid event so the inbox tells
+# the launch story in real time.
+
+def send_admin_paid_customer_alert(
+    *,
+    customer_email: str,
+    tier: str,
+    source: str,
+    monthly_usd: str | None = None,
+    note: str | None = None,
+) -> None:
+    """Fan out a 'new paid customer' alert to every admin email.
+
+    `source` is short-form: "whop_subscription_active", "whop_payment_succeeded",
+    "founder_unlock", "clerk_subscription_active", etc. `monthly_usd` is the
+    plan price as a presentable string ("$29.99/mo") if known. `note` lets the
+    caller add anything specific (e.g. "trialing", "first paid invoice").
+    """
+    s = get_settings()
+    if not s.admin_emails:
+        return
+    recipients = [e.strip() for e in s.admin_emails.split(",") if e.strip()]
+    if not recipients:
+        return
+    subject, html, text = render_admin_paid_customer_alert(
+        customer_email=customer_email,
+        tier=tier,
+        source=source,
+        monthly_usd=monthly_usd,
+        note=note,
+    )
+    for addr in recipients:
+        _async(_send, to=addr, subject=subject, html=html, text=text, tag="admin_paid_customer")
+
+
+def render_admin_paid_customer_alert(
+    *,
+    customer_email: str,
+    tier: str,
+    source: str,
+    monthly_usd: str | None,
+    note: str | None,
+) -> tuple[str, str, str]:
+    subject = f"💸  New paid customer — {tier.capitalize()} via {source}"
+    pretty_source = {
+        "whop_subscription_active": "Whop subscription active",
+        "whop_payment_succeeded": "Whop payment succeeded",
+        "clerk_subscription_active": "Clerk Billing subscription active",
+        "founder_unlock": "Founder £1 commit",
+    }.get(source, source)
+    extras = []
+    if monthly_usd:
+        extras.append(f"<strong>Plan:</strong> {monthly_usd}")
+    if note:
+        extras.append(f"<strong>Note:</strong> {note}")
+    extras_block = "<br>".join(extras)
+    extras_block_text = "\n".join(line.replace("<strong>", "").replace("</strong>", "") for line in extras)
+
+    html = f"""<!doctype html>
+<html><body style="margin:0;padding:32px;background:#FAF7F2;color:#0A0A0F;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Geist,sans-serif;">
+  <div style="max-width:480px;margin:0 auto;background:#fff;border:1px solid #E8DFD2;border-radius:16px;padding:32px;">
+    <div style="display:inline-block;background:#FF1A8C;color:#fff;width:32px;height:32px;border-radius:8px;text-align:center;line-height:32px;font-weight:700;font-family:'Geist Mono',monospace;">/</div>
+    <h1 style="font-family:Fraunces,Georgia,serif;font-size:24px;margin:18px 0 8px;">New paid customer</h1>
+    <p style="font-size:14px;line-height:1.6;color:#5A5560;margin:0 0 18px;">
+      <strong style="color:#FF1A8C;">{tier.upper()}</strong> tier just activated via {pretty_source}.
+    </p>
+    <table style="font-family:'Geist Mono',monospace;font-size:13px;border-collapse:collapse;width:100%;">
+      <tr><td style="padding:6px 0;color:#8A8590;width:90px;">Email</td><td style="padding:6px 0;">{customer_email}</td></tr>
+      <tr><td style="padding:6px 0;color:#8A8590;">Tier</td><td style="padding:6px 0;">{tier}</td></tr>
+      <tr><td style="padding:6px 0;color:#8A8590;">Source</td><td style="padding:6px 0;">{pretty_source}</td></tr>
+      {f'<tr><td style="padding:6px 0;color:#8A8590;">Plan</td><td style="padding:6px 0;">{monthly_usd}</td></tr>' if monthly_usd else ''}
+      {f'<tr><td style="padding:6px 0;color:#8A8590;">Note</td><td style="padding:6px 0;">{note}</td></tr>' if note else ''}
+    </table>
+    <p style="margin:24px 0 0;font-size:12px;color:#8A8590;font-family:'Geist Mono',monospace;">
+      Automated alert from junior-backend.<br>
+      Adjust recipients via JUNIOR_ADMIN_EMAILS env var.
+    </p>
+  </div>
+</body></html>"""
+
+    text = f"""New paid customer
+
+{tier.upper()} tier activated via {pretty_source}.
+
+Email:  {customer_email}
+Tier:   {tier}
+Source: {pretty_source}
+{extras_block_text}
+
+Automated alert from junior-backend.
+"""
+    return subject, html, text
+
+
 def render_whop_claim(*, email: str, claim_url: str, first_name: str | None, ctx: MailContext) -> tuple[str, str, str]:
     subject = "Claim your Liquid Clips purchase"
     body = f"""
