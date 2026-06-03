@@ -91,8 +91,10 @@ export function AnalyticsView() {
         <EmptyAnalytics />
       ) : (
         <>
-          {/* Overview tiles */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Overview tiles — Task #69 HUD chrome: corner brackets + soft
+              inner fuchsia glow wrap the analytics grid so the Mission Deck
+              reads as a live HUD readout. See docs/RPO_VISUAL_LANGUAGE.md. */}
+          <div className="hud-frame grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
             <Tile
               label="Total views"
               value={fmtNum(overview!.total_views)}

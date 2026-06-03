@@ -87,8 +87,10 @@ export function UploadTab({
       <CampaignContextStrip />
 
       {/* Connected-platforms chip rail — 4 fixed slots, fuchsia when connected,
-          dim when not. Reads at a glance whether the queue can actually fire. */}
-      <section className="rounded-2xl border border-line bg-paper-warm/30 px-5 py-4">
+          dim when not. Reads at a glance whether the queue can actually fire.
+          Task #69 — HUD chrome: corner brackets + soft inner glow on the
+          primary featured card. See docs/RPO_VISUAL_LANGUAGE.md. */}
+      <section className="hud-frame rounded-2xl border border-line bg-paper-warm/30 px-5 py-4">
         <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
           connected accounts
           <span className="ml-auto font-mono text-[10px] text-text-tertiary">
