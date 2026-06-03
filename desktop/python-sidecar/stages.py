@@ -127,7 +127,14 @@ def _bundled_whisper_model_path() -> str | None:
 
 def run_ffmpeg(args: list[str]) -> None:
     cmd = [ffmpeg_bin(), "-nostdin", "-hide_banner", "-loglevel", "error", "-y", *args]
-    completed = subprocess.run(cmd, capture_output=True, text=True)
+    # SECURITY (CRIT-003): explicit shell=False — argv form, no shell parsing,
+    # no metacharacter expansion. Caller is responsible for validating any
+    # user-supplied file path before it reaches `args` (see _validate_source_path
+    # in project.py used by stage_ingest / apply_overlay_to_clip). Filter
+    # strings are built from a whitelisted DSL (overlay type + ints) and from
+    # paths under project.root — never raw user strings — so injecting an
+    # extra `;`-separated filter is not reachable.
+    completed = subprocess.run(cmd, capture_output=True, text=True, shell=False)
     if completed.returncode != 0:
         raise RuntimeError(f"ffmpeg failed ({' '.join(args[:4])}…): {completed.stderr.strip()[:400]}")
 
@@ -1871,19 +1878,18 @@ def _ai_thumbnail_variants(reference_image: str, clip: dict[str, Any], out_dir: 
 
 
 def _read_openai_key() -> str | None:
-    """Dev fallback — reads ~/.claude-credentials/openai.env if env var unset."""
-    path = os.path.expanduser("~/.claude-credentials/openai.env")
-    if not os.path.isfile(path):
-        return None
+    """SECURITY (CRIT-001): the legacy ~/.claude-credentials/openai.env fallback
+    has been removed. We now read OPENAI_API_KEY only from the OS keychain
+    (set via Settings → API keys). Plaintext files in the user's home directory
+    are unsafe: any other user-mode process can read them. Callers that already
+    check `os.environ.get("OPENAI_API_KEY")` first will fall through to this
+    helper, which now consults the keychain instead.
+    """
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            for line in f:
-                m = re.match(r"\s*(?:export\s+)?OPENAI_API_KEY\s*=\s*(.+)\s*$", line)
-                if m:
-                    return m.group(1).strip().strip("'\"")
-    except OSError:
+        from llm import _read_keychain_openai_key
+        return _read_keychain_openai_key()
+    except Exception:
         return None
-    return None
 
 
 # --- Overlay (b-roll) — on-demand per clip ----------------------------------
@@ -1925,9 +1931,23 @@ def apply_overlay_to_clip(
     if overlay_type not in OVERLAY_TYPES:
         raise ValueError(f"unknown overlay type {overlay_type!r} (allowed: {sorted(OVERLAY_TYPES)})")
 
-    source_path = overlay_spec.get("source_path")
-    if not source_path or not os.path.isfile(source_path):
-        raise FileNotFoundError(f"overlay source not found: {source_path}")
+    # SECURITY (CRIT-003): the b-roll source_path is user-supplied and is
+    # passed as `-i <path>` to ffmpeg. Even though subprocess.run runs argv
+    # (shell=False) so traditional shell metacharacters can't escape, ffmpeg
+    # itself will happily open URLs, named pipes, /dev/* device files, or
+    # symlinks-to-anywhere. Canonicalise and constrain the path to the same
+    # allow-listed roots used for project sources.
+    raw_overlay_source = overlay_spec.get("source_path")
+    if not isinstance(raw_overlay_source, str) or not raw_overlay_source:
+        raise FileNotFoundError(f"overlay source not found: {raw_overlay_source}")
+    try:
+        from project import _validate_source_path
+        validated_overlay_source = _validate_source_path(raw_overlay_source)
+    except ValueError as e:
+        # Don't leak the original path in the message — the validator already
+        # rejected it as unsafe, so echoing it back is just noise.
+        raise FileNotFoundError(f"overlay source rejected: {e}") from e
+    source_path = str(validated_overlay_source)
 
     start_offset = max(0.0, float(overlay_spec.get("start_offset_s") or 0))
     audio_source = str(overlay_spec.get("audio_source") or "main")

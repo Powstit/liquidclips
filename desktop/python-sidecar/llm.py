@@ -554,21 +554,11 @@ def _read_keychain_openai_key() -> str | None:
 
 
 def _read_dev_openai_key() -> str | None:
-    """Last-resort dev fallback — read from ~/.claude-credentials/openai.env.
-
-    Production users paste their key into Settings, which writes to the OS
-    keychain (the path above). This file-based fallback exists only for the
-    project's own dev machine.
+    """SECURITY (CRIT-001): the legacy ~/.claude-credentials/openai.env fallback
+    has been removed. The shipping app reads OPENAI_API_KEY from the OS keychain
+    (via Settings → API keys) or the OPENAI_API_KEY env var only. Reading API
+    keys from a plaintext file in the user's home directory is unsafe: any other
+    process running as the user can steal the key. Kept as a no-op so existing
+    callers don't need to change.
     """
-    path = os.path.expanduser("~/.claude-credentials/openai.env")
-    if not os.path.isfile(path):
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            for line in f:
-                m = re.match(r"\s*(?:export\s+)?OPENAI_API_KEY\s*=\s*(.+)\s*$", line)
-                if m:
-                    return m.group(1).strip().strip("'\"")
-    except OSError:
-        return None
     return None
