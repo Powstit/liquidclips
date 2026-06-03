@@ -131,6 +131,30 @@ jobs:
           echo "--- Developer ID identities ---"
           security find-identity -v -p codesigning | grep -i "Developer ID" || echo "(no Developer ID match)"
 
+      # Apple's notarizer independently validates nested executables inside
+      # the .app, so re-sign the bundled sidecar binaries with the Developer
+      # ID + secure timestamp + hardened runtime BEFORE Tauri copies them
+      # into the bundle. Tolerant of missing optional binaries (e.g.
+      # junior-face-detect is a local-only Swift binary, not fetched in CI).
+      - name: sign sidecar helper binaries
+        run: |
+          set -euo pipefail
+          IDENTITY='Developer ID Application: daniel diyepriye dokubo (KT68NGT4LX)'
+          for bin in \
+            desktop/python-sidecar/bin/ffmpeg \
+            desktop/python-sidecar/bin/ffprobe \
+            desktop/python-sidecar/bin/junior-face-detect
+          do
+            if [ ! -f "$bin" ]; then
+              echo "(skip) missing optional sidecar binary: $bin"
+              continue
+            fi
+            echo "Signing $bin"
+            codesign --force --options runtime --timestamp --sign "$IDENTITY" "$bin"
+            codesign --verify --strict --verbose=2 "$bin"
+          done
+          echo "✓ sidecar binaries signed"
+
       - name: build signed Apple Silicon app
         working-directory: ./desktop
         env:
