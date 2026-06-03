@@ -1447,7 +1447,70 @@
     .dock-icon-large { font-size: 14px; padding: 22px 18px; }
   }
   @media (max-width: 600px) {
+    html,
+    body {
+      max-width: 100%;
+      overflow-x: hidden;
+    }
     .pricing-grid { grid-template-columns: 1fr; }
+    .hero-content,
+    .hero-ctas,
+    .meta-line,
+    .ask-junior,
+    .chat-window {
+      width: 100%;
+      max-width: 343px;
+      box-sizing: border-box;
+    }
+    .container {
+      width: 100%;
+      max-width: 100%;
+    }
+    .hero-content > * {
+      max-width: 343px;
+    }
+    h1,
+    .ink-out {
+      overflow-wrap: anywhere;
+    }
+    h1 {
+      max-width: 100%;
+      font-size: 34px;
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+    .hero-sub {
+      max-width: 100%;
+      font-size: 17px;
+    }
+    .hero-ctas {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .hero-ctas .btn-primary,
+    .hero-ctas .btn-secondary {
+      width: 100%;
+      box-sizing: border-box;
+      text-align: center;
+      padding-left: 20px;
+      padding-right: 20px;
+    }
+    .meta-line {
+      white-space: normal;
+      line-height: 1.5;
+      font-size: 11px;
+    }
+    .chat-message {
+      gap: 10px;
+    }
+    .chat-avatar {
+      width: 28px;
+      height: 28px;
+      font-size: 14px;
+    }
+    .chat-text {
+      overflow-wrap: anywhere;
+    }
   }
 
   /* ============ MOBILE (≤480px) ============ */
@@ -1456,7 +1519,7 @@
     .container { padding: 0 16px; }
 
     /* Hero — prevent h1 clipping and oversized subtitle */
-    h1 { font-size: clamp(36px, 9vw, 48px); }
+    h1 { font-size: 34px; }
     .hero-sub { font-size: 17px; }
     .hero { padding: 48px 0 40px; }
 
@@ -1552,7 +1615,7 @@
 <!-- NAV -->
 <nav id="site-nav">
   <div class="container nav-inner">
-    <a href="#" class="logo">
+    <a href="/" class="logo">
       <span class="logo-icon-tile">/</span>
       <span>liquid<span class="slash">/</span>clips</span>
     </a>
@@ -1828,7 +1891,7 @@
       <div class="moat-cell">
         <div class="moat-num">06 · ONE-OFF</div>
         <div class="moat-title">Pay once. Hire forever.</div>
-        <div class="moat-desc">First 2,000 founding customers get Autopilot locked at $500 once. No subscription. No price hikes. Liquid Clips shows up to work every day for the rest of your career.</div>
+        <div class="moat-desc">First 2,000 founding customers get Agency-level access locked at $500 once. No subscription. No price hikes. Liquid Clips shows up to work every day for the rest of your career.</div>
       </div>
     </div>
   </div>
@@ -1976,7 +2039,7 @@
     <div class="pricing-grid">
       <div class="price-card">
         <div class="price-tier">FREE TO START</div>
-        <div class="price-name">Try</div>
+        <div class="price-name">Free</div>
         <div class="price-amount">$0</div>
         <div class="price-period">100 free clip exports · bring your own keys</div>
         <ul class="price-features">
@@ -1998,7 +2061,7 @@
           <li>Unlimited videos per month</li>
           <li>Local-only processing · your machine, your keys</li>
           <li>Multi-ratio + b-roll overlay</li>
-          <li>2 platform connections</li>
+          <li>5 social accounts included</li>
           <li>All output bundles</li>
         </ul>
         <a href="https://account.jnremployee.com/sign-up?plan=solo" class="price-cta">Start Solo</a>
@@ -2006,32 +2069,32 @@
 
       <div class="price-card">
         <div class="price-tier">MOST POPULAR</div>
-        <div class="price-name">Growth</div>
-        <div class="price-amount">$99.99</div>
-        <div class="price-period">/ month · higher limits</div>
+        <div class="price-name">Pro</div>
+        <div class="price-amount">$79.99</div>
+        <div class="price-period">/ month · hosted AI and publishing</div>
         <ul class="price-features">
           <li>Everything in Solo</li>
-          <li>Faster on-device processing</li>
+          <li>10 social accounts included</li>
           <li>Hosted LLM · no OpenAI key needed <span style="opacity:.6">(beta)</span></li>
-          <li>4 platform connections (YouTube, TikTok, Reels, X)</li>
-          <li>Priority support</li>
+          <li>All platform connections</li>
+          <li>Multi-platform publish <span style="opacity:.6">(beta)</span></li>
         </ul>
-        <a href="https://account.jnremployee.com/sign-up?plan=growth" class="price-cta">Start Growth</a>
+        <a href="https://account.jnremployee.com/sign-up?plan=pro" class="price-cta">Start Pro</a>
       </div>
 
       <div class="price-card flagship">
         <div class="price-tier">JUNIOR</div>
-        <div class="price-name">Autopilot</div>
-        <div class="price-amount">$199.99</div>
-        <div class="price-period">/ month · the whole team</div>
+        <div class="price-name">Agency</div>
+        <div class="price-amount">$149</div>
+        <div class="price-period">/ month · client accounts</div>
         <ul class="price-features">
-          <li>Everything in Growth</li>
-          <li>14-day auto-drip scheduling <span style="opacity:.6">(beta)</span></li>
-          <li>Project memory · learns your voice</li>
-          <li>Cross-platform smart timing</li>
-          <li>Founder community access</li>
+          <li>Everything in Pro</li>
+          <li>25 social accounts included</li>
+          <li>Drip scheduling <span style="opacity:.6">(beta)</span></li>
+          <li>Sub-accounts for client work <span style="opacity:.6">(v1.1)</span></li>
+          <li>White-label exports <span style="opacity:.6">(v1.1)</span></li>
         </ul>
-        <a href="https://account.jnremployee.com/sign-up?plan=autopilot" class="price-cta">Hire Liquid Clips</a>
+        <a href="https://account.jnremployee.com/sign-up?plan=agency" class="price-cta">Start Agency</a>
       </div>
     </div>
 
@@ -2047,7 +2110,7 @@
       <div>
         <div class="founder-eyebrow">FOUNDER TIER · 2,000 SEATS · LOCKED FOREVER</div>
         <div class="founder-title">Pay Liquid Clips once. Keep him for life.</div>
-        <div class="founder-desc">After 20 videos, eligible users unlock <strong>Autopilot tier</strong> locked at one payment, forever. Drip-mode, project memory, every future Autopilot perk — yours the moment they ship. No subscription. No price hikes. No "we got acquired and shut down."</div>
+        <div class="founder-desc">After 20 videos, eligible users unlock <strong>Agency-level access</strong> locked at one payment, forever. Drip-mode, project memory, every future Agency perk — yours the moment they ship. No subscription. No price hikes. No "we got acquired and shut down."</div>
         <a href="https://whop.com/jnremployee" style="display:inline-block;margin-top:1.5rem;padding:0.875rem 1.75rem;background:#0F0F12;color:#F9F4EE;font-family:'Geist',sans-serif;font-size:15px;font-weight:500;text-decoration:none;border-radius:9999px;transition:all 0.2s;">Reserve a Founder seat →</a>
       </div>
       <div class="founder-price-block">
@@ -2076,7 +2139,7 @@
         </div>
         <div>
           <div class="stat-num">$100</div>
-          <div class="stat-label">Per active Autopilot referral / mo</div>
+          <div class="stat-label">Per active Agency referral / mo</div>
         </div>
         <div>
           <div class="stat-num">170+</div>
@@ -2136,7 +2199,7 @@
       </div>
       <div class="faq-item">
         <div class="faq-q">Does Liquid Clips post while my laptop is closed?</div>
-        <div class="faq-a">That's auto-scheduling &amp; drip, currently in <strong>private beta</strong>. When it ships, scheduled clips upload to a small holding service so they fire on time even with your laptop closed — your raw footage never leaves your machine. For now, Liquid Clips makes the clips, captions, thumbnails and metadata, and you post them. Autopilot subscribers get drip the moment it's live.</div>
+        <div class="faq-a">That's auto-scheduling &amp; drip, currently in <strong>private beta</strong>. When it ships, scheduled clips upload to a small holding service so they fire on time even with your laptop closed — your raw footage never leaves your machine. For now, Liquid Clips makes the clips, captions, thumbnails and metadata, and you post them. Agency subscribers get drip the moment it's live.</div>
       </div>
       <div class="faq-item">
         <div class="faq-q">Do I need to pay for OpenAI / Claude separately?</div>
@@ -2155,7 +2218,7 @@
   <div class="container final-cta-content">
     <h2>Hire Liquid Clips.<br><em>Sleep in tomorrow.</em></h2>
     <p>Download free. 100 free clip exports, no card. Decide if Liquid Clips is the cheapest hire you ever made.</p>
-    <a href="#" class="btn-primary">Download for Mac →</a>
+    <a href="/download" class="btn-primary">Download for Mac →</a>
     <div class="final-meta">Also for Windows · Free to start · macOS 13+ / Windows 10+</div>
   </div>
 </section>
