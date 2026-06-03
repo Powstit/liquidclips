@@ -55,6 +55,12 @@ export function MinecraftChallengeCard({
   }
 
   return (
+    // Task #69 — HUD chrome wrap for the featured campaign card. Corner
+    // brackets + inner glow sit on a parent div so the inner <button>
+    // can keep its overflow-hidden hero crop. The frame radius is bumped
+    // to rounded-3xl on this wrapper so the brackets paint at the same
+    // corners as the button below. See docs/RPO_VISUAL_LANGUAGE.md.
+    <div className="hud-frame relative w-full" style={{ borderRadius: 24 }}>
     <button
       onClick={handleOpen}
       className="group relative w-full overflow-hidden rounded-3xl border border-fuchsia/40 bg-ink text-left transition-all hover:shadow-[0_20px_60px_rgba(255,26,140,0.25)]"
@@ -89,5 +95,6 @@ export function MinecraftChallengeCard({
         </div>
       </div>
     </button>
+    </div>
   );
 }

@@ -103,8 +103,11 @@ function Header({
           <Trophy size={11} className="text-fuchsia" />
           earnings leaderboard
         </div>
+        {/* Task #69 — "affiliates" → "allies" in user-facing heading copy.
+            Backend tables + analytics keys still say affiliate; only the
+            display string flips. See docs/RPO_VISUAL_LANGUAGE.md. */}
         <h1 className="font-display text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink">
-          Top affiliates by lifetime payout.
+          Top allies by lifetime payout.
         </h1>
         <p className="font-sans text-[13px] text-text-secondary">
           {totalRanked} clipper{totalRanked === 1 ? "" : "s"} on the board

@@ -97,9 +97,12 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
             <BadgeShelf />
           </Section>
 
-          <Section eyebrow="account" title="Plan + subscription">
+          {/* Task #69 — "Plan" → "Class" per RPO vocab. Data model and
+              backend payload (sync.tier, /me responses) stay unchanged;
+              only the UI label flips. See docs/RPO_VISUAL_LANGUAGE.md */}
+          <Section eyebrow="account" title="Class + subscription">
             <Row
-              label="Tier"
+              label="Class"
               value={sync ? (sync.tier === "free" ? "Free · Try" : capitalise(sync.tier)) : (tier === "free" ? "Free · Try" : capitalise(tier))}
             />
             {sync?.paid_until && (

@@ -116,7 +116,11 @@ export function SubmissionPortal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-ink/70 backdrop-blur-md p-6">
-      <div className="relative max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-line bg-paper shadow-[0_30px_90px_rgba(0,0,0,0.5)]">
+      {/* Task #69 — HUD chrome wrap for the campaign submission modal.
+          Frame sits on the outer container so corner brackets paint
+          outside the overflow-y-auto scroller. See docs/RPO_VISUAL_LANGUAGE.md. */}
+      <div className="hud-frame relative w-full max-w-3xl" style={{ borderRadius: 24 }}>
+      <div className="relative max-h-[92vh] w-full overflow-y-auto rounded-3xl border border-line bg-paper shadow-[0_30px_90px_rgba(0,0,0,0.5)]">
         {/* Hero strip */}
         <div className="relative h-36 overflow-hidden rounded-t-3xl">
           <img src={heroImg} alt="" className="h-full w-full object-cover" />
@@ -167,6 +171,7 @@ export function SubmissionPortal({ onClose }: { onClose: () => void }) {
             />
           )}
         </div>
+      </div>
       </div>
     </div>
   );

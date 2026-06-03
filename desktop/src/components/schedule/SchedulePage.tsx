@@ -51,7 +51,10 @@ export function SchedulePage(_props: { onOpenWorkspace?: () => void } = {}) {
       {/* Tab strip */}
       <div className="flex items-center gap-1 border-b border-line">
         <TabButton id="queue" current={sub} setCurrent={setSub} Icon={Calendar} label="Queue" />
-        <TabButton id="channels" current={sub} setCurrent={setSub} Icon={Layers} label="Channels" />
+        {/* Task #69 — "Channels" → "Loadout" per RPO vocab. The sub-tab
+            id stays "channels" so navigation + analytics keys unchanged;
+            only the visible label flips. See docs/RPO_VISUAL_LANGUAGE.md. */}
+        <TabButton id="channels" current={sub} setCurrent={setSub} Icon={Layers} label="Loadout" />
         <TabButton id="analytics" current={sub} setCurrent={setSub} Icon={BarChart3} label="Analytics" />
       </div>
 
@@ -70,7 +73,7 @@ export function SchedulePage(_props: { onOpenWorkspace?: () => void } = {}) {
                 onClick={() => setSub("channels")}
                 className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-ink px-4 py-2 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia"
               >
-                Go to Channels →
+                Go to Loadout →
               </button>
             </div>
           )}
