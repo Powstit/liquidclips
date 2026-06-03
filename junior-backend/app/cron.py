@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.db import session_scope
-from app.models import Schedule
+from app.models import Schedule, User
 from app.routes.notifications import write_notification
 
 log = logging.getLogger("junior.cron")
@@ -58,17 +58,28 @@ def _fire_schedule(row_id: str) -> None:
         row.error = "Scheduling backend changed; please re-schedule this clip from Liquid Clips."
         row.retry_count = MAX_RETRIES  # no retries — user action required
         row.next_retry_at = None
-        write_notification(
+        notif = write_notification(
             db,
             user_id=row.user_id,
             category="post_failed",
             title=f"Clip {row.clip_idx + 1:02d} → {row.platform} needs re-scheduling",
             body=f"\"{row.clip_title}\" was queued under the old publisher. Re-schedule it from Liquid Clips and it'll post normally.",
             priority="high",
-            external_dedup_key=f"sched-legacy-{row.id}",
+            external_dedup_key=f"sched-failed-{row.id}",
             action_kind="open_clip",
             action_data={"project_slug": row.project_slug, "clip_idx": row.clip_idx},
         )
+        # Email only fires the first time the dedup_key inserts — webhook
+        # retries / repeated cron ticks against the same row are no-ops.
+        if notif is not None:
+            owner = db.get(User, row.user_id)
+            if owner and owner.email:
+                from app.mailer import send_schedule_failed
+                send_schedule_failed(
+                    owner.email,
+                    channel_label=f"{row.platform} · clip {row.clip_idx + 1:02d}",
+                    error_summary=row.error or "Scheduling backend changed.",
+                )
 
 
 MAX_RETRIES = 3
@@ -349,6 +360,11 @@ def _refresh_channel_status_tick() -> None:
 
     refreshed = 0
     cutoff = datetime.now(timezone.utc) - timedelta(hours=5)
+    # Capture (user_id, channel_label, platform) tuples for newly-disconnected
+    # channels and fire emails OUTSIDE the session, after commit. Same pattern
+    # as the cron's other side-effects; keeps the DB session short-lived and
+    # ensures the Notification dedup_key row is durable before we mail.
+    just_disconnected: list[tuple[str, str, str, str, str]] = []
     with session_scope() as db:
         candidates: list[SocialChannel] = (
             db.query(SocialChannel)
@@ -362,6 +378,7 @@ def _refresh_channel_status_tick() -> None:
             .all()
         )
         for channel in candidates:
+            prev_status = channel.status
             try:
                 with httpx.Client(timeout=ayrshare.DEFAULT_TIMEOUT) as client:
                     r = client.get(
@@ -372,6 +389,10 @@ def _refresh_channel_status_tick() -> None:
                     if channel.status != "paused":
                         channel.status = "error"
                     channel.last_refreshed_at = datetime.now(timezone.utc)
+                    if prev_status == "active" and channel.status == "error":
+                        just_disconnected.append(
+                            (channel.user_id, channel.id, channel.label, channel.platform, "auth_failed")
+                        )
                     continue
                 body = r.json()
                 display_names = body.get("displayNames") or {}
@@ -386,15 +407,114 @@ def _refresh_channel_status_tick() -> None:
                     is_linked = channel.platform in [str(p).lower() for p in (active or [])]
                 channel.handle = handle or channel.handle
                 if channel.status != "paused":
-                    channel.status = "active" if is_linked else "pending_link"
+                    new_status = "active" if is_linked else "pending_link"
+                    channel.status = new_status
+                    if prev_status == "active" and new_status == "pending_link":
+                        just_disconnected.append(
+                            (channel.user_id, channel.id, channel.label, channel.platform, "unlinked")
+                        )
                 channel.last_refreshed_at = datetime.now(timezone.utc)
                 refreshed += 1
             except Exception as e:  # noqa: BLE001
                 log.warning("[channels] status refresh failed for channel=%s: %s", channel.id, e)
                 continue
 
+    # Fire user-facing emails after commit. Dedup via Notification dedup_key
+    # so we mail at most once per channel per UTC day even if the cron flaps
+    # between healthy + error every 6h.
+    if just_disconnected:
+        today_iso = datetime.now(timezone.utc).date().isoformat()
+        with session_scope() as db2:
+            for user_id, channel_id, label, platform, reason in just_disconnected:
+                owner = db2.get(User, user_id)
+                if not owner or not owner.email:
+                    continue
+                notif = write_notification(
+                    db2,
+                    user_id=user_id,
+                    category="post_failed",
+                    title=f"{label} disconnected",
+                    body=(
+                        f"Your {platform.capitalize()} link expired. Reconnect "
+                        f"\"{label}\" from Settings → Channels — new posts will "
+                        "fail until it's relinked."
+                    ),
+                    priority="high",
+                    external_dedup_key=f"channel-disconnected-{channel_id}-{today_iso}",
+                    action_kind="open_settings",
+                    action_data={"channel_id": channel_id},
+                )
+                if notif is not None:
+                    from app.mailer import send_channel_disconnected
+                    send_channel_disconnected(
+                        owner.email,
+                        channel_label=label,
+                        platform=platform,
+                    )
+
     if refreshed:
         log.info("[channels] refreshed %d channel status rows", refreshed)
+
+
+def _trial_ending_soon_tick() -> None:
+    """Daily — warn users 3 days before a Whop starter trial flips to paid.
+
+    SCAFFOLDED + DISABLED BY DEFAULT. Set JUNIOR_ENABLE_TRIAL_REMINDERS=1 to
+    enable. Trial users are those with subscription_status='trialing' and a
+    paid_until ~3 days in the future. Dedup via Notification dedup_key
+    `trial-ending-<user_id>-<days_left>` so each (user, day-bucket) emails
+    at most once. Bounded by 200 rows per tick to avoid blasting a backlog
+    if the cron sat off for days.
+    """
+    if os.environ.get("JUNIOR_ENABLE_TRIAL_REMINDERS", "").strip() not in {"1", "true"}:
+        return
+
+    from app.db import engine
+    now_aware = datetime.now(timezone.utc)
+    now = now_aware.replace(tzinfo=None) if engine.dialect.name == "sqlite" else now_aware
+    # Pick rows whose paid_until lands in the (2d, 4d) window so the 3-day
+    # email always fires once per user. The dedup_key collapses any drift.
+    window_lo = now + timedelta(days=2)
+    window_hi = now + timedelta(days=4)
+
+    queued: list[tuple[str, str, str, int]] = []
+    with session_scope() as db:
+        candidates = (
+            db.query(User)
+            .filter(User.subscription_status == "trialing")
+            .filter(User.paid_until.isnot(None))
+            .filter(User.paid_until >= window_lo)
+            .filter(User.paid_until <= window_hi)
+            .limit(200)
+            .all()
+        )
+        for u in candidates:
+            if not u.email or not u.paid_until:
+                continue
+            days_left = max(1, (u.paid_until - now_aware.replace(tzinfo=u.paid_until.tzinfo)).days)
+            notif = write_notification(
+                db,
+                user_id=u.id,
+                category="billing",
+                title=f"Your trial ends in {days_left} day(s)",
+                body=(
+                    f"Your {u.tier.capitalize()} starter trial wraps in "
+                    f"{days_left} day(s). Cancel on Whop before then if you'd "
+                    "rather not roll over."
+                ),
+                priority="medium",
+                external_dedup_key=f"trial-ending-{u.id}-{days_left}",
+            )
+            if notif is not None:
+                queued.append((u.email, u.tier, u.id, days_left))
+
+    # Send outside the DB session — same pattern as channel-disconnected.
+    for email, tier, _user_id, days_left in queued:
+        from app.mailer import send_trial_ending_soon
+        send_trial_ending_soon(email, days_left=days_left, tier=tier)
+
+    if queued:
+        log.info("[trial] sent %d trial-ending-soon reminder(s)", len(queued))
 
 
 _scheduler: BackgroundScheduler | None = None
@@ -414,8 +534,11 @@ def start_cron() -> None:
     _scheduler.add_job(_refresh_affiliate_cache_tick, "interval", seconds=21600, max_instances=1, coalesce=True, id="leaderboard_refresh")
     _scheduler.add_job(_refresh_post_analytics_tick, "interval", seconds=1800, max_instances=1, coalesce=True, id="post_analytics_refresh")
     _scheduler.add_job(_refresh_channel_status_tick, "interval", seconds=21600, max_instances=1, coalesce=True, id="channel_status_refresh")
+    # Trial-ending reminder — daily. Self-gates on JUNIOR_ENABLE_TRIAL_REMINDERS
+    # so adding the job is safe even when the feature is disabled.
+    _scheduler.add_job(_trial_ending_soon_tick, "interval", seconds=86400, max_instances=1, coalesce=True, id="trial_ending_reminder")
     _scheduler.start()
-    log.info("[cron] started: schedules 60s, billing 3600s, leaderboard 21600s, analytics 1800s, channel status 21600s")
+    log.info("[cron] started: schedules 60s, billing 3600s, leaderboard 21600s, analytics 1800s, channel status 21600s, trial reminders 86400s")
 
 
 def stop_cron() -> None:
