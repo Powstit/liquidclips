@@ -75,6 +75,26 @@ export default function Home() {
   return (
     <PageShell>
       <main>
+        {/* INTRO CINEMATIC — v0.5.1 Ready Player One redesign, Kade-in-OASIS reel */}
+        <section className="intro-cinematic" aria-label="Liquid Clips intro">
+          <video
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="auto"
+            poster="/img/kade-oasis-hero.png"
+            className="intro-cinematic-video"
+          >
+            <source src="/img/intro-hero.mp4" type="video/mp4" />
+          </video>
+          <div className="intro-cinematic-scrim" aria-hidden="true" />
+        </section>
+
+        <p className="intro-tagline">
+          Your own avatar in the OASIS. <em>Drop a long video, slash it into clips.</em>
+        </p>
+
         <section className="hero">
           <div className="container hero-grid">
             <div>
@@ -102,8 +122,8 @@ export default function Home() {
 
             <div className="hero-media" aria-label="Liquid Clips editing workspace preview">
               <Image
-                src="/img/clipper-editing.jpg"
-                alt="Creator editing short-form clips on a laptop"
+                src="/img/kade-oasis-hero.png"
+                alt="Kade — your avatar inside the OASIS, Liquid Clips' cinematic creator chamber"
                 width={1100}
                 height={1300}
                 priority
