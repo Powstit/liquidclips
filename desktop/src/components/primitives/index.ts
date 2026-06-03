@@ -7,3 +7,5 @@ export { Card } from "./Card";
 export { Input } from "./Input";
 export { IconButton } from "./IconButton";
 export { Pill } from "./Pill";
+export { HudBadge } from "./HudBadge";
+export type { HudBadgeVariant } from "./HudBadge";
