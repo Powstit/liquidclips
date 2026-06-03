@@ -42,7 +42,10 @@ export function EarnLayout({ ticker, rail, main, sidebar }: Props) {
   }, []);
 
   return (
-    <div className="flex h-full w-full flex-col">
+    // v0.5.1 — Arena Deck. Fuchsia + amber tail at the top edge reads as
+    // coliseum / leaderboard energy. The amber tail is scoped to .deck-earn
+    // in index.css — we do NOT introduce a new amber brand token.
+    <div className="deck deck-earn flex h-full w-full flex-col">
       {/* Ticker — 60px row that never scrolls */}
       <div className="shrink-0 border-b border-line bg-paper-elev/80 backdrop-blur-[12px]">
         {ticker}

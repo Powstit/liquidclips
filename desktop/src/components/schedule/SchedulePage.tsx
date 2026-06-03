@@ -32,7 +32,9 @@ export function SchedulePage(_props: { onOpenWorkspace?: () => void } = {}) {
   }, []);
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-8">
+    // v0.5.1 — Mission Deck. Cyan-cool top-edge band signals "mission
+    // control" vs. workspace's fuchsia dojo. See docs/RPO_VISUAL_LANGUAGE.md.
+    <div className="deck deck-schedule mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-8">
       <header className="flex flex-col gap-2">
         <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
           <Calendar size={11} className="text-fuchsia" />

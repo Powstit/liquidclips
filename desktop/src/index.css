@@ -14,6 +14,12 @@
   --color-fuchsia-soft: rgba(255, 26, 140, 0.16);
   --color-fuchsia-glow: #ff8fcb;
 
+  /* Secondary signal — pale cyan, the OASIS key light from below-front
+     (see docs/RPO_VISUAL_LANGUAGE.md). Used only as a faint ambient tint
+     on per-surface "deck" bands so Schedule reads as Mission Control vs.
+     Workspace's fuchsia dojo. Fuchsia stays the only CTA accent. */
+  --color-cyan-cool: #00e5ff;
+
   /* Surfaces — Whop-shaped dark base (0.4.27).
      Semantic names stay the same so existing `bg-paper text-ink border-line`
      class usage flips theme without touching every component:
@@ -127,4 +133,79 @@ pre {
   background: var(--grad-fuchsia);
   box-shadow: var(--glow-sm);
   animation: working-shimmer 1.6s ease-in-out infinite;
+}
+
+/* v0.5.1 — Per-surface "deck" differentiation.
+   Each surface gets a thin top-edge band tinted with its mood colour so
+   Workspace / Schedule / Earn / Settings feel like different decks of the
+   OASIS without breaking layouts. The bands are 1px hairlines with a soft
+   glow above — they live above content, not in the layout flow.
+
+   Brief mapping (docs/RPO_VISUAL_LANGUAGE.md):
+     Workspace  → fuchsia              (Studio Deck — focused private dojo)
+     Schedule   → cyan-cool            (Mission Deck — mission control)
+     Earn       → fuchsia + amber tail (Arena Deck — coliseum/leaderboard)
+     Settings   → cool slate           (Loadout Deck — inventory cockpit)
+
+   Implementation: pseudo-element on a wrapper div, position absolute at
+   the top, so it overlays without disturbing the existing flex/grid. */
+
+.deck {
+  position: relative;
+  isolation: isolate;
+}
+
+.deck::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(90deg, transparent 0%, var(--deck-tint, var(--color-fuchsia)) 50%, transparent 100%);
+  opacity: 0.6;
+}
+
+.deck::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 48px;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(180deg, var(--deck-tint, var(--color-fuchsia)) 0%, transparent 100%);
+  opacity: 0.06;
+}
+
+/* Per-deck modifiers — pure CSS variable assignment so the tint cascades
+   into the ::before / ::after pseudo-elements above. */
+.deck-workspace { --deck-tint: var(--color-fuchsia); --deck-ambient: 0.10; }
+.deck-schedule  { --deck-tint: var(--color-cyan-cool); --deck-ambient: 0.08; }
+.deck-earn      { --deck-tint: var(--color-fuchsia); --deck-ambient: 0.12; }
+.deck-settings  { --deck-tint: rgba(200, 196, 190, 0.6); --deck-ambient: 0.05; }
+
+/* Earn gets a second amber-tipped tail under the band to read as
+   "coliseum/leaderboard arena" (gold-medal energy) without introducing a
+   new amber token globally. Scoped to the .deck-earn modifier only. */
+.deck-earn::after {
+  background: linear-gradient(
+    180deg,
+    var(--color-fuchsia) 0%,
+    rgba(255, 200, 100, 0.35) 35%,
+    transparent 100%
+  );
+  opacity: 0.08;
+}
+
+/* Focused tile/card glow — subtle fuchsia border-ring on :focus-within so
+   any keyboard-traversed card on a deck surface gets the same signal. Sits
+   alongside the existing --glow-sm token for an explicit hover/active use. */
+.deck-focusable {
+  transition: box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.deck-focusable:focus-within,
+.deck-focusable:hover {
+  box-shadow: var(--glow-sm);
+  border-color: var(--color-fuchsia);
 }

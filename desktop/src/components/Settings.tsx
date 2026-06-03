@@ -69,8 +69,11 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-ink/40" onClick={onClose}>
+      {/* v0.5.1 — Loadout Deck. Cool slate top-edge band signals "inventory
+          cockpit" — neutral, private, no signal colour bleed. See
+          docs/RPO_VISUAL_LANGUAGE.md. */}
       <div
-        className="flex h-full w-full max-w-[640px] flex-col overflow-y-auto bg-paper shadow-2xl"
+        className="deck deck-settings flex h-full w-full max-w-[640px] flex-col overflow-y-auto bg-paper shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-paper/85 px-6 py-4 backdrop-blur-[20px]">
