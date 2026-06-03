@@ -59,7 +59,10 @@ export function UploadTab({
   const connected = new Set((connection?.platforms ?? []).map((p) => p.toLowerCase()));
 
   return (
-    <div className="flex w-full max-w-[920px] flex-col gap-7">
+    // v0.5.1 — Studio Deck (workspace). Fuchsia top-edge band + faint
+    // ambient tint above the existing MainShell backdrop. See
+    // docs/RPO_VISUAL_LANGUAGE.md and src/index.css `.deck` utilities.
+    <div className="deck deck-workspace flex w-full max-w-[920px] flex-col gap-7 pt-2">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
@@ -101,7 +104,8 @@ export function UploadTab({
             return (
               <div
                 key={p}
-                className={`flex items-center gap-2 rounded-xl border px-3 py-2 ${
+                tabIndex={0}
+                className={`deck-focusable flex items-center gap-2 rounded-xl border px-3 py-2 outline-none ${
                   isOn
                     ? "border-fuchsia/40 bg-fuchsia-soft/30 text-ink"
                     : "border-line bg-paper text-text-tertiary"
