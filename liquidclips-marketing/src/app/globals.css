@@ -189,6 +189,51 @@ a {
   background: var(--fuchsia-bright);
 }
 
+/* ============ INTRO CINEMATIC ============ */
+/* v0.5.1 Ready Player One — full-bleed Kade-in-OASIS reel sits above the
+   headline so the brand lands cinematic-first. Mirrors marketing/index.html. */
+.intro-cinematic {
+  position: relative;
+  width: 100%;
+  background: var(--ink);
+  overflow: hidden;
+  line-height: 0;
+}
+
+.intro-cinematic-video {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: cover;
+}
+
+.intro-cinematic-scrim {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 25%;
+  background: linear-gradient(to bottom, transparent, var(--paper));
+  pointer-events: none;
+}
+
+.intro-tagline {
+  position: relative;
+  text-align: center;
+  padding: 40px 24px 8px;
+  font-family: var(--font-fraunces), serif;
+  font-size: clamp(20px, 2.6vw, 32px);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.intro-tagline em {
+  color: var(--fuchsia);
+  font-style: italic;
+}
+
 .hero {
   min-height: calc(100vh - 72px);
   display: grid;
