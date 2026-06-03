@@ -15,7 +15,9 @@ const ITEMS: Array<{ id: EarnSubTab; label: string; chip: string; icon: ReactNod
   { id: "in_progress", label: "In progress",    chip: "Doing",  icon: <Clock4 size={14} /> },
   { id: "submitted",   label: "Posted clips",   chip: "Posted", icon: <Send size={14} /> },
   { id: "approved",    label: "Approved",       chip: "Paid",   icon: <CheckCircle2 size={14} /> },
-  { id: "leaderboard", label: "Top affiliates", chip: "Top",    icon: <Trophy size={14} /> },
+  // Task #69 — "Top affiliates" → "Top allies" per RPO vocab. Sub-tab id
+  // ("leaderboard") + chip ("Top") stay; only the hover label flips.
+  { id: "leaderboard", label: "Top allies", chip: "Top",    icon: <Trophy size={14} /> },
 ];
 
 export function EarnIconRail({
