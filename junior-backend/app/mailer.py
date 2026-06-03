@@ -145,6 +145,17 @@ def send_bounty_approved(email: str, *, bounty_title: str, payout: str, first_na
     _async(_send, to=email, subject=subject, html=html, text=text, tag="bounty_approved")
 
 
+def send_bounty_rejected(email: str, *, bounty_title: str, reason: str, first_name: str | None = None) -> None:
+    """Sent when a Content Reward submission is rejected by a mod (not the
+    automatic watermark gate — that has its own send_mc_watermark_rejected).
+    Reason text is the mod's rejection_reason verbatim; no "auto" wrapping."""
+    ctx = MailContext.build()
+    subject, html, text = render_bounty_rejected(
+        email=email, bounty_title=bounty_title, reason=reason, first_name=first_name, ctx=ctx,
+    )
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="bounty_rejected")
+
+
 def send_affiliate_qualified(email: str, *, first_name: str | None = None) -> None:
     """Sent ONCE to a Liquid Clips affiliate the first time they cross the 2-paid-
     referrals qualification threshold. Caller deduplicates via Notification's
@@ -172,6 +183,122 @@ def send_whop_claim_link(email: str, *, claim_url: str, first_name: str | None =
     ctx = MailContext.build()
     subject, html, text = render_whop_claim(email=email, claim_url=claim_url, first_name=first_name, ctx=ctx)
     _async(_send, to=email, subject=subject, html=html, text=text, tag="whop_claim")
+
+
+def send_schedule_failed(
+    email: str,
+    *,
+    channel_label: str,
+    error_summary: str,
+    first_name: str | None = None,
+) -> None:
+    """Sent when a scheduled Ayrshare post flips to status='failed' in the
+    cron reconciler. Idempotency lives on the caller side: a Notification row
+    with dedup_key `sched-failed-<schedule_id>` is written first; this sender
+    is only fired when the insert sticks (i.e. first time we see this row in
+    a failed state). The cron's 3-retry policy lives upstream — by the time
+    this email fires, we've already exhausted retries."""
+    ctx = MailContext.build()
+    subject, html, text = render_schedule_failed(
+        email=email, channel_label=channel_label, error_summary=error_summary,
+        first_name=first_name, ctx=ctx,
+    )
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="schedule_failed")
+
+
+def send_channel_disconnected(
+    email: str,
+    *,
+    channel_label: str,
+    platform: str,
+    first_name: str | None = None,
+) -> None:
+    """Sent when the channel-status refresh cron detects a channel transitioning
+    from active → error (Ayrshare auth expired / user revoked the platform
+    OAuth). Idempotency: caller writes a Notification with dedup_key
+    `channel-disconnected-<channel_id>-<yyyy-mm-dd>` so we mail at most once
+    per channel per UTC day even if the cron flaps. Don't re-email a user
+    every 6h for the same broken channel."""
+    ctx = MailContext.build()
+    subject, html, text = render_channel_disconnected(
+        email=email, channel_label=channel_label, platform=platform,
+        first_name=first_name, ctx=ctx,
+    )
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="channel_disconnected")
+
+
+def send_trial_ending_soon(
+    email: str,
+    *,
+    days_left: int,
+    tier: str,
+    first_name: str | None = None,
+) -> None:
+    """Sent ~3 days before a Whop starter-pass trial flips to paid. Idempotency:
+    caller writes a Notification with dedup_key `trial-ending-<user_id>-<days>`
+    so each (user, days-bucket) sends at most once. The cron is currently
+    SCAFFOLDED but DISABLED — Whop's renewal_period_end is the source of truth
+    and the firing logic gates on a feature flag until the trial UI lands."""
+    ctx = MailContext.build()
+    subject, html, text = render_trial_ending_soon(
+        email=email, days_left=days_left, tier=tier, first_name=first_name, ctx=ctx,
+    )
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="trial_ending_soon")
+
+
+def send_affiliate_payout_enabled(
+    email: str,
+    *,
+    first_name: str | None = None,
+) -> None:
+    """Sent when Stripe Connect flips a user's account to payouts_enabled=true
+    (KYC cleared, bank verified, no outstanding requirements). Idempotency:
+    caller writes a Notification with dedup_key
+    `stripe-payouts-enabled-<user_id>` so account.updated webhook spam can't
+    re-mail. The transition is monotonic in practice — once enabled, Stripe
+    rarely undoes it without a manual review."""
+    ctx = MailContext.build()
+    subject, html, text = render_affiliate_payout_enabled(
+        email=email, first_name=first_name, ctx=ctx,
+    )
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="affiliate_payout_enabled")
+
+
+def send_payout_kyc_required(
+    email: str,
+    *,
+    first_name: str | None = None,
+) -> None:
+    """Sent when Stripe Connect flips a user's account to status='restricted'
+    with `requirements.currently_due` non-empty (extra docs requested mid-flow).
+    Idempotency: caller writes a Notification with dedup_key
+    `stripe-kyc-required-<user_id>-<yyyy-mm-dd>` so we nudge at most once per
+    UTC day even if Stripe webhooks the same restricted state every minute."""
+    ctx = MailContext.build()
+    subject, html, text = render_payout_kyc_required(
+        email=email, first_name=first_name, ctx=ctx,
+    )
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="payout_kyc_required")
+
+
+def send_account_pack_added(
+    email: str,
+    *,
+    extra_accounts: int,
+    first_name: str | None = None,
+) -> None:
+    """Sent when a user adds an Account Pack add-on (one extra social channel
+    per unit). SCAFFOLDED — Clerk Billing's add-on webhook event shape isn't
+    finalised in this codebase yet (subscriptionItem.updated currently only
+    carries the tier plan, not the add-on quantity), so this sender exists
+    so the wiring is ready the moment we plumb add-on parsing through
+    webhooks_clerk._handle_subscription_active. Idempotency will live on
+    the caller side via a dedup_key `pack-added-<user_id>-<new_total>`."""
+    ctx = MailContext.build()
+    subject, html, text = render_account_pack_added(
+        email=email, extra_accounts=extra_accounts, first_name=first_name, ctx=ctx,
+    )
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="account_pack_added")
 
 
 # --- internal admin alerts ---------------------------------------------
@@ -209,6 +336,85 @@ def send_admin_paid_customer_alert(
     )
     for addr in recipients:
         _async(_send, to=addr, subject=subject, html=html, text=text, tag="admin_paid_customer")
+
+
+def _admin_recipients() -> list[str]:
+    s = get_settings()
+    if not s.admin_emails:
+        return []
+    return [e.strip() for e in s.admin_emails.split(",") if e.strip()]
+
+
+def send_admin_affiliate_milestone(
+    *,
+    affiliate_email: str,
+    milestone: str,
+    note: str | None = None,
+) -> None:
+    """Fan out an affiliate-milestone alert to every admin email.
+
+    `milestone` is short-form: "first_paid_referral" or "qualified_50_percent".
+    Caller is responsible for idempotency — this is invoked from inside the
+    same dedup-keyed Notification branch that already gates the user-facing
+    email, so it can't fire twice for the same milestone."""
+    recipients = _admin_recipients()
+    if not recipients:
+        return
+    subject, html, text = render_admin_affiliate_milestone(
+        affiliate_email=affiliate_email, milestone=milestone, note=note,
+    )
+    for addr in recipients:
+        _async(_send, to=addr, subject=subject, html=html, text=text, tag="admin_affiliate_milestone")
+
+
+def send_admin_big_payout(
+    *,
+    customer_email: str,
+    bounty_title: str,
+    payout: str,
+    note: str | None = None,
+) -> None:
+    """Fan out a 'big Content Reward payout' alert to every admin email.
+
+    Caller decides the threshold — only fire this when payout dollar value
+    crosses an admin-attention bar. The bounty acceptance email to the user
+    already always sends; this is the additional internal ping. Idempotency:
+    caller fires this inside the same status-transition branch that mails
+    the clipper, so it can't double-fire."""
+    recipients = _admin_recipients()
+    if not recipients:
+        return
+    subject, html, text = render_admin_big_payout(
+        customer_email=customer_email, bounty_title=bounty_title, payout=payout, note=note,
+    )
+    for addr in recipients:
+        _async(_send, to=addr, subject=subject, html=html, text=text, tag="admin_big_payout")
+
+
+def send_admin_kyc_alert(
+    *,
+    customer_email: str,
+    stripe_status: str,
+    requirements_due: list[str] | None = None,
+    note: str | None = None,
+) -> None:
+    """Fan out a 'Stripe Connect KYC stalled' alert to every admin email.
+
+    Triggered from the Stripe Connect webhook when status flips to 'restricted'
+    with currently_due requirements outstanding. Caller dedupes on
+    Notification(`admin-kyc-<user_id>-<yyyy-mm-dd>`) so we nudge at most once
+    per UTC day per affected user."""
+    recipients = _admin_recipients()
+    if not recipients:
+        return
+    subject, html, text = render_admin_kyc_alert(
+        customer_email=customer_email,
+        stripe_status=stripe_status,
+        requirements_due=requirements_due,
+        note=note,
+    )
+    for addr in recipients:
+        _async(_send, to=addr, subject=subject, html=html, text=text, tag="admin_kyc_alert")
 
 
 def render_admin_paid_customer_alert(
@@ -264,6 +470,131 @@ Email:  {customer_email}
 Tier:   {tier}
 Source: {pretty_source}
 {extras_block_text}
+
+Automated alert from junior-backend.
+"""
+    return subject, html, text
+
+
+def render_admin_affiliate_milestone(
+    *,
+    affiliate_email: str,
+    milestone: str,
+    note: str | None,
+) -> tuple[str, str, str]:
+    pretty = {
+        "first_paid_referral": "First paid referral landed",
+        "qualified_50_percent": "Qualified · 50% recurring unlocked",
+    }.get(milestone, milestone.replace("_", " "))
+    subject = f"💸  Affiliate milestone — {pretty}"
+    extras_block_text = f"\nNote:   {note}" if note else ""
+    html = f"""<!doctype html>
+<html><body style="margin:0;padding:32px;background:#FAF7F2;color:#0A0A0F;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Geist,sans-serif;">
+  <div style="max-width:480px;margin:0 auto;background:#fff;border:1px solid #E8DFD2;border-radius:16px;padding:32px;">
+    <div style="display:inline-block;background:#FF1A8C;color:#fff;width:32px;height:32px;border-radius:8px;text-align:center;line-height:32px;font-weight:700;font-family:'Geist Mono',monospace;">/</div>
+    <h1 style="font-family:Fraunces,Georgia,serif;font-size:24px;margin:18px 0 8px;">Affiliate milestone</h1>
+    <p style="font-size:14px;line-height:1.6;color:#5A5560;margin:0 0 18px;">
+      <strong style="color:#FF1A8C;">{pretty}</strong>
+    </p>
+    <table style="font-family:'Geist Mono',monospace;font-size:13px;border-collapse:collapse;width:100%;">
+      <tr><td style="padding:6px 0;color:#8A8590;width:120px;">Affiliate</td><td style="padding:6px 0;">{affiliate_email}</td></tr>
+      <tr><td style="padding:6px 0;color:#8A8590;">Milestone</td><td style="padding:6px 0;">{milestone}</td></tr>
+      {f'<tr><td style="padding:6px 0;color:#8A8590;">Note</td><td style="padding:6px 0;">{note}</td></tr>' if note else ''}
+    </table>
+    <p style="margin:24px 0 0;font-size:12px;color:#8A8590;font-family:'Geist Mono',monospace;">
+      Automated alert from junior-backend.
+    </p>
+  </div>
+</body></html>"""
+    text = f"""Affiliate milestone
+
+{pretty}
+
+Affiliate: {affiliate_email}
+Milestone: {milestone}{extras_block_text}
+
+Automated alert from junior-backend.
+"""
+    return subject, html, text
+
+
+def render_admin_big_payout(
+    *,
+    customer_email: str,
+    bounty_title: str,
+    payout: str,
+    note: str | None,
+) -> tuple[str, str, str]:
+    subject = f"💸  Big payout approved — {payout} · {bounty_title[:40]}"
+    extras_block_text = f"\nNote:   {note}" if note else ""
+    html = f"""<!doctype html>
+<html><body style="margin:0;padding:32px;background:#FAF7F2;color:#0A0A0F;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Geist,sans-serif;">
+  <div style="max-width:480px;margin:0 auto;background:#fff;border:1px solid #E8DFD2;border-radius:16px;padding:32px;">
+    <div style="display:inline-block;background:#FF1A8C;color:#fff;width:32px;height:32px;border-radius:8px;text-align:center;line-height:32px;font-weight:700;font-family:'Geist Mono',monospace;">/</div>
+    <h1 style="font-family:Fraunces,Georgia,serif;font-size:24px;margin:18px 0 8px;">Big Content Reward payout</h1>
+    <p style="font-size:14px;line-height:1.6;color:#5A5560;margin:0 0 18px;">
+      <strong style="color:#FF1A8C;">{payout}</strong> approved on {bounty_title}.
+    </p>
+    <table style="font-family:'Geist Mono',monospace;font-size:13px;border-collapse:collapse;width:100%;">
+      <tr><td style="padding:6px 0;color:#8A8590;width:120px;">Clipper</td><td style="padding:6px 0;">{customer_email}</td></tr>
+      <tr><td style="padding:6px 0;color:#8A8590;">Bounty</td><td style="padding:6px 0;">{bounty_title}</td></tr>
+      <tr><td style="padding:6px 0;color:#8A8590;">Payout</td><td style="padding:6px 0;">{payout}</td></tr>
+      {f'<tr><td style="padding:6px 0;color:#8A8590;">Note</td><td style="padding:6px 0;">{note}</td></tr>' if note else ''}
+    </table>
+    <p style="margin:24px 0 0;font-size:12px;color:#8A8590;font-family:'Geist Mono',monospace;">
+      Automated alert from junior-backend.
+    </p>
+  </div>
+</body></html>"""
+    text = f"""Big Content Reward payout
+
+{payout} approved on {bounty_title}.
+
+Clipper: {customer_email}
+Bounty:  {bounty_title}
+Payout:  {payout}{extras_block_text}
+
+Automated alert from junior-backend.
+"""
+    return subject, html, text
+
+
+def render_admin_kyc_alert(
+    *,
+    customer_email: str,
+    stripe_status: str,
+    requirements_due: list[str] | None,
+    note: str | None,
+) -> tuple[str, str, str]:
+    reqs_pretty = ", ".join(requirements_due or []) if requirements_due else "—"
+    subject = f"💸  Stripe Connect KYC stalled — {customer_email}"
+    extras_block_text = f"\nNote:   {note}" if note else ""
+    html = f"""<!doctype html>
+<html><body style="margin:0;padding:32px;background:#FAF7F2;color:#0A0A0F;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Geist,sans-serif;">
+  <div style="max-width:480px;margin:0 auto;background:#fff;border:1px solid #E8DFD2;border-radius:16px;padding:32px;">
+    <div style="display:inline-block;background:#FF1A8C;color:#fff;width:32px;height:32px;border-radius:8px;text-align:center;line-height:32px;font-weight:700;font-family:'Geist Mono',monospace;">/</div>
+    <h1 style="font-family:Fraunces,Georgia,serif;font-size:24px;margin:18px 0 8px;">Stripe Connect KYC stalled</h1>
+    <p style="font-size:14px;line-height:1.6;color:#5A5560;margin:0 0 18px;">
+      Affiliate is in <strong style="color:#FF1A8C;">{stripe_status}</strong> with outstanding KYC.
+    </p>
+    <table style="font-family:'Geist Mono',monospace;font-size:13px;border-collapse:collapse;width:100%;">
+      <tr><td style="padding:6px 0;color:#8A8590;width:120px;">Affiliate</td><td style="padding:6px 0;">{customer_email}</td></tr>
+      <tr><td style="padding:6px 0;color:#8A8590;">Status</td><td style="padding:6px 0;">{stripe_status}</td></tr>
+      <tr><td style="padding:6px 0;color:#8A8590;">Currently due</td><td style="padding:6px 0;">{reqs_pretty}</td></tr>
+      {f'<tr><td style="padding:6px 0;color:#8A8590;">Note</td><td style="padding:6px 0;">{note}</td></tr>' if note else ''}
+    </table>
+    <p style="margin:24px 0 0;font-size:12px;color:#8A8590;font-family:'Geist Mono',monospace;">
+      Automated alert from junior-backend. The user also received a nudge to finish KYC.
+    </p>
+  </div>
+</body></html>"""
+    text = f"""Stripe Connect KYC stalled
+
+Affiliate {customer_email} is in {stripe_status} with outstanding KYC.
+
+Affiliate:     {customer_email}
+Status:        {stripe_status}
+Currently due: {reqs_pretty}{extras_block_text}
 
 Automated alert from junior-backend.
 """
@@ -650,6 +981,248 @@ def render_bounty_approved(*, email: str, bounty_title: str, payout: str, first_
         f"Reward clip approved · est. {payout}.\n\n{_greeting(first_name)}\n\n"
         f"Your reward clip for {bounty_title} passed Whop's review. "
         "Payouts flow through Whop on their cycle.\n\n"
+        f"Open Liquid Clips · Earn: {ctx.download_url}\n\n— Liquid Clips"
+    )
+    return subject, _shell(subject, body, ctx=ctx), text
+
+
+def render_schedule_failed(
+    *,
+    email: str,
+    channel_label: str,
+    error_summary: str,
+    first_name: str | None,
+    ctx: MailContext,
+) -> tuple[str, str, str]:
+    # Keep error_summary short — Ayrshare can return multi-paragraph errors.
+    short_err = (error_summary or "").strip().replace("\n", " ")[:240]
+    subject = f"Scheduled post didn't go out · {channel_label}"
+    body = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{TEXT_TERTIARY};margin:0 0 8px;">schedule failed · action needed</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
+  Your scheduled post didn't go out.
+</h1>
+<p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 18px;">
+  A scheduled post for <strong style="color:{INK};">{channel_label}</strong> failed after the usual retries. The clip is still in your project — re-schedule from Liquid Clips when you're ready.
+</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;color:{TEXT_SECONDARY};background:{PAPER_WARM};border:1px solid {LINE};border-radius:8px;padding:12px 14px;margin:0 0 22px;">
+  {short_err}
+</p>
+<p style="margin:0 0 16px;">{_btn("Open Liquid Clips →", ctx.download_url)}</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
+  retries exhausted · reschedule any time
+</p>
+"""
+    text = (
+        f"Your scheduled post didn't go out.\n\n{_greeting(first_name)}\n\n"
+        f"A scheduled post for {channel_label} failed after retries. The clip "
+        "is still in your project — re-schedule from Liquid Clips when you're ready.\n\n"
+        f"Error: {short_err}\n\n"
+        f"Open Liquid Clips: {ctx.download_url}\n\n— Liquid Clips"
+    )
+    return subject, _shell(subject, body, ctx=ctx), text
+
+
+def render_channel_disconnected(
+    *,
+    email: str,
+    channel_label: str,
+    platform: str,
+    first_name: str | None,
+    ctx: MailContext,
+) -> tuple[str, str, str]:
+    plat_pretty = platform.capitalize() if platform else "the platform"
+    subject = f"Reconnect {channel_label} · {plat_pretty} link expired"
+    body = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{TEXT_TERTIARY};margin:0 0 8px;">channel disconnected · action needed</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
+  Your {plat_pretty} link expired.
+</h1>
+<p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  We just checked <strong style="color:{INK};">{channel_label}</strong> and {plat_pretty} no longer accepts our publish key — usually because the OAuth expired or you revoked the connection. New posts to this channel will fail until you reconnect it.
+</p>
+<p style="margin:0 0 16px;">{_btn("Open Settings → Channels →", f"{ctx.account_url}/dashboard")}</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
+  takes about 30 seconds · existing scheduled posts will retry once reconnected
+</p>
+"""
+    text = (
+        f"Your {plat_pretty} link expired.\n\n{_greeting(first_name)}\n\n"
+        f"We just checked {channel_label} and {plat_pretty} no longer accepts "
+        "our publish key. New posts to this channel will fail until you reconnect it.\n\n"
+        f"Reconnect: {ctx.account_url}/dashboard\n\n— Liquid Clips"
+    )
+    return subject, _shell(subject, body, ctx=ctx), text
+
+
+def render_trial_ending_soon(
+    *,
+    email: str,
+    days_left: int,
+    tier: str,
+    first_name: str | None,
+    ctx: MailContext,
+) -> tuple[str, str, str]:
+    pretty = {"solo": "Solo", "growth": "Growth", "autopilot": "Autopilot",
+              "pro": "Pro", "agency": "Agency"}.get(tier, tier.capitalize())
+    day_word = "day" if days_left == 1 else "days"
+    subject = f"Your Liquid Clips trial ends in {days_left} {day_word}."
+    body = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">trial · {days_left} {day_word} left</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
+  Your trial ends in {days_left} {day_word}.
+</h1>
+<p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  Your {pretty} starter trial is wrapping up. In {days_left} {day_word} your card on Whop will be charged and {pretty} access continues uninterrupted.
+</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  If you'd rather not roll over, cancel from your Whop dashboard before the charge. Either way, projects and clips on disk stay where they are.
+</p>
+<p style="margin:0 0 16px;">{_btn("Manage subscription →", f"{ctx.account_url}/dashboard")}</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
+  cancel anytime · billing managed by Whop
+</p>
+"""
+    text = (
+        f"Your trial ends in {days_left} {day_word}.\n\n{_greeting(first_name)}\n\n"
+        f"Your {pretty} starter trial is wrapping up. In {days_left} {day_word} your card "
+        f"on Whop will be charged and {pretty} access continues uninterrupted.\n\n"
+        "If you'd rather not roll over, cancel from your Whop dashboard before the charge.\n\n"
+        f"Manage: {ctx.account_url}/dashboard\n\n— Liquid Clips"
+    )
+    return subject, _shell(subject, body, ctx=ctx), text
+
+
+def render_affiliate_payout_enabled(
+    *,
+    email: str,
+    first_name: str | None,
+    ctx: MailContext,
+) -> tuple[str, str, str]:
+    subject = "Payouts unlocked · Liquid Clips affiliate"
+    body = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">stripe connect · payouts enabled</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
+  Your payouts are live.
+</h1>
+<p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  Stripe just cleared your KYC — your Liquid Clips affiliate payouts will land directly in the bank you connected. Nothing else to do.
+</p>
+<p style="margin:0 0 16px;">{_btn("Open dashboard →", f"{ctx.account_url}/dashboard")}</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
+  payouts via stripe connect · liquid clips never sees the money
+</p>
+"""
+    text = (
+        f"Your payouts are live.\n\n{_greeting(first_name)}\n\n"
+        "Stripe just cleared your KYC — your Liquid Clips affiliate payouts will "
+        "land directly in the bank you connected. Nothing else to do.\n\n"
+        f"Dashboard: {ctx.account_url}/dashboard\n\n— Liquid Clips"
+    )
+    return subject, _shell(subject, body, ctx=ctx), text
+
+
+def render_payout_kyc_required(
+    *,
+    email: str,
+    first_name: str | None,
+    ctx: MailContext,
+) -> tuple[str, str, str]:
+    subject = "Finish KYC to unlock Liquid Clips payouts"
+    body = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{TEXT_TERTIARY};margin:0 0 8px;">stripe connect · documents required</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
+  Stripe needs a couple more things.
+</h1>
+<p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  Your Stripe Connect account is in <strong style="color:{INK};">restricted</strong> — Stripe asked for additional verification before they can release affiliate payouts. Quick fix: open your dashboard and run through the requirements Stripe surfaces.
+</p>
+<p style="margin:0 0 16px;">{_btn("Finish KYC →", f"{ctx.account_url}/dashboard")}</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
+  usually takes 5 minutes · payouts unlock automatically once cleared
+</p>
+"""
+    text = (
+        f"Stripe needs a couple more things.\n\n{_greeting(first_name)}\n\n"
+        "Your Stripe Connect account is restricted — Stripe asked for additional "
+        "verification before they can release affiliate payouts. Quick fix: open "
+        "your dashboard and run through the requirements.\n\n"
+        f"Dashboard: {ctx.account_url}/dashboard\n\n— Liquid Clips"
+    )
+    return subject, _shell(subject, body, ctx=ctx), text
+
+
+def render_account_pack_added(
+    *,
+    email: str,
+    extra_accounts: int,
+    first_name: str | None,
+    ctx: MailContext,
+) -> tuple[str, str, str]:
+    n_word = f"{extra_accounts} extra social account" + ("" if extra_accounts == 1 else "s")
+    subject = f"Account pack added · {n_word}"
+    body = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">add-on confirmed</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
+  Account pack added.
+</h1>
+<p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  You just added <strong style="color:{INK};">{n_word}</strong> to your Liquid Clips plan. Add the new channel in Settings → Channels — the cap lifts immediately.
+</p>
+<p style="margin:0 0 16px;">{_btn("Open Settings →", f"{ctx.account_url}/dashboard")}</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
+  $6/mo per extra account · cancel anytime
+</p>
+"""
+    text = (
+        f"Account pack added.\n\n{_greeting(first_name)}\n\n"
+        f"You just added {n_word} to your Liquid Clips plan. Add the new channel "
+        "in Settings → Channels — the cap lifts immediately.\n\n"
+        f"Settings: {ctx.account_url}/dashboard\n\n— Liquid Clips"
+    )
+    return subject, _shell(subject, body, ctx=ctx), text
+
+
+def render_bounty_rejected(
+    *,
+    email: str,
+    bounty_title: str,
+    reason: str,
+    first_name: str | None,
+    ctx: MailContext,
+) -> tuple[str, str, str]:
+    short_reason = (reason or "").strip().replace("\n", " ")[:300]
+    subject = f"Content Reward declined · {bounty_title[:40]}"
+    body = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{TEXT_TERTIARY};margin:0 0 8px;">content reward declined</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
+  Your reward clip didn't make it through.
+</h1>
+<p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  Your submission for <strong style="color:{INK};">{bounty_title}</strong> was declined by review. Most rejections come down to clip quality, missing disclosure, or a moment that doesn't match the reward brief.
+</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;color:{TEXT_SECONDARY};background:{PAPER_WARM};border:1px solid {LINE};border-radius:8px;padding:12px 14px;margin:0 0 22px;">
+  Reason: {short_reason}
+</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  Try another clip — every reward gives you up to 10 submissions a day. Pick a different moment, lead with a hook in the first second, and confirm the #ad / #sponsored tag is on your caption.
+</p>
+<p style="margin:0 0 16px;">{_btn("Open Liquid Clips · Earn →", ctx.download_url)}</p>
+"""
+    text = (
+        f"Your reward clip didn't make it through.\n\n{_greeting(first_name)}\n\n"
+        f"Your submission for {bounty_title} was declined by review.\n\n"
+        f"Reason: {short_reason}\n\n"
+        "Try another clip — every reward gives you up to 10 submissions a day. "
+        "Pick a different moment, lead with a hook in the first second, and "
+        "confirm the #ad / #sponsored tag is on your caption.\n\n"
         f"Open Liquid Clips · Earn: {ctx.download_url}\n\n— Liquid Clips"
     )
     return subject, _shell(subject, body, ctx=ctx), text

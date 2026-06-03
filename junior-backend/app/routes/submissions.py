@@ -37,6 +37,9 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import current_user
 from app.mailer import (
+    send_admin_big_payout,
+    send_bounty_approved,
+    send_bounty_rejected,
     send_mc_first_acceptance,
     send_mc_first_export,
     send_mc_watermark_rejected,
@@ -352,16 +355,67 @@ def update_submission_status(
             .scalar()
             or 0
         )
-        if prior_accepted == 0:
-            clipper = db.query(User).filter_by(id=row.user_id).one_or_none()
-            if clipper and clipper.email:
+        clipper = db.query(User).filter_by(id=row.user_id).one_or_none()
+        if clipper and clipper.email:
+            if prior_accepted == 0:
                 send_mc_first_acceptance(
                     clipper.email,
                     first_name=_first_name(clipper),
                     moment_label=_MOMENT_LABELS.get(row.moment_type, "story moment"),
                 )
+            # Always send the generic Content Reward approval too — the
+            # Minecraft-challenge first-acceptance template is a one-time
+            # doctrine email, but every subsequent acceptance still needs
+            # the standard reward-approved confirmation.
+            payout_display = _format_payout(row.payout_usd_cents)
+            send_bounty_approved(
+                clipper.email,
+                bounty_title=row.campaign_id,
+                payout=payout_display,
+                first_name=_first_name(clipper),
+            )
+            # Admin alert when the payout crosses an attention bar — keeps
+            # Daniel's inbox useful instead of one email per cleared clip.
+            if row.payout_usd_cents >= _BIG_PAYOUT_CENTS:
+                send_admin_big_payout(
+                    customer_email=clipper.email,
+                    bounty_title=row.campaign_id,
+                    payout=payout_display,
+                    note=f"submission {row.id} · moment={row.moment_type}",
+                )
+
+    # Mod rejection → branded "your clip didn't make it" email. Skip if the
+    # row is rejecting due to the auto watermark gate (that path runs from
+    # create_submission and already sent send_mc_watermark_rejected).
+    if (
+        body.status == "rejected"
+        and prev_status != "rejected"
+        and (row.watermark_check or {}).get("detected") is not True
+    ):
+        clipper = db.query(User).filter_by(id=row.user_id).one_or_none()
+        if clipper and clipper.email:
+            send_bounty_rejected(
+                clipper.email,
+                bounty_title=row.campaign_id,
+                reason=row.rejection_reason or "Reviewer feedback wasn't recorded.",
+                first_name=_first_name(clipper),
+            )
 
     return _to_response(row)
+
+
+# Threshold (USD cents) — admin gets a ping when a single accepted reward
+# clears this bar. Tuned for the v1 Minecraft Challenge $2.50 RPM economy
+# so we only alert when a clipper has shipped a real piece of work.
+_BIG_PAYOUT_CENTS = 5000  # $50.00
+
+
+def _format_payout(cents: int | None) -> str:
+    """Cheap dollar formatter — keeps the email body terse + consistent."""
+    n = int(cents or 0)
+    if n <= 0:
+        return "$0.00"
+    return f"${n // 100}.{n % 100:02d}"
 
 
 @router.get("/me", response_model=list[SubmissionResponse])

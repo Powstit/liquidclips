@@ -556,7 +556,11 @@ def _fire_affiliate_lifecycle_emails(db: Session, *, buyer_affiliate_id: str) ->
             # after they engage with their dashboard.
             return
 
-        from app.mailer import send_affiliate_qualified, send_first_paid_referral
+        from app.mailer import (
+            send_admin_affiliate_milestone,
+            send_affiliate_qualified,
+            send_first_paid_referral,
+        )
         from app.routes.affiliate import QUALIFY_PAID_REFERRALS, _fetch_whop_affiliate
         from app.routes.notifications import write_notification
 
@@ -574,6 +578,12 @@ def _fire_affiliate_lifecycle_emails(db: Session, *, buyer_affiliate_id: str) ->
         )
         if first_row is not None:
             send_first_paid_referral(referrer.email)
+            # Admin alert — Daniel sees every first-paid-referral land. Idempotent
+            # by virtue of being inside the dedup-keyed Notification branch.
+            send_admin_affiliate_milestone(
+                affiliate_email=referrer.email,
+                milestone="first_paid_referral",
+            )
 
         # Qualification email — fires when the affiliate's live paid count
         # reaches the threshold. Re-query Whop for the authoritative count
@@ -597,6 +607,11 @@ def _fire_affiliate_lifecycle_emails(db: Session, *, buyer_affiliate_id: str) ->
             )
             if qual_row is not None:
                 send_affiliate_qualified(referrer.email)
+                send_admin_affiliate_milestone(
+                    affiliate_email=referrer.email,
+                    milestone="qualified_50_percent",
+                    note=f"active paid referrals = {paid_count}",
+                )
     except Exception:  # noqa: BLE001
         import logging
         logging.getLogger("junior.webhooks").exception(

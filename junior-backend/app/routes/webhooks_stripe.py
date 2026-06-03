@@ -86,11 +86,63 @@ async def stripe_connect_webhook(
         log.warning("[stripe-connect] unknown account %s — ignoring", account_id)
         return {"ok": "1", "ignored": "unknown_account"}
 
+    prev_status = user.stripe_connect_status or "none"
+    prev_payouts = bool(user.stripe_connect_payouts_enabled)
     new_status, payouts, charges = derive_status(account)
     user.stripe_connect_status = new_status
     user.stripe_connect_payouts_enabled = payouts
     user.stripe_connect_charges_enabled = charges
     db.commit()
+
+    # Transactional side-effects — fire ONLY on monotonic state transitions,
+    # never on a webhook retry that re-asserts the same state. Both branches
+    # dedupe via Notification.external_dedup_key as the source of truth.
+    from app.routes.notifications import write_notification
+    today_iso = __import__("datetime").datetime.utcnow().date().isoformat()
+    if user.email:
+        # 1) First time payouts flip on → "your payouts are live" email.
+        if payouts and not prev_payouts:
+            notif = write_notification(
+                db,
+                user_id=user.id,
+                category="affiliate",
+                title="Payouts unlocked.",
+                body="Stripe just cleared your KYC. Affiliate payouts land in the bank you connected.",
+                priority="high",
+                external_dedup_key=f"stripe-payouts-enabled-{user.id}",
+            )
+            if notif is not None:
+                from app.mailer import send_affiliate_payout_enabled
+                send_affiliate_payout_enabled(user.email)
+                db.commit()
+
+        # 2) Restricted with currently_due → nudge the user to finish KYC.
+        # Stripe sends `requirements.currently_due` as a list of dotted-path
+        # fields (e.g. ["individual.dob.day"]). Non-empty = action required.
+        requirements = account.get("requirements") or {}
+        currently_due = requirements.get("currently_due") or []
+        if new_status == "restricted" and currently_due:
+            notif = write_notification(
+                db,
+                user_id=user.id,
+                category="affiliate",
+                title="Finish KYC to unlock payouts.",
+                body="Stripe needs a couple more details before they can release affiliate payouts.",
+                priority="high",
+                external_dedup_key=f"stripe-kyc-required-{user.id}-{today_iso}",
+            )
+            if notif is not None:
+                from app.mailer import send_admin_kyc_alert, send_payout_kyc_required
+                send_payout_kyc_required(user.email)
+                # Admin alert mirrors the user nudge — Daniel sees stalled KYC
+                # in real time so high-value affiliates can get manual support.
+                send_admin_kyc_alert(
+                    customer_email=user.email,
+                    stripe_status=new_status,
+                    requirements_due=list(currently_due)[:8],
+                    note=("transitioned from " + prev_status) if prev_status != new_status else None,
+                )
+                db.commit()
 
     log.info(
         "[stripe-connect] %s → status=%s payouts=%s charges=%s",
