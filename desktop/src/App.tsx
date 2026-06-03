@@ -3,6 +3,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { LayoutGrid, Wallet, UploadCloud, Banknote, BookOpen, CalendarClock, Settings as SettingsIcon, LogIn, UserCircle2, type LucideIcon } from "lucide-react";
 import { Logo } from "./components/Logo";
+// v0.5.0 — faint OASIS atmosphere bleed for in-app surfaces (see MainShell)
+import oasisAtmosphere from "./assets/intro/closing-still.png";
 import { DropZone } from "./components/DropZone";
 import { SponsoredClipsCarousel } from "./components/workspace/SponsoredClipsCarousel";
 import { LiquidLiftBanner } from "./components/workspace/LiquidLiftBanner";
@@ -1149,8 +1151,22 @@ function MainShell({ children }: { children: React.ReactNode }) {
   }, []);
   return (
     <>
+      {/* v0.5.0 — faint OASIS atmosphere bleeds through every surface so
+          the app feels continuous with the splash/intro, without breaking
+          any existing component layouts (foreground panels still opaque). */}
       <div
-        className="flex h-full flex-col bg-paper text-ink transition-[padding] duration-200"
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-0 -z-10 bg-paper"
+        style={{
+          backgroundImage: `url(${oasisAtmosphere})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+          opacity: 0.08,
+        }}
+      />
+      <div
+        className="relative flex h-full flex-col text-ink transition-[padding] duration-200"
         style={{ paddingRight: open ? 566 : 0 }}
       >
         {children}
