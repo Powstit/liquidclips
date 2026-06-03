@@ -28,6 +28,18 @@ Sprint master doc: `~/Desktop/COMPLETION_SPRINT.md` (32 items). Highlights in fl
 - Workspace brief bar → Sponsored Clips carousel
 - Settings → Connections: drop legacy Postiz tiles (Ayrshare panel only)
 
+## [0.4.53] — 2026-06-02
+
+### Added
+- Cinematic Seedance first-launch intro, ending on the same cosmic vortex now used behind the splash screen.
+- New Higgsfield invader sprite pack with per-row variants for a richer splash-game look.
+- Schedule v2 foundation: multi-channel publishing flow, channel state, and analytics overview endpoints for launch ops.
+- Marketing `/download` page so public visitors have a dedicated Liquid Clips installer route.
+
+### Changed
+- Splash visuals now line up with the intro's final frame for a smoother first-run handoff.
+- Release pipeline hardening continued for signed DMG, updater artifacts, and Apple notarization readiness.
+
 ## [0.4.43] — 2026-05-31
 
 ### Fixed
@@ -131,7 +143,8 @@ Sprint master doc: `~/Desktop/COMPLETION_SPRINT.md` (32 items). Highlights in fl
 ### Changed
 - Rebranded from "Junior" to "Liquid Clips"
 
-[Unreleased]: https://github.com/Powstit/Jnr-employee/compare/v0.4.43...HEAD
+[Unreleased]: https://github.com/Powstit/Jnr-employee/compare/v0.4.53...HEAD
+[0.4.53]: https://github.com/Powstit/Jnr-employee/compare/v0.4.43...v0.4.53
 [0.4.43]: https://github.com/Powstit/Jnr-employee/compare/v0.4.42...v0.4.43
 [0.4.42]: https://github.com/Powstit/Jnr-employee/compare/v0.4.41...v0.4.42
 [0.4.41]: https://github.com/Powstit/Jnr-employee/compare/v0.4.39...v0.4.41
