@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     resend_from: str = "Liquid Clips <hello@jnremployee.com>"
     resend_reply_to: str = "danieldiyepriye@gmail.com"
 
+    # Internal admin notification recipients — receive the "new paid customer"
+    # alert every time someone activates a subscription (Whop), pays a
+    # successful invoice, or unlocks the founder £1 commit. Comma-separated
+    # in the env var; defaults to the same address used for reply-to.
+    # Override on Railway with `JUNIOR_ADMIN_EMAILS=a@x.com,b@x.com`.
+    admin_emails: str = "danieldiyepriye@gmail.com"
+
     # Public site URL — used inside email templates for absolute links to
     # /privacy /terms /unsubscribe etc. so creators can verify the brand in
     # any mail client.

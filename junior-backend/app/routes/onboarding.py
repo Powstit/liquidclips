@@ -120,12 +120,25 @@ def link_whop(
     db.commit()
 
     # Branded activation email (founder welcome vs trial/paid). Non-blocking.
-    from app.mailer import send_founder_welcome, send_subscription_activated
+    # Admin alert mirrors the email so Daniel sees every paid signup in real time.
+    from app.mailer import send_admin_paid_customer_alert, send_founder_welcome, send_subscription_activated
     if user.founder_flag and founder:
         send_founder_welcome(user.email)
+        send_admin_paid_customer_alert(
+            customer_email=user.email,
+            tier=user.tier,
+            source="founder_unlock",
+            monthly_usd="£1 commit",
+        )
     else:
         send_subscription_activated(
             user.email, tier=user.tier, trial=(user.subscription_status == "trialing"),
+        )
+        send_admin_paid_customer_alert(
+            customer_email=user.email,
+            tier=user.tier,
+            source="whop_subscription_active",
+            note=("trialing" if user.subscription_status == "trialing" else None),
         )
 
     # PostHog — mirror the webhook funnel events so the pay-then-signup path is
@@ -279,11 +292,24 @@ def redeem_claim(
     tok.consumed_at = datetime.now(timezone.utc)
     db.commit()
 
-    from app.mailer import send_founder_welcome, send_subscription_activated
+    from app.mailer import send_admin_paid_customer_alert, send_founder_welcome, send_subscription_activated
     if user.founder_flag and founder:
         send_founder_welcome(user.email)
+        send_admin_paid_customer_alert(
+            customer_email=user.email,
+            tier=user.tier,
+            source="founder_unlock",
+            monthly_usd="£1 commit",
+            note="claim-flow activation",
+        )
     else:
         send_subscription_activated(user.email, tier=user.tier, trial=(user.subscription_status == "trialing"))
+        send_admin_paid_customer_alert(
+            customer_email=user.email,
+            tier=user.tier,
+            source="whop_subscription_active",
+            note=("trialing" if user.subscription_status == "trialing" else "claim-flow activation"),
+        )
 
     if user.clerk_id:
         from app import analytics
