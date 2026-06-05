@@ -1,16 +1,19 @@
-// v0.7.0 — Liquid Clips Community.
+// v0.6.39 — Liquid Clips Community (cockpit pass).
 //
-// Native in-app community surface. Replaces the v0.6.12 attempt to embed
-// Whop's hub as a Tauri child webview (Whop's /<slug>/chat returned a
-// "Product not found" frame that read as broken). Owning the page means:
-//   - announcements always render, regardless of Whop session state
-//   - campaign drops and feature releases show inline
-//   - grows into a real feed (admin-posted + reactions) without refactor
+// Same native in-app community surface introduced in v0.7.0, now wearing the
+// cockpit design language: transparent surfaces, fuchsia HUD bracket corners,
+// no plates / no solid panel chrome. The headlines, copy, and data flow are
+// unchanged — this pass only swaps SaaS-card chrome for the cockpit's reticle
+// language so Community reads as the same room as Workstation + Library.
 //
-// For v0.7.0 the feed is hardcoded — it surfaces the first three campaign
-// stories Daniel cares about (Influencer, DDB, Liquid Lift) plus the
-// release note for this very build. A backend-served feed lands in the
-// Sponsored Rewards Sprint 2 work (see memory/liquid_clips_sponsored_rewards.md).
+// Eyebrow + heading sharpened to make Community clearly distinct from Browse
+// Rewards (the side panel): this is the LIQUID CLIPS feed — campaign drops
+// and release notes — not a Whop browser. Browse Rewards keeps its own label
+// in the side panel; that's untouched.
+//
+// Pinned card, post cards, and the live-chat section all reuse the
+// `library-card` + four `library-card-corner-*` spans pattern from
+// LibraryCard.tsx. One fuchsia. No red (no destructive surfaces here).
 
 import { useMemo } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
@@ -27,7 +30,6 @@ type Pinned = {
   body: string;
   cta?: { label: string; url: string };
   Icon: typeof Flame;
-  tone: "fuchsia" | "amber" | "ink";
 };
 
 type Post = {
@@ -47,7 +49,6 @@ const PINNED: Pinned = {
   body: "First sponsored Liquid Clips campaign. Watermark-free clip exports earn $5 RPM on approved views; refer a paid user and unlock 50% recurring on every customer they bring in — lifetime, not first month. Whop handles the payout cycle.",
   cta: { label: "Open campaign brief →", url: "https://whop.com/jnremployee/" },
   Icon: Flame,
-  tone: "fuchsia",
 };
 
 const FEED: Post[] = [
@@ -97,34 +98,43 @@ export function CommunityTab() {
 
   return (
     <div className="flex w-full max-w-[920px] flex-col gap-6">
-      {/* Hero */}
+      {/* Hero — sharpened to distinguish Community (the in-app feed) from the
+          Browse Rewards side panel (which is a Whop webview). */}
       <header className="flex flex-col gap-2">
         <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-fuchsia">
           <MessageCircle className="h-3 w-3" />
-          community
+          community feed
         </div>
         <h1 className="font-display text-[28px] font-semibold leading-tight tracking-[-0.025em] text-ink">
-          Welcome to the Liquid Clips community.
+          What's happening on Liquid Clips.
         </h1>
         <p className="font-sans text-[14px] leading-relaxed text-text-secondary">
-          Where clippers, creators, and brands plan, ship, and get paid. Pinned drops + campaign briefs land here first; live chat lives on our Whop hub.
+          Campaign drops, release notes, and wins from the community. Pinned briefs land here first; live chat opens in the side panel.
         </p>
       </header>
 
-      {/* Pinned hero card */}
+      {/* Pinned hero card — cockpit language: transparent surface, fuchsia
+          bracket corners, no plate. Click still routes to the campaign brief. */}
       <section
         onClick={() => pinned.cta && go(pinned.cta.url)}
-        className={`group relative overflow-hidden rounded-3xl border-2 px-6 py-5 transition-all ${
-          pinned.tone === "fuchsia"
-            ? "border-fuchsia bg-fuchsia-soft/40 shadow-[0_0_36px_rgba(255,26,140,0.45)] cursor-pointer hover:shadow-[0_0_48px_rgba(255,26,140,0.65)]"
-            : "border-line bg-paper-elev/60"
-        }`}
         role="button"
         tabIndex={0}
+        onKeyDown={(e) => {
+          if ((e.key === "Enter" || e.key === " ") && pinned.cta) {
+            e.preventDefault();
+            go(pinned.cta.url);
+          }
+        }}
+        className="library-card group relative cursor-pointer bg-transparent p-6"
       >
-        <div className="flex items-start gap-4">
-          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-fuchsia/15 text-fuchsia">
-            <pinned.Icon className="h-6 w-6" strokeWidth={1.75} />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
+
+        <div className="relative z-10 flex items-start gap-4">
+          <div className="grid h-12 w-12 shrink-0 place-items-center text-fuchsia">
+            <pinned.Icon className="h-7 w-7" strokeWidth={1.75} />
           </div>
           <div className="flex flex-1 flex-col gap-1.5">
             <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia">
@@ -156,19 +166,25 @@ export function CommunityTab() {
         </span>
       </div>
 
-      {/* Feed */}
-      <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-2xl border border-line bg-paper-elev">
+      {/* Feed — each post becomes its own cockpit card. No row dividers, no
+          shared plate; brackets do the framing. */}
+      <ul className="flex flex-col gap-4">
         {feed.map((p) => (
           <li key={p.id}>
             <button
               type="button"
               onClick={() => p.cta && go(p.cta.url)}
-              className="flex w-full items-start gap-4 px-5 py-4 text-left transition-colors hover:bg-paper-warm/50"
+              className="library-card group relative flex w-full items-start gap-4 bg-transparent p-5 text-left"
             >
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-paper-warm text-fuchsia">
+              <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+              <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+              <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+              <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
+
+              <div className="relative z-10 grid h-10 w-10 shrink-0 place-items-center text-fuchsia">
                 <p.Icon className="h-5 w-5" strokeWidth={1.75} />
               </div>
-              <div className="flex flex-1 flex-col gap-1">
+              <div className="relative z-10 flex flex-1 flex-col gap-1">
                 <div className="flex flex-wrap items-center gap-2 font-mono text-[9.5px] uppercase tracking-[0.14em] text-text-tertiary">
                   <span className="text-fuchsia">{p.tag}</span>
                   <span>·</span>
@@ -181,7 +197,7 @@ export function CommunityTab() {
                   {p.body}
                 </p>
                 {p.cta && (
-                  <span className="mt-1 inline-flex items-center font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia">
+                  <span className="mt-1 inline-flex items-center font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia transition-transform group-hover:translate-x-0.5">
                     {p.cta.label}
                   </span>
                 )}
@@ -193,17 +209,22 @@ export function CommunityTab() {
 
       {/* v0.6.19 — Whop live chat opens in the in-app browser panel (the
           same right-side Tauri webview Browse Rewards uses), NOT the system
-          browser. Whop's joined-hub URL has chat + announcements + forum in
-          its own left rail; the user stays inside Liquid Clips. */}
-      <section className="flex flex-col gap-2 rounded-2xl border border-dashed border-fuchsia/40 bg-paper-elev/40 px-5 py-4">
-        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia">
+          browser. Cockpit pass: transparent surface, bracket corners, no
+          dashed-border plate. */}
+      <section className="library-card relative flex flex-col gap-2 bg-transparent p-5">
+        <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
+
+        <div className="relative z-10 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia">
           <Flame className="h-3 w-3" />
           live chat
         </div>
-        <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+        <p className="relative z-10 font-sans text-[13px] leading-relaxed text-text-secondary">
           The live conversation — bounty wins, "what worked this week", payout milestones — opens right here, inside Liquid Clips. Your Whop session is already authed.
         </p>
-        <div className="mt-1 flex flex-wrap items-center gap-2">
+        <div className="relative z-10 mt-1 flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => void openBrowsePanel(WHOP_COMMUNITY_URL)}
@@ -214,7 +235,7 @@ export function CommunityTab() {
           <button
             type="button"
             onClick={() => go(WHOP_COMMUNITY_URL)}
-            className="inline-flex items-center gap-2 rounded-full border border-line bg-paper px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary transition-colors hover:border-fuchsia hover:text-fuchsia"
+            className="inline-flex items-center gap-2 rounded-full border border-line bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary transition-colors hover:border-fuchsia hover:text-fuchsia"
           >
             Or open in system browser ↗
           </button>

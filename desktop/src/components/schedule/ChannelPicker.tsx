@@ -7,9 +7,8 @@
 // Multi-select for batch-publish is a follow-up.
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
-import { HudChip } from "../cockpit/HudChip";
 import * as backend from "../../lib/backend";
 import type { Channel } from "./types";
 
@@ -25,17 +24,12 @@ export function ChannelPicker({
   /** Optional filter — only show channels for this platform. */
   filterPlatform?: string;
   disabled?: boolean;
-  /** v0.6.39 — PublishModal passes this to surface a "+ Add channel"
-   *  affordance inline so the user can link a new account without
-   *  abandoning the publish flow. Accepted but not yet rendered (Round
-   *  3 redesigned the picker chrome and didn't add the button — wire
-   *  in a follow-up pass). Kept as a prop so the call site stays valid. */
+  /** Optional "+ Add channel" affordance — rendered at the bottom of the
+   *  picker. Wired by PublishModal to close the modal and open Settings
+   *  → Channels so the user can link a new account without abandoning the
+   *  publish flow. */
   onAddChannel?: () => void;
 }) {
-  // Reference the prop once so noUnusedLocals is happy until the affordance
-  // lands in a follow-up. The handler still flows through if a future
-  // child element calls it.
-  void onAddChannel;
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -73,12 +67,11 @@ export function ChannelPicker({
 
   if (filtered.length === 0) {
     return (
-      <div className="relative bg-transparent px-4 py-3 font-sans text-[12px] text-text-secondary">
-        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
-        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
-        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
-        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
-        No channels added yet. Open <strong>Schedule → Channels</strong> to add one.
+      <div className="flex flex-col items-start gap-3">
+        <p className="rounded-xl border border-dashed border-line bg-paper-warm/40 px-4 py-3 font-sans text-[12px] text-text-secondary">
+          No channels added yet. Open <strong>Schedule → Channels</strong> to add one.
+        </p>
+        {onAddChannel && <AddChannelButton onClick={onAddChannel} />}
       </div>
     );
   }
@@ -103,7 +96,21 @@ export function ChannelPicker({
           </div>
         </div>
       ))}
+      {onAddChannel && <AddChannelButton onClick={onAddChannel} />}
     </div>
+  );
+}
+
+function AddChannelButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-2 inline-flex items-center gap-1.5 self-start rounded-full border border-dashed border-fuchsia/40 bg-transparent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia transition-colors hover:border-fuchsia hover:text-fuchsia-bright"
+    >
+      <Plus className="h-3 w-3" strokeWidth={2.25} />
+      Add channel
+    </button>
   );
 }
 
@@ -121,21 +128,27 @@ function ChannelChip({
   const id = ((channel.platform as string) === "twitter" ? "x" : channel.platform) as PlatformId;
   const known = ["youtube", "tiktok", "instagram", "x"].includes(id);
   return (
-    <HudChip
-      active={selected}
+    <button
       onClick={onClick}
       disabled={disabled}
       title={channel.status === "pending_link" ? "Finish linking this channel before publishing" : channel.handle ?? channel.label}
-      trailing={channel.status === "pending_link" ? (
-        <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#F59E0B]">
+      className={`group inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-sans text-[12px] font-medium transition-colors ${
+        selected
+          ? "border-fuchsia bg-fuchsia text-paper"
+          : "border-line bg-paper text-ink hover:border-fuchsia/50"
+      } disabled:cursor-not-allowed disabled:opacity-50`}
+    >
+      <span className={`grid h-5 w-5 place-items-center rounded-full ${selected ? "bg-paper text-fuchsia" : "bg-ink text-paper"}`}>
+        {known ? <PlatformIcon id={id} className="h-2.5 w-2.5" /> : (
+          <span className="font-mono text-[9px]">{channel.platform[0]?.toUpperCase()}</span>
+        )}
+      </span>
+      <span className="truncate max-w-[140px]">{channel.label}</span>
+      {channel.status === "pending_link" && (
+        <span className="rounded-full bg-[#F59E0B]/20 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.08em] text-[#F59E0B]">
           link
         </span>
-      ) : undefined}
-    >
-      {known ? <PlatformIcon id={id} className="h-3 w-3" /> : (
-        <span className="font-mono text-[9px]">{channel.platform[0]?.toUpperCase()}</span>
       )}
-      <span className="truncate max-w-[140px] normal-case tracking-normal">{channel.label}</span>
-    </HudChip>
+    </button>
   );
 }
