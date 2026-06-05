@@ -1,24 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { GameState } from "../../lib/invaders/engine";
-
-// Sprites bundled by Vite (import-as-URL). Loaded once per canvas mount as
-// HTMLImageElements so draw() doesn't pay an Image() decode per frame. While
-// they're still decoding the draw path falls back to the geometric shapes
-// the engine shipped with, so the splash never blanks out on first paint.
-//
-// 2026-06-02 sprite pack refresh — 5 per-row invader variants from Higgsfield
-// Nano Banana 2 (boss / mothership / elite / drone / grunt) + redesigned
-// neon-fuchsia player ship. Each invader is pre-coloured so we drop the
-// per-row hue-rotate filter and read each row as a distinct enemy tier
-// straight from the art.
-import playerShipUrl from "../../assets/invaders/player_ship.png";
-import invaderBossUrl from "../../assets/invaders/boss.png";
-import invaderMothershipUrl from "../../assets/invaders/mothership.png";
-import invaderEliteUrl from "../../assets/invaders/elite.png";
-import invaderDroneUrl from "../../assets/invaders/drone.png";
-import invaderGruntUrl from "../../assets/invaders/grunt.png";
-import bulletPlayerUrl from "../../assets/invaders/bullet-player.png";
-import bulletInvaderUrl from "../../assets/invaders/bullet-invader.png";
 
 type Sprites = {
   player: HTMLImageElement | null;
@@ -26,18 +7,6 @@ type Sprites = {
   bulletPlayer: HTMLImageElement | null;
   bulletInvader: HTMLImageElement | null;
 };
-
-// Per-row sprite mapping. Top row = boss tier (rarest, strongest visual).
-// Bottom row = grunt (most common). Mid rows pick from the pack to give a
-// satisfying gradient of menace.
-const ROW_SPRITE_URL = [
-  invaderBossUrl,        // row 0 — boss
-  invaderMothershipUrl,  // row 1 — mothership
-  invaderEliteUrl,       // row 2 — elite
-  invaderDroneUrl,       // row 3 — drone
-  invaderGruntUrl,       // row 4 — grunt
-];
-
 
 type Props = {
   state: GameState;
@@ -73,19 +42,15 @@ export function InvadersCanvas({ state, onStep, width, height, paused = false }:
   // Keep paused in a ref so the RAF loop can read it without re-binding.
   const pausedRef = useRef(paused);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
-  const [, setSpritesReady] = useState(0); // bumps to trigger re-render once decoded
   // v0.6.0 — Higgsfield-generated PNG sprite pack was rendering with painted-in
   // backgrounds (no alpha channel in the source art), so on the synthwave splash
   // backdrop every invader appeared as a grey block. Daniel: "use old ones."
   // Skipping the sprite preload entirely makes the draw path fall through to
   // the geometric-shape renderer below (drawInvaderShape), which is the
   // original v0.4.x look — clean fuchsia-tinted squares/diamonds/ovals on the
-  // synthwave backdrop, no compositing issues. Sprite imports kept above so
-  // the assets stay in the bundle for a future regen.
-  useEffect(() => { setSpritesReady(1); }, []);
-  // Reference the sprite URLs once so Vite still bundles them (avoids
-  // "imported but never used" tree-shake on the assets in case we re-enable).
-  void [playerShipUrl, ROW_SPRITE_URL, bulletPlayerUrl, bulletInvaderUrl];
+  // synthwave backdrop, no compositing issues. The huge PNG sprite imports were
+  // intentionally removed from this canvas so unused art no longer bloats the
+  // launch bundle while the geometric renderer is active.
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -302,7 +267,7 @@ function draw(
   for (const i of state.invaders) {
     if (!i.alive) continue;
     const drawX = i.pos.x + swayOffset;
-    const rowIdx = Math.min(i.row, ROW_SPRITE_URL.length - 1);
+    const rowIdx = Math.min(i.row, sprites.invaders.length - 1);
     const img = sprites.invaders[rowIdx];
     if (img && img.complete && img.naturalWidth > 0) {
       const isMothership = rowIdx === 1;
