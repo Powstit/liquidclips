@@ -68,7 +68,11 @@ export function FailureCard({
   }
 
   return (
-    <div className="w-full max-w-[720px]">
+    <div className="library-card relative w-full max-w-[720px] bg-transparent p-6">
+      <span className="library-card-corner-tl" aria-hidden="true" />
+      <span className="library-card-corner-tr" aria-hidden="true" />
+      <span className="library-card-corner-bl" aria-hidden="true" />
+      <span className="library-card-corner-br" aria-hidden="true" />
       <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-[#DC2626]">
         {eyebrow}
       </div>
@@ -79,9 +83,13 @@ export function FailureCard({
         <p className="mt-1 truncate font-mono text-[11px] text-text-tertiary">{url}</p>
       )}
 
-      <pre className="mt-4 max-h-[260px] overflow-auto rounded-xl border border-line bg-paper-warm/40 p-3 font-mono text-[11px] leading-relaxed text-text-secondary">
-        {error}
-      </pre>
+      <div className="cockpit-frame relative mt-4 rounded-xl bg-transparent">
+        <span className="cockpit-tile-corner-tl" aria-hidden="true" />
+        <span className="cockpit-tile-corner-tr" aria-hidden="true" />
+        <span className="cockpit-tile-corner-bl" aria-hidden="true" />
+        <span className="cockpit-tile-corner-br" aria-hidden="true" />
+        <pre className="max-h-[260px] overflow-auto rounded-xl bg-transparent p-3 font-mono text-[11px] leading-relaxed text-text-secondary">{error}</pre>
+      </div>
 
       {logHint && (
         <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
@@ -106,19 +114,19 @@ export function FailureCard({
         )}
         <button
           onClick={() => void onCopyError()}
-          className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
+          className="rounded-full border border-line bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
         >
           {copied ? "Copied ✓" : "Copy error"}
         </button>
         <button
           onClick={onEmailSupport}
-          className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
+          className="rounded-full border border-line bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
         >
           Email support →
         </button>
         <button
           onClick={onDismiss}
-          className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-text-secondary hover:border-line hover:text-ink"
+          className="rounded-full border border-line bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-text-secondary hover:border-line hover:text-ink"
         >
           {dismissLabel}
         </button>

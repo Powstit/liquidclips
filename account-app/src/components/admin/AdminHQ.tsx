@@ -23,6 +23,24 @@ type Overview = {
   generated_at: string;
 };
 
+type HealthGate = {
+  key: string;
+  label: string;
+  status: "ok" | "warn" | "fail";
+  detail: string;
+  value?: unknown;
+  action?: string | null;
+};
+
+type LaunchHealth = {
+  overall: "ok" | "warn" | "fail";
+  score: number;
+  generated_at: string;
+  gates: HealthGate[];
+  public_urls: Record<string, string>;
+  note: string;
+};
+
 type UserRow = {
   backend_user_id: string;
   clerk_id: string;
@@ -69,6 +87,7 @@ type Timeline = { user_id: string; email_masked: string; events: TimelineEvent[]
 
 const TABS = [
   "Overview",
+  "Launch Health",
   "Users",
   "Pending Whop",
   "Claims",
@@ -167,6 +186,7 @@ export function AdminHQ({ adminEmail, initialOverview }: { adminEmail: string; i
 
       <div className="mt-7">
         {tab === "Overview" && <OverviewTab initial={initialOverview} />}
+        {tab === "Launch Health" && <LaunchHealthTab />}
         {tab === "Users" && <UsersTab />}
         {tab === "Pending Whop" && <PendingWhopTab />}
         {tab === "Claims" && <ClaimsTab />}
@@ -275,6 +295,124 @@ function OverviewTab({ initial }: { initial: Overview | null }) {
             ))}
           </div>
           <div className="mt-3 font-mono text-[10px] text-text-tertiary">generated {data.generated_at}</div>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+// =====================================================================
+// Launch Health — one-click green gates
+// =====================================================================
+function gateTone(status: HealthGate["status"]): ChipTone {
+  if (status === "ok") return "ok";
+  if (status === "warn") return "pending";
+  return "fail";
+}
+
+function prettyJson(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
+function LaunchHealthTab() {
+  const fetchAdmin = useAdminFetch();
+  const [data, setData] = useState<LaunchHealth | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setData((await fetchAdmin("health")) as unknown as LaunchHealth);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAdmin]);
+
+  return (
+    <Panel
+      title="launch health · one-click gates"
+      sub="Admin-only aggregate check for release readiness. Read-only: no posts, charges, payouts, or account mutations."
+      right={
+        <button onClick={refresh} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-ink hover:border-fuchsia">
+          run health check
+        </button>
+      }
+    >
+      <Loader on={loading} />
+      <ErrorNote error={error} />
+      {!data && !loading && (
+        <div className="rounded-2xl border border-line bg-paper p-5 font-sans text-[13px] text-text-secondary">
+          Run the health check to verify the launch gates in one place.
+        </div>
+      )}
+      {data && (
+        <>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-line bg-paper p-4">
+              <div className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink">{data.score}/100</div>
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">automated gate score</div>
+            </div>
+            <div className="rounded-2xl border border-line bg-paper p-4">
+              <div><Chip label={data.overall} tone={gateTone(data.overall)} /></div>
+              <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">overall status</div>
+            </div>
+            <div className="rounded-2xl border border-line bg-paper p-4">
+              <div className="font-mono text-[12px] text-ink">{data.generated_at}</div>
+              <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">last run</div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {data.gates.map((g) => {
+              const value = prettyJson(g.value);
+              return (
+                <div key={g.key} className="rounded-2xl border border-line bg-paper p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">{g.key}</div>
+                      <h3 className="mt-1 font-display text-[18px] font-semibold leading-tight tracking-[-0.02em] text-ink">{g.label}</h3>
+                    </div>
+                    <Chip label={g.status} tone={gateTone(g.status)} />
+                  </div>
+                  <p className="mt-3 font-sans text-[13px] leading-relaxed text-text-secondary">{g.detail}</p>
+                  {value && (
+                    <code className="mt-3 block overflow-x-auto rounded-xl bg-paper-warm/60 px-3 py-2 font-mono text-[11px] text-text-tertiary">
+                      {value}
+                    </code>
+                  )}
+                  {g.action && (
+                    <p className="mt-3 font-mono text-[11px] text-fuchsia-deep">
+                      action · {g.action}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-line bg-paper p-4">
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">public urls</div>
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {Object.entries(data.public_urls).map(([k, v]) => (
+                <a key={k} href={v} target="_blank" rel="noreferrer" className="truncate rounded-xl border border-line bg-paper-warm/40 px-3 py-2 font-mono text-[11px] text-ink hover:border-fuchsia">
+                  {k} · {v}
+                </a>
+              ))}
+            </div>
+            <p className="mt-3 font-mono text-[11px] text-text-tertiary">{data.note}</p>
+          </div>
         </>
       )}
     </Panel>

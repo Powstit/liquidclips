@@ -58,7 +58,14 @@ export function ChannelCard({
       : null) as PlatformId | null;
 
   return (
-    <div className="group relative flex flex-col gap-3 rounded-2xl border border-line bg-paper p-4 transition-all hover:border-fuchsia/40 hover:shadow-[var(--glow-sm)]">
+    <div
+      data-hot={channel.status === "active" ? "true" : "false"}
+      className="library-card group relative flex flex-col gap-3 bg-transparent p-4"
+    >
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
       <div className="flex items-start gap-3">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-ink text-paper">
           {platformIconId ? (
@@ -97,7 +104,7 @@ export function ChannelCard({
       </div>
 
       <div className="flex items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-paper-warm/40 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-secondary">
+        <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-secondary">
           <span className={`h-1.5 w-1.5 rounded-full ${statusStyle.dot}`} aria-hidden />
           {statusStyle.label}
         </span>
@@ -107,7 +114,7 @@ export function ChannelCard({
       </div>
 
       {/* Hover row of actions */}
-      <div className="flex items-center justify-between border-t border-line/60 pt-3 opacity-60 transition-opacity group-hover:opacity-100">
+      <div className="flex items-center justify-between pt-3 opacity-60 transition-opacity group-hover:opacity-100">
         <div className="flex items-center gap-1">
           <ActionButton
             label="refresh"

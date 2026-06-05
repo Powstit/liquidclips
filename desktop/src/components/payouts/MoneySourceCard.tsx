@@ -29,15 +29,17 @@ type Props = {
   setupUrl?: string;
 };
 
+// v0.6.3 — Brand-pure: provider hexes (Whop orange #FF6B35, Stripe purple
+// #635BFF) retired. Everything wears neon fuchsia per the one-accent rule.
+// Provider identity now reads through the monogram letter + the title copy,
+// not through colour. Matches the "one fuchsia, no other accents" mandate.
 const SOURCE_META = {
   whop: {
     title: "Whop Content Rewards",
     subtitle: "Paid by Whop, directly to your linked account",
     monogram: "W",
-    accentBg: "bg-[#FF6B35]/15",
-    accentBorder: "border-[#FF6B35]/40",
-    accentText: "text-[#FF9F76]",
-    monogramBg: "bg-[#FF6B35] text-white",
+    monogramBg: "bg-fuchsia text-white",
+    topStripe: "border-t-fuchsia",
     primaryLabel: "Open Whop payouts ↗",
     helper:
       "Whop verifies views, approves submissions, and sends payouts on their schedule.",
@@ -46,10 +48,8 @@ const SOURCE_META = {
     title: "Liquid Clips affiliate",
     subtitle: "Paid by Liquid Clips via Stripe Connect",
     monogram: "S",
-    accentBg: "bg-[#635BFF]/15",
-    accentBorder: "border-[#635BFF]/40",
-    accentText: "text-[#A29BFF]",
-    monogramBg: "bg-[#635BFF] text-white",
+    monogramBg: "bg-fuchsia text-white",
+    topStripe: "border-t-fuchsia",
     primaryLabel: "Open Stripe Express ↗",
     helper:
       "We pay 50% recurring on every customer you refer. Connect Stripe once and payouts arrive on Stripe's schedule.",
@@ -71,7 +71,7 @@ export function MoneySourceCard({
     <Card
       elevation="raised"
       padding="md"
-      className={`flex flex-col gap-3 ${
+      className={`flex flex-col gap-3 border-t-2 ${meta.topStripe} transition-[border-color,box-shadow] hover:border-fuchsia hover:shadow-[var(--glow-sm)] ${
         needsSetup ? "border-fuchsia/40 shadow-[var(--glow-sm)]" : ""
       }`}
     >
@@ -97,12 +97,12 @@ export function MoneySourceCard({
         )}
       </header>
 
-      <div className={`flex items-center gap-6 rounded-xl border ${meta.accentBorder} ${meta.accentBg} px-4 py-3`}>
+      <div className="flex items-center gap-6 rounded-xl border border-line bg-paper px-4 py-3">
         <div className="flex flex-col gap-0.5">
           <span className="font-mono text-[9px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
             paid all-time
           </span>
-          <span className={`font-display text-[20px] font-semibold tracking-[-0.01em] ${meta.accentText}`}>
+          <span className="font-display text-[20px] font-semibold tracking-[-0.01em] text-ink">
             {fmtUsd(paidAllTime)}
           </span>
         </div>

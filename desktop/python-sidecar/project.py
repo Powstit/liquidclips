@@ -35,6 +35,19 @@ STAGES = ("ingest", "audio", "transcribe", "llm", "cut", "reframe", "thumbs")
 
 SUBDIRS = ("source", "audio", "transcript", "clips", "thumbnails", "metadata")
 
+STAGE_LOCK = ".stage-running.json"
+MAX_RUNNING_STAGE_SECONDS = 60 * 60
+
+
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
 
 # SECURITY (CRIT-002): A project slug is the only piece of user input that
 # becomes a filesystem path. Without validation, ".." / absolute paths / NUL
@@ -115,6 +128,86 @@ def _allowed_source_roots() -> list[Path]:
             except (OSError, RuntimeError):
                 pass
     return roots
+
+
+def _validate_imported_clip_path(source_path: str) -> Path:
+    """v0.6.10 — Looser validation for the Import lane.
+
+    The strict `_validate_source_path` only allows files inside Movies / Desktop
+    / Downloads / Documents / Pictures / LiquidClips — that was right for a
+    source video the user is about to feed to ffmpeg as part of a pipeline run.
+
+    For imported finished clips the user already chose the file in a native OS
+    dialog, so macOS itself has already gated access. We just need to:
+    - Reject URL schemes, NUL bytes, FIFOs / sockets / device files.
+    - Resolve symlinks so an escape attempt is detected.
+    - Require the file to live under $HOME or /Volumes (external drives) or
+      one of the LIQUIDCLIPS_EXTRA_SOURCE_ROOTS overrides.
+
+    This unblocks the common case where finished clips live in arbitrary
+    folders (e.g., ~/ddbmatrix/generations/) without forcing the user to move
+    files around.
+    """
+    if not isinstance(source_path, str) or not source_path:
+        raise ValueError("clip path is required")
+    if "\x00" in source_path:
+        raise ValueError("clip path contains NUL byte")
+    lowered = source_path.lower()
+    for scheme in ("http://", "https://", "ftp://", "rtmp://", "rtsp://",
+                   "file://", "concat:", "data:", "pipe:"):
+        if lowered.startswith(scheme):
+            raise ValueError(f"clip path scheme not allowed: {scheme}")
+    src = Path(source_path).expanduser()
+    try:
+        resolved = src.resolve(strict=True)
+    except (OSError, RuntimeError) as e:
+        raise ValueError(f"clip path does not exist: {source_path}") from e
+    try:
+        mode = resolved.stat().st_mode
+    except OSError as e:
+        raise ValueError(f"clip path stat failed: {e}") from e
+    import stat as _stat
+    if not _stat.S_ISREG(mode):
+        raise ValueError(f"clip path is not a regular file: {source_path}")
+    home = Path.home().resolve()
+    allowed_prefixes: list[Path] = [home, Path("/Volumes").resolve()]
+    extra = os.environ.get("LIQUIDCLIPS_EXTRA_SOURCE_ROOTS", "")
+    for entry in extra.split(os.pathsep) if extra else []:
+        if entry.strip():
+            try:
+                allowed_prefixes.append(Path(entry.strip()).expanduser().resolve())
+            except (OSError, RuntimeError):
+                pass
+    for prefix in allowed_prefixes:
+        try:
+            resolved.relative_to(prefix)
+            return resolved
+        except ValueError:
+            continue
+    raise ValueError(
+        f"clip path is outside your home directory and any mounted volumes ({source_path})."
+    )
+
+
+def _probe_duration_seconds(path: Path) -> float:
+    """ffprobe a media file's duration. Returns 0.0 on any failure — imported
+    clip cards still render with start=end=0 (the video element handles it)."""
+    import subprocess
+    # ffprobe lives bundled at python-sidecar/bin/ffprobe; fall back to PATH.
+    here = Path(__file__).resolve().parent
+    candidates = [here / "bin" / "ffprobe", Path("ffprobe")]
+    for bin_path in candidates:
+        try:
+            out = subprocess.check_output(
+                [str(bin_path), "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+            )
+            return max(0.0, float(out.decode("utf-8").strip() or 0))
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError):
+            continue
+    return 0.0
 
 
 def _validate_source_path(source_path: str) -> Path:
@@ -285,6 +378,93 @@ class Project:
         return proj
 
     @classmethod
+    def create_imported_pack(
+        cls,
+        file_paths: list[str],
+        projects_root: Path | None = None,
+    ) -> "Project":
+        """v0.6.9 — Build a Project from a pack of already-finished clip files.
+
+        Each input file becomes a Clip record where `cut_path` == `vertical_path`
+        == the imported file. The project lands at the same ResultsGrid as
+        cut-from-source projects so stack / split / remix / schedule / publish
+        all work without a per-flow branch. No transcription, LLM, cut, or
+        reframe stages run — every stage is pre-marked as `done` with an
+        `imported=True` marker so the working stage list resolves cleanly.
+        """
+        if not file_paths:
+            raise ValueError("create_imported_pack requires at least one path")
+        validated: list[Path] = []
+        for p in file_paths:
+            # v0.6.10 — Looser validation for finished-clip imports. The user
+            # already picked the file through the OS dialog; we only need to
+            # block URL schemes, FIFOs, and out-of-tree symlinks.
+            validated.append(_validate_imported_clip_path(p))
+
+        root_base = projects_root or (CLIPS_HOME / "projects")
+        root_base.mkdir(parents=True, exist_ok=True)
+        # Project slug derives from the FIRST file's stem + a short suffix so
+        # multiple import packs from the same folder don't collide.
+        first = validated[0]
+        base_slug = _validate_slug(slugify(first.stem) + "-pack")
+        candidate = root_base / base_slug
+        i = 2
+        while candidate.exists():
+            candidate = root_base / f"{base_slug}-{i}"
+            i += 1
+        _resolve_within(root_base, candidate.parent)
+        candidate.mkdir(parents=True)
+        for sub in SUBDIRS:
+            (candidate / sub).mkdir()
+
+        clips: list[dict[str, Any]] = []
+        for idx, vp in enumerate(validated, start=1):
+            duration = _probe_duration_seconds(vp)
+            title = vp.stem.replace("-", " ").replace("_", " ").strip() or f"Imported clip {idx}"
+            clip_slug = _validate_slug(slugify(vp.stem) or f"imported-{idx}")
+            clips.append({
+                "start": 0.0,
+                "end": duration,
+                "title": title[:120],
+                "description": "",
+                "theme": "imported",
+                # Neutral score — we have no transcript to LLM-rate. UI shows
+                # the LC badge with this value but no sub-score breakdown
+                # (ClipCard already guards on `score_breakdown` truthiness).
+                "virality": 70,
+                "slug": clip_slug,
+                "title_variants": [title[:120]],
+                "pinned_comment": "",
+                "cut_path": str(vp),
+                "vertical_path": str(vp),
+                "imported": True,
+            })
+
+        # Pre-mark every stage as done so ResultsGrid + downstream UI don't
+        # try to resume a pipeline that doesn't apply. ingest/audio/transcribe/
+        # llm/cut/reframe/thumbs are all conceptual no-ops for imported clips.
+        now = time.time()
+        stages = {
+            s: StageState(status="done", started_at=now, finished_at=now,
+                          output={"imported": True})
+            for s in STAGES
+        }
+
+        proj = cls(
+            id=uuid.uuid4().hex,
+            slug=candidate.name,
+            root=candidate,
+            source_path=str(first),
+            source_filename=f"{len(validated)} imported clip{'s' if len(validated) != 1 else ''}",
+            created_at=now,
+            stages=stages,
+            clips=clips,
+            intent="clips",
+        )
+        proj.save()
+        return proj
+
+    @classmethod
     def load(cls, slug: str, projects_root: Path | None = None) -> "Project":
         # SECURITY (CRIT-002): never let slug-as-input become a path before
         # being validated. Then canonicalise the result so symlinks inside
@@ -307,17 +487,32 @@ class Project:
         with project_json.open("r", encoding="utf-8") as f:
             data = json.load(f)
         # Re-validate the source_path the tampered project.json could contain.
+        # v0.6.11 — Imported clip packs (Import lane) live anywhere under $HOME,
+        # so a strict validator that only accepts the 6 standard media dirs
+        # would blank a perfectly valid imported source and cause downstream
+        # ffmpeg to receive an empty path (which resolves to the current
+        # directory → "Is a directory" runtime errors). Fall back to the
+        # looser import-path validator before giving up.
         raw_src = data.get("source_path")
         if isinstance(raw_src, str) and raw_src:
             try:
                 data["source_path"] = str(_validate_source_path(raw_src))
             except ValueError:
-                # Don't hard-fail loading the project — some legacy projects
-                # may reference moved files. But scrub the unsafe path so it
-                # never reaches ffprobe/ffmpeg. Downstream stages already
-                # handle a missing source_path with FileNotFoundError.
-                data["source_path"] = ""
+                try:
+                    data["source_path"] = str(_validate_imported_clip_path(raw_src))
+                except ValueError:
+                    # Don't hard-fail loading the project — some legacy projects
+                    # may reference moved files. But scrub the unsafe path so it
+                    # never reaches ffprobe/ffmpeg. Downstream stages already
+                    # handle a missing source_path with FileNotFoundError.
+                    data["source_path"] = ""
         stages = {s: StageState.from_dict(data.get("stages", {}).get(s)) for s in STAGES}
+        if cls._recover_stale_running_stages(root, stages):
+            data["stages"] = {s: stages[s].to_dict() for s in STAGES}
+            try:
+                project_json.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            except OSError:
+                pass
         return cls(
             id=data["id"],
             slug=data["slug"],
@@ -340,6 +535,46 @@ class Project:
             whop_bounty_spots_remaining=data.get("whop_bounty_spots_remaining"),
             whop_bounty_url=data.get("whop_bounty_url"),
         )
+
+    @staticmethod
+    def _recover_stale_running_stages(root: Path, stages: dict[str, StageState]) -> bool:
+        running = [name for name, state in stages.items() if state.status == "running"]
+        if not running:
+            return False
+        lock_path = root / STAGE_LOCK
+        lock: dict[str, Any] = {}
+        if lock_path.is_file():
+            try:
+                raw = json.loads(lock_path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    lock = raw
+            except Exception:
+                lock = {}
+
+        lock_stage = str(lock.get("stage") or "")
+        lock_pid = int(lock.get("pid") or 0)
+        now = time.time()
+        owner_alive = _pid_alive(lock_pid)
+
+        changed = False
+        for name in running:
+            state = stages[name]
+            age = now - float(state.started_at or 0)
+            has_matching_live_owner = owner_alive and lock_stage == name
+            if has_matching_live_owner and age <= MAX_RUNNING_STAGE_SECONDS:
+                continue
+            state.status = "pending"
+            state.finished_at = None
+            state.error = None
+            state.output = {}
+            changed = True
+
+        if not owner_alive or lock_stage not in running:
+            try:
+                lock_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return changed
 
     # ----- cancellation -----
 
@@ -365,6 +600,14 @@ class Project:
         s.status = "running"
         s.started_at = time.time()
         s.error = None
+        try:
+            (self.root / STAGE_LOCK).write_text(json.dumps({
+                "stage": stage,
+                "pid": os.getpid(),
+                "started_at": s.started_at,
+            }), encoding="utf-8")
+        except OSError:
+            pass
         # Wipe stale progress from the previous stage so the UI doesn't show
         # "Transcribed 100%" while the cut stage is running.
         try:
@@ -379,6 +622,7 @@ class Project:
         s.finished_at = time.time()
         if output:
             s.output = output
+        self._clear_stage_lock(stage)
         self.save()
 
     def stage_failed(self, stage: str, error: str) -> None:
@@ -386,7 +630,23 @@ class Project:
         s.status = "failed"
         s.finished_at = time.time()
         s.error = error
+        self._clear_stage_lock(stage)
         self.save()
+
+    def _clear_stage_lock(self, stage: str) -> None:
+        lock_path = self.root / STAGE_LOCK
+        if not lock_path.is_file():
+            return
+        try:
+            raw = json.loads(lock_path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict) and raw.get("stage") not in (None, stage):
+                return
+            lock_path.unlink(missing_ok=True)
+        except Exception:
+            try:
+                lock_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def set_clips(self, clips: list[dict[str, Any]]) -> None:
         self.clips = clips

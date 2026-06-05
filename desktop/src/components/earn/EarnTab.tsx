@@ -15,6 +15,8 @@ import { EarnLayout } from "./EarnLayout";
 import { EarnTickerStrip } from "./EarnTickerStrip";
 import { EarnIconRail } from "./EarnIconRail";
 import { EarnSidebar } from "./EarnSidebar";
+import { SponsoredBannerCarousel } from "./SponsoredBannerCarousel";
+import { SponsoredClipsCarousel } from "../workspace/SponsoredClipsCarousel";
 import {
   matchesFilter,
   sortBounties,
@@ -39,6 +41,7 @@ export function EarnTab({
   onStartManualBounty,
   onResumeProject,
   onSignIn,
+  userTier,
 }: {
   onStartBounty: (bounty: WhopBounty) => void;
   // Beta fallback path — clipper pasted a bounty by hand, source URL too.
@@ -50,6 +53,9 @@ export function EarnTab({
   // AffiliateHero's "signed-out" CTA wants to send the user to FirstRun —
   // EarnTab proxies to App.tsx which owns the view state machine.
   onSignIn?: () => void;
+  // v0.6.39 — restored after Round 1 worktree dropped the prop. SponsoredBannerCarousel
+  // gates campaign visibility on this; without it Pro/Agency users see locked banners.
+  userTier?: "free" | "solo" | "pro" | "agency" | null;
 }) {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [authSource, setAuthSource] = useState<
@@ -281,27 +287,40 @@ export function EarnTab({
         <div className="flex flex-col gap-4">
           <ConnectionBadge source={authSource} />
 
+          {/* v0.6.39 — Restored after Round 1 worktree edit dropped both
+              carousels. Sponsored Rewards live ONLY on Earn since v0.6.35,
+              so this mount is load-bearing — without it the home page has
+              no rewards surface at all. */}
+          <SponsoredBannerCarousel tier={userTier ?? "free"} />
+          <SponsoredClipsCarousel onOpenEarn={() => undefined} />
+
           {bountyError && (
-            <div className="rounded-2xl border border-[#DC2626]/40 bg-[#DC2626]/5 p-4">
-              <div className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-[#F87171]">
+            // Cockpit pass: bracket-only frame with red eyebrow.
+            // No solid plate / no full red outline.
+            <div className="earn-frame relative p-4" data-tone="danger">
+              <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+              <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+              <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+              <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
+              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#F87171]">
                 connected — but Whop wouldn't return Content Rewards
               </div>
               <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
                 Your sign-in worked. The fetch came back with this error:
               </p>
-              <pre className="mt-2 max-h-[140px] overflow-auto rounded-lg border border-line bg-paper-warm/40 p-2.5 font-mono text-[11px] text-text-secondary">
+              <pre className="mt-2 max-h-[140px] overflow-auto bg-transparent p-2.5 font-mono text-[11px] text-text-secondary">
                 {bountyError}
               </pre>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => void bootstrap()}
-                  className="rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-secondary hover:border-fuchsia hover:text-ink"
+                  className="inline-flex items-center bg-transparent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-secondary hover:text-fuchsia"
                 >
-                  Retry
+                  ↻ Retry
                 </button>
                 <button
                   onClick={() => setManualOpen(true)}
-                  className="rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-white hover:bg-fuchsia-bright"
+                  className="inline-flex items-center bg-transparent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia hover:text-fuchsia-bright"
                 >
                   Paste a reward manually →
                 </button>
@@ -324,28 +343,31 @@ export function EarnTab({
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              {/* Cockpit pass: pill-plate inputs → transparent line inputs
+                  with fuchsia focus underline (earn-input). Same pattern as
+                  the Library search input. */}
+              <div className="flex flex-wrap items-end gap-3">
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   spellCheck={false}
-                  placeholder="Search campaigns…"
-                  className="min-w-[200px] flex-1 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none focus:shadow-[var(--glow-sm)]"
+                  placeholder="Search campaigns"
+                  className="earn-input min-w-[200px] flex-1 px-2 py-2 font-sans text-[13px] text-ink"
                 />
                 <input
                   value={addUrl}
                   onChange={(e) => { setAddUrl(e.target.value); setAddError(null); }}
                   onKeyDown={(e) => { if (e.key === "Enter") void handleAddByLink(); }}
                   spellCheck={false}
-                  placeholder="Paste reward link…"
-                  className="min-w-[180px] flex-1 rounded-full border border-line bg-paper px-4 py-2 font-mono text-[11px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
+                  placeholder="Paste reward link"
+                  className="earn-input min-w-[180px] flex-1 px-2 py-2 font-mono text-[11px] text-ink"
                 />
                 <button
                   onClick={() => void handleAddByLink()}
                   disabled={!addUrl.trim() || adding}
-                  className="shrink-0 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-white transition-all hover:bg-fuchsia-bright disabled:opacity-40"
+                  className="shrink-0 bg-transparent px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia hover:text-fuchsia-bright disabled:opacity-40"
                 >
-                  {adding ? "Adding…" : "Add"}
+                  {adding ? "Adding…" : "Add →"}
                 </button>
               </div>
               {addError && <p className="font-mono text-[11px] text-[#F87171]">{addError}</p>}
@@ -396,9 +418,20 @@ export function EarnTab({
                 In progress
               </h1>
               {bountyProjects.length === 0 ? (
-                <p className="font-sans text-[13px] text-text-secondary">
-                  Campaigns you start show here so you can pick up where you left off.
-                </p>
+                // Cockpit pass: bracket-only empty frame, fuchsia eyebrow,
+                // same idiom as LibraryWall's EmptyState.
+                <div className="earn-frame relative mx-auto my-4 flex w-full max-w-[480px] flex-col items-start gap-3 px-8 py-8">
+                  <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+                  <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+                  <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+                  <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia">
+                    nothing in flight
+                  </span>
+                  <p className="font-sans text-[14px] leading-relaxed text-text-secondary">
+                    Campaigns you start show here so you can pick up where you left off.
+                  </p>
+                </div>
               ) : (
                 bountyProjects.map((p) => (
                   <BountyProjectCard key={p.slug} project={p} onResume={() => onResumeProject(p.slug)} />
@@ -479,15 +512,19 @@ function ConnectionBadge({
 }: {
   source: "iframe" | "env_user" | "keychain" | "seller_key" | "none";
 }) {
+  // Cockpit pass: single-line mono HUD readout. No grey plate, no pill
+  // chrome. The pulse-dot turns on only when there is an active session;
+  // the "none" state hides the dot to read as "offline" and keeps a CTA
+  // on the right.
   if (source === "none") {
-    // Activated, but no Whop session — surface a clear CTA so users know where
-    // to go. Settings → Connections has the actual sign-in button (opens
-    // whop.com/oauth in the browser, deep-links the token back to keychain).
     return (
-      <div className="mt-2 flex flex-wrap items-center gap-3 rounded-2xl border border-fuchsia/40 bg-fuchsia-soft/30 px-4 py-3">
-        <span className="inline-block h-2 w-2 rounded-full bg-fuchsia" aria-hidden />
+      <div className="flex flex-wrap items-center gap-3 bg-transparent py-2">
+        <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] text-text-tertiary">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-text-tertiary" aria-hidden />
+          whop · disconnected
+        </span>
         <p className="flex-1 font-sans text-[13px] leading-snug text-ink">
-          <span className="font-medium">Sign in with Whop</span> to load reward campaigns here. One-time browser sign-in — tokens never leave your machine.
+          <span className="font-medium">Sign in with Whop</span> to load reward campaigns here. Tokens stay on this machine.
         </p>
         <button
           onClick={() => {
@@ -496,7 +533,7 @@ function ConnectionBadge({
             // session lifecycle in one place.
             window.dispatchEvent(new CustomEvent("junior:open-settings", { detail: { section: "connections" } }));
           }}
-          className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright"
+          className="bg-transparent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia hover:text-fuchsia-bright"
         >
           Sign in with Whop →
         </button>
@@ -504,30 +541,26 @@ function ConnectionBadge({
     );
   }
   if (source === "iframe") {
-    // Honest framing: the iframe bridge is scaffolding until the @whop/iframe +
-    // server-side x-whop-user-token bridge ships in a web build of Liquid Clips.
-    // Do not claim "connected through Whop" here — that promise belongs to
-    // the production app-registration path, not this stub.
     return (
-      <span className="mt-2 inline-flex w-fit items-center gap-2 rounded-full border border-fuchsia-soft bg-fuchsia-soft/40 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-fuchsia-deep">
-        <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
+      <span className="inline-flex w-fit items-center gap-2 bg-transparent py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia">
+        <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" aria-hidden />
         whop iframe · preview
       </span>
     );
   }
   if (source === "seller_key") {
     return (
-      <span className="mt-2 inline-flex w-fit items-center gap-2 rounded-full border border-line bg-paper-warm/40 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary">
-        <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#F59E0B]" />
+      <span className="inline-flex w-fit items-center gap-2 bg-transparent py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-text-secondary">
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-text-tertiary" aria-hidden />
         dev mode · seller key
       </span>
     );
   }
   const label = source === "env_user" ? "env" : "standalone key";
   return (
-    <span className="mt-2 inline-flex w-fit items-center gap-2 rounded-full border border-line bg-paper-warm/40 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary">
-      <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-      connected · {label}
+    <span className="inline-flex w-fit items-center gap-2 bg-transparent py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia">
+      <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" aria-hidden />
+      whop · connected · {label}
     </span>
   );
 }

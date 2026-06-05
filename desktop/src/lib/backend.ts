@@ -232,8 +232,37 @@ export type RewardClipPatchInput = {
   status?: string | null;
 };
 
+// v0.7.0 (Sprint 2) — Sponsored Rewards. Mirrors junior-backend/app/routes/campaigns.py.
+export type SponsoredCampaign = {
+  id: string;
+  slug: string;
+  name: string;
+  brand: string | null;
+  subtitle: string | null;
+  type: "public" | "coming_soon" | "funded" | "invite_only" | "recurring";
+  status: "coming_soon" | "partially_funded" | "funded" | "live" | "closed";
+  rpm_cents: number;
+  budget_cents: number;
+  funded_pct: number;
+  duration_label: string | null;
+  whop_url: string;
+  banner_url: string | null;
+  eligibility: string[];
+  visibility_tiers: string[];
+  min_lc_score: number;
+  cta_text: string;
+  sort_order: number;
+};
+
 export const backend = {
   health: () => fetch(`${BACKEND_URL}/healthcheck`).then((r) => r.json()),
+
+  campaignsList: async (): Promise<SponsoredCampaign[]> => {
+    const r = await fetch(`${BACKEND_URL}/campaigns`);
+    if (!r.ok) return [];
+    const j = await r.json();
+    return Array.isArray(j?.campaigns) ? j.campaigns : [];
+  },
 
   publishNow: async (
     jwt: string,
@@ -243,7 +272,7 @@ export const backend = {
       description: string;
       /** Legacy path: list of platforms to post to via the user's single
        * SocialConnection profile_key. Ignored when channelId is set. */
-      platforms: ("youtube" | "tiktok" | "x")[];
+      platforms: ConnectionPlatform[];
       /** Schedule v2 channel path: post to this one channel's Ayrshare
        * profile. Backend infers the single platform from the channel.
        * When set, `platforms` is ignored. */
@@ -404,6 +433,30 @@ export const backend = {
         return;
       }
       await authedFetch(`/notifications/${id}`, { method: "DELETE", jwt });
+    },
+    // v0.6.18 — Desktop-callable create. Used on pipeline completion to drop
+    // a "clips finished" row into the inbox so a user who navigated away
+    // returns to a lit-up bell + actionable card.
+    create: async (
+      jwt: string,
+      payload: {
+        category: "pipeline_event" | "junior_message";
+        title: string;
+        body: string;
+        priority?: "low" | "medium" | "high";
+        action_kind?: string;
+        action_data?: Record<string, unknown>;
+        external_dedup_key?: string;
+      },
+    ) => {
+      if (isWebPreview()) return null;
+      const res = await authedFetch("/notifications", {
+        method: "POST",
+        jwt,
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`notification create failed: HTTP ${res.status}`);
+      return (await res.json()) as NotificationDto;
     },
   },
 
@@ -840,7 +893,7 @@ export async function createSubmission(input: SubmissionCreateInput): Promise<Su
     if (detail.code === "watermark_detected") {
       throw new WatermarkDetectedError(
         detail.message ?? "Watermark detected — re-export without watermark and try again.",
-        detail.upgrade_url ?? "https://account.jnremployee.com/upgrade?reason=watermark",
+        detail.upgrade_url ?? "https://account.liquidclips.app/upgrade?reason=watermark",
         detail.submission_id ?? "",
       );
     }
@@ -977,7 +1030,7 @@ export async function createChannel(input: { platform: ChannelPlatform; label: s
   if (isWebPreview()) {
     return {
       channel: { id: "ch_preview", label: input.label, platform: input.platform, handle: null, status: "pending_link", total_posts: 0, last_refreshed_at: null, created_at: new Date().toISOString() },
-      link_url: "https://app.ayrshare.com/social-accounts?profileKey=preview",
+      link_url: `https://app.ayrshare.com/social-accounts?profileKey=preview&platforms=${encodeURIComponent(input.platform)}`,
     };
   }
   const res = await authedFetch("/channels", {
@@ -1094,15 +1147,21 @@ export async function analyticsChannelDetail(id: string, window: AnalyticsWindow
   } catch { return null; }
 }
 
-/** Sprint #14d — in-app Ayrshare account linking. Calls /social/start-link
- * which mints an Ayrshare profile + JWT and returns a hosted-link URL.
- * Desktop opens it in a Tauri WebView via the `open_social_link_window`
- * Rust command. User never visits ayrshare.com in their browser. */
-export async function socialStartLink(): Promise<{ link_url: string; profile_key_set: boolean }> {
+/** v0.6.0 — In-app social linking. Calls /social/start-link which mints
+ * an Ayrshare JWT + returns a deep-linked hosted URL the desktop opens in
+ * the user's real browser. Google blocks OAuth from embedded WebViews, so
+ * browser-based linking is required for YouTube/Google and safer for Meta/
+ * Instagram too. When `platform` is set the user lands directly on that
+ * platform's OAuth, so the experience reads as "Sign in with X" rather than
+ * "Sign in to Ayrshare first." */
+export async function socialStartLink(
+  platform?: "youtube" | "tiktok" | "instagram" | "x" | "facebook" | "linkedin",
+): Promise<{ link_url: string; profile_key_set: boolean }> {
   if (isWebPreview()) {
     return { link_url: "https://app.ayrshare.com/auth?demo=1", profile_key_set: true };
   }
-  const res = await authedFetch("/social/start-link", {
+  const qs = platform ? `?platform=${encodeURIComponent(platform)}` : "";
+  const res = await authedFetch(`/social/start-link${qs}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: "{}",

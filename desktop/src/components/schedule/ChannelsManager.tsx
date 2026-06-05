@@ -81,7 +81,11 @@ export function ChannelsManager() {
       )}
 
       {channels.length === 0 ? (
-        <div className="flex flex-col items-center gap-4 rounded-3xl border border-dashed border-fuchsia/40 bg-fuchsia-soft/10 px-8 py-12 text-center">
+        <div className="relative flex flex-col items-center gap-4 bg-transparent px-8 py-12 text-center">
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
           <span className="grid h-14 w-14 place-items-center rounded-full bg-fuchsia text-paper">
             <Plus size={22} strokeWidth={2.5} />
           </span>

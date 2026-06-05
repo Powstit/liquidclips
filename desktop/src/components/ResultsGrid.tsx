@@ -141,7 +141,11 @@ export function ResultsGrid({
       </div>
 
       {/* Spec §1.5 action bar — Publish now / Schedule one / Drip across ▾ */}
-      <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-gradient-to-r from-paper-warm/60 via-paper to-paper-warm/40 px-5 py-3.5 shadow-[0_1px_0_rgba(15,15,18,0.02)]">
+      <div className="relative mt-6 flex flex-wrap items-center gap-3 rounded-2xl bg-transparent px-5 py-3.5">
+        <span className="cockpit-tile-corner-tl" aria-hidden />
+        <span className="cockpit-tile-corner-tr" aria-hidden />
+        <span className="cockpit-tile-corner-bl" aria-hidden />
+        <span className="cockpit-tile-corner-br" aria-hidden />
         <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
           take action
         </div>
@@ -348,9 +352,13 @@ export function ResultsGrid({
 
 function FilesPane({ project }: { project: Project }) {
   return (
-    <div className="rounded-2xl border border-line bg-paper-warm/50 p-5 font-mono text-[12px] text-text-secondary">
+    <div className="relative rounded-2xl bg-transparent p-5 font-mono text-[12px] text-text-secondary">
+      <span className="cockpit-tile-corner-tl" aria-hidden />
+      <span className="cockpit-tile-corner-tr" aria-hidden />
+      <span className="cockpit-tile-corner-bl" aria-hidden />
+      <span className="cockpit-tile-corner-br" aria-hidden />
       <p className="mb-3">Everything Liquid Clips made is in:</p>
-      <code className="block rounded bg-paper px-3 py-2 text-ink">{project.root}</code>
+      <code className="block rounded bg-paper-warm/40 px-3 py-2 text-ink">{project.root}</code>
       <ul className="mt-4 space-y-1 text-[11px]">
         <li>source/ — original file (symlinked)</li>
         <li>audio/audio.wav — extracted 16kHz mono</li>

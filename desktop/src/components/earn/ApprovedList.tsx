@@ -15,11 +15,18 @@ export function ApprovedList({ items }: { items: WhopSubmission[] }) {
   }, 0);
   const sym = approved[0]?.formattedPayoutAmount?.[0] || "£";
 
+  // Cockpit pass: the headline total wears the bracket frame; rows below
+  // drop their plates and become hairline-separated list lines so the
+  // wall stays calm.
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between rounded-2xl border border-fuchsia-soft bg-fuchsia-soft/20 px-5 py-4">
+      <div className="earn-frame relative flex items-center justify-between px-5 py-4">
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep">
+          <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia">
             approved this month
           </div>
           <div className="mt-1 font-display text-[24px] font-semibold tracking-[-0.02em] text-ink">
@@ -33,34 +40,36 @@ export function ApprovedList({ items }: { items: WhopSubmission[] }) {
         </div>
       </div>
 
-      {approved.map((s) => (
-        <article
-          key={s.id}
-          className="flex items-center justify-between rounded-xl border border-line bg-paper p-4"
-        >
-          <div>
-            <h4 className="font-display text-[14px] font-semibold leading-tight tracking-[-0.01em] text-ink">
-              {s.bounty?.title ?? "Reward"}
-            </h4>
-            <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-              approved · {s.verifiedVotesCount} verified votes
-            </p>
-          </div>
-          <span className="font-display text-[15px] font-semibold tracking-[-0.01em] text-ink">
-            {s.formattedPayoutAmount ?? "—"}
-          </span>
-        </article>
-      ))}
+      <div className="flex flex-col">
+        {approved.map((s) => (
+          <article
+            key={s.id}
+            className="flex items-center justify-between border-b border-line/40 bg-transparent py-3 last:border-b-0"
+          >
+            <div>
+              <h4 className="font-display text-[14px] font-semibold leading-tight tracking-[-0.01em] text-ink">
+                {s.bounty?.title ?? "Reward"}
+              </h4>
+              <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                approved · {s.verifiedVotesCount} verified votes
+              </p>
+            </div>
+            <span className="font-display text-[15px] font-semibold tracking-[-0.01em] text-ink">
+              {s.formattedPayoutAmount ?? "—"}
+            </span>
+          </article>
+        ))}
+      </div>
 
       {denied.length > 0 && (
-        <>
-          <h3 className="mt-3 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+        <div className="flex flex-col">
+          <h3 className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-text-tertiary">
             denied
           </h3>
           {denied.map((s) => (
             <article
               key={s.id}
-              className="rounded-xl border border-line bg-paper-warm/30 p-4 opacity-70"
+              className="border-b border-line/30 bg-transparent py-3 opacity-70 last:border-b-0"
             >
               <h4 className="font-display text-[14px] font-semibold leading-tight tracking-[-0.01em] text-ink">
                 {s.bounty?.title ?? "Reward"}
@@ -72,7 +81,7 @@ export function ApprovedList({ items }: { items: WhopSubmission[] }) {
               )}
             </article>
           ))}
-        </>
+        </div>
       )}
     </div>
   );
