@@ -15,6 +15,7 @@ import { WorkstationRoom } from "./components/cockpit/WorkstationRoom";
 import { UploadPortal } from "./components/cockpit/UploadPortal";
 import { AvatarOrbit } from "./components/cockpit/AvatarOrbit";
 import { AvatarPanel } from "./components/cockpit/AvatarPanel";
+import SignalLine from "./components/cockpit/SignalLine";
 import { useAvatar } from "./lib/avatar";
 // v0.6.0 — sidebar nav restructure. The 6 NavTab buttons + Logo moved into
 // SideNav (fixed 64px left rail). Header right-side chips (status / bell /
@@ -936,6 +937,9 @@ export default function App() {
             cockpit — they ignore the parallax CSS vars and shouldn't tilt
             during heavy progress UIs. */}
         <Cockpit>
+        {/* v0.6.39 — Ambient bottom-edge ticker rotating rank / next-scheduled
+            / today's leader signals. Fixed-position; below modals (z-20). */}
+        <SignalLine />
         {view.kind === "upload" && (
           <RoomShell roomKey="upload" align="top">
             <UploadTab

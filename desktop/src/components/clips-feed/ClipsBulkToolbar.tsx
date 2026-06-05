@@ -60,7 +60,11 @@ export function ClipsBulkToolbar({
   }
 
   return (
-    <div className="sticky top-0 z-10 -mx-1 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-paper/85 px-4 py-3 backdrop-blur-md">
+    <div className="sticky top-0 z-10 -mx-1 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-transparent px-4 py-3 backdrop-blur-md">
+      <span className="cockpit-tile-corner-tl" aria-hidden />
+      <span className="cockpit-tile-corner-tr" aria-hidden />
+      <span className="cockpit-tile-corner-bl" aria-hidden />
+      <span className="cockpit-tile-corner-br" aria-hidden />
       <div className="flex items-center gap-4 font-mono text-[11px] uppercase tracking-[0.08em] text-text-tertiary">
         <span>
           <span className="text-ink">{project.clips.length}</span> clips
@@ -75,14 +79,14 @@ export function ClipsBulkToolbar({
 
       <div className="flex items-center gap-2">
         {/* Ratio toggle — applies to whole grid */}
-        <div className="flex items-center gap-1 rounded-full border border-line bg-paper p-0.5">
+        <div className="flex items-center gap-1 rounded-full border border-fuchsia/30 bg-transparent p-0.5">
           {RATIOS.map((r) => (
             <button
               key={r.key}
               onClick={() => onRatioChange(r.key)}
               className={`rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-[0.08em] transition-colors ${
                 ratio === r.key
-                  ? "bg-ink text-paper"
+                  ? "bg-fuchsia text-white"
                   : "text-text-tertiary hover:text-ink"
               }`}
             >
@@ -96,7 +100,7 @@ export function ClipsBulkToolbar({
           <button
             onClick={() => setLayoutMenu((s) => !s)}
             disabled={busy}
-            className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary hover:border-fuchsia hover:text-ink disabled:opacity-50"
+            className="rounded-full border border-fuchsia/30 bg-transparent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors hover:border-fuchsia hover:text-ink disabled:opacity-50"
           >
             Apply layout to all ▾
           </button>

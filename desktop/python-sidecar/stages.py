@@ -31,6 +31,58 @@ def log(msg: str) -> None:
     sys.stderr.flush()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# v0.6.8 — Pipeline mode. Fast Draft optimizes for "time to first usable clip"
+# (the metric used in the Opus-vs-Liquid marketing timer). Full Polish keeps
+# the historic high-quality defaults. Mode flag flows in via env so the desktop
+# can flip it without code changes; per-stage helpers consult mode-aware
+# defaults below.
+# ─────────────────────────────────────────────────────────────────────────────
+def _pipeline_mode() -> str:
+    """Returns 'fast_draft' (default) or 'full_polish'."""
+    raw = (os.environ.get("JUNIOR_PIPELINE_MODE") or "fast_draft").strip().lower()
+    return raw if raw in {"fast_draft", "full_polish"} else "fast_draft"
+
+
+def _is_fast_draft() -> bool:
+    return _pipeline_mode() == "fast_draft"
+
+
+def _animated_captions_enabled() -> bool:
+    """Fast Draft turns off animated captions; Full Polish keeps the historic
+    on-by-default. Explicit JUNIOR_ANIMATED_CAPTIONS env wins either way."""
+    raw = os.environ.get("JUNIOR_ANIMATED_CAPTIONS")
+    if raw is not None:
+        return raw.strip().lower() not in ("0", "false", "off", "")
+    return not _is_fast_draft()
+
+
+def _silence_remove_enabled() -> bool:
+    raw = os.environ.get("JUNIOR_SILENCE_REMOVE")
+    if raw is not None:
+        return raw.strip().lower() not in ("0", "false", "off", "")
+    return not _is_fast_draft()
+
+
+def _voice_enhance_enabled() -> bool:
+    raw = os.environ.get("JUNIOR_VOICE_ENHANCE")
+    if raw is not None:
+        return raw.strip().lower() not in ("0", "false", "off", "")
+    return not _is_fast_draft()
+
+
+def _fast_draft_limit() -> int:
+    """How many clips to render in the blocking pass. 0 / negative = no cap
+    (Full Polish renders everything inline). Default 3 matches the Opus
+    benchmark UX: first three playable clips, the rest come later."""
+    if not _is_fast_draft():
+        return 0
+    try:
+        return max(0, int(os.environ.get("JUNIOR_FAST_DRAFT_LIMIT") or 3))
+    except ValueError:
+        return 3
+
+
 def _emit_stage_progress(
     stage: str,
     processed: float,
@@ -318,103 +370,85 @@ def stage_transcribe(project: Project, model_size: str | None = None) -> dict[st
 
     # Local fallback — what Free / Solo always do, and what Channel+ falls back
     # to on offline / cloud failure.
+    # v0.6.8 — routed through whisper_backend.transcribe_auto so Apple Silicon
+    # picks up the MLX path (2-5× faster than faster-whisper on M-series).
+    # Word timestamps only requested when animated captions will actually be
+    # burned in (Full Polish mode); Fast Draft skips them so MLX wins outright.
     if model_size is None:
         model_size = os.environ.get("JUNIOR_WHISPER_MODEL", "tiny")
-
-    from faster_whisper import WhisperModel
 
     audio_path = project.root / "audio" / "audio.wav"
     if not audio_path.exists():
         raise FileNotFoundError("stage 2 (audio) must run before stage 3 (transcribe)")
 
-    # Prefer the bundled model so a fresh .app doesn't need a 75 MB download
-    # on first transcribe. Only the `tiny` model is bundled in the .app;
-    # users on env-overridden larger models hit the HF download path.
     bundled = _bundled_whisper_model_path() if model_size == "tiny" else None
-    # Local CPU transcribe — let faster-whisper use the full logical-core count
-    # (capped at 8 to avoid melting laptops with hyperthreading). Override via
-    # JUNIOR_WHISPER_CPU_THREADS. On a 4-core/8-thread Intel i5 this is a
-    # 1.2–1.5x win over the default (which is conservative).
-    try:
-        _threads_env = int(os.environ.get("JUNIOR_WHISPER_CPU_THREADS") or 0)
-    except ValueError:
-        _threads_env = 0
-    cpu_threads = _threads_env or min(8, max(2, os.cpu_count() or 4))
-    # num_workers > 1 lets faster-whisper batch-decode in parallel — meaningful
-    # speedup on long audio at the cost of ~1x model memory per worker. Two
-    # workers is the sweet spot on tiny (75 MB × 2) without thrashing RAM.
-    num_workers = max(1, min(2, (os.cpu_count() or 2) // 4))
-    model = WhisperModel(
-        bundled or model_size,
-        device="cpu",
-        compute_type="int8",
-        cpu_threads=cpu_threads,
-        num_workers=num_workers,
-    )
-    # Perf tuning (2026-05-28): tiny + beam_size=1 (greedy) is 2-3x faster than
-    # the default beam_size=5 with a negligible WER hit at our content profile
-    # (mostly clean podcast/long-form). condition_on_previous_text=False kills
-    # the chain-dependency between segments — both faster and removes the
-    # hallucination-cascade failure mode we hit on long videos.
-    # vad_filter=False: the Silero VAD that ships with faster-whisper has a
-    # known infinite-loop failure mode on music-only / corrupt / noisy audio
-    # (148% CPU forever, no progress). lift_transcript shipped the same fix
-    # 2026-05-28; this is the equivalent for the main clip pipeline. Without
-    # the VAD the segmentation is slightly noisier but the run actually
-    # completes — and segment splitting is good enough at our content profile.
-    segments, info = model.transcribe(
-        str(audio_path),
-        word_timestamps=True,
-        vad_filter=False,
-        beam_size=1,
-        condition_on_previous_text=False,
-    )
 
-    segments_list: list[dict[str, Any]] = []
-    all_words: list[dict[str, Any]] = []
-    total_duration = float(info.duration or 0)
+    # Animated captions consume per-word timings (see captions.py). Skip the
+    # word_timestamps cost in Fast Draft where animated captions are off.
+    want_word_timestamps = _animated_captions_enabled()
+
+    from whisper_backend import transcribe_auto
+
     progress_path = project.root / ".progress.json"
-    for seg in segments:
+    segments_acc: list[dict[str, Any]] = []
+    all_words: list[dict[str, Any]] = []
+
+    def _on_seg(seg: dict[str, Any], total_duration: float) -> None:
         _check_canceled(project)
+        text = str(seg.get("text") or "").strip()
         words: list[dict[str, Any]] = []
-        if seg.words:
-            for w in seg.words:
-                wd = {"start": w.start, "end": w.end, "word": w.word, "probability": w.probability}
-                words.append(wd)
-                all_words.append(wd)
-        segments_list.append({
-            "id": seg.id,
-            "start": seg.start,
-            "end": seg.end,
-            "text": seg.text.strip(),
+        for w in seg.get("words") or []:
+            wd = {
+                "start": float(w.get("start") or 0.0),
+                "end": float(w.get("end") or 0.0),
+                "word": str(w.get("word") or ""),
+                "probability": float(w.get("probability") or 0.0),
+            }
+            words.append(wd)
+            all_words.append(wd)
+        segments_acc.append({
+            "id": len(segments_acc),
+            "start": float(seg.get("start") or 0.0),
+            "end": float(seg.get("end") or 0.0),
+            "text": text,
             "words": words,
         })
-        # Heartbeat — frontend listens via Tauri event channel (events.py).
-        # Disk write retained as a debug breadcrumb for CLI inspection only.
-        last_text = seg.text.strip()[-140:]
+        last_text = text[-140:]
         _emit_stage_progress(
             "transcribe",
-            float(seg.end),
+            float(seg.get("end") or 0.0),
             total_duration,
             last_text=last_text,
-            segments_done=len(segments_list),
+            segments_done=len(segments_acc),
         )
         try:
             progress_path.write_text(json.dumps({
                 "stage": "transcribe",
-                "processed_seconds": float(seg.end),
+                "processed_seconds": float(seg.get("end") or 0.0),
                 "total_seconds": total_duration,
                 "last_text": last_text,
-                "segments_done": len(segments_list),
+                "segments_done": len(segments_acc),
             }), encoding="utf-8")
         except OSError:
             pass
+
+    _segments_returned, _text_parts, info, engine = transcribe_auto(
+        audio_path,
+        model_size=model_size,
+        bundled_model=Path(bundled) if bundled else None,
+        duration_hint=0.0,
+        word_timestamps=want_word_timestamps,
+        on_segment=_on_seg,
+        log=lambda m: sys.stderr.write(m + "\n"),
+    )
+    segments_list = segments_acc
 
     payload = {
         "language": info.language,
         "language_probability": info.language_probability,
         "duration": info.duration,
         "model": model_size,
+        "engine": engine,
         "word_count": len(all_words),
         "segments": segments_list,
     }
@@ -432,7 +466,9 @@ def stage_transcribe(project: Project, model_size: str | None = None) -> dict[st
         "duration": info.duration,
         "language": info.language,
         "word_count": len(all_words),
-        "via": "local",
+        # v0.6.8 — surface the engine ("mlx" / "faster-whisper") so the
+        # Opus-vs-Liquid timer overlay can label the run honestly.
+        "via": f"local-{engine}",
     }
 
 
@@ -446,6 +482,9 @@ def _try_api_transcribe(project: Project) -> dict[str, Any] | None:
       - OpenAI whisper-1: $0.006/min audio
       - Groq whisper-large-v3: $0.111/hr audio (~5x cheaper than OpenAI)
     """
+    if os.environ.get("JUNIOR_DISABLE_API_TRANSCRIBE", "").strip() in {"1", "true", "yes"}:
+        return None
+
     import concurrent.futures
     import urllib.request
     import urllib.error
@@ -556,7 +595,7 @@ def _api_transcribe_serial(
         from openai import OpenAI
         # Groq uses the OpenAI-compatible API — same client, different base_url.
         base_url = api_base.rsplit("/audio", 1)[0]  # api.openai.com/v1 or api.groq.com/openai/v1
-        client = OpenAI(api_key=api_key, base_url=base_url)
+        client = OpenAI(api_key=api_key, base_url=base_url, timeout=90.0, max_retries=1)
         with open(audio_path, "rb") as f:
             response = client.audio.transcriptions.create(
                 file=(audio_path.name, f, "audio/wav"),
@@ -611,7 +650,7 @@ def _api_transcribe_chunked(
 
     def _do_chunk(idx: int, chunk_path: Path, offset_s: float) -> tuple[int, dict[str, Any] | None]:
         try:
-            client = OpenAI(api_key=api_key, base_url=base_url)
+            client = OpenAI(api_key=api_key, base_url=base_url, timeout=60.0, max_retries=1)
             with open(chunk_path, "rb") as f:
                 resp = client.audio.transcriptions.create(
                     file=(chunk_path.name, f, "audio/wav"),
@@ -625,12 +664,15 @@ def _api_transcribe_chunked(
             log(f"[api transcribe chunk {idx}] failed: {type(e).__name__}: {e}")
             return idx, None
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
-        futures = [
-            pool.submit(_do_chunk, i, c["path"], c["start"])
-            for i, c in enumerate(chunks)
-        ]
-        for f in concurrent.futures.as_completed(futures):
+    workers = min(8, max(1, len(chunks)))
+    deadline_s = max(180.0, min(420.0, len(chunks) * 18.0))
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
+    futures = [
+        pool.submit(_do_chunk, i, c["path"], c["start"])
+        for i, c in enumerate(chunks)
+    ]
+    try:
+        for f in concurrent.futures.as_completed(futures, timeout=deadline_s):
             idx, payload = f.result()
             results[idx] = payload
             done_counter["n"] += 1
@@ -641,6 +683,19 @@ def _api_transcribe_chunked(
                 last_text=f"chunk {done_counter['n']}/{len(chunks)} done",
                 segments_done=done_counter["n"],
             )
+    except concurrent.futures.TimeoutError:
+        log(f"[api transcribe chunked] timed out after {deadline_s:.0f}s — falling back to local whisper")
+        for f in futures:
+            f.cancel()
+        pool.shutdown(wait=False, cancel_futures=True)
+        for c in chunks:
+            try:
+                c["path"].unlink(missing_ok=True)
+            except OSError:
+                pass
+        return None
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
     # Stitch back together: combine all segments, sorted by start time.
     merged_segments: list[dict[str, Any]] = []
@@ -1020,6 +1075,16 @@ def stage_cut(project: Project) -> dict[str, Any]:
 
     def _cut_one(idx: int, clip: dict[str, Any]) -> dict[str, Any]:
         _check_canceled(project)
+        # v0.6.11 — Imported clips already have their final cut_path pointing
+        # at the user-supplied file. Don't re-cut: the project source_path is
+        # the first imported file, so a re-cut would carve the wrong file and
+        # overwrite the user's real clip path.
+        existing_cut = clip.get("cut_path")
+        if clip.get("imported") and existing_cut and os.path.isfile(existing_cut):
+            done_counter["n"] += 1
+            _emit_stage_progress("cut", done_counter["n"], total,
+                last_text=f"already cut {done_counter['n']}/{total}"[:140])
+            return clip
         title = (clip.get("title") or "").strip()
         slug = clip.get("slug") or f"clip-{idx:02d}"
         out = clips_dir / f"{idx:02d}-{slug}.mp4"
@@ -1099,6 +1164,9 @@ def stage_reframe(project: Project) -> dict[str, Any]:
     three ratios serially because they share face-detection state."""
     import concurrent.futures
 
+    if project.clips and all(c.get("imported") for c in project.clips):
+        return {"reframed_count": len(project.clips), "pending_count": 0, "formats": ["imported"]}
+
     transcript_srt = project.root / "transcript" / "transcript.srt"
     if not transcript_srt.exists():
         raise FileNotFoundError("transcript.srt missing — stage 3 must run before reframe")
@@ -1107,10 +1175,10 @@ def stage_reframe(project: Project) -> dict[str, Any]:
 
     # Sprint #2 Animated captions — load the word-level transcript ONCE here
     # (rather than per-clip) and let each clip slice its own ASS file from it.
-    # Opt-out via env var; opt-in is default ON. Falls back to the SRT-based
-    # static captions automatically if word-level data isn't present (e.g.,
-    # legacy projects transcribed without word_timestamps=True).
-    animated_captions_on = os.environ.get("JUNIOR_ANIMATED_CAPTIONS", "1").strip() not in ("0", "false", "off")
+    # v0.6.8 — mode-aware: Fast Draft turns this off so transcription can skip
+    # word_timestamps and reframe doesn't burn time generating ASS. Explicit
+    # JUNIOR_ANIMATED_CAPTIONS env overrides either default.
+    animated_captions_on = _animated_captions_enabled()
     transcript_segments: list[dict[str, Any]] | None = None
     if animated_captions_on:
         try:
@@ -1142,6 +1210,12 @@ def stage_reframe(project: Project) -> dict[str, Any]:
 
     def _reframe_one(idx: int, clip: dict[str, Any]) -> dict[str, Any]:
         _check_canceled(project)
+        # v0.6.11 — Imported clips arrive already-finished. cut_path ==
+        # vertical_path == the user file, so re-encoding here would overwrite
+        # their real file with a re-rendered intermediate. Pass through.
+        if clip.get("imported"):
+            done_counter["n"] += 1
+            return clip
         title = (clip.get("title") or "").strip()
         cut_path = clip["cut_path"]
 
@@ -1180,8 +1254,8 @@ def stage_reframe(project: Project) -> dict[str, Any]:
 
         # Sprint #13 Silence removal — detect once per clip (silencedetect is
         # ~0.5s per audio-minute) so we don't repeat the scan per output format.
-        # Opt-out via env var; opt-in is default ON.
-        silence_remove_on = os.environ.get("JUNIOR_SILENCE_REMOVE", "1").strip() not in ("0", "false", "off")
+        # v0.6.8 — mode-aware: Fast Draft skips silence detection entirely.
+        silence_remove_on = _silence_remove_enabled()
         silence_select_pair: tuple[str, str] | None = None
         if silence_remove_on:
             try:
@@ -1231,12 +1305,13 @@ def stage_reframe(project: Project) -> dict[str, Any]:
                 # Sprint #14 Voice enhancement — afftdn removes background hiss /
                 # noise via spectral gating; loudnorm normalises to EBU R128
                 # broadcast standard (-16 LUFS) so quiet-and-loud-section podcasts
-                # come out at consistent volume. Pure ffmpeg, zero deps. Opt-out
-                # via JUNIOR_VOICE_ENHANCE=0 for music-heavy sources.
-                af_voice = os.environ.get("JUNIOR_VOICE_ENHANCE", "1").strip()
+                # come out at consistent volume. Pure ffmpeg, zero deps.
+                # v0.6.8 — mode-aware: Fast Draft skips this whole chain (≈8-15%
+                # render saving). Full Polish keeps it on. JUNIOR_VOICE_ENHANCE
+                # env overrides either default.
                 af_chain = (
                     "afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11"
-                    if af_voice not in ("0", "false", "off")
+                    if _voice_enhance_enabled()
                     else None
                 )
 
@@ -1295,19 +1370,43 @@ def stage_reframe(project: Project) -> dict[str, Any]:
             "hook_text": hook_text or None,
         }
 
-    # Preserve clip order in the output even though workers finish out of order.
+    # v0.6.8 — Top-3-first. In Fast Draft we render only the top N clips
+    # (sorted by virality desc) inline; remaining clips are persisted with
+    # `pending_reframe: true` and no ratio paths so ResultsGrid can show
+    # them as "render pending" cards. Background-render lands later via a
+    # standalone reframe-rest stage; for v0.6.8 we ship the limit + UI
+    # affordance only.
+    limit = _fast_draft_limit()
+    indices = list(range(len(project.clips)))
+    if limit and len(indices) > limit:
+        indices.sort(key=lambda i: float(project.clips[i].get("virality") or 0), reverse=True)
+        top_indices = set(indices[:limit])
+    else:
+        top_indices = set(indices)
+
     new_clips: list[dict[str, Any] | None] = [None] * len(project.clips)
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
         future_to_idx = {
             pool.submit(_reframe_one, i + 1, clip): i
             for i, clip in enumerate(project.clips)
+            if i in top_indices
         }
         for fut in concurrent.futures.as_completed(future_to_idx):
             idx = future_to_idx[fut]
             new_clips[idx] = fut.result()
 
+    # Carry the un-rendered clips through with a pending marker.
+    for i, clip in enumerate(project.clips):
+        if new_clips[i] is None:
+            new_clips[i] = {**clip, "pending_reframe": True}
+
     project.set_clips([c for c in new_clips if c is not None])
-    return {"reframed_count": len([c for c in new_clips if c is not None]), "formats": [f[0] for f in formats]}
+    rendered_count = sum(1 for c in new_clips if c is not None and not c.get("pending_reframe"))
+    return {
+        "reframed_count": rendered_count,
+        "pending_count": len(new_clips) - rendered_count,
+        "formats": [f[0] for f in formats],
+    }
 
 
 def _subtitles_filter(clip_srt: Path) -> str:
@@ -1459,31 +1558,38 @@ def _should_watermark() -> bool:
 
 
 def _liquid_lift_watermark_filter(out_w: int, out_h: int) -> str:
-    """Free-tier Liquid Lift watermark (sprint #14c).
+    """Free-tier brand watermark (v0.6.14 — wordmark overlay).
+
+    Replaces the v0.6.x "LIQUID LIFT" Helvetica drawtext with the brand
+    wordmark (Kade alien + LIQUID/CLIPS in Geist Mono). Composited via
+    ffmpeg's `movie=` source + `overlay` filter so the actual brand asset
+    paints onto the frame — not a runtime-generated approximation.
 
     Signature MUST stay in sync with junior-backend/app/watermark_detector.py:
-      • Brand fuchsia #FF1A8C (0xFFFF1A8C with full alpha)
-      • Position: middle-right (x≈82-92% of width, y≈center)
-      • Text: "LIQUID LIFT"
-      • Size: ~10% of frame height (ugly, eye-catching)
-      • Animated x-oscillation @ 1Hz, ±12px — defeats static-crop tools that
-        try to over-crop to "remove the corner watermark"
-      • Renders for the full clip duration (no `enable=...` gate)
+      • Asset: liquid-clips-wordmark.png (Kade alien glyph + word lockup)
+      • Position: bottom area, anchored right with 5-6% margin
+      • Width: ~89% of output frame width (locked at scale=860 for 1080-wide
+        verticals; auto-scales for square/portrait)
+      • Alpha: 0.85 (full colour — pink alien + cream/white text reads
+        clearly without dominating)
+      • Static position — no x-oscillation (the wordmark is large enough
+        to be uncroppable without destroying the subject)
     """
-    fontsize = max(40, int(out_h * 0.085))
-    # x oscillates around (w - text_w - margin) by ±12px at 1Hz to defeat
-    # rectangular crop tools. y stays vertically centered minus half text-h.
-    # 0xFF1A8C in ffmpeg drawtext color spec = `0xFF1A8C` (RRGGBB).
+    wm_path = Path(__file__).resolve().parent / "assets" / "liquid-clips-wordmark.png"
+    # Width ≈ 89% of frame width (matches the approved v0.6.14 preview).
+    wm_w = max(320, int(out_w * 0.89))
+    margin_x = max(36, int(out_w * 0.055))
+    margin_y = max(72, int(out_h * 0.062))
+    alpha = 0.85
+    # split=1 keeps the existing chain output addressable as [main];
+    # movie= reads the wordmark PNG and labels its stream [wmsrc];
+    # the scale+alpha chain on [wmsrc] yields [wm]; final overlay composites.
+    # Valid inside both -vf and -filter_complex graphs.
     return (
-        "drawtext=text='LIQUID LIFT'"
-        ":font=Helvetica"
-        ":fontsize=" + str(fontsize) +
-        ":fontcolor=0xFF1A8C@0.95"
-        ":borderw=3"
-        ":bordercolor=0x0B0B10@0.7"
-        # x sweeps left-right by 24px at 1Hz to thwart static crops
-        ":x='(w-text_w-w*0.05) + 12*sin(2*PI*t)'"
-        ":y='(h-text_h)/2'"
+        f"split=1[main];"
+        f"movie={wm_path}[wmsrc];"
+        f"[wmsrc]scale={wm_w}:-1,format=rgba,colorchannelmixer=aa={alpha}[wm];"
+        f"[main][wm]overlay=W-w-{margin_x}:H-h-{margin_y}"
     )
 
 
@@ -1709,6 +1815,12 @@ def stage_thumbs(project: Project) -> dict[str, Any]:
 
     def _thumb_one(idx: int, clip: dict[str, Any]) -> dict[str, Any]:
         _check_canceled(project)
+        # v0.6.11 — Imported clips already have a video file; we don't burn
+        # an OpenCV decode budget on them. ClipCard falls back to the video
+        # element's first frame as poster.
+        if clip.get("imported"):
+            done_counter["n"] += 1
+            return {**clip, "thumbnails": clip.get("thumbnails") or []}
         title = (clip.get("title") or "").strip()
         cut_path = clip["cut_path"]
 
@@ -1762,7 +1874,7 @@ def stage_thumbs(project: Project) -> dict[str, Any]:
     finalised = [c for c in new_clips if c is not None]
     project.set_clips(finalised)
     return {
-        "thumb_count": sum(len(c["thumbnails"]) for c in finalised),
+        "thumb_count": sum(len(c.get("thumbnails") or []) for c in finalised),
         "ai_variants": ai_variant_counter["n"],
         "ai_enabled": ai_enabled,
     }
@@ -1941,8 +2053,14 @@ def apply_overlay_to_clip(
     if not isinstance(raw_overlay_source, str) or not raw_overlay_source:
         raise FileNotFoundError(f"overlay source not found: {raw_overlay_source}")
     try:
-        from project import _validate_source_path
-        validated_overlay_source = _validate_source_path(raw_overlay_source)
+        from project import _validate_imported_clip_path, _validate_source_path
+        try:
+            validated_overlay_source = _validate_source_path(raw_overlay_source)
+        except ValueError:
+            # Import-lane clips can live in any normal user-selected file
+            # location under $HOME or /Volumes, not just the source-video
+            # allowlist. Keep the same safety checks while allowing remix.
+            validated_overlay_source = _validate_imported_clip_path(raw_overlay_source)
     except ValueError as e:
         # Don't leak the original path in the message — the validator already
         # rejected it as unsafe, so echoing it back is just noise.
@@ -1970,7 +2088,13 @@ def apply_overlay_to_clip(
         base_path = clip.get(f"{key}_path")
         if not base_path or not os.path.isfile(base_path):
             continue
-        out_path = Path(base_path).with_name(Path(base_path).stem + "-overlay.mp4")
+        if clip.get("imported"):
+            overlay_dir = project.root / "clips"
+            overlay_dir.mkdir(parents=True, exist_ok=True)
+            slug = clip.get("slug") or f"clip-{clip_idx + 1:02d}"
+            out_path = overlay_dir / f"{clip_idx + 1:02d}-{slug}-{key}-overlay.mp4"
+        else:
+            out_path = Path(base_path).with_name(Path(base_path).stem + "-overlay.mp4")
         if out_path.exists():
             out_path.unlink()
         filter_complex = _build_overlay_filter(overlay_type, out_w, out_h)
@@ -2000,6 +2124,9 @@ def apply_overlay_to_clip(
         ]
         run_ffmpeg(cmd)
         applied_paths[key] = str(out_path)
+
+    if not applied_paths:
+        raise FileNotFoundError("clip has no rendered video variants — reframe before applying reaction")
 
     clip["overlay"] = {
         "type": overlay_type,

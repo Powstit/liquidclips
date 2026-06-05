@@ -14,7 +14,7 @@ export type {
 } from "../../lib/backend";
 
 export const SUPPORTED_PLATFORMS: ReadonlyArray<{
-  id: "tiktok" | "instagram" | "youtube" | "x" | "linkedin" | "facebook" | "threads";
+  id: "tiktok" | "instagram" | "youtube" | "x" | "linkedin" | "threads";
   label: string;
 }> = [
   { id: "tiktok",   label: "TikTok" },
@@ -22,7 +22,6 @@ export const SUPPORTED_PLATFORMS: ReadonlyArray<{
   { id: "youtube",  label: "YouTube Shorts" },
   { id: "x",        label: "X (Twitter)" },
   { id: "linkedin", label: "LinkedIn" },
-  { id: "facebook", label: "Facebook" },
   { id: "threads",  label: "Threads" },
 ];
 

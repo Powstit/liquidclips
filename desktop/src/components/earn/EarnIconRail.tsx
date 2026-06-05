@@ -91,19 +91,18 @@ function RailButton({
   // to flag "this surface needs your attention" without opening it.
   dot?: boolean;
 }) {
+  // Cockpit pass: rail items use earn-rail-item — transparent, fuchsia bar
+  // indicator on active + glow on the glyph. No solid pill plate, no border.
   return (
     <button
       type="button"
       onClick={onClick}
       title={label}
       aria-label={label}
-      className={`relative mb-1.5 flex w-12 flex-col items-center gap-0.5 rounded-xl border py-1.5 transition-colors duration-150 ${
-        active
-          ? "border-fuchsia bg-fuchsia-soft text-fuchsia-deep shadow-[var(--glow-sm)]"
-          : "border-transparent text-text-secondary hover:bg-paper-elev hover:text-ink"
-      }`}
+      data-active={active ? "true" : "false"}
+      className="earn-rail-item relative mb-1.5 flex w-12 flex-col items-center gap-0.5 py-1.5 text-text-secondary"
     >
-      <span className="inline-flex h-5 w-5 items-center justify-center">
+      <span className="earn-rail-glyph inline-flex h-5 w-5 items-center justify-center">
         {children}
       </span>
       <span className="font-mono text-[8px] uppercase tracking-[0.04em] leading-none">
@@ -111,7 +110,7 @@ function RailButton({
       </span>
       {dot && (
         <span
-          className="pulse-dot absolute right-1 top-1 h-2 w-2 rounded-full bg-fuchsia ring-2 ring-paper"
+          className="pulse-dot absolute right-1 top-1 h-2 w-2 rounded-full bg-fuchsia"
           aria-hidden
         />
       )}

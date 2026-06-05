@@ -65,6 +65,58 @@ ASSETS: dict[str, tuple[str, str, str]] = {
     "A10-step-cut": (STEP.format(desc="a clean scissor/cut mark on a timeline"), "1024x1024", "transparent"),
     "A10-step-reframe": (STEP.format(desc="a wide frame collapsing into a vertical 9:16 frame"), "1024x1024", "transparent"),
     "A10-step-thumbs": (STEP.format(desc="a small grid of frames"), "1024x1024", "transparent"),
+    "linked-state": (
+        "A small minimal circular badge centered on a transparent canvas with even generous "
+        "padding. The disc is a solid fuchsia #FF1A8C fill with a very faint near-black ink "
+        "#0A0A0F hairline ring outline (low-opacity, ~15%). Centered inside the disc, a clean "
+        "warm paper #FAF7F2 checkmark glyph with even stroke weight occupying ~45% of the disc "
+        "diameter. No gradients, no drop-shadows, no inner glow, no text. Crisp vector edges. "
+        "Communicates: this account is connected. Must read instantly at 32–64px.",
+        "1024x1024", "transparent",
+    ),
+    "unlinked-state": (
+        "A minimal empty circular ring centered on a transparent canvas with generous even "
+        "padding. The ring is a thin near-black ink #0A0A0F stroke at ~12% opacity; the disc "
+        "interior is filled warm paper #FAF7F2. Nothing inside the ring — no glyph, no dot, no "
+        "text. Crisp vector edges, no gradients, no shadows. Communicates: this account slot is "
+        "empty and not yet connected. Must read instantly at 32–64px.",
+        "1024x1024", "transparent",
+    ),
+    "linking-spinner": (
+        "A single static frame of a partial-arc loading spinner, centered on a transparent "
+        "canvas with even padding. Behind: a complete thin circular track in near-black ink "
+        "#0A0A0F at ~15% opacity. In front: a three-quarter arc (270 degrees) in solid fuchsia "
+        "#FF1A8C with matching stroke weight, rounded line caps, starting at the 12 o'clock "
+        "position and sweeping clockwise. The remaining 90-degree gap sits between 9 o'clock "
+        "and 12 o'clock. Frame-only — CSS will rotate it. No gradients, no shadow, no text. "
+        "Crisp vector edges, legible at 32–64px.",
+        "1024x1024", "transparent",
+    ),
+    "kebab-action": (
+        "Three perfectly aligned vertical dots centered on a transparent canvas. Each dot is a "
+        "solid near-black ink #0A0A0F circle, ~120px diameter on the 1024 canvas, with equal "
+        "vertical spacing of ~120px between dots so the three-dot column reads as a balanced "
+        "triplet. Geometric, restrained, no background, no other elements, no text. Crisp "
+        "vector edges. Communicates: more actions. Legible at 32–64px.",
+        "1024x1024", "transparent",
+    ),
+    "sidebar-collapse": (
+        "A single chevron-down glyph centered on a transparent canvas with even generous "
+        "padding. Line-stroke only (not solid), near-black ink #0A0A0F, even stroke weight, "
+        "rounded line caps, restrained Apple-grade geometry — two clean strokes meeting at the "
+        "bottom point. No other elements, no background, no text, no shadow. Crisp vector "
+        "edges. Legible at 32–64px.",
+        "1024x1024", "transparent",
+    ),
+    "library-bug": (
+        "A classic Space-Invaders-style 8-bit pixel-art alien bug silhouette centered on a "
+        "transparent canvas with even padding. Primary body color: solid fuchsia #FF1A8C with "
+        "blocky pixelated edges (chunky pixels OK — Atari/Invader feel). Two short antennae on "
+        "top and two small square eyes rendered in warm paper #FAF7F2 as subtle highlights. No "
+        "green, no neon, no colours outside fuchsia + paper. Crisp, symmetric, instantly "
+        "legible at 32–64px. No background, no text, no shadow.",
+        "1024x1024", "transparent",
+    ),
 }
 
 
@@ -73,6 +125,11 @@ def main() -> int:
     wanted = [a for a in sys.argv[1:] if not a.startswith("--")]
     names = wanted or list(ASSETS)
     client = OpenAI()
+    # gpt-image-1 pricing (per million tokens): text-in $5, image-in $10, image-out $40
+    PRICE_TEXT = 5.0 / 1_000_000
+    PRICE_IMG_IN = 10.0 / 1_000_000
+    PRICE_IMG_OUT = 40.0 / 1_000_000
+    total_cost = 0.0
     for name in names:
         if name not in ASSETS:
             print(f"  skip unknown: {name}")
@@ -93,8 +150,25 @@ def main() -> int:
             n=1,
         )
         out.write_bytes(base64.b64decode(res.data[0].b64_json))
-        print(f"  ✓ {out.relative_to(OUT.parent)}  ({out.stat().st_size // 1024} KB)")
-    print("\nDone. Review in:", OUT)
+        usage = getattr(res, "usage", None)
+        cost_str = ""
+        if usage is not None:
+            try:
+                u = usage.model_dump() if hasattr(usage, "model_dump") else dict(usage)
+            except Exception:
+                u = {}
+            t_in = u.get("input_tokens", 0) or 0
+            t_out = u.get("output_tokens", 0) or 0
+            details = u.get("input_tokens_details", {}) or {}
+            text_in = details.get("text_tokens", t_in) or 0
+            img_in = details.get("image_tokens", 0) or 0
+            cost = (text_in * PRICE_TEXT) + (img_in * PRICE_IMG_IN) + (t_out * PRICE_IMG_OUT)
+            total_cost += cost
+            cost_str = f"  [text_in={text_in} img_in={img_in} out={t_out} ${cost:.4f}]"
+        print(f"  ✓ {out.relative_to(OUT.parent)}  ({out.stat().st_size // 1024} KB){cost_str}")
+    print(f"\nDone. Review in: {OUT}")
+    if total_cost > 0:
+        print(f"Estimated total cost: ${total_cost:.4f}")
     return 0
 
 
