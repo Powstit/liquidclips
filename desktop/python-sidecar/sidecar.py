@@ -26,13 +26,35 @@ import os
 import subprocess
 import sys
 import traceback
+import re
+import shutil
+import ssl
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
+
+# A signed macOS .app must not mutate its sealed Resources directory at
+# runtime. Python's default .pyc writes create __pycache__ inside the bundled
+# sidecar, which invalidates the app signature after first launch.
+sys.dont_write_bytecode = True
 
 from project import CLIPS_HOME, Project
 import stages
 
 VERSION = "0.3.0"  # multi-ratio (9:16/1:1/4:5), hook overlay, b-roll, YT extras
+
+# Built-in reaction provider keys. User/keychain/env values still win, but
+# launch builds must not show "API key missing" when a clipper tries the
+# reaction feature for the first time.
+DEFAULT_REACTION_KEYS = {
+    "GIPHY_API_KEY": "GsFvVTk4cfq3kKyPyoiH3j4LXtMjBuJA",
+    "PEXELS_API_KEY": "IT3HYR40s1lRDIrBxIZONVmjzGl7sGAz93Myqc5UoEmaI9Yayw4zVKBc",
+    "PIXABAY_API_KEY": "56161034-7cc22e6b7e80909128346299c",
+}
+
+_HTTPS_CONTEXT: ssl.SSLContext | None = None
 
 
 # --- helpers -----------------------------------------------------------
@@ -179,6 +201,85 @@ def method_start_run(params: dict[str, Any]) -> dict[str, Any]:
     return {"project": project.to_dict()}
 
 
+def method_save_avatar(params: dict[str, Any]) -> dict[str, Any]:
+    """v0.6.35 — Persist a user-chosen avatar image into the canonical
+    `~/LiquidClips/avatar.png` slot so the cockpit AvatarOrbit + top-right
+    HUD + RankStrip can all render it through one stable file URL.
+
+    Re-encodes via PIL to 256×256 max (preserving aspect) so a 10MP phone
+    pull doesn't blow up texture memory on every render. Always writes PNG
+    so the frontend cache-bust counter never has to second-guess extension.
+    """
+    src_path = params.get("path")
+    if not isinstance(src_path, str) or not src_path:
+        raise ValueError("save_avatar requires `path` (str)")
+
+    import os
+    import cv2  # lazy — already a sidecar dep, keeps cold-start fast
+
+    src = os.path.expanduser(src_path)
+    if not os.path.isfile(src):
+        raise FileNotFoundError(f"avatar source not found: {src}")
+
+    home = os.path.expanduser("~/LiquidClips")
+    os.makedirs(home, exist_ok=True)
+    dst = os.path.join(home, "avatar.png")
+
+    img = cv2.imread(src, cv2.IMREAD_UNCHANGED)
+    if img is None:
+        raise ValueError(f"could not decode image: {src}")
+
+    h, w = img.shape[:2]
+    longest = max(h, w)
+    if longest > 256:
+        scale = 256 / longest
+        new_w = max(1, int(round(w * scale)))
+        new_h = max(1, int(round(h * scale)))
+        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+    cv2.imwrite(dst, img, [cv2.IMWRITE_PNG_COMPRESSION, 9])
+
+    size = os.path.getsize(dst)
+    return {"path": dst, "size_bytes": size}
+
+
+def method_clear_avatar(_params: dict[str, Any]) -> dict[str, Any]:
+    """v0.6.35 — Remove the saved avatar so the cockpit falls back to the
+    initials gradient. Safe to call when nothing's saved."""
+    import os
+    dst = os.path.expanduser("~/LiquidClips/avatar.png")
+    if os.path.isfile(dst):
+        os.remove(dst)
+    return {"removed": True}
+
+
+def method_avatar_status(_params: dict[str, Any]) -> dict[str, Any]:
+    """v0.6.35 — Cheap check the cockpit calls at startup to decide
+    whether to render the uploaded PNG or fall back to initials."""
+    import os
+    dst = os.path.expanduser("~/LiquidClips/avatar.png")
+    if os.path.isfile(dst):
+        return {"present": True, "path": dst, "mtime": os.path.getmtime(dst)}
+    return {"present": False, "path": None, "mtime": None}
+
+
+def method_import_ready_clips(params: dict[str, Any]) -> dict[str, Any]:
+    """v0.6.9 — Import finished MP4/MOV/WEBM clips into a normal Project so
+    they land on ResultsGrid with full stack/split/remix/schedule/publish.
+    No transcribe/llm/cut/reframe — every stage is pre-marked done.
+    """
+    raw_paths = params.get("paths")
+    if not isinstance(raw_paths, list) or not raw_paths:
+        raise ValueError("import_ready_clips requires `paths` (non-empty list of strings)")
+    paths: list[str] = []
+    for p in raw_paths:
+        if not isinstance(p, str) or not p:
+            raise ValueError("each entry in `paths` must be a non-empty string")
+        paths.append(p)
+    project = Project.create_imported_pack(file_paths=paths)
+    return {"project": project.to_dict()}
+
+
 def method_run_stage(params: dict[str, Any]) -> dict[str, Any]:
     slug = params.get("slug")
     stage = params.get("stage")
@@ -197,6 +298,141 @@ def method_get_project(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("get_project requires `slug` (str)")
     project = Project.load(slug)
     return {"project": project.to_dict()}
+
+
+def method_list_projects(params: dict[str, Any]) -> dict[str, Any]:
+    """List local Liquid Clips projects, newest first.
+
+    This powers the in-app Library. It intentionally returns compact summaries
+    instead of full Project payloads so the app can scan history quickly, then
+    hydrate a project only when the user opens it.
+    """
+    from project import CLIPS_HOME
+
+    try:
+        limit = int(params.get("limit") or 100)
+    except (TypeError, ValueError):
+        limit = 100
+    limit = max(1, min(limit, 500))
+
+    include_archived = bool(params.get("include_archived"))
+
+    root = CLIPS_HOME / "projects"
+    out: list[dict[str, Any]] = []
+    if root.is_dir():
+        for proj_dir in root.iterdir():
+            pj = proj_dir / "project.json"
+            if not pj.is_file():
+                continue
+            archived_marker = proj_dir / ".archived"
+            is_archived = archived_marker.is_file()
+            if is_archived and not include_archived:
+                continue
+            try:
+                project = Project.load(proj_dir.name)
+                data = project.to_dict()
+                updated_at = pj.stat().st_mtime
+            except Exception:
+                try:
+                    with pj.open("r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    updated_at = pj.stat().st_mtime
+                except (OSError, json.JSONDecodeError):
+                    continue
+
+            stages = data.get("stages") or {}
+            clips = data.get("clips") or []
+            done = (
+                (stages.get("thumbs", {}) or {}).get("status") == "done"
+                or (stages.get("reframe", {}) or {}).get("status") == "done"
+                or (
+                    data.get("intent") == "youtube"
+                    and (stages.get("llm", {}) or {}).get("status") == "done"
+                )
+            )
+            imported = any(bool(c.get("imported")) for c in clips if isinstance(c, dict))
+            reacted_count = sum(
+                1
+                for c in clips
+                if isinstance(c, dict)
+                and bool(((c.get("overlay") or {}).get("applied_paths") or {}))
+            )
+            # Best cover thumbnail = first clip's rank-1 thumbnail. Powers the
+            # Library thumbnails-view grid without requiring a full project hydrate.
+            cover_thumb_path: str | None = None
+            for c in clips:
+                if not isinstance(c, dict):
+                    continue
+                thumbs = c.get("thumbnails") or []
+                if thumbs and isinstance(thumbs[0], dict):
+                    p = thumbs[0].get("path")
+                    if isinstance(p, str) and p:
+                        cover_thumb_path = p
+                        break
+            out.append({
+                "slug": data.get("slug") or proj_dir.name,
+                "root": data.get("root") or str(proj_dir),
+                "source_filename": data.get("source_filename") or proj_dir.name,
+                "created_at": data.get("created_at") or 0,
+                "updated_at": updated_at,
+                "intent": data.get("intent") or "both",
+                "clips_count": len(clips),
+                "done": bool(done),
+                "imported": imported,
+                "reacted_count": reacted_count,
+                "whop_bounty_id": data.get("whop_bounty_id"),
+                "whop_bounty_title": data.get("whop_bounty_title"),
+                "archived": is_archived,
+                "archived_at": archived_marker.stat().st_mtime if is_archived else None,
+                "cover_thumb_path": cover_thumb_path,
+            })
+    out.sort(key=lambda p: float(p.get("updated_at") or p.get("created_at") or 0), reverse=True)
+    return {"projects": out[:limit]}
+
+
+def method_set_project_archived(params: dict[str, Any]) -> dict[str, Any]:
+    """Toggle a project's archived state. Implemented as a marker file
+    (`.archived`) inside the project directory so we don't have to mutate
+    project.json or risk breaking other reload paths."""
+    from project import CLIPS_HOME
+    slug = params.get("slug")
+    archived = bool(params.get("archived"))
+    if not isinstance(slug, str) or not slug:
+        raise ValueError("set_project_archived requires slug (str)")
+    proj_dir = CLIPS_HOME / "projects" / slug
+    if not proj_dir.is_dir():
+        raise FileNotFoundError(f"project not found: {slug}")
+    marker = proj_dir / ".archived"
+    if archived:
+        marker.write_text("", encoding="utf-8")
+    else:
+        try:
+            marker.unlink()
+        except FileNotFoundError:
+            pass
+    return {"slug": slug, "archived": archived}
+
+
+def method_delete_project(params: dict[str, Any]) -> dict[str, Any]:
+    """Permanently delete a project: rm -rf the slug folder under CLIPS_HOME/projects.
+    Refuses to traverse outside the projects root."""
+    import shutil
+    from project import CLIPS_HOME
+    slug = params.get("slug")
+    if not isinstance(slug, str) or not slug:
+        raise ValueError("delete_project requires slug (str)")
+    if "/" in slug or "\\" in slug or slug in {".", ".."}:
+        raise ValueError(f"invalid slug: {slug!r}")
+    projects_root = (CLIPS_HOME / "projects").resolve()
+    proj_dir = (projects_root / slug).resolve()
+    if not str(proj_dir).startswith(str(projects_root) + "/") and proj_dir != projects_root:
+        raise ValueError(f"slug escapes projects root: {slug!r}")
+    if proj_dir == projects_root:
+        raise ValueError("refusing to delete the projects root")
+    if not proj_dir.is_dir():
+        raise FileNotFoundError(f"project not found: {slug}")
+    shutil.rmtree(proj_dir)
+    return {"slug": slug, "deleted": True}
 
 
 def method_list_bounty_projects(_params: dict[str, Any]) -> dict[str, Any]:
@@ -287,6 +523,7 @@ def method_secret_set(params: dict[str, Any]) -> dict[str, Any]:
     value = params.get("value")
     if not isinstance(name, str) or name not in (
         "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LICENSE_JWT", "LIQUIDCLIPS_ONBOARDED", "JUNIOR_WHOP_TOKEN",
+        "PEXELS_API_KEY", "PIXABAY_API_KEY", "GIPHY_API_KEY",
     ):
         raise ValueError(f"unknown or unsupported secret name: {name}")
     if not isinstance(value, str):
@@ -506,6 +743,332 @@ def method_apply_overlay(params: dict[str, Any]) -> dict[str, Any]:
     project = Project.load(slug)
     stages.apply_overlay_to_clip(project, idx, overlay_spec)
     return {"project": project.to_dict()}
+
+
+def _safe_reaction_slug(value: str) -> str:
+    s = re.sub(r"[^a-zA-Z0-9._-]+", "-", value.strip().lower()).strip("-")
+    return s[:80] or "reaction"
+
+
+def _reaction_secret(name: str) -> str:
+    from secrets_store import get_secret
+
+    return (
+        (get_secret(name) or "").strip()
+        or os.environ.get(name, "").strip()
+        or DEFAULT_REACTION_KEYS.get(name, "").strip()
+    )
+
+
+def _https_context() -> ssl.SSLContext | None:
+    """Return a certifi-backed TLS context when bundled certs are available.
+
+    Some packaged Python/macOS combinations do not have a usable default CA
+    store, which made provider search fail as "API unavailable" even with a
+    valid key. certifi is already present in our desktop dependency set; if it
+    is ever missing, urllib's default context remains the fallback.
+    """
+    global _HTTPS_CONTEXT
+    if _HTTPS_CONTEXT is not None:
+        return _HTTPS_CONTEXT
+    try:
+        import certifi  # type: ignore
+
+        _HTTPS_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        _HTTPS_CONTEXT = None
+    return _HTTPS_CONTEXT
+
+
+def _urlopen(req: urllib.request.Request, *, timeout: float):
+    context = _https_context()
+    if context is not None:
+        return urllib.request.urlopen(req, timeout=timeout, context=context)
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def _pexels_headers() -> dict[str, str]:
+    key = _reaction_secret("PEXELS_API_KEY")
+    if not key:
+        raise RuntimeError("Pexels is not connected. Add your Pexels API key in Settings → API keys.")
+    return {"Authorization": key, "User-Agent": "Liquid Clips reaction search"}
+
+
+def _pixabay_key() -> str:
+    key = _reaction_secret("PIXABAY_API_KEY")
+    if not key:
+        raise RuntimeError("Pixabay is not connected. Add your Pixabay API key in Settings → API keys.")
+    return key
+
+
+def _giphy_key() -> str:
+    key = _reaction_secret("GIPHY_API_KEY")
+    if not key:
+        raise RuntimeError("GIPHY is not connected. Add your GIPHY API key in Settings → API keys.")
+    return key
+
+
+def _pick_pexels_video_file(video_files: list[dict[str, Any]]) -> dict[str, Any] | None:
+    mp4s = [
+        f for f in video_files
+        if str(f.get("file_type") or "").lower() == "video/mp4" and f.get("link")
+    ]
+    if not mp4s:
+        return None
+
+    def score(f: dict[str, Any]) -> tuple[int, int]:
+        width = int(f.get("width") or 0)
+        height = int(f.get("height") or 0)
+        size = int(f.get("file_size") or 0)
+        # Prefer useful preview/editing size without grabbing giant originals.
+        target_delta = abs(max(width, height) - 1280)
+        return (target_delta, size)
+
+    return sorted(mp4s, key=score)[0]
+
+
+def _pick_pixabay_video_file(videos: dict[str, Any]) -> dict[str, Any] | None:
+    for key in ("medium", "small", "tiny", "large"):
+        candidate = videos.get(key) or {}
+        if candidate.get("url") and int(candidate.get("size") or 0) > 0:
+            return candidate
+    return None
+
+
+def method_reaction_search(params: dict[str, Any]) -> dict[str, Any]:
+    """Search online reaction clips. v1 supports GIPHY, Pexels, and Pixabay.
+
+    API keys stay in the OS keychain; React receives only safe metadata and
+    downloadable asset URLs for explicit user-selected downloads.
+    """
+    query = str(params.get("query") or "").strip()
+    if not query:
+        query = "funny reaction"
+    per_page = min(24, max(3, int(params.get("per_page") or 12)))
+    provider = str(params.get("provider") or "giphy").strip().lower()
+    if provider not in ("giphy", "pexels", "pixabay"):
+        raise ValueError("provider must be one of: giphy, pexels, pixabay")
+
+    results: list[dict[str, Any]] = []
+    provider_errors: dict[str, str] = {}
+    if provider == "giphy":
+        try:
+            results.extend(_reaction_search_giphy(query, per_page))
+        except Exception as exc:  # noqa: BLE001 - surfaced as provider status
+            provider_errors["giphy"] = str(exc)
+    if provider == "pexels":
+        try:
+            results.extend(_reaction_search_pexels(query, per_page))
+        except Exception as exc:  # noqa: BLE001 - surfaced as provider status
+            provider_errors["pexels"] = str(exc)
+    if provider == "pixabay":
+        try:
+            results.extend(_reaction_search_pixabay(query, per_page))
+        except Exception as exc:  # noqa: BLE001 - surfaced as provider status
+            provider_errors["pixabay"] = str(exc)
+
+    if not results and provider_errors:
+        raise RuntimeError(" · ".join(provider_errors.values()))
+
+    return {
+        "provider": provider,
+        "query": query,
+        "attribution_html": _reaction_attribution(provider),
+        "provider_errors": provider_errors,
+        "results": results,
+    }
+
+
+def _reaction_attribution(provider: str) -> str:
+    if provider == "giphy":
+        return '<a href="https://giphy.com">Powered by GIPHY</a>'
+    if provider == "pexels":
+        return '<a href="https://www.pexels.com">Videos provided by Pexels</a>'
+    if provider == "pixabay":
+        return '<a href="https://pixabay.com">Videos provided by Pixabay</a>'
+    return ""
+
+
+def _reaction_search_giphy(query: str, per_page: int) -> list[dict[str, Any]]:
+    qs = urllib.parse.urlencode({
+        "api_key": _giphy_key(),
+        "q": query[:100],
+        "limit": per_page,
+        "rating": "pg-13",
+        "lang": "en",
+        "bundle": "messaging_non_clips",
+    })
+    req = urllib.request.Request(
+        f"https://api.giphy.com/v1/gifs/search?{qs}",
+        headers={"User-Agent": "Liquid Clips reaction search"},
+    )
+    with _urlopen(req, timeout=12) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+
+    results: list[dict[str, Any]] = []
+    for gif in payload.get("data") or []:
+        images = gif.get("images") or {}
+        original = images.get("original") or {}
+        fixed_width = images.get("fixed_width") or {}
+        download_url = original.get("mp4") or fixed_width.get("mp4")
+        if not download_url:
+            continue
+        preview_url = fixed_width.get("webp") or fixed_width.get("url") or original.get("webp") or original.get("url")
+        title = str(gif.get("title") or "").strip() or f"GIPHY reaction {gif.get('id')}"
+        username = str(gif.get("username") or "").strip()
+        results.append({
+            "id": str(gif.get("id")),
+            "provider": "giphy",
+            "title": title,
+            "duration_s": None,
+            "width": _safe_int(original.get("width") or fixed_width.get("width")),
+            "height": _safe_int(original.get("height") or fixed_width.get("height")),
+            "preview_url": preview_url,
+            "source_url": gif.get("url"),
+            "author": username or None,
+            "author_url": f"https://giphy.com/{username}" if username else None,
+            "download_url": download_url,
+            "download_width": _safe_int(original.get("width") or fixed_width.get("width")),
+            "download_height": _safe_int(original.get("height") or fixed_width.get("height")),
+        })
+    return results
+
+
+def _safe_int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
+def _reaction_search_pexels(query: str, per_page: int) -> list[dict[str, Any]]:
+    qs = urllib.parse.urlencode({"query": query, "per_page": per_page})
+    req = urllib.request.Request(
+        f"https://api.pexels.com/videos/search?{qs}",
+        headers=_pexels_headers(),
+    )
+    with _urlopen(req, timeout=12) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+
+    results: list[dict[str, Any]] = []
+    for video in payload.get("videos") or []:
+        picked = _pick_pexels_video_file(video.get("video_files") or [])
+        if not picked:
+            continue
+        user = video.get("user") or {}
+        pictures = video.get("video_pictures") or []
+        preview = pictures[0].get("picture") if pictures and isinstance(pictures[0], dict) else None
+        title = str(video.get("url") or "").rstrip("/").split("/")[-1].replace("-", " ").strip()
+        if not title:
+            title = f"Pexels reaction {video.get('id')}"
+        results.append({
+            "id": str(video.get("id")),
+            "provider": "pexels",
+            "title": title,
+            "duration_s": video.get("duration"),
+            "width": video.get("width"),
+            "height": video.get("height"),
+            "preview_url": preview,
+            "source_url": video.get("url"),
+            "author": user.get("name"),
+            "author_url": user.get("url"),
+            "download_url": picked.get("link"),
+            "download_width": picked.get("width"),
+            "download_height": picked.get("height"),
+        })
+    return results
+
+
+def _reaction_search_pixabay(query: str, per_page: int) -> list[dict[str, Any]]:
+    qs = urllib.parse.urlencode({
+        "key": _pixabay_key(),
+        "q": query[:100],
+        "lang": "en",
+        "video_type": "all",
+        "category": "feelings",
+        "safesearch": "true",
+        "order": "popular",
+        "per_page": per_page,
+    })
+    req = urllib.request.Request(
+        f"https://pixabay.com/api/videos/?{qs}",
+        headers={"User-Agent": "Liquid Clips reaction search"},
+    )
+    with _urlopen(req, timeout=12) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+
+    results: list[dict[str, Any]] = []
+    for video in payload.get("hits") or []:
+        picked = _pick_pixabay_video_file(video.get("videos") or {})
+        if not picked:
+            continue
+        title = str(video.get("tags") or "").replace(",", " · ").strip() or f"Pixabay reaction {video.get('id')}"
+        results.append({
+            "id": str(video.get("id")),
+            "provider": "pixabay",
+            "title": title,
+            "duration_s": video.get("duration"),
+            "width": picked.get("width"),
+            "height": picked.get("height"),
+            "preview_url": picked.get("thumbnail"),
+            "source_url": video.get("pageURL"),
+            "author": video.get("user"),
+            "author_url": f"https://pixabay.com/users/{video.get('user')}-{video.get('user_id')}/" if video.get("user") and video.get("user_id") else None,
+            "download_url": picked.get("url"),
+            "download_width": picked.get("width"),
+            "download_height": picked.get("height"),
+        })
+    return results
+
+
+def method_reaction_download(params: dict[str, Any]) -> dict[str, Any]:
+    """Download one chosen reaction result into ~/LiquidClips/Reaction Library."""
+    item = params.get("item")
+    if not isinstance(item, dict):
+        raise ValueError("reaction_download requires item")
+    provider = str(item.get("provider") or "")
+    if provider not in ("giphy", "pexels", "pixabay"):
+        raise ValueError("only providers 'giphy', 'pexels', and 'pixabay' are supported")
+    url = str(item.get("download_url") or "")
+    if not url.startswith("https://"):
+        raise ValueError("reaction download URL must be https")
+
+    library = CLIPS_HOME / "Reaction Library" / "downloaded"
+    library.mkdir(parents=True, exist_ok=True)
+    title = _safe_reaction_slug(str(item.get("title") or f"{provider}-reaction"))
+    source_id = _safe_reaction_slug(str(item.get("id") or "unknown"))
+    out_path = library / f"{provider}-{source_id}-{title}.mp4"
+
+    req = urllib.request.Request(url, headers={"User-Agent": "Liquid Clips reaction download"})
+    with _urlopen(req, timeout=45) as resp, out_path.open("wb") as fh:
+        shutil.copyfileobj(resp, fh)
+    if out_path.stat().st_size <= 0:
+        out_path.unlink(missing_ok=True)
+        raise RuntimeError("Downloaded reaction clip was empty.")
+
+    meta_path = library.parent / "reaction-library.json"
+    existing: list[dict[str, Any]] = []
+    if meta_path.is_file():
+        try:
+            raw = json.loads(meta_path.read_text(encoding="utf-8"))
+            existing = raw if isinstance(raw, list) else []
+        except Exception:
+            existing = []
+    record = {
+        "id": f"{provider}:{item.get('id')}",
+        "provider": provider,
+        "title": item.get("title"),
+        "tags": str(params.get("query") or "").lower().split(),
+        "source_url": item.get("source_url"),
+        "author": item.get("author"),
+        "author_url": item.get("author_url"),
+        "local_path": str(out_path),
+        "downloaded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    existing = [r for r in existing if r.get("id") != record["id"]]
+    existing.append(record)
+    meta_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    return {"path": str(out_path), "item": record}
 
 
 class _SidecarSafeLogger:
@@ -1546,6 +2109,27 @@ def method_local_schedule_remove(params: dict[str, Any]) -> dict[str, Any]:
     return {"ok": local_schedule.remove(item_id)}
 
 
+# ── direct-publish queue (Upload tab) ──────────────────────────────────
+#
+# Two methods on top of direct_publish_queue.py. File-stored at
+# $CLIPS_HOME/.direct-publish-queue.json. The frontend owns the item
+# shape — sidecar reads/writes the array verbatim.
+
+
+def method_direct_publish_queue_read(_params: dict[str, Any]) -> dict[str, Any]:
+    import direct_publish_queue
+    return {"items": direct_publish_queue.read_items()}
+
+
+def method_direct_publish_queue_write(params: dict[str, Any]) -> dict[str, Any]:
+    import direct_publish_queue
+    items = params.get("items")
+    if not isinstance(items, list):
+        raise ValueError("direct_publish_queue_write requires items: list")
+    direct_publish_queue.write_items(items)
+    return {"ok": True, "count": len(items)}
+
+
 def method_preload_whisper(_params: dict[str, Any]) -> dict[str, Any]:
     """Warm-load the whisper model so the user's first transcribe doesn't hit a
     cold path. With a bundled model the warmup is essentially free (~1s). For
@@ -1642,8 +2226,15 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "probe": method_probe,
     "start_run": method_start_run,
     "ingest_url": method_ingest_url,
+    "import_ready_clips": method_import_ready_clips,
+    "save_avatar": method_save_avatar,
+    "clear_avatar": method_clear_avatar,
+    "avatar_status": method_avatar_status,
     "run_stage": method_run_stage,
     "get_project": method_get_project,
+    "list_projects": method_list_projects,
+    "set_project_archived": method_set_project_archived,
+    "delete_project": method_delete_project,
     "list_bounty_projects": method_list_bounty_projects,
     "get_metadata": method_get_metadata,
     "secrets_status": method_secrets_status,
@@ -1672,12 +2263,16 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "lift_transcript": method_lift_transcript,
     "lift_cancel": method_lift_cancel,
     "apply_overlay": method_apply_overlay,
+    "reaction_search": method_reaction_search,
+    "reaction_download": method_reaction_download,
     "drip_plan": method_drip_plan,
     "local_schedule_list": method_local_schedule_list,
     "local_schedule_add": method_local_schedule_add,
     "local_schedule_mark_posted": method_local_schedule_mark_posted,
     "local_schedule_cancel": method_local_schedule_cancel,
     "local_schedule_remove": method_local_schedule_remove,
+    "direct_publish_queue_read": method_direct_publish_queue_read,
+    "direct_publish_queue_write": method_direct_publish_queue_write,
     "preload_whisper": method_preload_whisper,
 }
 

@@ -1,16 +1,21 @@
 import { useEffect, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { Camera, Trash2 } from "lucide-react";
 import { sidecar, humanError, type HardwareInfo, type SecretName } from "../lib/sidecar";
+import { useAvatar, avatarSrc, initialsOf } from "../lib/avatar";
 
 // Single source of truth — pulled from package.json so a stale constant can't
 // land in the Settings → About row again after a ship.
 import pkg from "../../package.json";
+// v0.6.4 — painted cover retired (Whop-pattern Settings is strict utility).
+// import settingsCover from "../assets/decks/settings.png";
 const APP_VERSION: string = pkg.version;
-const SUPPORT_EMAIL = "support@jnremployee.com";
-import { syncStatus, meStatus, meAffiliate, type SyncStatus, type MeStatus } from "../lib/backend";
+const SUPPORT_EMAIL = "hello@liquidclips.app";
+import { syncStatus, meStatus, meAffiliate, socialGetConnection, type SyncStatus, type MeStatus } from "../lib/backend";
 import { applyUpdate, checkForUpdate, readLastUpdateCheck, type LastUpdateCheck, type UpdateState } from "../lib/updater";
-import AyrshareConnectionPanel from "./AyrshareConnectionPanel";
+import { ChevronRight } from "lucide-react";
 import { getTelemetryConsent, setTelemetryConsent } from "../lib/telemetry";
 import { BadgeShelf } from "./BadgeShelf";
 
@@ -19,10 +24,22 @@ import { BadgeShelf } from "./BadgeShelf";
 
 type Tier = "free" | "solo" | "growth" | "autopilot";
 
-const ACCOUNT_URL = "https://jnremployee.com/dashboard";
+const ACCOUNT_URL = "https://liquidclips.app/dashboard";
 const WHOP_MANAGE_URL = "https://whop.com/jnremployee";
 
-export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () => void; onSignOut?: () => void; tier?: Tier }) {
+// v0.6.4 — Strict-utility (Whop-pattern) Settings.
+// Categories drive what the right pane shows; left rail switches between
+// them. No painted decoration inside chrome (the v0.6.3 cover hero retired).
+type SettingsCategory = "account" | "connections" | "keys" | "about";
+
+const CATEGORY_LABELS: Record<SettingsCategory, string> = {
+  account: "Account",
+  connections: "Connections",
+  keys: "API keys",
+  about: "About",
+};
+
+export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: { onClose: () => void; onSignOut?: () => void; onOpenSchedule?: () => void; tier?: Tier }) {
   const [secrets, setSecrets] = useState<Record<SecretName, boolean> | null>(null);
   const [hw, setHw] = useState<HardwareInfo | null>(null);
   const [editingKey, setEditingKey] = useState<SecretName | null>(null);
@@ -31,6 +48,13 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
   const [lastUpdateCheck, setLastUpdateCheck] = useState<LastUpdateCheck | null>(() => readLastUpdateCheck());
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const [syncChecked, setSyncChecked] = useState(false);
+  // v0.6.3 — /me load for the compact header + WhoAmI section.
+  const [me, setMe] = useState<MeStatus | null>(null);
+  // v0.6.4 — Whop-pattern left-rail / right-pane layout.
+  const [category, setCategory] = useState<SettingsCategory>("account");
+  useEffect(() => {
+    void meStatus().then(setMe).catch(() => setMe(null));
+  }, []);
 
   async function onCheckForUpdate() {
     setUpdateState({ kind: "checking" });
@@ -73,56 +97,56 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
           cockpit" — neutral, private, no signal colour bleed. See
           docs/RPO_VISUAL_LANGUAGE.md. */}
       <div
-        className="deck deck-settings flex h-full w-full max-w-[640px] flex-col overflow-y-auto bg-paper shadow-2xl"
+        className="flex h-full w-full max-w-[760px] flex-col bg-paper shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-paper/85 px-6 py-4 backdrop-blur-[20px]">
-          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-            <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-            settings
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary hover:border-fuchsia hover:text-ink"
-          >
-            Close
-          </button>
-        </header>
+        {/* v0.6.4 — Whop-pattern compact header. No painted cover, no glow,
+            no animation. Single line: initials + name + tier + email +
+            close. Stays calm — Settings is a utility surface, not theatre. */}
+        <SettingsCompactHeader me={me} sync={sync} tier={tier} onClose={onClose} />
 
-        <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-          {/* Sprint #18a — achievement badges live at the TOP of Settings so
-              users see their progress + earned badges first. Hidden when no
-              badges earned yet to avoid an empty-state at the top. */}
-          <Section eyebrow="achievements" title="Your earned badges.">
-            <BadgeShelf />
-          </Section>
+        {/* Two-column body: left rail of categories, right pane shows the
+            active category's content. Single page, no subpages, no back
+            button. Inner pane keeps its own scroll. */}
+        <div className="flex min-h-0 flex-1 flex-row">
+          <SettingsLeftRail active={category} onSelect={setCategory} />
+          <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto px-7 py-7" key={category}>
+          {category === "account" && (
+            <>
+              <Section eyebrow="profile" title="Your face on the orbit.">
+                <ProfileAvatarRow email={me?.email ?? null} />
+              </Section>
 
-          {/* Task #69 — "Plan" → "Class" per RPO vocab. Data model and
-              backend payload (sync.tier, /me responses) stay unchanged;
-              only the UI label flips. See docs/RPO_VISUAL_LANGUAGE.md */}
-          <Section eyebrow="account" title="Class + subscription">
-            <Row
-              label="Class"
-              value={sync ? (sync.tier === "free" ? "Free · Try" : capitalise(sync.tier)) : (tier === "free" ? "Free · Try" : capitalise(tier))}
-            />
-            {sync?.paid_until && (
-              <Row
-                label={sync.subscription_status === "canceled" ? "Access until" : "Renews"}
-                value={new Date(sync.paid_until).toLocaleDateString()}
-              />
-            )}
-            <SubscriptionAction syncChecked={syncChecked} sync={sync} />
-            <p className="font-mono text-[11px] text-text-tertiary">
-              {!syncChecked
-                ? "Checking activation…"
-                : !sync
-                ? "Not activated — click Sign in to activate this device."
-                : sync.billing_provider === "whop"
-                ? "Whop holds your card. Cancel / update card / change plan all happen there."
-                : "Manage plan + payment method on your account page."}
-            </p>
-          </Section>
+              <Section eyebrow="achievements" title="Your earned badges.">
+                <BadgeShelf />
+              </Section>
 
+              <Section eyebrow="class" title="Class + subscription">
+                <Row
+                  label="Class"
+                  value={sync ? (sync.tier === "free" ? "Free · Try" : capitalise(sync.tier)) : (tier === "free" ? "Free · Try" : capitalise(tier))}
+                />
+                {sync?.paid_until && (
+                  <Row
+                    label={sync.subscription_status === "canceled" ? "Access until" : "Renews"}
+                    value={new Date(sync.paid_until).toLocaleDateString()}
+                  />
+                )}
+                <SubscriptionAction syncChecked={syncChecked} sync={sync} />
+                <p className="font-mono text-[11px] text-text-tertiary">
+                  {!syncChecked
+                    ? "Checking activation…"
+                    : !sync
+                    ? "Not activated — click Sign in to activate this device."
+                    : sync.billing_provider === "whop"
+                    ? "Whop holds your card. Cancel / update card / change plan all happen there."
+                    : "Manage plan + payment method on your account page."}
+                </p>
+              </Section>
+            </>
+          )}
+
+          {category === "keys" && (
           <Section eyebrow="api keys" title="Bring your own.">
             <p className="font-sans text-[13px] text-text-secondary">
               <strong className="text-ink">An OpenAI key is required for clip selection</strong> on
@@ -155,12 +179,21 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
               </div>
             )}
           </Section>
+          )}
 
-          <ConnectionsSection />
+          {category === "connections" && <ConnectionsSection onOpenSchedule={onOpenSchedule} />}
 
-          <AffiliatePayoutsSection />
+          {category === "account" && <AffiliatePayoutsSection />}
 
+          {category === "account" && (
+            <Section eyebrow="notifications" title="Coming soon.">
+              <p className="font-sans text-[13px] text-text-secondary">
+                Push + email notifications for payouts, new campaigns, and rank-ups land in v0.7. For now, everything surfaces on the Workspace dashboard.
+              </p>
+            </Section>
+          )}
 
+          {category === "about" && (
           <Section eyebrow="output folder" title="Where Liquid Clips writes everything.">
             <Row label="Folder" value="~/LiquidClips" mono />
             <p className="font-sans text-[13px] text-text-secondary">
@@ -174,7 +207,9 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
               Open in Finder →
             </button>
           </Section>
+          )}
 
+          {category === "about" && (
           <Section eyebrow="captions" title="One default style.">
             <p className="font-sans text-[13px] text-text-secondary">
               Helvetica, white text, thick black outline, vertical-friendly margin. Burned into
@@ -184,7 +219,9 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
               Multi-style presets land in v1.1
             </p>
           </Section>
+          )}
 
+          {category === "about" && (
           <Section eyebrow="updates" title="Liquid Clips updates itself.">
             <p className="font-sans text-[13px] text-text-secondary">
               Liquid Clips checks the signed update manifest every time the app opens. Settings runs the same check
@@ -245,7 +282,9 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
               </p>
             )}
           </Section>
+          )}
 
+          {category === "about" && (
           <Section eyebrow="about" title='"Made with Liquid Clips" + privacy.'>
             <Toggle label="Show 'Made with Liquid Clips' watermark on clips" defaultOn={false} />
             <Toggle
@@ -258,48 +297,46 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
             {hw && <Row label="Machine" value={`${hw.ram_gb}GB RAM · ${hw.cpu_count} CPU · ${hw.free_disk_gb}GB free`} />}
             <div className="flex flex-wrap gap-3 pt-1">
               <a
-                onClick={() => void openExternal("https://jnremployee.com/privacy")}
+                onClick={() => void openExternal("https://liquidclips.app/privacy")}
                 className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia hover:text-fuchsia-deep"
               >
                 Privacy policy →
               </a>
               <a
-                onClick={() => void openExternal("https://jnremployee.com/terms")}
+                onClick={() => void openExternal("https://liquidclips.app/terms")}
                 className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia hover:text-fuchsia-deep"
               >
                 Terms →
               </a>
             </div>
           </Section>
+          )}
 
-          <WhoAmISection />
+          {category === "account" && <WhoAmISection />}
 
-          <SupportSection />
+          {category === "about" && <SupportSection />}
 
-          <Section eyebrow="sign out" title="Step away cleanly.">
-            <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-              Signs you out of Liquid Clips, clears the license JWT from your keychain,
-              and returns to the first-run screen. Your projects on disk stay
-              put — sign back in any time to keep working.
-            </p>
-            <button
-              onClick={async () => {
-                if (!confirm("Sign out of Liquid Clips? You'll sign in again to come back in.")) return;
-                // Clear license JWT + close. App.tsx watches for sign-out and re-routes.
-                try {
-                  await sidecar.secretDelete("LICENSE_JWT");
-                } catch {
-                  // Best-effort — the JWT might already be gone.
-                }
-                onClose();
-                onSignOut?.();
-              }}
-              className="self-start rounded-full border border-line bg-paper px-5 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:border-[#DC2626] hover:text-[#DC2626]"
-            >
-              Sign out of Liquid Clips
-            </button>
-          </Section>
+          {/* v0.6.3 — Sign-out moved to the anchored bottom-bar so it's
+              always reachable without scrolling. Right-pane scroll wrap
+              below. */}
+          </div>
         </div>
+
+        {/* v0.6.3 — Anchored bottom bar. Discord pattern: bold red Log Out
+            button + monospace version chip. Sticky so it survives the
+            scroll list above. */}
+        <SettingsBottomBar
+          onSignOut={async () => {
+            if (!confirm("Sign out of Liquid Clips? You'll sign in again to come back in.")) return;
+            try {
+              await sidecar.secretDelete("LICENSE_JWT");
+            } catch {
+              /* best-effort */
+            }
+            onClose();
+            onSignOut?.();
+          }}
+        />
       </div>
     </div>
   );
@@ -405,14 +442,50 @@ function SecretRow({
   );
 }
 
-function ConnectionsSection() {
+function ConnectionsSection({ onOpenSchedule }: { onOpenSchedule?: () => void }) {
+  // v0.6.5 — Connections is now a thin summary surface. Linking + per-platform
+  // management live in Schedule. We just report the live count from
+  // /social/connections and deep-link the user across.
+  const [linkedCount, setLinkedCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void socialGetConnection()
+      .then((s) => {
+        if (cancelled) return;
+        setLinkedCount(s?.platforms?.length ?? 0);
+      })
+      .catch(() => {
+        if (!cancelled) setLinkedCount(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const countLabel =
+    linkedCount === null
+      ? "Checking linked accounts…"
+      : `${linkedCount} account${linkedCount === 1 ? "" : "s"} linked · Manage in Schedule →`;
+
   return (
     <Section eyebrow="connected accounts" title="Where Liquid Clips posts on your behalf.">
       <p className="font-sans text-[13px] text-text-secondary">
         Each account stays under your control — Liquid Clips reads the handle back from your platform; your password never touches us.
       </p>
 
-      <AyrshareConnectionPanel />
+      <button
+        type="button"
+        onClick={onOpenSchedule}
+        disabled={!onOpenSchedule}
+        className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-line bg-paper-elev px-4 py-3 text-left transition-colors hover:border-fuchsia disabled:cursor-default disabled:opacity-60 disabled:hover:border-line"
+      >
+        <span className="font-sans text-[13px] font-medium text-ink">{countLabel}</span>
+        <ChevronRight
+          aria-hidden="true"
+          className="h-4 w-4 shrink-0 text-text-tertiary transition-colors group-hover:text-fuchsia"
+        />
+      </button>
 
       <WhopConnectionRow />
     </Section>
@@ -522,7 +595,7 @@ function AffiliatePayoutsSection() {
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           <a
-            onClick={() => void openExternal(aff.payout_setup_url || "https://account.jnremployee.com/dashboard#payouts")}
+            onClick={() => void openExternal(aff.payout_setup_url || "https://account.liquidclips.app/dashboard#payouts")}
             className={`cursor-pointer rounded-full px-4 py-2 font-sans text-[12px] font-medium ${needsBank ? "bg-fuchsia text-paper hover:bg-fuchsia-bright" : "border border-line bg-paper text-ink hover:border-fuchsia"}`}
           >
             {needsBank ? "Set up Stripe payouts →" : "Manage Stripe payouts →"}
@@ -611,7 +684,7 @@ function SubscriptionAction({
   // Three states:
   //   1. activation unknown / no JWT yet → marketing Upgrade flow (jnremployee.com)
   //   2. Whop-signup user → Whop's hosted manage page (PCI + retention live there)
-  //   3. Clerk direct-signup user → in-app account portal at jnremployee.com/dashboard
+  //   3. Clerk direct-signup user → in-app account portal at liquidclips.app/dashboard
   const isWhop = sync?.billing_provider === "whop";
   const url = isWhop ? WHOP_MANAGE_URL : ACCOUNT_URL;
   const label = !syncChecked
@@ -671,10 +744,10 @@ function WhoAmISection() {
         <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
           Couldn't reach the backend. Sign in via{" "}
           <a
-            onClick={() => void openExternal("https://account.jnremployee.com/dashboard")}
+            onClick={() => void openExternal("https://account.liquidclips.app/dashboard")}
             className="cursor-pointer text-fuchsia hover:text-fuchsia-deep"
           >
-            account.jnremployee.com
+            account.liquidclips.app
           </a>
           {" "}then come back.
         </p>
@@ -942,5 +1015,200 @@ function SupportSection() {
         </a>
       </div>
     </Section>
+  );
+}
+
+// =====================================================================
+// v0.6.3 — Discord-pattern Settings hero + anchored bottom bar.
+// =====================================================================
+
+// v0.6.4 — Strict-utility compact header. Single line, no painted cover,
+// no idle animation. Whop-pattern: identity surface + close action only.
+function SettingsCompactHeader({
+  me,
+  sync,
+  tier,
+  onClose,
+}: {
+  me: MeStatus | null;
+  sync: SyncStatus | null;
+  tier: Tier;
+  onClose: () => void;
+}) {
+  const email = me?.email ?? null;
+  const displayName = email
+    ? email.split("@")[0].replace(/[._-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : "Sign in to Liquid Clips";
+  const initials = email
+    ? email
+        .split("@")[0]
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((p) => p[0]?.toUpperCase() ?? "")
+        .join("") || "?"
+    : "?";
+  const effectiveTier = (sync?.tier ?? me?.effective_tier ?? tier) as string;
+  const tierLabel = effectiveTier === "free" ? "tier · free" : `tier · ${effectiveTier}`;
+
+  return (
+    <header className="flex shrink-0 items-center gap-3 border-b border-line bg-paper px-6 py-4">
+      <div
+        aria-hidden="true"
+        className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-fuchsia to-fuchsia-deep font-display text-[14px] font-bold text-white"
+      >
+        {initials}
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col leading-tight">
+        <span className="truncate font-display text-[15px] font-semibold tracking-[-0.01em] text-ink">
+          {displayName}
+        </span>
+        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+          <span className="rounded-full border border-fuchsia/60 px-2 py-[1px] text-fuchsia">
+            {tierLabel}
+          </span>
+          {email ? <span className="truncate lowercase tracking-[0.04em] text-text-secondary">{email}</span> : null}
+        </div>
+      </div>
+      <button
+        onClick={onClose}
+        className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary hover:border-fuchsia hover:text-ink"
+      >
+        Close
+      </button>
+    </header>
+  );
+}
+
+function SettingsLeftRail({
+  active,
+  onSelect,
+}: {
+  active: SettingsCategory;
+  onSelect: (c: SettingsCategory) => void;
+}) {
+  const items: SettingsCategory[] = ["account", "connections", "keys", "about"];
+  return (
+    <nav
+      className="flex w-[180px] shrink-0 flex-col gap-1 border-r border-line bg-paper-warm/30 px-3 py-5"
+      aria-label="Settings categories"
+    >
+      {items.map((c) => {
+        const isActive = c === active;
+        return (
+          <button
+            key={c}
+            type="button"
+            onClick={() => onSelect(c)}
+            className={
+              isActive
+                ? "flex items-center gap-2 rounded-xl bg-paper-elev px-3 py-2 font-sans text-[13px] font-medium text-ink"
+                : "flex items-center gap-2 rounded-xl px-3 py-2 font-sans text-[13px] text-text-secondary transition-colors hover:bg-paper-elev/60 hover:text-ink"
+            }
+            aria-current={isActive ? "page" : undefined}
+          >
+            <span
+              aria-hidden="true"
+              className={
+                isActive
+                  ? "h-1.5 w-1.5 rounded-full bg-fuchsia shadow-[0_0_8px_var(--color-fuchsia)]"
+                  : "h-1.5 w-1.5 rounded-full bg-text-tertiary/60"
+              }
+            />
+            {CATEGORY_LABELS[c]}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function SettingsBottomBar({ onSignOut }: { onSignOut: () => void | Promise<void> }) {
+  return (
+    <footer className="sticky bottom-0 z-10 flex items-center justify-between gap-4 border-t border-line bg-paper/85 px-6 py-4 backdrop-blur-[20px]">
+      <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+        v{APP_VERSION} · all systems go
+      </span>
+      <button
+        onClick={() => void onSignOut()}
+        className="lc-settings-logout rounded-full bg-[#DC2626] px-5 py-2 font-sans text-[13px] font-semibold text-white shadow-[0_0_18px_rgba(220,38,38,0.4)] transition-all hover:bg-[#B91C1C] hover:shadow-[0_0_28px_rgba(220,38,38,0.65)]"
+      >
+        Log out
+      </button>
+    </footer>
+  );
+}
+
+// v0.6.35 — Avatar upload row. Drives the same useAvatar store the cockpit
+// AvatarOrbit + AvatarPanel + RankStrip all read from, so a save here lights
+// up every surface instantly via the bustKey counter.
+function ProfileAvatarRow({ email }: { email: string | null }) {
+  const url = useAvatar((s) => s.url);
+  const bustKey = useAvatar((s) => s.bustKey);
+  const loading = useAvatar((s) => s.loading);
+  const error = useAvatar((s) => s.error);
+  const uploadAvatar = useAvatar((s) => s.upload);
+  const clearAvatar = useAvatar((s) => s.clear);
+
+  const renderedSrc = avatarSrc({ url, bustKey });
+  const initials = initialsOf(email);
+
+  async function pick() {
+    if (loading) return;
+    const picked = await openFileDialog({
+      multiple: false,
+      filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp"] }],
+    });
+    if (typeof picked === "string") {
+      try {
+        await uploadAvatar(picked);
+      } catch {
+        /* error already captured in store */
+      }
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-4 rounded-2xl border border-line bg-paper px-4 py-4">
+      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border-2 border-fuchsia/40 bg-gradient-to-br from-fuchsia to-fuchsia-deep">
+        {renderedSrc ? (
+          <img src={renderedSrc} alt="" className="h-full w-full object-cover" draggable={false} />
+        ) : (
+          <span className="flex h-full w-full items-center justify-center font-display text-[20px] font-bold text-white">
+            {initials}
+          </span>
+        )}
+      </div>
+      <div className="flex flex-1 flex-col gap-2">
+        <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+          Your avatar shows on the cockpit orbit (top-right) and inside the HUD panel. PNG / JPG / WEBP, resized to 256px.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void pick()}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper-elev px-3.5 py-2 font-sans text-[12px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia disabled:cursor-wait disabled:opacity-50"
+          >
+            <Camera className="h-3.5 w-3.5" strokeWidth={2} />
+            {renderedSrc ? "Replace" : "Upload"}
+          </button>
+          {renderedSrc && (
+            <button
+              type="button"
+              onClick={() => void clearAvatar()}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper-elev px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary transition-colors hover:border-[#DC2626] hover:text-[#DC2626] disabled:cursor-wait disabled:opacity-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
+              Remove
+            </button>
+          )}
+        </div>
+        {error && (
+          <p className="font-mono text-[11px] text-[#DC2626]">{error}</p>
+        )}
+      </div>
+    </div>
   );
 }

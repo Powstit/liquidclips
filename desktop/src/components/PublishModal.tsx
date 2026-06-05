@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import {
   backend,
@@ -16,6 +16,7 @@ import { InfoTip } from "./InfoTip";
 import { useTier, TIER_COPY, type PublishCapability } from "../lib/useTier";
 import type { Tier } from "../lib/backend";
 import { ChannelPicker } from "./schedule/ChannelPicker";
+import { ConnectFirstPrompt } from "./upload/ConnectFirstPrompt";
 
 /*
  * Sprint #3 — Ayrshare-native PublishModal.
@@ -66,19 +67,43 @@ export function PublishModal({
   clipIdx,
   projectSlug,
   mode,
+  prefillAll = false,
+  initialPlatforms,
+  initialScheduledAt,
   onClose,
   onDone,
   onOpenSettings,
+  onOpenSchedule,
 }: {
   clip: Clip;
   clipIdx: number;
   projectSlug: string;
   mode: PublishModalMode;
+  /** v0.6.3 — "Schedule everywhere" entrypoint. When true, every platform
+   *  reported by the user's Ayrshare connection is pre-checked the moment
+   *  the connection fetch returns. Solves Daniel's "cross-account
+   *  publishing is not clear" gripe with one toggle. */
+  prefillAll?: boolean;
+  /** Pre-select specific platforms when opening the composer. After the
+   *  channels list loads, any active channel whose `platform` is in this
+   *  list is treated as the initial selection. Undefined = leave existing
+   *  behavior; empty array = explicitly select nothing (no fallback).
+   *  Platform-id vocabulary matches `ChannelPlatform` / `SocialConnectionState.platforms`
+   *  ("tiktok", "instagram", "youtube", "x", "linkedin", "facebook", "threads"). */
+  initialPlatforms?: string[];
+  /** Pre-fill the schedule datetime picker with this ISO 8601 string. Lets the
+   *  caller drop in a preset ("In 1 hour", "Tomorrow 9am") without forcing the
+   *  user to step through the picker. Undefined = default (tomorrow 6pm). */
+  initialScheduledAt?: string;
   onClose: () => void;
   onDone: (msg: string) => void;
-  // Wired by App.tsx — lets the "Connect a profile" empty-state route the
-  // user to Settings → Connections without manual nav.
+  // Wired by App.tsx — Settings is now only used for non-connection settings
+  // (API keys etc.); connection management lives under Schedule → Channels.
   onOpenSettings?: () => void;
+  /** Routes the "Connect a channel first" empty-state to Schedule → Channels,
+   *  the canonical surface for linked accounts since the Settings →
+   *  Connections collapse in Phase 1. */
+  onOpenSchedule?: () => void;
 }) {
   const tier = useTier();
   const [connection, setConnection] = useState<SocialConnectionState | null>(null);
@@ -89,6 +114,10 @@ export function PublishModal({
   const [channels, setChannels] = useState<Channel[]>([]);
   const [pickedChannelId, setPickedChannelId] = useState<string | null>(null);
   const [scheduleAt, setScheduleAt] = useState(() => {
+    if (initialScheduledAt) {
+      const parsed = new Date(initialScheduledAt);
+      if (!Number.isNaN(parsed.getTime())) return toLocalDatetimeInput(parsed);
+    }
     const d = new Date();
     d.setDate(d.getDate() + 1);
     d.setHours(18, 0, 0, 0);
@@ -96,6 +125,9 @@ export function PublishModal({
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Guards `initialPlatforms` pre-selection so it runs once on the initial
+  // channel load and never clobbers a subsequent user toggle.
+  const didApplyInitialPlatformsRef = useRef(false);
 
   // Esc closes unless we're mid-publish — preserves the "this is real, don't
   // bail" feeling once a network call is in flight.
@@ -127,7 +159,44 @@ export function PublishModal({
         ]);
         if (cancelled) return;
         setConnection(state);
-        setChannels(chs.filter((c: Channel) => c.status === "active"));
+        const activeChannels = chs.filter((c: Channel) => c.status === "active");
+        setChannels(activeChannels);
+        // v0.6.3 — "Schedule everywhere": tick every connected platform the
+        // instant the connection state lands, so the user lands in the
+        // modal with the broadcast already configured. Multi-platform
+        // gating still applies — if the tier disallows multi, we leave
+        // the first platform selected and let the existing togglePick
+        // logic enforce the rest.
+        if (prefillAll && mode === "publish-now" && state && state.platforms.length > 0) {
+          setPicked(new Set(state.platforms));
+        }
+        // Caller-driven pre-selection. Runs once per mount, after channels
+        // load. `undefined` = caller opted out → leave existing behavior.
+        // `[]` = explicit "select nothing" (don't fall back to all). Any
+        // platform with no matching active channel is silently ignored.
+        // Channel-path state is a single `pickedChannelId`, so we pick the
+        // first matching active channel.
+        if (initialPlatforms !== undefined && !didApplyInitialPlatformsRef.current) {
+          didApplyInitialPlatformsRef.current = true;
+          if (initialPlatforms.length === 0) {
+            setPickedChannelId(null);
+          } else {
+            const wanted = new Set(initialPlatforms);
+            const match = activeChannels.find((c) => wanted.has(c.platform));
+            setPickedChannelId(match ? match.id : null);
+          }
+        } else if (
+          !didApplyInitialPlatformsRef.current &&
+          activeChannels.length > 0
+        ) {
+          // No explicit caller pre-selection — auto-pick the first active
+          // channel so the modal opens "ready to submit" rather than empty.
+          // Removes a click for both "Publish now" and "Schedule ▾ → preset"
+          // flows. didApply guard prevents this from re-firing after a user
+          // deliberately deselects.
+          didApplyInitialPlatformsRef.current = true;
+          setPickedChannelId(activeChannels[0].id);
+        }
       } catch (e) {
         if (!cancelled) setError(humanError(e));
       } finally {
@@ -135,10 +204,15 @@ export function PublishModal({
       }
     })();
     return () => { cancelled = true; };
-  }, [hasCapability]);
+  }, [hasCapability, prefillAll, mode, initialPlatforms]);
 
-  const videoPath = clip.vertical_path;
+  const videoPath =
+    clip.remix?.active_path?.vertical ||
+    clip.overlay?.applied_paths?.vertical ||
+    clip.vertical_path;
   const platforms = connection?.platforms ?? [];
+  const hasChannelSelection = channels.length > 0;
+  const hasTargetSelection = hasChannelSelection ? Boolean(pickedChannelId) : picked.size > 0;
 
   function togglePick(platform: string) {
     setPicked((cur) => {
@@ -194,18 +268,26 @@ export function PublishModal({
             filePath: videoPath,
             title: clip.title,
             description: clip.description,
-            platforms: Array.from(picked).filter((p): p is "youtube" | "tiktok" | "x" =>
-              p === "youtube" || p === "tiktok" || p === "x",
+            platforms: Array.from(picked).filter((p): p is ConnectionPlatform =>
+              p === "youtube" || p === "tiktok" || p === "x" || p === "instagram",
             ),
           });
-          const ig = Array.from(picked).filter((p) => p === "instagram").length;
-          if (ig > 0) {
-            onDone(`${summarisePublish(results)} · Instagram queued for next sprint.`);
-          } else {
-            onDone(summarisePublish(results));
-          }
+          onDone(summarisePublish(results));
         }
       } else {
+        if (pickedChannelId) {
+          const scheduledFor = new Date(scheduleAt).toISOString();
+          const results = await backend.publishNow(jwt, {
+            filePath: videoPath,
+            title: clip.title,
+            description: clip.description,
+            platforms: [],
+            channelId: pickedChannelId,
+            scheduledAt: scheduledFor,
+          });
+          onDone(`${summarisePublish(results)} · Scheduled for ${new Date(scheduleAt).toLocaleString()}.`);
+          return;
+        }
         const platform = Array.from(picked)[0];
         if (platform === "instagram") {
           throw new Error("Scheduling to Instagram is coming next sprint.");
@@ -242,56 +324,32 @@ export function PublishModal({
     );
   }
 
-  // No social profile connected — route the user to Settings to paste their
-  // Ayrshare Profile Key. This is the new "empty state" of publishing; the
-  // backend 412s any /publish-now call without a connection, so we catch it
-  // proactively in the UI instead of letting the round-trip fail.
-  if (!connectionLoading && (!connection?.profile_key_set || platforms.length === 0)) {
+  // No social profile connected — render the shared ConnectFirstPrompt
+  // INSIDE the publish modal shell (variant="inline") so the user sees one
+  // recognisable on-ramp: "You need a channel first → Open Schedule →
+  // Connect → return here, channel auto-selected → publish." No
+  // modal-on-top-of-modal: the existing modal wrapper here IS the surface.
+  // Backend 412s any /publish-now call without a connection, so we still
+  // catch it proactively in the UI.
+  const hasNoChannels = channels.length === 0;
+  const hasNoLegacyProfile = !connection?.profile_key_set || platforms.length === 0;
+  if (!connectionLoading && hasNoChannels && hasNoLegacyProfile) {
     return (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
         onClick={onClose}
       >
         <div
-          className="flex w-full max-w-[480px] flex-col gap-5 rounded-2xl bg-paper p-7 shadow-2xl"
+          className="flex w-full max-w-[520px] flex-col gap-5 rounded-2xl bg-paper p-7 shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-            <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-            connect first
-          </div>
-          <h2 className="font-display text-[24px] font-semibold leading-[1.1] tracking-[-0.025em] text-ink">
-            Link a social profile to publish.
-          </h2>
-          <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-            Liquid Clips publishes through Ayrshare. Link your accounts on
-            ayrshare.com once, paste your Profile Key into Settings, then come
-            back here and pick where this clip goes.
-          </p>
-          {connection?.profile_key_set && platforms.length === 0 && (
-            <p className="rounded-xl border border-line bg-paper-warm/40 p-3 font-mono text-[11px] leading-relaxed text-text-secondary">
-              Your Profile Key is saved but Ayrshare reports no linked
-              platforms yet. Hit <span className="font-semibold">Refresh</span>
-              {" "}in the Ayrshare panel after linking.
-            </p>
-          )}
-          <div className="flex items-center justify-end gap-3">
-            <button
-              onClick={onClose}
-              className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia"
-            >
-              Maybe later
-            </button>
-            <button
-              onClick={() => {
-                onClose();
-                onOpenSettings?.();
-              }}
-              className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
-            >
-              Open Settings →
-            </button>
-          </div>
+          <ConnectFirstPrompt
+            variant="inline"
+            onOpenSchedule={() => {
+              onClose();
+              (onOpenSchedule ?? onOpenSettings)?.();
+            }}
+          />
         </div>
       </div>
     );
@@ -300,7 +358,11 @@ export function PublishModal({
   const headline = mode === "publish-now" ? "Send it." : "Send it later.";
   const eyebrow = mode === "publish-now" ? "publish now" : "schedule one";
   const cta = mode === "publish-now"
-    ? `Publish to ${picked.size} platform${picked.size === 1 ? "" : "s"} →`
+    ? pickedChannelId
+      ? "Publish to channel →"
+      : `Publish to ${picked.size} platform${picked.size === 1 ? "" : "s"} →`
+    : pickedChannelId
+    ? "Schedule channel →"
     : "Schedule →";
 
   return (
@@ -366,7 +428,17 @@ export function PublishModal({
           ) : channels.length > 0 ? (
             // Schedule v2 — channel picker (preferred). One click = one
             // channel. Each channel posts via its own Ayrshare profile.
-            <ChannelPicker value={pickedChannelId} onChange={setPickedChannelId} />
+            // onAddChannel surfaces a "+ Add channel" affordance at the
+            // bottom of the picker so the user can link a new account
+            // without abandoning the publish flow.
+            <ChannelPicker
+              value={pickedChannelId}
+              onChange={setPickedChannelId}
+              onAddChannel={onOpenSettings ? () => {
+                onClose();
+                onOpenSettings();
+              } : undefined}
+            />
           ) : (
             // Legacy path — single Ayrshare profile via SocialConnection,
             // multiselect platforms. Kept for users who haven't added a
@@ -408,7 +480,7 @@ export function PublishModal({
           </button>
           <button
             onClick={() => void submit()}
-            disabled={busy || picked.size === 0 || !videoPath}
+            disabled={busy || !hasTargetSelection || !videoPath}
             className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50"
           >
             {busy ? (mode === "publish-now" ? "Publishing…" : "Scheduling…") : cta}
@@ -474,8 +546,8 @@ function UpgradeWall({
     mode === "publish-now"
       ? requiredTier === "solo"
         ? "Publishing is a Solo+ feature."
-        : "Multi-platform is on Growth+."
-      : "Scheduling is on Growth+.";
+        : "Multi-platform is on Pro+."
+      : "Scheduling is on Pro+.";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md" onClick={onClose}>
@@ -520,7 +592,7 @@ function UpgradeWall({
             Maybe later
           </button>
           <button
-            onClick={() => void openExternal("https://account.jnremployee.com/upgrade")}
+            onClick={() => void openExternal("https://account.liquidclips.app/upgrade")}
             className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
           >
             Upgrade to {req.name} →
