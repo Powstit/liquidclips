@@ -4,6 +4,7 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { Logo } from "./Logo";
 import { SplashGame } from "./invaders/SplashGame";
+import { hasSeenIntro, markIntroSeen } from "../lib/intro";
 // 2026-06-03 v0.5.0 — Ready Player One redesign:
 // closing-still.png is the bookend frame from the 28s Kade-in-OASIS intro,
 // Kade with five fuchsia coins orbiting around him. Using it as the splash
@@ -35,18 +36,11 @@ const SUPPORT_EMAIL = "support@jnremployee.com";
 //                 Stays until BOTH ready=true AND continue clicked.
 type SplashStage = "intro" | "loading" | "game";
 
-// 2026-06-03 v0.5.0 — intro is now the 28s Kade-in-OASIS cinematic.
-// Bumped the key so existing v0.4.53 installs replay the new intro once.
-const INTRO_SEEN_KEY = "liquidclips:intro-seen:v2";
 const INTRO_DURATION_MS = 28_500;     // 28s intro + 0.5s buffer; video onEnded fires sooner if shorter
 const LOADING_MIN_HOLD_MS = 5_000;    // brand moment
 
 function firstStage(): SplashStage {
-  try {
-    return localStorage.getItem(INTRO_SEEN_KEY) === "1" ? "loading" : "intro";
-  } catch {
-    return "loading";
-  }
+  return hasSeenIntro() ? "loading" : "intro";
 }
 
 export function Splash({
@@ -88,8 +82,20 @@ export function Splash({
   }, [stage, failed]);
 
   function advanceFromIntro() {
-    try { localStorage.setItem(INTRO_SEEN_KEY, "1"); } catch { /* sandboxed */ }
+    markIntroSeen();
     setStage("loading");
+  }
+
+  function skipSplash() {
+    if (stage === "intro") {
+      advanceFromIntro();
+      return;
+    }
+    if (stage === "loading" && !ready) {
+      setStage("game");
+      return;
+    }
+    onContinue?.();
   }
 
   async function onRestart() {
@@ -188,7 +194,7 @@ export function Splash({
   }
 
   // Stage 1 — cinematic intro (Seedance-generated). First-launch only.
-  // Black background, video full-screen, skip button bottom-right.
+  // Black background, video full-screen, persistent skip button top-right.
   if (stage === "intro") {
     return (
       <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-black">
@@ -202,10 +208,12 @@ export function Splash({
           className="h-full w-full object-cover"
         />
         <button
-          onClick={advanceFromIntro}
-          className="absolute bottom-6 right-6 rounded-full border border-paper/40 bg-black/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-paper/80 backdrop-blur-sm hover:border-paper hover:text-paper"
+          type="button"
+          onClick={skipSplash}
+          aria-label="Skip splash"
+          className="absolute right-6 top-6 z-20 grid h-11 w-11 place-items-center rounded-full border border-fuchsia bg-black/45 font-mono text-[14px] font-semibold text-paper shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
         >
-          Skip →
+          →
         </button>
         <style>{splashStyle}</style>
       </div>
@@ -219,6 +227,15 @@ export function Splash({
     >
       {/* Soft scrim so the light mark + text stay legible over the art. */}
       <div className="pointer-events-none absolute inset-0 bg-black/25" />
+
+      <button
+        type="button"
+        onClick={skipSplash}
+        aria-label="Skip splash"
+        className="absolute right-6 top-6 z-20 grid h-11 w-11 place-items-center rounded-full border border-fuchsia bg-black/45 font-mono text-[14px] font-semibold text-paper shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
+      >
+        →
+      </button>
 
       <div className="splash-mark-anim relative z-10 animate-[splash-mark-in_0.6s_ease-out]">
         <Logo />
