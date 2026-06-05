@@ -254,10 +254,13 @@ pre {
 
 /* Per-deck modifiers — pure CSS variable assignment so the tint cascades
    into the ::before / ::after pseudo-elements above. */
+/* v0.6.36 — Brand discipline: every deck tint locks to fuchsia. Earlier
+   per-page colour shifts (Schedule cyan, Settings cream) violated the
+   "one fuchsia / one ink / one paper" rule from CLAUDE.md. */
 .deck-workspace { --deck-tint: var(--color-fuchsia); --deck-ambient: 0.10; }
-.deck-schedule  { --deck-tint: var(--color-cyan-cool); --deck-ambient: 0.08; }
+.deck-schedule  { --deck-tint: var(--color-fuchsia); --deck-ambient: 0.08; }
 .deck-earn      { --deck-tint: var(--color-fuchsia); --deck-ambient: 0.12; }
-.deck-settings  { --deck-tint: rgba(200, 196, 190, 0.6); --deck-ambient: 0.05; }
+.deck-settings  { --deck-tint: var(--color-fuchsia); --deck-ambient: 0.05; }
 
 /* Earn gets a second amber-tipped tail under the band to read as
    "coliseum/leaderboard arena" (gold-medal energy) without introducing a
@@ -283,4 +286,933 @@ pre {
 .deck-focusable:hover {
   box-shadow: var(--glow-sm);
   border-color: var(--color-fuchsia);
+}
+
+/* =========================================================================
+   v0.6.0 — Side nav rail
+   Fixed 64px-wide left column. Replaces the horizontal NavTab strip in
+   App.tsx. Brand tokens only (--color-fuchsia / --color-ink / --color-paper /
+   --color-line). Mobile breakpoint at 800px collapses hover labels.
+   ========================================================================= */
+
+.lc-sidenav {
+  /* Flex column → logo top, nav middle, divider, bottom anchors.
+     v0.6.7 — Rail widened 64 → 72px for breathing room around active labels;
+     prior tight 56px label slot ellipsed "Workspace" at certain DPRs. */
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 72px;
+  height: 100%;
+  background: var(--color-paper);
+  border-right: 1px solid var(--color-line);
+  /* Sit above main content so tooltip pills overlap without clipping. */
+  position: relative;
+  z-index: 30;
+}
+
+.lc-sidenav-logo {
+  padding: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.lc-sidenav-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  /* Tiny top breathing room — keeps the first item from kissing the logo
+     band when there's no active indicator on it. */
+  padding-top: 6px;
+}
+
+.lc-sidenav-divider {
+  height: 1px;
+  margin: 6px 12px;
+  background: var(--color-line);
+}
+
+.lc-sidenav-bottom {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 8px;
+}
+
+/* Per-item: a button wrapping the indicator bar, the icon, and two label
+   surfaces (always-visible-when-active label, hover tooltip pill). */
+.lc-sidenav-item {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: var(--color-ink);
+  /* Reserved space for the always-visible active label — keeps the rail
+     visually steady when active flips between items. */
+  min-height: 60px;
+  padding: 10px 4px;
+  position: relative;
+  outline: none;
+  /* Transition opacity + transform here too — icon transforms live on the
+     child element so we can scale it independently of the button. */
+  transition: opacity 160ms ease, color 160ms ease;
+}
+
+.lc-sidenav-item:focus-visible {
+  /* Mirror the in-app focus ring style. Keyboard-only. */
+  box-shadow: inset 0 0 0 2px var(--color-fuchsia);
+}
+
+.lc-sidenav-icon {
+  opacity: 0.6;
+  color: var(--color-ink);
+  transform: scale(1);
+  transition: transform 180ms ease, opacity 180ms ease, color 180ms ease;
+}
+
+.lc-sidenav-item:hover .lc-sidenav-icon {
+  opacity: 1;
+  transform: scale(1.1);
+  color: var(--color-fuchsia);
+}
+
+.lc-sidenav-item[data-active="true"] .lc-sidenav-icon {
+  opacity: 1;
+  /* Active icon stays ink — only the bar wears fuchsia. */
+  color: var(--color-ink);
+}
+
+/* Custom badge icons rendered as <img> rather than lucide SVGs.
+   v0.6.3 — Idle float + hover lift + active pulse, modeled after the
+   approved /tmp/lc-mockup/v063.html mockup. Each .lc-sidenav-list slot
+   takes a staggered animation delay so the rail doesn't tick in
+   lockstep — feels alive, not synchronized robotically. */
+.lc-sidenav-item-icon-img {
+  object-fit: contain;
+  -webkit-user-drag: none;
+  user-select: none;
+  /* v0.6.6 — Float cycle dropped from 4.2s → 3s and amplitude from -2.5px
+     → -6px so the motion is actually visible at 34px badge size (Daniel
+     "nav bar doesn't animate" report on v0.6.5). */
+  animation: lc-badge-float 3s ease-in-out infinite;
+  transition: transform 220ms cubic-bezier(.34, 1.56, .64, 1), filter 240ms ease;
+  will-change: transform, filter;
+  /* The img badges already carry their own fuchsia colour + alpha, so the
+     ink-tinted opacity/scale rules above (designed for lucide SVGs that
+     inherit `color`) need to be neutralised. */
+  opacity: 1 !important;
+}
+.lc-sidenav-item:hover .lc-sidenav-icon.lc-sidenav-item-icon-img {
+  transform: none; /* keyframe controls the lift */
+  color: inherit;
+}
+.lc-sidenav-item[data-active="true"] .lc-sidenav-icon.lc-sidenav-item-icon-img {
+  color: inherit;
+}
+
+@keyframes lc-badge-float {
+  0%, 100% {
+    transform: translateY(0) rotate(-2deg) scale(1);
+    filter: drop-shadow(0 0 6px rgba(255, 26, 140, 0.35));
+  }
+  50% {
+    transform: translateY(-6px) rotate(3deg) scale(1.06);
+    filter: drop-shadow(0 0 16px rgba(255, 26, 140, 0.7));
+  }
+}
+
+.lc-sidenav-list .lc-sidenav-item:nth-child(2) .lc-sidenav-item-icon-img { animation-delay: -0.3s; }
+.lc-sidenav-list .lc-sidenav-item:nth-child(3) .lc-sidenav-item-icon-img { animation-delay: -0.6s; }
+.lc-sidenav-list .lc-sidenav-item:nth-child(4) .lc-sidenav-item-icon-img { animation-delay: -1.0s; }
+.lc-sidenav-list .lc-sidenav-item:nth-child(5) .lc-sidenav-item-icon-img { animation-delay: -1.4s; }
+.lc-sidenav-list .lc-sidenav-item:nth-child(6) .lc-sidenav-item-icon-img { animation-delay: -1.8s; }
+.lc-sidenav-list .lc-sidenav-item:nth-child(7) .lc-sidenav-item-icon-img { animation-delay: -2.2s; }
+
+/* Hover — pause the idle bob, lift + scale + brighter fuchsia glow. */
+.lc-sidenav-item:hover .lc-sidenav-item-icon-img {
+  animation-play-state: paused;
+  transform: translateY(-4px) scale(1.15) rotate(2deg);
+  filter: drop-shadow(0 0 18px rgba(255, 26, 140, 0.85));
+}
+
+/* Active — stronger cycle + permanent glow. Overrides the idle keyframe
+   so the user always knows which surface they're on without reading the
+   label. Pairs with the existing fuchsia indicator bar (also pulsing). */
+.lc-sidenav-item[data-active="true"] .lc-sidenav-item-icon-img {
+  animation: lc-badge-active 2.8s ease-in-out infinite;
+  filter: drop-shadow(0 0 16px rgba(255, 26, 140, 0.95));
+}
+@keyframes lc-badge-active {
+  0%, 100% {
+    transform: translateY(0) scale(1.05) rotate(-1deg);
+    filter: drop-shadow(0 0 12px rgba(255, 26, 140, 0.7));
+  }
+  50% {
+    transform: translateY(-3px) scale(1.1) rotate(2deg);
+    filter: drop-shadow(0 0 24px rgba(255, 26, 140, 1));
+  }
+}
+
+/* Brand glyph at the top of the rail breathes — 2px lift + brighter glow
+   on a 3.2s cycle. Stand-in for the Rive-driven alien we'll wire in v0.6.4. */
+.lc-sidenav-brand-glyph {
+  animation: lc-brand-breathe 3.2s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px rgba(255, 26, 140, 0.5));
+}
+@keyframes lc-brand-breathe {
+  0%, 100% { transform: translateY(0) scale(1); filter: drop-shadow(0 0 8px rgba(255, 26, 140, 0.5)); }
+  50%      { transform: translateY(-2px) scale(1.05); filter: drop-shadow(0 0 16px rgba(255, 26, 140, 0.9)); }
+}
+
+/* Indicator bar — was static, now breathes in lockstep with the active
+   badge for "this slot is live" coherence. The keyframe replaces the
+   existing static box-shadow on the active bar. */
+.lc-sidenav-item[data-active="true"] .lc-sidenav-bar {
+  animation: lc-bar-pulse 1.8s ease-in-out infinite;
+}
+@keyframes lc-bar-pulse {
+  0%, 100% { box-shadow: 0 0 8px var(--color-fuchsia); opacity: 0.85; }
+  50%      { box-shadow: 0 0 22px var(--color-fuchsia); opacity: 1; }
+}
+
+/* Reduced motion: keep the rail readable but kill every loop. */
+@media (prefers-reduced-motion: reduce) {
+  .lc-sidenav-item-icon-img,
+  .lc-sidenav-brand-glyph,
+  .lc-sidenav-item[data-active="true"] .lc-sidenav-item-icon-img,
+  .lc-sidenav-item[data-active="true"] .lc-sidenav-bar,
+  .lc-sidenav-halo {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* =====================================================================
+   v0.6.3 — Aurora ambient background. Painted behind MainShell as a
+   fixed full-bleed layer. See src/components/effects/AuroraBackground.tsx
+   ===================================================================== */
+.lc-aurora {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  /* Sits BELOW every app surface so cards float on top without compositing
+     issues. The MainShell content layer is the parent's flex-row at z=auto. */
+  z-index: -10;
+  overflow: hidden;
+  /* paper is dark (#0b0b10) — see token table. ink is the LIGHT cream. */
+  background: var(--color-paper);
+}
+.lc-aurora-blobs {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(255, 26, 140, 0.28), transparent 60%),
+    radial-gradient(ellipse 70% 45% at 20% 110%, rgba(140, 40, 255, 0.22), transparent 60%),
+    radial-gradient(ellipse 70% 45% at 90% 90%, rgba(255, 90, 80, 0.18), transparent 60%);
+  animation: lc-aurora-pulse 14s ease-in-out infinite alternate;
+}
+.lc-aurora-stripes {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    115deg,
+    rgba(255, 255, 255, 0.025) 0 1px,
+    transparent 1px 14px
+  );
+  mix-blend-mode: overlay;
+  animation: lc-aurora-drift 18s linear infinite;
+}
+@keyframes lc-aurora-pulse {
+  0%   { transform: translate3d(-2%, -1%, 0) scale(1);    opacity: 1; }
+  50%  { transform: translate3d(2%,   1%, 0) scale(1.05); opacity: 0.9; }
+  100% { transform: translate3d(0%,  -2%, 0) scale(1.02); opacity: 1; }
+}
+@keyframes lc-aurora-drift {
+  0%   { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-160px, 0, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lc-aurora-blobs,
+  .lc-aurora-stripes {
+    animation: none !important;
+  }
+}
+
+/* =====================================================================
+   v0.6.3 — DeckHero (Workspace cover-art card). Animations only — the
+   markup lives in src/components/DeckHero.tsx. See approved mockup at
+   /tmp/lc-mockup/v063.html section 3.
+   ===================================================================== */
+.lc-deck-cover-img {
+  animation: lc-deck-cover-pan 26s ease-in-out infinite;
+}
+@keyframes lc-deck-cover-pan {
+  0%, 100% { transform: scale(1.04) translateX(0); }
+  50%      { transform: scale(1.07) translateX(-2%); }
+}
+
+.lc-deck-cover-hud {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  opacity: 0.95;
+  animation: lc-deck-cover-hud-flicker 4s ease-in-out infinite;
+}
+.lc-deck-cover-hud-tl { top: 14px; left: 14px;
+  border-top: 1.5px solid var(--color-fuchsia); border-left: 1.5px solid var(--color-fuchsia); }
+.lc-deck-cover-hud-tr { top: 14px; right: 14px; animation-delay: -1s;
+  border-top: 1.5px solid var(--color-fuchsia); border-right: 1.5px solid var(--color-fuchsia); }
+.lc-deck-cover-hud-bl { bottom: 14px; left: 14px; animation-delay: -2s;
+  border-bottom: 1.5px solid var(--color-fuchsia); border-left: 1.5px solid var(--color-fuchsia); }
+.lc-deck-cover-hud-br { bottom: 14px; right: 14px; animation-delay: -3s;
+  border-bottom: 1.5px solid var(--color-fuchsia); border-right: 1.5px solid var(--color-fuchsia); }
+@keyframes lc-deck-cover-hud-flicker {
+  0%, 100% { opacity: 0.95; filter: drop-shadow(0 0 0 transparent); }
+  50%      { opacity: 1;    filter: drop-shadow(0 0 6px var(--color-fuchsia)); }
+}
+
+/* Live dot — used in the eyebrow row of the cover card + anywhere else
+   we surface a "live / streaming / active" eyebrow. */
+.lc-deck-cover-eyebrow-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-fuchsia);
+  box-shadow: 0 0 12px var(--color-fuchsia);
+  animation: lc-live-dot 1.6s ease-in-out infinite;
+}
+@keyframes lc-live-dot {
+  0%, 100% { box-shadow: 0 0 6px var(--color-fuchsia);  transform: scale(1); }
+  50%      { box-shadow: 0 0 16px var(--color-fuchsia); transform: scale(1.35); }
+}
+
+/* CTA pill pulse — applies to any direct-descendant button inside the
+   trailing slot, so the consumer doesn't have to remember a class. */
+.lc-deck-cover-cta-wrap > button,
+.lc-deck-cover-cta-wrap > a {
+  animation: lc-cta-pulse 2.4s ease-in-out infinite;
+}
+@keyframes lc-cta-pulse {
+  0%, 100% { box-shadow: 0 0 18px rgba(255, 26, 140, 0.4);  transform: translateY(0); }
+  50%      { box-shadow: 0 0 32px rgba(255, 26, 140, 0.9);  transform: translateY(-1.5px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-deck-cover-img,
+  .lc-deck-cover-hud,
+  .lc-deck-cover-eyebrow-dot,
+  .lc-deck-cover-cta-wrap > button,
+  .lc-deck-cover-cta-wrap > a {
+    animation: none !important;
+  }
+}
+
+/* =====================================================================
+   v0.6.3 — Settings hero avatar glow + log-out red glow.
+   ===================================================================== */
+.lc-settings-avatar {
+  animation: lc-avatar-glow 3s ease-in-out infinite;
+}
+@keyframes lc-avatar-glow {
+  0%, 100% { box-shadow: 0 0 18px rgba(255, 26, 140, 0.4); transform: scale(1); }
+  50%      { box-shadow: 0 0 38px rgba(255, 26, 140, 0.85); transform: scale(1.02); }
+}
+.lc-settings-tier-chip {
+  box-shadow: inset 0 0 8px rgba(255, 26, 140, 0.2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lc-settings-avatar { animation: none !important; }
+}
+
+/* =====================================================================
+   v0.6.3 — Schedule everywhere primary CTA pulse. Sits in the take-action
+   bar above the existing Publish now / Schedule one buttons.
+   v0.6.4 — Motion discipline: pulse removed. CTA remains in place via
+   v0.6.4 inline-card scheduling pattern; the per-clip card carries its
+   own one-tap Schedule button, so the bar CTA stops fighting for attention.
+   ===================================================================== */
+.lc-schedule-everywhere {
+  box-shadow: 0 0 18px rgba(255, 26, 140, 0.35);
+}
+
+/* =====================================================================
+   v0.6.4 — Workspace Dashboard motion. Compact, low-cost: avatar glow,
+   live-pulse on "▸ LIVE" indicators. No drifts, no flickers.
+   ===================================================================== */
+.lc-rank-avatar {
+  animation: lc-avatar-glow 3.4s ease-in-out infinite;
+}
+.lc-live-pulse {
+  animation: lc-live-pulse 1.6s ease-in-out infinite;
+}
+@keyframes lc-live-pulse {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 1; text-shadow: 0 0 10px var(--color-fuchsia); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lc-rank-avatar,
+  .lc-live-pulse { animation: none !important; }
+}
+
+/* Always-visible active label below the icon. Inactive items hide it.
+   v0.6.7 — Bumped font 9 → 10px, max-width 56 → 64px, tightened letter-spacing
+   from .12em → .10em so the longest label (Workspace) sits cleanly without
+   ellipsis at any DPR. */
+.lc-sidenav-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--color-ink);
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  pointer-events: none;
+  max-width: 64px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+/* v0.6.16 — Daniel's "active should be collapsing pills" — active items no
+   longer show a persistent label below the icon, which kept the rail at a
+   uniform height. The active state is signalled by:
+     • the left-edge fuchsia bar (lc-sidenav-bar)
+     • the radial fuchsia halo behind the icon (lc-sidenav-halo)
+     • the active badge animation cycle
+   The tooltip pill on hover still surfaces the label for inactive items. */
+.lc-sidenav-item[data-active="true"] .lc-sidenav-label {
+  opacity: 0;
+  transform: translateY(-2px);
+}
+/* Active item ALSO suppresses the hover tooltip — the user already knows
+   which surface they're on; no point repeating it on mouseover. */
+.lc-sidenav-item[data-active="true"]:hover .lc-sidenav-tooltip {
+  opacity: 0;
+}
+
+/* v0.6.7 — Hover halo. Soft radial fuchsia glow behind the icon, fades in
+   on hover and persists at lower intensity when the item is active. Gives
+   the rail a polished, tactile feel without disturbing the badge motion. */
+.lc-sidenav-halo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 26, 140, 0.32), rgba(255, 26, 140, 0) 70%);
+  opacity: 0;
+  transform: scale(0.85);
+  transition: opacity 200ms ease, transform 240ms cubic-bezier(.34, 1.56, .64, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.lc-sidenav-item:hover .lc-sidenav-halo {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.lc-sidenav-item[data-active="true"] .lc-sidenav-halo {
+  opacity: 0.7;
+  transform: scale(1);
+}
+
+/* Ensure icon + label sit ABOVE the halo. */
+.lc-sidenav-icon,
+.lc-sidenav-label {
+  position: relative;
+  z-index: 1;
+}
+
+/* Left-edge fuchsia indicator bar — only visible when item is active. */
+.lc-sidenav-bar {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--color-fuchsia);
+  opacity: 0;
+  transition: opacity 160ms ease;
+  pointer-events: none;
+}
+
+.lc-sidenav-item[data-active="true"] .lc-sidenav-bar {
+  opacity: 1;
+}
+
+/* Click pulse — ~200ms fuchsia glow on the bar when an item is tapped.
+   data-pulsing is set true by the React handler and cleared onAnimationEnd. */
+@keyframes lc-sidenav-bar-pulse {
+  0%   { box-shadow: 0 0 0 var(--color-fuchsia); }
+  40%  { box-shadow: 0 0 12px var(--color-fuchsia); }
+  100% { box-shadow: 0 0 0 var(--color-fuchsia); }
+}
+
+.lc-sidenav-bar[data-pulsing="true"] {
+  /* When the bar isn't already visible (inactive item being clicked) the
+     pulse still flashes briefly — that's a deliberate signal that the click
+     registered before the active state lands. */
+  opacity: 1;
+  animation: lc-sidenav-bar-pulse 220ms ease-out 1;
+}
+
+/* Hover tooltip pill — sits 8px to the right of the rail. Hidden by default,
+   reveals on hover for inactive items. Active items already display the
+   always-visible bottom label, so we suppress the pill there to avoid double
+   labels. Pointer-events off so it never blocks the hover. */
+.lc-sidenav-tooltip {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-ink);
+  background: var(--color-paper-elev);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-chip);
+  padding: 6px 9px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: var(--shadow-e1);
+  transition: opacity 140ms ease;
+  z-index: 40;
+}
+
+.lc-sidenav-item:hover .lc-sidenav-tooltip {
+  opacity: 1;
+}
+
+.lc-sidenav-item[data-active="true"] .lc-sidenav-tooltip {
+  /* Active item already shows its label below the icon — no tooltip. */
+  display: none;
+}
+
+/* Mobile: collapse hover labels (rail stays icons-only). Tooltip pills are
+   suppressed; always-visible active label is kept so users still know
+   which surface they're on. */
+@media (max-width: 800px) {
+  .lc-sidenav-tooltip {
+    display: none;
+  }
+}
+
+/* =====================================================================
+   v0.6.35 — Sidenav 2× ("rich" icons) + collapse mode.
+   Default rail goes from 72px → 112px and the badge images from 34px →
+   56px so the rail reads as a console-game inventory, not a SaaS strip.
+   data-collapsed="true" on the <aside> reverts to a 64px icon-only rail
+   for cases where the workspace needs more room.
+   ===================================================================== */
+.lc-sidenav { width: 112px; transition: width 240ms cubic-bezier(.34, 1.56, .64, 1); }
+.lc-sidenav-item-icon-img.lc-sidenav-icon { width: 56px !important; height: 56px !important; }
+.lc-sidenav-halo { width: 80px; height: 80px; margin: -40px 0 0 -40px; }
+.lc-sidenav-item { min-height: 80px; padding: 12px 4px; }
+.lc-sidenav-label { font-size: 11px; max-width: 96px; }
+.lc-sidenav-brand-glyph { width: 52px !important; height: 52px !important; }
+
+/* Collapse toggle (added in SideNav.tsx top-right). When on, rail shrinks
+   to icon-only width and labels suppress entirely. Idle bob continues so
+   the rail still feels alive in the compact state. */
+.lc-sidenav[data-collapsed="true"] { width: 64px; }
+.lc-sidenav[data-collapsed="true"] .lc-sidenav-item-icon-img.lc-sidenav-icon { width: 36px !important; height: 36px !important; }
+.lc-sidenav[data-collapsed="true"] .lc-sidenav-halo { width: 56px; height: 56px; margin: -28px 0 0 -28px; }
+.lc-sidenav[data-collapsed="true"] .lc-sidenav-item { min-height: 56px; padding: 8px 4px; }
+.lc-sidenav[data-collapsed="true"] .lc-sidenav-label { display: none; }
+.lc-sidenav[data-collapsed="true"] .lc-sidenav-brand-glyph { width: 32px !important; height: 32px !important; }
+
+/* Collapse handle — sits at the top of the rail, just under the logo.
+   Tiny chevron, no text. Hover reveals fuchsia. */
+.lc-sidenav-collapse {
+  align-self: center;
+  margin: 4px 0 2px;
+  height: 22px;
+  width: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--color-line);
+  background: var(--color-paper);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease, transform 220ms cubic-bezier(.34, 1.56, .64, 1);
+}
+.lc-sidenav-collapse:hover { color: var(--color-fuchsia); border-color: var(--color-fuchsia); }
+.lc-sidenav[data-collapsed="true"] .lc-sidenav-collapse { transform: rotate(180deg); }
+
+/* =====================================================================
+   v0.6.35 — Cockpit (Workspace remap).
+   Perspective root + 3D tiles + ambient HUD. Pure CSS depth — no canvas,
+   no Three.js. Children read --cockpit-px / --cockpit-py from Cockpit.tsx
+   to tilt with the cursor.
+   ===================================================================== */
+
+.cockpit-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  perspective: 1200px;
+  perspective-origin: 50% 35%;
+  /* CSS vars seeded so children don't NaN before the first pointer event. */
+  --cockpit-px: 0;
+  --cockpit-py: 0;
+}
+
+/* Workstation room — keeps the two tiles centred and gives the eyebrow +
+   headline a soft drift with the cursor parallax. */
+.workstation-room { transform-style: preserve-3d; }
+.workstation-room header {
+  transform: translate3d(calc(var(--cockpit-px) * -8px), calc(var(--cockpit-py) * -4px), 0);
+  transition: transform 600ms ease-out;
+}
+
+/* The tile — transparent. No background plate, no full outline. The icon
+   hovers in 3D, breathing + tilting with cursor parallax. Four dashed
+   fuchsia HUD brackets ride the corners — see .cockpit-tile-corner-* below.
+   Hover lifts the icon and intensifies the halo. */
+.cockpit-tile {
+  transform-style: preserve-3d;
+  background: transparent !important;
+  border: 0;
+  transform: perspective(900px)
+             rotateX(calc(var(--cockpit-py) * -6deg))
+             rotateY(calc(var(--cockpit-px) * 8deg));
+  animation: cockpit-tile-breathe 5s ease-in-out infinite;
+  cursor: pointer;
+}
+.cockpit-tile:nth-of-type(2) { animation-delay: -2.5s; }
+@keyframes cockpit-tile-breathe {
+  0%, 100% { transform: perspective(900px) rotateX(calc(var(--cockpit-py) * -6deg)) rotateY(calc(var(--cockpit-px) * 8deg)) scale(1); }
+  50%      { transform: perspective(900px) rotateX(calc(var(--cockpit-py) * -6deg)) rotateY(calc(var(--cockpit-px) * 8deg)) scale(1.015); }
+}
+
+/* Icon glyph — floats in 3D, lifts on hover, glows fuchsia. */
+.cockpit-tile-glyph {
+  filter: drop-shadow(0 8px 18px rgba(255, 26, 140, 0.45));
+  transition: transform 320ms cubic-bezier(.34, 1.56, .64, 1), filter 320ms ease;
+  transform: translateZ(40px);
+}
+.cockpit-tile:hover .cockpit-tile-glyph {
+  transform: translateZ(60px) translateY(-6px) scale(1.08);
+  filter: drop-shadow(0 14px 32px rgba(255, 26, 140, 0.95));
+}
+
+/* Halo behind the icon — soft radial fuchsia. Quiet at rest, fires on hover.
+   No background plate; the halo is the only fill the tile has. */
+.cockpit-tile-halo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 70%;
+  height: 70%;
+  margin: -35% 0 0 -35%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 26, 140, 0.35), rgba(255, 26, 140, 0) 65%);
+  opacity: 0.45;
+  filter: blur(22px);
+  transition: opacity 240ms ease;
+  pointer-events: none;
+  z-index: 0;
+}
+.cockpit-tile:hover .cockpit-tile-halo { opacity: 0.95; }
+
+/* Four HUD bracket corners. Each is a 28×28 square sitting at one of the
+   four corners; only two of its borders are rendered, with a DASHED style,
+   so the visible result reads as a corner reticle — no full outline, no
+   full perimeter dashes. Brackets pulse subtly to keep the room alive. */
+.cockpit-tile-corner {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-style: dashed;
+  border-color: var(--color-fuchsia);
+  border-width: 0;
+  filter: drop-shadow(0 0 6px rgba(255, 26, 140, 0.55));
+  transition: filter 240ms ease, transform 240ms ease, width 240ms ease, height 240ms ease;
+  pointer-events: none;
+  z-index: 1;
+}
+.cockpit-tile-corner-tl { top: 0; left: 0;  border-top-width: 2px;    border-left-width: 2px;  }
+.cockpit-tile-corner-tr { top: 0; right: 0; border-top-width: 2px;    border-right-width: 2px; }
+.cockpit-tile-corner-bl { bottom: 0; left: 0;  border-bottom-width: 2px; border-left-width: 2px;  }
+.cockpit-tile-corner-br { bottom: 0; right: 0; border-bottom-width: 2px; border-right-width: 2px; }
+
+.cockpit-tile:hover .cockpit-tile-corner {
+  width: 36px;
+  height: 36px;
+  filter: drop-shadow(0 0 14px rgba(255, 26, 140, 1));
+}
+
+/* =====================================================================
+   v0.6.35 — Avatar Orbit (top-right HUD).
+   ===================================================================== */
+.avatar-orbit { position: relative; cursor: pointer; outline: none; }
+.avatar-orbit:focus-visible .avatar-orbit-face {
+  box-shadow: 0 0 0 3px rgba(255, 26, 140, 0.5);
+}
+
+.avatar-orbit-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-fuchsia);
+  filter: drop-shadow(0 0 8px rgba(255, 26, 140, 0.5));
+  pointer-events: none;
+}
+
+.avatar-orbit-face {
+  position: relative;
+  display: block;
+  height: 48px;
+  width: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--color-fuchsia), #C71585);
+  border: 2px solid var(--color-paper);
+  transition: box-shadow 200ms ease;
+}
+
+.avatar-orbit-initials {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+
+.avatar-orbit-crown {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  height: 18px;
+  width: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-paper);
+  color: var(--color-fuchsia);
+  border: 1.5px solid var(--color-fuchsia);
+  filter: drop-shadow(0 0 6px rgba(255, 26, 140, 0.7));
+}
+
+.avatar-orbit-chip {
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--color-paper);
+  border: 1px solid var(--color-fuchsia);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--color-fuchsia);
+  white-space: nowrap;
+  filter: drop-shadow(0 4px 10px rgba(255, 26, 140, 0.4));
+  pointer-events: none;
+}
+
+.avatar-orbit-chip-dot {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--color-fuchsia);
+  box-shadow: 0 0 6px var(--color-fuchsia);
+}
+
+.avatar-orbit-badge {
+  position: absolute;
+  top: -2px;
+  left: -4px;
+  min-width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--color-fuchsia);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  border: 1.5px solid var(--color-paper);
+  pointer-events: none;
+}
+
+/* =====================================================================
+   v0.6.35 — Page transition (room change). Camera dolly via blur + scale.
+   AnimatePresence variants in App.tsx drive the keyed motion.div; this
+   class only seeds will-change for GPU compositing.
+   ===================================================================== */
+.cockpit-room-wrap {
+  will-change: transform, opacity, filter;
+  transform-style: preserve-3d;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cockpit-tile { animation: none !important; }
+  .avatar-orbit-ring { animation: none !important; }
+}
+
+/* =====================================================================
+   v0.6.36 — HudChip (Library filters + future "pick one of several"
+   surfaces). Transparent button, fuchsia HUD corner brackets, dashed
+   active accent. No solid pill backgrounds.
+   ===================================================================== */
+.hud-chip {
+  color: var(--color-text-secondary);
+  border-radius: 4px;
+  transition: color 180ms ease;
+  cursor: pointer;
+}
+.hud-chip:hover { color: var(--color-fuchsia); }
+.hud-chip[data-active="true"] { color: var(--color-fuchsia); }
+.hud-chip[data-active="true"] .hud-chip-label {
+  text-shadow: 0 0 12px rgba(255, 26, 140, 0.6);
+}
+
+.hud-chip-corner {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 0;
+  border-style: dashed;
+  border-color: var(--color-fuchsia);
+  border-width: 0;
+  opacity: 0;
+  transition: opacity 180ms ease, width 200ms ease, height 200ms ease;
+  pointer-events: none;
+}
+.hud-chip-corner-tl { top: 0; left: 0;  border-top-width: 1.5px; border-left-width: 1.5px; }
+.hud-chip-corner-tr { top: 0; right: 0; border-top-width: 1.5px; border-right-width: 1.5px; }
+.hud-chip-corner-bl { bottom: 0; left: 0;  border-bottom-width: 1.5px; border-left-width: 1.5px; }
+.hud-chip-corner-br { bottom: 0; right: 0; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+.hud-chip:hover .hud-chip-corner { opacity: 0.5; }
+.hud-chip[data-active="true"] .hud-chip-corner {
+  opacity: 1;
+  width: 14px;
+  height: 14px;
+  filter: drop-shadow(0 0 6px rgba(255, 26, 140, 0.7));
+}
+
+/* =====================================================================
+   v0.6.36 — Library wall. The page background reads as the cockpit; the
+   cards are floating cinema stills with bracket corners. Cursor parallax
+   inherited from .cockpit-root.
+   ===================================================================== */
+.library-wall { perspective: 1100px; transform-style: preserve-3d; }
+.library-wall header {
+  transform: translate3d(calc(var(--cockpit-px, 0) * -6px), calc(var(--cockpit-py, 0) * -3px), 0);
+  transition: transform 500ms ease-out;
+}
+
+.library-card {
+  position: relative;
+  border-radius: 14px;
+  background: transparent;
+  transform-style: preserve-3d;
+  transform: perspective(900px)
+             rotateX(calc(var(--cockpit-py, 0) * -3deg))
+             rotateY(calc(var(--cockpit-px, 0) * 4deg));
+  transition: filter 240ms ease;
+  cursor: pointer;
+  will-change: transform;
+}
+.library-card:hover {
+  filter: drop-shadow(0 18px 50px rgba(255, 26, 140, 0.4));
+}
+.library-card[data-archived="true"]:not(:hover) { filter: saturate(0.7); }
+
+/* Four bracket corners — same dashed-fuchsia language as cockpit tiles,
+   sized down for the card scale. Pulse-grow on hover. */
+.library-card-corner {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-style: dashed;
+  border-color: var(--color-fuchsia);
+  border-width: 0;
+  filter: drop-shadow(0 0 4px rgba(255, 26, 140, 0.5));
+  transition: filter 240ms ease, width 240ms ease, height 240ms ease;
+  pointer-events: none;
+  z-index: 2;
+}
+.library-card-corner-tl { top: 0; left: 0;  border-top-width: 1.5px;    border-left-width: 1.5px;  }
+.library-card-corner-tr { top: 0; right: 0; border-top-width: 1.5px;    border-right-width: 1.5px; }
+.library-card-corner-bl { bottom: 0; left: 0;  border-bottom-width: 1.5px; border-left-width: 1.5px;  }
+.library-card-corner-br { bottom: 0; right: 0; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+.library-card:hover .library-card-corner {
+  width: 24px;
+  height: 24px;
+  filter: drop-shadow(0 0 10px rgba(255, 26, 140, 1));
+}
+
+/* v0.6.38 — Hot campaigns (Earn BountyCard with score ≥ 78) get brighter
+   brackets at rest so the wall has a tiered "look at this one first"
+   signal without re-introducing solid borders. */
+.library-card[data-hot="true"] .library-card-corner {
+  width: 22px;
+  height: 22px;
+  filter: drop-shadow(0 0 10px rgba(255, 26, 140, 0.95));
+}
+
+/* Library empty / loading frames reuse the cockpit-tile-corner spans — same
+   bracket-only language, no card chrome behind. */
+.library-wall-empty,
+.library-wall-loading {
+  border-radius: 16px;
+  background: transparent;
+}
+
+/* The fallback bug glyph used when a project has no thumbnail. Floats
+   fuchsia on transparent — matches the Workstation tile glyph language. */
+.library-card-bug {
+  object-fit: contain;
+  -webkit-user-drag: none;
+  user-select: none;
+  filter: drop-shadow(0 4px 14px rgba(255, 26, 140, 0.55));
+  animation: lc-badge-float 3.2s ease-in-out infinite;
+  transition: transform 320ms cubic-bezier(.34, 1.56, .64, 1), filter 320ms ease;
+}
+.library-card:hover .library-card-bug {
+  animation-play-state: paused;
+  transform: translateY(-4px) scale(1.18);
+  filter: drop-shadow(0 10px 26px rgba(255, 26, 140, 0.95));
+}
+@media (prefers-reduced-motion: reduce) {
+  .library-card-bug { animation: none !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .library-card,
+  .library-wall header { transform: none !important; transition: none !important; }
 }
