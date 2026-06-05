@@ -67,7 +67,7 @@ export default function CheckoutPage() {
       if (a && /^[A-Za-z0-9_-]+$/.test(a)) {
         setAffiliateId(a);
         if (!/(?:^|;\s*)jnr_ref=/.test(document.cookie)) {
-          const domain = /(^|\.)jnremployee\.com$/.test(location.hostname) ? "; domain=.jnremployee.com" : "";
+          const domain = /(^|\.)liquidclips\.app$/.test(location.hostname) ? "; domain=.liquidclips.app" : "";
           document.cookie = `jnr_ref=${encodeURIComponent(a)}; path=/; max-age=${60 * 60 * 24 * 365}${domain}; SameSite=Lax`;
         }
       }
@@ -94,7 +94,7 @@ export default function CheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "https://account.jnremployee.com";
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://account.liquidclips.app";
   const returnUrl = `${origin}/get${affiliateId ? `?a=${encodeURIComponent(affiliateId)}` : ""}`;
 
   // On a completed checkout, drive the TOP window to /get ourselves. The embed's

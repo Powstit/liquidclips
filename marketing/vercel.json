@@ -20,32 +20,32 @@
     },
     {
       "source": "/dashboard",
-      "destination": "https://account.jnremployee.com/dashboard",
+      "destination": "https://account.liquidclips.app/dashboard",
       "permanent": false
     },
     {
       "source": "/dashboard/:path*",
-      "destination": "https://account.jnremployee.com/dashboard/:path*",
+      "destination": "https://account.liquidclips.app/dashboard/:path*",
       "permanent": false
     },
     {
       "source": "/sign-in",
-      "destination": "https://account.jnremployee.com/sign-in",
+      "destination": "https://account.liquidclips.app/sign-in",
       "permanent": false
     },
     {
       "source": "/sign-up",
-      "destination": "https://account.jnremployee.com/sign-up",
+      "destination": "https://account.liquidclips.app/sign-up",
       "permanent": false
     },
     {
       "source": "/upgrade",
-      "destination": "https://account.jnremployee.com/upgrade",
+      "destination": "https://account.liquidclips.app/upgrade",
       "permanent": false
     },
     {
       "source": "/login",
-      "destination": "https://account.jnremployee.com/sign-in",
+      "destination": "https://account.liquidclips.app/sign-in",
       "permanent": false
     }
   ],
