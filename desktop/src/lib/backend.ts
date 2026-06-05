@@ -82,14 +82,14 @@ async function handleUnauthorized(route: string): Promise<never> {
   }
   void reportDesktopError("license_rejected", { route, http_status: 401, error_code: "UnauthorizedError" });
   onUnauthorized?.();
-  throw new UnauthorizedError("license rejected — please sign in to Junior again");
+  throw new UnauthorizedError("license rejected — please sign in to Liquid Clips again");
 }
 
 async function authedFetch(path: string, init: RequestInit & { jwt?: string | null } = {}): Promise<Response> {
   const { jwt: maybeJwt, headers, ...rest } = init;
   const jwt = maybeJwt ?? (await licenseJwt());
   if (!jwt) {
-    throw new UnauthorizedError("not activated — sign in to Junior to continue.");
+    throw new UnauthorizedError("not activated — sign in to Liquid Clips to continue.");
   }
   // Retry transient failures (network drop, 5xx, 429) with exponential backoff.
   // Only retries idempotent reads; non-GET requests bail on the first failure
@@ -121,7 +121,7 @@ async function authedFetch(path: string, init: RequestInit & { jwt?: string | nu
         error_code: (e as Error)?.name ?? "NetworkError",
         message: String(e),
       });
-      throw new BackendOfflineError("can't reach Junior — check your connection and retry.");
+      throw new BackendOfflineError("can't reach Liquid Clips — check your connection and retry.");
     }
     // 429 + 5xx are transient — retry on idempotent reads.
     if (idempotent && (res.status === 429 || (res.status >= 500 && res.status <= 599)) && attempt < maxAttempts - 1) {
@@ -166,6 +166,9 @@ export type ScheduleDto = {
   scheduled_for: string;     // ISO
   status: "pending" | "uploading" | "scheduled" | "published" | "failed" | "canceled";
   post_url: string | null;
+  // v0.6.41 — Ayrshare webhook fills this on publish so ScheduleQueue can
+  // render the live URL alongside the platform glyph.
+  live_url?: string | null;
   error: string | null;
   created_at: string;
 };
@@ -394,6 +397,14 @@ export const backend = {
       }
       const res = await authedFetch(`/schedules/${id}`, { method: "DELETE", jwt });
       if (!res.ok) throw new Error(`cancel failed: HTTP ${res.status}`);
+    },
+    // v0.6.41 — Ayrshare retry. Server resets a failed row's status to
+    // "pending" and clears its error so the existing cron picks it up
+    // again. Backend gates this on `status === "failed"`.
+    retry: async (jwt: string, id: string) => {
+      if (isWebPreview()) return;
+      const res = await authedFetch(`/schedules/${id}/retry`, { method: "POST", jwt });
+      if (!res.ok) throw new Error(`retry failed: HTTP ${res.status}`);
     },
   },
 
@@ -1353,7 +1364,7 @@ function previewNotifications(): NotificationDto[] {
       {
         id: "ntf_001",
         category: "junior_message",
-        title: "Welcome to Junior.",
+        title: "Welcome to Liquid Clips.",
         body: "I clip long videos into ready-to-post shorts. Drop a file or paste a link to see what I do — you can use this preview without an account.",
         priority: "medium",
         action_kind: null,

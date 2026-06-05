@@ -3,7 +3,7 @@
 // pill background. Bottom icon (Link) opens AffiliateHero as a popover.
 
 import { useState, type ReactNode } from "react";
-import { CheckCircle2, Clock4, Link as LinkIcon, Send, Target, Trophy } from "lucide-react";
+import { Clock4, Link as LinkIcon, Send, Target, Trophy, Wallet } from "lucide-react";
 import { AffiliateHeroPopover, useAffiliateAttention } from "./AffiliateHero";
 import type { EarnTab as EarnSubTab } from "./types";
 
@@ -13,8 +13,8 @@ import type { EarnTab as EarnSubTab } from "./types";
 const ITEMS: Array<{ id: EarnSubTab; label: string; chip: string; icon: ReactNode }> = [
   { id: "available",   label: "Open campaigns", chip: "Open",   icon: <Target size={14} /> },
   { id: "in_progress", label: "In progress",    chip: "Doing",  icon: <Clock4 size={14} /> },
-  { id: "submitted",   label: "Posted clips",   chip: "Posted", icon: <Send size={14} /> },
-  { id: "approved",    label: "Approved",       chip: "Paid",   icon: <CheckCircle2 size={14} /> },
+  { id: "submissions", label: "Submissions",    chip: "SUB",    icon: <Send size={14} /> },
+  { id: "payouts",     label: "Payouts",        chip: "PAY",    icon: <Wallet size={14} /> },
   // Task #69 — "Top affiliates" → "Top allies" per RPO vocab. Sub-tab id
   // ("leaderboard") + chip ("Top") stay; only the hover label flips.
   { id: "leaderboard", label: "Top allies", chip: "Top",    icon: <Trophy size={14} /> },
@@ -91,18 +91,19 @@ function RailButton({
   // to flag "this surface needs your attention" without opening it.
   dot?: boolean;
 }) {
-  // Cockpit pass: rail items use earn-rail-item — transparent, fuchsia bar
-  // indicator on active + glow on the glyph. No solid pill plate, no border.
   return (
     <button
       type="button"
       onClick={onClick}
       title={label}
       aria-label={label}
-      data-active={active ? "true" : "false"}
-      className="earn-rail-item relative mb-1.5 flex w-12 flex-col items-center gap-0.5 py-1.5 text-text-secondary"
+      className={`relative mb-1.5 flex w-12 flex-col items-center gap-0.5 rounded-xl border py-1.5 transition-colors duration-150 ${
+        active
+          ? "border-fuchsia bg-fuchsia-soft text-fuchsia-deep shadow-[var(--glow-sm)]"
+          : "border-transparent text-text-secondary hover:bg-paper-elev hover:text-ink"
+      }`}
     >
-      <span className="earn-rail-glyph inline-flex h-5 w-5 items-center justify-center">
+      <span className="inline-flex h-5 w-5 items-center justify-center">
         {children}
       </span>
       <span className="font-mono text-[8px] uppercase tracking-[0.04em] leading-none">
@@ -110,7 +111,7 @@ function RailButton({
       </span>
       {dot && (
         <span
-          className="pulse-dot absolute right-1 top-1 h-2 w-2 rounded-full bg-fuchsia"
+          className="pulse-dot absolute right-1 top-1 h-2 w-2 rounded-full bg-fuchsia ring-2 ring-paper"
           aria-hidden
         />
       )}

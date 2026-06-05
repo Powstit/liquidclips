@@ -36,7 +36,7 @@ export function JuniorLoader({ message }: { message?: string }) {
       <div className="flex flex-col items-start gap-4">
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
           <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-          junior
+          liquid clips
         </div>
         <div className="flex items-center gap-3">
           <span
