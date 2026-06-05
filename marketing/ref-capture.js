@@ -1,8 +1,8 @@
 // Affiliate referral capture — first-touch, persistent.
 //
 // Reads ?ref= (or legacy ?a=) from the landing URL and stores it as the
-// `jnr_ref` cookie scoped to *.jnremployee.com, so the account-app sign-up
-// (account.jnremployee.com) can bake it into Clerk unsafeMetadata — the
+// `jnr_ref` cookie scoped to *.liquidclips.app, so the account-app sign-up
+// (account.liquidclips.app) can bake it into Clerk unsafeMetadata — the
 // "first-touch forever" attribution from oauth-billing.md §6.
 //
 // IDs only; first-touch wins (never overwrite an existing capture).
@@ -18,8 +18,8 @@
     if (/(?:^|;\s*)jnr_ref=/.test(document.cookie)) return;
     var oneYear = 60 * 60 * 24 * 365;
     // Share across apex + subdomains (account., partner.) so signup can read it.
-    var domain = /(^|\.)jnremployee\.com$/.test(location.hostname)
-      ? "; domain=.jnremployee.com"
+    var domain = /(^|\.)liquidclips\.app$/.test(location.hostname)
+      ? "; domain=.liquidclips.app"
       : "";
     document.cookie =
       "jnr_ref=" + encodeURIComponent(ref) +

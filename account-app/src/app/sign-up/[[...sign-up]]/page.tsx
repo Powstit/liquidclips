@@ -12,7 +12,7 @@ import { track } from "@/lib/analytics";
 function readAffiliateRef(): string | null {
   if (typeof window === "undefined") return null;
   // First-touch cookie wins (set by the marketing ref-capture script). Fall
-  // back to ?ref/?a on a direct account link (account.jnremployee.com/sign-up
+  // back to ?ref/?a on a direct account link (account.liquidclips.app/sign-up
   // ?ref=…) so attribution still locks into Clerk unsafeMetadata instead of
   // only landing in PostHog.
   const m = document.cookie.match(/(?:^|;\s*)jnr_ref=([^;]+)/);

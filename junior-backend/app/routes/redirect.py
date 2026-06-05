@@ -45,7 +45,7 @@ _UA_FAMILY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_\-./ ]{0,63}")
 
 
 def _safe_fallback_url() -> str:
-    return get_settings().account_site_url or get_settings().public_site_url or "https://jnremployee.com"
+    return get_settings().account_site_url or get_settings().public_site_url or "https://liquidclips.app"
 
 
 def _daily_salt() -> str:

@@ -263,7 +263,7 @@ def create_submission(
                 detail={
                     "code": "watermark_detected",
                     "message": wm.reason,
-                    "upgrade_url": "https://account.jnremployee.com/upgrade?reason=watermark",
+                    "upgrade_url": "https://account.liquidclips.app/upgrade?reason=watermark",
                     "submission_id": row.id,
                 },
             )

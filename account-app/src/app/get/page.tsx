@@ -6,12 +6,12 @@ import { useUser } from "@clerk/nextjs";
 import { track } from "@/lib/analytics";
 
 // /get — post-purchase onboarding landing. Affiliate-referred buyers land here
-// AFTER paying on Whop; Whop redirects to account.jnremployee.com/get?ref=<affId>.
+// AFTER paying on Whop; Whop redirects to account.liquidclips.app/get?ref=<affId>.
 //
 // Two jobs:
 //   1) First-touch affiliate capture. Mirrors marketing/ref-capture.js exactly
 //      (same ?ref/?a parsing, same regex, no-overwrite, 1yr, SameSite=Lax,
-//      scoped to .jnremployee.com) so attribution survives the redirect even
+//      scoped to .liquidclips.app) so attribution survives the redirect even
 //      though the buyer may have arrived without ever hitting the marketing JS.
 //   2) Link the just-purchased Whop plan to the signed-in Clerk account by
 //      POSTing { clerk_user_id, email } to the Liquid Clips backend, then confirming
@@ -33,8 +33,8 @@ function captureFirstTouchRef(): void {
     if (/(?:^|;\s*)jnr_ref=/.test(document.cookie)) return;
     const oneYear = 60 * 60 * 24 * 365;
     // Share across apex + subdomains (account., partner.) so signup can read it.
-    const domain = /(^|\.)jnremployee\.com$/.test(location.hostname)
-      ? "; domain=.jnremployee.com"
+    const domain = /(^|\.)liquidclips\.app$/.test(location.hostname)
+      ? "; domain=.liquidclips.app"
       : "";
     document.cookie =
       "jnr_ref=" +
@@ -195,7 +195,7 @@ export default function GetPage() {
       )}
 
       <footer className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-        <span>account.jnremployee.com</span>
+        <span>account.liquidclips.app</span>
         <div className="flex flex-wrap gap-5">
           <a href="https://liquidclips.app" className="hover:text-ink">liquidclips.app →</a>
           <a href="https://liquidclips.app/refunds" className="hover:text-ink">refunds</a>
