@@ -28,6 +28,7 @@ const LOG_PATH = "~/LiquidClips/projects/<slug>/.progress.json";
 import { syncStatus, meStatus, meAffiliate, type SyncStatus, type MeStatus } from "../lib/backend";
 import { applyUpdate, checkForUpdate, readLastUpdateCheck, type LastUpdateCheck, type UpdateState } from "../lib/updater";
 import { getTelemetryConsent, setTelemetryConsent } from "../lib/telemetry";
+import { resetIntroSeen } from "../lib/intro";
 import { BadgeShelf } from "./BadgeShelf";
 import { HudChip } from "./cockpit/HudChip";
 
@@ -69,6 +70,7 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
   const [deps, setDeps] = useState<DepsInfo | null>(null);
   const [depsError, setDepsError] = useState<string | null>(null);
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  const [introReset, setIntroReset] = useState(false);
   // v0.6.3 — /me load for the compact header + WhoAmI section.
   const [me, setMe] = useState<MeStatus | null>(null);
   // v0.6.4 — Whop-pattern left-rail / right-pane layout.
@@ -331,6 +333,15 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
               <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
                 build · {BUILD_HASH}
               </span>
+              <HudChip
+                active={introReset}
+                onClick={() => {
+                  resetIntroSeen();
+                  setIntroReset(true);
+                }}
+              >
+                {introReset ? "Intro ready to replay" : "Watch intro again →"}
+              </HudChip>
               <button
                 type="button"
                 onClick={() => void openExternal(`mailto:${SUPPORT_EMAIL}`)}

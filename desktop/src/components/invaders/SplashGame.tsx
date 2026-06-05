@@ -190,30 +190,20 @@ export function SplashGame({
       </div>
 
       {/* Continue gate. Hidden until the parent says ready AND the minimum
-          hold has elapsed. Skip is always visible so power users can bail.
-          v0.5.2 — solid white text on both buttons + bold weight for high
-          contrast on the OASIS backdrop. */}
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onContinue}
-          disabled={!continueLive}
-          className={`rounded-full px-6 py-2.5 font-sans text-[14px] font-semibold transition-all ${
-            continueLive
-              ? "bg-fuchsia text-white shadow-[var(--glow-md)] hover:bg-fuchsia-bright hover:shadow-[var(--glow-lg)] animate-pulse"
-              : "border border-white/40 bg-black/40 text-white/60 backdrop-blur-sm cursor-wait"
-          }`}
-        >
-          {continueLive ? (newBest ? "New record! Continue →" : "Continue →") : "loading…"}
-        </button>
-        <button
-          type="button"
-          onClick={onContinue}
-          className="rounded-full border border-white/60 bg-black/40 px-4 py-2.5 font-mono text-[11px] font-medium uppercase tracking-[var(--tracking-eyebrow)] text-white backdrop-blur-sm transition-all hover:border-white hover:bg-fuchsia"
-        >
-          Skip
-        </button>
-      </div>
+          hold has elapsed. The global Splash skip control now lives top-right
+          across every splash phase, so this area only exposes the ready CTA. */}
+      <button
+        type="button"
+        onClick={onContinue}
+        disabled={!continueLive}
+        className={`rounded-full px-6 py-2.5 font-sans text-[14px] font-semibold transition-all ${
+          continueLive
+            ? "bg-fuchsia text-white shadow-[var(--glow-md)] hover:bg-fuchsia-bright hover:shadow-[var(--glow-lg)] animate-pulse"
+            : "border border-white/40 bg-black/40 text-white/60 backdrop-blur-sm cursor-wait"
+        }`}
+      >
+        {continueLive ? (newBest ? "New record! Continue →" : "Continue →") : "loading…"}
+      </button>
     </div>
   );
 }
