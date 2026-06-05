@@ -28,7 +28,7 @@ if (typeof document !== "undefined" && !document.getElementById("__preview-banne
     "box-shadow:0 2px 12px rgba(255,26,140,0.25)",
   ].join(";");
   el.textContent =
-    "preview mode · ux only · drop a file → click around → download Junior for real processing";
+    "preview mode · ux only · drop a file → click around → download Liquid Clips for real processing";
   document.addEventListener("DOMContentLoaded", () => document.body.prepend(el), { once: true });
   if (document.body) document.body.prepend(el);
 }

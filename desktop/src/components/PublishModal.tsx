@@ -40,9 +40,11 @@ import { ConnectFirstPrompt } from "./upload/ConnectFirstPrompt";
  *
  * Three modes:
  *   publish-now : post immediately
- *   schedule-one: pick one platform + a datetime, backend stores a row
- *                 (sprint #3 keeps the schedule path text-only for now;
- *                  the Ayrshare-native schedule wiring lands in a follow-up)
+ *   schedule-one: pick one platform/channel + a datetime. Channel mode hits
+ *                 /publish-now with `scheduledAt` so Ayrshare's native
+ *                 scheduler queues the post; legacy mode hits /schedules
+ *                 (cron worker fires at scheduled_for). Both persist a
+ *                 schedules row that the ScheduleQueue renders.
  */
 
 export type PublishModalMode = "publish-now" | "schedule-one";
@@ -336,17 +338,13 @@ export function PublishModal({
   if (!connectionLoading && hasNoChannels && hasNoLegacyProfile) {
     return (
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-paper/85 p-6 backdrop-blur-md"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
         onClick={onClose}
       >
         <div
-          className="relative flex w-full max-w-[520px] flex-col gap-5 rounded-2xl bg-transparent p-7"
+          className="flex w-full max-w-[520px] flex-col gap-5 rounded-2xl bg-paper p-7 shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
-          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
-          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
-          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
           <ConnectFirstPrompt
             variant="inline"
             onOpenSchedule={() => {
@@ -371,17 +369,13 @@ export function PublishModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/85 p-6 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
       onClick={busy ? undefined : onClose}
     >
       <div
-        className="relative flex w-full max-w-[640px] flex-col gap-5 rounded-2xl bg-transparent p-7"
+        className="relative flex w-full max-w-[640px] flex-col gap-5 rounded-2xl bg-paper p-7 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
-        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
-        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
-        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
           <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
           {eyebrow}
@@ -558,15 +552,11 @@ function UpgradeWall({
       : "Scheduling is on Pro+.";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-paper/85 p-6 backdrop-blur-md" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md" onClick={onClose}>
       <div
-        className="relative flex w-full max-w-[480px] flex-col gap-5 rounded-2xl bg-transparent p-7"
+        className="flex w-full max-w-[480px] flex-col gap-5 rounded-2xl bg-paper p-7 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
-        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
-        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
-        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
           <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
           {cur.name.toLowerCase()} · locked

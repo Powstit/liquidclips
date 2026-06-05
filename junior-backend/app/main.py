@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.cron import start_cron, stop_cron
 from app.db import Base, engine
-from app.routes import admin, affiliate, analytics, campaigns, channels, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, transcribe, updates, usage, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, affiliate, analytics, channels, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -143,33 +143,6 @@ async def lifespan(_app: FastAPI):
         )""",
         "CREATE INDEX IF NOT EXISTS ix_post_analytics_channel ON post_analytics (channel_id)",
         "CREATE INDEX IF NOT EXISTS ix_post_analytics_refreshed ON post_analytics (refreshed_at)",
-        # v0.7.0 — Sprint 2: Sponsored Rewards. Liquid Clips owned campaign
-        # banners replace the generic Whop affiliate cards on the dashboard.
-        # Admin CRUD via /admin/campaigns; public list at /campaigns.
-        """CREATE TABLE IF NOT EXISTS sponsored_campaigns (
-            id varchar PRIMARY KEY,
-            slug varchar NOT NULL UNIQUE,
-            name varchar NOT NULL,
-            brand varchar,
-            subtitle varchar,
-            type varchar NOT NULL DEFAULT 'coming_soon',
-            status varchar NOT NULL DEFAULT 'coming_soon',
-            rpm_cents integer NOT NULL DEFAULT 0,
-            budget_cents integer NOT NULL DEFAULT 0,
-            funded_pct integer NOT NULL DEFAULT 0,
-            duration_label varchar,
-            whop_url varchar NOT NULL,
-            banner_url varchar,
-            eligibility jsonb NOT NULL DEFAULT '[]'::jsonb,
-            visibility_tiers jsonb NOT NULL DEFAULT '["free","solo","pro","agency"]'::jsonb,
-            min_lc_score integer NOT NULL DEFAULT 75,
-            cta_text varchar NOT NULL DEFAULT 'View Campaign Brief →',
-            sort_order integer NOT NULL DEFAULT 0,
-            created_at timestamptz NOT NULL DEFAULT now(),
-            updated_at timestamptz NOT NULL DEFAULT now()
-        )""",
-        "CREATE INDEX IF NOT EXISTS ix_sponsored_campaigns_status ON sponsored_campaigns (status)",
-        "CREATE INDEX IF NOT EXISTS ix_sponsored_campaigns_sort ON sponsored_campaigns (sort_order)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -205,6 +178,7 @@ app.add_middleware(
 app.include_router(webhooks_clerk.router)
 app.include_router(webhooks_whop.router)
 app.include_router(webhooks_stripe.router)
+app.include_router(webhooks_ayrshare.router)
 app.include_router(stripe_connect.router)
 app.include_router(desktop.router)
 app.include_router(sync.router)
@@ -230,17 +204,6 @@ app.include_router(submissions.router)
 app.include_router(doctrine.router)
 app.include_router(channels.router)
 app.include_router(analytics.router)
-app.include_router(campaigns.router)
-
-# v0.7.0 — Sponsored campaign banners served at /static/campaigns/<slug>.png
-# Admin uploads = drop file in app/static/campaigns/ then PATCH the campaign
-# record's banner_url to point at it. Read-only mount — no upload endpoint
-# (kept manual in Sprint 2; Vercel Blob / R2 swap lands in Sprint 5).
-from fastapi.staticfiles import StaticFiles  # noqa: E402
-from pathlib import Path as _Path  # noqa: E402
-_static_dir = _Path(__file__).resolve().parent / "static"
-if _static_dir.is_dir():
-    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
 
 @app.get("/healthcheck")

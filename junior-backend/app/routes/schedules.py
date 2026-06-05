@@ -65,11 +65,33 @@ class ScheduleResponse(BaseModel):
     scheduled_for: datetime
     status: str
     post_url: str | None
+    # Schedule v2 — the live URL of the published post. Set by the Ayrshare
+    # webhook handler when a scheduled post fires. Aliased into the response
+    # so the desktop has one canonical field to read (`live_url`) regardless
+    # of whether the row was published via the legacy cron path
+    # (`post_url`) or Ayrshare's native scheduler (`actual_post_url`).
+    live_url: str | None = None
     error: str | None
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+    @classmethod
+    def from_row(cls, row: "Schedule") -> "ScheduleResponse":
+        return cls(
+            id=row.id,
+            project_slug=row.project_slug,
+            clip_idx=row.clip_idx,
+            clip_title=row.clip_title,
+            platform=row.platform or "",
+            scheduled_for=row.scheduled_for,
+            status=row.status,
+            post_url=row.post_url,
+            live_url=row.actual_post_url or row.post_url,
+            error=row.error,
+            created_at=row.created_at,
+        )
 
 
 class DripBatchCreate(BaseModel):
@@ -99,7 +121,7 @@ def create_schedule(
     db.add(row)
     db.commit()
     db.refresh(row)
-    return ScheduleResponse.model_validate(row)
+    return ScheduleResponse.from_row(row)
 
 
 @router.post("/drip-batch", response_model=list[ScheduleResponse], status_code=status.HTTP_201_CREATED)
@@ -132,7 +154,7 @@ def create_drip_batch(
         db.add(row)
         out.append(row)  # populated after commit
     db.commit()
-    return [ScheduleResponse.model_validate(r) for r in out]
+    return [ScheduleResponse.from_row(r) for r in out]
 
 
 @router.get("", response_model=list[ScheduleResponse])
@@ -145,7 +167,37 @@ def list_schedules(
     q = db.query(Schedule).filter(Schedule.user_id == user.id).order_by(Schedule.scheduled_for.asc())
     if project_slug:
         q = q.filter(Schedule.project_slug == project_slug)
-    return [ScheduleResponse.model_validate(r) for r in q.limit(limit).all()]
+    return [ScheduleResponse.from_row(r) for r in q.limit(limit).all()]
+
+
+@router.post("/{schedule_id}/retry", response_model=ScheduleResponse)
+def retry_schedule(
+    schedule_id: str,
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> ScheduleResponse:
+    """Re-queue a failed schedule.
+
+    Resets status to `pending`, clears the error message, drops the retry
+    counter so the cron's backoff window starts fresh. The next cron tick
+    (60s) picks it up. Only `failed` rows are eligible — published / canceled /
+    in-flight rows reject so the desktop never accidentally double-publishes.
+    """
+    row = db.get(Schedule, schedule_id)
+    if not row or row.user_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "schedule not found")
+    if row.status != "failed":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"only failed schedules can be retried — this one is {row.status}",
+        )
+    row.status = "pending"
+    row.error = None
+    row.retry_count = 0
+    row.next_retry_at = None
+    db.commit()
+    db.refresh(row)
+    return ScheduleResponse.from_row(row)
 
 
 @router.delete("/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)

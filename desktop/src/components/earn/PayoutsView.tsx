@@ -1,15 +1,9 @@
-// Payouts tab — top-level "show me my money" surface.
+// PayoutsView — Earn sub-tab "Payouts" body.
 //
-// Layout (fits 1280×820 without main scroll):
-//   1. Page header with money totals (paid this month + pending)
-//   2. Two MoneySourceCards side-by-side (Whop + Stripe Connect)
-//   3. Per-campaign breakdown (top 5 by earnings)
-//   4. Recent payouts feed (top 8)
-//   5. "How payouts work" explainer footer
-//
-// Data: pure local-tracker + /me/affiliate snapshot. No new backend yet.
-// When backend endpoints land (whop pending schedule, stripe balance),
-// the same components consume them.
+// Mirrors the inner JSX of components/payouts/PayoutsTab.tsx so the Earn
+// rail can host the surface directly. Same data fetching + business logic
+// as PayoutsTab — only the wrapper changes (no page-level shell needed
+// because EarnLayout already supplies it).
 
 import { useEffect, useState } from "react";
 import { ExternalLink, Loader2, Wallet } from "lucide-react";
@@ -30,7 +24,7 @@ import {
   trackerTotals,
 } from "../../lib/payoutsAggregations";
 import { useCountUp } from "../../lib/useCountUp";
-import { MoneySourceCard } from "./MoneySourceCard";
+import { MoneySourceCard } from "../payouts/MoneySourceCard";
 
 // Cache for affiliate data shared with AffiliateHero (same module-level
 // pattern). 60s TTL keeps the network quiet without going stale.
@@ -71,7 +65,7 @@ function useAffiliateMe(): {
   return { data, loading, signedOut };
 }
 
-export function PayoutsTab() {
+export function PayoutsView() {
   const { submissions } = useSubmissions();
   const { briefs } = useBriefs();
   const { data: affiliate, loading: affiliateLoading, signedOut } = useAffiliateMe();
@@ -252,11 +246,7 @@ export function PayoutsTab() {
       </section>
 
       {/* Explainer — tells first-timers where each $ comes from */}
-      <section className="library-card relative rounded-2xl bg-transparent p-4">
-        <span className="library-card-corner-tl" aria-hidden="true" />
-        <span className="library-card-corner-tr" aria-hidden="true" />
-        <span className="library-card-corner-bl" aria-hidden="true" />
-        <span className="library-card-corner-br" aria-hidden="true" />
+      <section className="rounded-2xl border border-line bg-paper-elev/40 p-4">
         <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
           how each source works
         </span>

@@ -7,16 +7,15 @@ import { InfoHint } from "../InfoHint";
 import { BountyCard } from "./BountyCard";
 import { BountyFilters } from "./BountyFilters";
 import { BountyDetail } from "./BountyDetail";
-import { SubmittedList } from "./SubmittedList";
-import { ApprovedList } from "./ApprovedList";
 import { Leaderboard } from "./Leaderboard";
 import { RewardClipsPanel } from "./RewardClipsPanel";
 import { EarnLayout } from "./EarnLayout";
 import { EarnTickerStrip } from "./EarnTickerStrip";
 import { EarnIconRail } from "./EarnIconRail";
 import { EarnSidebar } from "./EarnSidebar";
+import { PayoutsView } from "./PayoutsView";
 import { SponsoredBannerCarousel } from "./SponsoredBannerCarousel";
-import { SponsoredClipsCarousel } from "../workspace/SponsoredClipsCarousel";
+import { HudChip } from "../cockpit/HudChip";
 import {
   matchesFilter,
   sortBounties,
@@ -36,6 +35,8 @@ import {
 
 const SUBMISSION_IDS_KEY = "junior:my-whop-submissions:v1";
 
+type SubmissionFilter = "all" | "submitted" | "approved" | "denied" | "paid";
+
 export function EarnTab({
   onStartBounty,
   onStartManualBounty,
@@ -53,8 +54,8 @@ export function EarnTab({
   // AffiliateHero's "signed-out" CTA wants to send the user to FirstRun —
   // EarnTab proxies to App.tsx which owns the view state machine.
   onSignIn?: () => void;
-  // v0.6.39 — restored after Round 1 worktree dropped the prop. SponsoredBannerCarousel
-  // gates campaign visibility on this; without it Pro/Agency users see locked banners.
+  // v0.6.41 — Restored after Agent 4 dropped the prop. SponsoredBannerCarousel
+  // gates campaign visibility on this; Pro/Agency users see locked banners otherwise.
   userTier?: "free" | "solo" | "pro" | "agency" | null;
 }) {
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -76,6 +77,11 @@ export function EarnTab({
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [activeBountyId, setActiveBountyId] = useState<string | null>(null);
   const [subTab, setSubTab] = useState<EarnSubTab>("available");
+  // Chip filter for the merged Submissions sub-tab — "All" surfaces every
+  // status, the rest filter down. Whop has no "paid" status today, so the
+  // Paid chip just yields an empty list until backend payout reconciliation
+  // ships.
+  const [submissionFilter, setSubmissionFilter] = useState<SubmissionFilter>("all");
   const [sort, setSort] = useState<SortKey>("best_match");
   const [filterPlatforms, setFilterPlatforms] = useState<ConnectedPlatform[]>([]);
   const [openOnly, setOpenOnly] = useState(true);
@@ -276,8 +282,18 @@ export function EarnTab({
     filterPlatforms,
   );
 
-  const submitted = submissions.filter((s) => s.status === "submitted" || s.status === "claimed" || s.status === "pending");
-  const approved = submissions.filter((s) => s.status === "approved" || s.status === "denied");
+  // Merged Submissions filter. "Paid" is unreachable from Whop's status set
+  // today — backend payout reconciliation will widen this when it lands.
+  const filteredSubmissions = submissions.filter((s) => {
+    if (submissionFilter === "all") return true;
+    if (submissionFilter === "submitted") {
+      return s.status === "submitted" || s.status === "claimed" || s.status === "pending";
+    }
+    if (submissionFilter === "approved") return s.status === "approved";
+    if (submissionFilter === "denied") return s.status === "denied";
+    // submissionFilter === "paid" — no Whop status currently maps; empty list.
+    return false;
+  });
 
   return (
     <EarnLayout
@@ -287,40 +303,31 @@ export function EarnTab({
         <div className="flex flex-col gap-4">
           <ConnectionBadge source={authSource} />
 
-          {/* v0.6.39 — Restored after Round 1 worktree edit dropped both
-              carousels. Sponsored Rewards live ONLY on Earn since v0.6.35,
-              so this mount is load-bearing — without it the home page has
-              no rewards surface at all. */}
+          {/* v0.6.41 — Sponsored Rewards live only on Earn since v0.6.35.
+              Without this mount the home page has no rewards surface at all. */}
           <SponsoredBannerCarousel tier={userTier ?? "free"} />
-          <SponsoredClipsCarousel onOpenEarn={() => undefined} />
 
           {bountyError && (
-            // Cockpit pass: bracket-only frame with red eyebrow.
-            // No solid plate / no full red outline.
-            <div className="earn-frame relative p-4" data-tone="danger">
-              <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
-              <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
-              <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
-              <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
-              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#F87171]">
+            <div className="rounded-2xl border border-[#DC2626]/40 bg-[#DC2626]/5 p-4">
+              <div className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-[#F87171]">
                 connected — but Whop wouldn't return Content Rewards
               </div>
               <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
                 Your sign-in worked. The fetch came back with this error:
               </p>
-              <pre className="mt-2 max-h-[140px] overflow-auto bg-transparent p-2.5 font-mono text-[11px] text-text-secondary">
+              <pre className="mt-2 max-h-[140px] overflow-auto rounded-lg border border-line bg-paper-warm/40 p-2.5 font-mono text-[11px] text-text-secondary">
                 {bountyError}
               </pre>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => void bootstrap()}
-                  className="inline-flex items-center bg-transparent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-secondary hover:text-fuchsia"
+                  className="rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-secondary hover:border-fuchsia hover:text-ink"
                 >
-                  ↻ Retry
+                  Retry
                 </button>
                 <button
                   onClick={() => setManualOpen(true)}
-                  className="inline-flex items-center bg-transparent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia hover:text-fuchsia-bright"
+                  className="rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-white hover:bg-fuchsia-bright"
                 >
                   Paste a reward manually →
                 </button>
@@ -343,31 +350,28 @@ export function EarnTab({
                 </p>
               </div>
 
-              {/* Cockpit pass: pill-plate inputs → transparent line inputs
-                  with fuchsia focus underline (earn-input). Same pattern as
-                  the Library search input. */}
-              <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-wrap items-center gap-2">
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   spellCheck={false}
-                  placeholder="Search campaigns"
-                  className="earn-input min-w-[200px] flex-1 px-2 py-2 font-sans text-[13px] text-ink"
+                  placeholder="Search campaigns…"
+                  className="min-w-[200px] flex-1 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none focus:shadow-[var(--glow-sm)]"
                 />
                 <input
                   value={addUrl}
                   onChange={(e) => { setAddUrl(e.target.value); setAddError(null); }}
                   onKeyDown={(e) => { if (e.key === "Enter") void handleAddByLink(); }}
                   spellCheck={false}
-                  placeholder="Paste reward link"
-                  className="earn-input min-w-[180px] flex-1 px-2 py-2 font-mono text-[11px] text-ink"
+                  placeholder="Paste reward link…"
+                  className="min-w-[180px] flex-1 rounded-full border border-line bg-paper px-4 py-2 font-mono text-[11px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
                 />
                 <button
                   onClick={() => void handleAddByLink()}
                   disabled={!addUrl.trim() || adding}
-                  className="shrink-0 bg-transparent px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia hover:text-fuchsia-bright disabled:opacity-40"
+                  className="shrink-0 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-white transition-all hover:bg-fuchsia-bright disabled:opacity-40"
                 >
-                  {adding ? "Adding…" : "Add →"}
+                  {adding ? "Adding…" : "Add"}
                 </button>
               </div>
               {addError && <p className="font-mono text-[11px] text-[#F87171]">{addError}</p>}
@@ -418,20 +422,9 @@ export function EarnTab({
                 In progress
               </h1>
               {bountyProjects.length === 0 ? (
-                // Cockpit pass: bracket-only empty frame, fuchsia eyebrow,
-                // same idiom as LibraryWall's EmptyState.
-                <div className="earn-frame relative mx-auto my-4 flex w-full max-w-[480px] flex-col items-start gap-3 px-8 py-8">
-                  <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
-                  <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
-                  <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
-                  <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
-                  <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia">
-                    nothing in flight
-                  </span>
-                  <p className="font-sans text-[14px] leading-relaxed text-text-secondary">
-                    Campaigns you start show here so you can pick up where you left off.
-                  </p>
-                </div>
+                <p className="font-sans text-[13px] text-text-secondary">
+                  Campaigns you start show here so you can pick up where you left off.
+                </p>
               ) : (
                 bountyProjects.map((p) => (
                   <BountyProjectCard key={p.slug} project={p} onResume={() => onResumeProject(p.slug)} />
@@ -440,24 +433,157 @@ export function EarnTab({
             </div>
           )}
 
-          {subTab === "submitted" && (
-            <SubmittedList items={submitted} lastChecked={lastChecked} />
+          {subTab === "submissions" && (
+            <SubmissionsView
+              items={filteredSubmissions}
+              filter={submissionFilter}
+              onFilterChange={setSubmissionFilter}
+              lastChecked={lastChecked}
+            />
           )}
 
-          {subTab === "approved" && <ApprovedList items={approved} />}
+          {subTab === "payouts" && <PayoutsView />}
 
           {subTab === "leaderboard" && <Leaderboard />}
 
           {/* Reward Clips · Tracking Links — read-only list of clips the user
               has generated from Content Rewards. Always visible at the bottom
-              regardless of sub-tab (except leaderboard, which is its own
-              focused view). */}
-          {subTab !== "leaderboard" && <RewardClipsPanel />}
+              regardless of sub-tab (except leaderboard + payouts, which are
+              their own focused views). */}
+          {subTab !== "leaderboard" && subTab !== "payouts" && <RewardClipsPanel />}
         </div>
       }
       sidebar={<EarnSidebar />}
     />
   );
+}
+
+
+// Merged Submitted + Approved view. A HudChip row across the top filters by
+// status; the list below renders a unified row per submission with status-
+// driven color treatment (fuchsia eyebrow for paid-ish, #DC2626 for denied,
+// neutral otherwise). Replaces the legacy SubmittedList / ApprovedList split.
+function SubmissionsView({
+  items,
+  filter,
+  onFilterChange,
+  lastChecked,
+}: {
+  items: WhopSubmission[];
+  filter: SubmissionFilter;
+  onFilterChange: (next: SubmissionFilter) => void;
+  lastChecked: Date | null;
+}) {
+  const chips: Array<{ id: SubmissionFilter; label: string }> = [
+    { id: "all", label: "All" },
+    { id: "submitted", label: "Submitted" },
+    { id: "approved", label: "Approved" },
+    { id: "denied", label: "Denied" },
+    { id: "paid", label: "Paid" },
+  ];
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <h1 className="font-display text-[20px] font-semibold leading-tight tracking-[-0.015em] text-ink">
+          Submissions
+        </h1>
+        <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+          polled {lastChecked ? `${agoShort(lastChecked)} ago` : "never"} · auto-refresh every 10 min
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1">
+        {chips.map((c) => (
+          <HudChip key={c.id} active={filter === c.id} onClick={() => onFilterChange(c.id)}>
+            {c.label}
+          </HudChip>
+        ))}
+      </div>
+
+      {items.length === 0 ? (
+        <p className="font-mono text-[12px] text-text-tertiary">
+          Nothing here yet. Publish a clip from a reward and it shows up.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {items.map((s) => (
+            <SubmissionRow key={s.id} item={s} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubmissionRow({ item: s }: { item: WhopSubmission }) {
+  const denied = s.status === "denied";
+  const approved = s.status === "approved";
+  const eyebrowTone = denied
+    ? "text-[#DC2626]"
+    : approved
+      ? "text-fuchsia-deep"
+      : "text-text-tertiary";
+  const payout = s.formattedPayoutAmount
+    ? s.formattedPayoutAmount
+    : s.bounty
+      ? `${currencySymbol(s.bounty.currency)}${s.bounty.rewardPerUnitAmount.toFixed(2)} / 1k`
+      : "—";
+  return (
+    <article
+      className={`rounded-2xl border border-line bg-paper p-4 transition-colors hover:border-fuchsia/40 ${
+        denied ? "opacity-70" : ""
+      }`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h4 className="truncate font-display text-[15px] font-semibold leading-tight tracking-[-0.01em] text-ink">
+            {s.bounty?.title ?? "Reward"}
+          </h4>
+          <p
+            className={`mt-0.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] ${eyebrowTone}`}
+          >
+            {s.status}
+            {s.expiresAt && !approved && !denied
+              ? ` · auto-approves in ${hoursUntil(s.expiresAt)}h`
+              : ""}
+            {approved ? ` · ${s.verifiedVotesCount} verified votes` : ""}
+          </p>
+          {denied && s.denialReason && (
+            <p className="mt-1 font-mono text-[11px] text-[#DC2626]">
+              {s.denialReason}
+            </p>
+          )}
+        </div>
+        <div className="shrink-0 text-right">
+          <div
+            className={`font-display text-[14px] font-semibold tracking-[-0.01em] ${
+              approved ? "text-ink" : "text-text-secondary"
+            }`}
+          >
+            {payout}
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function currencySymbol(currency: string): string {
+  if (currency === "GBP") return "£";
+  if (currency === "USD") return "$";
+  return "";
+}
+
+function agoShort(d: Date): string {
+  const seconds = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h`;
+}
+
+function hoursUntil(iso: string): number {
+  return Math.max(0, Math.floor((new Date(iso).getTime() - Date.now()) / 3600_000));
 }
 
 
@@ -512,19 +638,15 @@ function ConnectionBadge({
 }: {
   source: "iframe" | "env_user" | "keychain" | "seller_key" | "none";
 }) {
-  // Cockpit pass: single-line mono HUD readout. No grey plate, no pill
-  // chrome. The pulse-dot turns on only when there is an active session;
-  // the "none" state hides the dot to read as "offline" and keeps a CTA
-  // on the right.
   if (source === "none") {
+    // Activated, but no Whop session — surface a clear CTA so users know where
+    // to go. Settings → Connections has the actual sign-in button (opens
+    // whop.com/oauth in the browser, deep-links the token back to keychain).
     return (
-      <div className="flex flex-wrap items-center gap-3 bg-transparent py-2">
-        <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] text-text-tertiary">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-text-tertiary" aria-hidden />
-          whop · disconnected
-        </span>
+      <div className="mt-2 flex flex-wrap items-center gap-3 rounded-2xl border border-fuchsia/40 bg-fuchsia-soft/30 px-4 py-3">
+        <span className="inline-block h-2 w-2 rounded-full bg-fuchsia" aria-hidden />
         <p className="flex-1 font-sans text-[13px] leading-snug text-ink">
-          <span className="font-medium">Sign in with Whop</span> to load reward campaigns here. Tokens stay on this machine.
+          <span className="font-medium">Sign in with Whop</span> to load reward campaigns here. One-time browser sign-in — tokens never leave your machine.
         </p>
         <button
           onClick={() => {
@@ -533,7 +655,7 @@ function ConnectionBadge({
             // session lifecycle in one place.
             window.dispatchEvent(new CustomEvent("junior:open-settings", { detail: { section: "connections" } }));
           }}
-          className="bg-transparent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia hover:text-fuchsia-bright"
+          className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright"
         >
           Sign in with Whop →
         </button>
@@ -541,26 +663,30 @@ function ConnectionBadge({
     );
   }
   if (source === "iframe") {
+    // Honest framing: the iframe bridge is scaffolding until the @whop/iframe +
+    // server-side x-whop-user-token bridge ships in a web build of Liquid Clips.
+    // Do not claim "connected through Whop" here — that promise belongs to
+    // the production app-registration path, not this stub.
     return (
-      <span className="inline-flex w-fit items-center gap-2 bg-transparent py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia">
-        <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" aria-hidden />
+      <span className="mt-2 inline-flex w-fit items-center gap-2 rounded-full border border-fuchsia-soft bg-fuchsia-soft/40 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-fuchsia-deep">
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
         whop iframe · preview
       </span>
     );
   }
   if (source === "seller_key") {
     return (
-      <span className="inline-flex w-fit items-center gap-2 bg-transparent py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-text-secondary">
-        <span className="inline-block h-1.5 w-1.5 rounded-full bg-text-tertiary" aria-hidden />
+      <span className="mt-2 inline-flex w-fit items-center gap-2 rounded-full border border-line bg-paper-warm/40 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary">
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#F59E0B]" />
         dev mode · seller key
       </span>
     );
   }
   const label = source === "env_user" ? "env" : "standalone key";
   return (
-    <span className="inline-flex w-fit items-center gap-2 bg-transparent py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia">
-      <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" aria-hidden />
-      whop · connected · {label}
+    <span className="mt-2 inline-flex w-fit items-center gap-2 rounded-full border border-line bg-paper-warm/40 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary">
+      <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
+      connected · {label}
     </span>
   );
 }
