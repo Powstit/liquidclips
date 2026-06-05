@@ -6,12 +6,18 @@ import type { HTMLAttributes, ReactNode } from "react";
 
 type Elevation = "flat" | "rest" | "raised";
 type Padding = "none" | "sm" | "md" | "lg";
+// v0.6.2 — Tone is purely additive: "default" preserves every existing
+// callsite's appearance; "hud" layers the .hud-frame chrome (bracket
+// corners + soft inner glow) for cards that should read as featured / game
+// surfaces (Minecraft hero, money source tiles, platform-connect tiles).
+type Tone = "default" | "hud";
 
 type Props = {
   elevation?: Elevation;
   padding?: Padding;
   hoverable?: boolean;
   selected?: boolean;
+  tone?: Tone;
   children: ReactNode;
 } & Omit<HTMLAttributes<HTMLDivElement>, "children">;
 
@@ -33,6 +39,7 @@ export function Card({
   padding = "md",
   hoverable,
   selected,
+  tone = "default",
   className,
   children,
   ...rest
@@ -45,6 +52,10 @@ export function Card({
     paddings[padding],
     hoverable && "hover:border-fuchsia/40 hover:shadow-[var(--shadow-e2)]",
     selected && "border-fuchsia/60 shadow-[var(--glow-sm)]",
+    // Layered chrome — `.hud-frame` paints the four corner brackets +
+    // inner glow on top of the existing border so the corner accent reads
+    // even when the border colour shifts (hover/selected).
+    tone === "hud" && "hud-frame",
     className,
   ]
     .filter(Boolean)

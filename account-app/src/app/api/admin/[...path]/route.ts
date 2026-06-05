@@ -33,6 +33,7 @@ function adminList(): string[] {
 // can be reached even if the client tries.
 const READ_PATHS = [
   /^overview$/,
+  /^health$/,
   /^users$/,
   /^users\/[^/]+$/,
   /^users\/[^/]+\/timeline$/,

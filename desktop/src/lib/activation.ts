@@ -7,14 +7,14 @@ import { sidecar } from "./sidecar";
 // surface (FirstRun, top-nav, Earn, the 401 self-heal prompt) — no per-screen
 // hacks. Flow:
 //   1. generate a one-time challenge nonce,
-//   2. open the browser to account.jnremployee.com/connect-desktop?challenge=…,
+//   2. open the browser to account.liquidclips.app/connect-desktop?challenge=…,
 //   3. the page signs the user in (Clerk) and mints a license JWT server-side,
 //   4. the browser deep-links back: liquidclips://activate?token=<jwt>&challenge=…,
 //   5. we verify the challenge matches, store the JWT in the OS keychain via the
 //      sidecar, and fire onActivated so the app flips to signed-in — no restart,
 //      no JWT pasting, and only the license secret is ever touched.
 
-const CONNECT_URL = "https://account.jnremployee.com/connect-desktop";
+const CONNECT_URL = "https://account.liquidclips.app/connect-desktop";
 const TIMEOUT_MS = 5 * 60_000; // generous — sign-up in the browser can take a while
 
 export type ActivationStatus =
@@ -144,7 +144,7 @@ export async function startActivation(): Promise<void> {
     pendingChallenge = null;
     emit({
       kind: "error",
-      message: "Couldn’t open your browser. Visit account.jnremployee.com/connect-desktop to sign in.",
+      message: "Couldn’t open your browser. Visit account.liquidclips.app/connect-desktop to sign in.",
     });
     return;
   }

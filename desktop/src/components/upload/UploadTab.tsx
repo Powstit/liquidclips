@@ -1,43 +1,41 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, CalendarClock, Settings2, Upload, Zap } from "lucide-react";
-import { PageHeader } from "../primitives";
-import { socialGetConnection, type SocialConnectionState } from "../../lib/backend";
+import { UploadCloud, CalendarClock, Settings2, Zap } from "lucide-react";
+import { socialGetConnection, type ConnectionPlatform, type SocialConnectionState } from "../../lib/backend";
 import { sidecar, type Project } from "../../lib/sidecar";
 import { PUBLISHING_ENABLED } from "../../lib/flags";
+import { PlatformIcon } from "../PlatformIcon";
 import { ScheduleQueue } from "../ScheduleQueue";
 import { LocalQueue } from "./LocalQueue";
 import { DirectPublishQueue } from "./DirectPublishQueue";
 import { CampaignContextStrip } from "../earn/CampaignContextStrip";
+import { HudChip } from "../cockpit/HudChip";
+
+const PLATFORM_ORDER: ConnectionPlatform[] = ["youtube", "tiktok", "instagram", "x"];
 
 /**
  * Upload tab — the home for everything that leaves Liquid Clips and lands on a
- * social platform. Replaces the old header "Queue" drawer and centralises
- * the scheduled posts list, the connected-platforms summary, and (later)
- * the Drip planner entry point. Per-clip "Publish now / Schedule" is still
- * triggered from ResultsGrid because it's bound to a specific clip — what
- * *lives* here is the cross-cutting view of "what's queued and where it's
- * going."
+ * social platform. v0.6.39 cockpit pass: cockpit-style header, transparent
+ * shell, bracket-cornered connected-accounts rail.
+ *
+ * Per-clip "Publish now / Schedule" is still triggered from ResultsGrid — what
+ * lives here is the cross-cutting "what's queued and where" view.
  */
 export function UploadTab({
   onOpenSettings,
   onOpenProject,
   onOpenSchedule,
 }: {
-  /** Settings → Connections is where the user actually links accounts.
-   *  We bubble the request up rather than re-implementing it inline. */
+  /** Settings hosts the API-keys + non-connection settings. */
   onOpenSettings: () => void;
-  /** Route uploaded finished clips into the normal ResultsGrid editor so
-   *  they get the same reaction / stack / split / schedule features. */
+  /** Route uploaded finished clips into ResultsGrid so they get the same
+   *  stack / split / schedule / publish affordances. Wired to DirectPublishQueue. */
   onOpenProject: (project: Project) => void;
-  /** Jump to the Schedule page → Channels tab, the canonical linked-accounts
-   *  surface. Connect-accounts UI no longer lives inline on Upload. */
+  /** Jump to Schedule → Channels — the canonical linked-accounts surface
+   *  since Settings → Connections was collapsed. */
   onOpenSchedule?: () => void;
 }) {
-  // Sprint #3 — swapped from legacy `backend.connections.list` (Postiz era,
-  // per-account OAuth integration model) to `socialGetConnection` which
-  // reflects the Ayrshare profile + the platforms the user has linked on
-  // Ayrshare's hosted dashboard. The chip rail now stays in sync with the
-  // actual publishing path.
+  // Sprint #3 — `socialGetConnection` reflects the Ayrshare profile + linked
+  // platforms (replaced legacy Postiz `backend.connections.list`).
   const [connection, setConnection] = useState<SocialConnectionState | null>(null);
   const [authed, setAuthed] = useState<boolean | null>(null);
 
@@ -63,69 +61,83 @@ export function UploadTab({
     };
   }, []);
 
+  const connected = new Set((connection?.platforms ?? []).map((p) => p.toLowerCase()));
+
   return (
-    // v0.5.1 — Studio Deck (workspace). Fuchsia top-edge band + faint
-    // ambient tint above the existing MainShell backdrop. See
-    // docs/RPO_VISUAL_LANGUAGE.md and src/index.css `.deck` utilities.
-    <div className="deck deck-workspace flex w-full max-w-[920px] flex-col gap-7 pt-2">
-      <PageHeader
-        glyph={Upload}
-        eyebrow="upload deck"
-        title="Schedule & publish"
-        subtitle="Everything queued, scheduled, or already live. Per-clip publish lives next to the clip."
-        trailing={
-          <button
-            onClick={onOpenSettings}
-            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper-elev px-3.5 py-2 font-sans text-[12px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia"
-            title="Connect or disconnect social accounts in Settings → Connections"
-          >
-            <Settings2 className="h-3.5 w-3.5" strokeWidth={2} />
-            Manage connections
-          </button>
-        }
-      />
+    <div className="deck deck-workspace flex w-full max-w-[920px] flex-col gap-7 bg-transparent pt-2">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+            <UploadCloud className="h-3.5 w-3.5" strokeWidth={2} />
+            upload
+          </div>
+          <h1 className="mt-1 font-display text-[28px] font-semibold leading-tight tracking-[-0.025em] text-ink">
+            Schedule &amp; publish
+          </h1>
+          <p className="mt-1 max-w-[560px] font-sans text-[13px] leading-relaxed text-text-secondary">
+            Everything queued, scheduled, or already live. Per-clip Schedule and Publish-now still
+            live next to the clip on the results screen — this is the cross-cutting view.
+          </p>
+        </div>
+        <HudChip
+          active={false}
+          onClick={onOpenSchedule ?? onOpenSettings}
+          title="Manage linked accounts in Schedule → Channels"
+        >
+          <Settings2 className="h-3 w-3" strokeWidth={2} />
+          Manage connections
+        </HudChip>
+      </header>
 
       <CampaignContextStrip />
 
-      {/* Linked-accounts glance — the canonical connect surface now lives in
-          Schedule → Channels. We keep the "N linked" status as a useful
-          glanceable, and link out with a small pill instead of duplicating
-          the connect grid here. */}
-      <section className="hud-frame rounded-2xl border border-line bg-paper-warm/30 px-5 py-4">
+      {/* Connected-platforms rail — 4 fixed slots, fuchsia HUD brackets on
+          the linked ones, dim on the empty ones. Reads at a glance whether
+          the queue can actually fire. */}
+      <section className="relative px-5 py-4">
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
         <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
           connected accounts
           <span className="ml-auto font-mono text-[10px] text-text-tertiary">
             {connection ? `${connection.platforms.length} linked` : "—"}
           </span>
         </div>
-        <div className="mt-3 flex items-center justify-between gap-3">
-          {authed === false ? (
-            <p className="font-mono text-[11px] text-text-tertiary">
-              Sign in to view your connected accounts.
-            </p>
-          ) : (
-            <span className="font-sans text-[12px] text-text-secondary">
-              Manage linked accounts in Schedule.
-            </span>
-          )}
-          {onOpenSchedule && (
-            <button
-              type="button"
-              onClick={onOpenSchedule}
-              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper-elev px-3 py-1.5 font-sans text-[12px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia"
-              title="Open Schedule → Channels to connect or disconnect accounts"
-            >
-              Connect accounts in Schedule
-              <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} />
-            </button>
-          )}
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {PLATFORM_ORDER.map((p) => {
+            const isOn = connected.has(p);
+            return (
+              <div
+                key={p}
+                tabIndex={0}
+                data-hot={isOn ? "true" : "false"}
+                className="library-card relative flex items-center gap-2 px-3 py-2 outline-none"
+              >
+                <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+                <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+                <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+                <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
+                <PlatformIcon id={p} className={`h-4 w-4 ${isOn ? "text-fuchsia-deep" : "text-text-tertiary"}`} />
+                <span className={`font-mono text-[11px] uppercase tracking-[0.08em] ${isOn ? "text-ink" : "text-text-tertiary"}`}>{p}</span>
+                <span className={`ml-auto font-mono text-[10px] uppercase tracking-[0.12em] ${isOn ? "text-fuchsia-deep" : "text-text-tertiary"}`}>
+                  {isOn ? "linked" : "—"}
+                </span>
+              </div>
+            );
+          })}
         </div>
+        {authed === false && (
+          <p className="mt-3 font-mono text-[11px] text-text-tertiary">
+            Sign in to view your connected accounts.
+          </p>
+        )}
       </section>
 
-      {/* Direct publish — drop a finished clip and ship it without the
-          long-form clip-pick pipeline. The drop zone + queue cards live in
-          DirectPublishQueue; the modal reuse is per-card via PublishModal
-          in publish-now / schedule-one modes. */}
+      {/* Direct publish — drop a finished clip, ship it without the long-form
+          clip-pick pipeline. DirectPublishQueue handles the drop zone, queue
+          cards, and per-card PublishModal reuse. */}
       <DirectPublishQueue
         onOpenSettings={onOpenSettings}
         onOpenProject={onOpenProject}
@@ -147,10 +159,8 @@ export function UploadTab({
         <LocalQueue />
       </section>
 
-      {/* SECONDARY: backend auto-publish queue (premium, hosted).
-          When PUBLISHING_ENABLED is off, render a visible coming-soon card
-          here instead of silently hiding the section. Users should see that
-          the hosted layer is on the roadmap, not absent. */}
+      {/* SECONDARY: backend auto-publish queue (premium, hosted). Coming-soon
+          card stays visible when the flag is off so users see it's roadmap, not absent. */}
       {PUBLISHING_ENABLED ? (
         <section>
           <div className="mb-3 flex items-center justify-between">
@@ -175,7 +185,11 @@ export function UploadTab({
               coming soon
             </span>
           </div>
-          <div className="rounded-2xl border border-line bg-paper-warm/30 px-5 py-4">
+          <div className="relative bg-transparent px-5 py-4">
+            <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+            <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+            <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+            <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
             <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
               One-tap publishing across your connected accounts is in beta. We're verifying the full
               path end-to-end before flipping it on. For now, use the local schedule above &mdash;

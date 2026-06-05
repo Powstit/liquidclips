@@ -169,13 +169,13 @@ export function Splash({
             </button>
             <button
               onClick={() => void onCopyDiagnostic()}
-              className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia"
+              className="rounded-full border border-line bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia"
             >
               {copied ? "Copied ✓" : "Copy diagnostic"}
             </button>
             <button
               onClick={onEmail}
-              className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia"
+              className="rounded-full border border-line bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia"
             >
               Email support →
             </button>

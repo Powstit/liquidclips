@@ -54,7 +54,7 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
   return (
     <div className="mx-auto flex min-h-full w-full max-w-[680px] flex-col px-6 py-10">
       <div className="flex items-center justify-between">
-        <Logo size={28} />
+        <Logo size="md" />
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
           <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
           first run
@@ -70,7 +70,11 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
           cuts them vertical with captions, and writes everything your video needs to publish.
         </p>
 
-        <div className="mt-10 rounded-3xl border border-line bg-paper-warm/60 p-7">
+        <div className="library-card relative mt-10 rounded-3xl bg-transparent p-7">
+          <span className="library-card-corner-tl" aria-hidden="true" />
+          <span className="library-card-corner-tr" aria-hidden="true" />
+          <span className="library-card-corner-bl" aria-hidden="true" />
+          <span className="library-card-corner-br" aria-hidden="true" />
           <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
             01 — add your OpenAI key · required
           </div>
@@ -93,7 +97,7 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
                 setError(null);
               }}
               placeholder="sk-proj-..."
-              className="flex-1 rounded-full border border-line bg-paper px-5 py-2.5 font-mono text-[13px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
+              className="flex-1 rounded-full border border-line bg-transparent px-5 py-2.5 font-mono text-[13px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
             />
             <button
               onClick={save}
@@ -114,7 +118,11 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
           </button>
         </div>
 
-        <div className="mt-4 rounded-3xl border border-line bg-paper p-7">
+        <div className="library-card relative mt-4 rounded-3xl bg-transparent p-7">
+          <span className="library-card-corner-tl" aria-hidden="true" />
+          <span className="library-card-corner-tr" aria-hidden="true" />
+          <span className="library-card-corner-bl" aria-hidden="true" />
+          <span className="library-card-corner-br" aria-hidden="true" />
           <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
             02 — sign in to Liquid Clips
           </div>
@@ -131,7 +139,7 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
               void activate();
             }}
             disabled={act.kind === "opening" || act.kind === "waiting" || act.kind === "activating"}
-            className="mt-4 rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink transition-colors hover:border-fuchsia disabled:opacity-60"
+            className="mt-4 rounded-full border border-line bg-transparent px-5 py-2.5 font-sans text-[14px] font-medium text-ink transition-colors hover:border-fuchsia disabled:opacity-60"
           >
             {act.kind === "opening"
               ? "Opening browser…"

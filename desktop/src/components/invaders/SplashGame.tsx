@@ -190,16 +190,18 @@ export function SplashGame({
       </div>
 
       {/* Continue gate. Hidden until the parent says ready AND the minimum
-          hold has elapsed. Skip is always visible so power users can bail. */}
+          hold has elapsed. Skip is always visible so power users can bail.
+          v0.5.2 — solid white text on both buttons + bold weight for high
+          contrast on the OASIS backdrop. */}
       <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={onContinue}
           disabled={!continueLive}
-          className={`rounded-full px-5 py-2 font-sans text-[13px] font-medium transition-all ${
+          className={`rounded-full px-6 py-2.5 font-sans text-[14px] font-semibold transition-all ${
             continueLive
               ? "bg-fuchsia text-white shadow-[var(--glow-md)] hover:bg-fuchsia-bright hover:shadow-[var(--glow-lg)] animate-pulse"
-              : "border border-paper/30 bg-transparent text-paper/40 cursor-wait"
+              : "border border-white/40 bg-black/40 text-white/60 backdrop-blur-sm cursor-wait"
           }`}
         >
           {continueLive ? (newBest ? "New record! Continue →" : "Continue →") : "loading…"}
@@ -207,7 +209,7 @@ export function SplashGame({
         <button
           type="button"
           onClick={onContinue}
-          className="rounded-full border border-paper/30 px-3 py-2 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-paper/70 hover:border-paper hover:text-paper"
+          className="rounded-full border border-white/60 bg-black/40 px-4 py-2.5 font-mono text-[11px] font-medium uppercase tracking-[var(--tracking-eyebrow)] text-white backdrop-blur-sm transition-all hover:border-white hover:bg-fuchsia"
         >
           Skip
         </button>

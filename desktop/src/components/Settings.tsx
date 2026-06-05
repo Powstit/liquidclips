@@ -343,9 +343,16 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
 }
 
 function Section({ eyebrow, title, children }: { eyebrow: string; title: string; children: React.ReactNode }) {
+  // v0.6.39 cockpit pass — transparent panel, fuchsia HUD bracket corners,
+  // no plate. Section is the main reusable "category card" in Settings, so
+  // changing here covers Account / API keys / About at once.
   return (
-    <section className="flex flex-col gap-3 rounded-2xl border border-line bg-paper p-5">
-      <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">{eyebrow}</div>
+    <section className="relative flex flex-col gap-3 p-5">
+      <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+      <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+      <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+      <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
+      <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia">{eyebrow}</div>
       <h3 className="font-display text-[20px] font-semibold tracking-[-0.015em] text-ink">{title}</h3>
       {children}
     </section>
@@ -394,7 +401,7 @@ function SecretRow({
           value={draftValue}
           onChange={(e) => onDraftChange(e.target.value)}
           placeholder={name === "OPENAI_API_KEY" ? "sk-proj-..." : "your key"}
-          className="mt-2 w-full rounded-full border border-line bg-paper-warm/40 px-4 py-2 font-mono text-[12px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
+          className="mt-2 w-full rounded-full border border-line bg-transparent px-4 py-2 font-mono text-[12px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
         />
         <div className="mt-3 flex gap-2">
           <button
@@ -478,7 +485,7 @@ function ConnectionsSection({ onOpenSchedule }: { onOpenSchedule?: () => void })
         type="button"
         onClick={onOpenSchedule}
         disabled={!onOpenSchedule}
-        className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-line bg-paper-elev px-4 py-3 text-left transition-colors hover:border-fuchsia disabled:cursor-default disabled:opacity-60 disabled:hover:border-line"
+        className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-line bg-transparent px-4 py-3 text-left transition-colors hover:border-fuchsia disabled:cursor-default disabled:opacity-60 disabled:hover:border-line"
       >
         <span className="font-sans text-[13px] font-medium text-ink">{countLabel}</span>
         <ChevronRight
@@ -576,7 +583,7 @@ function AffiliatePayoutsSection() {
     const needsBank = aff.payout_status === "setup_required";
     return (
       <Section eyebrow="affiliate payouts · stripe connect" title="How you get paid through Stripe.">
-        <div className={`rounded-2xl border p-4 ${needsBank ? "border-fuchsia bg-fuchsia-soft/40" : "border-line bg-paper-warm/40"}`}>
+        <div className={`rounded-2xl border p-4 ${needsBank ? "border-fuchsia bg-fuchsia-soft/40" : "border-line bg-transparent"}`}>
           <p className={`font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] ${needsBank ? "text-fuchsia-deep" : "text-text-tertiary"}`}>
             you're on the stripe connect rail
           </p>
@@ -761,7 +768,7 @@ function WhoAmISection() {
         Source of truth: junior-backend. Use this row when something looks off
         — backend wins over Clerk metadata or anything cached locally.
       </p>
-      <div className="flex flex-col gap-1 rounded-xl border border-line bg-paper-warm/30 p-3 font-mono text-[12px]">
+      <div className="flex flex-col gap-1 rounded-xl border border-line bg-transparent p-3 font-mono text-[12px]">
         <DebugRow label="Email" value={me.email ?? "—"} />
         <DebugRow label="Backend user id" value={me.backend_user_id} mono />
         <DebugRow label="Clerk id" value={me.clerk_id ?? "—"} mono />
@@ -1090,7 +1097,7 @@ function SettingsLeftRail({
   const items: SettingsCategory[] = ["account", "connections", "keys", "about"];
   return (
     <nav
-      className="flex w-[180px] shrink-0 flex-col gap-1 border-r border-line bg-paper-warm/30 px-3 py-5"
+      className="flex w-[180px] shrink-0 flex-col gap-1 border-r border-line bg-transparent px-3 py-5"
       aria-label="Settings categories"
     >
       {items.map((c) => {
@@ -1188,7 +1195,7 @@ function ProfileAvatarRow({ email }: { email: string | null }) {
             type="button"
             onClick={() => void pick()}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper-elev px-3.5 py-2 font-sans text-[12px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia disabled:cursor-wait disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-transparent px-3.5 py-2 font-sans text-[12px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia disabled:cursor-wait disabled:opacity-50"
           >
             <Camera className="h-3.5 w-3.5" strokeWidth={2} />
             {renderedSrc ? "Replace" : "Upload"}
@@ -1198,7 +1205,7 @@ function ProfileAvatarRow({ email }: { email: string | null }) {
               type="button"
               onClick={() => void clearAvatar()}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper-elev px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary transition-colors hover:border-[#DC2626] hover:text-[#DC2626] disabled:cursor-wait disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-transparent px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary transition-colors hover:border-[#DC2626] hover:text-[#DC2626] disabled:cursor-wait disabled:opacity-50"
             >
               <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
               Remove

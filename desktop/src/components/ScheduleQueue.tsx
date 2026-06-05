@@ -3,6 +3,7 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { backend, type ScheduleDto } from "../lib/backend";
 import { sidecar, humanError } from "../lib/sidecar";
 import { PlatformIcon, type PlatformId } from "./PlatformIcon";
+import { HudChip } from "./cockpit/HudChip";
 
 const KNOWN_PLATFORMS: PlatformId[] = ["youtube", "tiktok", "instagram", "x"];
 
@@ -15,14 +16,17 @@ function PlatformGlyph({ platform }: { platform: string }) {
   return <span aria-hidden>•</span>;
 }
 
-const STATUS_STYLE: Record<ScheduleDto["status"], string> = {
-  pending: "border-line bg-paper-warm/40 text-text-secondary",
-  uploading: "border-fuchsia bg-fuchsia/15 text-fuchsia-deep",
-  scheduled: "border-fuchsia/40 bg-fuchsia-soft/30 text-fuchsia-deep",
-  published: "border-fuchsia bg-fuchsia/10 text-fuchsia-deep",
-  failed: "border-[#DC2626]/40 bg-[#DC2626]/10 text-[#DC2626]",
-  canceled: "border-line bg-paper text-text-tertiary line-through opacity-60",
+// Status only colours the inline status label + signals "hot" rows.
+// Outer row chrome is transparent + bracket corners (cockpit pass).
+const STATUS_TONE: Record<ScheduleDto["status"], string> = {
+  pending: "text-text-secondary",
+  uploading: "text-fuchsia-deep",
+  scheduled: "text-fuchsia-deep",
+  published: "text-fuchsia-deep",
+  failed: "text-[#DC2626]",
+  canceled: "text-text-tertiary line-through opacity-60",
 };
+const HOT_STATUSES: ScheduleDto["status"][] = ["uploading", "scheduled", "published"];
 
 const STATUS_LABEL: Record<ScheduleDto["status"], string> = {
   pending: "queued",
@@ -88,7 +92,11 @@ export function ScheduleQueue() {
   return (
     <div className="flex flex-col gap-3">
       {error && (
-        <div className="rounded-2xl border border-line bg-paper-warm/50 p-4 font-mono text-[12px] text-text-secondary">
+        <div className="relative bg-transparent p-4 font-mono text-[12px] text-text-secondary">
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
           {error}
         </div>
       )}
@@ -98,7 +106,11 @@ export function ScheduleQueue() {
         </p>
       )}
       {!error && items?.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-line bg-paper-warm/30 px-5 py-8 text-center">
+        <div className="relative bg-transparent px-5 py-8 text-center">
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
           <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
             no scheduled posts yet
           </p>
@@ -109,7 +121,15 @@ export function ScheduleQueue() {
         </div>
       )}
       {items?.map((row) => (
-        <div key={row.id} className={`rounded-2xl border p-4 ${STATUS_STYLE[row.status]}`}>
+        <div
+          key={row.id}
+          data-hot={HOT_STATUSES.includes(row.status) ? "true" : "false"}
+          className="library-card relative bg-transparent p-4"
+        >
+          <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+          <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+          <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+          <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em]">
               <span className="inline-flex items-center gap-1.5 text-ink">
@@ -117,7 +137,7 @@ export function ScheduleQueue() {
                 {row.platform}
               </span>
               <span className="text-text-tertiary">·</span>
-              <span>{STATUS_LABEL[row.status]}</span>
+              <span className={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</span>
             </div>
             <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
               {whenAbsolute(row.scheduled_for)}
@@ -139,12 +159,13 @@ export function ScheduleQueue() {
               </button>
             )}
             {(row.status === "pending" || row.status === "scheduled" || row.status === "failed") && (
-              <button
+              <HudChip
+                active={false}
                 onClick={() => void cancel(row)}
-                className="rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-[12px] font-medium text-text-secondary hover:border-[#DC2626] hover:text-[#DC2626]"
+                title="Cancel this scheduled post"
               >
                 Cancel
-              </button>
+              </HudChip>
             )}
           </div>
         </div>

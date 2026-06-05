@@ -6,10 +6,11 @@
 // flow), otherwise Queue.
 
 import { useEffect, useState } from "react";
-import { Calendar, Layers, BarChart3, type LucideIcon } from "lucide-react";
+import { Calendar, Layers, BarChart3 } from "lucide-react";
 import { ChannelsManager } from "./ChannelsManager";
 import { AnalyticsView } from "./AnalyticsView";
 import { ScheduleQueue } from "../ScheduleQueue";
+import { HudChip } from "../cockpit/HudChip";
 import * as backend from "../../lib/backend";
 
 type Sub = "queue" | "channels" | "analytics";
@@ -34,7 +35,7 @@ export function SchedulePage(_props: { onOpenWorkspace?: () => void } = {}) {
   return (
     // v0.5.1 — Mission Deck. Cyan-cool top-edge band signals "mission
     // control" vs. workspace's fuchsia dojo. See docs/RPO_VISUAL_LANGUAGE.md.
-    <div className="deck deck-schedule mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-8">
+    <div className="deck deck-schedule mx-auto flex w-full max-w-5xl flex-col gap-6 bg-transparent px-6 py-8">
       <header className="flex flex-col gap-2">
         <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
           <Calendar size={11} className="text-fuchsia" />
@@ -48,33 +49,43 @@ export function SchedulePage(_props: { onOpenWorkspace?: () => void } = {}) {
         </p>
       </header>
 
-      {/* Tab strip */}
-      <div className="flex items-center gap-1 border-b border-line">
-        <TabButton id="queue" current={sub} setCurrent={setSub} Icon={Calendar} label="Queue" />
+      {/* Tab strip — HudChip segmented control. No bottom border plate;
+          the chip's bracket-corner active state carries the affordance. */}
+      <div className="flex items-center gap-1.5">
+        <HudChip active={sub === "queue"} onClick={() => setSub("queue")}>
+          <Calendar size={11} /> Queue
+        </HudChip>
         {/* Task #69 — "Channels" → "Loadout" per RPO vocab. The sub-tab
             id stays "channels" so navigation + analytics keys unchanged;
-            only the visible label flips. See docs/RPO_VISUAL_LANGUAGE.md. */}
-        <TabButton id="channels" current={sub} setCurrent={setSub} Icon={Layers} label="Loadout" />
-        <TabButton id="analytics" current={sub} setCurrent={setSub} Icon={BarChart3} label="Analytics" />
+            only the visible label flips. */}
+        <HudChip active={sub === "channels"} onClick={() => setSub("channels")}>
+          <Layers size={11} /> Loadout
+        </HudChip>
+        <HudChip active={sub === "analytics"} onClick={() => setSub("analytics")}>
+          <BarChart3 size={11} /> Analytics
+        </HudChip>
       </div>
 
       {sub === "queue" && (
         <div className="flex flex-col gap-4">
           <ScheduleQueue />
           {hasChannels === false && (
-            <div className="rounded-2xl border border-dashed border-line bg-paper-warm/40 p-5">
+            <div className="relative bg-transparent p-5">
+              <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+              <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+              <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+              <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
               <p className="font-display text-[15px] font-semibold text-ink">
                 You haven't added any channels yet.
               </p>
               <p className="mt-1 font-sans text-[13px] text-text-secondary">
                 Add a channel first, then you'll be able to schedule clips to it from the Workspace or directly here.
               </p>
-              <button
-                onClick={() => setSub("channels")}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-ink px-4 py-2 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia"
-              >
-                Go to Loadout →
-              </button>
+              <div className="mt-3">
+                <HudChip active={false} onClick={() => setSub("channels")}>
+                  Go to Loadout →
+                </HudChip>
+              </div>
             </div>
           )}
         </div>
@@ -87,36 +98,4 @@ export function SchedulePage(_props: { onOpenWorkspace?: () => void } = {}) {
   );
 }
 
-function TabButton({
-  id,
-  current,
-  setCurrent,
-  Icon,
-  label,
-}: {
-  id: Sub;
-  current: Sub;
-  setCurrent: (v: Sub) => void;
-  Icon: LucideIcon;
-  label: string;
-}) {
-  const active = current === id;
-  return (
-    <button
-      onClick={() => setCurrent(id)}
-      className={`relative inline-flex items-center gap-2 px-4 py-3 font-sans text-[13px] font-medium transition-colors ${
-        active ? "text-ink" : "text-text-secondary hover:text-ink"
-      }`}
-    >
-      <Icon size={14} className={active ? "text-fuchsia" : ""} />
-      {label}
-      {active && (
-        <span
-          className="absolute bottom-0 left-0 right-0 h-0.5 bg-fuchsia"
-          aria-hidden
-        />
-      )}
-    </button>
-  );
-}
 

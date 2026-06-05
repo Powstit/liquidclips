@@ -329,13 +329,13 @@ function TrialCard({ customer }: { customer: AffiliateCustomer }) {
       </ul>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
-          onClick={() => void openExternal("https://account.jnremployee.com/upgrade")}
+          onClick={() => void openExternal("https://account.liquidclips.app/upgrade")}
           className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
         >
           See plans →
         </button>
         <button
-          onClick={() => void openExternal("https://jnremployee.com/refer")}
+          onClick={() => void openExternal("https://liquidclips.app/refer")}
           className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
         >
           How the referral program works ↗
@@ -360,13 +360,13 @@ function LapsedCard({ customer: _customer }: { customer: AffiliateCustomer }) {
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
-          onClick={() => void openExternal("https://account.jnremployee.com/upgrade")}
+          onClick={() => void openExternal("https://account.liquidclips.app/upgrade")}
           className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
         >
           Reactivate →
         </button>
         <button
-          onClick={() => void openExternal("https://partner.jnremployee.com")}
+          onClick={() => void openExternal("https://partner.liquidclips.app")}
           className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
         >
           <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
@@ -519,7 +519,7 @@ function Dashboard({
             <span className="text-ink">Payment past due</span> &mdash; earnings paused until your card is fixed.
           </p>
           <button
-            onClick={() => void openExternal("https://account.jnremployee.com/billing")}
+            onClick={() => void openExternal("https://account.liquidclips.app/billing")}
             className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-3.5 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
           >
             Fix payment →
@@ -542,7 +542,7 @@ function Dashboard({
           <button
             onClick={() =>
               void openExternal(
-                affiliate.payout_setup_url || "https://account.jnremployee.com/dashboard#payouts",
+                affiliate.payout_setup_url || "https://account.liquidclips.app/dashboard#payouts",
               )
             }
             className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-3.5 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
@@ -619,7 +619,7 @@ function Dashboard({
             onClick={() =>
               void openExternal(
                 affiliate.payout_provider === "stripe_connect"
-                  ? affiliate.payout_setup_url || "https://account.jnremployee.com/dashboard#payouts"
+                  ? affiliate.payout_setup_url || "https://account.liquidclips.app/dashboard#payouts"
                   : affiliate.partner_dashboard_url,
               )
             }
@@ -669,7 +669,7 @@ function PaymentRoutingRow({
       label: "Liquid Clips subscription",
       provider: customer.billing_provider === "whop" ? "Whop" : "Stripe via Clerk",
       status: customer.subscription_status,
-      manage_url: customer.billing_provider === "whop" ? "https://whop.com/jnremployee" : "https://account.jnremployee.com/dashboard",
+      manage_url: customer.billing_provider === "whop" ? "https://whop.com/jnremployee" : "https://account.liquidclips.app/dashboard",
       helper: customer.billing_provider === "whop"
         ? "Whop owns your subscription and card."
         : "Your app plan stays on Stripe via Clerk.",

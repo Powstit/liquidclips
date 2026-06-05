@@ -10,6 +10,8 @@ export function SubmittedList({
   items: WhopSubmission[];
   lastChecked: Date | null;
 }) {
+  // Cockpit pass: rows lose their plate. List stays quiet — a hairline
+  // divider keeps rhythm without re-introducing per-row borders.
   if (items.length === 0) {
     return (
       <p className="font-mono text-[12px] text-text-tertiary">
@@ -18,28 +20,26 @@ export function SubmittedList({
     );
   }
   return (
-    <div className="flex flex-col gap-3">
-      <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+    <div className="flex flex-col">
+      <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia">
         polled {lastChecked ? `${ago(lastChecked)} ago` : "never"} · auto-refresh every 10 min
       </p>
       {items.map((s) => (
         <article
           key={s.id}
-          className="rounded-2xl border border-line bg-paper p-4 transition-colors hover:border-fuchsia/40"
+          className="flex items-center justify-between gap-3 border-b border-line/40 bg-transparent py-3 last:border-b-0 transition-colors hover:text-ink"
         >
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h4 className="font-display text-[15px] font-semibold leading-tight tracking-[-0.01em] text-ink">
-                {s.bounty?.title ?? "Reward"}
-              </h4>
-              <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-                {s.status} {s.expiresAt ? ` · auto-approves in ${hoursUntil(s.expiresAt)}h` : ""}
-              </p>
-            </div>
-            <div className="text-right">
-              <div className="font-mono text-[11px] text-text-secondary">
-                {s.bounty ? `${sym(s.bounty.currency)}${s.bounty.rewardPerUnitAmount.toFixed(2)} / 1k` : ""}
-              </div>
+          <div>
+            <h4 className="font-display text-[15px] font-semibold leading-tight tracking-[-0.01em] text-ink">
+              {s.bounty?.title ?? "Reward"}
+            </h4>
+            <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+              {s.status} {s.expiresAt ? ` · auto-approves in ${hoursUntil(s.expiresAt)}h` : ""}
+            </p>
+          </div>
+          <div className="text-right">
+            <div className="font-mono text-[11px] text-text-secondary">
+              {s.bounty ? `${sym(s.bounty.currency)}${s.bounty.rewardPerUnitAmount.toFixed(2)} / 1k` : ""}
             </div>
           </div>
         </article>

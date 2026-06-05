@@ -252,7 +252,11 @@ export function PayoutsTab() {
       </section>
 
       {/* Explainer — tells first-timers where each $ comes from */}
-      <section className="rounded-2xl border border-line bg-paper-elev/40 p-4">
+      <section className="library-card relative rounded-2xl bg-transparent p-4">
+        <span className="library-card-corner-tl" aria-hidden="true" />
+        <span className="library-card-corner-tr" aria-hidden="true" />
+        <span className="library-card-corner-bl" aria-hidden="true" />
+        <span className="library-card-corner-br" aria-hidden="true" />
         <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
           how each source works
         </span>

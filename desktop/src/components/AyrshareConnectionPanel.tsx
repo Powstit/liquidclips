@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { Link, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 
 import * as backend from "../lib/backend";
@@ -98,16 +98,22 @@ export default function AyrshareConnectionPanel() {
   refreshRef.current = () => { void refresh(); };
 
   // Sprint #14d — one-click linking flow. Calls backend /social/start-link
-  // to mint an Ayrshare JWT, then opens the URL inside a Tauri child
-  // WebView so the user never leaves Liquid Clips.
+  // to mint an Ayrshare JWT, then opens the URL in the user's real browser.
+  // Google blocks OAuth from embedded WebViews, so browser-based linking is
+  // required for YouTube/Google and safer for Meta/Instagram too.
   async function startLink() {
     setLinking(true);
     setError(null);
     try {
       const { link_url } = await backend.socialStartLink();
-      await invoke("open_social_link_window", { url: link_url });
-      // Don't clear linking=true here — we wait for the 'social_link_closed'
-      // event from Rust to know when the user finished/abandoned.
+      await openExternal(link_url);
+      // External-browser OAuth has no reliable "closed" event. Refresh a few
+      // times after launch so a normal complete-and-return flow updates the UI,
+      // while the manual Refresh button remains available.
+      window.setTimeout(() => refreshRef.current?.(), 3_000);
+      window.setTimeout(() => refreshRef.current?.(), 10_000);
+      window.setTimeout(() => refreshRef.current?.(), 25_000);
+      setLinking(false);
     } catch (e) {
       setLinking(false);
       setError(ayrshareError(e));
@@ -156,10 +162,10 @@ export default function AyrshareConnectionPanel() {
         </p>
       ) : !connected || !state?.profile_key_set || (state?.platforms ?? []).length === 0 ? (
         <div className="mt-3 space-y-3">
-          {/* Sprint #14d — one-click in-app linking. Opens a Tauri WebView
-              window with Ayrshare's hosted link page (JWT pre-signed by the
-              backend, so no Ayrshare signup). User OAuths each platform
-              inside that window, closes, and platforms auto-refresh. */}
+          {/* Sprint #14d — one-click browser linking. Opens Ayrshare's hosted
+              link page in the system browser (JWT pre-signed by the
+              backend, so no Ayrshare signup). Google blocks embedded app
+              webviews, so OAuth happens in the system browser. */}
           <button
             onClick={() => void startLink()}
             disabled={linking}
@@ -172,7 +178,7 @@ export default function AyrshareConnectionPanel() {
             )}
           </button>
           <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
-            opens inside the app · no browser tab · no ayrshare signup
+            opens your browser · no ayrshare signup · come back and refresh
           </p>
           {state?.profile_key_set && (state?.platforms ?? []).length === 0 && (
             <p className="font-sans text-[12px] text-text-secondary">

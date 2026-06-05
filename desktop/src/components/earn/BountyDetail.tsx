@@ -8,6 +8,11 @@ import { BROWSE_PANEL_ENABLED } from "../../lib/flags";
 
 // Detail view: 3 columns — Source · Rules · Money. Then one CTA. Designed
 // for fast decision-making, not exploration.
+//
+// Cockpit pass (Round 1 Earn): the three section "cards" lose their
+// `border + bg-paper` plate in favour of the bracket-only earn-frame
+// language. Eyebrow labels stay fuchsia-mono, the underlying data + RPC
+// flow is untouched.
 
 export function BountyDetail({
   bounty,
@@ -36,14 +41,17 @@ export function BountyDetail({
     <div className="flex w-full max-w-[1080px] flex-col gap-6">
       <button
         onClick={onBack}
-        className="self-start font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary hover:text-ink"
+        className="self-start font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary hover:text-fuchsia"
       >
         ← earn
       </button>
 
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-[28px] font-semibold leading-tight tracking-[-0.025em] text-ink">
+          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia">
+            campaign brief
+          </span>
+          <h1 className="mt-1 font-display text-[28px] font-semibold leading-tight tracking-[-0.025em] text-ink">
             {bounty.title}
           </h1>
           <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.1em] text-text-tertiary">
@@ -67,7 +75,7 @@ export function BountyDetail({
                 console.error("[bounty-detail] Failed to open brief externally:", e);
               }
             }}
-            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
+            className="inline-flex items-center gap-1.5 bg-transparent px-3.5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-secondary hover:text-fuchsia"
             title={BROWSE_PANEL_ENABLED
               ? "Open the brand's brief in the side panel — clip alongside it."
               : "Open the brand's brief on Whop. Use this when the source video lives in a discussion post Liquid Clips can't read directly."}
@@ -81,15 +89,19 @@ export function BountyDetail({
       </header>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <section className="rounded-2xl border border-line bg-paper p-5">
-          <h2 className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+        <section className="earn-frame relative p-5">
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
+          <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia">
             campaign
           </h2>
-          <div className="mt-3 aspect-video w-full overflow-hidden rounded-xl bg-paper-warm">
+          <div className="mt-3 aspect-video w-full overflow-hidden rounded-xl bg-transparent">
             {bounty.thumbnail ? (
               <img src={bounty.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover" />
             ) : (
-              <div className="grid h-full place-items-center font-mono text-[11px] text-paper/40">
+              <div className="grid h-full place-items-center font-mono text-[11px] text-text-tertiary">
                 no campaign image
               </div>
             )}
@@ -102,8 +114,12 @@ export function BountyDetail({
           </p>
         </section>
 
-        <section className="rounded-2xl border border-line bg-paper p-5">
-          <h2 className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+        <section className="earn-frame relative p-5">
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
+          <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia">
             rules
           </h2>
           <ul className="mt-3 space-y-2 font-sans text-[13px] leading-relaxed text-ink">
@@ -119,7 +135,7 @@ export function BountyDetail({
             {platforms.map((p) => (
               <span
                 key={p}
-                className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper-warm/40 px-3 py-0.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary"
+                className="inline-flex items-center gap-1.5 bg-transparent px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary"
               >
                 <PlatformIcon id={p} className="h-3 w-3" />
                 {p}
@@ -128,8 +144,12 @@ export function BountyDetail({
           </div>
         </section>
 
-        <section className="rounded-2xl border border-line bg-paper p-5">
-          <h2 className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+        <section className="earn-frame relative p-5">
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
+          <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia">
             money
           </h2>
           <div className="mt-3 space-y-3 font-mono text-[12px] text-text-secondary">
