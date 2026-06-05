@@ -46,14 +46,20 @@ export function BountyCard({
 
   return (
     <article
-      className={`group flex h-full flex-col gap-3 rounded-2xl border bg-paper p-4 transition-all duration-200 hover:-translate-y-[2px] ${
-        hot
-          ? "border-fuchsia/40 shadow-[var(--glow-sm)] hover:shadow-[var(--glow-md)]"
-          : "border-line shadow-[var(--shadow-e1)] hover:border-fuchsia/40 hover:shadow-[var(--shadow-e2)]"
-      }`}
+      className="library-card group relative flex h-full flex-col gap-3 bg-transparent p-4"
+      data-hot={hot ? "true" : "false"}
     >
+      {/* v0.6.38 — Cockpit cards: transparent fill, fuchsia HUD bracket
+          corners only. Hot campaigns get brighter brackets via [data-hot].
+          Reuses library-card + library-card-corner-* CSS so Workstation /
+          Library / Earn all speak the same chrome. */}
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
+
       {/* Thumbnail + payout overlay */}
-      <div className="relative h-[110px] overflow-hidden rounded-xl border border-line bg-paper-warm/40">
+      <div className="relative h-[110px] overflow-hidden rounded-xl bg-transparent">
         {bounty.thumbnail ? (
           <img
             src={bounty.thumbnail}

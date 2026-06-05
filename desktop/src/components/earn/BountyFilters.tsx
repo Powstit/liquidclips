@@ -1,9 +1,13 @@
-import { PlatformIcon } from "../PlatformIcon";
-import type { ConnectedPlatform, SortKey } from "./types";
+// v0.6.38 — Cockpit-pass refactor.
+//
+// Sort + platform + open-only filters all swap to HudChip so Earn speaks
+// the same chrome as Library + Workstation. Layout structure unchanged —
+// each row keeps its label + button list, just transparent fill, fuchsia
+// bracket corners on active state, springy hover.
 
-// Sort + filter chrome above the Available list. Optimized for clipper
-// decision-making: what's the highest-earning thing I can finish today on
-// the platforms I actually post to?
+import { PlatformIcon } from "../PlatformIcon";
+import { HudChip } from "../cockpit/HudChip";
+import type { ConnectedPlatform, SortKey } from "./types";
 
 export function BountyFilters({
   sort,
@@ -31,53 +35,30 @@ export function BountyFilters({
 
   return (
     <div className="flex flex-col gap-3 font-mono text-[11px] uppercase tracking-[0.1em] text-text-tertiary">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-text-tertiary">sort by</span>
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="mr-1 text-text-tertiary">sort by</span>
         {sortOptions.map((o) => (
-          <button
-            key={o.key}
-            onClick={() => onSortChange(o.key)}
-            className={`rounded-full border px-3 py-1 transition-colors ${
-              sort === o.key
-                ? "border-fuchsia bg-fuchsia text-white"
-                : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
-            }`}
-          >
+          <HudChip key={o.key} active={sort === o.key} onClick={() => onSortChange(o.key)}>
             {o.label}
-          </button>
+          </HudChip>
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-text-tertiary">platforms</span>
-        {platforms.map((p) => {
-          const active = filterPlatforms.includes(p);
-          return (
-            <button
-              key={p}
-              onClick={() => onPlatformToggle(p)}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 transition-colors ${
-                active
-                  ? "border-fuchsia bg-fuchsia text-white"
-                  : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
-              }`}
-              title={p}
-            >
-              <PlatformIcon id={p} className="h-3 w-3" />
-              {p}
-            </button>
-          );
-        })}
-        <button
-          onClick={() => onOpenOnlyChange(!openOnly)}
-          className={`rounded-full border px-3 py-1 transition-colors ${
-            openOnly
-              ? "border-fuchsia bg-fuchsia text-white"
-              : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
-          }`}
-        >
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="mr-1 text-text-tertiary">platforms</span>
+        {platforms.map((p) => (
+          <HudChip
+            key={p}
+            active={filterPlatforms.includes(p)}
+            onClick={() => onPlatformToggle(p)}
+          >
+            <PlatformIcon id={p} className="h-3 w-3" />
+            <span>{p}</span>
+          </HudChip>
+        ))}
+        <HudChip active={openOnly} onClick={() => onOpenOnlyChange(!openOnly)}>
           open only
-        </button>
+        </HudChip>
       </div>
     </div>
   );

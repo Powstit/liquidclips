@@ -159,6 +159,22 @@ export type Overlay = {
   music_bed?: { source_path: string; volume?: number } | null;
 };
 
+export type RemixState = {
+  active_path?: Partial<Record<RatioKey, string>>;
+  choice_id?: string;
+  layout?: string;
+  mode?: string;
+} | null;
+
+// v0.6.8 — per-axis breakdown of the LC Score. Each axis is 0-100. Surfaces
+// under the LC Score badge on ClipCard, with the score_reason as the tooltip.
+export type ScoreBreakdown = {
+  hook: number;
+  retention: number;
+  clarity: number;
+  shareability: number;
+};
+
 export type Clip = {
   start: number;
   end: number;
@@ -178,7 +194,20 @@ export type Clip = {
   vtt_path?: string;
   captions_burned?: boolean;
   overlay?: Overlay | null;
+  remix?: RemixState;
   thumbnails?: { rank: number; path: string; score?: number; source?: string; style?: string; timestamp_s?: number }[];
+  // v0.6.8 — branded LC Score sub-scores + one-line reason. Optional on old
+  // projects; new LLM responses populate them. When undefined, the ClipCard
+  // falls back to virality-only display.
+  score_breakdown?: ScoreBreakdown;
+  score_reason?: string;
+  // v0.6.8 — Fast Draft top-3-first. True when the clip was deferred from the
+  // initial reframe pass. ResultsGrid shows a "render pending" pill on these.
+  pending_reframe?: boolean;
+  // v0.6.9 — True when this clip was imported via the Import lane rather than
+  // cut from a source. ClipCard hides "AI estimate" affordances on these
+  // (LC Score is a placeholder 70, no sub-score breakdown — don't fake it).
+  imported?: boolean;
 };
 
 export type Intent = "clips" | "youtube" | "both";
@@ -239,31 +268,73 @@ export type BountyProjectSummary = {
   whop_bounty_currency: string | null;
 };
 
+export type ProjectLibrarySummary = {
+  slug: string;
+  root: string;
+  source_filename: string;
+  created_at: number;
+  updated_at: number;
+  intent: Intent;
+  clips_count: number;
+  done: boolean;
+  imported: boolean;
+  reacted_count: number;
+  whop_bounty_id: string | null;
+  whop_bounty_title: string | null;
+  archived: boolean;
+  archived_at: number | null;
+  cover_thumb_path: string | null;
+};
+
 export type StageName = "ingest" | "audio" | "transcribe" | "llm" | "cut" | "reframe" | "thumbs";
 
 export const PIPELINE_STAGES: { key: StageName; label: string; runningLabel: string }[] = [
   { key: "ingest", label: "Read the file", runningLabel: "Reading the file" },
   { key: "audio", label: "Extracted audio", runningLabel: "Extracting audio" },
-  { key: "transcribe", label: "Transcribed", runningLabel: "Transcribing" },
-  { key: "llm", label: "Picked the best moments", runningLabel: "Picking the best moments" },
+  { key: "transcribe", label: "Polished transcript", runningLabel: "Polishing transcript" },
+  { key: "llm", label: "Picked moments", runningLabel: "Drafting clip windows" },
   { key: "cut", label: "Cut the clips", runningLabel: "Cutting the clips" },
   { key: "reframe", label: "Reframed vertical", runningLabel: "Reframing to vertical" },
   { key: "thumbs", label: "Picked thumbnails", runningLabel: "Picking thumbnails" },
 ];
 
 /** Which stages run after ingest for a given intent. Cuts/reframe/thumbs are
- * purely per-clip work — the YouTube path skips them entirely (faster, cheaper). */
+ * purely per-clip work — the YouTube path skips them entirely (faster, cheaper).
+ *
+ * v0.6.8 — `thumbs` is no longer in the blocking sequence. ResultsGrid renders
+ * fine without thumbnail paths (video element is the preview) and thumb
+ * generation is a 5-20s tail we don't want fighting the Opus timer. The app
+ * fires a background `runStage("thumbs")` after results land so the
+ * thumbnails still appear, just out-of-band. */
 export function pipelineStagesFor(intent: Intent): StageName[] {
   if (intent === "youtube") return ["audio", "transcribe", "llm"];
-  return ["audio", "transcribe", "llm", "cut", "reframe", "thumbs"];
+  // v0.6.19 — transcribe MUST run before llm; the LLM stage in
+  // python-sidecar/stages.py reads transcript.json to pick clip moments and
+  // hard-raises `FileNotFoundError: stage 3 (transcribe) must run before
+  // stage 4 (llm)` if it's missing. Earlier "fast draft" attempt to defer
+  // transcribe to the background path broke every clip run. Speed win
+  // already lives inside transcribe itself (MLX on Apple Silicon).
+  return ["audio", "transcribe", "llm", "cut", "reframe"];
 }
 
-/** Filter the pipeline-progress list shown in WorkingStage to match the intent. */
+/** Stages that run in the background AFTER results are visible. The desktop
+ * fires these as fire-and-forget runStage calls. */
+export function backgroundStagesFor(intent: Intent): StageName[] {
+  if (intent === "youtube") return [];
+  // Only thumbs runs in the background — transcribe is back in the blocking
+  // path (see pipelineStagesFor note).
+  return ["thumbs"];
+}
+
+export const BACKGROUND_STAGES: StageName[] = ["thumbs"];
+
+/** Filter the pipeline-progress list shown in WorkingStage to match the intent.
+ *  v0.6.8 — thumbs is excluded; it runs in the background after results land. */
 export function visibleStagesFor(intent: Intent) {
   if (intent === "youtube") {
     return PIPELINE_STAGES.filter((s) => !["cut", "reframe", "thumbs"].includes(s.key));
   }
-  return PIPELINE_STAGES;
+  return PIPELINE_STAGES.filter((s) => !["thumbs"].includes(s.key));
 }
 
 export type SecretName =
@@ -271,7 +342,26 @@ export type SecretName =
   | "ANTHROPIC_API_KEY"
   | "LICENSE_JWT"
   | "LIQUIDCLIPS_ONBOARDED"
-  | "JUNIOR_WHOP_TOKEN";
+  | "JUNIOR_WHOP_TOKEN"
+  | "PEXELS_API_KEY"
+  | "PIXABAY_API_KEY"
+  | "GIPHY_API_KEY";
+
+export type ReactionSearchResult = {
+  id: string;
+  provider: "giphy" | "pexels" | "pixabay";
+  title: string;
+  duration_s?: number;
+  width?: number;
+  height?: number;
+  preview_url?: string | null;
+  source_url?: string | null;
+  author?: string | null;
+  author_url?: string | null;
+  download_url: string;
+  download_width?: number;
+  download_height?: number;
+};
 
 export type HardwareInfo = {
   ram_gb: number;
@@ -304,9 +394,28 @@ export const sidecar = {
       ...(brief ? { brief } : {}),
       ...(bounty ? { bounty } : {}),
     }),
+  // v0.6.9 — Import finished MP4/MOV/WEBM clips into a normal Project so they
+  // land in ResultsGrid with full stack/split/remix/schedule/publish. No
+  // transcribe/llm/cut/reframe — every stage pre-marked done by the sidecar.
+  importReadyClips: (paths: string[]) =>
+    sidecarCall<{ project: Project }>("import_ready_clips", { paths }),
+  // v0.6.35 — Cockpit avatar surface. The sidecar canonicalises the upload
+  // to ~/LiquidClips/avatar.png so the frontend caches off one URL + bust
+  // counter (see useAvatar in lib/avatar.ts).
+  saveAvatar: (path: string) =>
+    sidecarCall<{ path: string; size_bytes: number }>("save_avatar", { path }),
+  clearAvatar: () => sidecarCall<{ removed: true }>("clear_avatar", {}),
+  avatarStatus: () =>
+    sidecarCall<{ present: boolean; path: string | null; mtime: number | null }>("avatar_status", {}),
   runStage: (slug: string, stage: StageName) =>
     sidecarCall<{ project: Project }>("run_stage", { slug, stage }),
   getProject: (slug: string) => sidecarCall<{ project: Project }>("get_project", { slug }),
+  listProjects: (limit = 100, includeArchived = false) =>
+    sidecarCall<{ projects: ProjectLibrarySummary[] }>("list_projects", { limit, include_archived: includeArchived }),
+  setProjectArchived: (slug: string, archived: boolean) =>
+    sidecarCall<{ slug: string; archived: boolean }>("set_project_archived", { slug, archived }),
+  deleteProject: (slug: string) =>
+    sidecarCall<{ slug: string; deleted: true }>("delete_project", { slug }),
   listBountyProjects: () =>
     sidecarCall<{ projects: BountyProjectSummary[] }>("list_bounty_projects"),
   getMetadata: (slug: string) => sidecarCall<{ metadata: Record<string, string> }>("get_metadata", { slug }),
@@ -320,6 +429,24 @@ export const sidecar = {
     sidecarCall<{ name: "LICENSE_JWT"; value: string | null }>("secret_get", { name: "LICENSE_JWT" }),
   secretSet: (name: SecretName, value: string) => sidecarCall<{ ok: true; name: SecretName }>("secret_set", { name, value }),
   secretDelete: (name: SecretName) => sidecarCall<{ ok: true; name: SecretName }>("secret_delete", { name }),
+  reactionSearch: (query: string, perPage = 12) =>
+    sidecarCall<{
+      provider: "giphy" | "pexels" | "pixabay";
+      query: string;
+      attribution_html: string;
+      provider_errors?: Record<string, string>;
+      results: ReactionSearchResult[];
+    }>("reaction_search", { query, per_page: perPage, provider: "giphy" }),
+  reactionSearchProvider: (query: string, provider: "giphy" | "pexels" | "pixabay", perPage = 12) =>
+    sidecarCall<{
+      provider: "giphy" | "pexels" | "pixabay";
+      query: string;
+      attribution_html: string;
+      provider_errors?: Record<string, string>;
+      results: ReactionSearchResult[];
+    }>("reaction_search", { query, per_page: perPage, provider }),
+  reactionDownload: (item: ReactionSearchResult, query?: string) =>
+    sidecarCall<{ path: string; item: Record<string, unknown> }>("reaction_download", { item, query }),
   hardwareInfo: () => sidecarCall<HardwareInfo>("hardware_info"),
   preloadWhisper: () => sidecarCall<{ model: string; warmup_seconds: number }>("preload_whisper"),
   regenerateClip: (slug: string, idx: number, start: number, end: number) =>
@@ -423,6 +550,46 @@ export const sidecar = {
     sidecarCall<{ ok: boolean }>("local_schedule_cancel", { id }),
   localScheduleRemove: (id: string) =>
     sidecarCall<{ ok: boolean }>("local_schedule_remove", { id }),
+
+  // ── Direct-publish queue (Upload tab "drop a finished clip") ─────────
+  // File-backed at $CLIPS_HOME/.direct-publish-queue.json. The frontend
+  // owns the item shape — sidecar reads/writes the array verbatim. See
+  // python-sidecar/direct_publish_queue.py.
+  directPublishQueueRead: () =>
+    sidecarCall<{ items: DirectPublishQueueItem[] }>(
+      "direct_publish_queue_read",
+      {},
+    ),
+  directPublishQueueWrite: (items: DirectPublishQueueItem[]) =>
+    sidecarCall<{ ok: true; count: number }>(
+      "direct_publish_queue_write",
+      { items },
+    ),
+};
+
+/** A clip that's already cut + ready to schedule/publish directly, without
+ *  the long-form clip-pick pipeline. Persisted in
+ *  $CLIPS_HOME/.direct-publish-queue.json so the queue survives restarts.
+ *  Frontend owns the shape (sidecar is opaque persistence). */
+export type DirectPublishQueueItem = {
+  /** Local id — short random string. Stable across sessions. */
+  id: string;
+  /** Absolute path to the finished clip file on disk. */
+  file_path: string;
+  /** Display name — usually basename of file_path. */
+  filename: string;
+  /** Byte size at the time it was added, or null if unknown. Used as a
+   *  cheap "this file looks right" cue in the card. */
+  size_bytes: number | null;
+  /** Optional duration in seconds. We skip ffprobe for v1 — the field is
+   *  reserved so a later pass can populate it without a schema bump. */
+  duration_seconds: number | null;
+  /** When the user dropped it. ISO 8601 UTC. */
+  added_at: string;
+  /** User-editable display title shown above the thumbnail and used as the
+   *  default post title when scheduling. Falls back to filename stem in the
+   *  UI when unset. Sidecar persists the field opaquely — no schema bump. */
+  title?: string;
 };
 
 export type TimePrediction = {
