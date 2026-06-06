@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { sidecar, humanError, type Project } from "../lib/sidecar";
 
 // Tile at the end of the clips grid. Tap → trim-by-timestamps dialog. Sends
@@ -61,16 +61,51 @@ function AddClipDialog({
   const sourceDuration =
     (project.stages.ingest?.output as { duration_seconds?: number } | undefined)?.duration_seconds ??
     0;
+  // P1 fix (2026-06-06): default endHms based on source duration. Short
+  // test clips (Reels, <30s sources) were silently rejected when endHms
+  // stayed at "0:30" past the source end. When sourceDuration is unknown
+  // (older projects without ingest.output.duration_seconds), fall back to
+  // "0:30" and the inline hint below tells the user to adjust.
+  const defaultEnd = sourceDuration > 0
+    ? formatHms(Math.min(30, Math.max(5, sourceDuration)))
+    : "0:30";
   const [startHms, setStartHms] = useState("0:00");
-  const [endHms, setEndHms] = useState("0:30");
+  const [endHms, setEndHms] = useState(defaultEnd);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // P0 fix (2026-06-06): dismissed flag lets Esc/backdrop close the dialog
+  // mid-bake (the addClip RPC runs 10-30s). Once flipped, the in-flight
+  // promise routes success/failure to the global toast bus + onAdded prop
+  // (still valid post-unmount; React keeps closures alive) and skips local
+  // setError/setBusy so we don't write into an unmounted component.
+  const dismissedRef = useRef(false);
+
+  // Closing during a bake is a soft-cancel from the UI's POV — the RPC
+  // keeps running so the clip still appears when it finishes.
+  function softClose() {
+    if (busy) {
+      dismissedRef.current = true;
+      window.dispatchEvent(
+        new CustomEvent("lc:toast", {
+          detail: {
+            kind: "info",
+            message: "Cutting your clip in the background — it'll appear when finished.",
+          },
+        }),
+      );
+    }
+    onClose();
+  }
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !busy && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") softClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // softClose closes over `busy` + `onClose`; rebind on either change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose, busy]);
 
   const startS = parseHms(startHms);
@@ -92,17 +127,43 @@ function AddClipDialog({
     setError(null);
     try {
       const r = await sidecar.addClip(project.slug, startS, endS, title.trim() || "Manual clip");
+      // onAdded is the parent's `(p) => { onProjectChange(p); setOpen(false); }`.
+      // Safe to call whether or not the dialog already unmounted — the parent
+      // setOpen(false) is idempotent and onProjectChange flows to the grid.
       onAdded(r.project);
+      if (dismissedRef.current) {
+        window.dispatchEvent(
+          new CustomEvent("lc:toast", {
+            detail: { kind: "success", message: "Clip added." },
+          }),
+        );
+      }
     } catch (e) {
-      setError(humanError(e));
-      setBusy(false);
+      const msg = humanError(e);
+      if (dismissedRef.current) {
+        // Dialog is gone — route the failure to the global toast instead of
+        // a setError into the unmounted component.
+        window.dispatchEvent(
+          new CustomEvent("lc:toast", {
+            detail: { kind: "error", message: msg },
+          }),
+        );
+      } else {
+        setError(msg);
+      }
+    } finally {
+      // P0 fix (2026-06-06): setBusy in finally, not catch. If humanError
+      // itself throws (shape-dereference edge case), the loader used to
+      // stick forever and trap the user. Now: always clears, but only when
+      // still mounted (avoids the "set state on unmounted component" warn).
+      if (!dismissedRef.current) setBusy(false);
     }
   }
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
-      onClick={busy ? undefined : onClose}
+      onClick={softClose}
     >
       <div
         className="flex w-full max-w-[480px] flex-col gap-5 rounded-2xl bg-paper p-7 shadow-2xl"
@@ -117,9 +178,13 @@ function AddClipDialog({
           Pick the bit Liquid Clips missed.
         </h2>
 
-        {sourceDuration > 0 && (
+        {sourceDuration > 0 ? (
           <p className="-mt-2 font-mono text-[11px] text-text-tertiary">
             Source is {formatHms(sourceDuration)} long.
+          </p>
+        ) : (
+          <p className="-mt-2 font-mono text-[11px] text-text-tertiary">
+            Tip: if your source is shorter than 30s, lower the end time before cutting.
           </p>
         )}
 
@@ -172,11 +237,11 @@ function AddClipDialog({
 
         <div className="flex items-center justify-end gap-3">
           <button
-            onClick={onClose}
-            disabled={busy}
-            className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia disabled:opacity-50"
+            onClick={softClose}
+            className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia"
+            title={busy ? "Cut keeps running — clip will appear when it finishes" : "Close"}
           >
-            Cancel
+            {busy ? "Close — keep cutting" : "Cancel"}
           </button>
           <button
             onClick={() => void submit()}

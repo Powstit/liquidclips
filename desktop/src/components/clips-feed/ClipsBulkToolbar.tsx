@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Volume2, VolumeX } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { PlayCircle, PauseCircle, Volume2, VolumeX } from "lucide-react";
 import { sidecar, RATIOS, type OverlayType, type Project, type RatioKey } from "../../lib/sidecar";
 import { LayoutIcon, LAYOUTS, type LayoutKey } from "./LayoutIcon";
 import { pickOverlaySource } from "../OverlaySourcePicker";
@@ -16,6 +16,8 @@ export function ClipsBulkToolbar({
   onProjectChange,
   previewSoundOn,
   onPreviewSoundChange,
+  previewMotionOn,
+  onPreviewMotionChange,
 }: {
   project: Project;
   ratio: RatioKey;
@@ -26,9 +28,44 @@ export function ClipsBulkToolbar({
    *  drifts across them. */
   previewSoundOn: boolean;
   onPreviewSoundChange: (next: boolean) => void;
+  /** Global toggle — when true, ClipCard hover auto-plays the video. Default
+   *  off so static posters render by default (less motion = less distracting
+   *  + respects users with prefers-reduced-motion). Pairs with the sound
+   *  toggle for symmetry. */
+  previewMotionOn: boolean;
+  onPreviewMotionChange: (next: boolean) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [layoutMenu, setLayoutMenu] = useState(false);
+  const [layoutError, setLayoutError] = useState<string | null>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuPanelRef = useRef<HTMLDivElement>(null);
+
+  // Esc + click-outside on the bulk-layout menu (was mouseLeave-only —
+  // keyboard-only users were trapped). Mirrors ClipCard's ⋮ menu fix.
+  useEffect(() => {
+    if (!layoutMenu) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setLayoutMenu(false);
+        menuButtonRef.current?.focus();
+      }
+    }
+    function onPointer(e: PointerEvent) {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (menuPanelRef.current?.contains(t)) return;
+      if (menuButtonRef.current?.contains(t)) return;
+      setLayoutMenu(false);
+    }
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onPointer);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onPointer);
+    };
+  }, [layoutMenu]);
 
   const avg =
     project.clips.length === 0
@@ -36,10 +73,43 @@ export function ClipsBulkToolbar({
       : Math.round(project.clips.reduce((a, c) => a + (c.virality ?? 0), 0) / project.clips.length);
   const totalSec = project.clips.reduce((a, c) => a + (c.end - c.start), 0);
 
+  // ⌘W-style keyboard trap fix for the layout menu — was onMouseLeave-only.
+  // Mirrors ClipCard's ⋮ menu fix: Esc closes + click-outside closes +
+  // aria-expanded on the trigger. Keyboard-only users could otherwise
+  // open the menu and have no escape.
+  useEffect(() => {
+    if (!layoutMenu) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setLayoutMenu(false);
+        menuButtonRef.current?.focus();
+      }
+    }
+    function onPointer(e: PointerEvent) {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (menuPanelRef.current?.contains(t)) return;
+      if (menuButtonRef.current?.contains(t)) return;
+      setLayoutMenu(false);
+    }
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onPointer);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onPointer);
+    };
+  }, [layoutMenu]);
+
   async function applyLayoutToAll(kind: LayoutKey) {
     setLayoutMenu(false);
     if (busy) return;
     setBusy(true);
+    setLayoutError(null);
+    // Track failures per clip so a single bad bake doesn't strand the
+    // whole batch — the prior version threw on the first error, lost the
+    // already-applied partial state, and surfaced nothing to the user.
+    const failures: number[] = [];
     try {
       // For "none" we just strip every clip's overlay. For real layouts the
       // file picker UX is single-shot — same b-roll across the project (which
@@ -58,10 +128,20 @@ export function ClipsBulkToolbar({
           kind === "none"
             ? null
             : { type: kind as OverlayType, source_path: pickedPath!, start_offset_s: 0 };
-        const r = await sidecar.applyOverlay(current.slug, i, spec);
-        current = r.project;
+        try {
+          const r = await sidecar.applyOverlay(current.slug, i, spec);
+          current = r.project;
+        } catch {
+          failures.push(i + 1);
+        }
       }
       onProjectChange(current);
+      if (failures.length > 0) {
+        setLayoutError(
+          `Couldn't apply to clip${failures.length === 1 ? "" : "s"} ${failures.join(", ")} — try Editor → for those.`,
+        );
+        window.setTimeout(() => setLayoutError(null), 6000);
+      }
     } finally {
       setBusy(false);
     }
@@ -73,19 +153,37 @@ export function ClipsBulkToolbar({
       <span className="cockpit-tile-corner-tr" aria-hidden />
       <span className="cockpit-tile-corner-bl" aria-hidden />
       <span className="cockpit-tile-corner-br" aria-hidden />
-      <div className="flex items-center gap-4 font-mono text-[11px] uppercase tracking-[0.08em] text-text-tertiary">
-        <span>
-          <span className="text-ink">{project.clips.length}</span> clips
-        </span>
-        <span>
-          avg score <span className="text-ink">{avg}</span>
-        </span>
-        <span>
-          {Math.floor(totalSec / 60)}m {Math.round(totalSec % 60)}s total
-        </span>
-      </div>
+      {/* v0.6.51 — was three sibling <span> stat rows ({N} clips · avg score · Nm Ns total)
+          which read as "three lines above clip" on a dark cockpit background.
+          Collapsed into one inline pill that lives on the left of the toolbar
+          balanced against the controls on the right. Clip count is already
+          shown in the ResultsGrid header strip so it's not lost. */}
+      <span
+        aria-label={`${project.clips.length} clips, average score ${avg}, ${Math.floor(totalSec / 60)} minutes ${Math.round(totalSec % 60)} seconds total`}
+        className="inline-flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary"
+      >
+        <span><span className="text-ink">{project.clips.length}</span> clips · avg <span className="text-ink">{avg}</span> · <span className="text-ink">{Math.floor(totalSec / 60)}m {Math.round(totalSec % 60)}s</span></span>
+      </span>
 
       <div className="flex items-center gap-2">
+        {/* Preview motion — global toggle. Default OFF so static posters render
+            by default (less motion = less distracting + respects users with
+            prefers-reduced-motion). Pairs with the sound toggle for symmetry. */}
+        <button
+          type="button"
+          onClick={() => onPreviewMotionChange(!previewMotionOn)}
+          aria-pressed={previewMotionOn}
+          aria-label={previewMotionOn ? "Disable hover preview motion" : "Enable hover preview motion"}
+          title={previewMotionOn ? "Preview motion: on" : "Preview motion: off"}
+          className={`grid h-7 w-7 place-items-center rounded-full border transition-colors ${
+            previewMotionOn
+              ? "border-fuchsia bg-fuchsia text-white shadow-[var(--glow-sm)]"
+              : "border-fuchsia/30 bg-transparent text-text-tertiary hover:border-fuchsia hover:text-ink"
+          }`}
+        >
+          {previewMotionOn ? <PlayCircle className="h-3.5 w-3.5" /> : <PauseCircle className="h-3.5 w-3.5" />}
+        </button>
+
         {/* Preview sound — global toggle. Default OFF (auto-mute on hover) so the
             grid doesn't pile audio on every mouseenter. Flip ON to hear the
             moment without opening the full preview modal. */}
@@ -124,20 +222,27 @@ export function ClipsBulkToolbar({
         {/* Bulk layout */}
         <div className="relative">
           <button
+            ref={menuButtonRef}
+            type="button"
             onClick={() => setLayoutMenu((s) => !s)}
             disabled={busy}
+            aria-haspopup="menu"
+            aria-expanded={layoutMenu}
             className="rounded-full border border-fuchsia/30 bg-transparent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors hover:border-fuchsia hover:text-ink disabled:opacity-50"
           >
             Apply layout to all ▾
           </button>
           {layoutMenu && (
             <div
+              ref={menuPanelRef}
+              role="menu"
+              aria-label="Apply layout to all clips"
               className="absolute right-0 z-20 mt-1 w-56 overflow-hidden rounded-xl border border-line bg-paper shadow-lg"
-              onMouseLeave={() => setLayoutMenu(false)}
             >
               {LAYOUTS.map((l) => (
                 <button
                   key={l.key}
+                  role="menuitem"
                   onClick={() => void applyLayoutToAll(l.key)}
                   className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-paper-warm"
                 >
@@ -149,6 +254,15 @@ export function ClipsBulkToolbar({
           )}
         </div>
       </div>
+
+      {layoutError && (
+        <p
+          role="alert"
+          className="basis-full rounded-md border border-[#DC2626]/30 bg-[#DC2626]/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[#DC2626]"
+        >
+          {layoutError}
+        </p>
+      )}
     </div>
   );
 }

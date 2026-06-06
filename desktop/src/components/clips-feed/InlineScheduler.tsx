@@ -22,7 +22,7 @@ import {
   listChannels,
   refreshChannel,
   relinkChannel,
-  socialGetConnection,
+  socialGetConnectionStrict,
   type Channel,
   type ConnectionPlatform,
   type SocialConnectionState,
@@ -60,7 +60,18 @@ type Status =
   | { kind: "idle" }
   | { kind: "busy" }
   | { kind: "linking"; platform: ConnectionPlatform; channelId: string; linkUrl: string }
-  | { kind: "scheduled"; at: string; count: number; targetKind: "channel" | "account" }
+  | { kind: "scheduled"; at: string; count: number; total: number; targetKind: "channel" | "account" }
+  | { kind: "error"; message: string };
+
+// Explicit four-way load state for the connection fetch. The implicit
+// `conn === null` sentinel collapsed "drawer never opened", "fetch in-flight",
+// "user has no row (empty-state)", and "transport failed" into one branch,
+// which is how the master account got stuck on a permanent "reading channels…"
+// loader when they had zero channels connected.
+type ConnLoadState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "loaded"; conn: SocialConnectionState | null }
   | { kind: "error"; message: string };
 
 type Props = {
@@ -74,9 +85,13 @@ type Props = {
 
 export function InlineScheduler({ clip, projectTitle, compact: _compact = false }: Props) {
   const [open, setOpen] = useState(false);
-  const [conn, setConn] = useState<SocialConnectionState | null>(null);
+  const [connLoadState, setConnLoadState] = useState<ConnLoadState>({ kind: "idle" });
   const [channels, setChannels] = useState<Channel[]>([]);
   const [authed, setAuthed] = useState<boolean | null>(null);
+  // Derived: the legacy SocialConnectionState (or null), so the rest of the
+  // component can keep reading `conn` without rewiring every consumer.
+  const conn: SocialConnectionState | null =
+    connLoadState.kind === "loaded" ? connLoadState.conn : null;
   const [picked, setPicked] = useState<Set<ConnectionPlatform>>(new Set());
   const [pickedChannelIds, setPickedChannelIds] = useState<Set<string>>(new Set());
   const [caption, setCaption] = useState(clip.description || clip.title || projectTitle || "");
@@ -85,27 +100,39 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
   const [connectingPlatform, setConnectingPlatform] = useState<ConnectionPlatform | null>(null);
 
   // Lazy-load connection state only when the scheduler opens — saves a
-  // network round-trip per clip card on Workspace.
+  // network round-trip per clip card on Workspace. Re-fetches on every
+  // re-open so the chip list reflects connections added in Settings while
+  // the drawer was closed (previously the `conn` dep made stale caches stick).
   useEffect(() => {
-    if (!open || conn !== null) return;
+    if (!open) return;
     let cancelled = false;
+    setConnLoadState({ kind: "loading" });
     void (async () => {
       try {
         const { value: jwt } = await sidecar.licenseJwtRead();
         if (cancelled) return;
         if (!jwt) {
           setAuthed(false);
+          // Treat "no JWT" as a cleanly-loaded empty state — the auth gate
+          // below renders the sign-in copy and the connect chips stay
+          // suppressed because authed === false.
+          setConnLoadState({ kind: "loaded", conn: null });
           return;
         }
         setAuthed(true);
-        const [state, channelRows] = await Promise.all([
-          socialGetConnection(),
+        // socialGetConnectionStrict distinguishes "no row" from "backend
+        // down" so the empty-state path and the retry path no longer share
+        // the same `conn === null` sentinel.
+        const [strict, channelRows] = await Promise.all([
+          socialGetConnectionStrict(),
           listChannels(),
         ]);
         if (cancelled) return;
         const activeChannels = channelRows.filter((c) => c.status === "active");
+        const state: SocialConnectionState | null =
+          strict === "no-connection" ? null : strict;
         setChannels(activeChannels);
-        setConn(state);
+        setConnLoadState({ kind: "loaded", conn: state });
         setPickedChannelIds(new Set(activeChannels.map((c) => c.id)));
         // Default-check every connected platform — Daniel's locked
         // direction: "schedule to all attached accounts by default". This
@@ -117,35 +144,57 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
             .filter((p): p is ConnectionPlatform => p in PLATFORM_LABELS),
         );
         setPicked(all);
-      } catch {
-        if (!cancelled) setStatus({ kind: "error", message: "Couldn't load your connections — try again in a moment." });
+      } catch (e) {
+        if (!cancelled) {
+          setConnLoadState({
+            kind: "error",
+            message: humanError(e) || "Couldn't read your connections — try again.",
+          });
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [open, conn]);
+  }, [open]);
 
   async function reloadConnections() {
-    const [state, channelRows] = await Promise.all([
-      socialGetConnection(),
-      listChannels(),
-    ]);
-    const activeChannels = channelRows.filter((c) => c.status === "active");
-    setConn(state);
-    setChannels(activeChannels);
-    setPickedChannelIds((cur) => {
-      const next = new Set(cur);
-      for (const c of activeChannels) next.add(c.id);
-      return next;
-    });
-    setPicked(
-      new Set(
-        (state?.platforms ?? [])
-          .map((p) => p.toLowerCase() as ConnectionPlatform)
-          .filter((p): p is ConnectionPlatform => p in PLATFORM_LABELS),
-      ),
-    );
+    try {
+      const [strict, channelRows] = await Promise.all([
+        socialGetConnectionStrict(),
+        listChannels(),
+      ]);
+      const activeChannels = channelRows.filter((c) => c.status === "active");
+      const state: SocialConnectionState | null =
+        strict === "no-connection" ? null : strict;
+      setConnLoadState({ kind: "loaded", conn: state });
+      setChannels(activeChannels);
+      setPickedChannelIds((cur) => {
+        const next = new Set(cur);
+        for (const c of activeChannels) next.add(c.id);
+        return next;
+      });
+      setPicked(
+        new Set(
+          (state?.platforms ?? [])
+            .map((p) => p.toLowerCase() as ConnectionPlatform)
+            .filter((p): p is ConnectionPlatform => p in PLATFORM_LABELS),
+        ),
+      );
+    } catch (e) {
+      setConnLoadState({
+        kind: "error",
+        message: humanError(e) || "Couldn't read your connections — try again.",
+      });
+    }
+  }
+
+  /** Retry button handler for the empty/error branch — re-runs the same
+   * fetch path that the open-effect uses. Keeps a single source of truth
+   * for the loading transition by flipping back to `loading` first. */
+  async function refreshConnections() {
+    setConnLoadState({ kind: "loading" });
+    await reloadConnections();
   }
 
   async function connectPlatform(platform: ConnectionPlatform) {
@@ -273,10 +322,18 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
         return;
       }
       const scheduledAt = scheduledAtIso();
-      let ok = 0;
+      const label =
+        when === "now" ? "live now" : when === "1h" ? "in 1 hour" : "in 24 hours";
+      const targetKind: "channel" | "account" = hasChannels ? "channel" : "account";
+
       if (hasChannels) {
+        // Per-channel publishNow calls are independent — one platform's API
+        // failure (e.g. TikTok rate-limit) used to abort Promise.all and
+        // swallow N-1 successes that DID land on the server. allSettled lets
+        // us surface "scheduled K of N" instead of lying that everything
+        // failed.
         const ids = Array.from(pickedChannelIds);
-        const results = await Promise.all(
+        const settled = await Promise.allSettled(
           ids.map((channelId) =>
             backend.publishNow(jwt, {
               filePath: videoPath,
@@ -288,7 +345,38 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
             }),
           ),
         );
-        ok = results.reduce((sum, targets) => sum + targets.length, 0);
+        const okCalls = settled.filter((r) => r.status === "fulfilled").length;
+        const failedCalls = settled.length - okCalls;
+        // Sum of PublishedTarget rows across fulfilled calls — backend
+        // returns one row per posted platform, but for channels that's
+        // always 1, so this matches okCalls in practice. Keep the reduce
+        // so behaviour matches if backend ever returns multiple targets.
+        const okTargets = settled.reduce(
+          (sum, r) =>
+            r.status === "fulfilled" ? sum + (r.value?.length ?? 0) : sum,
+          0,
+        );
+        if (failedCalls === 0) {
+          setStatus({ kind: "scheduled", at: label, count: okTargets, total: ids.length, targetKind });
+          setOpen(false);
+        } else if (okCalls === 0) {
+          // Pull the first rejection's message so the user gets something
+          // concrete instead of a generic failure copy.
+          const firstError = settled.find((r) => r.status === "rejected") as
+            | PromiseRejectedResult
+            | undefined;
+          const msg = firstError ? humanError(firstError.reason) : "";
+          setStatus({
+            kind: "error",
+            message: msg
+              ? `Couldn't schedule any of ${ids.length} channels — ${msg}`
+              : `Couldn't schedule any of ${ids.length} channels — try again.`,
+          });
+        } else {
+          // Partial success — stay open so the user can SEE the X-of-Y
+          // count and retry the failed ones without re-picking everything.
+          setStatus({ kind: "scheduled", at: label, count: okCalls, total: ids.length, targetKind });
+        }
       } else {
         const targets = await backend.publishNow(jwt, {
           filePath: videoPath,
@@ -297,12 +385,10 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
           platforms: Array.from(picked),
           scheduledAt,
         });
-        ok = targets.length;
+        const ok = targets.length;
+        setStatus({ kind: "scheduled", at: label, count: ok, total: picked.size, targetKind });
+        setOpen(false);
       }
-      const label =
-        when === "now" ? "live now" : when === "1h" ? "in 1 hour" : "in 24 hours";
-      setStatus({ kind: "scheduled", at: label, count: ok, targetKind: hasChannels ? "channel" : "account" });
-      setOpen(false);
     } catch (e) {
       setStatus({ kind: "error", message: humanError(e) });
     }
@@ -311,10 +397,13 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
   // Collapsed status — once a clip has been scheduled, the card stays
   // in the success state until the user expands the scheduler again.
   if (status.kind === "scheduled" && !open) {
+    const partial = status.total > 0 && status.count < status.total;
     return (
       <div className="flex items-center gap-2 rounded-full border border-fuchsia/40 bg-fuchsia/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia">
         <CheckCircle2 className="h-3 w-3" />
-        scheduled · {status.count} {status.targetKind}{status.count === 1 ? "" : "s"} · {status.at}
+        scheduled · {partial
+          ? `${status.count} of ${status.total} ${status.targetKind}${status.total === 1 ? "" : "s"}`
+          : `${status.count} ${status.targetKind}${status.count === 1 ? "" : "s"}`} · {status.at}
         <button
           onClick={() => {
             setStatus({ kind: "idle" });
@@ -346,6 +435,15 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
   const allPlatforms: ConnectionPlatform[] = ["youtube", "tiktok", "instagram", "x"];
   const hasChannels = channels.length > 0;
   const selectedCount = hasChannels ? pickedChannelIds.size : picked.size;
+  // Distinguish "user is signed in but has zero connections of any kind"
+  // (the master-account-stuck-on-loader bug) from the legacy single-profile
+  // fallback where the user HAS a SocialConnection row with platforms but no
+  // v2 channels yet. The latter should keep showing the legacy connect/toggle
+  // chips; only the former gets the new empty-state copy.
+  const isLoadedEmpty =
+    connLoadState.kind === "loaded" &&
+    !hasChannels &&
+    (connLoadState.conn?.platforms?.length ?? 0) === 0;
 
   return (
     <section className="flex w-full flex-col gap-3 rounded-2xl border border-fuchsia/35 bg-paper-warm/30 p-4">
@@ -372,10 +470,63 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
           <p className="font-sans text-[12px] text-text-secondary">
             Sign in to Liquid Clips first to schedule clips.
           </p>
-        ) : conn === null ? (
+        ) : connLoadState.kind === "idle" || connLoadState.kind === "loading" ? (
           <div className="flex items-center gap-2 font-mono text-[11px] text-text-tertiary">
             <Loader2 className="h-3 w-3 animate-spin" />
             reading channels…
+          </div>
+        ) : connLoadState.kind === "error" ? (
+          // PREVENTS the infinite "reading channels…" stuck-loader when the
+          // strict fetch rejects — gives the user a visible retry path
+          // instead of a permanent spinner.
+          <div
+            role="alert"
+            className="flex flex-col gap-2 rounded-xl border border-[#DC2626]/30 bg-[#DC2626]/10 px-3 py-2"
+          >
+            <p className="font-sans text-[12px] text-[#DC2626]">
+              {connLoadState.message || "Couldn't read your connections — try again."}
+            </p>
+            <button
+              type="button"
+              onClick={() => void refreshConnections()}
+              className="inline-flex w-fit items-center gap-1 rounded-full border border-[#DC2626]/40 bg-paper px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-[#DC2626] hover:bg-[#DC2626]/10"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Refresh
+            </button>
+          </div>
+        ) : isLoadedEmpty ? (
+          // ENABLES a master account (or any first-time user) with zero
+          // channels AND zero legacy platforms to start a connect flow
+          // directly from the scheduler — previously they hit a permanent
+          // "reading channels…" loader because `conn === null` was the
+          // sentinel for "still loading" AND "loaded but empty".
+          <div className="flex flex-col gap-2">
+            <p className="font-sans text-[12px] text-text-secondary">
+              No platforms connected yet — pick one to start scheduling clips.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {(["tiktok", "instagram", "youtube", "x"] as ConnectionPlatform[]).map((p) => {
+                const isConnecting = connectingPlatform === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => void connectPlatform(p)}
+                    disabled={!!connectingPlatform && !isConnecting}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-fuchsia/35 bg-fuchsia/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia hover:border-fuchsia hover:bg-fuchsia/15 disabled:opacity-50"
+                    title={`Connect ${PLATFORM_LABELS[p]} now`}
+                  >
+                    <PlatformIcon id={p} className="h-3 w-3" />
+                    Connect {PLATFORM_LABELS[p]}
+                    {isConnecting ? " · opening…" : ""}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="font-mono text-[11px] text-text-tertiary">
+              Or open Settings → Connections for the full list.
+            </p>
           </div>
         ) : hasChannels ? (
           <div className="flex flex-wrap gap-2">
@@ -534,6 +685,13 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
 
       {status.kind === "error" ? (
         <p className="font-mono text-[11px] text-[#DC2626]">{status.message}</p>
+      ) : null}
+
+      {status.kind === "scheduled" && status.total > status.count ? (
+        <p className="font-mono text-[11px] text-[#DC2626]">
+          Scheduled {status.count} of {status.total} {status.targetKind}
+          {status.total === 1 ? "" : "s"} — the rest failed. Try again to retry the failures.
+        </p>
       ) : null}
 
       {status.kind === "linking" ? (
