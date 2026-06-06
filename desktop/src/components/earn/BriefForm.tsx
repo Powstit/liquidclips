@@ -14,6 +14,7 @@ import {
   type NewBriefInput,
   type PayoutProvider,
 } from "../../lib/briefs";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 const PLATFORM_OPTIONS: Array<{ id: AllowedPlatform; label: string }> = [
   { id: "tiktok", label: "TikTok" },
@@ -73,6 +74,9 @@ export function BriefForm({ brief, initialSourceUrl, onClose, onSaved }: BriefFo
   // detection. If the user has manually picked a platform after that, we don't
   // overwrite their choice on subsequent URL edits.
   const [platformUserPicked, setPlatformUserPicked] = useState<boolean>(false);
+  // Branded confirm replaces window.confirm() — native dialog blocks Tauri
+  // webview thread and breaks the cockpit voice on dirty-close.
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
   useEffect(() => {
     if (editing) return;
     if (platformUserPicked) return;
@@ -114,7 +118,10 @@ export function BriefForm({ brief, initialSourceUrl, onClose, onSaved }: BriefFo
     notes !== initialRef.notes;
 
   function requestClose() {
-    if (isDirty && !window.confirm("Discard this brief?")) return;
+    if (isDirty) {
+      setConfirmDiscardOpen(true);
+      return;
+    }
     onClose();
   }
 
@@ -164,6 +171,18 @@ export function BriefForm({ brief, initialSourceUrl, onClose, onSaved }: BriefFo
       className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
       onClick={requestClose}
     >
+      <ConfirmDialog
+        open={confirmDiscardOpen}
+        tone="destructive"
+        title="Discard this brief?"
+        body={<>Your unsaved edits will be thrown away.</>}
+        confirmLabel="Discard edits"
+        onCancel={() => setConfirmDiscardOpen(false)}
+        onConfirm={() => {
+          setConfirmDiscardOpen(false);
+          onClose();
+        }}
+      />
       <Card
         elevation="raised"
         padding="none"

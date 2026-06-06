@@ -7,7 +7,9 @@
 // (stale JWT, offline, update failure, export cap) AND reports them so Admin HQ
 // can show where real users break. Reporting must never throw or block the app.
 
-const PROD_BACKEND_URL = "https://api.jnremployee.com";
+// v0.7.x — canonical backend host. Same Railway service also serves at
+// api.jnremployee.com for back-compat with v0.7.2 and older installs.
+const PROD_BACKEND_URL = "https://api.liquidclips.app";
 const DEV_BACKEND_URL = "http://localhost:8000";
 const BACKEND_URL =
   import.meta.env.VITE_BACKEND_URL ??

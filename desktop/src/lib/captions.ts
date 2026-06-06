@@ -7,12 +7,19 @@
 // Undo/redo is local-only; persistence happens on Save (the "Apply · re-render"
 // CTA fires `edit_captions` RPC which atomically replaces the rendered MP4).
 
-import type { CaptionPalette, CaptionStyleKey } from "./caption-styles";
+import type { CaptionPalette, CaptionPosition, CaptionStyleKey } from "./caption-styles";
 
 export type CaptionWord = {
   start: number;
   end: number;
   text: string;
+  /** Optional CSS hex (#RRGGBB) — overrides the style's primary fill for
+   *  THIS word only. Used for the "money word" highlight every CapCut
+   *  creator paints (e.g. green "save 50%" inside a white line). Undefined
+   *  means the word renders with the line/style's default fill, so clips
+   *  without per-word colours bake byte-identical to the pre-feature
+   *  output. */
+  color?: string;
 };
 
 export type CaptionLine = {
@@ -48,6 +55,11 @@ export type CaptionState = {
    *  KEEP this in state so a later toggle-back restores the same swatches —
    *  the sidecar only persists it when the bake style is also "custom". */
   palette?: CaptionPalette;
+  /** User-picked caption position — align (top/middle/bottom) + vertical
+   *  offset. Undefined means "use the style's hardcoded position" so an
+   *  existing clip with no override re-bakes byte-identical to before this
+   *  feature shipped. */
+  position?: CaptionPosition;
   /** ASS text the last bake produced. Drives the libass-wasm preview so
    *  what the clipper sees during edit matches the rendered MP4 1:1. */
   assText?: string;
@@ -58,6 +70,7 @@ export type CaptionPatch =
   | { kind: "time"; idx: number; start: number; end: number }
   | { kind: "style"; value: CaptionStyleKey }
   | { kind: "palette"; value: CaptionPalette }
+  | { kind: "position"; value: CaptionPosition }
   | { kind: "add"; afterIdx: number; line: CaptionLine }
   | { kind: "delete"; idx: number }
   | { kind: "reset-line"; idx: number; from: CaptionLine };
@@ -87,6 +100,15 @@ export function applyPatch(state: CaptionState, p: CaptionPatch): CaptionState {
       return {
         ...state,
         palette: { ...(state.palette ?? {}), ...p.value },
+        syncStatus: "dirty",
+      };
+    case "position":
+      // Full replace — position is a 2-field object, partial merges would
+      // mean dragging the slider mid-flight could leave a stale align/marginV
+      // pair. Caller computes the next full object every time.
+      return {
+        ...state,
+        position: p.value,
         syncStatus: "dirty",
       };
     case "add": {
