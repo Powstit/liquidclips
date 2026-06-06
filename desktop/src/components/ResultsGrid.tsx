@@ -20,6 +20,9 @@ import { PUBLISHING_ENABLED } from "../lib/flags";
 import { useTier, FREE_TIER_VISIBLE_CLIPS } from "../lib/useTier";
 import { useLocalPref } from "../lib/useLocalPref";
 import { InfoHint } from "./InfoHint";
+import { useWorkbenchStore } from "./workbench/useWorkbenchStore";
+import { ViewModeToggle } from "./workbench/ViewModeToggle";
+import { WindowManager } from "./workbench/WindowManager";
 
 type Tab = "clips" | "youtube" | "files";
 
@@ -256,6 +259,15 @@ export function ResultsGrid({
       <div className="mt-6">
         {tab === "clips" && intent !== "youtube" && (
           <>
+            {/* View mode toggle — Grid vs Workbench. Mounted ABOVE the bulk
+                toolbar so the user picks "where" before they pick "what":
+                seeing the mode they're in is the higher-priority signal.
+                ClipsBulkToolbar stays mounted in both modes because the
+                ratio + preview-sound + preview-motion toggles are
+                project-wide prefs the workbench still honours. */}
+            <div className="mb-3 flex items-center justify-end">
+              <ViewModeToggle />
+            </div>
             <ClipsBulkToolbar
               project={project}
               ratio={ratio}
@@ -266,44 +278,55 @@ export function ResultsGrid({
               previewMotionOn={previewMotionOn}
               onPreviewMotionChange={setPreviewMotionOn}
             />
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {(() => {
-                const visibleCount =
-                  tier.tier === "free"
-                    ? Math.min(FREE_TIER_VISIBLE_CLIPS, project.clips.length)
-                    : project.clips.length;
-                const hidden = project.clips.length - visibleCount;
-                return (
-                  <>
-                    {project.clips.slice(0, visibleCount).map((clip, idx) => (
-                      <FeedClipCard
-                        key={`${idx}-${clip.slug}`}
-                        clip={clip}
-                        index={idx + 1}
-                        slug={project.slug}
-                        project={project}
-                        ratio={ratio}
-                        onProjectChange={onProjectChange}
-                        onOpenEditor={() => setPreviewIdx(idx)}
-                        onOpenCaptions={() => { setPreviewIdx(idx); setOpenCaptionsForIdx(idx); }}
-                        previewSoundOn={previewSoundOn}
-                        previewMotionOn={previewMotionOn}
-                      />
-                    ))}
-                    {hidden > 0 && (
-                      <UpgradeLockCard hiddenCount={hidden} totalClips={project.clips.length} />
-                    )}
-                    {tier.tier !== "free" && (
-                      <AddClipCard
-                        project={project}
-                        onProjectChange={onProjectChange}
-                      />
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-            <ClipsBottomBar project={project} />
+            {/* Branch on view. Grid path is byte-identical to the previous
+                implementation — workbench path defers the entire canvas to
+                WindowManager. ClipPreview at the bottom stays mounted in
+                both modes (Workbench leaves it idle, Grid uses it for the
+                full-screen edit drawer). */}
+            {useWorkbenchStore((s) => s.view) === "workbench" ? (
+              <WindowManager project={project} onProjectChange={onProjectChange} />
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {(() => {
+                    const visibleCount =
+                      tier.tier === "free"
+                        ? Math.min(FREE_TIER_VISIBLE_CLIPS, project.clips.length)
+                        : project.clips.length;
+                    const hidden = project.clips.length - visibleCount;
+                    return (
+                      <>
+                        {project.clips.slice(0, visibleCount).map((clip, idx) => (
+                          <FeedClipCard
+                            key={`${idx}-${clip.slug}`}
+                            clip={clip}
+                            index={idx + 1}
+                            slug={project.slug}
+                            project={project}
+                            ratio={ratio}
+                            onProjectChange={onProjectChange}
+                            onOpenEditor={() => setPreviewIdx(idx)}
+                            onOpenCaptions={() => { setPreviewIdx(idx); setOpenCaptionsForIdx(idx); }}
+                            previewSoundOn={previewSoundOn}
+                            previewMotionOn={previewMotionOn}
+                          />
+                        ))}
+                        {hidden > 0 && (
+                          <UpgradeLockCard hiddenCount={hidden} totalClips={project.clips.length} />
+                        )}
+                        {tier.tier !== "free" && (
+                          <AddClipCard
+                            project={project}
+                            onProjectChange={onProjectChange}
+                          />
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+                <ClipsBottomBar project={project} />
+              </>
+            )}
           </>
         )}
         {tab === "youtube" && intent !== "clips" && (

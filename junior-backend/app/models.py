@@ -273,6 +273,14 @@ class SocialChannel(Base):
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending_link")  # pending_link | active | error | paused | deleted
     last_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     total_posts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)        # denormalized for fast list views
+    # Observability — every time we PROBE the channel against Ayrshare (refresh,
+    # create, relink), stamp the wall clock and (if it failed) the short error.
+    # link_attempts ticks every time we mint a fresh link URL (create / relink)
+    # so we can SEE in prod how many round-trips users take to get a working
+    # OAuth (a high number = our linking flow is broken or confusing).
+    last_probe_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    last_probe_error: Mapped[str | None] = mapped_column(String, default=None)
+    link_attempts: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 

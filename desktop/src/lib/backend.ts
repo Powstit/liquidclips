@@ -1443,6 +1443,31 @@ export async function relinkChannel(id: string): Promise<{ link_url: string; cha
   return res.json();
 }
 
+// One-click probe of a channel's live state. Hits the admin-side diagnose
+// endpoint which inspects the Ayrshare profile, the last 10 webhooks, and
+// returns a recommended_action string the UI can show verbatim. Used by the
+// "Diagnose" affordance on pending_link channels (ChannelCard + InlineScheduler
+// rescue UI) so the user / admin can see WHY a link hasn't completed without
+// digging through backend logs.
+export async function diagnoseChannel(id: string): Promise<{
+  channel: Channel;
+  ayrshare: {
+    profile_found: boolean;
+    platforms_linked: Array<{ platform: string; handle: string | null; status: string }>;
+    raw_response: string;
+  };
+  last_10_webhooks: Array<{ received_at: string; event_type: string; status: string; processing_ms: number; signature_ok: boolean; error: string | null }>;
+  recommended_action: string;
+}> {
+  const res = await authedFetch(`/admin/channels/${id}/diagnose`, { method: "POST" });
+  if (!res.ok) {
+    if (res.status >= 500) throw new BackendOfflineError(`HTTP ${res.status}`);
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `Couldn't diagnose channel: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 // ── Analytics ─────────────────────────────────────────────────────────
 
 export type AnalyticsWindow = "7d" | "30d" | "90d" | "all";

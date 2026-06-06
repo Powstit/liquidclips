@@ -211,7 +211,7 @@ export function Splash({
           type="button"
           onClick={skipSplash}
           aria-label="Skip splash"
-          className="absolute right-6 top-6 z-20 grid h-11 w-11 place-items-center rounded-full border border-fuchsia bg-black/45 font-mono text-[14px] font-semibold text-ink shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
+          className="absolute right-6 top-6 z-20 grid h-11 w-11 place-items-center rounded-full border border-fuchsia bg-black/45 font-mono text-[14px] font-semibold text-paper shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
         >
           →
         </button>
@@ -253,7 +253,7 @@ export function Splash({
               style={{ width: "40%" }}
             />
           </div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink/80">
+          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">
             {TICKS[i]}
           </p>
         </div>

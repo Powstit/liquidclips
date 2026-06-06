@@ -1218,8 +1218,29 @@ export default function App() {
             <WorkstationRoom
               onCreate={() => setUploadPortal({ open: true })}
               onImport={() => void handleImportDirect()}
+              onThumbnails={() => {
+                // v0.7.1 — placeholder until the thumbnail-pack feature
+                // ships. Toast keeps the surface informative without a
+                // dead end; the parent owns the cue so the tile component
+                // stays presentation-only.
+                window.dispatchEvent(
+                  new CustomEvent("lc:toast", {
+                    detail: { kind: "info", message: "Thumbnails are coming next — drop a clip and we'll generate a 6-pack." },
+                  }),
+                );
+              }}
+              onScript={() => {
+                // v0.7.1 — wire Script tile to the existing Lift Transcript
+                // flow. Same UploadPortal as Create; user pastes a URL and
+                // the pipeline auto-routes to liftTranscript (transcript only,
+                // no clip cutting). This is the "Script mode that was removed
+                // from previous UI" — restored as an explicit tile so users
+                // don't have to know it's behind the Create entry.
+                setUploadPortal({ open: true });
+              }}
               dragHoverActive={dragHoverActive}
               dropError={dropError}
+              userTier={userTier}
             />
           </RoomShell>
         )}
