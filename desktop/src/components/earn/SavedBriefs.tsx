@@ -19,6 +19,7 @@ import {
 } from "../../lib/briefs";
 import { openBrowsePanel } from "../../lib/browse";
 import { BriefForm } from "./BriefForm";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 const PAYOUT_LABEL: Record<PayoutProvider, string> = {
   whop: "Whop",
@@ -234,6 +235,11 @@ function BriefDetailModal({
   const isActive = active?.id === brief.id;
   const [deleting, setDeleting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Branded confirms replace window.confirm() — native dialogs block the
+  // Tauri webview thread + break cockpit voice. Two separate slots so the
+  // close-with-unsaved + delete prompts can coexist without sharing copy.
+  const [confirmCloseDirtyOpen, setConfirmCloseDirtyOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   // PREVENTS — backdrop click silently dropping mid-flight operations.
   // When a delete / toggle / re-open is in-flight, or an error/notes
   // edit is unsaved, ask before closing.
@@ -244,10 +250,7 @@ function BriefDetailModal({
       onClose();
       return;
     }
-    // eslint-disable-next-line no-alert
-    if (window.confirm("You have unsaved changes — close anyway?")) {
-      onClose();
-    }
+    setConfirmCloseDirtyOpen(true);
   }
 
   async function toggleActive(): Promise<void> {
@@ -258,12 +261,16 @@ function BriefDetailModal({
     }
   }
 
-  async function doDelete(): Promise<void> {
-    if (!confirm(`Delete brief "${brief.title}"?`)) return;
+  function doDelete(): void {
+    setConfirmDeleteOpen(true);
+  }
+
+  async function performDelete(): Promise<void> {
     setDeleting(true);
     setErr(null);
     try {
       await deleteBrief(brief.id);
+      setConfirmDeleteOpen(false);
       onClose();
     } catch (e) {
       setErr(String(e));
@@ -433,6 +440,28 @@ function BriefDetailModal({
           </div>
         </footer>
       </Card>
+      <ConfirmDialog
+        open={confirmCloseDirtyOpen}
+        tone="destructive"
+        title="Close anyway?"
+        body={<>You have unsaved changes — closing now will throw them away.</>}
+        confirmLabel="Close and discard"
+        onCancel={() => setConfirmCloseDirtyOpen(false)}
+        onConfirm={() => {
+          setConfirmCloseDirtyOpen(false);
+          onClose();
+        }}
+      />
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        tone="destructive"
+        title={`Delete brief "${brief.title}"?`}
+        body={<>This campaign brief will be removed. Can&apos;t be undone.</>}
+        confirmLabel="Delete brief"
+        busy={deleting}
+        onCancel={() => { if (!deleting) setConfirmDeleteOpen(false); }}
+        onConfirm={() => { void performDelete(); }}
+      />
     </div>
   );
 }

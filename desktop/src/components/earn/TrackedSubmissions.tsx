@@ -20,6 +20,7 @@ import { useBriefs } from "../../lib/briefs";
 import { openBrowsePanel } from "../../lib/browse";
 import { humanError } from "../../lib/sidecar";
 import { SubmissionForm } from "./SubmissionForm";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 // 6-tone status ladder (locked 2026-05-29):
 //   paid + approved  = success green   ("money in your account")
@@ -230,13 +231,20 @@ function SubmissionRow({
   const [error, setError] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
   const [openErrorCopied, setOpenErrorCopied] = useState(false);
+  // Branded confirm replaces window.confirm() — native dialog blocks Tauri
+  // webview thread and breaks the cockpit voice on delete.
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
-  async function doDelete(): Promise<void> {
-    if (!confirm("Delete this submission?")) return;
+  function doDelete(): void {
+    setConfirmDeleteOpen(true);
+  }
+
+  async function performDelete(): Promise<void> {
     setBusy(true);
     setError(null);
     try {
       await deleteSubmission(submission.id);
+      setConfirmDeleteOpen(false);
     } catch (e) {
       // PREVENTS — silent delete failure. Without this catch the row
       // pretends to be deleted then re-appears on next refresh.
@@ -332,6 +340,16 @@ function SubmissionRow({
           <Trash2 size={12} />
         </IconButton>
       </div>
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        tone="destructive"
+        title="Delete this submission?"
+        body={<>This row will be removed from your tracker. Can&apos;t be undone.</>}
+        confirmLabel="Delete submission"
+        busy={busy}
+        onCancel={() => { if (!busy) setConfirmDeleteOpen(false); }}
+        onConfirm={() => { void performDelete(); }}
+      />
     </div>
   );
 }
