@@ -10,7 +10,17 @@ export type CaptionStyleKey =
   | "tiktok_stack"
   | "bold_yellow"
   | "clean_white"
-  | "subway_surfer";
+  | "subway_surfer"
+  | "custom";
+
+/** User-picked palette — react-colorful drives these. When `style === "custom"`
+ *  the bake uses these colours instead of the preset. Optional fields fall
+ *  back to the "custom" preset defaults so a partial palette renders cleanly. */
+export type CaptionPalette = {
+  primary?: string;
+  secondary?: string;
+  outline?: string;
+};
 
 export type CaptionStyleSpec = {
   key: CaptionStyleKey;
@@ -120,6 +130,25 @@ export const CAPTION_STYLES: Record<CaptionStyleKey, CaptionStyleSpec> = {
     marginVPercent: 14.6,
     karaoke: true,
   },
+  // User-tunable starter style. The drawer mounts react-colorful pickers
+  // for `primary` / `secondary` / `outline` when this key is active, and
+  // the sidecar bake reads the same palette so what the clipper sees in
+  // the live overlay matches the rendered MP4.
+  custom: {
+    key: "custom",
+    label: "Custom",
+    fontFamily: "Inter, system-ui, sans-serif",
+    fontPx: 76,
+    primary: "#ff1a8c",   // brand default — clipper picking Custom without
+    secondary: "#ffffff", // dragging a swatch still gets a brand-safe render.
+    outline: "#0b0b10",
+    outlinePx: 6,
+    shadow: "0 4px 16px rgba(0,0,0,0.55)",
+    fontWeight: 800,
+    wordsPerLine: 3,
+    marginVPercent: 12.5,
+    karaoke: true,
+  },
 };
 
 export const CAPTION_STYLE_KEYS: CaptionStyleKey[] = [
@@ -128,7 +157,24 @@ export const CAPTION_STYLE_KEYS: CaptionStyleKey[] = [
   "bold_yellow",
   "clean_white",
   "subway_surfer",
+  "custom",
 ];
+
+/** Merge a user palette over a style spec — returns a NEW spec where the
+ *  palette swatches override `primary` / `secondary` / `outline`. Used by
+ *  the live overlay so the clipper sees their picks before Apply. */
+export function applyPalette(
+  spec: CaptionStyleSpec,
+  palette: CaptionPalette | undefined,
+): CaptionStyleSpec {
+  if (!palette) return spec;
+  return {
+    ...spec,
+    primary: palette.primary ?? spec.primary,
+    secondary: palette.secondary ?? spec.secondary,
+    outline: palette.outline ?? spec.outline,
+  };
+}
 
 /** CSS `text-shadow` value that simulates an ASS stroke. Stacks 8 cardinal
  * directions so the outline reads crisp even at small sizes. */

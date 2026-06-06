@@ -6,13 +6,15 @@
 // because EarnLayout already supplies it).
 
 import { useEffect, useState } from "react";
-import { ExternalLink, Loader2, Wallet } from "lucide-react";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { ExternalLink, Loader2, RotateCw, Wallet } from "lucide-react";
 import { Card, Pill } from "../primitives";
 import {
   meAffiliate,
   UnauthorizedError,
   type AffiliateMeResponse,
 } from "../../lib/backend";
+import { humanError } from "../../lib/sidecar";
 import { useBriefs } from "../../lib/briefs";
 import { useSubmissions } from "../../lib/submissions";
 import {
@@ -35,14 +37,22 @@ function useAffiliateMe(): {
   data: AffiliateMeResponse | null;
   loading: boolean;
   signedOut: boolean;
+  loadError: string | null;
+  retry: () => void;
 } {
   const fresh = _cache && Date.now() - _cache.at < CACHE_TTL_MS;
   const [data, setData] = useState<AffiliateMeResponse | null>(fresh ? _cache!.data : null);
   const [loading, setLoading] = useState(!fresh);
   const [signedOut, setSignedOut] = useState(false);
+  // PREVENTS — non-401 errors silently zeroing-out the earnings cards.
+  // Without this the user sees $0 instead of a recoverable error.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
     (async () => {
       try {
         const r = await meAffiliate();
@@ -52,7 +62,12 @@ function useAffiliateMe(): {
           setData(r);
         }
       } catch (e) {
-        if (e instanceof UnauthorizedError) setSignedOut(true);
+        if (cancelled) return;
+        if (e instanceof UnauthorizedError) {
+          setSignedOut(true);
+        } else {
+          setLoadError(humanError(e));
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -60,15 +75,31 @@ function useAffiliateMe(): {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tick]);
 
-  return { data, loading, signedOut };
+  return { data, loading, signedOut, loadError, retry: () => setTick((n) => n + 1) };
 }
 
 export function PayoutsView() {
   const { submissions } = useSubmissions();
   const { briefs } = useBriefs();
-  const { data: affiliate, loading: affiliateLoading, signedOut } = useAffiliateMe();
+  const {
+    data: affiliate,
+    loading: affiliateLoading,
+    signedOut,
+    loadError: affiliateError,
+    retry: retryAffiliate,
+  } = useAffiliateMe();
+  const [openError, setOpenError] = useState<string | null>(null);
+
+  async function safeOpenPayout(url: string): Promise<void> {
+    try {
+      await openExternal(url);
+      setOpenError(null);
+    } catch (e) {
+      setOpenError(humanError(e));
+    }
+  }
 
   const totals = trackerTotals(submissions);
   const monthPaid = paidThisMonth(submissions);
@@ -125,6 +156,22 @@ export function PayoutsView() {
             <p className="font-sans text-[13px] text-ink">
               Sign in to see your payout sources.
             </p>
+          </Card>
+        ) : affiliateError && !affiliate ? (
+          // PREVENTS — silently rendering $0 money cards on a non-401
+          // affiliate fetch failure. Show the error + retry instead.
+          <Card padding="md" className="flex flex-wrap items-center gap-3 border-[#DC2626]/40 bg-[#DC2626]/10">
+            <p className="flex-1 font-sans text-[13px] text-ink">
+              Couldn&apos;t reach payouts — {affiliateError}
+            </p>
+            <button
+              type="button"
+              onClick={retryAffiliate}
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
+            >
+              <RotateCw size={11} strokeWidth={2} />
+              Retry
+            </button>
           </Card>
         ) : affiliateLoading && !affiliate ? (
           <Card padding="md" className="flex items-center gap-2">
@@ -245,6 +292,12 @@ export function PayoutsView() {
         )}
       </section>
 
+      {openError && (
+        <p role="alert" className="font-sans text-[12px] text-[#F87171]">
+          Couldn&apos;t open browser — {openError}
+        </p>
+      )}
+
       {/* Explainer — tells first-timers where each $ comes from */}
       <section className="rounded-2xl border border-line bg-paper-elev/40 p-4">
         <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
@@ -261,7 +314,7 @@ export function PayoutsView() {
               payouts on their schedule.{" "}
               <button
                 type="button"
-                onClick={() => void import("@tauri-apps/plugin-shell").then((m) => m.open("https://whop.com/dashboard/payouts"))}
+                onClick={() => void safeOpenPayout("https://whop.com/dashboard/payouts")}
                 className="inline-flex items-center gap-1 text-fuchsia-deep hover:text-fuchsia"
               >
                 Open Whop payouts <ExternalLink size={10} strokeWidth={2.25} />
@@ -279,11 +332,9 @@ export function PayoutsView() {
               <button
                 type="button"
                 onClick={() =>
-                  void import("@tauri-apps/plugin-shell").then((m) =>
-                    m.open(
-                      affiliate?.affiliate.payout_setup_url ||
-                        "https://account.jnremployee.com/dashboard#payouts",
-                    ),
+                  void safeOpenPayout(
+                    affiliate?.affiliate.payout_setup_url ||
+                      "https://account.jnremployee.com/dashboard#payouts",
                   )
                 }
                 className="inline-flex items-center gap-1 text-fuchsia-deep hover:text-fuchsia"

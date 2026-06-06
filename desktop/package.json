@@ -1,7 +1,7 @@
 {
   "name": "junior-desktop",
   "private": true,
-  "version": "0.6.45",
+  "version": "0.6.47",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,10 +19,12 @@
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-shell": "^2.3.5",
     "@tauri-apps/plugin-updater": "^2.10.1",
+    "libass-wasm": "^4.1.0",
     "lucide-react": "^0.471.2",
     "motion": "^12.40.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
+    "react-colorful": "^5.7.0",
     "react-dom": "^18.3.1",
     "zustand": "^4.5.5"
   },

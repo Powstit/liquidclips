@@ -1,6 +1,12 @@
 import { useMemo } from "react";
 import type { CaptionLine } from "../../lib/captions";
-import { CAPTION_STYLES, strokeShadow, type CaptionStyleKey } from "../../lib/caption-styles";
+import {
+  CAPTION_STYLES,
+  applyPalette,
+  strokeShadow,
+  type CaptionPalette,
+  type CaptionStyleKey,
+} from "../../lib/caption-styles";
 
 // Time-synced caption overlay rendered over the playing video.
 //
@@ -22,6 +28,7 @@ export function CaptionOverlay({
   style,
   videoHeight = 1920,
   containerHeight,
+  palette,
 }: {
   currentTime: number;
   lines: CaptionLine[];
@@ -30,8 +37,11 @@ export function CaptionOverlay({
   videoHeight?: number;
   /** Rendered height of the container in CSS px — drives the font-size scale. */
   containerHeight?: number;
+  /** User-picked custom colours (Custom style). Merged over the spec so the
+   *  live preview reflects the swatches before Apply re-bakes the MP4. */
+  palette?: CaptionPalette;
 }) {
-  const spec = CAPTION_STYLES[style];
+  const spec = applyPalette(CAPTION_STYLES[style], palette);
 
   // Find the active line for the current playhead. Uses `<=` on start and
   // strict `<` on end so a line ending at 3.456 doesn't overlap with the

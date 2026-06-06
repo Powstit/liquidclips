@@ -37,6 +37,7 @@ const PLATFORM_SLOTS: ConnectionPlatform[] = ["youtube", "tiktok", "instagram", 
 export function SchedulePage({
   onOpenSettings,
   onOpenProject,
+  initialSub,
 }: {
   onOpenWorkspace?: () => void;
   /** Settings → Connections is where the user actually links accounts.
@@ -47,24 +48,31 @@ export function SchedulePage({
    *  — defaults to no-op; Schedule itself never navigates to ResultsGrid,
    *  but DirectPublishQueue requires the prop. */
   onOpenProject?: (project: Project) => void;
+  /** Analytics Phase 1 — when set, Schedule mounts on this sub-tab instead of
+   *  the default "queue". Used by deep-links from Settings → Connections
+   *  ("view analytics") and ChannelCard ("analytics →"). Honored once, on
+   *  mount — subsequent user tab clicks take over. */
+  initialSub?: Sub;
 } = {}) {
   // onOpenWorkspace was useful when Schedule was a single-tab placeholder;
   // the 3-tab v2 doesn't need it. Kept as an optional prop for caller
   // back-compat (App.tsx still passes it but we ignore).
-  const [sub, setSub] = useState<Sub>("queue");
+  const [sub, setSub] = useState<Sub>(initialSub ?? "queue");
   const [hasChannels, setHasChannels] = useState<boolean | null>(null);
   const [connection, setConnection] = useState<SocialConnectionState | null>(null);
   const [authed, setAuthed] = useState<boolean | null>(null);
 
   // Auto-jump to Loadout when user has zero channels (so the empty state is
   // the first thing they see). Only runs once on mount; subsequent
-  // navigation honors user clicks.
+  // navigation honors user clicks. Skipped when `initialSub` is set — a
+  // deep-link from Settings/ChannelCard already specifies where to land,
+  // and yanking that user to Loadout would strand them at the wrong tab.
   useEffect(() => {
     void backend.listChannels().then((cs) => {
       setHasChannels(cs.length > 0);
-      if (cs.length === 0) setSub("channels");
+      if (cs.length === 0 && !initialSub) setSub("channels");
     });
-  }, []);
+  }, [initialSub]);
 
   // Hydrate the connected-platforms rail. Mirrors UploadTab's pattern:
   // require a license JWT, then fetch the Ayrshare connection state.
@@ -242,7 +250,19 @@ export function SchedulePage({
         </div>
       )}
 
-      {sub === "channels" && <ChannelsManager />}
+      {sub === "channels" && (
+        <ChannelsManager
+          onOpenAnalytics={() => {
+            // TODO(analytics-phase-2): forward channelId so AnalyticsView
+            // pre-filters by channel. Wiring point: pass a channelFilter
+            // prop into <AnalyticsView /> at SchedulePage.tsx (the
+            // {sub === "analytics"} branch below) and let it pre-select
+            // that row in the channels table. Today the click just lands
+            // the user on the analytics tab — they scan the row themselves.
+            setSub("analytics");
+          }}
+        />
+      )}
 
       {sub === "analytics" && <AnalyticsView />}
     </div>

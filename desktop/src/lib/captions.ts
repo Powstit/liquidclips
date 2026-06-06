@@ -7,7 +7,7 @@
 // Undo/redo is local-only; persistence happens on Save (the "Apply · re-render"
 // CTA fires `edit_captions` RPC which atomically replaces the rendered MP4).
 
-import type { CaptionStyleKey } from "./caption-styles";
+import type { CaptionPalette, CaptionStyleKey } from "./caption-styles";
 
 export type CaptionWord = {
   start: number;
@@ -43,12 +43,21 @@ export type CaptionState = {
   /** Source — "edits" means we loaded the user's persisted version,
    * "transcript" means this is the first time the drawer opens for this clip. */
   source: "edits" | "transcript";
+  /** User-picked palette overrides for primary / secondary / outline.
+   *  Active when `style === "custom"`. When the user toggles off Custom we
+   *  KEEP this in state so a later toggle-back restores the same swatches —
+   *  the sidecar only persists it when the bake style is also "custom". */
+  palette?: CaptionPalette;
+  /** ASS text the last bake produced. Drives the libass-wasm preview so
+   *  what the clipper sees during edit matches the rendered MP4 1:1. */
+  assText?: string;
 };
 
 export type CaptionPatch =
   | { kind: "text"; idx: number; value: string }
   | { kind: "time"; idx: number; start: number; end: number }
   | { kind: "style"; value: CaptionStyleKey }
+  | { kind: "palette"; value: CaptionPalette }
   | { kind: "add"; afterIdx: number; line: CaptionLine }
   | { kind: "delete"; idx: number }
   | { kind: "reset-line"; idx: number; from: CaptionLine };
@@ -71,6 +80,15 @@ export function applyPatch(state: CaptionState, p: CaptionPatch): CaptionState {
     }
     case "style":
       return { ...state, style: p.value, syncStatus: "dirty" };
+    case "palette":
+      // Merge — partial palettes (just one swatch changed) keep the others.
+      // The undo stack picks up the new state via the same dirty flip as
+      // every other patch so Cmd-Z reverses colour edits too.
+      return {
+        ...state,
+        palette: { ...(state.palette ?? {}), ...p.value },
+        syncStatus: "dirty",
+      };
     case "add": {
       const lines = [...state.lines];
       lines.splice(p.afterIdx + 1, 0, { ...p.line, modified: true });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { sidecar } from "../../lib/sidecar";
+import { humanError, sidecar } from "../../lib/sidecar";
 import {
   History,
   applyPatch,
@@ -8,7 +8,8 @@ import {
   type CaptionLine,
   type CaptionState,
 } from "../../lib/captions";
-import { CAPTION_STYLES, CAPTION_STYLE_KEYS, type CaptionStyleKey } from "../../lib/caption-styles";
+import { CAPTION_STYLES, CAPTION_STYLE_KEYS, type CaptionStyleKey, type CaptionPalette } from "../../lib/caption-styles";
+import { HexColorPicker } from "react-colorful";
 import { CaptionOverlay } from "./CaptionOverlay";
 import { CaptionRow } from "./CaptionRow";
 import { CaptionStyleCard } from "./CaptionStyleCard";
@@ -34,6 +35,7 @@ export function CaptionDrawer({
   onSeek,
   onApplied,
   onDirtyChange,
+  onPreviewChange,
 }: {
   open: boolean;
   slug: string;
@@ -46,6 +48,15 @@ export function CaptionDrawer({
   onApplied: (videoPath: string, style: CaptionStyleKey) => void;
   /** Lets the parent ClipPreview show the unsaved-edits dot on the captions pill. */
   onDirtyChange?: (dirty: boolean) => void;
+  /** Live preview pipe — fires on every state mutation so the parent overlay
+   *  reflects style/palette/line edits BEFORE Apply re-bakes the MP4. Cheap:
+   *  payload is the same CaptionState the drawer already holds, parent just
+   *  uses it to override the clip-baked style. */
+  onPreviewChange?: (preview: {
+    style: CaptionStyleKey;
+    palette?: CaptionPalette;
+    lines: CaptionLine[];
+  } | null) => void;
 }) {
   const [state, setState] = useState<CaptionState | null>(null);
   const [loading, setLoading] = useState(false);
@@ -87,6 +98,11 @@ export function CaptionDrawer({
           syncStatus: res.source === "edits" ? "synced" : "dirty",
           updatedAt: res.updated_at,
           source: res.source,
+          // Rehydrate persisted custom palette if the user shipped this clip
+          // with custom colours. Undefined for preset-style clips — drawer
+          // falls back to the "custom" preset defaults when the user toggles
+          // Custom on for the first time.
+          palette: res.palette ?? undefined,
         };
         setState(fresh);
         history.current = new History();
@@ -99,7 +115,7 @@ export function CaptionDrawer({
       })
       .catch((e) => {
         if (cancelled) return;
-        setError(String(e));
+        setError(humanError(e));
         setLoading(false);
       });
     return () => { cancelled = true; };
@@ -109,6 +125,22 @@ export function CaptionDrawer({
   useEffect(() => {
     onDirtyChange?.(state?.syncStatus === "dirty");
   }, [state?.syncStatus, onDirtyChange]);
+
+  // Live preview pipe — push style/palette/lines to the parent overlay on
+  // every state change so the live caption surface reflects the clipper's
+  // edits before the bake commits. Nulled on close so the overlay falls
+  // back to the clip's baked spec.
+  useEffect(() => {
+    if (!state || !open) {
+      onPreviewChange?.(null);
+      return;
+    }
+    onPreviewChange?.({
+      style: state.style,
+      palette: state.palette,
+      lines: state.lines,
+    });
+  }, [state, open, onPreviewChange]);
 
   const mutate = useCallback((next: CaptionState) => {
     history.current.push(state!);
@@ -172,14 +204,31 @@ export function CaptionDrawer({
     setBaking(true);
     setError(null);
     try {
-      const res = await sidecar.editCaptions(slug, clipIdx, state.lines, state.style);
-      const synced: CaptionState = { ...state, syncStatus: "synced", updatedAt: res.updated_at };
+      // Only ship the palette when the user actually picked Custom. Sending
+      // it on a preset style change would over-persist and cause toggling
+      // back to brand_fuchsia to silently keep the user's custom colours.
+      const palette = state.style === "custom" ? state.palette ?? null : null;
+      const res = await sidecar.editCaptions(
+        slug,
+        clipIdx,
+        state.lines,
+        state.style,
+        palette,
+      );
+      const synced: CaptionState = {
+        ...state,
+        syncStatus: "synced",
+        updatedAt: res.updated_at,
+        // Cache the ASS text so the libass-wasm overlay shows the rendered
+        // version instead of falling back to the DOM approximation.
+        assText: res.ass_text ?? state.assText,
+      };
       setState(synced);
       history.current = new History();
       history.current.push(synced);
       onApplied(res.video_path, state.style);
     } catch (e) {
-      setError(String(e));
+      setError(humanError(e));
       setState((s) => (s ? { ...s, syncStatus: "error" } : s));
     } finally {
       setBaking(false);
@@ -200,6 +249,11 @@ export function CaptionDrawer({
         // Without this, every Cmd-S fires the bake RPC even when nothing
         // changed, churning the renderer.
         if (state?.syncStatus !== "dirty") return;
+        // Race guard — if a bake is already in flight, Cmd-S must not stack
+        // a second RPC on top. handleApply has its own `if (baking) return`
+        // guard, but checking here keeps the keypress from preventDefault-
+        // stealing focus during a long render.
+        if (baking) return;
         void handleApply();
       } else if (e.key === "Escape") {
         tryClose();
@@ -207,7 +261,7 @@ export function CaptionDrawer({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, handleUndo, handleRedo, state?.syncStatus, tryClose, handleApply]);
+  }, [open, handleUndo, handleRedo, state?.syncStatus, tryClose, handleApply, baking]);
 
   const currentLineIdx = useMemo(() => {
     if (!state) return -1;
@@ -319,6 +373,19 @@ export function CaptionDrawer({
                 />
               ))}
             </div>
+
+            {/* Custom palette pickers — visible only when Custom is active.
+                Three react-colorful pads (primary / secondary / outline) +
+                hex inputs for keyboard-only users. Live overlay updates as
+                the clipper drags; Apply re-bakes the MP4. */}
+            {state.style === "custom" && (
+              <CustomPaletteEditor
+                palette={state.palette}
+                onChange={(value: CaptionPalette) =>
+                  mutate(applyPatch(state, { kind: "palette", value }))
+                }
+              />
+            )}
 
             <SectionLabel style={{ marginTop: 18 }}>Lines · {state.lines.length}</SectionLabel>
             <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
@@ -449,6 +516,180 @@ export function CaptionDrawer({
 }
 
 // ----- helpers -------------------------------------------------------------
+
+// Custom palette editor — three react-colorful pads (primary / secondary /
+// outline) + hex inputs for keyboard users + a contrast warning when the
+// primary and outline collide (unreadable captions).
+//
+// Defaults come from the "custom" preset spec so a clipper who opens this
+// for the first time sees brand-safe starter colours, not blank pads.
+function CustomPaletteEditor({
+  palette,
+  onChange,
+}: {
+  palette: CaptionPalette | undefined;
+  onChange: (next: CaptionPalette) => void;
+}) {
+  const defaults = CAPTION_STYLES.custom;
+  const primary = palette?.primary ?? defaults.primary;
+  const secondary = palette?.secondary ?? defaults.secondary;
+  const outline = palette?.outline ?? defaults.outline;
+
+  // Crude contrast check — primary fill vs. outline colour. When they're
+  // close (Euclidean distance in RGB < 60) the caption reads as a smudge.
+  // Inline pill, not a blocking toast — clippers know what they're doing.
+  const lowContrast = colourDistance(primary, outline) < 60;
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        padding: 12,
+        borderRadius: 12,
+        border: "1px solid var(--color-line, rgba(255,255,255,0.12))",
+        background: "var(--color-paper-warm, rgba(255,255,255,0.02))",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          marginBottom: 8,
+        }}
+      >
+        <span
+          style={{
+            fontFamily: "var(--font-mono, JetBrains Mono), monospace",
+            fontSize: 10,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "var(--color-text-tertiary, #8a857e)",
+          }}
+        >
+          custom palette
+        </span>
+        {lowContrast && (
+          <span
+            role="status"
+            style={{
+              fontFamily: "var(--font-mono, JetBrains Mono), monospace",
+              fontSize: 9,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              color: "#DC2626",
+              padding: "2px 6px",
+              borderRadius: 999,
+              background: "rgba(220, 38, 38, 0.1)",
+              border: "1px solid rgba(220, 38, 38, 0.3)",
+            }}
+          >
+            low contrast
+          </span>
+        )}
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 10,
+        }}
+      >
+        <PaletteSwatch
+          label="Fill"
+          value={primary}
+          onChange={(v) => onChange({ primary: v })}
+        />
+        <PaletteSwatch
+          label="Baseline"
+          value={secondary}
+          onChange={(v) => onChange({ secondary: v })}
+        />
+        <PaletteSwatch
+          label="Outline"
+          value={outline}
+          onChange={(v) => onChange({ outline: v })}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PaletteSwatch({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span
+        style={{
+          fontFamily: "var(--font-mono, JetBrains Mono), monospace",
+          fontSize: 9,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          color: "var(--color-text-tertiary, #8a857e)",
+        }}
+      >
+        {label}
+      </span>
+      <HexColorPicker
+        color={value}
+        onChange={onChange}
+        style={{ width: "100%", height: 96 }}
+      />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => {
+          const raw = e.target.value.trim();
+          const next = raw.startsWith("#") ? raw : `#${raw}`;
+          if (/^#[0-9a-fA-F]{6}$/.test(next) || /^#[0-9a-fA-F]{3}$/.test(next)) {
+            onChange(next);
+          }
+        }}
+        aria-label={`${label} colour hex value`}
+        style={{
+          fontFamily: "var(--font-mono, JetBrains Mono), monospace",
+          fontSize: 10,
+          padding: "4px 8px",
+          borderRadius: 6,
+          border: "1px solid var(--color-line, rgba(255,255,255,0.12))",
+          background: "transparent",
+          color: "var(--color-ink, #f4f1ea)",
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+        }}
+      />
+    </div>
+  );
+}
+
+function colourDistance(a: string, b: string): number {
+  const pa = parseHex(a);
+  const pb = parseHex(b);
+  if (!pa || !pb) return 999; // treat unparseable as far apart (no warning)
+  const dr = pa[0] - pb[0];
+  const dg = pa[1] - pb[1];
+  const db = pa[2] - pb[2];
+  return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
+function parseHex(raw: string): [number, number, number] | null {
+  const h = raw.replace("#", "").trim();
+  const norm = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  if (!/^[0-9a-fA-F]{6}$/.test(norm)) return null;
+  return [
+    parseInt(norm.slice(0, 2), 16),
+    parseInt(norm.slice(2, 4), 16),
+    parseInt(norm.slice(4, 6), 16),
+  ];
+}
 
 function SectionLabel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (

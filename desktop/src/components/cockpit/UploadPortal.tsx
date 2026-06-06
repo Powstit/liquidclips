@@ -21,15 +21,19 @@ export function UploadPortal({
   onClose,
   onPickFile,
   onPasteUrl,
+  dragHoverActive = false,
 }: {
   open: boolean;
   onClose: () => void;
   onPickFile: (brief: string) => void;
   onPasteUrl: (url: string, brief: string) => void;
+  // Driven by App.tsx's global `tauri://drag-enter` / `drag-leave` listener
+  // so the dashed bracket lights up for the REAL native drag, not a
+  // browser-synth drag event (which can't give us a usable file path).
+  dragHoverActive?: boolean;
 }) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Auto-focus the URL field on every open so the very next keystroke is
@@ -39,7 +43,6 @@ export function UploadPortal({
     if (!open) return;
     setUrl("");
     setError(null);
-    setDragOver(false);
     // Two-frame defer — first frame mounts the input, second focuses it
     // after the portal's spring entry settles so the cursor doesn't jump
     // visibly mid-animation.
@@ -61,9 +64,11 @@ export function UploadPortal({
   function submitUrl() {
     const trimmed = url.trim();
     if (!trimmed) {
-      // Empty Enter falls through to the file picker — single keystroke
-      // recovery for "I meant to drop a file, not paste a link".
-      void browseForFile();
+      // Empty Enter used to fall through to the file picker, which read as a
+      // bug — Finder would pop out of nowhere with no link between keystroke
+      // and dialog. Surface an inline hint instead; the explicit "browse"
+      // button below the input is the documented file path.
+      setError("Paste a link, or use “or drop a file · browse” below.");
       return;
     }
     if (!URL_RE.test(trimmed)) {
@@ -107,19 +112,13 @@ export function UploadPortal({
             layoutId="cockpit-create"
             className="relative w-full max-w-[520px] rounded-3xl p-7"
             onClick={(e) => e.stopPropagation()}
-            onDragEnter={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-              // The Tauri webview gives us a synthetic FileList on drop. We
-              // already wire the global Tauri "drag-drop" listener for the
-              // real file paths; here we just trigger the picker so the path
-              // permission boundary stays clean (browser-side paths are not
-              // usable by the sidecar).
-              void browseForFile();
-            }}
+            // No local drag handlers: the Tauri webview's synthetic FileList
+            // on drop has no usable path for the sidecar. App.tsx owns the
+            // single `tauri://drag-drop` listener; when it fires while the
+            // portal is open, App closes the portal and routes the real
+            // file path into the ingest pipeline. The dashed border below
+            // reads from `dragHoverActive` (App's drag-enter/leave state)
+            // so the affordance is honest about whose drop fires.
             transition={{ type: "spring", stiffness: 280, damping: 28 }}
           >
             {/* Fuchsia HUD bracket corners — same language as the Workstation
@@ -148,7 +147,7 @@ export function UploadPortal({
 
               <div
                 className={`flex flex-col gap-2 rounded-2xl border-2 border-dashed bg-paper/30 p-4 transition-colors ${
-                  dragOver ? "border-fuchsia bg-fuchsia/10" : "border-fuchsia/30"
+                  dragHoverActive ? "border-fuchsia bg-fuchsia/10" : "border-fuchsia/30"
                 }`}
               >
                 <label className="flex items-center gap-2 rounded-xl border border-line bg-paper px-3 py-2.5 focus-within:border-fuchsia">

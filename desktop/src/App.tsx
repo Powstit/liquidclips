@@ -52,8 +52,10 @@ import { OnboardingOverlay } from "./components/onboarding/OnboardingOverlay";
 import { closeInvaders } from "./lib/invaders/store";
 import { Settings } from "./components/Settings";
 import { AchievementToast } from "./components/AchievementToast";
+import { AuthPanel } from "./components/auth/AuthPanel";
+import { useAuthPanel, closeAuthPanel } from "./components/auth/useAuthPanel";
 import { recordAchievement } from "./lib/achievements";
-import { sidecar, visibleStagesFor, pipelineStagesFor, backgroundStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
+import { humanError, sidecar, visibleStagesFor, pipelineStagesFor, backgroundStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
 import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
 import { initDeepLinks, setOnActivated } from "./lib/activation";
 import { HOSTED_LLM_ENABLED } from "./lib/flags";
@@ -120,12 +122,26 @@ export default function App() {
   // touching view state, so an abandoned Promise can't yank the user back
   // onto a stale "lifted" / "lift-failed" screen.
   const liftGenRef = useRef(0);
+  // P0 #3 / #4 — shared cancel signal threaded through every async pipeline
+  // boundary (ingest, runRemainingStages loop, drag-drop replace flow). The
+  // sidecar cancel marker is one mechanism; this ref is the second: the
+  // between-stage loop checks it before kicking off the next sidecar call so
+  // a Cancel during stage N halts before stage N+1 starts. WorkingStage's
+  // Cancel button sets this ref via a window event so we don't have to thread
+  // a setter through props.
+  const cancelRequestedRef = useRef(false);
   const [sidecarStatus, setSidecarStatus] = useState<"booting" | "ready" | "failed">("booting");
   // Has the user dismissed the splash (via Continue or Skip on the embedded
   // Invaders game)? Splash stays mounted until both sidecar is ready AND
   // this flips true — gives the user a guaranteed window to play.
   const [splashAcked, setSplashAcked] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Analytics Phase 1 — deep-link target for Schedule's sub-tab. Set by
+  // callers (Settings → Connections "view analytics", ChannelCard
+  // "analytics →") before flipping the view to "schedule" so SchedulePage
+  // mounts on the right tab. Cleared after each consume so subsequent
+  // navigations honor the default.
+  const [scheduleInitialSub, setScheduleInitialSub] = useState<"queue" | "channels" | "analytics" | undefined>(undefined);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [submissionPortalOpen, setSubmissionPortalOpen] = useState(false);
   const [refreshingApp, setRefreshingApp] = useState(false);
@@ -135,8 +151,24 @@ export default function App() {
   // without prop-drilling setSettingsOpen everywhere.
   useEffect(() => {
     const open = () => setSettingsOpen(true);
-    window.addEventListener("junior:open-settings", open);
-    return () => window.removeEventListener("junior:open-settings", open);
+    window.addEventListener("lc:open-settings", open);
+    return () => window.removeEventListener("lc:open-settings", open);
+  }, []);
+
+  // P0 #3 — WorkingStage Cancel fires `lc:pipeline-cancel`; App.tsx flips the
+  // shared ref so the between-stage loop bails before the next sidecar call.
+  // This is the bus replacing prop-threading the ref through WorkingStage.
+  useEffect(() => {
+    const onCancel = () => {
+      cancelRequestedRef.current = true;
+      // P0 #4 — frontend writes BOTH cancel markers. The sidecar RPC clears
+      // its inflight ingest_url / lift_transcript; the per-project .cancel
+      // marker is checked by cut/reframe/thumbs stages. Failure is fine —
+      // best-effort; the in-process ref check is the belt.
+      void sidecar.liftCancel().catch(() => undefined);
+    };
+    window.addEventListener("lc:pipeline-cancel", onCancel);
+    return () => window.removeEventListener("lc:pipeline-cancel", onCancel);
   }, []);
   const [bootChecked, setBootChecked] = useState(false);
   const [updateBanner, setUpdateBanner] = useState<UpdateState>({ kind: "idle" });
@@ -253,7 +285,15 @@ export default function App() {
         // which hides the counter and never blocks.
         void import("./lib/backend")
           .then((m) => m.syncStatus())
-          .then((s) => { setRemainingExports(s?.remaining_exports ?? null); setUserTier(normalizeTier(s?.tier ?? null)); })
+          .then((s) => {
+            setRemainingExports(s?.remaining_exports ?? null);
+            // Admin override mirrors useTier — when the backend marks the
+            // user as on JUNIOR_ADMIN_EMAILS, force "agency" so founder
+            // demos don't get blocked by their own upgrade walls in any
+            // surface that reads App-level userTier (AvatarOrbit, EarnTab).
+            const tier = s?.admin_override ? "agency" : (s?.tier ?? null);
+            setUserTier(normalizeTier(tier));
+          })
           .catch(() => undefined);
       } catch {
         setSidecarStatus("failed");
@@ -369,17 +409,75 @@ export default function App() {
   }, []);
 
   const [pendingBrief, setPendingBrief] = useState<string>("");
+  // P0 #6 — ephemeral inline error for "drop something not a video". Set on
+  // unsupported drops, auto-cleared after 4s. Also exposed as a `lc:toast`
+  // window event so any future toast system can lift it; until then the
+  // WorkstationRoom shows the message inline.
+  const [dropError, setDropError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!dropError) return;
+    const id = window.setTimeout(() => setDropError(null), 4000);
+    return () => window.clearTimeout(id);
+  }, [dropError]);
+  // P0 #5 — drive a visible drop affordance on WorkstationRoom whenever
+  // Tauri reports a drag is currently hovering over the window. Mounted
+  // once at App level so it's correct for every surface, not just empty.
+  const [dragHoverActive, setDragHoverActive] = useState(false);
+  useEffect(() => {
+    const unEnter = listen("tauri://drag-enter", () => setDragHoverActive(true));
+    const unLeave = listen("tauri://drag-leave", () => setDragHoverActive(false));
+    const unDrop = listen("tauri://drag-drop", () => setDragHoverActive(false));
+    return () => {
+      void unEnter.then((un) => un());
+      void unLeave.then((un) => un());
+      void unDrop.then((un) => un());
+    };
+  }, []);
 
   useEffect(() => {
-    const unlistenPromise = listen<{ paths: string[] }>("tauri://drag-drop", (event) => {
+    const unlistenPromise = listen<{ paths: string[] }>("tauri://drag-drop", async (event) => {
       const path = event.payload?.paths?.[0];
       if (!path) return;
+      // P0 — if the UploadPortal modal is open, dismiss it BEFORE we route.
+      // Otherwise the IntentPicker mounts behind a half-faded portal overlay
+      // and the user gets a ghost-portal-over-IntentPicker visual bug. We
+      // close before the file-type check too so the inline drop-error toast
+      // shown by WorkstationRoom isn't occluded by the modal.
+      if (uploadPortal.open) {
+        setUploadPortal({ open: false });
+      }
       // Whitelist video extensions — Tauri will hand us folder paths or
       // unrelated files (zip, txt) on a stray drop. Reject early so the
       // sidecar doesn't waste a probe failing on something obviously wrong.
       if (!/\.(mp4|mov|mkv|webm|avi|m4v|mp3|m4a|wav)$/i.test(path)) {
-        console.warn("[drop] ignored non-video path:", path);
+        // P0 #6 — was a silent console.warn; now surface so the user knows
+        // why nothing happened. Also dispatch a `lc:toast` for the future
+        // toast system to pick up.
+        const message = "Unsupported file. Drop MP4, MOV, MKV, or WEBM.";
+        setDropError(message);
+        try {
+          window.dispatchEvent(new CustomEvent("lc:toast", { detail: { kind: "error", message } }));
+        } catch {
+          /* ignore */
+        }
         return;
+      }
+      // P0 #1 — guard against silent abandon. If a pipeline is running (or
+      // we're in choose-intent), confirm with the user before throwing away
+      // the in-flight work. Cancel the running ingest first so the sidecar
+      // doesn't keep eating bandwidth in the background.
+      if (
+        view.kind === "downloading" ||
+        view.kind === "lifting" ||
+        view.kind === "running" ||
+        view.kind === "choosing-intent"
+      ) {
+        const ok = window.confirm(
+          "A pipeline is already running. Replace it with this new file? Your in-flight work will be lost.",
+        );
+        if (!ok) return;
+        cancelRequestedRef.current = true;
+        await sidecar.liftCancel().catch(() => undefined);
       }
       // Drops route through the intent picker like every other entry. The
       // pipeline doesn't start until the user picks what they're making.
@@ -388,7 +486,7 @@ export default function App() {
     return () => {
       void unlistenPromise.then((un) => un());
     };
-  }, [pendingBrief]);
+  }, [pendingBrief, view.kind, uploadPortal.open]);
 
   // Autoclose Invaders when the pipeline reaches any terminal state — the
   // user came here to clip, not to play. Game state inside the overlay still
@@ -402,6 +500,12 @@ export default function App() {
   }, [view.kind]);
 
   async function runPipelineFromUrl(url: string, brief: string = "", intent: Intent = "both", bounty?: BountyContext) {
+    // P0 #2 — re-entry cancel. If a prior URL ingest is still in flight (e.g.
+    // user pasted a second link before the first finished), tell the sidecar
+    // to drop the current job before we start the new one. Reset the cancel
+    // flag too so the fresh pipeline isn't pre-poisoned by the previous run.
+    await sidecar.liftCancel().catch(() => undefined);
+    cancelRequestedRef.current = false;
     let unlistenProgress: (() => void) | null = null;
     try {
       if (!(await guardQuota())) return;
@@ -421,9 +525,21 @@ export default function App() {
       await runRemainingStages(project);
     } catch (e) {
       console.error("[pipeline] URL ingest failed:", e);
-      // Mirror the lift-failed path so the user sees an actionable
-      // FailureCard instead of the screen silently resetting to empty.
-      setView({ kind: "ingest-failed", url, intent, error: humanIngestError(e) });
+      // P1 #8 — mirror the success-path sticky-view check: if the user has
+      // navigated away to Earn / Community / Library / etc., don't yank them
+      // back to a FailureCard. They'll see it via the inbox / on return.
+      const stickyKinds: View["kind"][] = [
+        "running",
+        "downloading",
+        "lifting",
+        "empty",
+        "choosing-intent",
+      ];
+      setView((v) =>
+        stickyKinds.includes(v.kind)
+          ? { kind: "ingest-failed", url, intent, error: humanIngestError(e) }
+          : v,
+      );
     } finally {
       unlistenProgress?.();
     }
@@ -486,6 +602,25 @@ export default function App() {
     const isOnPipelineView = (kind: View["kind"]) =>
       kind === "running" || kind === "downloading" || kind === "lifting" || kind === "empty" || kind === "choosing-intent";
     for (const stage of remaining) {
+      // P0 #3 — between-stage cancel check. If the user clicked Cancel during
+      // the previous stage, halt BEFORE we tell the sidecar to start the next
+      // one. The sidecar marker covers in-stage cancellation; this covers the
+      // gap between stages where no Python code is running to notice.
+      if (cancelRequestedRef.current) {
+        setRunningProject(null);
+        setRunningStage(null);
+        // Best-effort: drop the per-project .cancel marker too so any stage
+        // that DID start can also bail at its next checkpoint.
+        try {
+          await import("@tauri-apps/plugin-fs").then((m) =>
+            m.writeTextFile(`${current.root}/.cancel`, "1"),
+          );
+        } catch {
+          /* best-effort */
+        }
+        setView((v) => (isOnPipelineView(v.kind) ? { kind: "canceled", project: current } : v));
+        return;
+      }
       setRunningStage(stage);
       setView((v) => (isOnPipelineView(v.kind)
         ? { kind: "running", project: current, currentStage: stage }
@@ -621,6 +756,11 @@ export default function App() {
   }
 
   async function runPipeline(sourcePath: string, brief: string = "", intent: Intent = "both", bounty?: BountyContext) {
+    // P0 #2 — mirror runPipelineFromUrl: any prior ingest must be torn down
+    // before we kick off a fresh local-file run, and the cancel flag has to
+    // reset so a stale Cancel click from the prior run can't pre-poison us.
+    await sidecar.liftCancel().catch(() => undefined);
+    cancelRequestedRef.current = false;
     try {
       if (!(await guardQuota())) return;
       const trimmed = brief.trim();
@@ -868,6 +1008,7 @@ export default function App() {
               setView({ kind: "learn" });
               break;
             case "schedule":
+              setScheduleInitialSub(undefined);
               setView({ kind: "schedule" });
               break;
             case "community":
@@ -947,7 +1088,10 @@ export default function App() {
 
         {view.kind === "schedule" && (
           <RoomShell roomKey="schedule" align="top">
-            <SchedulePage onOpenWorkspace={() => setView({ kind: "empty" })} />
+            <SchedulePage
+              onOpenWorkspace={() => setView({ kind: "empty" })}
+              initialSub={scheduleInitialSub}
+            />
           </RoomShell>
         )}
 
@@ -1036,6 +1180,8 @@ export default function App() {
             <WorkstationRoom
               onCreate={() => setUploadPortal({ open: true })}
               onImport={() => void handleImportDirect()}
+              dragHoverActive={dragHoverActive}
+              dropError={dropError}
             />
           </RoomShell>
         )}
@@ -1045,6 +1191,7 @@ export default function App() {
             onClose={() => setUploadPortal({ open: false })}
             onPickFile={pickFile}
             onPasteUrl={onPasteUrl}
+            dragHoverActive={dragHoverActive}
           />
         )}
 
@@ -1054,6 +1201,14 @@ export default function App() {
             brief={view.brief}
             onPick={onIntentPicked}
             onCancel={() => setView({ kind: "empty" })}
+            // P1 #11 — "change URL" escape hatch. If the user pasted the wrong
+            // link they shouldn't have to back-button to empty and reopen the
+            // portal; one tap routes them back into Create with the URL
+            // pre-filled-as-empty for a clean retype.
+            onChangeSource={() => {
+              setView({ kind: "empty" });
+              setUploadPortal({ open: true });
+            }}
           />
         )}
 
@@ -1071,6 +1226,12 @@ export default function App() {
               // transcribe that finishes inside the 2s polling window will
               // yank you back to a "lifted" view after you'd hit Cancel.
               liftGenRef.current += 1;
+              // P0 #4 — frontend dispatches BOTH cancel signals:
+              //   • lift_cancel RPC → ~/LiquidClips/.lift_cancel marker used
+              //     by ingest_url + lift_transcript polling loops.
+              //   • cancelRequestedRef → between-stage guard in
+              //     runRemainingStages so the next stage never starts.
+              cancelRequestedRef.current = true;
               void sidecar.liftCancel().catch(() => undefined);
               setView({ kind: "empty" });
             }}
@@ -1103,6 +1264,10 @@ export default function App() {
             detail={formatDownloadDetail(view.url, view.progress)}
             percent={view.progress?.percent ?? undefined}
             onCancel={() => {
+              // P0 #4 — same dual-marker dispatch as the lifting Cancel.
+              // ingest_url polls ~/LiquidClips/.lift_cancel; the ref guards
+              // the between-stage loop in case the ingest already finished.
+              cancelRequestedRef.current = true;
               void sidecar.liftCancel().catch(() => undefined);
               setView({ kind: "empty" });
             }}
@@ -1150,13 +1315,42 @@ export default function App() {
             <div className="mt-5 flex flex-wrap gap-3">
               <button
                 onClick={() => {
-                  void import("@tauri-apps/plugin-shell").then((m) =>
-                    m.open("https://account.jnremployee.com/upgrade"),
+                  // In-app upgrade — opens the Clerk-routed /upgrade page in
+                  // a centered Tauri child webview so the user never leaves
+                  // Liquid Clips for billing. On close the panel refreshes
+                  // /sync; if Stripe Checkout succeeded the quota wall lifts.
+                  void import("./components/auth/useAuthPanel").then((m) =>
+                    m.openAuthPanel("upgrade"),
                   );
                 }}
                 className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white hover:bg-fuchsia-bright"
               >
                 Continue on Solo · $29.99/mo
+              </button>
+              {/* P1 #12 — "I've upgraded — recheck" escape hatch. The marketing
+                  upgrade page opens in the browser; once they come back, a
+                  single button re-pulls /sync and routes them past the wall
+                  if their tier flipped paid. No restart, no manual cache flush. */}
+              <button
+                onClick={async () => {
+                  try {
+                    const m = await import("./lib/backend");
+                    const s = await m.syncStatus();
+                    const nextTier = normalizeTier(s?.tier ?? null);
+                    setUserTier(nextTier);
+                    setRemainingExports(s?.remaining_exports ?? null);
+                    // Anything other than free unlocks — solo, pro, agency
+                    // all bypass the 100-export wall.
+                    if (nextTier && nextTier !== "free") {
+                      setView({ kind: "empty" });
+                    }
+                  } catch {
+                    /* recheck is best-effort — user can hit it again */
+                  }
+                }}
+                className="rounded-full border border-fuchsia bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:bg-fuchsia-soft/30"
+              >
+                I&apos;ve upgraded — recheck
               </button>
               <button
                 onClick={() => setView({ kind: "empty" })}
@@ -1176,7 +1370,10 @@ export default function App() {
           <FailureCard
             eyebrow="Pipeline failed"
             heading={view.project.source_filename}
-            error={view.error}
+            // P1 #10 — pipe through humanError so raw Python tracebacks don't
+            // bleed into a customer-facing FailureCard. Falls back to the raw
+            // string if no pattern matches (better ugly than blank).
+            error={humanError(view.error)}
             note="Cached audio + transcript on disk skip instantly — only the failed stage re-runs."
             logHint={`Logs: ${view.project.root}/.progress.json`}
             onRetry={() => void runRemainingStages(view.project)}
@@ -1222,26 +1419,64 @@ export default function App() {
 
       {/* v0.6.18 — Floating "rendering" pill. Visible whenever a pipeline is
           in flight AND the user has navigated away from the running view.
-          Click returns to the WorkingStage where they left off. */}
-      {runningProject && view.kind !== "running" && view.kind !== "results" && view.kind !== "failed" && view.kind !== "canceled" && (
-        <button
-          type="button"
-          onClick={() => setView({ kind: "running", project: runningProject, currentStage: runningStage ?? "ingest" })}
-          className="fixed bottom-6 right-6 z-40 inline-flex items-center gap-3 rounded-full border border-fuchsia bg-paper-elev/95 px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink shadow-[0_0_28px_rgba(255,26,140,0.45)] backdrop-blur-md transition-colors hover:bg-paper-elev"
-          aria-label="Return to rendering pipeline"
-        >
-          <span className="relative inline-flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fuchsia opacity-60" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-fuchsia" />
-          </span>
-          <span className="text-fuchsia">rendering</span>
-          <span className="text-text-tertiary">·</span>
-          <span className="truncate max-w-[200px] normal-case tracking-normal text-text-secondary">
-            {runningStage ? `${runningStage} stage` : "in progress"}
-          </span>
-          <span className="text-fuchsia">return →</span>
-        </button>
-      )}
+          Click returns to the WorkingStage where they left off.
+          P0 #7 — Now also visible during the *downloading* and *lifting*
+          phases (before runningProject is set), using view.url as the label.
+          Previously the pill only appeared once runStage started, so a user
+          who navigated away mid-ingest lost their re-entry. */}
+      {(() => {
+        const inFlightFromIngest = view.kind === "downloading" || view.kind === "lifting";
+        const inFlightFromStages =
+          !!runningProject &&
+          view.kind !== "running" &&
+          view.kind !== "results" &&
+          view.kind !== "failed" &&
+          view.kind !== "canceled" &&
+          view.kind !== "downloading" &&
+          view.kind !== "lifting";
+        // Show the pill when stages are in flight AND the user looked away,
+        // OR (new) during the ingest/lift phase if they navigated off it.
+        // The ingest phase pill stays on the same view since downloading IS
+        // the running surface — but if they walked off it via the sidebar,
+        // the pill in the *destination* view needs to show. We can't easily
+        // detect navigation here, so we always show it during ingest/lift.
+        if (!inFlightFromStages && !inFlightFromIngest) return null;
+        const label = inFlightFromIngest
+          ? ("url" in view ? view.url : "in progress")
+          : runningStage
+            ? `${runningStage} stage`
+            : "in progress";
+        const onClick = () => {
+          if (runningProject) {
+            setView({
+              kind: "running",
+              project: runningProject,
+              currentStage: runningStage ?? "ingest",
+            });
+          }
+          // For downloading/lifting we're already on the right surface; the
+          // pill is a no-op return so it stays visible but doesn't move us.
+        };
+        return (
+          <button
+            type="button"
+            onClick={onClick}
+            className="fixed bottom-6 right-6 z-40 inline-flex items-center gap-3 rounded-full border border-fuchsia bg-paper-elev/95 px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink shadow-[0_0_28px_rgba(255,26,140,0.45)] backdrop-blur-md transition-colors hover:bg-paper-elev"
+            aria-label="Return to rendering pipeline"
+          >
+            <span className="relative inline-flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fuchsia opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-fuchsia" />
+            </span>
+            <span className="text-fuchsia">rendering</span>
+            <span className="text-text-tertiary">·</span>
+            <span className="truncate max-w-[200px] normal-case tracking-normal text-text-secondary">
+              {label}
+            </span>
+            <span className="text-fuchsia">return →</span>
+          </button>
+        );
+      })()}
 
       {needsActivation && (
         <div className="flex items-center justify-between border-t border-fuchsia-soft bg-fuchsia-soft/40 px-6 py-2">
@@ -1317,7 +1552,11 @@ export default function App() {
 
       {settingsOpen && (
         <Settings
-          onOpenSchedule={() => { setSettingsOpen(false); setView({ kind: "schedule" }); }}
+          onOpenSchedule={(subtab) => {
+            setSettingsOpen(false);
+            setScheduleInitialSub(subtab);
+            setView({ kind: "schedule" });
+          }}
           onClose={() => {
             setSettingsOpen(false);
             // Settings can change auth state — for example, the user activated
@@ -1347,7 +1586,7 @@ export default function App() {
         onRefresh={() => void refreshApp()}
         onOpenNotifications={() => setInboxOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
-        onOpenSchedule={() => setView({ kind: "schedule" })}
+        onOpenSchedule={() => { setScheduleInitialSub(undefined); setView({ kind: "schedule" }); }}
         onOpenEarn={() => setView({ kind: "earn" })}
         onSignOut={
           // v0.6.38 — Real in-place sign-out (was opening Settings as a
@@ -1392,8 +1631,44 @@ export default function App() {
       {submissionPortalOpen && (
         <SubmissionPortal onClose={() => setSubmissionPortalOpen(false)} />
       )}
+      {/* In-app auth + upgrade webview. Singleton — any component can dispatch
+          via openAuthPanel("upgrade" | "sign-in" | ...). On close we refresh
+          /sync so a successful checkout / sign-in flips the tier immediately
+          without waiting for the next window-focus poll. */}
+      <GlobalAuthPanel />
     </MainShell>
   );
+}
+
+function GlobalAuthPanel() {
+  const { mode, open } = useAuthPanel();
+  return (
+    <AuthPanel
+      open={open}
+      mode={mode ?? "upgrade"}
+      onClose={() => {
+        closeAuthPanel();
+        // Pull tier from backend — Clerk's Stripe Checkout success path
+        // bounces back to /dashboard; admin_override + new tier land here.
+        void import("./lib/backend")
+          .then((m) => m.syncStatus())
+          .then((s) => {
+            if (!s) return;
+            // Mirror the boot-time elevation logic so admin/founder demos
+            // stay unblocked even after a sign-out → sign-in inside the panel.
+            const tier = s.admin_override ? "agency" : s.tier;
+            setUserTierGlobalEvent(tier);
+          })
+          .catch(() => undefined);
+      }}
+    />
+  );
+}
+
+// Tiny dispatcher — lets the inner GlobalAuthPanel push a tier update without
+// owning App's state directly. App listens for the same event and reflects it.
+function setUserTierGlobalEvent(tier: string) {
+  window.dispatchEvent(new CustomEvent("lc:tier-refresh", { detail: { tier } }));
 }
 
 // Wraps the main app surface. Browse Rewards is a native child webview pinned

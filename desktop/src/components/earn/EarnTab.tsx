@@ -665,7 +665,7 @@ function ConnectionBadge({
             // Settings drawer holds the connect flow (WhopConnectionRow). The
             // Earn tab doesn't have its own connect surface today — keeps
             // session lifecycle in one place.
-            window.dispatchEvent(new CustomEvent("junior:open-settings", { detail: { section: "connections" } }));
+            window.dispatchEvent(new CustomEvent("lc:open-settings", { detail: { section: "connections" } }));
           }}
           className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright"
         >

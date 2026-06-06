@@ -652,6 +652,10 @@ def method_get_captions(params: dict[str, Any]) -> dict[str, Any]:
             "has_word_data": True,
             "has_transcript": has_transcript,
             "updated_at": data.get("updated_at"),
+            # Persisted palette — drawer rehydrates react-colorful swatches
+            # from this on reopen so a clipper who picked custom colours
+            # yesterday sees the same swatches today.
+            "palette": data.get("palette"),
         }
 
     # Derive initial line set from transcript.json (word-level). Malformed
@@ -742,6 +746,13 @@ def method_edit_captions(params: dict[str, Any]) -> dict[str, Any]:
     idx = params.get("idx")
     lines = params.get("lines")
     style = params.get("style") or "brand_fuchsia"
+    # Palette is optional + only honoured by the "custom" style + by user
+    # overrides on the named presets. Drawer sends `{primary, secondary,
+    # outline}` as CSS hex (#RRGGBB) — the engine converts to ASS AABBGGRR.
+    # Anything missing/malformed falls back to the style's preset colour.
+    palette = params.get("palette")
+    if palette is not None and not isinstance(palette, dict):
+        raise ValueError("edit_captions palette must be an object or omitted")
     if not isinstance(slug, str) or not isinstance(idx, int):
         raise ValueError("edit_captions requires slug (str) + idx (int)")
     if not isinstance(lines, list):
@@ -772,16 +783,27 @@ def method_edit_captions(params: dict[str, Any]) -> dict[str, Any]:
         "updated_at": now_iso,
         "clip_idx": idx,
         "lines": lines,
+        "palette": palette,
     }
     with edits_path.open("w", encoding="utf-8") as f:
         _json.dump(payload, f, indent=2)
 
-    # Bake.
-    from captions import bake_captions_to_video
-    bake_captions_to_video(target, lines, style=style)
+    # Bake. last_baked_ass_text() captures the .ass output for the desktop's
+    # libass-wasm overlay so the live preview matches the baked MP4 1:1.
+    from captions import bake_captions_to_video, last_baked_ass_text
+    bake_captions_to_video(target, lines, style=style, palette=palette)
+    ass_text = last_baked_ass_text()
 
     # Update clip metadata so the UI can show "captions: brand_fuchsia · synced".
     clip["caption_style"] = style
+    if palette:
+        clip["caption_palette"] = palette
+    elif "caption_palette" in clip:
+        # User switched off Custom — drop the persisted palette so a future
+        # re-bake of a preset doesn't accidentally re-apply old colours.
+        # The drawer still keeps the picked colours in React state for the
+        # session so toggling Custom back restores them.
+        del clip["caption_palette"]
     clip["captions_updated_at"] = now_iso
     project.set_clips(project.clips)
 
@@ -789,8 +811,13 @@ def method_edit_captions(params: dict[str, Any]) -> dict[str, Any]:
         "project": project.to_dict(),
         "clip_idx": idx,
         "style": style,
+        "palette": palette,
         "updated_at": now_iso,
         "video_path": str(target),
+        # ASS text used to bake. The desktop's libass-wasm overlay renders
+        # this directly so the live preview shows what shipped — kills the
+        # whole "preview lies about what got rendered" bug class.
+        "ass_text": ass_text,
     }
 
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Volume2, VolumeX } from "lucide-react";
 import { sidecar, RATIOS, type OverlayType, type Project, type RatioKey } from "../../lib/sidecar";
 import { LayoutIcon, LAYOUTS, type LayoutKey } from "./LayoutIcon";
 import { pickOverlaySource } from "../OverlaySourcePicker";
@@ -13,11 +14,18 @@ export function ClipsBulkToolbar({
   ratio,
   onRatioChange,
   onProjectChange,
+  previewSoundOn,
+  onPreviewSoundChange,
 }: {
   project: Project;
   ratio: RatioKey;
   onRatioChange: (r: RatioKey) => void;
   onProjectChange: (p: Project) => void;
+  /** Global toggle — when true, the hovered ClipCard plays audio. Default off
+   *  so a grid of cards doesn't blast overlapping sound the moment the cursor
+   *  drifts across them. */
+  previewSoundOn: boolean;
+  onPreviewSoundChange: (next: boolean) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [layoutMenu, setLayoutMenu] = useState(false);
@@ -78,6 +86,24 @@ export function ClipsBulkToolbar({
       </div>
 
       <div className="flex items-center gap-2">
+        {/* Preview sound — global toggle. Default OFF (auto-mute on hover) so the
+            grid doesn't pile audio on every mouseenter. Flip ON to hear the
+            moment without opening the full preview modal. */}
+        <button
+          type="button"
+          onClick={() => onPreviewSoundChange(!previewSoundOn)}
+          aria-pressed={previewSoundOn}
+          aria-label={previewSoundOn ? "Mute hover preview audio" : "Unmute hover preview audio"}
+          title={previewSoundOn ? "Preview sound: on" : "Preview sound: off"}
+          className={`grid h-7 w-7 place-items-center rounded-full border transition-colors ${
+            previewSoundOn
+              ? "border-fuchsia bg-fuchsia text-white shadow-[var(--glow-sm)]"
+              : "border-fuchsia/30 bg-transparent text-text-tertiary hover:border-fuchsia hover:text-ink"
+          }`}
+        >
+          {previewSoundOn ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+        </button>
+
         {/* Ratio toggle — applies to whole grid */}
         <div className="flex items-center gap-1 rounded-full border border-fuchsia/30 bg-transparent p-0.5">
           {RATIOS.map((r) => (

@@ -1,14 +1,42 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import { LayoutGrid, Wallet, UploadCloud, Banknote, BookOpen, Settings as SettingsIcon, LogIn, UserCircle2, type LucideIcon } from "lucide-react";
-import { Logo } from "./components/Logo";
-import { DropZone } from "./components/DropZone";
-import { SponsoredClipsCarousel } from "./components/workspace/SponsoredClipsCarousel";
-import { LiquidLiftBanner } from "./components/workspace/LiquidLiftBanner";
-import { MinecraftChallengeCard } from "./components/earn/MinecraftChallengeCard";
+import { LogIn } from "lucide-react";
+// motion / AnimatePresence are no longer used directly from App.tsx — the
+// route-level dolly + room-change exit live inside RoomShell. Keeping the
+// import out lets TS strict catch any future regressions where someone
+// reaches for them at App level instead of via the shell.
+// v0.6.35 — Cockpit. Replaces the empty-view UnifiedDropZone + dashboard
+// stack with a transparent two-tile launch room, and the top-right header
+// chrome with one orbital avatar that summons the full HUD panel.
+import { Cockpit } from "./components/cockpit/Cockpit";
+import { RoomShell } from "./components/cockpit/RoomShell";
+import { WorkstationRoom } from "./components/cockpit/WorkstationRoom";
+import { UploadPortal } from "./components/cockpit/UploadPortal";
+import { AvatarOrbit } from "./components/cockpit/AvatarOrbit";
+import { AvatarPanel } from "./components/cockpit/AvatarPanel";
+import SignalLine from "./components/cockpit/SignalLine";
+import { useAvatar } from "./lib/avatar";
+// v0.6.0 — sidebar nav restructure. The 6 NavTab buttons + Logo moved into
+// SideNav (fixed 64px left rail). Header right-side chips (status / bell /
+// sign-in / settings) stay where they are.
+import { SideNav, type SideNavKey } from "./components/nav/SideNav";
+// v0.6.3 — replaces the faint OASIS atmosphere bleed with a fixed
+// full-bleed aurora gradient (Aceternity-style) for the "new world"
+// ambient depth Daniel approved in the v0.6.3 mockup.
+import { AuroraBackground } from "./components/effects/AuroraBackground";
+// v0.6.35 — UnifiedDropZone is now mounted inside UploadPortal (cockpit)
+// instead of inline on the empty view. Same internals, modal frame.
+// WorkspaceDashboard moved into AvatarPanel; only Earn still renders it
+// inline if it ever needs to be re-exposed.
+// v0.6.4 — retired from Workspace empty surface (still mountable elsewhere
+// if a future Sprint wants them back; left as repo-resident components).
+// import { SponsoredClipsCarousel } from "./components/workspace/SponsoredClipsCarousel";
+// import { LiquidLiftBanner } from "./components/workspace/LiquidLiftBanner";
+// import { MinecraftChallengeCard } from "./components/earn/MinecraftChallengeCard";
 import { SubmissionPortal } from "./components/earn/SubmissionPortal";
 import { LearnTab } from "./components/learn/LearnTab";
+import { SchedulePage } from "./components/schedule/SchedulePage";
 import { WorkingStage } from "./components/WorkingStage";
 import { ResultsGrid } from "./components/ResultsGrid";
 import { FirstRun } from "./components/FirstRun";
@@ -18,17 +46,19 @@ import { NotificationBell } from "./components/NotificationBell";
 import { NotificationSheet } from "./components/NotificationSheet";
 import { UploadTab } from "./components/upload/UploadTab";
 import { PayoutsTab } from "./components/payouts/PayoutsTab";
+import { LibraryTab } from "./components/library/LibraryTab";
 import { InvadersOverlay } from "./components/invaders/InvadersOverlay";
 import { OnboardingOverlay } from "./components/onboarding/OnboardingOverlay";
 import { closeInvaders } from "./lib/invaders/store";
 import { Settings } from "./components/Settings";
 import { AchievementToast } from "./components/AchievementToast";
 import { recordAchievement } from "./lib/achievements";
-import { sidecar, visibleStagesFor, pipelineStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
+import { sidecar, visibleStagesFor, pipelineStagesFor, backgroundStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
 import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
 import { initDeepLinks, setOnActivated } from "./lib/activation";
 import { HOSTED_LLM_ENABLED } from "./lib/flags";
-import { closeBrowsePanel, openBrowsePanel, reconcileBrowsePanel, useBrowsePanel, WHOP_REWARDS_URL } from "./lib/browse";
+import { closeBrowsePanel, openBrowsePanel, reconcileBrowsePanel, useBrowsePanel, WHOP_COMMUNITY_URL, WHOP_REWARDS_URL } from "./lib/browse";
+import { CommunityTab } from "./components/CommunityTab";
 import { BrowseRewardsPanel } from "./components/BrowseRewardsPanel";
 import { reportDesktopError } from "./lib/telemetry";
 import { applyUpdate, checkForUpdate, type UpdateState } from "./lib/updater";
@@ -44,6 +74,17 @@ import { SidecarError, type WhopBounty } from "./lib/sidecar";
 
 const SAMPLE_ONBOARDING_URL = "https://www.youtube.com/watch?v=jNQXAC9IVRw";
 
+// v0.6.18 — Backend ships both the v2 tier matrix ("free"|"solo"|"pro"|"agency")
+// AND legacy aliases ("growth"=pro, "autopilot"=agency). Sponsored visibility
+// gates are written in the v2 vocabulary, so we collapse legacy names here.
+function normalizeTier(t: string | null): "free" | "solo" | "pro" | "agency" | null {
+  if (!t) return null;
+  if (t === "growth" || t === "channel") return "pro";
+  if (t === "autopilot") return "agency";
+  if (t === "free" || t === "solo" || t === "pro" || t === "agency") return t;
+  return null;
+}
+
 type View =
   | { kind: "first-run" }
   | { kind: "payouts" }
@@ -51,7 +92,10 @@ type View =
   | { kind: "quota" }
   | { kind: "earn" }
   | { kind: "learn" }
+  | { kind: "library" }
+  | { kind: "schedule" }
   | { kind: "upload" }
+  | { kind: "community" }
   | { kind: "bounty-setup"; bounty: WhopBounty }
   | { kind: "choosing-intent"; source: { kind: "file"; path: string } | { kind: "url"; url: string }; brief: string; bounty?: WhopBounty }
   | { kind: "downloading"; url: string; progress?: IngestProgress; intent: Intent }
@@ -86,6 +130,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [submissionPortalOpen, setSubmissionPortalOpen] = useState(false);
+  const [refreshingApp, setRefreshingApp] = useState(false);
 
   // Sprint #14c — global "open Settings" bus so any component (e.g. the
   // Earn-tab ConnectionBadge "Sign in with Whop" CTA) can pop Settings open
@@ -103,15 +148,61 @@ export default function App() {
   // → recovers without a restart.
   const [needsActivation, setNeedsActivation] = useState(false);
   // Auth indicator. true once we've confirmed the user has a license JWT in
-  // the keychain (i.e. they've activated via account.jnremployee.com). Drives
+  // the keychain (i.e. they've activated via account.liquidclips.app). Drives
   // the top-nav button copy — "Sign in" while null/false, "Account" once true.
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   // Free clip exports left on the 100-export starter pass. null = unlimited
   // (paid / founder / unactivated) — when null we never show the counter or
   // the export gate. Updated from /sync on boot and from each clip-exported
   // call so the "X free exports left" line stays honest within a session.
-  const [remainingExports, setRemainingExports] = useState<number | null>(null);
+  // v0.6.36 — Read-side removed when UploadPortal stopped surfacing the
+  // free-tier counter inline. Setter retained for /sync side effects so the
+  // value stays current for any future surface that wants to gate on it.
+  const [, setRemainingExports] = useState<number | null>(null);
+  // v0.6.18 — user tier captured from /sync so SponsoredRewardsRow + the Earn
+  // carousel can resolve visibility correctly (was hardcoded to "free" which
+  // showed Agency/Pro users a locked banner for campaigns they could open).
+  const [userTier, setUserTier] = useState<"free" | "solo" | "pro" | "agency" | null>(null);
+  // v0.6.18 — pipeline state lifted out of `view` so a user can navigate away
+  // (Earn / Community / etc) and the pipeline keeps running in the background;
+  // a "rendering" pill at the top of every non-running view lets them return.
+  const [runningProject, setRunningProject] = useState<Project | null>(null);
+  const [runningStage, setRunningStage] = useState<StageName | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  // v0.6.35 — Cockpit state. `panelOpen` toggles the AvatarPanel HUD; the
+  // upload portal is opened from either WorkstationRoom tile and carries
+  // the lane the user picked so UnifiedDropZone lands in the right mode.
+  const [panelOpen, setPanelOpen] = useState(false);
+  // v0.6.36 — Portal lost its lane prop. Import now bypasses the modal
+  // entirely (direct file picker); the portal only exists for the Create
+  // URL/file flow.
+  const [uploadPortal, setUploadPortal] = useState<{ open: boolean }>({ open: false });
+  // Direct import — single click on the Workstation Import tile fires the
+  // OS file picker, then routes the resulting Project into ResultsGrid.
+  // No intermediate modal, no lane chooser; the picker IS the next surface.
+  async function handleImportDirect() {
+    const picked = await open({
+      multiple: true,
+      filters: [
+        { name: "Finished clips", extensions: ["mp4", "MP4", "mov", "MOV", "webm", "WEBM", "m4v", "M4V"] },
+      ],
+    });
+    if (!picked) return;
+    const paths = Array.isArray(picked) ? picked : [picked];
+    if (paths.length === 0) return;
+    try {
+      const { project } = await sidecar.importReadyClips(paths);
+      setView({ kind: "results", project });
+    } catch (e) {
+      console.error("[import-direct] failed:", e);
+    }
+  }
+  // Hydrate avatar store from the sidecar once at app boot. The orbit + the
+  // panel header both read from the same Zustand store, so one refresh
+  // covers every avatar surface.
+  useEffect(() => {
+    void useAvatar.getState().refresh();
+  }, []);
 
   // Verify sidecar + warm-load whisper. We DON'T force first-run anymore —
   // the app opens straight into the empty/workspace view so the flow is
@@ -164,7 +255,7 @@ export default function App() {
         // which hides the counter and never blocks.
         void import("./lib/backend")
           .then((m) => m.syncStatus())
-          .then((s) => setRemainingExports(s?.remaining_exports ?? null))
+          .then((s) => { setRemainingExports(s?.remaining_exports ?? null); setUserTier(normalizeTier(s?.tier ?? null)); })
           .catch(() => undefined);
       } catch {
         setSidecarStatus("failed");
@@ -306,7 +397,7 @@ export default function App() {
   // persists internally for the session (high score is on disk), so reopening
   // resumes from a fresh wave 1.
   useEffect(() => {
-    const terminalKinds: View["kind"][] = ["results", "lifted", "failed", "canceled", "empty", "earn", "learn", "upload", "payouts"];
+    const terminalKinds: View["kind"][] = ["results", "lifted", "failed", "canceled", "empty", "earn", "learn", "schedule", "upload", "payouts"];
     if (terminalKinds.includes(view.kind)) {
       closeInvaders();
     }
@@ -388,31 +479,43 @@ export default function App() {
   async function runRemainingStages(initial: Project) {
     let current = initial;
     const remaining: StageName[] = pipelineStagesFor(current.intent ?? "both");
+    setRunningProject(current);
+    // v0.6.18 — Sticky-running. setView only forces the "running" surface if
+    // the user is currently looking at a pipeline view. If they navigated to
+    // Earn / Community / etc, we keep `runningProject`/`runningStage` in
+    // state so a floating "rendering" pill can route them back without
+    // kicking them away from where they're working.
+    const isOnPipelineView = (kind: View["kind"]) =>
+      kind === "running" || kind === "downloading" || kind === "lifting" || kind === "empty" || kind === "choosing-intent";
     for (const stage of remaining) {
-      setView({ kind: "running", project: current, currentStage: stage });
+      setRunningStage(stage);
+      setView((v) => (isOnPipelineView(v.kind)
+        ? { kind: "running", project: current, currentStage: stage }
+        : v));
       try {
         const { project: updated } = await sidecar.runStage(current.slug, stage);
         current = updated;
+        setRunningProject(current);
       } catch (e) {
-        // Server-side raised — could be a real failure OR a cancellation.
-        // The stage record persisted to disk tells us which.
         const { project: refreshed } = await sidecar.getProject(current.slug).catch(() => ({ project: current }));
         current = refreshed;
         const err = current.stages[stage]?.error ?? "";
+        setRunningProject(null); setRunningStage(null);
         if (err === "canceled" || err.includes("CanceledError")) {
-          setView({ kind: "canceled", project: current });
+          setView((v) => (isOnPipelineView(v.kind) ? { kind: "canceled", project: current } : v));
           return;
         }
-        setView({ kind: "failed", project: current, error: err || String(e) });
+        setView((v) => (isOnPipelineView(v.kind) ? { kind: "failed", project: current, error: err || String(e) } : v));
         return;
       }
       if (current.stages[stage].status === "failed") {
         const err = current.stages[stage].error ?? "";
+        setRunningProject(null); setRunningStage(null);
         if (err === "canceled" || err.includes("CanceledError")) {
-          setView({ kind: "canceled", project: current });
+          setView((v) => (isOnPipelineView(v.kind) ? { kind: "canceled", project: current } : v));
           return;
         }
-        setView({ kind: "failed", project: current, error: err || "stage failed" });
+        setView((v) => (isOnPipelineView(v.kind) ? { kind: "failed", project: current, error: err || "stage failed" } : v));
         return;
       }
     }
@@ -437,7 +540,53 @@ export default function App() {
         // If a project identifier is ever needed, use an opaque id, not the slug.
       });
     }
-    setView({ kind: "results", project: current });
+    setRunningProject(null); setRunningStage(null);
+    // v0.6.18 — Inbox notification on success. Backend-side row appears in the
+    // bell + sheet so a user who navigated away returns to a clear "clips
+    // finished" card with a one-tap return action. external_dedup_key makes
+    // the create call idempotent for the same project slug.
+    void (async () => {
+      try {
+        const { value: jwt } = await sidecar.licenseJwtRead();
+        if (!jwt) return;
+        const n = current.clips.length;
+        await backend.notifications.create(jwt, {
+          category: "pipeline_event",
+          title: n === 1 ? "Your clip is ready." : `${n} clips ready.`,
+          body: `Liquid Clips finished ${current.source_filename}. Tap to open the workspace and review.`,
+          priority: "medium",
+          action_kind: "open_project",
+          action_data: { slug: current.slug },
+          external_dedup_key: `pipeline-done-${current.slug}`,
+        });
+      } catch (e) {
+        console.warn("[inbox] create notification failed (non-fatal):", e);
+      }
+    })();
+    // v0.6.18 — Only surface the results view if the user is still on a
+    // pipeline screen. If they're on Earn / Community / etc, leave them
+    // there; the rendering pill (or the new inbox row) is their cue to
+    // come back when they want.
+    setView((v) => {
+      const stickyKinds: View["kind"][] = ["running", "downloading", "lifting", "empty", "choosing-intent"];
+      if (stickyKinds.includes(v.kind)) return { kind: "results", project: current };
+      return v;
+    });
+
+    // v0.6.15 — Background stages. Clip runs now show rough playable clips
+    // before transcription finishes; transcript/caption polish and thumbnails
+    // happen after ResultsGrid is visible. YouTube intent still blocks on
+    // transcript because chapters/description need text.
+    for (const stage of backgroundStagesFor(current.intent ?? "both")) {
+      void sidecar
+        .runStage(current.slug, stage)
+        .then(({ project: updated }) => {
+          setView((v) => (v.kind === "results" && v.project.slug === updated.slug ? { kind: "results", project: updated } : v));
+        })
+        .catch((e) => {
+          console.warn(`[background-stage] ${stage} failed (non-blocking):`, e);
+        });
+    }
   }
 
   // Charges ONE export per successfully exported clip/file — a 7-clip run
@@ -502,7 +651,10 @@ export default function App() {
     setPendingBrief(briefFromUI);
     const picked = await open({
       multiple: false,
-      filters: [{ name: "Video", extensions: ["mp4", "mov", "mkv", "webm", "avi", "m4v"] }],
+      filters: [
+        { name: "Videos", extensions: ["mp4", "MP4", "mov", "MOV", "mkv", "MKV", "webm", "m4v", "M4V", "avi", "AVI", "hevc"] },
+        { name: "All files", extensions: ["*"] },
+      ],
     });
     if (typeof picked === "string") {
       // Route through the intent picker — the pipeline only starts after the
@@ -553,7 +705,11 @@ export default function App() {
     await sidecar.secretSet("LIQUIDCLIPS_ONBOARDED", "v1").catch(() => undefined);
   }
 
-  async function onLiftTranscript(url: string) {
+  // v0.6.36 — Script-mode lift retained but no longer wired from the home.
+  // The compact UploadPortal only handles URL/file ingestion now; we'll
+  // re-expose this when there's a clear surface for "transcript only" again.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async function _onLiftTranscript(url: string) {
     let unlistenProgress: (() => void) | null = null;
     const myGen = ++liftGenRef.current;
     setView({ kind: "lifting", url });
@@ -619,6 +775,9 @@ export default function App() {
       unlistenProgress?.();
     }
   }
+  // Keep the reference live so TS doesn't flag the script-mode lift as
+  // dead while it's parked. When we re-expose script mode, drop this void.
+  void _onLiftTranscript;
 
   // Splash — sidecar still booting OR user hasn't dismissed the embedded
   // Invaders game yet. Even when the sidecar comes up fast, the splash
@@ -657,69 +816,93 @@ export default function App() {
     );
   }
 
+  // v0.6.0 — derive SideNav active key from the current view. Mirrors the
+  // active={...} predicates that used to live on each NavTab. Bounty-setup
+  // counts as Earn; the long tail of pipeline states (downloading / lifting /
+  // results / failed / canceled / etc.) all sit under Workspace.
+  const sideNavActiveKey: SideNavKey | null = (() => {
+    switch (view.kind) {
+      case "library":
+        return "library";
+      case "earn":
+      case "bounty-setup":
+        return "earn";
+      case "learn":
+        return "learn";
+      case "schedule":
+        return "schedule";
+      case "upload":
+        return "upload";
+      case "payouts":
+        return "payouts";
+      case "community":
+        return "community";
+      case "deps-missing":
+        // "first-run" is unreachable here — the early return at line 652
+        // peels it off before we resolve the active rail key.
+        return null;
+      default:
+        return "workspace";
+    }
+  })();
+
+  async function refreshApp() {
+    setRefreshingApp(true);
+    try {
+      await closeBrowsePanel().catch(() => undefined);
+    } finally {
+      window.location.reload();
+    }
+  }
+
   return (
     <MainShell>
-      <header className="flex items-center justify-between border-b border-line px-6 py-4">
-        <div className="flex items-center gap-6">
-          <Logo />
-          <nav className="flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.12em]">
-            <NavTab
-              label="Workspace"
-              active={view.kind !== "earn" && view.kind !== "learn" && view.kind !== "upload" && view.kind !== "bounty-setup" && view.kind !== "payouts"}
-              onClick={() => setView({ kind: "empty" })}
-              Icon={LayoutGrid}
-            />
-            <NavTab
-              label="Earn"
-              active={view.kind === "earn" || view.kind === "bounty-setup"}
-              onClick={() => setView({ kind: "earn" })}
-              Icon={Wallet}
-            />
-            <NavTab
-              label="Learn"
-              active={view.kind === "learn"}
-              onClick={() => setView({ kind: "learn" })}
-              Icon={BookOpen}
-            />
-            <NavTab
-              label="Upload"
-              active={view.kind === "upload"}
-              onClick={() => setView({ kind: "upload" })}
-              Icon={UploadCloud}
-            />
-            <NavTab
-              label="Payouts"
-              active={view.kind === "payouts"}
-              onClick={() => setView({ kind: "payouts" })}
-              Icon={Banknote}
-            />
-          </nav>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-            <span
-              className={`pulse-dot inline-block h-1.5 w-1.5 rounded-full ${
-                sidecarStatus === "ready"
-                  ? "bg-fuchsia"
-                  : sidecarStatus === "failed"
-                  ? "bg-[#DC2626]"
-                  : "bg-text-tertiary"
-              }`}
-            />
-            {sidecarStatus === "ready" ? "ready" : sidecarStatus === "failed" ? "sidecar failed" : "starting…"}
-          </div>
-          <NotificationBell onOpen={() => setInboxOpen(true)} />
-          {signedIn ? (
-            <button
-              onClick={() => setSettingsOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
-              aria-label="Open your account"
-              title="Signed in · open Account in Settings"
-            >
-              <UserCircle2 className="h-3.5 w-3.5 text-fuchsia" strokeWidth={2} />
-              Account
-            </button>
-          ) : signedIn === false ? (
+      <SideNav
+        activeKey={settingsOpen ? "settings" : sideNavActiveKey}
+        onSelect={(key) => {
+          switch (key) {
+            case "workspace":
+              setView({ kind: "empty" });
+              break;
+            case "library":
+              setView({ kind: "library" });
+              break;
+            case "earn":
+              setView({ kind: "earn" });
+              break;
+            case "learn":
+              setView({ kind: "learn" });
+              break;
+            case "schedule":
+              setView({ kind: "schedule" });
+              break;
+            case "upload":
+              setView({ kind: "upload" });
+              break;
+            case "payouts":
+              setView({ kind: "payouts" });
+              break;
+            case "community":
+              // v0.6.19 — Community rail click does two things at once:
+              // 1. Sets view to "community" (native CommunityTab — campaign
+              //    feed, release notes, affiliate guide)
+              // 2. Slides the in-app chat panel in from the right with the
+              //    Whop joined-hub URL — so chat is one click away, not two
+              // Members hit Community → chat is RIGHT THERE.
+              setView({ kind: "community" });
+              void openBrowsePanel(WHOP_COMMUNITY_URL);
+              break;
+          }
+        }}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+      {/* Right column — header on top, main below.
+          v0.6.35 — Header chrome collapsed to a single AvatarOrbit on the
+          right. Sidecar pulse moved into the orbit ring colour; refresh,
+          inbox, settings, sign-out moved into the AvatarPanel footer rail. */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center justify-end gap-3 px-6 py-3">
+          {signedIn === false && (
             <button
               onClick={() => setView({ kind: "first-run" })}
               className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-fuchsia-soft/30 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep transition-colors hover:bg-fuchsia hover:text-white"
@@ -728,32 +911,76 @@ export default function App() {
               <LogIn className="h-3.5 w-3.5" strokeWidth={2} />
               Sign in
             </button>
-          ) : null}
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
-            aria-label="Open settings"
-          >
-            <SettingsIcon className="h-3.5 w-3.5" strokeWidth={2} />
-            Settings
-          </button>
-        </div>
-      </header>
+          )}
+          {/* v0.6.38 — Fix: previously hardcoded "ready" because the splash
+              early-return narrows sidecarStatus's type to "ready" at this
+              line. String() widens the value back so mid-session sidecar
+              failures still flip the ring red. */}
+          <AvatarOrbit
+            sidecarStatus={(() => {
+              const raw = String(sidecarStatus);
+              if (raw === "ready") return "ready";
+              if (raw === "failed") return "failed";
+              return "starting";
+            })()}
+            notificationCount={0}
+            tier={userTier}
+            onOpen={() => setPanelOpen(true)}
+          />
+        </header>
 
       <main className="flex flex-1 items-stretch justify-center overflow-y-auto px-6 py-10">
+        {/* v0.6.36 — Every nav-driven room renders inside one Cockpit so
+            cursor parallax + perspective are shared, and every page swaps
+            with the same camera-dolly entry via RoomShell. Pipeline states
+            (lifting / downloading / failure cards) stay raw inside the
+            cockpit — they ignore the parallax CSS vars and shouldn't tilt
+            during heavy progress UIs. */}
+        <Cockpit>
+        {/* v0.6.39 — Ambient bottom-edge ticker rotating rank / next-scheduled
+            / today's leader signals. Fixed-position; below modals (z-20). */}
+        <SignalLine />
         {view.kind === "upload" && (
-          <UploadTab
-            onOpenSettings={() => setSettingsOpen(true)}
-            onOpenProject={(project) => setView({ kind: "results", project })}
-          />
+          <RoomShell roomKey="upload" align="top">
+            <UploadTab
+              onOpenSettings={() => setSettingsOpen(true)}
+              onOpenProject={(project) => setView({ kind: "results", project })}
+              onOpenSchedule={() => setView({ kind: "schedule" })}
+            />
+          </RoomShell>
         )}
 
-        {view.kind === "payouts" && <PayoutsTab />}
+        {view.kind === "library" && (
+          <RoomShell roomKey="library" align="top">
+            <LibraryTab
+              onOpenProject={(project) => setView({ kind: "results", project })}
+              onGoToWorkstation={() => setView({ kind: "empty" })}
+            />
+          </RoomShell>
+        )}
 
-        {view.kind === "learn" && <LearnTab />}
+        {view.kind === "payouts" && (
+          <RoomShell roomKey="payouts" align="top"><PayoutsTab /></RoomShell>
+        )}
+
+        {view.kind === "learn" && (
+          <RoomShell roomKey="learn" align="top"><LearnTab /></RoomShell>
+        )}
+
+        {view.kind === "community" && (
+          <RoomShell roomKey="community" align="top"><CommunityTab /></RoomShell>
+        )}
+
+        {view.kind === "schedule" && (
+          <RoomShell roomKey="schedule" align="top">
+            <SchedulePage onOpenWorkspace={() => setView({ kind: "empty" })} />
+          </RoomShell>
+        )}
 
         {view.kind === "earn" && (
+          <RoomShell roomKey="earn" align="top">
           <EarnTab
+            userTier={userTier}
             onSignIn={() => setView({ kind: "first-run" })}
             onStartBounty={(bounty) => {
               // Route into a focused, bounty-specific setup screen — detected
@@ -805,42 +1032,46 @@ export default function App() {
               });
             }}
           />
+          </RoomShell>
         )}
 
         {view.kind === "bounty-setup" && (
-          <BountySourceSetup
-            bounty={view.bounty}
-            detectedSources={extractSourceUrls(view.bounty.description)}
-            onCancel={() => setView({ kind: "earn" })}
-            onContinue={(source) =>
-              setView({
-                kind: "choosing-intent",
-                source,
-                brief: view.bounty.description ?? "",
-                bounty: view.bounty,
-              })
-            }
-          />
+          <RoomShell roomKey="bounty" align="top">
+            <BountySourceSetup
+              bounty={view.bounty}
+              detectedSources={extractSourceUrls(view.bounty.description)}
+              onCancel={() => setView({ kind: "earn" })}
+              onContinue={(source) =>
+                setView({
+                  kind: "choosing-intent",
+                  source,
+                  brief: view.bounty.description ?? "",
+                  bounty: view.bounty,
+                })
+              }
+            />
+          </RoomShell>
         )}
 
         {view.kind === "empty" && bootChecked && (
-          <div className="flex w-full max-w-[720px] flex-col items-stretch gap-5">
-            {/* Sprint #14c — Liquid Lift sub-brand cue (dismissable, persists) */}
-            <LiquidLiftBanner />
-            {/* Sprint #14c — Featured wrapped campaign: Minecraft Story Clip
-                Challenge. Tap → opens the submission portal. The $2.50 RPM
-                hero converts attention into clipping behavior. */}
-            <MinecraftChallengeCard onOpen={() => setSubmissionPortalOpen(true)} variant="full" />
-            {/* Sprint #15 — Sponsored Clips carousel sits ABOVE the DropZone,
-                replacing the legacy brief input. Click → Earn tab. */}
-            <SponsoredClipsCarousel onOpenEarn={() => setView({ kind: "earn" })} />
-            <DropZone
-              onPickFile={pickFile}
-              onPasteUrl={onPasteUrl}
-              onLiftTranscript={(url) => void onLiftTranscript(url)}
-              remainingExports={remainingExports}
+          // v0.6.36 — Workstation now shares the cockpit-wide perspective.
+          // RoomShell handles the camera-dolly entry; UploadPortal mounts
+          // outside the shell so its layoutId morph from the Create tile
+          // works across the AnimatePresence boundary.
+          <RoomShell roomKey="workstation">
+            <WorkstationRoom
+              onCreate={() => setUploadPortal({ open: true })}
+              onImport={() => void handleImportDirect()}
             />
-          </div>
+          </RoomShell>
+        )}
+        {view.kind === "empty" && (
+          <UploadPortal
+            open={uploadPortal.open}
+            onClose={() => setUploadPortal({ open: false })}
+            onPickFile={pickFile}
+            onPasteUrl={onPasteUrl}
+          />
         )}
 
         {view.kind === "choosing-intent" && (
@@ -946,7 +1177,7 @@ export default function App() {
               <button
                 onClick={() => {
                   void import("@tauri-apps/plugin-shell").then((m) =>
-                    m.open("https://account.jnremployee.com/upgrade"),
+                    m.open("https://account.liquidclips.app/upgrade"),
                   );
                 }}
                 className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white hover:bg-fuchsia-bright"
@@ -1012,7 +1243,31 @@ export default function App() {
             onOpenSettings={() => setSettingsOpen(true)}
           />
         )}
+        </Cockpit>
       </main>
+
+      {/* v0.6.18 — Floating "rendering" pill. Visible whenever a pipeline is
+          in flight AND the user has navigated away from the running view.
+          Click returns to the WorkingStage where they left off. */}
+      {runningProject && view.kind !== "running" && view.kind !== "results" && view.kind !== "failed" && view.kind !== "canceled" && (
+        <button
+          type="button"
+          onClick={() => setView({ kind: "running", project: runningProject, currentStage: runningStage ?? "ingest" })}
+          className="fixed bottom-6 right-6 z-40 inline-flex items-center gap-3 rounded-full border border-fuchsia bg-paper-elev/95 px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink shadow-[0_0_28px_rgba(255,26,140,0.45)] backdrop-blur-md transition-colors hover:bg-paper-elev"
+          aria-label="Return to rendering pipeline"
+        >
+          <span className="relative inline-flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fuchsia opacity-60" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-fuchsia" />
+          </span>
+          <span className="text-fuchsia">rendering</span>
+          <span className="text-text-tertiary">·</span>
+          <span className="truncate max-w-[200px] normal-case tracking-normal text-text-secondary">
+            {runningStage ? `${runningStage} stage` : "in progress"}
+          </span>
+          <span className="text-fuchsia">return →</span>
+        </button>
+      )}
 
       {needsActivation && (
         <div className="flex items-center justify-between border-t border-fuchsia-soft bg-fuchsia-soft/40 px-6 py-2">
@@ -1084,9 +1339,11 @@ export default function App() {
       <footer className="border-t border-line px-6 py-3 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
         sprint 3 · onboarding · keychain · settings · auto-update
       </footer>
+      </div>
 
       {settingsOpen && (
         <Settings
+          onOpenSchedule={() => { setSettingsOpen(false); setView({ kind: "schedule" }); }}
           onClose={() => {
             setSettingsOpen(false);
             // Settings can change auth state — for example, the user activated
@@ -1104,6 +1361,42 @@ export default function App() {
         />
       )}
       {inboxOpen && <NotificationSheet onClose={() => setInboxOpen(false)} />}
+
+      {/* v0.6.35 — Avatar HUD panel. Mounted at root so it can be summoned
+          from any view (the orbit button itself lives in the header). The
+          panel handles its own backdrop + Esc dismiss. */}
+      <AvatarPanel
+        open={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        tier={userTier}
+        refreshing={refreshingApp}
+        onRefresh={() => void refreshApp()}
+        onOpenNotifications={() => setInboxOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSchedule={() => setView({ kind: "schedule" })}
+        onOpenEarn={() => setView({ kind: "earn" })}
+        onSignOut={
+          // v0.6.38 — Real in-place sign-out (was opening Settings as a
+          // proxy). Mirrors the Settings sign-out flow: confirm, clear
+          // LICENSE_JWT in keychain, bounce to FirstRun.
+          signedIn
+            ? async () => {
+                if (!confirm("Sign out of Liquid Clips? You'll sign in again to come back in.")) return;
+                try {
+                  await sidecar.secretDelete("LICENSE_JWT");
+                } catch {
+                  /* best-effort */
+                }
+                setSignedIn(false);
+                setView({ kind: "first-run" });
+              }
+            : undefined
+        }
+      />
+      {/* NotificationBell is still referenced from a few legacy callers (Earn
+          empty state etc.); leaving the import in place even though the
+          cockpit header no longer surfaces it directly. */}
+      {false && <NotificationBell onOpen={() => setInboxOpen(true)} />}
       {/* Invaders overlay — portals to document.body so it's not affected by
           MainShell padding when the browse panel is open. Triggered manually
           from JuniorLoader / WorkingStage; auto-closes when the pipeline
@@ -1139,8 +1432,16 @@ function MainShell({ children }: { children: React.ReactNode }) {
   }, []);
   return (
     <>
+      {/* v0.6.3 — Aurora ambient depth replaces the v0.5.0 OASIS bleed.
+          See src/components/effects/AuroraBackground.tsx + .lc-aurora in
+          src/index.css. Mounted as the bottom layer so every other
+          surface composites cleanly on top. */}
+      <AuroraBackground />
+      {/* v0.6.0 — flex-row so the SideNav can sit as the left column. The
+          right column re-imposes flex-col so the existing header + main
+          stack stays vertical. */}
       <div
-        className="flex h-full flex-col bg-paper text-ink transition-[padding] duration-200"
+        className="relative flex h-full flex-row text-ink transition-[padding] duration-200"
         style={{ paddingRight: open ? 566 : 0 }}
       >
         {children}
@@ -1297,31 +1598,6 @@ function formatEta(seconds: number): string {
   return `${m}m ${s.toString().padStart(2, "0")}s`;
 }
 
-// Regex-match a yt-dlp-compatible URL out of a bounty description. Covers the
-// platforms yt-dlp resolves cleanly + that our pipeline already handles.
-function NavTab({
-  label,
-  active,
-  onClick,
-  Icon,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  Icon?: LucideIcon;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 transition-colors ${
-        active ? "text-ink" : "text-text-tertiary hover:text-ink"
-      }`}
-    >
-      {Icon && <Icon className="h-3.5 w-3.5" strokeWidth={2} />}
-      {label}
-      {active && (
-        <span className="absolute inset-x-2 bottom-[-1px] h-[2px] rounded-full bg-fuchsia" />
-      )}
-    </button>
-  );
-}
+// v0.6.0 — NavTab removed; the rail items live in src/components/nav/SideNav.tsx
+// and SideNavItem.tsx now. The horizontal nav strip was replaced by the
+// fixed 64px left rail (see MainShell flex-row change below).

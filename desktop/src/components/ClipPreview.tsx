@@ -78,6 +78,14 @@ export function ClipPreview({
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [brollOffset, setBrollOffset] = useState(clip.overlay?.start_offset_s ?? 0);
   const [audioSource, setAudioSource] = useState<"main" | "broll" | "muted">(clip.overlay?.audio_source ?? "main");
+  // Auto-persist for the reaction Audio + Offset controls. These used to be
+  // "set local state and hope the user clicks a layout tile again" — silent
+  // data loss on modal close. See P0 audit 2026-06-06.
+  const [overlaySaveState, setOverlaySaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [overlaySaveError, setOverlaySaveError] = useState<string | null>(null);
+  // Microcopy text — separated from the saving/saved beat so we can pick
+  // "audio saved" vs "offset saved" based on which field actually changed last.
+  const [overlaySaveLabel, setOverlaySaveLabel] = useState<string>("");
 
   useEffect(() => {
     setTrimStart(clip.start);
@@ -89,6 +97,9 @@ export function ClipPreview({
     setSaveState("idle");
     setBrollOffset(clip.overlay?.start_offset_s ?? 0);
     setAudioSource(clip.overlay?.audio_source ?? "main");
+    setOverlaySaveState("idle");
+    setOverlaySaveError(null);
+    setOverlaySaveLabel("");
   }, [clip.start, clip.end, clip.title, clip.description, clip.pinned_comment, clip.overlay?.start_offset_s, clip.overlay?.audio_source, index]);
 
   const isDirty =
@@ -132,6 +143,14 @@ export function ClipPreview({
   const videoFrameEl = useRef<HTMLDivElement | null>(null);
   const [captionsOpen, setCaptionsOpen] = useState(initialCaptionsOpen);
   const [captionsDirty, setCaptionsDirty] = useState(false);
+  // Live preview override from the drawer — when the clipper is dragging
+  // colour swatches or switching styles, this carries the in-edit state so
+  // the overlay reflects unsaved edits without waiting for Apply.
+  const [livePreview, setLivePreview] = useState<{
+    style: CaptionStyleKey;
+    palette?: import("../lib/caption-styles").CaptionPalette;
+    lines: Array<{ start: number; end: number; text: string; words?: Array<{ start: number; end: number; text: string }> }>;
+  } | null>(null);
   const [playheadTime, setPlayheadTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
@@ -170,31 +189,127 @@ export function ClipPreview({
 
   // First-open lines fetch so the live overlay reflects current captions even
   // before the user opens the drawer. Cheap RPC; only runs when the clip changes.
+  // v0.6.x P0 fix: surface failure when the clip is supposed to have captions
+  // but we couldn't load the overlay lines. Was a silent catch — clipper saw
+  // no live overlay and no explanation.
+  const [captionsFetchFailed, setCaptionsFetchFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
+    setCaptionsFetchFailed(false);
     sidecar
       .getCaptions(slug, index - 1)
       .then((res) => {
         if (cancelled) return;
         setOverlayLines(res.lines);
       })
-      .catch(() => { /* ignore — clip may not have captions yet */ });
+      .catch((err) => {
+        if (cancelled) return;
+        console.warn(
+          `[ClipPreview] getCaptions failed for slug=${slug} idx=${index - 1}:`,
+          err,
+        );
+        setOverlayLines([]);
+        setCaptionsFetchFailed(true);
+      });
     return () => { cancelled = true; };
   }, [slug, index, clip.vertical_path, videoCacheBuster]);
 
+  // P0 fix (2026-06-06): debounced persistence for Audio + Offset controls.
+  // Old behaviour: setAudioSource / setBrollOffset only mutated local React
+  // state. The value was sent to the backend on the NEXT layout-tile click via
+  // applyLayout's closure capture. If the user changed audio + closed the
+  // modal: silently lost. Now we mirror the change to the backend with a 400ms
+  // debounce.
+  //
+  // Loop safety: the effect only fires when local state DIVERGES from the
+  // current clip prop (compared on every render). After the RPC succeeds, the
+  // parent receives a new project where clip.overlay.audio_source ==
+  // audioSource, so the divergence check is false and the effect doesn't re-
+  // fire. The sync-from-prop effect above won't refire either because the
+  // value is already equal.
+  //
+  // Precondition: an overlay must already exist (source_path is required by
+  // the applyOverlay API). The Audio/Offset UI is only mounted when
+  // layout !== "none", which guarantees overlay.source_path — but we still
+  // guard here in case clip prop arrives mid-transition.
+  useEffect(() => {
+    const overlay = clip.overlay;
+    if (!overlay || !overlay.source_path) return;
+    const audioDiverges = audioSource !== (overlay.audio_source ?? "main");
+    const offsetDiverges = Math.abs(brollOffset - (overlay.start_offset_s ?? 0)) > 1e-6;
+    if (!audioDiverges && !offsetDiverges) return;
+    // Pick the microcopy that reflects whatever changed. If both diverge in
+    // the same window, "reaction saved" is more accurate than picking one.
+    const label =
+      audioDiverges && offsetDiverges
+        ? "reaction saved"
+        : audioDiverges
+        ? "audio saved"
+        : "offset saved";
+    let cancelled = false;
+    const handle = window.setTimeout(async () => {
+      setOverlaySaveState("saving");
+      setOverlaySaveError(null);
+      setOverlaySaveLabel(label);
+      try {
+        const r = await sidecar.applyOverlay(slug, index - 1, {
+          type: overlay.type,
+          source_path: overlay.source_path,
+          start_offset_s: brollOffset,
+          audio_source: audioSource,
+        });
+        if (cancelled) return;
+        onProjectChange(r.project);
+        setOverlaySaveState("saved");
+        window.setTimeout(() => {
+          setOverlaySaveState((s) => (s === "saved" ? "idle" : s));
+        }, 1500);
+      } catch (e) {
+        if (cancelled) return;
+        const msg = String(e);
+        console.warn("[ClipPreview] applyOverlay (auto-persist) failed:", e);
+        setOverlaySaveError(msg);
+        setOverlaySaveState("idle");
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+    // Intentionally exclude onProjectChange — the parent passes a fresh ref
+    // every render and re-running this effect on parent re-renders would
+    // schedule (and immediately cancel) a save on every keystroke elsewhere.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioSource, brollOffset, slug, index, clip.overlay]);
+
   // Esc closes, ←/→ navigate.
+  // P0 fix (2026-06-06): explicit ownership of Esc so the modal doesn't yank
+  // the user out of a dirty Captions drawer. Both this listener and the
+  // drawer's listener attach to `window` and event order is not guaranteed —
+  // without these guards the modal can close (no dirty-prompt) before the
+  // drawer's tryClose runs. The drawer owns Esc when open (its tryClose runs
+  // the unsaved-edits confirm); the reaction-source picker owns it when up.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (document.getElementById("__reaction-source-picker")) return;
-      if (e.key === "Escape") { onClose(); return; }
+      if (e.key === "Escape") {
+        // Drawer's own keydown handler will run its tryClose (which respects
+        // the dirty-state confirm). Bail here so the modal doesn't also close.
+        if (captionsOpen) return;
+        onClose();
+        return;
+      }
       const t = e.target as HTMLElement | null;
       if (t && /INPUT|TEXTAREA/.test(t.tagName)) return;
+      // Don't navigate clips while the captions drawer owns the keyboard —
+      // ←/→ may be used inside the drawer's controls.
+      if (captionsOpen) return;
       if (e.key === "ArrowLeft" && onNavigate && index > 1) onNavigate(-1);
       if (e.key === "ArrowRight" && onNavigate && index < totalClips) onNavigate(1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, onNavigate, index, totalClips]);
+  }, [onClose, onNavigate, index, totalClips, captionsOpen]);
 
   // Apply a launch-safe b-roll layout. The renderer supports one extra source
   // per clip; the advanced cell editor stays hidden until the backend supports
@@ -287,6 +402,7 @@ export function ClipPreview({
             void style;
           }}
           onDirtyChange={setCaptionsDirty}
+          onPreviewChange={setLivePreview}
         />
         {/* Header */}
         <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-3">
@@ -336,31 +452,45 @@ export function ClipPreview({
                 aria-label="Next (→)" title="Next (→)">→</button>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setCaptionsOpen((open) => !open)}
-            className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] transition ${
-              captionsOpen
-                ? "border-fuchsia bg-fuchsia/20 text-fuchsia"
-                : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
-            }`}
-            aria-pressed={captionsOpen}
-            aria-label="Toggle captions editor"
-          >
-            <CaptionsIcon size={14} aria-hidden />
-            Captions
-            <span
-              aria-hidden
-              className={`h-1.5 w-1.5 rounded-full ${
-                captionsDirty ? "bg-fuchsia" : "bg-cyan"
+          <div className="shrink-0 flex flex-col items-end gap-0.5">
+            <button
+              type="button"
+              onClick={() => setCaptionsOpen((open) => !open)}
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] transition ${
+                captionsOpen
+                  ? "border-fuchsia bg-fuchsia/20 text-fuchsia"
+                  : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
               }`}
-              style={{
-                boxShadow: captionsDirty
-                  ? "0 0 6px var(--color-fuchsia, #ff1a8c)"
-                  : "0 0 6px var(--color-cyan, #00e5ff)",
-              }}
-            />
-          </button>
+              aria-pressed={captionsOpen}
+              aria-label="Toggle captions editor"
+            >
+              <CaptionsIcon size={14} aria-hidden />
+              Captions
+              <span
+                aria-hidden
+                className={`h-1.5 w-1.5 rounded-full ${
+                  captionsDirty ? "bg-fuchsia" : "bg-cyan"
+                }`}
+                style={{
+                  boxShadow: captionsDirty
+                    ? "0 0 6px var(--color-fuchsia, #ff1a8c)"
+                    : "0 0 6px var(--color-cyan, #00e5ff)",
+                }}
+              />
+            </button>
+            {/* P0 fix (2026-06-06): surface a getCaptions failure when the
+                clip was supposed to have captions but we couldn't load the
+                overlay lines. Quiet inline hint, not a toast — the chip is
+                already a focal point. */}
+            {captionsFetchFailed && captionStyle && overlayLines.length === 0 && (
+              <span
+                className="font-mono text-[10px] tracking-[0.08em] text-[#DC2626]"
+                title="getCaptions RPC failed. The MP4 still plays; only the live overlay preview is missing."
+              >
+                captions overlay unavailable — try Apply again
+              </span>
+            )}
+          </div>
           <button onClick={onClose}
             className="shrink-0 rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] text-text-secondary hover:border-fuchsia hover:text-ink">
             Close · esc
@@ -422,19 +552,28 @@ export function ClipPreview({
                       baked with captions. Otherwise the burned-in captions in
                       the MP4 AND the DOM overlay would render together,
                       doubling every line. */}
-                  {overlayLines.length > 0
-                    && (
-                      (captionsOpen && captionsDirty)
-                      || !(clip as Clip & { caption_style?: string }).caption_style
-                    )
-                    && (
+                  {(() => {
+                    // Live edit wins over baked clip data when the drawer is
+                    // pushing a preview. Falls back to the baked overlayLines
+                    // + clip.caption_style/palette when no live edit is active.
+                    const effectiveLines = livePreview?.lines ?? overlayLines;
+                    const effectiveStyle = livePreview?.style ?? overlayStyle;
+                    const effectivePalette =
+                      livePreview?.palette ?? clip.caption_palette;
+                    const shouldRender =
+                      effectiveLines.length > 0 &&
+                      ((captionsOpen && captionsDirty) ||
+                        !(clip as Clip & { caption_style?: string }).caption_style);
+                    return shouldRender ? (
                       <CaptionOverlay
                         currentTime={playheadTime}
-                        lines={overlayLines}
-                        style={overlayStyle}
+                        lines={effectiveLines}
+                        style={effectiveStyle}
+                        palette={effectivePalette}
                         containerHeight={containerHeight}
                       />
-                    )}
+                    ) : null;
+                  })()}
                 </>
               ) : (
                 <p className="font-mono text-[12px] text-text-tertiary">No video yet for {ratio}.</p>
@@ -570,6 +709,25 @@ export function ClipPreview({
                       className="w-full accent-fuchsia"
                     />
                   </label>
+
+                  {/* Auto-save state chip — micro-confirms that the value the
+                      clipper just dragged actually landed in project.json. */}
+                  {(overlaySaveState !== "idle" || overlaySaveError) && (
+                    <div
+                      aria-live="polite"
+                      className="flex items-center justify-end font-mono text-[10px] uppercase tracking-[0.12em]"
+                    >
+                      {overlaySaveError ? (
+                        <span className="text-[#DC2626]">
+                          save failed — try a layout tile to retry
+                        </span>
+                      ) : overlaySaveState === "saving" ? (
+                        <span className="text-text-tertiary">saving…</span>
+                      ) : (
+                        <span className="text-fuchsia">{overlaySaveLabel || "saved"}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </section>

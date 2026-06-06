@@ -8,10 +8,12 @@
 //   - No campaigns saved     → "Add" entry already lives in section header
 
 import { useState } from "react";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import { Pill } from "../primitives";
 import { useActiveBrief, type AllowedPlatform, type PayoutProvider } from "../../lib/briefs";
 import { openBrowsePanel, WHOP_REWARDS_URL } from "../../lib/browse";
+import { humanError } from "../../lib/sidecar";
 import { SavedBriefsRow } from "./SavedBriefs";
 import { TrackedSubmissionsTable } from "./TrackedSubmissions";
 
@@ -44,6 +46,24 @@ export function EarnSidebar() {
 function ActiveBriefSection() {
   const { active } = useActiveBrief();
   const [expanded, setExpanded] = useState(true);
+  const [openError, setOpenError] = useState<string | null>(null);
+
+  async function openBrowser(): Promise<void> {
+    // PREVENTS — the in-app Browse panel silently failing (Tauri webview
+    // disallowed, plugin denied). Fall back to the system browser; if THAT
+    // also fails, surface a recoverable error inline.
+    try {
+      await openBrowsePanel(WHOP_REWARDS_URL);
+      setOpenError(null);
+    } catch (panelErr) {
+      try {
+        await openExternal(WHOP_REWARDS_URL);
+        setOpenError(null);
+      } catch (extErr) {
+        setOpenError(`${humanError(panelErr)} (and external browser: ${humanError(extErr)})`);
+      }
+    }
+  }
 
   return (
     <section className="flex flex-col gap-2">
@@ -73,11 +93,16 @@ function ActiveBriefSection() {
           <p className="font-sans text-[12px] text-ink">No campaign attached.</p>
           <button
             type="button"
-            onClick={() => void openBrowsePanel(WHOP_REWARDS_URL)}
+            onClick={() => void openBrowser()}
             className="mt-2 inline-flex items-center gap-1.5 bg-transparent px-1 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia hover:text-fuchsia-bright"
           >
             <ExternalLink size={11} /> Open browser
           </button>
+          {openError && (
+            <p role="alert" className="mt-1 font-sans text-[11px] text-[#F87171]">
+              Couldn&apos;t open browser — {openError}
+            </p>
+          )}
         </div>
       )}
 

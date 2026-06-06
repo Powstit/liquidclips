@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { BountyContext } from "../../lib/sidecar";
 import { isSupportedSourceUrl } from "../../lib/sourceHosts";
 
@@ -51,6 +51,16 @@ export function ManualBountyPrompt({
   const [reward, setReward] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [error, setError] = useState<string | null>(null);
+
+  // Esc closes the manual-reward prompt so keyboard-only users aren't trapped
+  // — same affordance as every other modal in the Earn surface.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onCancel();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
 
   function go() {
     setError(null);
