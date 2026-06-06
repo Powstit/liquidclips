@@ -16,7 +16,7 @@ export type ConnectedPlatform = "youtube" | "tiktok" | "instagram" | "x";
 
 export type SortKey = "best_match" | "highest_payout" | "most_spots" | "closing_soon";
 
-export type EarnTab = "available" | "in_progress" | "submitted" | "approved" | "leaderboard";
+export type EarnTab = "available" | "in_progress" | "submissions" | "payouts" | "leaderboard";
 
 export function allowedPlatforms(b: WhopBounty): ConnectedPlatform[] {
   const out: ConnectedPlatform[] = [];

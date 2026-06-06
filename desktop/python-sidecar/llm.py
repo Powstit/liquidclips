@@ -37,19 +37,40 @@ CLIP_MIN_SECONDS = 30.0
 CLIP_MAX_SECONDS = 75.0
 
 
+class ScoreBreakdown(BaseModel):
+    # v0.6.8 — branded sub-scores surfaced on ClipCard under the LC Score badge.
+    # Each is 0-100 and matches the four levers the LLM evaluates a clip on.
+    hook: int = Field(..., ge=0, le=100, description="Strength of the first 1-3 seconds — does it stop the scroll?")
+    retention: int = Field(..., ge=0, le=100, description="Likelihood the clip holds viewers to the end (payoff arrives, no dead air).")
+    clarity: int = Field(..., ge=0, le=100, description="Is the point clean and easy to follow without prior context?")
+    shareability: int = Field(..., ge=0, le=100, description="Does it carry a quotable line, a number, or an opinion worth saving / forwarding?")
+
+
 class Clip(BaseModel):
     start: float = Field(..., ge=0, description="Clip start time in seconds, inclusive.")
     end: float = Field(..., gt=0, description="Clip end time in seconds, exclusive.")
     title: str = Field(..., min_length=4, max_length=120, description="Hook-led short title for this clip.")
     description: str = Field("", max_length=400, description="2-3 sentence post body for this clip.")
     theme: str = Field("", max_length=40, description="One-tag theme for dedup across the drip.")
-    virality: int = Field(..., ge=0, le=100, description="Estimated virality score 0–100 on the fuchsia ladder.")
+    virality: int = Field(..., ge=0, le=100, description="Estimated virality score 0–100 on the fuchsia ladder. Surfaced as the LC Score on the ClipCard.")
     slug: str = Field(..., min_length=3, max_length=60, description="kebab-case slug for the filename.")
     title_variants: list[str] = Field(default_factory=list, description="3-5 alternate hooks.")
     pinned_comment: str = Field(
         "",
         max_length=220,
         description="One-line engagement-bait comment the creator pins under the post.",
+    )
+    # v0.6.8 — Optional sub-scores + reason. Optional for backwards-compat with
+    # old project JSON; new LLM responses always populate them so the ClipCard
+    # surface and ClipPreview tooltip can explain the LC Score.
+    score_breakdown: ScoreBreakdown | None = Field(
+        None,
+        description="Per-axis breakdown explaining the virality score. All four axes must be populated together.",
+    )
+    score_reason: str = Field(
+        "",
+        max_length=240,
+        description="One-line plain-English answer to 'Why this clip?' — what makes it work or what's at risk.",
     )
     # Duration constraint is enforced in post-processing (auto-extend / trim)
     # because OpenAI structured outputs ignore model_validator logic. Keeping
@@ -107,7 +128,11 @@ SYSTEM_PROMPT_BOTH = (
     "Favour clear hooks. Start at complete sentences, end on punchlines. Use times matching transcript word boundaries. "
     + _VOICE_RULES +
     " Every clip MUST include: start, end, title (4-120 chars), description (2-3 sentences), theme, virality (0-100), "
-    "slug (kebab-case), title_variants (3-5), pinned_comment. Return JSON matching the schema exactly."
+    "slug (kebab-case), title_variants (3-5), pinned_comment, "
+    "score_breakdown ({hook,retention,clarity,shareability} each 0-100; consistent with virality — high virality means "
+    "at least three sub-scores ≥75), and score_reason (one short plain line explaining the LC Score, like "
+    "'Opens with a named number and resolves in 12s — strong hook + clean payoff'). "
+    "Return JSON matching the schema exactly."
 )
 
 SYSTEM_PROMPT_CLIPS = (
@@ -120,7 +145,9 @@ SYSTEM_PROMPT_CLIPS = (
     "Start at complete sentences, end on punchlines. Use times matching transcript word boundaries. "
     + _VOICE_RULES +
     " Every clip MUST include: start, end, title (4-120 chars), description (2-3 sentences), theme, virality (0-100), "
-    "slug (kebab-case), title_variants (3-5), pinned_comment. "
+    "slug (kebab-case), title_variants (3-5), pinned_comment, "
+    "score_breakdown ({hook,retention,clarity,shareability} each 0-100; consistent with virality — high virality means "
+    "at least three sub-scores ≥75), and score_reason (one short plain line explaining the LC Score). "
     "IMPORTANT: This is the CLIPS-ONLY path. Return chapters=[], description='', video_title_variants=[], tags=[], "
     "tweet_thread=[], linkedin_post='' — only the clips array matters. Return JSON matching the schema exactly."
 )

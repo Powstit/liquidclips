@@ -24,9 +24,13 @@ Auth (server-side, defence in depth):
 
 from __future__ import annotations
 
+import json
+import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Annotated, Any
 
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import or_
@@ -41,7 +45,9 @@ from app.models import (
     Notification,
     PendingWhopMembership,
     PostizConnection,
+    PostAnalytic,
     Schedule,
+    SocialChannel,
     User,
     WebhookEvent,
     WebhookEventLog,
@@ -274,6 +280,429 @@ def overview(admin: AdminUser, db: Annotated[Session, Depends(get_db)]) -> dict[
         },
         "generated_at": _iso(datetime.now(timezone.utc)),
     }
+
+
+# ======================================================================
+# 1b. Launch Health — one green-gate endpoint
+# ======================================================================
+
+def _gate(
+    key: str,
+    label: str,
+    status: str,
+    detail: str,
+    *,
+    value: Any = None,
+    action: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "key": key,
+        "label": label,
+        "status": status,
+        "detail": detail,
+        "value": value,
+        "action": action,
+    }
+
+
+def _count_status(rows: list[Any]) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for row in rows:
+        key = str(getattr(row, "status", "unknown") or "unknown")
+        out[key] = out.get(key, 0) + 1
+    return out
+
+
+def _check_public_updater(endpoint: str, targets_csv: str) -> dict[str, Any]:
+    """Probe the exact updater URL baked into the shipped Tauri app.
+
+    A local manifest file only proves the backend has *something* on disk. This
+    proves the customer path: updates.liquidclips.app -> backend manifest ->
+    signed platform block -> downloadable artifact URL.
+    """
+    targets = [t.strip() for t in targets_csv.split(",") if t.strip()]
+    if not endpoint or not targets:
+        return _gate(
+            "updates_public",
+            "Public updater endpoint",
+            "fail",
+            "Updater endpoint or target list is not configured.",
+            action="Set TAURI_UPDATE_ENDPOINT and TAURI_UPDATE_TARGETS.",
+        )
+
+    results: dict[str, Any] = {}
+    failures: list[str] = []
+    warnings: list[str] = []
+    versions: set[str] = set()
+    artifact_urls: list[str] = []
+    ok_targets = 0
+
+    try:
+        with httpx.Client(timeout=8.0, follow_redirects=True) as client:
+            for target in targets:
+                response = client.get(endpoint, params={"target": target, "current_version": "0.0.0"})
+                if response.status_code == 204:
+                    warnings.append(f"{target}: no update returned")
+                    results[target] = {"status": "warn", "http_status": 204}
+                    continue
+                if response.status_code >= 400:
+                    failures.append(f"{target}: HTTP {response.status_code}")
+                    results[target] = {"status": "fail", "http_status": response.status_code}
+                    continue
+
+                try:
+                    payload = response.json()
+                except ValueError:
+                    failures.append(f"{target}: non-JSON manifest")
+                    results[target] = {"status": "fail", "http_status": response.status_code}
+                    continue
+
+                platform = (payload.get("platforms") or {}).get(target) or {}
+                signature = str(platform.get("signature") or "").strip()
+                artifact_url = str(platform.get("url") or "").strip()
+                version = str(payload.get("version") or "").strip()
+                if version:
+                    versions.add(version)
+                if not signature or not artifact_url:
+                    missing = "signature" if not signature else "artifact URL"
+                    failures.append(f"{target}: missing {missing}")
+                    results[target] = {"status": "fail", "version": version or None}
+                    continue
+
+                artifact_status = None
+                try:
+                    artifact_response = client.head(artifact_url)
+                    artifact_status = artifact_response.status_code
+                    if artifact_status == 405:
+                        artifact_response = client.get(artifact_url, headers={"Range": "bytes=0-0"})
+                        artifact_status = artifact_response.status_code
+                    if artifact_status >= 400:
+                        failures.append(f"{target}: artifact HTTP {artifact_status}")
+                    else:
+                        artifact_urls.append(artifact_url)
+                except httpx.HTTPError as exc:
+                    failures.append(f"{target}: artifact {type(exc).__name__}")
+
+                target_ok = artifact_status is not None and artifact_status < 400
+                if target_ok:
+                    ok_targets += 1
+                results[target] = {
+                    "status": "ok" if target_ok else "fail",
+                    "http_status": response.status_code,
+                    "artifact_http_status": artifact_status,
+                    "version": version or None,
+                    "has_signature": bool(signature),
+                    "artifact_url": artifact_url,
+                }
+    except httpx.HTTPError as exc:
+        return _gate(
+            "updates_public",
+            "Public updater endpoint",
+            "fail",
+            f"Updater probe failed: {type(exc).__name__}",
+            value={"endpoint": endpoint, "targets": targets},
+            action="Check updates.liquidclips.app DNS/proxy and api.jnremployee.com /updates/latest.json.",
+        )
+
+    if len(versions) > 1:
+        failures.append("targets return different versions")
+
+    status_value = "fail" if failures else "warn" if warnings else "ok"
+    detail_parts = []
+    if versions:
+        detail_parts.append(f"version {', '.join(sorted(versions))}")
+    detail_parts.append(f"{ok_targets}/{len(targets)} target(s) downloadable")
+    if failures:
+        detail_parts.append("; ".join(failures[:3]))
+    elif warnings:
+        detail_parts.append("; ".join(warnings[:3]))
+    detail = " · ".join(detail_parts)
+
+    return _gate(
+        "updates_public",
+        "Public updater endpoint",
+        status_value,
+        detail,
+        value={
+            "endpoint": endpoint,
+            "targets": results,
+            "versions": sorted(versions),
+            "artifact_urls": sorted(set(artifact_urls)),
+        },
+        action="Publish signed updater artifacts for both Mac targets through /updates/upload." if status_value != "ok" else None,
+    )
+
+
+@router.get("/health")
+def launch_health(admin: AdminUser, db: Annotated[Session, Depends(get_db)]) -> dict[str, Any]:
+    """One read-only launch gate for Admin HQ.
+
+    This is deliberately *not* a synthetic transaction runner: it never posts a
+    clip, charges a card, mutates Stripe/Whop, or hits user social profiles.
+    It checks the gates that should be green before launch from one endpoint:
+    configured secrets, DB reachability, release/update manifest, scheduling
+    tables, webhook failures, bug telemetry, and payout/publishing rails.
+    """
+    s = get_settings()
+    gates: list[dict[str, Any]] = []
+    now = _now()
+    day_ago = now - timedelta(hours=24)
+    hour_ago = now - timedelta(hours=1)
+
+    # DB
+    try:
+        db.query(User).limit(1).all()
+        gates.append(_gate("db", "Database", "ok", f"Connected ({engine.dialect.name})."))
+    except Exception as exc:  # noqa: BLE001
+        gates.append(_gate("db", "Database", "fail", f"DB query failed: {type(exc).__name__}", action="Check DATABASE_URL / Railway Postgres."))
+
+    # Required-ish config for public launch.
+    config_checks = [
+        ("internal_secret", "Internal API secret", bool(s.internal_api_secret), "Server-to-server admin/account proxy auth."),
+        ("clerk", "Clerk API", bool(s.clerk_secret_key), "Account metadata sync."),
+        ("clerk_webhook", "Clerk webhook", bool(s.clerk_webhook_secret), "Signup/account lifecycle webhooks."),
+        ("whop_api", "Whop API", bool(s.whop_api_key), "Content Rewards + Whop billing reconciliation."),
+        ("whop_webhook", "Whop webhook", bool(s.whop_webhook_secret), "Whop purchase/entitlement events."),
+        ("resend", "Resend email", bool(s.resend_api_key), "Transactional onboarding/support emails."),
+        ("stripe_connect", "Stripe Connect", bool(s.stripe_secret_key), "Non-Whop affiliate payout onboarding."),
+        ("stripe_connect_webhook", "Stripe Connect webhook", bool(s.stripe_connect_webhook_secret), "Stripe payout/KYC callbacks."),
+        ("ayrshare", "Ayrshare publishing", bool(os.environ.get("AYRSHARE_API_KEY", "").strip()), "Hosted multi-channel publishing."),
+        ("ayrshare_jwt", "Ayrshare linker JWT", bool(os.environ.get("AYRSHARE_JWT_PRIVATE_KEY", "").strip() and os.environ.get("AYRSHARE_DOMAIN", "").strip()), "In-app social-account linking."),
+    ]
+    for key, label, ok, detail in config_checks:
+        gates.append(_gate(key, label, "ok" if ok else "fail", detail if ok else f"Missing env for {detail}", action=None if ok else "Set the production env var."))
+
+    # Release/update manifest.
+    release_dir = Path(os.environ.get("JUNIOR_RELEASES_DIR", str(Path.home() / "Desktop/jnr/desktop/src-tauri/target/release/bundle")))
+    manifest_path = release_dir / "manifest.json"
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            platforms = manifest.get("platforms") or {}
+            missing_artifacts = []
+            for target, block in platforms.items():
+                fname = block.get("file")
+                if fname and not (release_dir / Path(fname).name).is_file():
+                    missing_artifacts.append(target)
+            if missing_artifacts:
+                gates.append(_gate("updates", "Updater manifest", "fail", f"Manifest exists, but artifacts missing for {', '.join(missing_artifacts)}.", value=manifest.get("version")))
+            else:
+                gates.append(_gate("updates", "Updater manifest", "ok", f"Version {manifest.get('version', 'unknown')} · {len(platforms)} target(s).", value=manifest.get("version")))
+        except Exception as exc:  # noqa: BLE001
+            gates.append(_gate("updates", "Updater manifest", "fail", f"Manifest unreadable: {type(exc).__name__}", action="Re-upload release artifact."))
+    else:
+        gates.append(_gate("updates", "Updater manifest", "warn", "No backend updater manifest found. GitHub DMG may still exist, but auto-update is not ready.", action="Publish signed updater artifact to /updates/upload."))
+    gates.append(_check_public_updater(s.tauri_update_endpoint, s.tauri_update_targets))
+
+    # Schedule v2.
+    channels = db.query(SocialChannel).all()
+    active_channels = sum(1 for c in channels if c.status == "active")
+    pending_channels = sum(1 for c in channels if c.status == "pending_link")
+    error_channels = sum(1 for c in channels if c.status == "error")
+    channel_status = "fail" if error_channels else "ok" if active_channels else "warn"
+    gates.append(_gate(
+        "channels",
+        "Social channels",
+        channel_status,
+        f"{active_channels} active · {pending_channels} pending · {error_channels} error.",
+        value={"active": active_channels, "pending_link": pending_channels, "error": error_channels, "total": len(channels)},
+        action="Refresh errored channels in Schedule → Loadout." if error_channels else None,
+    ))
+
+    schedules = db.query(Schedule).all()
+    schedule_counts = _count_status(schedules)
+    failed_schedules_24h = (
+        db.query(Schedule)
+        .filter(Schedule.status == "failed", Schedule.updated_at >= day_ago)
+        .count()
+    )
+    stuck_uploading = (
+        db.query(Schedule)
+        .filter(Schedule.status == "uploading", Schedule.updated_at <= hour_ago)
+        .count()
+    )
+    schedule_status = "fail" if failed_schedules_24h or stuck_uploading else "ok"
+    gates.append(_gate(
+        "schedule_queue",
+        "Schedule queue",
+        schedule_status,
+        f"{failed_schedules_24h} failed in 24h · {stuck_uploading} uploading >1h.",
+        value=schedule_counts,
+        action="Open Admin HQ → Postiz/Schedules and inspect failed rows." if schedule_status == "fail" else None,
+    ))
+
+    latest_analytics = db.query(PostAnalytic).order_by(PostAnalytic.refreshed_at.desc()).first()
+    analytics_age = _age_seconds(latest_analytics.refreshed_at) if latest_analytics else None
+    analytics_total = db.query(PostAnalytic).count()
+    analytics_status = "ok"
+    analytics_detail = f"{analytics_total} cached analytics row(s)."
+    if analytics_total == 0:
+        analytics_status = "warn"
+        analytics_detail = "No cached analytics yet; expected before first published post."
+    elif analytics_age is not None and analytics_age > 3 * 3600:
+        analytics_status = "warn"
+        analytics_detail = f"Latest analytics refresh is {ageLabelBackend(analytics_age)} old."
+    gates.append(_gate("analytics", "Analytics cache", analytics_status, analytics_detail, value={"rows": analytics_total, "latest_age_seconds": analytics_age}))
+
+    webhook_failures = (
+        db.query(WebhookEventLog)
+        .filter(WebhookEventLog.status == "failed", WebhookEventLog.received_at >= day_ago)
+        .count()
+    )
+    gates.append(_gate(
+        "webhooks",
+        "Webhook processing",
+        "ok" if webhook_failures == 0 else "fail",
+        f"{webhook_failures} failed webhook(s) in 24h.",
+        action="Open Admin HQ → Webhooks filtered to failed." if webhook_failures else None,
+    ))
+
+    bug_events_24h = db.query(DesktopErrorEvent).filter(DesktopErrorEvent.created_at >= day_ago).count()
+    bug_status = "ok" if bug_events_24h == 0 else "warn" if bug_events_24h < 5 else "fail"
+    gates.append(_gate(
+        "desktop_errors",
+        "Desktop bug telemetry",
+        bug_status,
+        f"{bug_events_24h} desktop error event(s) in 24h.",
+        action="Open Admin HQ → Bugs." if bug_events_24h else None,
+    ))
+
+    # Admin visibility itself.
+    admin_ok = is_admin_email(admin.email)
+    gates.append(_gate(
+        "admin_access",
+        "Admin dashboard access",
+        "ok" if admin_ok else "fail",
+        f"{admin.email} is {'on' if admin_ok else 'not on'} JUNIOR_ADMIN_EMAILS.",
+        value=admin.email,
+    ))
+
+    status_order = {"fail": 0, "warn": 1, "ok": 2}
+    overall = "ok"
+    if any(g["status"] == "fail" for g in gates):
+        overall = "fail"
+    elif any(g["status"] == "warn" for g in gates):
+        overall = "warn"
+    score = round(100 * sum(1 for g in gates if g["status"] == "ok") / max(1, len(gates)))
+    return {
+        "overall": overall,
+        "score": score,
+        "generated_at": _iso(datetime.now(timezone.utc)),
+        "gates": sorted(gates, key=lambda g: (status_order.get(g["status"], 9), g["label"])),
+        "public_urls": {
+            "account": s.account_site_url,
+            "download": s.app_download_url,
+            "partner": s.whop_partner_dashboard_url,
+            "whop": s.whop_manage_url,
+        },
+        "note": "One read-only admin launch gate. It does not run destructive live transactions (no card charge, post publish, payout mutation, or user OAuth).",
+    }
+
+
+@router.get("/function-heatmap")
+def function_heatmap_latest(admin: AdminUser) -> dict[str, Any]:
+    """Latest automated Railway function heat-map.
+
+    Returns the in-memory latest result for this backend process. If Railway has
+    just booted and no 5-hour tick has run yet, run one read-only pass now so
+    Admin HQ never shows a blank panel.
+    """
+    from app.function_heatmap import latest_function_heatmap, run_function_heatmap
+
+    result = latest_function_heatmap()
+    if result is None:
+        result = run_function_heatmap(notify=False, source="admin-lazy-load")
+    return result
+
+
+@router.post("/function-heatmap/run")
+def function_heatmap_run(admin: AdminUser) -> dict[str, Any]:
+    """Manual admin-triggered heat-map run.
+
+    Still read-only. `notify=False` because a human is already looking at the
+    result; the Railway 5-hour cron is responsible for email alerts.
+    """
+    from app.function_heatmap import run_function_heatmap
+
+    return run_function_heatmap(notify=False, source="admin-manual")
+
+
+@router.get("/alerts")
+def admin_alerts(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    unread_only: bool = False,
+    priority: str | None = None,
+    limit: int = 30,
+) -> dict[str, Any]:
+    """Current admin's in-app alert history.
+
+    This surfaces the same Notification rows written by Railway's function
+    heat-map, without exposing other users' inboxes.
+    """
+    q = (
+        db.query(Notification)
+        .filter(Notification.user_id == admin.id, Notification.dismissed_at.is_(None))
+        .order_by(Notification.created_at.desc())
+    )
+    if unread_only:
+        q = q.filter(Notification.read_at.is_(None))
+    if priority in {"low", "medium", "high"}:
+        q = q.filter(Notification.priority == priority)
+    rows = q.limit(max(1, min(limit, 100))).all()
+    unread = (
+        db.query(Notification)
+        .filter(
+            Notification.user_id == admin.id,
+            Notification.dismissed_at.is_(None),
+            Notification.read_at.is_(None),
+        )
+        .count()
+    )
+    return {
+        "unread": unread,
+        "alerts": [
+            {
+                "id": n.id,
+                "category": n.category,
+                "title": n.title,
+                "body": n.body,
+                "priority": n.priority,
+                "action_kind": n.action_kind,
+                "action_data": n.action_data or {},
+                "read_at": _iso(n.read_at),
+                "created_at": _iso(n.created_at),
+            }
+            for n in rows
+        ],
+    }
+
+
+@router.post("/alerts/{notification_id}/read", status_code=status.HTTP_204_NO_CONTENT)
+def admin_alert_mark_read(
+    notification_id: str,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    row = db.get(Notification, notification_id)
+    if not row or row.user_id != admin.id or row.dismissed_at is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "alert not found")
+    if row.read_at is None:
+        row.read_at = datetime.now(timezone.utc)
+        db.commit()
+
+
+def ageLabelBackend(seconds: int | None) -> str:
+    if seconds is None:
+        return "unknown"
+    days = seconds // 86400
+    if days:
+        return f"{days}d"
+    hours = seconds // 3600
+    if hours:
+        return f"{hours}h"
+    minutes = seconds // 60
+    return f"{minutes}m"
 
 
 # ======================================================================

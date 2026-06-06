@@ -202,7 +202,7 @@ RC-8 → RC-18 are P1/P2 (campaign scoring, hook/title generator, variant maker,
 
 ### Bigger arcs
 
-- **Domain migration**: `account.jnremployee.com` → `account.liquidclips.app` (requires re-registering all Clerk OAuth callbacks — deferred to 0.4.35+)
+- **Domain migration**: `account.jnremployee.com` → `account.jnremployee.com` (requires re-registering all Clerk OAuth callbacks — deferred to 0.4.35+)
 - **Mac App Store** distribution (requires IAP replacing Whop/Stripe — explicitly later)
 - **Hosted LLM** proxy (so paid tiers don't need OpenAI key) — keep `HOSTED_LLM_ENABLED=false` until real proxy ships and tests
 - **Google Drive integration** for campaign source assets (paste URL + open in browser + download → `~/Liquid Clips/rewards/<campaign>/source/`)
@@ -291,7 +291,7 @@ From CLAUDE.md and persistent memories:
 ## 10 · Open questions Daniel still needs to answer
 
 - Final decision on **Campaign Brief schema** (RC-1) — manual entry only for v1, or auto-extract from Whop campaign pages?
-- **Domain migration** timing: when to flip `account.jnremployee.com` → `account.liquidclips.app` (touches Clerk OAuth)
+- **Domain migration** timing: when to flip `account.jnremployee.com` → `account.jnremployee.com` (touches Clerk OAuth)
 - **Mac App Store path** — accept IAP replacement of Whop/Stripe, or stay direct-distribution forever?
 - **Hosted LLM** — build proxy now, or keep "bring your own OpenAI key" indefinitely?
 

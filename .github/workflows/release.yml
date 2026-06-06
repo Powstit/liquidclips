@@ -24,7 +24,8 @@ jobs:
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin
+          # Universal builds need BOTH targets so lipo can combine them.
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: install frontend dependencies
         run: npm install
@@ -160,7 +161,32 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        # TODO(v0.6.0): switch to universal-apple-darwin so one DMG covers
+        # Apple Silicon AND Intel. Needs sidecar ffmpeg/ffprobe to also be
+        # universal binaries (the current fetch is arm64-only because the
+        # macos-latest runner is arm64). Until then we ship arm64 from CI
+        # and produce Intel locally via `npm run tauri -- build --target
+        # x86_64-apple-darwin` on Daniel's machine.
         run: npm run tauri -- build --target aarch64-apple-darwin
+
+      - name: repair-sign macOS app bundle
+        run: |
+          set -euo pipefail
+          APP=$(find desktop/src-tauri/target -path '*/bundle/macos/Liquid Clips.app' -type d | head -1)
+          if [ -z "$APP" ]; then
+            echo "✗ No Liquid Clips.app bundle found" >&2
+            exit 1
+          fi
+          desktop/scripts/sign-clean-macos-app.sh "$APP"
+
+      - name: rebuild DMG + updater tarball from repaired app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          APP=$(find desktop/src-tauri/target -path '*/bundle/macos/Liquid Clips.app' -type d | head -1)
+          desktop/scripts/package-signed-macos-artifacts.sh "$APP" aarch64
 
       - name: notarize and staple .dmg
         env:

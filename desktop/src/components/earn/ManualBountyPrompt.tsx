@@ -82,7 +82,14 @@ export function ManualBountyPrompt({
   }
 
   return (
-    <div className="rounded-2xl border border-line bg-paper p-4">
+    <div className="relative bg-transparent p-4">
+      {/* Fuchsia HUD bracket corners — same cockpit language as the other
+          Round 4 modal frames. No solid plate behind. */}
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
+
       <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
         manual reward · beta fallback
       </div>
@@ -98,7 +105,7 @@ export function ManualBountyPrompt({
             autoFocus
             onChange={(e) => { setTitle(e.target.value); setError(null); }}
             placeholder="e.g. Clip the Bryson Tiller podcast for $$"
-            className="w-full rounded-lg border border-line bg-paper-warm/40 px-3 py-2 font-sans text-[13px] text-ink focus:border-fuchsia focus:outline-none"
+            className="w-full rounded-lg border border-line/60 bg-transparent px-3 py-2 font-sans text-[13px] text-ink focus:border-fuchsia focus:outline-none"
           />
         </Field>
 
@@ -108,7 +115,7 @@ export function ManualBountyPrompt({
             spellCheck={false}
             onChange={(e) => { setSourceUrl(e.target.value); setError(null); }}
             placeholder="https://youtube.com/watch?v=…"
-            className="w-full rounded-lg border border-line bg-paper-warm/40 px-3 py-2 font-mono text-[12px] text-ink focus:border-fuchsia focus:outline-none"
+            className="w-full rounded-lg border border-line/60 bg-transparent px-3 py-2 font-mono text-[12px] text-ink focus:border-fuchsia focus:outline-none"
           />
         </Field>
 
@@ -118,7 +125,7 @@ export function ManualBountyPrompt({
             spellCheck={false}
             onChange={(e) => setBountyUrl(e.target.value)}
             placeholder="https://whop.com/bounties/…"
-            className="w-full rounded-lg border border-line bg-paper-warm/40 px-3 py-2 font-mono text-[12px] text-ink focus:border-fuchsia focus:outline-none"
+            className="w-full rounded-lg border border-line/60 bg-transparent px-3 py-2 font-mono text-[12px] text-ink focus:border-fuchsia focus:outline-none"
           />
         </Field>
 
@@ -129,14 +136,14 @@ export function ManualBountyPrompt({
               inputMode="decimal"
               onChange={(e) => setReward(e.target.value)}
               placeholder="20"
-              className="w-full rounded-lg border border-line bg-paper-warm/40 px-3 py-2 font-mono text-[12px] text-ink focus:border-fuchsia focus:outline-none"
+              className="w-full rounded-lg border border-line/60 bg-transparent px-3 py-2 font-mono text-[12px] text-ink focus:border-fuchsia focus:outline-none"
             />
           </Field>
           <Field label="currency">
             <select
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
-              className="w-full rounded-lg border border-line bg-paper-warm/40 px-3 py-2 font-mono text-[12px] text-ink focus:border-fuchsia focus:outline-none"
+              className="w-full rounded-lg border border-line/60 bg-transparent px-3 py-2 font-mono text-[12px] text-ink focus:border-fuchsia focus:outline-none"
             >
               <option value="USD">USD</option>
               <option value="GBP">GBP</option>
@@ -157,7 +164,7 @@ export function ManualBountyPrompt({
         </button>
         <button
           onClick={onCancel}
-          className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-text-secondary hover:border-fuchsia hover:text-ink"
+          className="rounded-full bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-text-secondary transition-colors hover:text-ink"
         >
           Cancel
         </button>
