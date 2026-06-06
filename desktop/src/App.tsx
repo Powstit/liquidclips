@@ -54,6 +54,7 @@ import { Settings } from "./components/Settings";
 import { AchievementToast } from "./components/AchievementToast";
 import { AuthPanel } from "./components/auth/AuthPanel";
 import { useAuthPanel, closeAuthPanel } from "./components/auth/useAuthPanel";
+import { isAdminEmail } from "./lib/useTier";
 import { recordAchievement } from "./lib/achievements";
 import { humanError, sidecar, visibleStagesFor, pipelineStagesFor, backgroundStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
 import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
@@ -192,7 +193,34 @@ export default function App() {
   // v0.6.18 — user tier captured from /sync so SponsoredRewardsRow + the Earn
   // carousel can resolve visibility correctly (was hardcoded to "free" which
   // showed Agency/Pro users a locked banner for campaigns they could open).
-  const [userTier, setUserTier] = useState<"free" | "solo" | "pro" | "agency" | null>(null);
+  //
+  // v0.6.50 — seed from the SAME cache useTier reads so first paint matches
+  // the hook. Previously this was `null`, which caused SponsoredBannerCarousel
+  // + EarnTab to flash a locked-banner state for ~500ms before /sync resolved.
+  // The cache survives reboots so an Agency user re-opening the app stays
+  // Agency from frame 1.
+  const [userTier, setUserTier] = useState<"free" | "solo" | "pro" | "agency" | null>(() => {
+    try {
+      const raw = window.localStorage?.getItem("lc:cached_tier");
+      return normalizeTier(raw);
+    } catch {
+      return null;
+    }
+  });
+
+  // GlobalAuthPanel dispatches `lc:tier-refresh` on close (Clerk Stripe
+  // Checkout success path). Without this listener the event was a
+  // deadletter and an in-app upgrade never flipped the tier until next
+  // window focus. Lens fix v0.6.50.
+  useEffect(() => {
+    function onTierRefresh(e: Event) {
+      const detail = (e as CustomEvent).detail as { tier?: string } | undefined;
+      const normalized = normalizeTier(detail?.tier ?? null);
+      if (normalized) setUserTier(normalized);
+    }
+    window.addEventListener("lc:tier-refresh", onTierRefresh);
+    return () => window.removeEventListener("lc:tier-refresh", onTierRefresh);
+  }, []);
   // v0.6.18 — pipeline state lifted out of `view` so a user can navigate away
   // (Earn / Community / etc) and the pipeline keeps running in the background;
   // a "rendering" pill at the top of every non-running view lets them return.
@@ -283,15 +311,25 @@ export default function App() {
         // Seed the starter-pass counter from /sync (null = unlimited / paid /
         // unactivated). Best-effort: a missing backend just leaves it null,
         // which hides the counter and never blocks.
+        // Boot tier resolution — parallel /sync + /me so we can apply the
+        // same three-signal admin check as useTier: admin_override field,
+        // effective_tier=autopilot, or isAdminEmail(me.email). Mirrors
+        // useTier.ts so App.tsx's parallel userTier state never drifts.
         void import("./lib/backend")
-          .then((m) => m.syncStatus())
-          .then((s) => {
-            setRemainingExports(s?.remaining_exports ?? null);
-            // Admin override mirrors useTier — when the backend marks the
-            // user as on JUNIOR_ADMIN_EMAILS, force "agency" so founder
-            // demos don't get blocked by their own upgrade walls in any
-            // surface that reads App-level userTier (AvatarOrbit, EarnTab).
-            const tier = s?.admin_override ? "agency" : (s?.tier ?? null);
+          .then(async (m) => {
+            const [s, me] = await Promise.all([
+              m.syncStatus().catch(() => null),
+              m.meStatus().catch(() => null),
+            ]);
+            return { s, me };
+          })
+          .then(({ s, me }) => {
+            const isAdmin =
+              s?.admin_override === true ||
+              s?.tier === "autopilot" ||
+              isAdminEmail(me?.email);
+            setRemainingExports(isAdmin ? null : (s?.remaining_exports ?? null));
+            const tier = isAdmin ? "agency" : (s?.tier ?? null);
             setUserTier(normalizeTier(tier));
           })
           .catch(() => undefined);
@@ -1335,10 +1373,21 @@ export default function App() {
                 onClick={async () => {
                   try {
                     const m = await import("./lib/backend");
-                    const s = await m.syncStatus();
-                    const nextTier = normalizeTier(s?.tier ?? null);
+                    const [s, me] = await Promise.all([
+                      m.syncStatus(),
+                      m.meStatus().catch(() => null),
+                    ]);
+                    // Same three-signal admin embed used at boot + useTier.
+                    // Without this, the recheck handler would strip admin
+                    // back to s.tier (which could still be "free" if the
+                    // user's row hasn't been migrated yet).
+                    const isAdmin =
+                      s?.admin_override === true ||
+                      s?.tier === "autopilot" ||
+                      isAdminEmail(me?.email);
+                    const nextTier = isAdmin ? "agency" : normalizeTier(s?.tier ?? null);
                     setUserTier(nextTier);
-                    setRemainingExports(s?.remaining_exports ?? null);
+                    setRemainingExports(isAdmin ? null : (s?.remaining_exports ?? null));
                     // Anything other than free unlocks — solo, pro, agency
                     // all bypass the 100-export wall.
                     if (nextTier && nextTier !== "free") {
@@ -1650,13 +1699,26 @@ function GlobalAuthPanel() {
         closeAuthPanel();
         // Pull tier from backend — Clerk's Stripe Checkout success path
         // bounces back to /dashboard; admin_override + new tier land here.
+        // Parallel /sync + /me so the email-based admin fallback works even
+        // if the backend hasn't redeployed.
         void import("./lib/backend")
-          .then((m) => m.syncStatus())
-          .then((s) => {
-            if (!s) return;
-            // Mirror the boot-time elevation logic so admin/founder demos
-            // stay unblocked even after a sign-out → sign-in inside the panel.
-            const tier = s.admin_override ? "agency" : s.tier;
+          .then(async (m) => {
+            const [s, me] = await Promise.all([
+              m.syncStatus(),
+              m.meStatus().catch(() => null),
+            ]);
+            return { s, me };
+          })
+          .then(({ s, me }) => {
+            if (!s && !me) return;
+            const isAdmin =
+              s?.admin_override === true ||
+              s?.tier === "autopilot" ||
+              isAdminEmail(me?.email);
+            const tier = isAdmin ? "agency" : (s?.tier ?? "free");
+            // App.tsx's useEffect listener picks this up and calls
+            // setUserTier — keeps GlobalAuthPanel decoupled from App's
+            // state without leaving the event as a deadletter.
             setUserTierGlobalEvent(tier);
           })
           .catch(() => undefined);
@@ -1666,7 +1728,8 @@ function GlobalAuthPanel() {
 }
 
 // Tiny dispatcher — lets the inner GlobalAuthPanel push a tier update without
-// owning App's state directly. App listens for the same event and reflects it.
+// owning App's state directly. App listens for the same event in its main
+// useEffect and reflects it via setUserTier.
 function setUserTierGlobalEvent(tier: string) {
   window.dispatchEvent(new CustomEvent("lc:tier-refresh", { detail: { tier } }));
 }
