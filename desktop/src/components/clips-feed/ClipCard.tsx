@@ -20,6 +20,17 @@ function formatHms(s: number): string {
   return `${m}:${r.toString().padStart(2, "0")}`;
 }
 
+function captionStyleDot(style: string | undefined): string {
+  switch (style) {
+    case "brand_fuchsia": return "#ff1a8c";
+    case "tiktok_stack":  return "#00e5ff";
+    case "bold_yellow":   return "#ffff00";
+    case "clean_white":   return "#f4f1ea";
+    case "subway_surfer": return "linear-gradient(135deg, #00e5ff, #ff1a8c)";
+    default:              return "rgba(244, 241, 234, 0.25)";
+  }
+}
+
 function viralityClass(v: number): string {
   if (v >= 90) return "bg-fuchsia text-white shadow-[var(--glow-sm)]";
   if (v >= 75) return "bg-fuchsia-bright text-white";
@@ -43,6 +54,7 @@ export function ClipCard({
   ratio,
   onProjectChange,
   onOpenEditor,
+  onOpenCaptions,
 }: {
   clip: Clip;
   index: number;          // 1-based
@@ -51,6 +63,9 @@ export function ClipCard({
   ratio: RatioKey;
   onProjectChange: (p: Project) => void;
   onOpenEditor: () => void;
+  /** Optional — click on the captions chip opens the editor with the
+   * captions drawer pre-opened. Falls back to onOpenEditor when undefined. */
+  onOpenCaptions?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -180,6 +195,37 @@ export function ClipCard({
             <BountyFitPill clip={clip} project={project} />
           </span>
         )}
+        {/* Captions chip — bottom-right of the thumbnail. Style colour dot
+            shows at-a-glance which style is on this clip. Click → open
+            editor with the Captions drawer pre-opened. */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            (onOpenCaptions ?? onOpenEditor)();
+          }}
+          aria-label={
+            (clip as Clip & { caption_style?: string }).caption_style
+              ? `Edit ${String((clip as Clip & { caption_style?: string }).caption_style)} captions`
+              : "Add captions"
+          }
+          title={
+            (clip as Clip & { caption_style?: string }).caption_style
+              ? `Captions · ${String((clip as Clip & { caption_style?: string }).caption_style).replace("_", " ")}`
+              : "Add captions"
+          }
+          className="group absolute bottom-2 right-2 inline-flex items-center gap-1.5 rounded-full border border-line/50 bg-black/55 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.12em] text-paper backdrop-blur transition hover:border-fuchsia hover:bg-black/75"
+        >
+          <span aria-hidden>▣</span>
+          <span>cap</span>
+          <span
+            aria-hidden
+            className="h-1.5 w-1.5 rounded-full"
+            style={{
+              background: captionStyleDot((clip as Clip & { caption_style?: string }).caption_style),
+            }}
+          />
+        </button>
       </div>
 
       {/* Layout picker — visual icons */}

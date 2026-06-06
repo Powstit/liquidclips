@@ -38,6 +38,7 @@ export function ResultsGrid({
   const intent = project.intent ?? "both";
   const defaultTab: Tab = intent === "youtube" ? "youtube" : "clips";
   const [tab, setTab] = useState<Tab>(defaultTab);
+  const [openCaptionsForIdx, setOpenCaptionsForIdx] = useState<number | null>(null);
   const [previewIdx, setPreviewIdx] = useState<number | null>(null);
   const [ratio, setRatio] = useState<RatioKey>("vertical");
   const [dripOpen, setDripOpen] = useState(false);
@@ -261,6 +262,7 @@ export function ResultsGrid({
                         ratio={ratio}
                         onProjectChange={onProjectChange}
                         onOpenEditor={() => setPreviewIdx(idx)}
+                        onOpenCaptions={() => { setPreviewIdx(idx); setOpenCaptionsForIdx(idx); }}
                       />
                     ))}
                     {hidden > 0 && (
@@ -305,15 +307,16 @@ export function ResultsGrid({
           slug={project.slug}
           project={project}
           totalClips={project.clips.length}
-          onClose={() => setPreviewIdx(null)}
+          initialCaptionsOpen={openCaptionsForIdx === previewIdx}
+          onClose={() => { setPreviewIdx(null); setOpenCaptionsForIdx(null); }}
           onProjectChange={(p) => {
             onProjectChange(p);
             // If the removed clip was the previewed one, close.
-            if (previewIdx >= p.clips.length) setPreviewIdx(null);
+            if (previewIdx >= p.clips.length) { setPreviewIdx(null); setOpenCaptionsForIdx(null); }
           }}
           onNavigate={(dir) => {
             const next = previewIdx + dir;
-            if (next >= 0 && next < project.clips.length) setPreviewIdx(next);
+            if (next >= 0 && next < project.clips.length) { setPreviewIdx(next); setOpenCaptionsForIdx(null); }
           }}
         />
       )}

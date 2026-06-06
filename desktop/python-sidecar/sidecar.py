@@ -612,6 +612,188 @@ def method_regenerate_clip(params: dict[str, Any]) -> dict[str, Any]:
     return {"project": project.to_dict()}
 
 
+def method_get_captions(params: dict[str, Any]) -> dict[str, Any]:
+    """Load caption edit state for a single clip.
+
+    First-call (no prior edits) derives the line set from the project's
+    word-level transcript.json — same packing the reframe stage uses, but
+    surfaced to the drawer so the user sees the AI's groupings as their
+    starting point.
+
+    Subsequent calls return the persisted edit set from
+    `project.root / "captions" / f"{idx:02d}-edits.json"`.
+    """
+    import json as _json
+    from pathlib import Path
+
+    slug = params.get("slug")
+    idx = params.get("idx")
+    if not isinstance(slug, str) or not isinstance(idx, int):
+        raise ValueError("get_captions requires slug (str) + idx (int)")
+
+    project = Project.load(slug)
+    if idx < 0 or idx >= len(project.clips):
+        raise ValueError(f"clip idx {idx} out of range")
+    clip = project.clips[idx]
+
+    edits_dir = project.root / "captions"
+    edits_path = edits_dir / f"{idx + 1:02d}-edits.json"
+    transcript_json = project.root / "transcript" / "transcript.json"
+    has_transcript = transcript_json.is_file()
+
+    if edits_path.is_file():
+        with edits_path.open("r", encoding="utf-8") as f:
+            data = _json.load(f)
+        return {
+            "idx": idx,
+            "style": data.get("style") or "brand_fuchsia",
+            "lines": data.get("lines") or [],
+            "source": "edits",
+            "has_word_data": True,
+            "has_transcript": has_transcript,
+            "updated_at": data.get("updated_at"),
+        }
+
+    # Derive initial line set from transcript.json (word-level). Malformed
+    # JSON is a recoverable error from the user's POV — log + return empty
+    # lines so the EmptyState explains "transcript can't be read" instead of
+    # the drawer surfacing a raw exception with no retry path.
+    lines: list[dict[str, Any]] = []
+    has_words = False
+    transcript_error: str | None = None
+    if has_transcript:
+        try:
+            from captions import (
+                _group_words_into_lines,
+                has_word_level_data,
+                style_words_per_line,
+            )
+        except ImportError:
+            _group_words_into_lines = None  # type: ignore[assignment]
+            has_word_level_data = None  # type: ignore[assignment]
+            style_words_per_line = None  # type: ignore[assignment]
+
+        if _group_words_into_lines and has_word_level_data and style_words_per_line:
+            try:
+                with transcript_json.open("r", encoding="utf-8") as f:
+                    tj = _json.load(f)
+            except (ValueError, OSError) as exc:
+                transcript_error = f"transcript.json unreadable: {type(exc).__name__}"
+                tj = None
+            segs = tj.get("segments") if isinstance(tj, dict) else None
+            if isinstance(segs, list) and has_word_level_data(segs):
+                has_words = True
+                clip_start = float(clip.get("start") or 0.0)
+                clip_end = float(clip.get("end") or 0.0)
+                rel: list[tuple[float, float, str]] = []
+                for seg in segs:
+                    for w in (seg.get("words") or []):
+                        try:
+                            ws = float(w.get("start") or 0)
+                            we = float(w.get("end") or 0)
+                        except (TypeError, ValueError):
+                            continue
+                        text = (w.get("word") or "").strip()
+                        if not text:
+                            continue
+                        if we <= clip_start or ws >= clip_end:
+                            continue
+                        rs = max(0.0, ws - clip_start)
+                        re_ = max(rs + 0.01, min(clip_end - clip_start, we - clip_start))
+                        rel.append((rs, re_, text))
+                wpl = style_words_per_line("brand_fuchsia")
+                grouped = _group_words_into_lines(rel, words_per_line=wpl)
+                for words in grouped:
+                    lines.append({
+                        "start": round(words[0][0], 3),
+                        "end": round(words[-1][1], 3),
+                        "text": " ".join(w[2] for w in words),
+                        "words": [
+                            {"start": round(s, 3), "end": round(e, 3), "text": t}
+                            for s, e, t in words
+                        ],
+                    })
+
+    return {
+        "idx": idx,
+        "style": "brand_fuchsia",
+        "lines": lines,
+        "source": "transcript",
+        "has_word_data": has_words,
+        "has_transcript": has_transcript,
+        "transcript_error": transcript_error,
+        "updated_at": None,
+    }
+
+
+def method_edit_captions(params: dict[str, Any]) -> dict[str, Any]:
+    """Bake user-edited captions onto the clip's reframed video.
+
+    Persists the edited line set + style choice so the drawer reloads exactly
+    what the user shipped. Targets `vertical_path` (9:16) when present —
+    that's the customer-facing artifact. Falls back to `cut_path` for clips
+    whose reframe hasn't run yet.
+    """
+    import json as _json
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    slug = params.get("slug")
+    idx = params.get("idx")
+    lines = params.get("lines")
+    style = params.get("style") or "brand_fuchsia"
+    if not isinstance(slug, str) or not isinstance(idx, int):
+        raise ValueError("edit_captions requires slug (str) + idx (int)")
+    if not isinstance(lines, list):
+        raise ValueError("edit_captions requires lines (list)")
+    if not isinstance(style, str):
+        raise ValueError("edit_captions style must be a string")
+
+    project = Project.load(slug)
+    if idx < 0 or idx >= len(project.clips):
+        raise ValueError(f"clip idx {idx} out of range")
+    clip = project.clips[idx]
+
+    target_path = clip.get("vertical_path") or clip.get("cut_path")
+    if not target_path:
+        raise FileNotFoundError(f"clip {idx} has no rendered video to caption")
+    target = Path(target_path)
+    if not target.is_file():
+        raise FileNotFoundError(f"clip video missing on disk: {target}")
+
+    # Persist the edit state BEFORE bake — that way a failed bake still leaves
+    # the user's edits recoverable.
+    edits_dir = project.root / "captions"
+    edits_dir.mkdir(parents=True, exist_ok=True)
+    edits_path = edits_dir / f"{idx + 1:02d}-edits.json"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    payload = {
+        "style": style,
+        "updated_at": now_iso,
+        "clip_idx": idx,
+        "lines": lines,
+    }
+    with edits_path.open("w", encoding="utf-8") as f:
+        _json.dump(payload, f, indent=2)
+
+    # Bake.
+    from captions import bake_captions_to_video
+    bake_captions_to_video(target, lines, style=style)
+
+    # Update clip metadata so the UI can show "captions: brand_fuchsia · synced".
+    clip["caption_style"] = style
+    clip["captions_updated_at"] = now_iso
+    project.set_clips(project.clips)
+
+    return {
+        "project": project.to_dict(),
+        "clip_idx": idx,
+        "style": style,
+        "updated_at": now_iso,
+        "video_path": str(target),
+    }
+
+
 def method_add_clip(params: dict[str, Any]) -> dict[str, Any]:
     """Append a manually-defined clip cut from the project's source.
 
@@ -2244,6 +2426,8 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "secret_delete": method_secret_delete,
     "hardware_info": method_hardware_info,
     "regenerate_clip": method_regenerate_clip,
+    "get_captions": method_get_captions,
+    "edit_captions": method_edit_captions,
     "add_clip": method_add_clip,
     "remove_clip": method_remove_clip,
     "update_clip_meta": method_update_clip_meta,

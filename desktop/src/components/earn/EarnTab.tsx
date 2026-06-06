@@ -153,7 +153,19 @@ export function EarnTab({
       void bootstrap();
     };
     window.addEventListener("junior:whop-auth", onAuthArrived);
-    return () => window.removeEventListener("junior:whop-auth", onAuthArrived);
+
+    // Stuck-spinner fail-safe — if bootstrap() neither resolves nor rejects
+    // within 8s (sidecar hang, RPC stalled, child-webview iframe stuck), force
+    // the not-activated path so the user sees the activation splash with its
+    // own retry rather than the blinking "Checking…" underscore forever.
+    const stuckTimer = window.setTimeout(() => {
+      setAuthed((current) => (current === null ? false : current));
+    }, 8000);
+
+    return () => {
+      window.removeEventListener("junior:whop-auth", onAuthArrived);
+      window.clearTimeout(stuckTimer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

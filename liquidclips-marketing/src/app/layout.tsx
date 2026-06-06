@@ -1,46 +1,47 @@
 import type { Metadata } from "next";
-import { Fraunces, Geist, Geist_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { CRTOverlay } from "@/components/CRTOverlay";
 
-const geist = Geist({
-  variable: "--font-geist",
+const inter = Inter({
+  variable: "--font-sans",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-mono",
   subsets: ["latin"],
-});
-
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
-  subsets: ["latin"],
-  axes: ["SOFT", "WONK", "opsz"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://liquidclips.app"),
   title: {
-    default: "Liquid Clips — Your AI editor. Lives on your computer.",
+    default: "Liquid Clips — Drop video. Clip. Post. Earn.",
     template: "%s — Liquid Clips",
   },
   description:
-    "Turn long videos and Whop Content Rewards into captioned, ready-to-post clips. Local-first desktop editing with Pro hosted AI when you need it.",
+    "The arcade for clippers. Turn long streams, podcasts, and livestreams into ready-to-submit clips for Whop Content Rewards. Local-first, signed for Mac, built by a clipper.",
   openGraph: {
-    title: "Liquid Clips",
+    title: "Liquid Clips — Drop video. Clip. Post. Earn.",
     description:
-      "Your AI editor. Lives on your computer. Generate captioned clips, publish, schedule, and earn from Whop Content Rewards.",
+      "The arcade for clippers. Drop a long video, generate captioned clips, submit to Whop campaigns, get paid. Built by a clipper.",
     url: "https://liquidclips.app",
     siteName: "Liquid Clips",
-    images: [{ url: "/og-product.png", width: 1200, height: 630 }],
+    images: [{ url: "/brand/og-default.png", width: 1536, height: 1024 }],
     locale: "en_GB",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Liquid Clips",
-    description: "Your AI editor. Lives on your computer.",
-    images: ["/og-product.png"],
+    description: "The arcade for clippers.",
+    images: ["/brand/og-default.png"],
+  },
+  icons: {
+    icon: "/brand/favicon-source-512.png",
+    apple: "/brand/apple-touch-icon-180.png",
   },
 };
 
@@ -51,7 +52,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geist.variable} ${geistMono.variable} ${fraunces.variable}`}>
+      <body className={`${inter.variable} ${jetbrainsMono.variable}`}>
+        <CRTOverlay />
         {children}
       </body>
     </html>

@@ -91,6 +91,10 @@ def _group_words_into_lines(
 
 # v1 style preset. Future sprints add more (TikTok Stack, Subway Surfer,
 # Clean White, Brand Fuchsia) via gpt-image-1 swatches + new entries here.
+# ASS colors are AABBGGRR — alpha, blue, green, red — each two hex digits.
+# So &H008C1AFF = opaque (00), blue 8C, green 1A, red FF = #FF1A8C fuchsia.
+# `words_per_line` is a style-level override the caption engine reads when
+# packing words into on-screen units (lower = faster read pace, stacked feel).
 _STYLES: dict[str, dict[str, Any]] = {
     "bold_yellow": {
         # Visible-area font sizing — large enough to read on a phone, not so
@@ -113,8 +117,111 @@ _STYLES: dict[str, dict[str, Any]] = {
         "margin_l": 80,
         "margin_r": 80,
         "margin_v": 240,                 # push up from bottom edge so it sits in lower-third
-    }
+        "words_per_line": 4,
+    },
+    "brand_fuchsia": {
+        # The Liquid Clips brand voice — fuchsia karaoke fill on ink-soft
+        # baseline, paper-black outline. Matches the marketing site and the
+        # desktop arcade theme so a brand_fuchsia clip reads as part of the
+        # Liquid Clips identity at a glance.
+        "fontname": "Inter",
+        "fontsize": 72,
+        "secondary_color": "&H00BEC4C8",  # ink-soft (#c8c4be)
+        "primary_color":   "&H008C1AFF",  # fuchsia (#ff1a8c)
+        "outline_color":   "&H00100B0B",  # paper black (#0b0b10)
+        "back_color":      "&H80000000",  # 50% drop shadow
+        "bold": -1,
+        "outline": 5,
+        "shadow": 2,
+        "border_style": 1,
+        "alignment": 2,
+        "margin_l": 80,
+        "margin_r": 80,
+        "margin_v": 240,
+        "words_per_line": 4,
+    },
+    "tiktok_stack": {
+        # The TikTok / Reels stacked look — big white with cyan accent and a
+        # heavy black box behind every line for guaranteed contrast over busy
+        # creator-cam footage. Fewer words per line (2) so each chunk reads
+        # like a separate beat.
+        "fontname": "Inter",
+        "fontsize": 80,
+        "secondary_color": "&H00FFFFFF",  # white baseline
+        "primary_color":   "&H00FFE500",  # cyan highlight (#00e5ff)
+        "outline_color":   "&H00000000",  # crisp black
+        "back_color":      "&HC0000000",  # near-opaque black box
+        "bold": -1,
+        "outline": 8,
+        "shadow": 4,
+        "border_style": 3,                # 3 = filled box behind glyphs
+        "alignment": 2,
+        "margin_l": 60,
+        "margin_r": 60,
+        "margin_v": 320,                  # higher up — TikTok overlays bottom
+        "words_per_line": 2,
+    },
+    "clean_white": {
+        # Editorial / podcast-friendly. Thinner stroke, smaller size, no
+        # karaoke highlight (secondary and primary are the same so all words
+        # render in plain white). For long-form clips where the read time
+        # matters more than the bounce.
+        "fontname": "Inter",
+        "fontsize": 56,
+        "secondary_color": "&H00FFFFFF",
+        "primary_color":   "&H00FFFFFF",
+        "outline_color":   "&H00000000",
+        "back_color":      "&H80000000",
+        "bold": 0,
+        "outline": 3,
+        "shadow": 1,
+        "border_style": 1,
+        "alignment": 2,
+        "margin_l": 100,
+        "margin_r": 100,
+        "margin_v": 200,
+        "words_per_line": 5,
+    },
+    "subway_surfer": {
+        # Maximum read pace — Impact, big, fuchsia outline, cyan karaoke fill.
+        # One or two words at a time for that Subway Surfers / hyperloop look
+        # that performs on Shorts. The fuchsia outline ties it back to brand.
+        "fontname": "Impact",
+        "fontsize": 84,
+        "secondary_color": "&H00FFFFFF",  # white baseline
+        "primary_color":   "&H00FFE500",  # cyan when "sung"
+        "outline_color":   "&H008C1AFF",  # fuchsia outline (brand tie)
+        "back_color":      "&H80000000",
+        "bold": -1,
+        "outline": 6,
+        "shadow": 3,
+        "border_style": 1,
+        "alignment": 2,
+        "margin_l": 60,
+        "margin_r": 60,
+        "margin_v": 280,
+        "words_per_line": 2,
+    },
 }
+
+
+# Public — used by the drawer UI to know which style keys exist and how to
+# label them. Order here is the order the drawer renders the picker cards.
+STYLE_KEYS: list[str] = ["brand_fuchsia", "tiktok_stack", "bold_yellow", "clean_white", "subway_surfer"]
+
+STYLE_LABELS: dict[str, str] = {
+    "brand_fuchsia": "Brand Fuchsia",
+    "tiktok_stack":  "TikTok Stack",
+    "bold_yellow":   "Bold Yellow",
+    "clean_white":   "Clean White",
+    "subway_surfer": "Subway Surfer",
+}
+
+
+def style_words_per_line(style_name: str) -> int:
+    """Per-style override for line packing. Falls back to 4 if missing."""
+    s = _STYLES.get(style_name) or _STYLES["bold_yellow"]
+    return int(s.get("words_per_line") or 4)
 
 
 def _build_style_line(style_name: str) -> str:
@@ -247,3 +354,219 @@ def has_word_level_data(segments: list[dict[str, Any]] | None) -> bool:
             if "start" in words[0] and "end" in words[0]:
                 return True
     return False
+
+
+# ===========================================================================
+# PHASE 1 — Standalone caption bake.
+#
+# The original generate_ass() consumes word-level transcript segments and
+# re-bases them. The drawer UI lets users post-edit lines DIRECTLY — they
+# already arrive in clip-relative time, already grouped. So we add two siblings:
+#
+#   generate_ass_from_lines(lines, out_path, style)
+#   bake_captions_to_video(clip_path, lines, style)
+#
+# bake_captions_to_video runs ffmpeg with the `ass` filter to burn fresh
+# captions onto an already-reframed clip — no full reframe re-run needed.
+# Atomic replace: write to .{stem}.editing.mp4, then os.replace to swap in.
+#
+# Avoid importing from `stages.py` (would be a cycle — stages imports from
+# captions). Inline tiny ffmpeg-discovery helper instead.
+# ===========================================================================
+
+import os as _os
+import shutil as _shutil
+import subprocess as _subprocess
+from pathlib import Path as _Path
+
+
+def _bundled_ffmpeg() -> str | None:
+    here = _Path(__file__).resolve().parent
+    candidates = [
+        here / "bin" / "ffmpeg",
+        here.parent / "_up_" / "python-sidecar" / "bin" / "ffmpeg",
+    ]
+    for c in candidates:
+        if c.is_file() and _os.access(c, _os.X_OK):
+            return str(c)
+    return None
+
+
+def _ffmpeg_bin() -> str:
+    return (
+        _os.environ.get("JUNIOR_FFMPEG")
+        or _bundled_ffmpeg()
+        or _shutil.which("ffmpeg")
+        or "ffmpeg"
+    )
+
+
+def _ass_filter_arg(ass_path: _Path) -> str:
+    """Escape colons + backslashes so ffmpeg's filter parser accepts the path."""
+    return "ass=" + str(ass_path).replace("\\", "\\\\").replace(":", "\\:")
+
+
+def generate_ass_from_lines(
+    lines: list[dict[str, Any]],
+    out_path: _Path,
+    *,
+    style: str = "bold_yellow",
+    canvas_w: int = DEFAULT_PLAY_W,
+    canvas_h: int = DEFAULT_PLAY_H,
+) -> _Path:
+    """Emit an ASS file directly from user-edited caption lines.
+
+    Line shape (already clip-relative, already grouped):
+        { "start": 1.234, "end": 3.456, "text": "the part nobody talks about",
+          "words": [{"start": .., "end": .., "text": ".."}]  # optional
+        }
+
+    If `words` is present, each gets its own karaoke fill tag (per-word
+    highlight). If `words` is missing, the whole line gets one karaoke fill
+    spanning the full line duration (no per-word animation, but still picks
+    up the style's primary/secondary colors).
+    """
+    style_key = style if style in _STYLES else "bold_yellow"
+
+    body_events: list[str] = []
+    for ln in lines or []:
+        try:
+            start_s = float(ln.get("start") or 0.0)
+            end_s = float(ln.get("end") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if end_s <= start_s:
+            continue
+
+        words = ln.get("words")
+        if isinstance(words, list) and words:
+            # Per-word karaoke: emit one {\kf<centi>} per word with its own
+            # duration. Clamp to line bounds in case the editor leaves slop.
+            packed: list[tuple[float, float, str]] = []
+            for w in words:
+                try:
+                    ws = max(start_s, float(w.get("start") or start_s))
+                    we = min(end_s, float(w.get("end") or end_s))
+                except (TypeError, ValueError):
+                    continue
+                text = (w.get("text") or w.get("word") or "").strip()
+                if not text or we <= ws:
+                    continue
+                packed.append((ws, we, text))
+            if packed:
+                body_events.append(_dialogue_for_line(packed))
+                continue
+
+        # No word data → render the whole line as a single karaoke unit.
+        whole_text = (ln.get("text") or "").strip()
+        if not whole_text:
+            continue
+        body_events.append(_dialogue_for_line([(start_s, end_s, whole_text)]))
+
+    header = (
+        "[Script Info]\n"
+        "ScriptType: v4.00+\n"
+        f"PlayResX: {canvas_w}\n"
+        f"PlayResY: {canvas_h}\n"
+        "ScaledBorderAndShadow: yes\n"
+        "WrapStyle: 2\n"
+        "\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
+        "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
+        "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
+        "Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        f"{_build_style_line(style_key)}\n"
+        "\n"
+        "[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(header + "\n".join(body_events) + "\n", encoding="utf-8")
+    return out_path
+
+
+def bake_captions_to_video(
+    clip_path: _Path,
+    lines: list[dict[str, Any]],
+    *,
+    style: str = "brand_fuchsia",
+    out_path: _Path | None = None,
+    canvas_w: int = DEFAULT_PLAY_W,
+    canvas_h: int = DEFAULT_PLAY_H,
+) -> _Path:
+    """Burn caption `lines` into `clip_path` using the named style.
+
+    Defaults to ATOMIC REPLACE — writes to a sibling `.editing.mp4`, then
+    `os.replace`s into `clip_path`. Pass `out_path` to write somewhere else
+    and keep the original.
+
+    Returns the path of the written file (clip_path on atomic replace).
+    """
+    clip_path = _Path(clip_path)
+    if not clip_path.is_file():
+        raise FileNotFoundError(f"clip not found: {clip_path}")
+
+    ass_path = clip_path.with_name(clip_path.stem + ".edit.ass")
+    target = out_path if out_path is not None else clip_path.with_name(
+        f".{clip_path.stem}.editing{clip_path.suffix}"
+    )
+
+    # Track files we created so we can scrub them on either path. The .ass file
+    # always gets removed (was a transient artefact for ffmpeg). The .editing
+    # temp only sticks around on the out_path-supplied branch or on failure;
+    # on the atomic-replace branch we want it gone after os.replace anyway
+    # (the rename moves it, so the original path no longer exists — but the
+    # try/finally still guards against a half-written file on ffmpeg failure
+    # for an out_path that points at an explicit destination).
+    bake_ok = False
+    try:
+        generate_ass_from_lines(
+            lines,
+            ass_path,
+            style=style,
+            canvas_w=canvas_w,
+            canvas_h=canvas_h,
+        )
+
+        cmd = [
+            _ffmpeg_bin(), "-nostdin", "-hide_banner",
+            "-loglevel", "error", "-y",
+            "-i", str(clip_path),
+            "-vf", _ass_filter_arg(ass_path),
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "copy",
+            "-movflags", "+faststart",
+            str(target),
+        ]
+        proc = _subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            # Surface ffmpeg's stderr so the sidecar can show it to the user.
+            raise RuntimeError(
+                f"ffmpeg caption bake failed for {clip_path.name}: "
+                f"{proc.stderr.strip()[:400]}"
+            )
+
+        if out_path is None:
+            # Atomic swap onto the original file.
+            _os.replace(target, clip_path)
+            result = clip_path
+        else:
+            result = target
+        bake_ok = True
+        return result
+    finally:
+        # Always scrub the .ass transient artefact (per-clip pollution).
+        try:
+            ass_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        # On failure path, scrub the partial .editing.mp4 temp if it leaked.
+        # On atomic-replace success, the target was moved onto clip_path so
+        # the path no longer exists — unlink(missing_ok) is a no-op.
+        if not bake_ok and out_path is None:
+            try:
+                target.unlink(missing_ok=True)
+            except OSError:
+                pass

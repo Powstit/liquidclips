@@ -57,8 +57,10 @@ const FEED: Post[] = [
     posted_at: "today",
     tag: "campaign",
     title: "Daniel Diyepriye Beauty — $80k recurring brand campaign · Coming Soon",
-    body: "Skincare brand replacing ad spend with clipper-powered distribution. RPM ladder: $10 base / $20 Pro / $30 invite-only Agency. Recurring monthly once funding threshold lands.",
-    cta: { label: "View status →", url: "https://liquidclips.app/campaigns/ddb" },
+    body: "Skincare brand replacing ad spend with clipper-powered distribution. RPM ladder: $10 base / $20 Pro / $30 invite-only Agency. Recurring monthly once funding threshold lands. Brief drops here when funding clears — no action yet.",
+    // CTA intentionally omitted while liquidclips.app/campaigns/ddb is unbuilt.
+    // Restore once the campaign brief page is live so the click goes
+    // somewhere honest instead of 404'ing.
     Icon: Sparkles,
   },
   {
