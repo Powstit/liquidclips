@@ -24,6 +24,7 @@ build/
 .turbo/
 out/
 .vercel/
+*.tsbuildinfo
 
 # --- Rust / Tauri (the 11 GB beast) -----------------------------------------
 target/
