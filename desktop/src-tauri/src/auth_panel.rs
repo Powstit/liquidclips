@@ -20,6 +20,21 @@
 use tauri::{
     webview::WebviewBuilder, AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl,
 };
+use tauri_plugin_shell::ShellExt;
+
+// Custom URL schemes that MUST bypass webview navigation and reach the OS
+// deep-link bus. Without this intercept, the WKWebView swallows
+// `liquidclips://activate?token=...` as a failed navigation; the OS-level
+// `onOpenUrl` listener never fires; activation hangs forever and the user
+// sees an infinite "still asking to log in" loop. Mirrors browse.rs's
+// commerce-redirect intercept pattern but for the reverse direction:
+// browse.rs punts checkout OUT to the system browser; we punt deep links
+// OUT to the OS so the existing app instance receives them.
+const ACTIVATION_SCHEMES: &[&str] = &["liquidclips", "junior"];
+
+fn is_activation_url(url: &tauri::Url) -> bool {
+    ACTIVATION_SCHEMES.iter().any(|s| url.scheme() == *s)
+}
 
 pub const PANEL_LABEL: &str = "auth_panel";
 
@@ -74,7 +89,34 @@ pub async fn open_auth_panel(app: AppHandle, url: String) -> Result<(), String> 
         .ok_or_else(|| "main window not found".to_string())?;
     let (pos, size) = panel_bounds(&app).ok_or_else(|| "main window bounds unavailable".to_string())?;
 
-    let builder = WebviewBuilder::new(PANEL_LABEL, WebviewUrl::External(parsed_url));
+    let app_for_filter = app.clone();
+    let builder = WebviewBuilder::new(PANEL_LABEL, WebviewUrl::External(parsed_url))
+        .on_navigation(move |nav_url| {
+            // Intercept activation deep links BEFORE the webview tries to
+            // load them. shell::open routes the URL through the OS, which
+            // re-dispatches it to the already-running Liquid Clips
+            // instance via the registered URL scheme handler — that's
+            // where the activation.ts `onOpenUrl` listener catches it,
+            // verifies the challenge, and writes the JWT to keychain.
+            //
+            // We also tear down the panel here so the user lands back on
+            // the main window the moment activation completes. The
+            // frontend's `auth-panel-closed` event fires from
+            // close_auth_panel and triggers a /sync refresh.
+            if is_activation_url(nav_url) {
+                let target = nav_url.to_string();
+                let app = app_for_filter.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = app.shell().open(target, None);
+                    if let Some(wv) = app.get_webview(PANEL_LABEL) {
+                        let _ = wv.close();
+                        let _ = app.emit("auth-panel-closed", ());
+                    }
+                });
+                return false;
+            }
+            true
+        });
 
     main.add_child(builder, pos, size)
         .map_err(|e| format!("add_child failed: {e}"))?;
