@@ -248,7 +248,32 @@ def create_channel(
             f"Unsupported platform '{body.platform}'. Supported: {_SUPPORTED_PLATFORMS}",
         )
 
-    # Tier cap — soft fail with a clear upgrade message.
+    # IDEMPOTENT REUSE — every "Link TikTok" click on a clip card used to
+    # provision a brand-new Ayrshare sub-profile bound to an empty
+    # profile_key, orphaning whatever the user actually linked. Reuse
+    # any existing non-deleted row for the same (user, platform) so the
+    # second click resumes the same OAuth flow instead of spawning a new
+    # empty profile. Old clients automatically benefit because the path
+    # is server-side.
+    existing_for_platform = (
+        db.query(SocialChannel)
+        .filter(SocialChannel.user_id == user.id)
+        .filter(SocialChannel.platform == body.platform)
+        .filter(SocialChannel.status != "deleted")
+        .order_by(SocialChannel.created_at.asc())
+        .first()
+    )
+    if existing_for_platform is not None:
+        link_url = _build_platform_link_url(
+            existing_for_platform.ayrshare_profile_key,
+            existing_for_platform.platform,
+        )
+        return ChannelCreateResponse(
+            channel=_to_response(existing_for_platform),
+            link_url=link_url,
+        )
+
+    # Tier cap — counts all non-deleted channels across platforms.
     existing = (
         db.query(SocialChannel)
         .filter(SocialChannel.user_id == user.id)
@@ -375,6 +400,10 @@ def refresh_channel(
 
 class RelinkResponse(BaseModel):
     link_url: str
+    # Returning the row lets the desktop re-seed its in-memory state in one
+    # round-trip — previously InlineScheduler had to call refresh after
+    # relink, doubling the network cost on every "I finished — recheck."
+    channel: ChannelResponse
 
 
 @router.post("/{channel_id}/relink", response_model=RelinkResponse)
@@ -388,4 +417,7 @@ def relink_channel(
     row = db.get(SocialChannel, channel_id)
     if not row or row.user_id != user.id or row.status == "deleted":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "channel not found")
-    return RelinkResponse(link_url=_build_platform_link_url(row.ayrshare_profile_key, row.platform))
+    return RelinkResponse(
+        link_url=_build_platform_link_url(row.ayrshare_profile_key, row.platform),
+        channel=_to_response(row),
+    )

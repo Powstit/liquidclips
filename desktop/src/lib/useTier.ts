@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { syncStatus, type SyncStatus, type Tier } from "./backend";
+import { meStatus, syncStatus, type SyncStatus, type Tier } from "./backend";
 
 // Lightweight tier hook. Defaults to "free" when sync hasn't completed or the
 // user has no license JWT, so gating UX renders immediately on first paint
@@ -70,6 +70,29 @@ const TIER_CACHE_KEY = "lc:cached_tier";
 
 const VALID_TIERS = new Set<Tier>(["free", "solo", "pro", "agency", "growth", "autopilot"]);
 
+// ────────────────────────────────────────────────────────────────────────────
+// Admin email fallback — defensive embed so the master account NEVER trips
+// upgrade walls, even if:
+//   • backend /sync hasn't redeployed yet
+//   • localStorage cache is poisoned with "free" from a pre-promotion session
+//   • a single endpoint forgets to honor admin_override
+//
+// KEEP IN SYNC with junior-backend/app/features.py `_FALLBACK_ADMIN_EMAILS`.
+// Source of truth is the backend env JUNIOR_ADMIN_EMAILS; this list is the
+// frontend belt-and-braces for "founder demo never breaks on a flaky deploy".
+// All comparisons are case-insensitive + whitespace-tolerant.
+const ADMIN_EMAIL_FALLBACK = new Set<string>([
+  "danieldiyepriye@gmail.com",
+  "mrddokubo@gmail.com",
+  "crazycatjackkids@gmail.com",
+  "thedoks2019@gmail.com",
+]);
+
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return ADMIN_EMAIL_FALLBACK.has(email.trim().toLowerCase());
+}
+
 function readCachedTier(): Tier {
   // SSR / preview / corrupt-storage safety — anything that throws or returns
   // an unknown tier degrades to "free", which is what we'd render anyway.
@@ -104,15 +127,26 @@ export function useTier(): TierState {
 
   const doRefresh = useCallback(async (signal: { cancelled: boolean }) => {
     try {
-      const s = await syncStatus();
+      // Parallel: tier comes from /sync, identity from /me. We use the email
+      // from /me as a defensive fallback when /sync's admin_override field
+      // is missing (e.g. backend hasn't redeployed yet) — keeps the master
+      // account uncapped even mid-deploy.
+      const [s, me] = await Promise.all([
+        syncStatus(),
+        meStatus().catch(() => null),
+      ]);
       if (signal.cancelled) return;
+      const adminByEmail = isAdminEmail(me?.email);
       if (s) {
         setStatus(s);
-        // Admin override — backend marks JUNIOR_ADMIN_EMAILS users as
-        // admin_override=true. Force "agency" so founder demos don't trip
-        // their own upgrade walls. Cache it too so cold boot before /sync
-        // resolves keeps the founder view.
-        const next: Tier = s.admin_override ? "agency" : s.tier;
+        // Admin override — three signals, any one triggers agency tier:
+        //   1. Backend `admin_override` field (post-redeploy)
+        //   2. Backend `effective_tier === "autopilot"` (pre-existing live
+        //      backend behavior — admins always get elevated here)
+        //   3. Frontend `isAdminEmail(me.email)` fallback (bulletproof
+        //      against any backend regression — see ADMIN_EMAIL_FALLBACK)
+        const isAdmin = s.admin_override === true || adminByEmail || s.tier === "autopilot";
+        const next: Tier = isAdmin ? "agency" : s.tier;
         inMemoryTier.current = next;
         setCachedTier(next);
         writeCachedTier(next);
@@ -120,7 +154,14 @@ export function useTier(): TierState {
       // s === null: backend reachable but said "no JWT yet" (unactivated).
       // Treat as a real "free" answer, not a transient failure — overwrite
       // cache so a previously-paid signed-out machine doesn't keep claiming
-      // Pro after a sign-out.
+      // Pro after a sign-out. UNLESS the email is admin — that path keeps
+      // the master account uncapped even in an unactivated weird state.
+      else if (adminByEmail) {
+        setStatus(null);
+        inMemoryTier.current = "agency";
+        setCachedTier("agency");
+        writeCachedTier("agency");
+      }
       else {
         setStatus(null);
         inMemoryTier.current = "free";

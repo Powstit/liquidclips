@@ -21,6 +21,7 @@ import {
   createChannel,
   listChannels,
   refreshChannel,
+  relinkChannel,
   socialGetConnection,
   type Channel,
   type ConnectionPlatform,
@@ -152,25 +153,49 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
     setConnectingPlatform(platform);
     setStatus({ kind: "idle" });
     try {
-      const { channel, link_url } = await createChannel({
-        platform,
-        label: `${PLATFORM_LABELS[platform]} #1`,
-      });
-      await openExternal(link_url);
-      setStatus({ kind: "linking", platform, channelId: channel.id, linkUrl: link_url });
+      // Reuse an existing non-deleted channel for this platform if one is
+      // already provisioned. The previous version called createChannel
+      // unconditionally and spawned a fresh Ayrshare sub-profile on every
+      // click — Daniel's actual TikTok handle was bound to the FIRST
+      // sub-profile but every subsequent click made a new empty one, so
+      // the OAuth never reattached anything and "TikTok link" appeared
+      // broken. The backend now upserts too, but the desktop short-cut
+      // saves a round-trip + makes the rescue UI work.
+      const existing = channels.find(
+        (c) => c.platform === platform && c.status !== "deleted",
+      );
+      let channelId: string;
+      let linkUrl: string;
+      if (existing) {
+        const r = await relinkChannel(existing.id);
+        channelId = r.channel.id;
+        linkUrl = r.link_url;
+      } else {
+        const r = await createChannel({
+          platform,
+          label: `${PLATFORM_LABELS[platform]} #1`,
+        });
+        channelId = r.channel.id;
+        linkUrl = r.link_url;
+      }
+      await openExternal(linkUrl);
+      setStatus({ kind: "linking", platform, channelId, linkUrl });
 
-      let latest = channel;
+      let latest = await refreshChannel(channelId);
       for (const delay of [3_000, 7_000, 12_000, 20_000]) {
-        await new Promise((resolve) => window.setTimeout(resolve, delay));
-        latest = await refreshChannel(channel.id);
         if (latest.status === "active") break;
+        await new Promise((resolve) => window.setTimeout(resolve, delay));
+        latest = await refreshChannel(channelId);
       }
       await reloadConnections();
       if (latest.status === "active") {
         setPickedChannelIds((cur) => new Set(cur).add(latest.id));
         setStatus({ kind: "idle" });
       } else {
-        setStatus({ kind: "linking", platform, channelId: channel.id, linkUrl: link_url });
+        // Stay in the linking state — the rescue UI below (Open link again /
+        // I finished — recheck) takes over so the user has a clear next
+        // action instead of staring at a stuck spinner.
+        setStatus({ kind: "linking", platform, channelId, linkUrl });
       }
     } catch (e) {
       setStatus({ kind: "error", message: humanError(e) });
@@ -358,24 +383,43 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
               const selected = pickedChannelIds.has(channel.id);
               const id = channel.platform as PlatformId;
               const known = ["youtube", "tiktok", "instagram", "x"].includes(id);
+              const pendingLink = channel.status === "pending_link";
               return (
                 <button
                   key={channel.id}
                   type="button"
-                  onClick={() => toggleChannel(channel.id)}
+                  onClick={() => {
+                    // pending_link channels need OAuth completion, not
+                    // selection. Click resumes the link flow on the existing
+                    // channel (backend dedupes via the new idempotent
+                    // upsert + frontend prefers relink over create).
+                    if (pendingLink && channel.platform in PLATFORM_LABELS) {
+                      void connectPlatform(channel.platform as ConnectionPlatform);
+                    } else {
+                      toggleChannel(channel.id);
+                    }
+                  }}
                   className={
-                    selected
+                    pendingLink
+                      ? "inline-flex items-center gap-2 rounded-full border border-[#DC2626]/40 bg-[#DC2626]/10 px-3 py-1.5 font-sans text-[12px] font-medium text-[#DC2626] hover:bg-[#DC2626]/15"
+                      : selected
                       ? "inline-flex items-center gap-2 rounded-full border-2 border-fuchsia bg-fuchsia/15 px-3 py-1.5 font-sans text-[12px] font-semibold text-fuchsia"
                       : "inline-flex items-center gap-2 rounded-full border border-line bg-paper-elev px-3 py-1.5 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia"
                   }
-                  title={`${prettyPlatform(channel.platform)} ${channel.handle ?? channel.label}`}
+                  title={
+                    pendingLink
+                      ? `Finish linking ${prettyPlatform(channel.platform)} — click to resume`
+                      : `${prettyPlatform(channel.platform)} ${channel.handle ?? channel.label}`
+                  }
                 >
-                  <span className={selected ? "grid h-5 w-5 place-items-center rounded-full bg-fuchsia text-paper" : "grid h-5 w-5 place-items-center rounded-full bg-ink text-paper"}>
+                  <span className={pendingLink ? "grid h-5 w-5 place-items-center rounded-full bg-[#DC2626] text-paper" : selected ? "grid h-5 w-5 place-items-center rounded-full bg-fuchsia text-paper" : "grid h-5 w-5 place-items-center rounded-full bg-ink text-paper"}>
                     {known ? <PlatformIcon id={id} className="h-2.5 w-2.5" /> : (
                       <span className="font-mono text-[9px]">{channel.platform[0]?.toUpperCase()}</span>
                     )}
                   </span>
-                  <span className="max-w-[150px] truncate">{channel.label}</span>
+                  <span className="max-w-[150px] truncate">
+                    {pendingLink ? `Finish ${prettyPlatform(channel.platform)} link` : channel.label}
+                  </span>
                 </button>
               );
             })}
