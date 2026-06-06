@@ -119,6 +119,7 @@ export function ClipPreview({
   // Esc closes, ←/→ navigate.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (document.getElementById("__reaction-source-picker")) return;
       if (e.key === "Escape") { onClose(); return; }
       const t = e.target as HTMLElement | null;
       if (t && /INPUT|TEXTAREA/.test(t.tagName)) return;
