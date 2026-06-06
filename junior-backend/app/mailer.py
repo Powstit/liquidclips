@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from html import escape as _escape_html
 from dataclasses import dataclass
 from typing import Any
 
@@ -39,6 +40,9 @@ class MailContext:
     account_url: str
     download_url: str
     reply_to: str
+    # v0.6.11 — Whop community / chat hub. Used by the welcome email's
+    # "Join the community" callout and any future affiliate-onboarding mail.
+    whop_manage_url: str = ""
 
     @classmethod
     def build(cls) -> "MailContext":
@@ -48,6 +52,7 @@ class MailContext:
             account_url=s.account_site_url,
             download_url=s.app_download_url,
             reply_to=s.resend_reply_to,
+            whop_manage_url=getattr(s, "whop_manage_url", "") or "",
         )
 
 
@@ -61,26 +66,56 @@ def _send(
     text: str,
     tag: str,
 ) -> None:
-    """Synchronous Resend send. Caller wraps in `_async()` for fire-and-forget."""
+    """Synchronous Resend send. Caller wraps in `_async()` for fire-and-forget.
+
+    v0.6.11 — Attaches the Kade glyph as a CID inline part (`cid:kade-glyph`)
+    so the brand mark renders in iOS Gmail (which silently drops data:image/png
+    URIs). The HTML templates reference the CID; if the attachment file is
+    missing we still send the email — the alien just won't render."""
     settings = get_settings()
     if not settings.resend_api_key:
         log.info("[mailer] RESEND_API_KEY not configured — skipping send to=%s tag=%s", to, tag)
         return
+    payload: dict[str, Any] = {
+        "from": settings.resend_from,
+        "to": [to],
+        "reply_to": [settings.resend_reply_to],
+        "subject": subject,
+        "html": html,
+        "text": text,
+        "tags": [{"name": "category", "value": tag}],
+    }
+    glyph_attachment = _kade_glyph_attachment()
+    if glyph_attachment is not None:
+        payload["attachments"] = [glyph_attachment]
     try:
         import resend
         resend.api_key = settings.resend_api_key
-        resend.Emails.send({
-            "from": settings.resend_from,
-            "to": [to],
-            "reply_to": [settings.resend_reply_to],
-            "subject": subject,
-            "html": html,
-            "text": text,
-            "tags": [{"name": "category", "value": tag}],
-        })
+        resend.Emails.send(payload)
         log.info("[mailer] sent tag=%s to=%s", tag, to)
     except Exception as e:  # noqa: BLE001
         log.warning("[mailer] send failed tag=%s to=%s err=%s", tag, to, e)
+
+
+def _kade_glyph_attachment() -> dict[str, Any] | None:
+    """Reads the bundled Kade alien PNG and returns a Resend inline attachment
+    dict (`content_id="kade-glyph"`). Returns None on any failure so the send
+    path stays resilient — emails ship regardless of whether the mark renders."""
+    try:
+        from pathlib import Path
+        import base64
+        glyph_path = Path(__file__).resolve().parent / "assets" / "kade-glyph-64.png"
+        if not glyph_path.is_file():
+            return None
+        return {
+            "filename": "kade-glyph.png",
+            "content": base64.b64encode(glyph_path.read_bytes()).decode("ascii"),
+            "content_id": "kade-glyph",
+            "content_type": "image/png",
+            "disposition": "inline",
+        }
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _async(fn, *args, **kwargs) -> None:
@@ -417,6 +452,77 @@ def send_admin_kyc_alert(
         _async(_send, to=addr, subject=subject, html=html, text=text, tag="admin_kyc_alert")
 
 
+def send_admin_function_heatmap_alert(result: dict[str, Any]) -> None:
+    """Email admins when Railway's automated function heat-map finds red gates.
+
+    The heat-map is non-destructive: it checks public URLs, config, DB,
+    schedules, webhooks, and telemetry state. This alert intentionally fires
+    only on failures so warnings still land in PostHog/Admin HQ without inbox
+    noise every five hours.
+    """
+    recipients = _admin_recipients()
+    if not recipients:
+        return
+    subject, html, text = render_admin_function_heatmap_alert(result)
+    for addr in recipients:
+        _async(_send, to=addr, subject=subject, html=html, text=text, tag="admin_function_heatmap")
+
+
+def render_admin_function_heatmap_alert(result: dict[str, Any]) -> tuple[str, str, str]:
+    ctx = MailContext.build()
+    failures = [g for g in result.get("gates", []) if isinstance(g, dict) and g.get("status") == "fail"]
+    score = result.get("score", "—")
+    generated_at = result.get("generated_at", "unknown")
+    subject = f"Liquid Clips heat-map red — {len(failures)} failure(s), score {score}/100"
+
+    rows_html = []
+    rows_text = []
+    for g in failures[:12]:
+        label = str(g.get("label") or g.get("key") or "Unknown gate")
+        owner = str(g.get("owner") or "unknown")
+        detail = str(g.get("detail") or "")
+        action = str(g.get("action") or "Open Admin HQ and inspect this gate.")
+        rows_html.append(
+            f"""
+            <tr>
+              <td style="padding:10px 12px;border-bottom:1px solid {LINE};">
+                <div style="font-size:12px;font-weight:700;color:{INK};">{_escape_html(label)}</div>
+                <div style="font-size:11px;color:{TEXT_TERTIARY};">Owner: {_escape_html(owner)}</div>
+                <div style="font-size:12px;line-height:1.5;color:{TEXT_SECONDARY};margin-top:4px;">{_escape_html(detail)}</div>
+                <div style="font-size:12px;line-height:1.5;color:{FUCHSIA};margin-top:4px;">{_escape_html(action)}</div>
+              </td>
+            </tr>
+            """
+        )
+        rows_text.append(f"- {label} [{owner}]: {detail} | Action: {action}")
+
+    body_html = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">railway cron · function heat-map</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.02em;line-height:1.1;margin:0 0 18px;color:{INK};">
+  Function heat-map needs attention.
+</h1>
+<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};">
+  Railway's 5-hour automated launch heat-map found <strong style="color:{INK};">{len(failures)} red gate(s)</strong>.
+  Score: <strong style="color:{INK};">{score}/100</strong>. Generated: {_escape_html(str(generated_at))}.
+</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin:12px 0 18px;background:{DARK_CARD_2};border:1px solid {LINE};border-radius:12px;">
+  {''.join(rows_html)}
+</table>
+<p style="margin:0;font-size:13px;line-height:1.6;color:{TEXT_TERTIARY};">
+  Open Admin HQ for the full heat-map and warnings: <a href="{ctx.account_url}/admin" style="color:{FUCHSIA};">{ctx.account_url}/admin</a>
+</p>
+"""
+    html = _shell(subject, body_html, ctx=ctx)
+    text = (
+        f"Liquid Clips function heat-map red\n"
+        f"Score: {score}/100\n"
+        f"Generated: {generated_at}\n\n"
+        + "\n".join(rows_text)
+        + f"\n\nAdmin HQ: {ctx.account_url}/admin\n"
+    )
+    return subject, html, text
+
+
 def render_admin_paid_customer_alert(
     *,
     customer_email: str,
@@ -440,27 +546,40 @@ def render_admin_paid_customer_alert(
     extras_block = "<br>".join(extras)
     extras_block_text = "\n".join(line.replace("<strong>", "").replace("</strong>", "") for line in extras)
 
-    html = f"""<!doctype html>
-<html><body style="margin:0;padding:32px;background:#FAF7F2;color:#0A0A0F;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Geist,sans-serif;">
-  <div style="max-width:480px;margin:0 auto;background:#fff;border:1px solid #E8DFD2;border-radius:16px;padding:32px;">
-    <div style="display:inline-block;background:#FF1A8C;color:#fff;width:32px;height:32px;border-radius:8px;text-align:center;line-height:32px;font-weight:700;font-family:'Geist Mono',monospace;">/</div>
-    <h1 style="font-family:Fraunces,Georgia,serif;font-size:24px;margin:18px 0 8px;">New paid customer</h1>
-    <p style="font-size:14px;line-height:1.6;color:#5A5560;margin:0 0 18px;">
-      <strong style="color:#FF1A8C;">{tier.upper()}</strong> tier just activated via {pretty_source}.
-    </p>
-    <table style="font-family:'Geist Mono',monospace;font-size:13px;border-collapse:collapse;width:100%;">
-      <tr><td style="padding:6px 0;color:#8A8590;width:90px;">Email</td><td style="padding:6px 0;">{customer_email}</td></tr>
-      <tr><td style="padding:6px 0;color:#8A8590;">Tier</td><td style="padding:6px 0;">{tier}</td></tr>
-      <tr><td style="padding:6px 0;color:#8A8590;">Source</td><td style="padding:6px 0;">{pretty_source}</td></tr>
-      {f'<tr><td style="padding:6px 0;color:#8A8590;">Plan</td><td style="padding:6px 0;">{monthly_usd}</td></tr>' if monthly_usd else ''}
-      {f'<tr><td style="padding:6px 0;color:#8A8590;">Note</td><td style="padding:6px 0;">{note}</td></tr>' if note else ''}
-    </table>
-    <p style="margin:24px 0 0;font-size:12px;color:#8A8590;font-family:'Geist Mono',monospace;">
-      Automated alert from junior-backend.<br>
-      Adjust recipients via JUNIOR_ADMIN_EMAILS env var.
-    </p>
-  </div>
-</body></html>"""
+    # v0.6.11 — Admin alert now renders through the same dark+Kade shell as
+    # customer-facing mail so Daniel's inbox is consistent. Eyebrow shows the
+    # signal at a glance; the data table reads at terminal speed.
+    plan_row = (
+        f'<tr><td style="padding:7px 0;color:{TEXT_TERTIARY};">Plan</td><td style="padding:7px 0;color:{INK};">{monthly_usd}</td></tr>'
+        if monthly_usd else ''
+    )
+    note_row = (
+        f'<tr><td style="padding:7px 0;color:{TEXT_TERTIARY};">Note</td><td style="padding:7px 0;color:{INK};">{note}</td></tr>'
+        if note else ''
+    )
+    body_html = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">paid customer · {pretty_source}</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.02em;line-height:1.1;margin:0 0 18px;color:{INK};">
+  <span style="color:{FUCHSIA};">{tier.upper()}</span> activated.
+</h1>
+<p style="font-size:14px;line-height:1.55;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  {tier.upper()} tier just activated via {pretty_source}.
+</p>
+<table cellpadding="0" cellspacing="0" border="0" style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:13px;border-collapse:collapse;width:100%;background:{DARK_CARD_2};border:1px solid {LINE};border-radius:12px;padding:12px;">
+  <tr><td style="padding:7px 12px;color:{TEXT_TERTIARY};width:90px;">Email</td><td style="padding:7px 12px;color:{INK};">{customer_email}</td></tr>
+  <tr><td style="padding:7px 12px;color:{TEXT_TERTIARY};">Tier</td><td style="padding:7px 12px;color:{INK};">{tier}</td></tr>
+  <tr><td style="padding:7px 12px;color:{TEXT_TERTIARY};">Source</td><td style="padding:7px 12px;color:{INK};">{pretty_source}</td></tr>
+  {plan_row}
+  {note_row}
+</table>
+<p style="margin:22px 0 0;font-size:11px;color:{TEXT_TERTIARY};font-family:'Geist Mono',ui-monospace,Menlo,monospace;letter-spacing:0.08em;">
+  Automated alert from junior-backend. Adjust recipients via JUNIOR_ADMIN_EMAILS.
+</p>
+"""
+    # Build a minimal MailContext for the shell so links + footer still work.
+    # No customer download CTA in admin alerts — this is an internal heads-up.
+    _ctx = MailContext.build()
+    html = _shell(subject, body_html, ctx=_ctx)
 
     text = f"""New paid customer
 
@@ -631,48 +750,105 @@ def render_whop_claim(*, email: str, claim_url: str, first_name: str | None, ctx
 
 # Shared design tokens — kept inline so the templates are self-contained and
 # any future "extract them" refactor doesn't fragment the brand.
-INK = "#0A0A0F"
-PAPER = "#FAF7F2"
-PAPER_WARM = "#F5EFE7"
-LINE = "#E8DFD2"
-FUCHSIA = "#FF1A8C"
-TEXT_SECONDARY = "#5A5560"
-TEXT_TERTIARY = "#8A8590"
+#
+# v0.6.11 — Flipped to a dark-mode palette per Daniel's brand direction
+# ("black with pink text"). Names kept (INK/PAPER/TEXT_SECONDARY/etc.) so the
+# 15+ existing template fragments don't need per-string edits — each token now
+# reads as its DARK-mode equivalent. Admin alert templates use hardcoded
+# colors and are unaffected.
+#
+# Mapping (old light → new dark):
+#   INK       (was #0A0A0F black text)       → cream text on dark
+#   PAPER     (was #FAF7F2 page bg / btn-fg) → dark card surface (button label still on it)
+#   PAPER_WARM(was #F5EFE7 outer bg)         → deepest black outer bg
+#   LINE      (was #E8DFD2 hairline)         → warm-pink-tinted hairline
+INK            = "#F5EFE7"   # body / headline text on dark
+PAPER          = "#0F0F14"   # card surface (also the colour the button "label" stripe sits on)
+PAPER_WARM     = "#050507"   # outermost page bg, near-pure black
+LINE           = "#231423"   # warm pink-tinted hairline
+FUCHSIA        = "#FF1A8C"
+TEXT_SECONDARY = "#B5AFA8"   # secondary body copy (paragraphs, list items)
+TEXT_TERTIARY  = "#7A7672"   # tertiary / footer / monocaps
+
+# Convenience aliases used by the dark shell — keep them named so the chrome
+# block remains readable and easy to retune separately from the body tokens.
+DARK_BG       = PAPER_WARM
+DARK_CARD     = PAPER
+DARK_CARD_2   = "#15151B"
+DARK_BORDER   = LINE
+DARK_TEXT     = INK
+DARK_TEXT_DIM = TEXT_TERTIARY
+
+# v0.6.11 — Kade glyph (the pink Space-Invaders alien) inlined as a base64 PNG
+# so email clients render it without an external host (Outlook strips remote
+# images by default; Gmail caches them; CIDs are fragile through forwarders).
+# Source: app/assets/kade-glyph-64.png (64×64, ~3.4KB). Re-encoded at import
+# time so dropping a new PNG into assets/ swaps the brand mark without code
+# edits. Black square + pink alien = LIQUID CLIPS mark.
+def _load_kade_glyph_data_uri() -> str:
+    try:
+        from pathlib import Path
+        import base64
+        glyph_path = Path(__file__).resolve().parent / "assets" / "kade-glyph-64.png"
+        if not glyph_path.is_file():
+            return ""
+        encoded = base64.b64encode(glyph_path.read_bytes()).decode("ascii")
+        return f"data:image/png;base64,{encoded}"
+    except Exception:  # noqa: BLE001
+        # Never break email send because the brand mark missed. Templates
+        # fall back to the original fuchsia "/" square when the URI is empty.
+        return ""
+
+KADE_GLYPH_DATA_URI = _load_kade_glyph_data_uri()
 
 
 def _shell(title: str, body_html: str, *, ctx: MailContext) -> str:
-    """Wrap a content fragment in the Liquid Clips email chrome — brand mark at
-    top, content card, footer with legal links. Inline styles only."""
+    """Wrap a content fragment in the Liquid Clips email chrome — Kade brand
+    mark at top, dark card with fuchsia accents, footer with legal links.
+    Inline styles only.
+
+    v0.6.11 — Dark chrome (black bg + pink accents) per Daniel's brand
+    direction. The Kade glyph is referenced via `cid:kade-glyph` and attached
+    in `_send()` as an inline MIME part — that's the only format iOS Gmail
+    reliably renders for sub-100KB inline imagery."""
+    glyph_cell = (
+        f'<td style="padding:0;width:48px;height:48px;text-align:left;vertical-align:middle;">'
+        f'<img src="cid:kade-glyph" width="40" height="40" alt="Kade" '
+        f'style="display:block;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:nearest-neighbor;image-rendering:pixelated;" />'
+        f'</td>'
+    )
     return f"""<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
+<meta name="color-scheme" content="dark">
+<meta name="supported-color-schemes" content="dark light">
 <title>{title}</title>
 </head>
-<body style="margin:0;padding:0;background:{PAPER_WARM};font-family:'Geist','Helvetica Neue',Arial,sans-serif;color:{INK};">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:{PAPER_WARM};padding:32px 16px;">
+<body style="margin:0;padding:0;background:{DARK_BG};font-family:'Geist','Helvetica Neue',Arial,sans-serif;color:{DARK_TEXT};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:{DARK_BG};padding:32px 16px;">
     <tr><td align="center">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:{PAPER};border:1px solid {LINE};border-radius:24px;overflow:hidden;">
-        <tr><td style="padding:32px 32px 8px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:{DARK_CARD};border:1px solid {DARK_BORDER};border-radius:24px;overflow:hidden;box-shadow:0 0 0 1px {DARK_BORDER}, 0 24px 60px rgba(255,26,140,0.10);">
+        <tr><td style="padding:28px 32px 8px;">
           <table role="presentation" cellpadding="0" cellspacing="0" border="0">
             <tr>
-              <td style="background:{FUCHSIA};color:{PAPER};font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-weight:700;font-size:18px;line-height:1;text-align:center;width:36px;height:36px;border-radius:8px;">/</td>
-              <td style="padding-left:12px;font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:{TEXT_TERTIARY};">liquid/clips</td>
+              {glyph_cell}
+              <td style="padding-left:14px;font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:13px;font-weight:600;letter-spacing:0.22em;text-transform:uppercase;color:{FUCHSIA};vertical-align:middle;">LIQUID&nbsp;CLIPS</td>
             </tr>
           </table>
         </td></tr>
-        <tr><td style="padding:8px 32px 28px;">
+        <tr><td style="padding:8px 32px 32px;">
           {body_html}
         </td></tr>
       </table>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;margin-top:18px;">
-        <tr><td align="center" style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:{TEXT_TERTIARY};line-height:1.6;">
-          <a href="{ctx.site_url}" style="color:{TEXT_TERTIARY};text-decoration:none;">liquidclips.app</a>
+        <tr><td align="center" style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:{DARK_TEXT_DIM};line-height:1.7;">
+          <a href="{ctx.site_url}" style="color:{FUCHSIA};text-decoration:none;">liquidclips.app</a>
           &nbsp;·&nbsp;
-          <a href="{ctx.site_url}/privacy" style="color:{TEXT_TERTIARY};text-decoration:none;">privacy</a>
+          <a href="{ctx.site_url}/privacy" style="color:{DARK_TEXT_DIM};text-decoration:none;">privacy</a>
           &nbsp;·&nbsp;
-          <a href="{ctx.site_url}/terms" style="color:{TEXT_TERTIARY};text-decoration:none;">terms</a>
+          <a href="{ctx.site_url}/terms" style="color:{DARK_TEXT_DIM};text-decoration:none;">terms</a>
           <br>
-          <span style="color:{TEXT_TERTIARY};">reply to this email — it reaches us directly.</span>
+          <span style="color:{DARK_TEXT_DIM};">reply to this email — it reaches us directly.</span>
         </td></tr>
       </table>
     </td></tr>
@@ -685,32 +861,83 @@ def _greeting(first_name: str | None) -> str:
 
 
 def _btn(label: str, url: str) -> str:
+    # v0.6.11 — Fuchsia pill on dark. White label for high contrast against
+    # the brand pink. Soft glow via box-shadow so the button feels lifted
+    # off the dark card without looking like a static raster.
     return (
         f'<a href="{url}" '
-        f'style="display:inline-block;background:{INK};color:{PAPER};'
-        f'font-family:Geist,Helvetica,Arial,sans-serif;font-size:14px;font-weight:500;'
-        f'text-decoration:none;padding:12px 22px;border-radius:999px;">{label}</a>'
+        f'style="display:inline-block;background:{FUCHSIA};color:#FFFFFF;'
+        f'font-family:Geist,Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;'
+        f'text-decoration:none;padding:13px 26px;border-radius:999px;'
+        f'letter-spacing:0.01em;box-shadow:0 0 0 1px rgba(255,26,140,0.45),0 18px 40px rgba(255,26,140,0.30);">{label}</a>'
     )
 
 
 def render_welcome(*, email: str, first_name: str | None, ctx: MailContext) -> tuple[str, str, str]:
     subject = "Welcome to Liquid Clips."
     body = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">welcome · 100 free exports unlocked</p>
 <h1 style="font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 12px;color:{INK};">
   Welcome to Liquid Clips.
 </h1>
 <p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
-  Liquid Clips turns long videos into ready-to-post shorts — local-first, your files never leave your machine unless you publish them. You're set up with <strong style="color:{INK};">100 free clip exports</strong> to start.
+  Liquid Clips turns long videos into ready-to-post shorts — local-first, your files never leave your machine unless you publish them. You're set up with <strong style="color:{INK};">100 free clip exports</strong> to start. Cancel any time.
 </p>
-<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
-  Two next steps that take about 90 seconds combined:
-</p>
-<ol style="font-size:15px;line-height:1.7;color:{INK};margin:0 0 24px 18px;padding:0;">
-  <li><strong>Download the desktop app</strong> — drag a video in, get back clips with captions, thumbnails, and titles.</li>
-  <li><strong>Open the Earn tab</strong> from inside your Whop community to see live Content Rewards bounties you can clip for.</li>
+
+<!-- Keep us out of spam (Gmail Primary nudge) -->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:{DARK_CARD_2};border:1px solid {LINE};border-radius:14px;margin:0 0 24px;">
+  <tr><td style="padding:14px 16px;">
+    <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:0.16em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 6px;">keep us out of spam</p>
+    <p style="font-size:13px;line-height:1.55;color:{INK};margin:0;">
+      <strong>Add hello@liquidclips.app to your contacts</strong>, and drag this email to your <strong>Primary</strong> tab in Gmail. Receipts, payout alerts, and login codes from us never slip into Promotions or Spam after that.
+    </p>
+  </td></tr>
+</table>
+
+<!-- What's inside the box (feature ladder) -->
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">what's inside the box</p>
+<ul style="font-size:14.5px;line-height:1.65;color:{TEXT_SECONDARY};margin:0 0 24px;padding:0 0 0 20px;list-style:disc;">
+  <li><strong style="color:{INK};">Fast Draft pipeline</strong> — drop a video or paste a YouTube / TikTok / IG / X link, get top scoring clips back in minutes, not hours. Apple Silicon Macs use MLX whisper for 2–5× local transcription.</li>
+  <li><strong style="color:{INK};">LC Score</strong> on every clip — hook, retention, clarity, shareability. No more guessing which moment to ship.</li>
+  <li><strong style="color:{INK};">Animated captions, hook overlays, smart reframe</strong> — vertical / square / portrait, face-aware crop, word-by-word karaoke captions.</li>
+  <li><strong style="color:{INK};">Import finished clips</strong> too — bring MP4 / MOV / WEBM files you already cut. Stack, split, remix, schedule from the same workspace.</li>
+  <li><strong style="color:{INK};">Publish + schedule across socials</strong> — TikTok, Instagram, YouTube Shorts, X, all from inside the app. Drip mode spaces posts over hours or days.</li>
+  <li><strong style="color:{INK};">Earn tab</strong> — clip live Whop Content Rewards bounties for the brands and creators you already follow.</li>
+  <li><strong style="color:{INK};">Local-first by default</strong> — every clip and transcript lives on your machine until you choose to publish. No surprise uploads.</li>
+</ul>
+
+<!-- Two-step quickstart -->
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">first 90 seconds</p>
+<ol style="font-size:14.5px;line-height:1.7;color:{INK};margin:0 0 22px;padding:0 0 0 20px;">
+  <li><strong>Download the desktop app</strong> — drag a video in, get back scored clips with captions, thumbnails, and titles.</li>
+  <li><strong>Open the Earn tab</strong> inside the app to see live Content Rewards bounties you can clip for today.</li>
 </ol>
-<p style="margin:0 0 16px;">{_btn("Download Liquid Clips →", ctx.download_url)}</p>
+<p style="margin:0 0 28px;">{_btn("Download Liquid Clips →", ctx.download_url)}</p>
+
+<!-- Affiliate community pitch -->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:{DARK_CARD_2};border:1px solid {FUCHSIA};border-radius:18px;margin:0 0 22px;box-shadow:0 0 0 1px rgba(255,26,140,0.25),0 18px 50px rgba(255,26,140,0.18);">
+  <tr><td style="padding:20px 22px;">
+    <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 6px;">earn alongside us</p>
+    <h2 style="font-family:'Fraunces',Georgia,serif;font-size:22px;font-weight:600;letter-spacing:-0.02em;line-height:1.15;margin:0 0 10px;color:{INK};">
+      50% MRR. For life.
+    </h2>
+    <p style="font-size:14px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 14px;">
+      Refer two paying users and unlock <strong style="color:{INK};">50% recurring commission</strong> on every customer you bring in — lifetime, not just the first month. Your link, your audience, your share. We handle the payout cycle through Whop.
+    </p>
+    <p style="margin:0 0 6px;">{_btn("Get your affiliate link →", f"{ctx.account_url}/dashboard")}</p>
+    <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:0.10em;text-transform:uppercase;color:{TEXT_TERTIARY};margin:10px 0 0;">
+      payouts via Whop · no payment processing on our side
+    </p>
+  </td></tr>
+</table>
+
+<!-- Community block -->
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">community</p>
+<p style="font-size:14.5px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  The clipper community lives inside our Whop hub — bounty briefs, what's working this week, payout milestones, and a direct line to us. <a href="{ctx.whop_manage_url}" style="color:{FUCHSIA};text-decoration:none;border-bottom:1px solid {FUCHSIA};">Join the Whop community →</a>
+</p>
+
 <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
   100 free clip exports · cancel anytime · your files stay on your machine
 </p>
@@ -720,8 +947,29 @@ def render_welcome(*, email: str, first_name: str | None, ctx: MailContext) -> t
         "Liquid Clips turns long videos into ready-to-post shorts — local-first, "
         "your files never leave your machine unless you publish them. "
         "You're set up with 100 free clip exports to start.\n\n"
-        f"1. Download Liquid Clips after signing into your account: {ctx.download_url}\n"
-        "2. Open the Earn tab inside your Whop community for live Content Rewards bounties.\n\n"
+        "KEEP US OUT OF SPAM\n"
+        "Add hello@liquidclips.app to your contacts, and drag this email to your\n"
+        "Primary tab in Gmail. That way receipts, payout alerts, and login codes\n"
+        "from us never slip into Promotions or Spam.\n\n"
+        "WHAT'S INSIDE THE BOX\n"
+        "- Fast Draft pipeline: drop a video or paste a link, get scored clips in minutes.\n"
+        "- LC Score on every clip (hook / retention / clarity / shareability).\n"
+        "- Animated captions, hook overlays, face-aware reframe to vertical / square / portrait.\n"
+        "- Import finished MP4/MOV/WEBM clips into the same workspace.\n"
+        "- Publish and schedule to TikTok, Instagram, YouTube Shorts, X.\n"
+        "- Earn tab: clip live Whop Content Rewards bounties for paid payouts.\n"
+        "- Local-first by default — nothing uploads without you saying so.\n\n"
+        "FIRST 90 SECONDS\n"
+        f"1. Download Liquid Clips: {ctx.download_url}\n"
+        "2. Open the Earn tab inside the app for live Content Rewards bounties.\n\n"
+        "EARN ALONGSIDE US — 50% MRR FOR LIFE\n"
+        "Refer two paying users and unlock 50% recurring commission on every "
+        "customer you bring in — lifetime, not just first month. Payouts via Whop.\n"
+        f"Get your affiliate link: {ctx.account_url}/dashboard\n\n"
+        f"COMMUNITY\n"
+        f"Our Whop hub is where the clipper community lives — bounty briefs, what's\n"
+        f"working this week, payout milestones, direct line to us.\n"
+        f"Join: {ctx.whop_manage_url}\n\n"
         "Reply to this email to reach us directly.\n"
         "— Liquid Clips"
     )

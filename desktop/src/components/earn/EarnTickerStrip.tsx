@@ -50,13 +50,17 @@ export function EarnTickerStrip() {
 
   const inFlight = counts.posted + counts.submitted + counts.approved;
 
+  // Cockpit pass: ambient mono HUD readout. Pulse dot in front of the
+  // eyebrow signals "earn deck live", values stay quiet at rest, the
+  // pending tile keeps its fuchsia tone since fuchsia IS the one accent.
   return (
-    <div className="flex h-[60px] items-center gap-5 px-5">
-      <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+    <div className="flex h-[60px] items-center gap-5 bg-transparent px-5">
+      <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-fuchsia">
+        <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" aria-hidden />
         earn
       </span>
       <div className="flex flex-1 items-center gap-6">
-        <Tile label="paid" value={paid} tone="success" />
+        <Tile label="paid" value={paid} />
         <Tile label="pending" value={pending} tone="fuchsia" pulse={inFlight > 0} />
         <Tile label="views" value={views} />
         <Tile label="clips" value={subs} />
@@ -66,7 +70,7 @@ export function EarnTickerStrip() {
         onClick={() => setHelpOpen(true)}
         title="How earning works"
         aria-label="How earning works"
-        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-fuchsia"
+        className="inline-flex h-7 w-7 items-center justify-center bg-transparent text-text-secondary hover:text-fuchsia"
       >
         <HelpCircle size={14} />
       </button>
@@ -83,22 +87,19 @@ function Tile({
 }: {
   label: string;
   value: string;
-  tone?: "success" | "fuchsia";
+  tone?: "fuchsia";
   pulse?: boolean;
 }) {
-  const valueColor =
-    tone === "success"
-      ? "text-[#34D399]"
-      : tone === "fuchsia"
-        ? "text-fuchsia-deep"
-        : "text-ink";
+  // ONE fuchsia accent — paid no longer reads as green. Pending stays
+  // fuchsia + pulses while in flight to keep the "money in motion" signal.
+  const valueColor = tone === "fuchsia" ? "text-fuchsia" : "text-ink";
   return (
     <div className="flex flex-col leading-tight">
       <span className="font-mono text-[9px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
         {label}
       </span>
       <span
-        className={`font-display text-[18px] font-semibold tracking-[-0.01em] ${valueColor} ${
+        className={`font-mono text-[18px] font-semibold tracking-[-0.01em] ${valueColor} ${
           pulse ? "animate-pulse" : ""
         }`}
       >

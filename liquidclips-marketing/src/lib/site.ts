@@ -1,6 +1,6 @@
-export const accountUrl = "https://account.liquidclips.app";
-export const appUrl = "https://app.liquidclips.app";
-export const partnerUrl = "https://partner.liquidclips.app";
+export const accountUrl = "https://account.jnremployee.com";
+export const appUrl = "https://app.jnremployee.com";
+export const partnerUrl = "https://partner.jnremployee.com";
 export const supportEmail = "hello@liquidclips.app";
 
 // v0.6.11 — Default points at the brand /download page. The previous default

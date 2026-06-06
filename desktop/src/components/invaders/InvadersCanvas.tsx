@@ -1,24 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { GameState } from "../../lib/invaders/engine";
-
-// Sprites bundled by Vite (import-as-URL). Loaded once per canvas mount as
-// HTMLImageElements so draw() doesn't pay an Image() decode per frame. While
-// they're still decoding the draw path falls back to the geometric shapes
-// the engine shipped with, so the splash never blanks out on first paint.
-//
-// 2026-06-02 sprite pack refresh — 5 per-row invader variants from Higgsfield
-// Nano Banana 2 (boss / mothership / elite / drone / grunt) + redesigned
-// neon-fuchsia player ship. Each invader is pre-coloured so we drop the
-// per-row hue-rotate filter and read each row as a distinct enemy tier
-// straight from the art.
-import playerShipUrl from "../../assets/invaders/player_ship.png";
-import invaderBossUrl from "../../assets/invaders/boss.png";
-import invaderMothershipUrl from "../../assets/invaders/mothership.png";
-import invaderEliteUrl from "../../assets/invaders/elite.png";
-import invaderDroneUrl from "../../assets/invaders/drone.png";
-import invaderGruntUrl from "../../assets/invaders/grunt.png";
-import bulletPlayerUrl from "../../assets/invaders/bullet-player.png";
-import bulletInvaderUrl from "../../assets/invaders/bullet-invader.png";
 
 type Sprites = {
   player: HTMLImageElement | null;
@@ -26,18 +7,6 @@ type Sprites = {
   bulletPlayer: HTMLImageElement | null;
   bulletInvader: HTMLImageElement | null;
 };
-
-// Per-row sprite mapping. Top row = boss tier (rarest, strongest visual).
-// Bottom row = grunt (most common). Mid rows pick from the pack to give a
-// satisfying gradient of menace.
-const ROW_SPRITE_URL = [
-  invaderBossUrl,        // row 0 — boss
-  invaderMothershipUrl,  // row 1 — mothership
-  invaderEliteUrl,       // row 2 — elite
-  invaderDroneUrl,       // row 3 — drone
-  invaderGruntUrl,       // row 4 — grunt
-];
-
 
 type Props = {
   state: GameState;
@@ -73,31 +42,15 @@ export function InvadersCanvas({ state, onStep, width, height, paused = false }:
   // Keep paused in a ref so the RAF loop can read it without re-binding.
   const pausedRef = useRef(paused);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
-  const [, setSpritesReady] = useState(0); // bumps to trigger re-render once decoded
-  useEffect(() => {
-    let cancelled = false;
-    const load = (url: string) => new Promise<HTMLImageElement>((resolve) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => resolve(img); // silently fall back to shapes
-      img.src = url;
-    });
-    Promise.all([
-      load(playerShipUrl),
-      load(ROW_SPRITE_URL[0]),
-      load(ROW_SPRITE_URL[1]),
-      load(ROW_SPRITE_URL[2]),
-      load(ROW_SPRITE_URL[3]),
-      load(ROW_SPRITE_URL[4]),
-      load(bulletPlayerUrl),
-      load(bulletInvaderUrl),
-    ]).then(([p, r0, r1, r2, r3, r4, bp, bi]) => {
-      if (cancelled) return;
-      spritesRef.current = { player: p, invaders: [r0, r1, r2, r3, r4], bulletPlayer: bp, bulletInvader: bi };
-      setSpritesReady((n) => n + 1);
-    });
-    return () => { cancelled = true; };
-  }, []);
+  // v0.6.0 — Higgsfield-generated PNG sprite pack was rendering with painted-in
+  // backgrounds (no alpha channel in the source art), so on the synthwave splash
+  // backdrop every invader appeared as a grey block. Daniel: "use old ones."
+  // Skipping the sprite preload entirely makes the draw path fall through to
+  // the geometric-shape renderer below (drawInvaderShape), which is the
+  // original v0.4.x look — clean fuchsia-tinted squares/diamonds/ovals on the
+  // synthwave backdrop, no compositing issues. The huge PNG sprite imports were
+  // intentionally removed from this canvas so unused art no longer bloats the
+  // launch bundle while the geometric renderer is active.
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -127,6 +80,13 @@ export function InvadersCanvas({ state, onStep, width, height, paused = false }:
       const c = canvas!.getContext("2d")!;
       c.save();
       c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // Pixel-perfect sprite scaling — bilinear interpolation on a 2D context
+      // ignores the canvas CSS `image-rendering: pixelated` hint, so we have
+      // to disable smoothing on the context itself. Set every frame because
+      // save/restore + setTransform can reset it on some engines.
+      c.imageSmoothingEnabled = false;
+      // @ts-expect-error — vendor-prefixed flag still respected by Safari/WebKit
+      c.webkitImageSmoothingEnabled = false;
       draw(c, stateRef.current, width, height, spritesRef.current, vfxRef.current, pausedRef.current);
       c.restore();
 
@@ -297,20 +257,23 @@ function draw(
     ? Math.sin((performance.now() - vfx.swayBaseTimeMs) / 700) * 4
     : 0;
 
-  // invaders — per-row sprite from the Higgsfield pack. Visual box is 36×36
-  // (slightly larger than the 32×32 single-wasp era to read the detail in
-  // the new art); collision math stays unchanged on the engine's 24×16.
-  // Mothership (row 1) gets a wider 48×28 box because the art is letterbox.
+  // invaders — per-row sprite from the Higgsfield pack. Visual box is 24×24
+  // (down from 36 — the source PNGs are ~1024² so scaling them DOWN keeps the
+  // edges crisp instead of bilinear-soft from the old upscale-ish 36px). The
+  // engine's collision box stays 24×16 and lines up perfectly with the new
+  // visual. Mothership keeps a letterbox ratio at 32×20.
+  // dx/dy rounded to integer pixels — half-px destinations reintroduce
+  // subpixel blur even with imageSmoothingEnabled=false.
   for (const i of state.invaders) {
     if (!i.alive) continue;
     const drawX = i.pos.x + swayOffset;
-    const rowIdx = Math.min(i.row, ROW_SPRITE_URL.length - 1);
+    const rowIdx = Math.min(i.row, sprites.invaders.length - 1);
     const img = sprites.invaders[rowIdx];
     if (img && img.complete && img.naturalWidth > 0) {
       const isMothership = rowIdx === 1;
-      const sw = isMothership ? 48 : 36;
-      const sh = isMothership ? 28 : 36;
-      ctx.drawImage(img, drawX - sw / 2, i.pos.y - sh / 2, sw, sh);
+      const sw = isMothership ? 32 : 24;
+      const sh = isMothership ? 20 : 24;
+      ctx.drawImage(img, Math.round(drawX - sw / 2), Math.round(i.pos.y - sh / 2), sw, sh);
     } else {
       // Fallback while the image is still decoding on first paint.
       ctx.fillStyle = invaderColor(i.row);
@@ -318,12 +281,14 @@ function draw(
     }
   }
 
-  // player ship — visual 44×44, collision unchanged (PLAYER_W=24/H=12)
+  // player ship — visual 28×28 (down from 44; large PNG scaled DOWN stays
+  // sharp). Collision unchanged (PLAYER_W=24/H=12). Pixel-snapped to avoid
+  // subpixel blur on the bottom-of-screen idle position.
   const px = state.player.x;
   const py = state.player.y;
   if (sprites.player && sprites.player.complete && sprites.player.naturalWidth > 0) {
-    const sw = 44, sh = 44;
-    ctx.drawImage(sprites.player, px - sw / 2, py - sh / 2 + 4, sw, sh);
+    const sw = 28, sh = 28;
+    ctx.drawImage(sprites.player, Math.round(px - sw / 2), Math.round(py - sh / 2 + 4), sw, sh);
   } else {
     ctx.fillStyle = "#FF1A8C";
     ctx.beginPath();
@@ -334,12 +299,13 @@ function draw(
     ctx.fill();
   }
 
-  // bullets — chevron sprite at 14×20 visual, collision stays 3×8
+  // bullets — chevron sprite at 8×14 visual (down from 14×20 so the bullet
+  // reads as a precise streak rather than a soft blob). Collision stays 3×8.
   for (const b of state.bullets) {
     const img = b.from === "player" ? sprites.bulletPlayer : sprites.bulletInvader;
     if (img && img.complete && img.naturalWidth > 0) {
-      const sw = 14, sh = 20;
-      ctx.drawImage(img, b.pos.x - sw / 2, b.pos.y - sh / 2, sw, sh);
+      const sw = 8, sh = 14;
+      ctx.drawImage(img, Math.round(b.pos.x - sw / 2), Math.round(b.pos.y - sh / 2), sw, sh);
     } else {
       ctx.fillStyle = b.from === "player" ? "#FF66B8" : "#C70066";
       ctx.fillRect(b.pos.x - 1.5, b.pos.y - 4, 3, 8);

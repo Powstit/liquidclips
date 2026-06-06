@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { Volume2, AudioLines, VolumeX } from "lucide-react";
 import type { Clip, OverlayType, Project, RatioKey } from "../lib/sidecar";
 import { sidecar, RATIOS } from "../lib/sidecar";
 import { CopyButton } from "./CopyButton";
 import { InfoTip } from "./InfoTip";
 import { LayoutIcon, LAYOUTS, type LayoutKey } from "./clips-feed/LayoutIcon";
 import { pickOverlaySource } from "./OverlaySourcePicker";
-import { LayoutCellDiagram } from "./clips-feed/LayoutCellDiagram";
+import { ReactionCellPreview } from "./clips-feed/ReactionCellPreview";
 import { LAYOUT_TOPOLOGY } from "./clips-feed/layout-cells";
 import { BountyFitChecklist } from "./earn/bounty-fit";
 
@@ -118,6 +119,7 @@ export function ClipPreview({
   // Esc closes, ←/→ navigate.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (document.getElementById("__reaction-source-picker")) return;
       if (e.key === "Escape") { onClose(); return; }
       const t = e.target as HTMLElement | null;
       if (t && /INPUT|TEXTAREA/.test(t.tagName)) return;
@@ -140,11 +142,12 @@ export function ClipPreview({
         const r = await sidecar.applyOverlay(slug, index - 1, null);
         onProjectChange(r.project);
       } else {
-        // Re-use existing source if the layout type is unchanged; otherwise
-        // ask via the picker (this project's clips OR upload a file).
+        // Re-use an existing reaction source when switching layouts. The
+        // "Change reaction clip" button is the explicit path to pick a new
+        // file/source; layout buttons should feel like layout buttons.
         const existing = clip.overlay?.source_path;
         let source: string | undefined = existing;
-        if (opts?.forcePick || !source || (clip.overlay?.type ?? "none") !== kind) {
+        if (opts?.forcePick || !source) {
           const pick = await pickOverlaySource({ project, excludeIdx: index - 1 });
           if (pick.kind === "cancel") return;
           source = pick.path;
@@ -213,11 +216,35 @@ export function ClipPreview({
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-display text-[20px] font-bold italic text-fuchsia">{index.toString().padStart(2, "0")}</span>
                 <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-tertiary">of {totalClips.toString().padStart(2, "0")}</span>
-                <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] ${viralityClass(clip.virality)}`}>{clip.virality}</span>
+                {/* v0.6.8 — LC Score pill replaces bare virality. Tooltip carries
+                    the LLM's score_reason ("Why this clip"). */}
+                <span
+                  title={clip.score_reason || "LC Score · AI estimate of hook, retention, clarity, and shareability."}
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.10em] ${viralityClass(clip.virality)}`}
+                >
+                  <span className="opacity-80">LC</span>
+                  <span className="font-display text-[12px] font-bold leading-none tracking-[-0.02em]">{clip.virality}</span>
+                </span>
                 {clip.theme && <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-tertiary">{clip.theme}</span>}
                 <span className="font-mono text-[11px] text-text-tertiary">{formatHms(clip.start)} → {formatHms(clip.end)}</span>
               </div>
               <h3 className="mt-1 truncate font-display text-[20px] font-semibold leading-tight tracking-[-0.01em] text-ink">{clip.title}</h3>
+              {/* v0.6.8 — "Why this clip" line directly under the title.
+                  Quiet but visible so the score doesn't feel like a magic number. */}
+              {clip.score_reason && (
+                <p className="mt-1 line-clamp-2 font-sans text-[12px] leading-snug text-text-secondary">
+                  <span className="font-mono uppercase tracking-[0.12em] text-fuchsia">why · </span>
+                  {clip.score_reason}
+                </p>
+              )}
+              {clip.score_breakdown && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                  <span>hook <span className="text-ink">{clip.score_breakdown.hook}</span></span>
+                  <span>ret <span className="text-ink">{clip.score_breakdown.retention}</span></span>
+                  <span>clr <span className="text-ink">{clip.score_breakdown.clarity}</span></span>
+                  <span>shr <span className="text-ink">{clip.score_breakdown.shareability}</span></span>
+                </div>
+              )}
             </div>
             {onNavigate && (
               <button onClick={() => onNavigate(1)} disabled={index >= totalClips}
@@ -232,26 +259,13 @@ export function ClipPreview({
         </header>
 
         <div className="flex flex-1 flex-col gap-0 overflow-hidden lg:flex-row">
-          {/* LEFT: video + layout icon row + ratio chips */}
+          {/* LEFT: final preview + ratio chips */}
           <div className="flex w-full flex-col gap-3 bg-ink p-5 lg:w-[58%]">
-            {/* Layout icons — same vocabulary as feed cards */}
+            {/* Ratio chips */}
             <div className="flex flex-wrap items-center justify-between gap-2 text-paper">
-              <div className="flex items-center gap-1">
-                {LAYOUTS.map((l) => {
-                  const active = layout === l.key;
-                  return (
-                    <button key={l.key} onClick={() => void applyLayout(l.key)} disabled={busy}
-                      title={l.label}
-                      className={`flex items-center justify-center rounded-md p-1.5 transition-colors ${
-                        active ? "bg-fuchsia text-white" : "text-white/60 hover:bg-paper/10 hover:text-white"
-                      } disabled:opacity-50`}
-                      aria-label={l.label} aria-pressed={active}
-                    >
-                      <LayoutIcon kind={l.key} />
-                    </button>
-                  );
-                })}
-              </div>
+              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-paper/55">
+                final preview
+              </span>
               <div className="flex items-center gap-1 rounded-full bg-paper/10 p-0.5">
                 {RATIOS.map((r) => {
                   const available = !!pathForRatio(clip, r.key);
@@ -289,7 +303,7 @@ export function ClipPreview({
             {/* Inline status row */}
             <div className="flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.08em] text-paper/60">
               <span>{LAYOUT_TOPOLOGY[layout].label}</span>
-              {clip.overlay?.source_path && <span className="text-fuchsia-bright">b-roll rendered</span>}
+              {clip.overlay?.source_path && <span className="text-fuchsia-bright">reaction applied</span>}
             </div>
           </div>
 
@@ -298,30 +312,112 @@ export function ClipPreview({
             {/* Cell editor */}
             <BountyFitChecklist clip={clip} project={project} />
 
-            <section>
-              <LayoutCellDiagram
+            <section className="space-y-3">
+              {/* Layout strip — reaction layouts as labeled icon tiles */}
+              <div className="rounded-2xl border border-fuchsia-soft bg-fuchsia-soft/15 p-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <div>
+                    <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep">
+                      reaction studio
+                    </div>
+                    <p className="mt-0.5 font-sans text-[12px] leading-snug text-text-secondary">
+                      Add a second clip. Stack, split, or PiP.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+                  {LAYOUTS.map((item) => {
+                    const active = layout === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        onClick={() => void applyLayout(item.key)}
+                        disabled={busy}
+                        title={item.label}
+                        aria-pressed={active}
+                        className={`flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-lg border px-1.5 py-2 transition-all ${
+                          active
+                            ? "border-fuchsia bg-fuchsia text-white shadow-[var(--glow-sm)]"
+                            : "border-line bg-paper text-ink hover:border-fuchsia hover:bg-fuchsia-soft/20"
+                        } disabled:opacity-50`}
+                      >
+                        <LayoutIcon kind={item.key} />
+                        <span className="text-center font-sans text-[10px] font-medium leading-tight">
+                          {item.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Playable cell preview */}
+              <ReactionCellPreview
                 kind={layout}
-                sourcePath={clip.overlay?.source_path ?? null}
+                mainPath={clip.vertical_path || clip.cut_path || null}
+                mainTitle={clip.title}
+                reactionPath={clip.overlay?.source_path ?? null}
+                audioSource={audioSource}
+                busy={busy}
+                onPick={() => void applyLayout(layout === "none" ? "stack-bottom" : layout, { forcePick: true })}
+                onRemove={() => void applyLayout("none")}
+                onApply={() => void applyLayout(layout)}
               />
+
+              {/* Audio + timing — only when there's a reaction layout */}
               {layout !== "none" && (
-                <div className="mt-3 space-y-3 rounded-xl border border-line bg-paper p-3.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-                      side-by-side controls
-                    </span>
-                    <button
-                      onClick={() => void applyLayout(layout, { forcePick: true })}
-                      disabled={busy}
-                      className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary hover:border-fuchsia hover:text-ink disabled:opacity-40"
-                    >
-                      Change b-roll
-                    </button>
+                <div className="space-y-3 rounded-xl border border-line bg-paper p-3.5">
+                  <div>
+                    <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                      audio
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {([
+                        ["main",  "Main",     Volume2],
+                        ["broll", "Reaction", AudioLines],
+                        ["muted", "Muted",    VolumeX],
+                      ] as const).map(([key, label, Icon]) => {
+                        const on = audioSource === key;
+                        return (
+                          <button
+                            key={key}
+                            onClick={() => setAudioSource(key)}
+                            aria-pressed={on}
+                            className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 font-sans text-[12px] font-medium transition-colors ${
+                              on
+                                ? "border-fuchsia bg-fuchsia text-white"
+                                : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
+                            }`}
+                          >
+                            <Icon size={13} strokeWidth={2.2} />
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <label className="block">
-                    <div className="mb-1 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-                      <span>B-roll start offset</span>
-                      <span>{brollOffset.toFixed(1)}s</span>
+                    <div className="mb-1 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                      <span>Reaction starts at {brollOffset.toFixed(1)}s</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setBrollOffset(0)}
+                          className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary hover:text-fuchsia"
+                        >
+                          start at beginning
+                        </button>
+                        <span className="text-text-tertiary/40">·</span>
+                        <button
+                          type="button"
+                          onClick={() => setBrollOffset(clip.overlay?.start_offset_s ?? 0)}
+                          className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary hover:text-fuchsia"
+                        >
+                          reset
+                        </button>
+                      </div>
                     </div>
                     <input
                       type="range"
@@ -333,48 +429,6 @@ export function ClipPreview({
                       className="w-full accent-fuchsia"
                     />
                   </label>
-
-                  <div>
-                    <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-                      Audio
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {([
-                        ["main", "Main audio"],
-                        ["broll", "B-roll audio"],
-                        ["muted", "Muted"],
-                      ] as const).map(([key, label]) => (
-                        <button
-                          key={key}
-                          onClick={() => setAudioSource(key)}
-                          className={`rounded-full border px-3 py-1 font-sans text-[12px] transition-colors ${
-                            audioSource === key
-                              ? "border-fuchsia bg-fuchsia text-white"
-                              : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => void applyLayout(layout)}
-                      disabled={busy}
-                      className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-50"
-                    >
-                      {busy ? "Rendering..." : "Render update"}
-                    </button>
-                    <button
-                      onClick={() => void applyLayout("none")}
-                      disabled={busy}
-                      className="rounded-full border border-line bg-paper px-4 py-1.5 font-sans text-[13px] font-medium text-ink hover:border-[#DC2626] hover:text-[#DC2626] disabled:opacity-50"
-                    >
-                      Remove b-roll
-                    </button>
-                  </div>
                 </div>
               )}
             </section>

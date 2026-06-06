@@ -290,7 +290,7 @@ export async function mockSidecarCall<T>(method: string, params: Record<string, 
       return { pong: true, version: "preview-0.3.0" } as T;
 
     case "secrets_status":
-      return { secrets: { OPENAI_API_KEY: true, ANTHROPIC_API_KEY: false, LICENSE_JWT: true, LIQUIDCLIPS_ONBOARDED: true } } as T;
+      return { secrets: { OPENAI_API_KEY: true, ANTHROPIC_API_KEY: false, LICENSE_JWT: true, LIQUIDCLIPS_ONBOARDED: true, JUNIOR_WHOP_TOKEN: false, PEXELS_API_KEY: true, PIXABAY_API_KEY: true, GIPHY_API_KEY: true } } as T;
 
     case "openai_key_status":
       return { available: true } as T;
@@ -303,6 +303,63 @@ export async function mockSidecarCall<T>(method: string, params: Record<string, 
 
     case "preload_whisper":
       return { model: "tiny", warmup_seconds: 0.2 } as T;
+
+    case "reaction_search":
+      {
+        const provider = (params.provider as "giphy" | "pexels" | "pixabay") || "giphy";
+        const allResults = [
+          {
+            id: "preview-giphy",
+            provider: "giphy",
+            title: "Preview funny GIF reaction",
+            duration_s: undefined,
+            width: 480,
+            height: 360,
+            preview_url: null,
+            source_url: "https://giphy.com",
+            author: "GIPHY",
+            download_url: "/sample-giphy-reaction.mp4",
+          },
+          {
+            id: "preview-1",
+            provider: "pexels",
+            title: "Preview laughing reaction",
+            duration_s: 4,
+            width: 720,
+            height: 1280,
+            preview_url: null,
+            source_url: "https://www.pexels.com",
+            author: "Pexels",
+            download_url: "/sample-reaction.mp4",
+          },
+          {
+            id: "preview-2",
+            provider: "pixabay",
+            title: "Preview shocked reaction",
+            duration_s: 6,
+            width: 1280,
+            height: 720,
+            preview_url: null,
+            source_url: "https://pixabay.com",
+            author: "Pixabay",
+            download_url: "/sample-reaction-2.mp4",
+          },
+        ];
+        const attributionByProvider = {
+          giphy: '<a href="https://giphy.com">Powered by GIPHY</a>',
+          pexels: '<a href="https://www.pexels.com">Videos provided by Pexels</a>',
+          pixabay: '<a href="https://pixabay.com">Videos provided by Pixabay</a>',
+        } as const;
+        return {
+          provider,
+          query: params.query || "funny reaction",
+          attribution_html: attributionByProvider[provider],
+          results: allResults.filter((item) => item.provider === provider),
+        } as T;
+      }
+
+    case "reaction_download":
+      return { path: "/tmp/sample-reaction.mp4", item: { id: "preview-1", provider: "pexels" } } as T;
 
     case "probe":
       return { duration_seconds: 1820, width: 1920, height: 1080, format: "mp4", size_bytes: 240_000_000 } as T;

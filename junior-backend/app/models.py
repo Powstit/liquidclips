@@ -254,7 +254,7 @@ class SocialChannel(Base):
     """One social channel = one Ayrshare sub-profile = one platform handle
     (sprint Schedule v2). A user can have N channels; each is created
     independently via /channels POST → Ayrshare /profiles/profile → user OAuths
-    one social account on the new profile via the in-app Tauri WebView linker.
+    one social account on the new profile via Ayrshare's browser-based linker.
 
     Replaces the single-row SocialConnection model for new users. Legacy users
     with a SocialConnection row get auto-backfilled into a single channel on
@@ -524,4 +524,52 @@ class CampaignSubmission(Base):
     payout_usd_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class SponsoredCampaign(Base):
+    """v0.7.0 (Sprint 2) — Liquid Clips owned campaign banners.
+
+    Replaces generic Whop affiliate cards on the workspace dashboard with
+    full-width sponsored banners we control. Statuses (coming_soon /
+    partially_funded / funded / live / closed / invite_only) drive the
+    visual treatment; visibility_tiers gates which user tiers see the
+    banner (lower tiers see a locked + upgrade CTA per Sprint 4).
+
+    Source of truth = admin CRUD. Auto-funding sums + Stripe pledge ledger
+    arrive in Sprint 5. For now `funded_pct` is hand-set per record.
+    """
+
+    __tablename__ = "sponsored_campaigns"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    slug: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    brand: Mapped[str | None] = mapped_column(String, nullable=True)
+    subtitle: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # type drives the homepage SECTION the banner lands in:
+    #   public | coming_soon | funded | invite_only | recurring
+    type: Mapped[str] = mapped_column(String, nullable=False, default="coming_soon", index=True)
+    # status is the lifecycle bucket:
+    #   coming_soon | partially_funded | funded | live | closed
+    status: Mapped[str] = mapped_column(String, nullable=False, default="coming_soon", index=True)
+
+    rpm_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    budget_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    funded_pct: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    duration_label: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    whop_url: Mapped[str] = mapped_column(String, nullable=False)
+    banner_url: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    eligibility: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    visibility_tiers: Mapped[list] = mapped_column(JSON, nullable=False, default=lambda: ["free","solo","pro","agency"])
+
+    min_lc_score: Mapped[int] = mapped_column(Integer, nullable=False, default=75)
+    cta_text: Mapped[str] = mapped_column(String, nullable=False, default="View Campaign Brief →")
+
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)

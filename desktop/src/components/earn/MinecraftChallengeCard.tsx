@@ -9,7 +9,9 @@
 
 import { useEffect } from "react";
 import { Trophy, Zap } from "lucide-react";
-import heroImg from "../../assets/minecraft/hero.png";
+// v0.6.1 — Switch-eShop-style game-tile hero replaces the previous
+// minecraft/hero.png. Lives at assets/decks/minecraft-submission.png.
+import heroImg from "../../assets/decks/minecraft-submission.png";
 import { track } from "../../lib/analytics";
 
 export function MinecraftChallengeCard({

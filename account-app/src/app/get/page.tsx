@@ -6,7 +6,7 @@ import { useUser } from "@clerk/nextjs";
 import { track } from "@/lib/analytics";
 
 // /get — post-purchase onboarding landing. Affiliate-referred buyers land here
-// AFTER paying on Whop; Whop redirects to account.liquidclips.app/get?ref=<affId>.
+// AFTER paying on Whop; Whop redirects to account.jnremployee.com/get?ref=<affId>.
 //
 // Two jobs:
 //   1) First-touch affiliate capture. Mirrors marketing/ref-capture.js exactly
@@ -195,7 +195,7 @@ export default function GetPage() {
       )}
 
       <footer className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-        <span>account.liquidclips.app</span>
+        <span>account.jnremployee.com</span>
         <div className="flex flex-wrap gap-5">
           <a href="https://liquidclips.app" className="hover:text-ink">liquidclips.app →</a>
           <a href="https://liquidclips.app/refunds" className="hover:text-ink">refunds</a>

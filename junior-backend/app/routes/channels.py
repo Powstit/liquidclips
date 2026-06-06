@@ -4,7 +4,7 @@ One channel = one Ayrshare sub-profile = one platform handle. Users add
 channels ONE AT A TIME via:
 
     POST /channels       — create row, mint Ayrshare profile, return link URL
-    user OAuths the platform in the Tauri WebView linker
+    user OAuths the platform in their browser via Ayrshare hosted linking
     POST /channels/{id}/refresh — pull handle + status from Ayrshare /user
 
 Channels are scoped per-user. Daniel can run 7 TikTok + 7 Reels + 7 YT off
@@ -82,7 +82,7 @@ class ChannelResponse(BaseModel):
 
 class ChannelCreateResponse(BaseModel):
     channel: ChannelResponse
-    link_url: str           # open in Tauri WebView so the user OAuths the platform
+    link_url: str           # open in the system browser so OAuth uses a trusted user agent
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -104,6 +104,40 @@ def _max_channels_for(user: User) -> int:
     if user.founder_flag:
         return 30  # Ayrshare Business cap
     return _MAX_CHANNELS_BY_TIER.get(user.tier, 0)
+
+
+def _ayrshare_link_domain() -> str:
+    domain = (os.environ.get("AYRSHARE_LINK_DOMAIN", "").strip() or "app.ayrshare.com").rstrip("/")
+    if not domain.startswith("http"):
+        domain = f"https://{domain}"
+    return domain
+
+
+def _build_platform_link_url(profile_key: str, platform: str) -> str:
+    """Return an Ayrshare hosted-link URL scoped to one platform.
+
+    The desktop opens this in the user's normal browser, not an embedded
+    WebView. We still make the URL platform-specific so "Connect Instagram"
+    lands on the Instagram/Meta linking path instead of a generic Ayrshare
+    picker. JWT is the clean path; profileKey is the resilient fallback.
+    """
+    platform_slug = platform.strip().lower()
+    link_url: str | None = None
+    try:
+        jwt_response = ayrshare.generate_jwt(profile_key, allowed_social=[platform_slug])
+        url_from_jwt = (jwt_response or {}).get("url")
+        if isinstance(url_from_jwt, str) and url_from_jwt:
+            link_url = url_from_jwt
+    except httpx.HTTPError as exc:
+        log.warning("[channels] generateJWT failed for %s, falling back to profileKey URL: %s", platform_slug, exc)
+    except RuntimeError as exc:
+        log.warning("[channels] generateJWT prerequisites missing, falling back: %s", exc)
+    except Exception:  # noqa: BLE001 — linking should degrade to the fallback URL
+        log.exception("[channels] generateJWT raised unexpectedly, falling back")
+
+    if link_url:
+        return link_url
+    return f"{_ayrshare_link_domain()}/social-accounts?profileKey={profile_key}&platforms={platform_slug}"
 
 
 def _backfill_legacy_connection(db: Session, user: User) -> SocialChannel | None:
@@ -260,14 +294,10 @@ def create_channel(
     db.commit()
     db.refresh(row)
 
-    # Build the link URL the desktop opens in the Tauri WebView. Same simple
-    # social-accounts?profileKey URL we use in /social/start-link (no JWT
-    # signing required — Ayrshare validates the bearer profile key on the
-    # link page itself).
-    domain = (os.environ.get("AYRSHARE_LINK_DOMAIN", "").strip() or "app.ayrshare.com").rstrip("/")
-    if not domain.startswith("http"):
-        domain = f"https://{domain}"
-    link_url = f"{domain}/social-accounts?profileKey={profile_key}"
+    # Build a platform-specific link. This keeps the Schedule v2 channel flow
+    # direct: picking Instagram lands on Instagram/Meta linking, not a generic
+    # Ayrshare social picker.
+    link_url = _build_platform_link_url(profile_key, body.platform)
 
     return ChannelCreateResponse(channel=_to_response(row), link_url=link_url)
 
@@ -358,7 +388,4 @@ def relink_channel(
     row = db.get(SocialChannel, channel_id)
     if not row or row.user_id != user.id or row.status == "deleted":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "channel not found")
-    domain = (os.environ.get("AYRSHARE_LINK_DOMAIN", "").strip() or "app.ayrshare.com").rstrip("/")
-    if not domain.startswith("http"):
-        domain = f"https://{domain}"
-    return RelinkResponse(link_url=f"{domain}/social-accounts?profileKey={row.ayrshare_profile_key}")
+    return RelinkResponse(link_url=_build_platform_link_url(row.ayrshare_profile_key, row.platform))

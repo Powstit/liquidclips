@@ -4,6 +4,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { Clock, Send, X, CheckCircle2, ExternalLink, Copy } from "lucide-react";
 import { sidecar, humanError, type LocalScheduleItem } from "../../lib/sidecar";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
+import { HudChip } from "../cockpit/HudChip";
 
 // Web composer URLs per platform. Liquid Clips copies the caption to the user's
 // clipboard and opens the platform's upload/composer page in the browser —
@@ -142,7 +143,11 @@ export function LocalQueue() {
 
   if (error) {
     return (
-      <div className="rounded-2xl border border-line bg-paper-warm/50 p-4 font-mono text-[12px] text-text-secondary">
+      <div className="relative bg-transparent p-4 font-mono text-[12px] text-text-secondary">
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
         Couldn't read the local schedule — {error}
       </div>
     );
@@ -158,7 +163,11 @@ export function LocalQueue() {
 
   if (items.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-line bg-paper-warm/30 px-5 py-8 text-center">
+      <div className="relative bg-transparent px-5 py-8 text-center">
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
         <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
           nothing scheduled locally yet
         </p>
@@ -316,16 +325,15 @@ function Row({
 
   return (
     <div
-      className={`rounded-2xl border p-4 ${
-        urgent
-          ? "border-fuchsia-soft bg-fuchsia-soft/25 shadow-[var(--glow-sm)]"
-          : item.status === "posted"
-          ? "border-line bg-paper-warm/30"
-          : item.status === "canceled"
-          ? "border-line bg-paper opacity-60 line-through decoration-text-tertiary"
-          : "border-line bg-paper-warm/40"
+      data-hot={urgent ? "true" : "false"}
+      className={`library-card relative bg-transparent p-4 ${
+        item.status === "canceled" ? "opacity-60 line-through decoration-text-tertiary" : ""
       }`}
     >
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink">
           {isKnownPlatform && <PlatformIcon id={item.platform as PlatformId} className="h-3.5 w-3.5" />}
@@ -380,15 +388,15 @@ function Row({
           </button>
         )}
         {item.status === "pending" && onMarkPosted && (
-          <button
+          <HudChip
+            active={false}
             onClick={() => onMarkPosted(item)}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep disabled:opacity-50"
             title="Mark as posted once you've actually published it on the platform."
           >
-            <Send className="h-3.5 w-3.5" strokeWidth={2} />
+            <Send className="h-3 w-3" strokeWidth={2} />
             Mark posted
-          </button>
+          </HudChip>
         )}
         {item.status === "pending" && onCancel && (
           <button
@@ -401,16 +409,16 @@ function Row({
           </button>
         )}
         {item.status === "posted" && item.post_url && (
-          <button
+          <HudChip
+            active={false}
             onClick={() => void (async () => {
               const { open } = await import("@tauri-apps/plugin-shell");
               await open(item.post_url!);
             })()}
-            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
           >
-            <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
+            <ExternalLink className="h-3 w-3" strokeWidth={2} />
             Open post
-          </button>
+          </HudChip>
         )}
         {(item.status === "posted" || item.status === "canceled") && onRemove && (
           <button
