@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Fraunces, Geist, Geist_Mono } from "next/font/google";
+import { headers } from "next/headers";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Nav } from "@/components/Nav";
 import { RouteSplash } from "@/components/RouteSplash";
@@ -16,9 +17,41 @@ export const metadata: Metadata = {
   description: "Manage your Liquid Clips subscription, download the app, view your usage.",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+// v0.7.x — satellite domain support. The SAME Next.js app serves both
+// `account.jnremployee.com` (primary) and `account.liquidclips.app`
+// (satellite). The host header decides which mode Clerk operates in:
+//   • Primary domain → standard ClerkProvider, sign-in lives here.
+//   • Satellite domain → isSatellite=true, sign-in redirects to primary,
+//     session syncs back via __clerk_synced.
+// Primary stays jnremployee.com for now to avoid forcing existing users
+// to re-auth; new sign-ups happening on liquidclips.app still complete
+// against primary then redirect back — branding-clean inside emails
+// because Clerk's app.name is "Liquid Clips" everywhere.
+const PRIMARY_HOST = "account.jnremployee.com";
+const SATELLITE_HOSTS = ["account.liquidclips.app"];
+const PRIMARY_URL = "https://account.jnremployee.com";
+
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const h = await headers();
+  const host = (h.get("x-forwarded-host") ?? h.get("host") ?? "").toLowerCase();
+  const isSatellite = SATELLITE_HOSTS.includes(host);
+  const satelliteProps = isSatellite
+    ? {
+        isSatellite: true as const,
+        domain: host,
+        signInUrl: `${PRIMARY_URL}/sign-in`,
+        signUpUrl: `${PRIMARY_URL}/sign-up`,
+      }
+    : {
+        allowedRedirectOrigins: SATELLITE_HOSTS.map((h) => `https://${h}`),
+      };
+
+  // Suppress unused-var warning if host detection ever bails; PRIMARY_HOST
+  // documents intent for future swap to liquidclips.app as primary.
+  void PRIMARY_HOST;
   return (
     <ClerkProvider
+      {...satelliteProps}
       // Billing is in Beta — version locked via exact-pin in package.json
       // (`"@clerk/nextjs": "7.3.7"`, no caret). clerk-js follows the SDK version
       // at runtime, so the npm pin is sufficient. See clerk.com/docs/pinning.
