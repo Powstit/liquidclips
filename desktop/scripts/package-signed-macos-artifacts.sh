@@ -61,6 +61,18 @@ hdiutil create \
   -format UDZO \
   "$DMG_PATH"
 
+# Codesign the rebuilt DMG container itself. The .app inside is already signed
+# (by sign-clean-macos-app.sh upstream), but `hdiutil create` produces a fresh
+# unsigned DMG. Apple notarize/staple succeeds on the .app inside, but
+# `spctl --assess --type install` checks the DMG's own signature — which is
+# why v0.6.43 CI failed with `source=no usable signature` after a clean
+# notarization+staple. Without this step every release post-launch-sprint
+# would silently fail Gatekeeper installer assessment.
+echo "=== Codesigning DMG container ==="
+DMG_IDENTITY="${APPLE_SIGNING_IDENTITY:-Developer ID Application: daniel diyepriye dokubo (KT68NGT4LX)}"
+codesign --sign "$DMG_IDENTITY" --timestamp "$DMG_PATH"
+codesign --verify --verbose=2 "$DMG_PATH"
+
 echo "=== Verifying DMG exists ==="
 ls -lh "$DMG_PATH" "$TAR_PATH" "$TAR_PATH.sig" 2>/dev/null || ls -lh "$DMG_PATH" "$TAR_PATH"
 echo "✓ packaged signed artifacts"
