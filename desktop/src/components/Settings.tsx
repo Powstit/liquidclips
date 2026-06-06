@@ -603,7 +603,7 @@ function AffiliatePayoutsSection() {
         <div className="mt-3 flex flex-wrap gap-2">
           <HudChip
             active={needsBank}
-            onClick={() => void openExternal(aff.payout_setup_url || "https://account.liquidclips.app/dashboard#payouts")}
+            onClick={() => void openExternal(aff.payout_setup_url || "https://account.jnremployee.com/dashboard#payouts")}
           >
             {needsBank ? "Set up Stripe payouts →" : "Manage Stripe payouts →"}
           </HudChip>
@@ -751,10 +751,10 @@ function WhoAmISection() {
         <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
           Couldn't reach the backend. Sign in via{" "}
           <a
-            onClick={() => void openExternal("https://account.liquidclips.app/dashboard")}
+            onClick={() => void openExternal("https://account.jnremployee.com/dashboard")}
             className="cursor-pointer text-fuchsia hover:text-fuchsia-deep"
           >
-            account.liquidclips.app
+            account.jnremployee.com
           </a>
           {" "}then come back.
         </p>

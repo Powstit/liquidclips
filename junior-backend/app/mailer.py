@@ -1484,7 +1484,7 @@ def send_mc_challenge_join(email: str, *, first_name: str | None = None) -> None
     _async(_send, to=email, subject=subject, html=html, text=text, tag="mc_challenge_join")
 
 
-def send_mc_first_export(email: str, *, first_name: str | None = None, upgrade_url: str = "https://account.liquidclips.app/upgrade") -> None:
+def send_mc_first_export(email: str, *, first_name: str | None = None, upgrade_url: str = "https://account.jnremployee.com/upgrade") -> None:
     subject, html, text = _mc_render("first_export", {
         "first_name": first_name or "clipper",
         "upgrade_url": upgrade_url,
@@ -1492,7 +1492,7 @@ def send_mc_first_export(email: str, *, first_name: str | None = None, upgrade_u
     _async(_send, to=email, subject=subject, html=html, text=text, tag="mc_first_export")
 
 
-def send_mc_watermark_rejected(email: str, *, first_name: str | None, rejection_reason: str, upgrade_url: str = "https://account.liquidclips.app/upgrade?reason=watermark") -> None:
+def send_mc_watermark_rejected(email: str, *, first_name: str | None, rejection_reason: str, upgrade_url: str = "https://account.jnremployee.com/upgrade?reason=watermark") -> None:
     subject, html, text = _mc_render("watermark_rejected", {
         "first_name": first_name or "clipper",
         "rejection_reason": rejection_reason,

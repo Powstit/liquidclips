@@ -119,7 +119,7 @@ BEFORE upload — no broken artifact reaches users.
 - Browse Rewards: enable the flag, add URL filter, resize handler, browser
   chrome (back/forward/refresh), Whop login + cookie persistence test,
   YouTube/video playback test, App Store reviewer notes.
-- `account.liquidclips.app` migration (after re-registering Clerk callbacks
+- `account.jnremployee.com` migration (after re-registering Clerk callbacks
   at the new subdomain).
 - OG card image (`liquidclips.app/og-product.png`).
 - Mac App Store distribution (requires IAP integration — separate 0.5.x

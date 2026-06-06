@@ -594,7 +594,7 @@ function UpgradeWall({
             Maybe later
           </button>
           <button
-            onClick={() => void openExternal("https://account.liquidclips.app/upgrade")}
+            onClick={() => void openExternal("https://account.jnremployee.com/upgrade")}
             className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
           >
             Upgrade to {req.name} →

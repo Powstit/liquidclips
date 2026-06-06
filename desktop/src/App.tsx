@@ -146,7 +146,7 @@ export default function App() {
   // → recovers without a restart.
   const [needsActivation, setNeedsActivation] = useState(false);
   // Auth indicator. true once we've confirmed the user has a license JWT in
-  // the keychain (i.e. they've activated via account.liquidclips.app). Drives
+  // the keychain (i.e. they've activated via account.jnremployee.com). Drives
   // the top-nav button copy — "Sign in" while null/false, "Account" once true.
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   // Free clip exports left on the 100-export starter pass. null = unlimited
@@ -1151,7 +1151,7 @@ export default function App() {
               <button
                 onClick={() => {
                   void import("@tauri-apps/plugin-shell").then((m) =>
-                    m.open("https://account.liquidclips.app/upgrade"),
+                    m.open("https://account.jnremployee.com/upgrade"),
                   );
                 }}
                 className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white hover:bg-fuchsia-bright"
