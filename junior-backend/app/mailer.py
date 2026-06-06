@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from html import escape as _escape_html
 from dataclasses import dataclass
 from typing import Any
 
@@ -449,6 +450,77 @@ def send_admin_kyc_alert(
     )
     for addr in recipients:
         _async(_send, to=addr, subject=subject, html=html, text=text, tag="admin_kyc_alert")
+
+
+def send_admin_function_heatmap_alert(result: dict[str, Any]) -> None:
+    """Email admins when Railway's automated function heat-map finds red gates.
+
+    The heat-map is non-destructive: it checks public URLs, config, DB,
+    schedules, webhooks, and telemetry state. This alert intentionally fires
+    only on failures so warnings still land in PostHog/Admin HQ without inbox
+    noise every five hours.
+    """
+    recipients = _admin_recipients()
+    if not recipients:
+        return
+    subject, html, text = render_admin_function_heatmap_alert(result)
+    for addr in recipients:
+        _async(_send, to=addr, subject=subject, html=html, text=text, tag="admin_function_heatmap")
+
+
+def render_admin_function_heatmap_alert(result: dict[str, Any]) -> tuple[str, str, str]:
+    ctx = MailContext.build()
+    failures = [g for g in result.get("gates", []) if isinstance(g, dict) and g.get("status") == "fail"]
+    score = result.get("score", "—")
+    generated_at = result.get("generated_at", "unknown")
+    subject = f"Liquid Clips heat-map red — {len(failures)} failure(s), score {score}/100"
+
+    rows_html = []
+    rows_text = []
+    for g in failures[:12]:
+        label = str(g.get("label") or g.get("key") or "Unknown gate")
+        owner = str(g.get("owner") or "unknown")
+        detail = str(g.get("detail") or "")
+        action = str(g.get("action") or "Open Admin HQ and inspect this gate.")
+        rows_html.append(
+            f"""
+            <tr>
+              <td style="padding:10px 12px;border-bottom:1px solid {LINE};">
+                <div style="font-size:12px;font-weight:700;color:{INK};">{_escape_html(label)}</div>
+                <div style="font-size:11px;color:{TEXT_TERTIARY};">Owner: {_escape_html(owner)}</div>
+                <div style="font-size:12px;line-height:1.5;color:{TEXT_SECONDARY};margin-top:4px;">{_escape_html(detail)}</div>
+                <div style="font-size:12px;line-height:1.5;color:{FUCHSIA};margin-top:4px;">{_escape_html(action)}</div>
+              </td>
+            </tr>
+            """
+        )
+        rows_text.append(f"- {label} [{owner}]: {detail} | Action: {action}")
+
+    body_html = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">railway cron · function heat-map</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.02em;line-height:1.1;margin:0 0 18px;color:{INK};">
+  Function heat-map needs attention.
+</h1>
+<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};">
+  Railway's 5-hour automated launch heat-map found <strong style="color:{INK};">{len(failures)} red gate(s)</strong>.
+  Score: <strong style="color:{INK};">{score}/100</strong>. Generated: {_escape_html(str(generated_at))}.
+</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin:12px 0 18px;background:{DARK_CARD_2};border:1px solid {LINE};border-radius:12px;">
+  {''.join(rows_html)}
+</table>
+<p style="margin:0;font-size:13px;line-height:1.6;color:{TEXT_TERTIARY};">
+  Open Admin HQ for the full heat-map and warnings: <a href="{ctx.account_url}/admin" style="color:{FUCHSIA};">{ctx.account_url}/admin</a>
+</p>
+"""
+    html = _shell(subject, body_html, ctx=ctx)
+    text = (
+        f"Liquid Clips function heat-map red\n"
+        f"Score: {score}/100\n"
+        f"Generated: {generated_at}\n\n"
+        + "\n".join(rows_text)
+        + f"\n\nAdmin HQ: {ctx.account_url}/admin\n"
+    )
+    return subject, html, text
 
 
 def render_admin_paid_customer_alert(

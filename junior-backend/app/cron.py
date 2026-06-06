@@ -517,6 +517,30 @@ def _trial_ending_soon_tick() -> None:
         log.info("[trial] sent %d trial-ending-soon reminder(s)", len(queued))
 
 
+def _function_heatmap_tick() -> None:
+    """Every 5 hours on Railway: non-destructive launch/function heat-map.
+
+    Sends PostHog telemetry for every run and emails admins through Resend only
+    when a red gate appears. No posts, charges, payouts, OAuth mutations, or
+    customer data writes.
+    """
+    if os.environ.get("JUNIOR_DISABLE_FUNCTION_HEATMAP", "").strip().lower() in {"1", "true", "yes"}:
+        return
+    try:
+        from app.function_heatmap import run_function_heatmap
+
+        result = run_function_heatmap(notify=True, source="railway-cron")
+        log.info(
+            "[function_heatmap] %s score=%s failures=%s warnings=%s",
+            result.get("overall"),
+            result.get("score"),
+            result.get("failures"),
+            result.get("warnings"),
+        )
+    except Exception as e:  # noqa: BLE001
+        log.exception("[function_heatmap] tick failed: %s", e)
+
+
 _scheduler: BackgroundScheduler | None = None
 
 
@@ -534,11 +558,12 @@ def start_cron() -> None:
     _scheduler.add_job(_refresh_affiliate_cache_tick, "interval", seconds=21600, max_instances=1, coalesce=True, id="leaderboard_refresh")
     _scheduler.add_job(_refresh_post_analytics_tick, "interval", seconds=1800, max_instances=1, coalesce=True, id="post_analytics_refresh")
     _scheduler.add_job(_refresh_channel_status_tick, "interval", seconds=21600, max_instances=1, coalesce=True, id="channel_status_refresh")
+    _scheduler.add_job(_function_heatmap_tick, "interval", seconds=18000, max_instances=1, coalesce=True, id="function_heatmap")
     # Trial-ending reminder — daily. Self-gates on JUNIOR_ENABLE_TRIAL_REMINDERS
     # so adding the job is safe even when the feature is disabled.
     _scheduler.add_job(_trial_ending_soon_tick, "interval", seconds=86400, max_instances=1, coalesce=True, id="trial_ending_reminder")
     _scheduler.start()
-    log.info("[cron] started: schedules 60s, billing 3600s, leaderboard 21600s, analytics 1800s, channel status 21600s, trial reminders 86400s")
+    log.info("[cron] started: schedules 60s, billing 3600s, leaderboard 21600s, analytics 1800s, channel status 21600s, function heatmap 18000s, trial reminders 86400s")
 
 
 def stop_cron() -> None:

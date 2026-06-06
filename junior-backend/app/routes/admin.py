@@ -599,6 +599,99 @@ def launch_health(admin: AdminUser, db: Annotated[Session, Depends(get_db)]) -> 
     }
 
 
+@router.get("/function-heatmap")
+def function_heatmap_latest(admin: AdminUser) -> dict[str, Any]:
+    """Latest automated Railway function heat-map.
+
+    Returns the in-memory latest result for this backend process. If Railway has
+    just booted and no 5-hour tick has run yet, run one read-only pass now so
+    Admin HQ never shows a blank panel.
+    """
+    from app.function_heatmap import latest_function_heatmap, run_function_heatmap
+
+    result = latest_function_heatmap()
+    if result is None:
+        result = run_function_heatmap(notify=False, source="admin-lazy-load")
+    return result
+
+
+@router.post("/function-heatmap/run")
+def function_heatmap_run(admin: AdminUser) -> dict[str, Any]:
+    """Manual admin-triggered heat-map run.
+
+    Still read-only. `notify=False` because a human is already looking at the
+    result; the Railway 5-hour cron is responsible for email alerts.
+    """
+    from app.function_heatmap import run_function_heatmap
+
+    return run_function_heatmap(notify=False, source="admin-manual")
+
+
+@router.get("/alerts")
+def admin_alerts(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    unread_only: bool = False,
+    priority: str | None = None,
+    limit: int = 30,
+) -> dict[str, Any]:
+    """Current admin's in-app alert history.
+
+    This surfaces the same Notification rows written by Railway's function
+    heat-map, without exposing other users' inboxes.
+    """
+    q = (
+        db.query(Notification)
+        .filter(Notification.user_id == admin.id, Notification.dismissed_at.is_(None))
+        .order_by(Notification.created_at.desc())
+    )
+    if unread_only:
+        q = q.filter(Notification.read_at.is_(None))
+    if priority in {"low", "medium", "high"}:
+        q = q.filter(Notification.priority == priority)
+    rows = q.limit(max(1, min(limit, 100))).all()
+    unread = (
+        db.query(Notification)
+        .filter(
+            Notification.user_id == admin.id,
+            Notification.dismissed_at.is_(None),
+            Notification.read_at.is_(None),
+        )
+        .count()
+    )
+    return {
+        "unread": unread,
+        "alerts": [
+            {
+                "id": n.id,
+                "category": n.category,
+                "title": n.title,
+                "body": n.body,
+                "priority": n.priority,
+                "action_kind": n.action_kind,
+                "action_data": n.action_data or {},
+                "read_at": _iso(n.read_at),
+                "created_at": _iso(n.created_at),
+            }
+            for n in rows
+        ],
+    }
+
+
+@router.post("/alerts/{notification_id}/read", status_code=status.HTTP_204_NO_CONTENT)
+def admin_alert_mark_read(
+    notification_id: str,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    row = db.get(Notification, notification_id)
+    if not row or row.user_id != admin.id or row.dismissed_at is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "alert not found")
+    if row.read_at is None:
+        row.read_at = datetime.now(timezone.utc)
+        db.commit()
+
+
 def ageLabelBackend(seconds: int | None) -> str:
     if seconds is None:
         return "unknown"

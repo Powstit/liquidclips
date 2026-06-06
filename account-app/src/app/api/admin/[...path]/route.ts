@@ -41,6 +41,8 @@ function adminList(): string[] {
 const READ_PATHS = [
   /^overview$/,
   /^health$/,
+  /^function-heatmap$/,
+  /^alerts$/,
   /^users$/,
   /^users\/[^/]+$/,
   /^users\/[^/]+\/timeline$/,
@@ -50,7 +52,7 @@ const READ_PATHS = [
   /^postiz$/,
   /^bugs$/,
 ];
-const WRITE_PATHS = [/^claims\/[^/]+\/expire$/, /^claims\/[^/]+\/resend$/];
+const WRITE_PATHS = [/^claims\/[^/]+\/expire$/, /^claims\/[^/]+\/resend$/, /^function-heatmap\/run$/, /^alerts\/[^/]+\/read$/];
 
 function pathAllowed(path: string, method: string): boolean {
   const list = method === "POST" ? WRITE_PATHS : READ_PATHS;
