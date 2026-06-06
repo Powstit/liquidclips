@@ -49,6 +49,7 @@ export function ClipPreview({
   onProjectChange,
   onNavigate,
   initialCaptionsOpen = false,
+  mode = "modal",
 }: {
   clip: Clip;
   index: number;
@@ -61,6 +62,11 @@ export function ClipPreview({
   /** Open the Captions drawer on mount. Set when the user clicks the
    * captions chip on a ResultsGrid card. */
   initialCaptionsOpen?: boolean;
+  /** Render mode. "modal" (default) wraps in the fullscreen overlay and
+   * owns Esc/arrow keys + Close button. "window" drops the overlay shell,
+   * suppresses the close button, and delegates keyboard to the WindowManager
+   * so 100 tiles don't all listen for Esc independently. */
+  mode?: "modal" | "window";
 }) {
   const [ratio, setRatio] = useState<RatioKey>("vertical");
   const [busy, setBusy] = useState(false);
@@ -290,6 +296,9 @@ export function ClipPreview({
   // drawer's tryClose runs. The drawer owns Esc when open (its tryClose runs
   // the unsaved-edits confirm); the reaction-source picker owns it when up.
   useEffect(() => {
+    // Window mode: WindowManager owns global keyboard. If every tile attached
+    // its own listener, one Esc keystroke would cascade-close N windows.
+    if (mode === "window") return;
     const onKey = (e: KeyboardEvent) => {
       if (document.getElementById("__reaction-source-picker")) return;
       if (e.key === "Escape") {
@@ -309,7 +318,7 @@ export function ClipPreview({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, onNavigate, index, totalClips, captionsOpen]);
+  }, [onClose, onNavigate, index, totalClips, captionsOpen, mode]);
 
   // Apply a launch-safe b-roll layout. The renderer supports one extra source
   // per clip; the advanced cell editor stays hidden until the backend supports
@@ -379,10 +388,13 @@ export function ClipPreview({
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 sm:p-6" onClick={onClose}>
+  const innerCard = (
       <div
-        className="relative flex h-full max-h-[94vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-2xl bg-paper shadow-2xl"
+        className={
+          mode === "window"
+            ? "relative flex h-full w-full flex-col overflow-hidden rounded-none bg-paper"
+            : "relative flex h-full max-h-[94vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-2xl bg-paper shadow-2xl"
+        }
         onClick={(e) => e.stopPropagation()}
       >
         <CaptionDrawer
@@ -491,10 +503,12 @@ export function ClipPreview({
               </span>
             )}
           </div>
-          <button onClick={onClose}
-            className="shrink-0 rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] text-text-secondary hover:border-fuchsia hover:text-ink">
-            Close · esc
-          </button>
+          {mode !== "window" && (
+            <button onClick={onClose}
+              className="shrink-0 rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] text-text-secondary hover:border-fuchsia hover:text-ink">
+              Close · esc
+            </button>
+          )}
         </header>
 
         <div className="flex flex-1 flex-col gap-0 overflow-hidden lg:flex-row">
@@ -883,6 +897,18 @@ export function ClipPreview({
           </div>
         </div>
       </div>
+  );
+
+  if (mode === "window") {
+    // Workbench tile mode: WindowManager owns positioning, sizing, and the
+    // modal overlay shell. Render the card naked so the parent tile can
+    // place + crop it.
+    return innerCard;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 sm:p-6" onClick={onClose}>
+      {innerCard}
     </div>
   );
 }

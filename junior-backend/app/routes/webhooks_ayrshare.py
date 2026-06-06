@@ -3,11 +3,11 @@
 Endpoint: POST /webhooks/ayrshare
 
 Ayrshare emits a POST to this URL when a scheduled post fires (success or
-failure), an analytics window closes, or a token refresh updates a profile.
-We only care about the post-status events for now — they let us flip a
-schedules row from `scheduled` → `published` (with the real `live_url`)
-or `scheduled` → `failed` (with an error message) without having to poll
-Ayrshare every minute.
+failure), an analytics window closes, a channel is linked/unlinked, or a
+token refresh updates a profile. We flip the corresponding schedules row
+(`scheduled` → `published` / `failed`) and the corresponding
+social_channels row (`pending_link` → `active`, `active` → `pending_link`)
+without having to poll Ayrshare every minute.
 
 Configure the URL on Ayrshare's dashboard (Settings → Webhooks):
     https://api.jnremployee.com/webhooks/ayrshare
@@ -27,6 +27,17 @@ Payload shapes vary by event:
     {"type": "post", "status": "error", "id": "<ayrshare post id>",
      "idempotencyKey": "...", "errors": [{platform, message}, ...]}
 
+    {"type": "channel.linked",   "profileKey": "...", "platform": "tiktok",
+     "handle": "@daniel", "idempotencyKey": "..."}
+
+    {"type": "channel.unlinked", "profileKey": "...", "platform": "tiktok",
+     "idempotencyKey": "..."}
+
+Out-of-order safety: channel events that arrive AFTER a newer probe
+(`last_probe_at` is newer than the webhook's `received_at` proxy) are
+ignored, so a late-arriving `channel.unlinked` for an old session can't
+flip an `active` channel back to `pending_link`.
+
 We're forward-compatible: unknown event types are 200-ack'd so Ayrshare
 doesn't keep retrying.
 """
@@ -38,14 +49,17 @@ import hmac
 import json
 import logging
 import os
+import time
+from datetime import datetime, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Schedule, WebhookEvent
+from app.models import Schedule, SocialChannel, WebhookEvent
 from app.routes.notifications import write_notification
 
 log = logging.getLogger("junior.webhooks.ayrshare")
@@ -56,17 +70,26 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks", "ayrshare"])
 def _verify_signature(raw_body: bytes, signature: str | None) -> bool:
     """Returns True when the body matches AYRSHARE_WEBHOOK_SECRET, OR when
     no secret is configured (dev / pre-config). Returns False only when a
-    secret IS configured and the signature is missing / wrong."""
+    secret IS configured and the signature is missing / wrong.
+
+    Logs a warning on every failure path so prod can spot a misconfigured
+    secret or a forged delivery without log-diving."""
     secret = os.environ.get("AYRSHARE_WEBHOOK_SECRET", "").strip()
     if not secret:
+        # Dev / pre-config — accept but record that we did.
+        log.debug("[ayrshare] signature check skipped (no AYRSHARE_WEBHOOK_SECRET set)")
         return True
     if not signature:
+        log.warning("[ayrshare] signature missing on signed-mode delivery")
         return False
     expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
     # Ayrshare ships either the hex digest directly or a `sha256=<hex>`
     # prefix depending on dashboard config — tolerate both.
     candidate = signature.split("=", 1)[1] if "=" in signature else signature
-    return hmac.compare_digest(expected, candidate.strip())
+    ok = hmac.compare_digest(expected, candidate.strip())
+    if not ok:
+        log.warning("[ayrshare] signature mismatch (len=%d)", len(signature))
+    return ok
 
 
 def _idempotency_id(payload: dict[str, Any]) -> str | None:
@@ -144,6 +167,24 @@ def _extract_error(payload: dict[str, Any]) -> str:
     return str(msg) if msg else "publish failed"
 
 
+def _find_channel(db: Session, payload: dict[str, Any]) -> SocialChannel | None:
+    """Match a channel.linked / channel.unlinked event to a SocialChannel
+    row by Ayrshare profile key (preferred) or refId (fallback)."""
+    profile_key = (
+        payload.get("profileKey")
+        or payload.get("profile_key")
+        or payload.get("Profile-Key")
+    )
+    ref_id = payload.get("refId") or payload.get("ref_id")
+    if isinstance(profile_key, str) and profile_key:
+        row = db.query(SocialChannel).filter(SocialChannel.ayrshare_profile_key == profile_key).first()
+        if row:
+            return row
+    if isinstance(ref_id, str) and ref_id:
+        return db.query(SocialChannel).filter(SocialChannel.ayrshare_ref_id == ref_id).first()
+    return None
+
+
 @router.post("/ayrshare", status_code=status.HTTP_200_OK)
 async def ayrshare_webhook(
     request: Request,
@@ -151,7 +192,8 @@ async def ayrshare_webhook(
     x_ayrshare_signature: Annotated[str | None, Header(alias="x-ayrshare-signature")] = None,
     x_hub_signature_256: Annotated[str | None, Header(alias="x-hub-signature-256")] = None,
 ) -> dict[str, str]:
-    """Update a `schedules` row from an Ayrshare post-status webhook.
+    """Update a `schedules` row from an Ayrshare post-status webhook or a
+    `social_channels` row from a channel link/unlink webhook.
 
     Side effects when status flips to `published`:
       - schedules.status = 'published'
@@ -164,12 +206,27 @@ async def ayrshare_webhook(
       - schedules.status = 'failed'
       - schedules.error = aggregated message
       - one `post_failed` notification for the user
+
+    Side effects on `channel.linked`:
+      - social_channels.status = 'active'
+      - social_channels.handle = payload handle (if provided)
+      - social_channels.last_probe_at stamped
+
+    Side effects on `channel.unlinked`:
+      - social_channels.status = 'pending_link' (only if no newer probe)
+      - social_channels.last_probe_at stamped
     """
+    t_start = time.monotonic()
     raw_body = await request.body()
+    log.info("[ayrshare] arrival bytes=%d", len(raw_body))
+
     signature = x_ayrshare_signature or x_hub_signature_256
     if not _verify_signature(raw_body, signature):
-        log.warning("[ayrshare] signature verification failed")
+        # _verify_signature already log.warning'd the reason.
+        log.warning("[ayrshare] rejected: signature invalid (dur_ms=%d)",
+                    int((time.monotonic() - t_start) * 1000))
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "signature invalid")
+    log.debug("[ayrshare] signature ok")
 
     try:
         payload = json.loads(raw_body.decode("utf-8"))
@@ -179,7 +236,12 @@ async def ayrshare_webhook(
     if not isinstance(payload, dict):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "payload must be a JSON object")
 
+    event_type = (payload.get("type") or "post").lower()
+
     # Idempotency — Ayrshare retries on non-2xx, so dedupe by external_id.
+    # The WebhookEvent row is added BEFORE processing so a duplicate concurrent
+    # delivery (rare, but possible) hits the unique-constraint and falls back
+    # to the "deduped" path instead of double-processing.
     external_id = _idempotency_id(payload)
     if external_id:
         body_hash = hashlib.sha256(raw_body).hexdigest()
@@ -189,19 +251,80 @@ async def ayrshare_webhook(
             .first()
         )
         if existing:
+            log.info(
+                "[ayrshare] dedup hit external_id=%s type=%s (dur_ms=%d)",
+                external_id, event_type,
+                int((time.monotonic() - t_start) * 1000),
+            )
             return {"ok": "1", "deduped": "1"}
         evt = WebhookEvent(
             provider="ayrshare",
             external_id=f"ayrshare:{external_id}",
-            event_type=str(payload.get("type") or "post"),
+            event_type=event_type,
             body_hash=body_hash,
         )
         db.add(evt)
-        # commit later with the schedule update so they land atomically
+        try:
+            db.flush()  # surface unique-constraint races NOW, not at the final commit
+        except IntegrityError:
+            db.rollback()
+            log.info("[ayrshare] dedup hit (race) external_id=%s", external_id)
+            return {"ok": "1", "deduped": "1"}
+        log.debug("[ayrshare] dedup miss — processing external_id=%s", external_id)
 
-    event_type = (payload.get("type") or "post").lower()
+    # --- channel link/unlink events --------------------------------------
+    if event_type in ("channel.linked", "channel.unlinked", "channel.connected", "channel.disconnected"):
+        channel = _find_channel(db, payload)
+        if not channel:
+            log.info("[ayrshare] no matching channel for event=%s", event_type)
+            db.commit()
+            return {"ok": "1", "ignored": "no_channel_match"}
+
+        # Out-of-order guard: if last_probe_at is newer than the webhook's
+        # apparent send time, this event is stale and must NOT overwrite
+        # state. Ayrshare provides `timestamp` (ISO string) on some events.
+        webhook_ts = _parse_event_timestamp(payload)
+        if (
+            webhook_ts
+            and channel.last_probe_at
+            and channel.last_probe_at > webhook_ts
+        ):
+            log.info(
+                "[ayrshare] out-of-order channel event ignored "
+                "channel=%s last_probe_at=%s webhook_ts=%s",
+                channel.id, channel.last_probe_at.isoformat(), webhook_ts.isoformat(),
+            )
+            db.commit()
+            return {"ok": "1", "ignored": "out_of_order"}
+
+        now = datetime.now(timezone.utc)
+        if event_type in ("channel.linked", "channel.connected"):
+            channel.status = "active"
+            handle = payload.get("handle") or payload.get("displayName")
+            if isinstance(handle, str) and handle:
+                channel.handle = handle
+            channel.last_probe_at = now
+            channel.last_probe_error = None
+            log.info(
+                "[ayrshare] channel linked id=%s platform=%s handle=%s (dur_ms=%d)",
+                channel.id, channel.platform, channel.handle,
+                int((time.monotonic() - t_start) * 1000),
+            )
+        else:  # channel.unlinked / channel.disconnected
+            channel.status = "pending_link"
+            channel.last_probe_at = now
+            log.info(
+                "[ayrshare] channel unlinked id=%s platform=%s (dur_ms=%d)",
+                channel.id, channel.platform,
+                int((time.monotonic() - t_start) * 1000),
+            )
+        db.commit()
+        return {"ok": "1", "channel_id": channel.id, "new_status": channel.status}
+
+    # --- post-status events ----------------------------------------------
     if event_type not in ("post", "post.status", "post.published", "post.failed"):
-        log.info("[ayrshare] ignoring event type: %s", event_type)
+        log.info("[ayrshare] ignoring event type: %s (dur_ms=%d)", event_type,
+                 int((time.monotonic() - t_start) * 1000))
         db.commit()
         return {"ok": "1", "ignored": event_type}
 
@@ -251,9 +374,31 @@ async def ayrshare_webhook(
             action_data={"surface": "schedule"},
         )
     else:
-        log.info("[ayrshare] status not actionable for schedule=%s: %s", row.id, status_str)
+        log.info("[ayrshare] status not actionable for schedule=%s: %s (dur_ms=%d)",
+                 row.id, status_str, int((time.monotonic() - t_start) * 1000))
         db.commit()
         return {"ok": "1", "ignored": "status_noop"}
 
     db.commit()
+    log.info(
+        "[ayrshare] processed schedule=%s new_status=%s (dur_ms=%d)",
+        row.id, row.status, int((time.monotonic() - t_start) * 1000),
+    )
     return {"ok": "1", "schedule_id": row.id, "new_status": row.status}
+
+
+def _parse_event_timestamp(payload: dict[str, Any]) -> datetime | None:
+    """Best-effort parse of the webhook send time. Ayrshare uses ISO 8601 on
+    most events; fall back to None if absent or unparseable."""
+    raw = (
+        payload.get("timestamp")
+        or payload.get("eventTime")
+        or payload.get("event_time")
+        or payload.get("created")
+    )
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None

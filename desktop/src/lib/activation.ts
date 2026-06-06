@@ -98,6 +98,25 @@ async function handleDeepLink(urls: string[]): Promise<void> {
       return;
     }
 
+    // v0.7.x — channel-linked deep link fires after Ayrshare's OAuth
+    // completes successfully. The account-app's /channel-linked bounce
+    // page hits this scheme with ?cid=<channel_id>. InlineScheduler +
+    // ChannelsManager subscribe to `junior:channel-linked` to short-circuit
+    // their poll loops — gets the status flip from "linking" to "active"
+    // in <1s instead of 30-60s.
+    if (u.hostname === "channel-linked") {
+      const cid = u.searchParams.get("cid") ?? u.searchParams.get("channel_id");
+      window.dispatchEvent(
+        new CustomEvent("junior:channel-linked", {
+          detail: {
+            channelId: cid,
+            source: "deep-link",
+          },
+        }),
+      );
+      return;
+    }
+
     if (u.hostname !== "activate") continue;
     if (!pendingChallenge) return; // nothing in flight — ignore stray/old links
 

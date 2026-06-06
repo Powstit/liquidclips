@@ -19,6 +19,7 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import {
   backend,
   createChannel,
+  diagnoseChannel,
   listChannels,
   refreshChannel,
   relinkChannel,
@@ -28,7 +29,7 @@ import {
   type SocialConnectionState,
 } from "../../lib/backend";
 import { sidecar, humanError, type Clip } from "../../lib/sidecar";
-import { CheckCircle2, ChevronDown, Loader2, Send, Clock, ExternalLink, RefreshCw } from "lucide-react";
+import { CheckCircle2, ChevronDown, Loader2, Send, Clock, ExternalLink, RefreshCw, Stethoscope } from "lucide-react";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
 import { prettyPlatform } from "../schedule/types";
 
@@ -98,6 +99,27 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
   const [when, setWhen] = useState<"now" | "1h" | "24h">("now");
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [connectingPlatform, setConnectingPlatform] = useState<ConnectionPlatform | null>(null);
+  // Diagnose affordance — fires diagnoseChannel(id) against the pending_link
+  // channel sitting in status.kind === "linking" and shows the backend's
+  // recommended_action inline. ENABLES the user to see WHY the OAuth dance
+  // hasn't completed instead of clicking "Refresh accounts" in a loop.
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diagnosis, setDiagnosis] = useState<string | null>(null);
+  const [diagnoseError, setDiagnoseError] = useState<string | null>(null);
+
+  async function runDiagnose(channelId: string) {
+    setDiagnosing(true);
+    setDiagnoseError(null);
+    try {
+      const result = await diagnoseChannel(channelId);
+      setDiagnosis(result.recommended_action);
+    } catch (e) {
+      setDiagnoseError(humanError(e));
+      setDiagnosis(null);
+    } finally {
+      setDiagnosing(false);
+    }
+  }
 
   // Lazy-load connection state only when the scheduler opens — saves a
   // network round-trip per clip card on Workspace. Re-fetches on every
@@ -723,7 +745,33 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
                   <ExternalLink className="h-3 w-3" />
                   Open browser again
                 </button>
+                <button
+                  type="button"
+                  onClick={() => void runDiagnose(status.channelId)}
+                  disabled={diagnosing}
+                  className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:text-fuchsia-deep disabled:opacity-50"
+                  title="Probe this channel's live link state"
+                >
+                  {diagnosing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Stethoscope className="h-3 w-3" />}
+                  Diagnose this link
+                </button>
               </div>
+              {(diagnosis !== null || diagnoseError !== null) ? (
+                <div className="mt-2 rounded-lg border border-fuchsia/20 bg-paper px-2.5 py-2">
+                  {diagnoseError ? (
+                    <p className="font-sans text-[11px] text-[#DC2626]">{diagnoseError}</p>
+                  ) : (
+                    <p className="font-sans text-[11px] text-ink">{diagnosis}</p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setDiagnosis(null); setDiagnoseError(null); }}
+                    className="mt-1 font-mono text-[9px] uppercase tracking-[0.1em] text-text-tertiary hover:text-ink"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

@@ -120,6 +120,13 @@ async def lifespan(_app: FastAPI):
         )""",
         "CREATE INDEX IF NOT EXISTS ix_social_channels_user ON social_channels (user_id)",
         "CREATE INDEX IF NOT EXISTS ix_social_channels_status ON social_channels (status)",
+        # TikTok-hardening observability — every refresh/create/relink stamps
+        # last_probe_at + the soft error (NULL on success). link_attempts ticks
+        # on every fresh link URL mint so we can see in prod how many OAuth
+        # round-trips a user takes to land a working channel.
+        "ALTER TABLE social_channels ADD COLUMN IF NOT EXISTS last_probe_at timestamptz",
+        "ALTER TABLE social_channels ADD COLUMN IF NOT EXISTS last_probe_error varchar",
+        "ALTER TABLE social_channels ADD COLUMN IF NOT EXISTS link_attempts integer NOT NULL DEFAULT 0",
         # schedules extended for channel_id + caption_override + Ayrshare ids
         "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS channel_id varchar REFERENCES social_channels(id) ON DELETE SET NULL",
         "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS caption_override text",
@@ -205,11 +212,17 @@ app.include_router(leaderboard.router)
 app.include_router(submissions.router)
 app.include_router(doctrine.router)
 app.include_router(channels.router)
+# v0.7.x — admin_router exposes /admin/channels/{id}/diagnose for the
+# desktop's per-channel Diagnose button + the probe script. Same prefix
+# pattern as other admin endpoints.
+if hasattr(channels, "admin_router"):
+    app.include_router(channels.admin_router)
 app.include_router(analytics.router)
 
 
 @app.get("/healthcheck")
 def healthcheck() -> dict:
+    import os as _os
     from app import ayrshare as _ayr
     return {
         "status": "ok",
@@ -219,6 +232,14 @@ def healthcheck() -> dict:
         # AYRSHARE_API_KEY without us having to add a separate readiness probe.
         # `null` = not configured (publishing in beta); `true` = key set.
         "ayrshare_configured": _ayr.is_configured(),
+        # v0.7.x — JWT linking is the platform-specific path (TikTok needs it).
+        # When false, channel-link silently falls back to the org-branded
+        # picker which TikTok refuses to OAuth from. Detected by harden A3.
+        "ayrshare_jwt_configured": _ayr.is_jwt_link_configured(),
+        # Webhook secret presence — when false, signature verification is
+        # bypassed (dev mode). Should be true in prod or any sender can
+        # forge channel-state events.
+        "ayrshare_webhook_secured": bool(_os.environ.get("AYRSHARE_WEBHOOK_SECRET", "").strip()),
     }
 
 

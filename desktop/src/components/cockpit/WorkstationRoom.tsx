@@ -13,13 +13,17 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
-import { Sparkles, Layers } from "lucide-react";
+import { Sparkles, Layers, ImageIcon, ScrollText } from "lucide-react";
+import { SponsoredBannerCarousel } from "../earn/SponsoredBannerCarousel";
 
 export function WorkstationRoom({
   onCreate,
   onImport,
+  onThumbnails,
+  onScript,
   dragHoverActive = false,
   dropError = null,
+  userTier = null,
 }: {
   /** Single-click Create: opens the compact URL/file portal. The portal
    *  auto-focuses its URL input — no second click to start typing. */
@@ -27,6 +31,13 @@ export function WorkstationRoom({
   /** Single-click Import: fires the OS file picker directly. No modal in
    *  between — the picker IS the next surface. */
   onImport: () => void;
+  /** v0.7.1 — placeholder tile for the thumbnail-pack feature. Daniel
+   *  is wiring this later; for now the onClick fires a "coming soon"
+   *  toast via the parent so the surface stays informative, not dead. */
+  onThumbnails?: () => void;
+  /** v0.7.1 — placeholder tile for the script / transcripts feature.
+   *  Same pattern as onThumbnails: parent owns the toast. */
+  onScript?: () => void;
   /** P0 #5 — driven by App.tsx's tauri://drag-enter/leave listeners. When
    *  true, the room renders a dashed cyan drop affordance with a "Drop a
    *  video to start" hint so the user has a visible target. */
@@ -34,6 +45,9 @@ export function WorkstationRoom({
   /** P0 #6 — ephemeral error from a rejected drop (e.g. unsupported file
    *  type). Auto-cleared by App.tsx after 4s. */
   dropError?: string | null;
+  /** Drives the SponsoredBannerCarousel mounted below the tiles — tier
+   *  controls which campaigns show as locked vs unlocked. */
+  userTier?: "free" | "solo" | "pro" | "agency" | null;
 }) {
   const reduced = useReducedMotion();
   const [greeting, setGreeting] = useState("");
@@ -63,7 +77,14 @@ export function WorkstationRoom({
         </h1>
       </header>
 
-      <div className="grid grid-cols-2 gap-8">
+      {/* v0.7.1 — 4 tiles in a single row on wide screens; collapses to
+          2 cols on narrow. Same Tile component, same Sparkles/Layers
+          vibe via lucide. Thumbnails + Script are placeholders Daniel
+          wires later — onClick is a parent-owned "coming soon" toast.
+          When the prop isn't wired the tile dims + becomes non-interactive
+          so the surface still reads as "feature exists, not ready yet"
+          instead of looking dead. */}
+      <div className="grid grid-cols-2 gap-8 sm:grid-cols-2 lg:grid-cols-4">
         <Tile
           layoutId="cockpit-create"
           icon={<Sparkles className="h-12 w-12" strokeWidth={1.5} />}
@@ -82,6 +103,34 @@ export function WorkstationRoom({
           reduced={!!reduced}
           delay={0.15}
         />
+        <Tile
+          layoutId="cockpit-thumbnails"
+          icon={<ImageIcon className="h-12 w-12" strokeWidth={1.5} />}
+          title="Thumbnails"
+          subtitle="cover pack from one frame"
+          onClick={onThumbnails ?? (() => undefined)}
+          disabled={!onThumbnails}
+          reduced={!!reduced}
+          delay={0.3}
+        />
+        <Tile
+          layoutId="cockpit-script"
+          icon={<ScrollText className="h-12 w-12" strokeWidth={1.5} />}
+          title="Script"
+          subtitle="transcript · captions ready"
+          onClick={onScript ?? (() => undefined)}
+          disabled={!onScript}
+          reduced={!!reduced}
+          delay={0.45}
+        />
+      </div>
+
+      {/* v0.7.1 — Sponsored rewards banners surface on the home screen
+          too, not just the Earn page. Reads campaigns from the live
+          backend; renders skeleton on load + an honest retry tile on
+          failure. Tier prop gates which banners show as locked. */}
+      <div className="w-full max-w-[1080px] px-4">
+        <SponsoredBannerCarousel tier={userTier} />
       </div>
 
       {/* P0 #6 — inline ephemeral error for rejected drops. Mounted under
@@ -165,6 +214,7 @@ function Tile({
   onClick,
   reduced,
   delay,
+  disabled = false,
 }: {
   layoutId: string;
   icon: React.ReactNode;
@@ -173,28 +223,38 @@ function Tile({
   onClick: () => void;
   reduced: boolean;
   delay: number;
+  /** v0.7.1 — placeholder tiles (Thumbnails / Script) when the feature
+   *  isn't wired yet. Dims the tile + suppresses hover/tap motion + adds
+   *  a small "soon" pill so users read it as "coming" not "broken". */
+  disabled?: boolean;
 }) {
   return (
     <motion.button
       layoutId={layoutId}
       type="button"
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
       initial={reduced ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.92 }}
-      animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+      animate={reduced ? { opacity: disabled ? 0.55 : 1 } : { opacity: disabled ? 0.55 : 1, y: 0, scale: 1 }}
       transition={
         reduced
           ? { duration: 0.18 }
           : { delay, type: "spring", stiffness: 280, damping: 26 }
       }
       whileHover={
-        reduced
+        reduced || disabled
           ? undefined
           : { scale: 1.04, transition: { type: "spring", stiffness: 360, damping: 22 } }
       }
-      whileTap={reduced ? undefined : { scale: 0.96 }}
-      className="cockpit-tile group relative flex h-[220px] w-[220px] flex-col items-center justify-center gap-3 bg-transparent outline-none"
-      aria-label={`${title} — ${subtitle}`}
+      whileTap={reduced || disabled ? undefined : { scale: 0.96 }}
+      className={`cockpit-tile group relative flex h-[220px] w-[220px] flex-col items-center justify-center gap-3 bg-transparent outline-none ${disabled ? "cursor-not-allowed" : ""}`}
+      aria-label={`${title} — ${subtitle}${disabled ? " (coming soon)" : ""}`}
     >
+      {disabled && (
+        <span className="absolute right-3 top-3 rounded-full border border-fuchsia/30 bg-paper px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-fuchsia">
+          soon
+        </span>
+      )}
       {/* HUD bracket corners — fuchsia dashed, only at the four corners.
           No background fill, no full outline; the icon hovers in space and
           the brackets read as a targeting reticle around it. */}

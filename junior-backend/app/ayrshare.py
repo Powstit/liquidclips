@@ -55,6 +55,18 @@ def is_configured() -> bool:
     return bool(os.environ.get("AYRSHARE_API_KEY", "").strip())
 
 
+def is_jwt_link_configured() -> bool:
+    """Tighter check — JWT-based linking requires THREE env vars.
+    /healthcheck surfaces this so we can tell when prod is silently in
+    the fallback mode (broken TikTok OAuth)."""
+    return (
+        bool(os.environ.get("AYRSHARE_API_KEY", "").strip())
+        and bool((os.environ.get("AYRSHARE_JWT_PRIVATE_KEY", "").strip()
+                  or os.environ.get("AYRSHARE_JWT_PRIVATE_KEY_PATH", "").strip()))
+        and bool(os.environ.get("AYRSHARE_DOMAIN", "").strip())
+    )
+
+
 def check_key() -> dict[str, Any]:
     """GET /user — Ayrshare's account-info endpoint. Used as a health
     check at /healthcheck and during Connect-account flow to verify the
@@ -172,7 +184,20 @@ def generate_jwt(
         timeout=DEFAULT_TIMEOUT,
     )
     r.raise_for_status()
-    return r.json()
+    payload = r.json()
+    # Ayrshare returns HTTP 200 with `code:<int>` JSON body on validation
+    # errors — httpx.raise_for_status() doesn't catch this. Without this
+    # check we silently fall through to the org-branded picker which
+    # breaks TikTok's OAuth (TikTok refuses to redirect without `redirect=`
+    # set, AND requires the JWT-signed page to land). Detected v0.7.x via
+    # A3 live probe — generateJWT returned `{"status":"error","code":188}`
+    # when AYRSHARE_DOMAIN was misconfigured.
+    if isinstance(payload, dict) and payload.get("status") == "error":
+        raise RuntimeError(
+            f"Ayrshare generateJWT returned error: code={payload.get('code')} "
+            f"message={payload.get('message', '')}"
+        )
+    return payload
 
 
 def post(
