@@ -1,21 +1,27 @@
 @import "tailwindcss";
 
+/* Dark surfaces — match the Liquid Clips desktop (see desktop/src/index.css).
+   `fuchsia-deep` flips from #C70066 (light-era deep pink) to #FF66B8 so the
+   ~70 existing `text-fuchsia-deep` usages hit AA contrast on dark paper. */
 :root {
-  /* Brand — fuchsia ladder */
+  /* Brand — fuchsia ladder, tuned for dark surfaces */
   --fuchsia: #FF1A8C;
   --fuchsia-bright: #FF3DA5;
-  --fuchsia-deep: #C70066;
-  --fuchsia-soft: #FFD6EC;
-  --fuchsia-glow: #FF66B8;
+  --fuchsia-deep: #FF66B8;
+  --fuchsia-soft: rgba(255, 26, 140, 0.16);
+  --fuchsia-glow: #FF8FCB;
+  --cyan-cool: #00E5FF;
   /* Surfaces */
-  --ink: #0A0A0F;
-  --ink-soft: #1A1A24;
-  --paper: #FAF7F2;
-  --paper-warm: #F5EFE7;
-  --line: #E8DFD2;
+  --ink: #F4F1EA;
+  --ink-soft: #C8C4BE;
+  --paper: #0B0B10;
+  --paper-warm: #15151C;
+  --paper-elev: #1C1C25;
+  --line: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.12);
   /* Text */
-  --text-secondary: #5A5560;
-  --text-tertiary: #8A8590;
+  --text-secondary: #C8C4BE;
+  --text-tertiary: #8A857E;
 }
 
 @theme inline {
