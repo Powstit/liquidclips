@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse
 from app.config import get_settings
 from app.cron import start_cron, stop_cron
 from app.db import Base, engine
-from app.routes import admin, affiliate, analytics, channels, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, affiliate, analytics, campaigns, channels, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -197,6 +197,7 @@ app.include_router(me.router)
 app.include_router(onboarding.router)
 app.include_router(affiliate.router)
 app.include_router(admin.router)
+app.include_router(campaigns.router)
 app.include_router(redirect.router)
 app.include_router(reward_clips.router)
 app.include_router(proxy_llm.router)
