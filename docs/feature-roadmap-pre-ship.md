@@ -46,7 +46,7 @@ All 8 pass → mark Browse Rewards v1 installed QA as passed.
 - Count-up animations on stat tiles
 - Full design uplift motion system (`design-uplift-scope.md` §2+)
 - Splash + empty-state illustrations
-- `account.liquidclips.app` subdomain migration (requires re-registering Clerk OAuth callbacks)
+- `account.jnremployee.com` subdomain migration (requires re-registering Clerk OAuth callbacks)
 - Mac App Store distribution (requires IAP replacing Whop/Stripe billing)
 - Everything in `desktop/v1.1.md`
 

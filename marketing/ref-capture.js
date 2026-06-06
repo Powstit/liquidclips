@@ -2,7 +2,7 @@
 //
 // Reads ?ref= (or legacy ?a=) from the landing URL and stores it as the
 // `jnr_ref` cookie scoped to *.liquidclips.app, so the account-app sign-up
-// (account.liquidclips.app) can bake it into Clerk unsafeMetadata — the
+// (account.jnremployee.com) can bake it into Clerk unsafeMetadata — the
 // "first-touch forever" attribution from oauth-billing.md §6.
 //
 // IDs only; first-touch wins (never overwrite an existing capture).

@@ -83,7 +83,7 @@ const FEED: Post[] = [
     tag: "guide",
     title: "How to claim 50% MRR for life",
     body: "Refer two paid users through your link → 50% recurring commission unlocks on every customer you refer from that point on. Lifetime, not just first month. Find your link inside Account → Dashboard.",
-    cta: { label: "Get my link →", url: "https://account.liquidclips.app/dashboard" },
+    cta: { label: "Get my link →", url: "https://account.jnremployee.com/dashboard" },
     Icon: MessageCircle,
   },
 ];

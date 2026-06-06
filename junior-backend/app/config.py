@@ -67,20 +67,20 @@ class Settings(BaseSettings):
     # /privacy /terms /unsubscribe etc. so creators can verify the brand in
     # any mail client.
     public_site_url: str = "https://liquidclips.app"
-    account_site_url: str = "https://account.liquidclips.app"
+    account_site_url: str = "https://account.jnremployee.com"
     app_download_url: str = "https://liquidclips.app/download"
     tauri_update_endpoint: str = "https://updates.liquidclips.app/latest.json"
     tauri_update_targets: str = "darwin-aarch64,darwin-x86_64"
     whop_manage_url: str = "https://whop.com/jnremployee"
-    # partner.liquidclips.app was a planned subdomain that never had a Vercel
+    # partner.jnremployee.com was a planned subdomain that never had a Vercel
     # deployment, so clicks from AffiliateHero / PayoutsTab landed on a
     # Vercel DEPLOYMENT_NOT_FOUND. Pointing at the working jnremployee.com
-    # partner redirect chain (307 → /affiliates) until partner.liquidclips.app
+    # partner redirect chain (307 → /affiliates) until partner.jnremployee.com
     # ships a real deployment. Override per-env on Railway via
     # WHOP_PARTNER_DASHBOARD_URL when ready.
-    whop_partner_dashboard_url: str = "https://partner.liquidclips.app"
+    whop_partner_dashboard_url: str = "https://partner.jnremployee.com"
     whop_payouts_url: str = "https://whop.com/dashboard/payouts"
-    stripe_connect_onboarding_url: str = "https://account.liquidclips.app/dashboard#payouts"
+    stripe_connect_onboarding_url: str = "https://account.jnremployee.com/dashboard#payouts"
 
     # Stripe Connect — Express accounts for non-Whop affiliate payouts. When
     # stripe_secret_key is empty, the onboarding endpoint returns 503; Whop
@@ -88,8 +88,8 @@ class Settings(BaseSettings):
     stripe_secret_key: str = ""
     stripe_connect_webhook_secret: str = ""   # whsec_… for /webhooks/stripe-connect
     stripe_connect_default_country: str = "GB"
-    stripe_connect_return_url: str = "https://account.liquidclips.app/dashboard?stripe_return=1"
-    stripe_connect_refresh_url: str = "https://account.liquidclips.app/dashboard?stripe_refresh=1"
+    stripe_connect_return_url: str = "https://account.jnremployee.com/dashboard?stripe_return=1"
+    stripe_connect_refresh_url: str = "https://account.jnremployee.com/dashboard?stripe_refresh=1"
 
     # PostHog — observability only (funnel events, attribution debugging).
     # Backend uses the PROJECT key, same as the frontends — there's no need

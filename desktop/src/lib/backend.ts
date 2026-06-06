@@ -904,7 +904,7 @@ export async function createSubmission(input: SubmissionCreateInput): Promise<Su
     if (detail.code === "watermark_detected") {
       throw new WatermarkDetectedError(
         detail.message ?? "Watermark detected — re-export without watermark and try again.",
-        detail.upgrade_url ?? "https://account.liquidclips.app/upgrade?reason=watermark",
+        detail.upgrade_url ?? "https://account.jnremployee.com/upgrade?reason=watermark",
         detail.submission_id ?? "",
       );
     }
