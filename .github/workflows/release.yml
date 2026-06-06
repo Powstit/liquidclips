@@ -11,8 +11,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest]
-    runs-on: ${{ matrix.platform }}
+        # Two parallel jobs — each runs natively on its architecture's runner so
+        # the brew sidecar (ffmpeg, ffprobe) is the matching arch. Apple Silicon
+        # users get _aarch64.dmg, Intel users get _x86_64.dmg. Both DMGs upload
+        # to the same release tag.
+        target:
+          - runner: macos-latest
+            arch: aarch64
+            rust_target: aarch64-apple-darwin
+            slug: aarch64
+          - runner: macos-13
+            arch: x86_64
+            rust_target: x86_64-apple-darwin
+            slug: x86_64
+    runs-on: ${{ matrix.target.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -64,13 +76,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p desktop/python-sidecar/bin
-          # macos-latest runners are arm64; brew provides arm64 binaries.
-          # Keep the release target aarch64 until we fetch/lipo universal
-          # sidecar binaries too.
+          # Per-arch native fetch — each matrix runner pulls the brew ffmpeg
+          # matching its own architecture. arm64 runner → arm64 binary;
+          # x86_64 runner → x86_64 binary. The DMG built on this runner
+          # therefore ships a native sidecar.
           brew install ffmpeg
           cp -f "$(brew --prefix)/bin/ffmpeg"  desktop/python-sidecar/bin/ffmpeg
           cp -f "$(brew --prefix)/bin/ffprobe" desktop/python-sidecar/bin/ffprobe
           chmod +x desktop/python-sidecar/bin/ffmpeg desktop/python-sidecar/bin/ffprobe
+          file desktop/python-sidecar/bin/ffmpeg
           ls -lah desktop/python-sidecar/bin/
 
       - name: fetch faster-whisper-tiny model
@@ -161,13 +175,10 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        # TODO(v0.6.0): switch to universal-apple-darwin so one DMG covers
-        # Apple Silicon AND Intel. Needs sidecar ffmpeg/ffprobe to also be
-        # universal binaries (the current fetch is arm64-only because the
-        # macos-latest runner is arm64). Until then we ship arm64 from CI
-        # and produce Intel locally via `npm run tauri -- build --target
-        # x86_64-apple-darwin` on Daniel's machine.
-        run: npm run tauri -- build --target aarch64-apple-darwin
+        # Per-arch native build. Each matrix runner builds its own slice; the
+        # brew sidecar fetched earlier in this job is the matching arch. We do
+        # not lipo a universal binary — instead we publish two DMGs.
+        run: npm run tauri -- build --target ${{ matrix.target.rust_target }}
 
       - name: repair-sign macOS app bundle
         run: |
@@ -186,7 +197,7 @@ jobs:
         run: |
           set -euo pipefail
           APP=$(find desktop/src-tauri/target -path '*/bundle/macos/Liquid Clips.app' -type d | head -1)
-          desktop/scripts/package-signed-macos-artifacts.sh "$APP" aarch64
+          desktop/scripts/package-signed-macos-artifacts.sh "$APP" ${{ matrix.target.slug }}
 
       - name: notarize and staple .dmg
         env:
