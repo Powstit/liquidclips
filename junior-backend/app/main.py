@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 from app.config import get_settings
 from app.cron import start_cron, stop_cron
@@ -224,3 +225,114 @@ def healthcheck() -> dict:
 @app.get("/health")
 def health() -> dict:
     return healthcheck()
+
+
+@app.get("/status")
+def public_status() -> dict:
+    """Customer-safe public status payload.
+
+    Uses the same function heat-map as Admin HQ, but redacts internal URLs,
+    errors, owners, environment details, and remediation notes.
+    """
+    from app.function_heatmap import latest_function_heatmap, public_function_heatmap, run_function_heatmap
+
+    result = latest_function_heatmap()
+    if result is None:
+        result = run_function_heatmap(notify=False, source="public-lazy-load")
+    return public_function_heatmap(result)
+
+
+@app.get("/status/page", response_class=HTMLResponse)
+def public_status_page() -> HTMLResponse:
+    """Static HTML status page served from the backend so it survives even
+    when the marketing/account-app deploy is down."""
+    from app.function_heatmap import latest_function_heatmap, public_function_heatmap, run_function_heatmap
+
+    result = latest_function_heatmap()
+    if result is None:
+        result = run_function_heatmap(notify=False, source="public-lazy-load")
+    view = public_function_heatmap(result)
+
+    tone_class = {
+        "ok": "ok",
+        "warn": "warn",
+        "fail": "fail",
+    }.get(str(view.get("overall") or "warn"), "warn")
+    headline = {
+        "ok": "All systems normal",
+        "warn": "Degraded — some checks are warning",
+        "fail": "Issues detected — engineering notified",
+    }.get(tone_class, "Degraded")
+    score = view.get("score")
+    generated_at = view.get("generated_at") or ""
+
+    rows = []
+    for gate in view.get("gates", []):
+        gtone = str(gate.get("status") or "warn")
+        rows.append(
+            f'<li class="row {gtone}"><span class="dot"></span>'
+            f'<span class="label">{gate.get("label", "Service")}</span>'
+            f'<span class="state">{gtone.upper()}</span></li>'
+        )
+    rows_html = "\n".join(rows) or '<li class="row warn"><span class="dot"></span><span class="label">No checks recorded yet</span><span class="state">PENDING</span></li>'
+
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Liquid Clips · Service status</title>
+<meta http-equiv="refresh" content="60" />
+<style>
+  :root {{
+    --paper: #f7f4ee;
+    --ink: #161312;
+    --line: rgba(22, 19, 18, 0.12);
+    --muted: rgba(22, 19, 18, 0.55);
+    --ok: #1f9d55;
+    --warn: #b07a09;
+    --fail: #b8237f;
+  }}
+  * {{ box-sizing: border-box; }}
+  html, body {{ margin: 0; background: var(--paper); color: var(--ink); }}
+  body {{ font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }}
+  .wrap {{ max-width: 720px; margin: 0 auto; padding: 56px 24px; }}
+  .eyebrow {{ font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }}
+  h1 {{ font-size: clamp(28px, 5vw, 40px); line-height: 1.1; margin: 8px 0 4px; letter-spacing: -0.02em; font-weight: 600; }}
+  .ok h1 {{ color: var(--ok); }}
+  .warn h1 {{ color: var(--warn); }}
+  .fail h1 {{ color: var(--fail); }}
+  .meta {{ font-size: 12px; color: var(--muted); margin-bottom: 28px; }}
+  ul {{ list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }}
+  .row {{
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 6px; border-bottom: 1px solid var(--line);
+  }}
+  .label {{ flex: 1; }}
+  .state {{
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--muted); font-variant-numeric: tabular-nums;
+  }}
+  .dot {{ width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }}
+  .row.ok .dot {{ background: var(--ok); }}
+  .row.warn .dot {{ background: var(--warn); }}
+  .row.fail .dot {{ background: var(--fail); }}
+  .row.ok .state {{ color: var(--ok); }}
+  .row.warn .state {{ color: var(--warn); }}
+  .row.fail .state {{ color: var(--fail); }}
+  footer {{ margin-top: 36px; font-size: 11px; color: var(--muted); }}
+</style>
+</head>
+<body>
+<div class="wrap {tone_class}">
+  <div class="eyebrow">Liquid Clips · Status</div>
+  <h1>{headline}</h1>
+  <div class="meta">Score {score}/100 · checked {generated_at} · auto-refreshes every 60s</div>
+  <ul>
+    {rows_html}
+  </ul>
+  <footer>This page reflects automated read-only checks against public endpoints. For incident updates, contact support@jnremployee.com.</footer>
+</div>
+</body>
+</html>"""
+    return HTMLResponse(html)
