@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { Volume2, AudioLines, VolumeX } from "lucide-react";
+import { Volume2, AudioLines, VolumeX, Captions as CaptionsIcon } from "lucide-react";
 import type { Clip, OverlayType, Project, RatioKey } from "../lib/sidecar";
 import { sidecar, RATIOS } from "../lib/sidecar";
 import { CopyButton } from "./CopyButton";
@@ -11,6 +11,8 @@ import { pickOverlaySource } from "./OverlaySourcePicker";
 import { ReactionCellPreview } from "./clips-feed/ReactionCellPreview";
 import { LAYOUT_TOPOLOGY } from "./clips-feed/layout-cells";
 import { BountyFitChecklist } from "./earn/bounty-fit";
+import { CaptionDrawer, CaptionOverlay } from "./captions/CaptionDrawer";
+import { CAPTION_STYLES, type CaptionStyleKey } from "../lib/caption-styles";
 
 // Editor modal — the side-door power view from each feed card. Designed to
 // echo the card's vocabulary (same layout icons, same ratio chips) so the
@@ -46,6 +48,7 @@ export function ClipPreview({
   onClose,
   onProjectChange,
   onNavigate,
+  initialCaptionsOpen = false,
 }: {
   clip: Clip;
   index: number;
@@ -55,6 +58,9 @@ export function ClipPreview({
   onClose: () => void;
   onProjectChange: (p: Project) => void;
   onNavigate?: (direction: -1 | 1) => void;
+  /** Open the Captions drawer on mount. Set when the user clicks the
+   * captions chip on a ResultsGrid card. */
+  initialCaptionsOpen?: boolean;
 }) {
   const [ratio, setRatio] = useState<RatioKey>("vertical");
   const [busy, setBusy] = useState(false);
@@ -113,8 +119,68 @@ export function ClipPreview({
   }
 
   const videoPath = useMemo(() => pathForRatio(clip, ratio) ?? clip.cut_path, [clip, ratio]);
-  const videoSrc = videoPath ? convertFileSrc(videoPath) : null;
+  // Captions edit-and-rebake replaces the file in place. Bumping `videoCacheBuster`
+  // forces React to recreate the <video> element so the new MP4 plays.
+  const [videoCacheBuster, setVideoCacheBuster] = useState(0);
+  const videoSrc = videoPath
+    ? `${convertFileSrc(videoPath)}${videoCacheBuster ? `?v=${videoCacheBuster}` : ""}`
+    : null;
   const layout: LayoutKey = (clip.overlay?.type as LayoutKey) ?? "none";
+
+  // Captions drawer + live overlay state.
+  const videoEl = useRef<HTMLVideoElement | null>(null);
+  const videoFrameEl = useRef<HTMLDivElement | null>(null);
+  const [captionsOpen, setCaptionsOpen] = useState(initialCaptionsOpen);
+  const [captionsDirty, setCaptionsDirty] = useState(false);
+  const [playheadTime, setPlayheadTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
+  const captionStyle = (clip as Clip & { caption_style?: string }).caption_style;
+  const overlayStyle: CaptionStyleKey =
+    captionStyle && (CAPTION_STYLES as Record<string, unknown>)[captionStyle]
+      ? (captionStyle as CaptionStyleKey)
+      : "brand_fuchsia";
+  const [overlayLines, setOverlayLines] = useState<
+    Array<{ start: number; end: number; text: string; words?: Array<{ start: number; end: number; text: string }> }>
+  >([]);
+
+  // Hook the video element's timeupdate + loadedmetadata to feed the drawer.
+  useEffect(() => {
+    const v = videoEl.current;
+    if (!v) return;
+    const onTime = () => setPlayheadTime(v.currentTime);
+    const onMeta = () => setVideoDuration(v.duration || 0);
+    v.addEventListener("timeupdate", onTime);
+    v.addEventListener("loadedmetadata", onMeta);
+    return () => {
+      v.removeEventListener("timeupdate", onTime);
+      v.removeEventListener("loadedmetadata", onMeta);
+    };
+  }, [videoSrc]);
+
+  // Track the rendered height of the video frame so CaptionOverlay scales correctly.
+  useEffect(() => {
+    const el = videoFrameEl.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setContainerHeight(el.clientHeight));
+    ro.observe(el);
+    setContainerHeight(el.clientHeight);
+    return () => ro.disconnect();
+  }, []);
+
+  // First-open lines fetch so the live overlay reflects current captions even
+  // before the user opens the drawer. Cheap RPC; only runs when the clip changes.
+  useEffect(() => {
+    let cancelled = false;
+    sidecar
+      .getCaptions(slug, index - 1)
+      .then((res) => {
+        if (cancelled) return;
+        setOverlayLines(res.lines);
+      })
+      .catch(() => { /* ignore — clip may not have captions yet */ });
+    return () => { cancelled = true; };
+  }, [slug, index, clip.vertical_path, videoCacheBuster]);
 
   // Esc closes, ←/→ navigate.
   useEffect(() => {
@@ -201,9 +267,27 @@ export function ClipPreview({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 sm:p-6" onClick={onClose}>
       <div
-        className="flex h-full max-h-[94vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-2xl bg-paper shadow-2xl"
+        className="relative flex h-full max-h-[94vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-2xl bg-paper shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
+        <CaptionDrawer
+          open={captionsOpen}
+          slug={slug}
+          clipIdx={index - 1}
+          currentTime={playheadTime}
+          videoDuration={videoDuration}
+          onClose={() => setCaptionsOpen(false)}
+          onSeek={(t) => { if (videoEl.current) videoEl.current.currentTime = t; }}
+          onApplied={(_path, style) => {
+            // Cache-bust the video src so the new MP4 plays in place.
+            setVideoCacheBuster(Date.now());
+            // Reflect the new style in the live overlay without a reload.
+            // (overlayStyle reads from clip.caption_style — bumping the project
+            // covers persistent state; cacheBuster forces the lines re-fetch.)
+            void style;
+          }}
+          onDirtyChange={setCaptionsDirty}
+        />
         {/* Header */}
         <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-3">
           <div className="flex flex-1 items-center gap-3 min-w-0">
@@ -252,6 +336,31 @@ export function ClipPreview({
                 aria-label="Next (→)" title="Next (→)">→</button>
             )}
           </div>
+          <button
+            type="button"
+            onClick={() => setCaptionsOpen((open) => !open)}
+            className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] transition ${
+              captionsOpen
+                ? "border-fuchsia bg-fuchsia/20 text-fuchsia"
+                : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
+            }`}
+            aria-pressed={captionsOpen}
+            aria-label="Toggle captions editor"
+          >
+            <CaptionsIcon size={14} aria-hidden />
+            Captions
+            <span
+              aria-hidden
+              className={`h-1.5 w-1.5 rounded-full ${
+                captionsDirty ? "bg-fuchsia" : "bg-cyan"
+              }`}
+              style={{
+                boxShadow: captionsDirty
+                  ? "0 0 6px var(--color-fuchsia, #ff1a8c)"
+                  : "0 0 6px var(--color-cyan, #00e5ff)",
+              }}
+            />
+          </button>
           <button onClick={onClose}
             className="shrink-0 rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] text-text-secondary hover:border-fuchsia hover:text-ink">
             Close · esc
@@ -291,10 +400,42 @@ export function ClipPreview({
             </div>
 
             {/* Video player */}
-            <div className="flex flex-1 items-center justify-center overflow-hidden rounded-xl bg-black">
+            <div
+              ref={videoFrameEl}
+              className="relative flex flex-1 items-center justify-center overflow-hidden rounded-xl bg-black"
+            >
               {videoSrc ? (
-                <video key={videoSrc} controls autoPlay loop muted={!!clip.overlay?.music_bed}
-                  src={videoSrc} className="max-h-full max-w-full" />
+                <>
+                  <video
+                    key={videoSrc}
+                    ref={videoEl}
+                    controls
+                    autoPlay
+                    loop
+                    muted={!!clip.overlay?.music_bed}
+                    src={videoSrc}
+                    className="max-h-full max-w-full"
+                  />
+                  {/* Live caption overlay — DOM-rendered over the playing video.
+                      CRITICAL: only render when the user is actively editing
+                      (drawer open + unsaved edits) OR the clip has never been
+                      baked with captions. Otherwise the burned-in captions in
+                      the MP4 AND the DOM overlay would render together,
+                      doubling every line. */}
+                  {overlayLines.length > 0
+                    && (
+                      (captionsOpen && captionsDirty)
+                      || !(clip as Clip & { caption_style?: string }).caption_style
+                    )
+                    && (
+                      <CaptionOverlay
+                        currentTime={playheadTime}
+                        lines={overlayLines}
+                        style={overlayStyle}
+                        containerHeight={containerHeight}
+                      />
+                    )}
+                </>
               ) : (
                 <p className="font-mono text-[12px] text-text-tertiary">No video yet for {ratio}.</p>
               )}

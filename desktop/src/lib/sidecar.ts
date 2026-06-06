@@ -451,6 +451,30 @@ export const sidecar = {
   preloadWhisper: () => sidecarCall<{ model: string; warmup_seconds: number }>("preload_whisper"),
   regenerateClip: (slug: string, idx: number, start: number, end: number) =>
     sidecarCall<{ project: Project }>("regenerate_clip", { slug, idx, start, end }),
+  getCaptions: (slug: string, idx: number) =>
+    sidecarCall<{
+      idx: number;
+      style: string;
+      lines: Array<{
+        start: number;
+        end: number;
+        text: string;
+        words?: Array<{ start: number; end: number; text: string }>;
+      }>;
+      source: "edits" | "transcript";
+      has_word_data: boolean;
+      has_transcript: boolean;
+      transcript_error?: string | null;
+      updated_at: string | null;
+    }>("get_captions", { slug, idx }),
+  editCaptions: (slug: string, idx: number, lines: unknown[], style: string) =>
+    sidecarCall<{
+      project: Project;
+      clip_idx: number;
+      style: string;
+      updated_at: string;
+      video_path: string;
+    }>("edit_captions", { slug, idx, lines, style }),
   addClip: (slug: string, start: number, end: number, title: string) =>
     sidecarCall<{ project: Project }>("add_clip", { slug, start, end, title }),
   removeClip: (slug: string, idx: number) =>

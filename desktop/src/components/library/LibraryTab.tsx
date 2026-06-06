@@ -5,7 +5,7 @@
 // shares the same fuchsia HUD bracket language as the Workstation tiles.
 // Delete confirmation modal reskinned to match the cockpit modal voice.
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { open as openPath } from "@tauri-apps/plugin-shell";
 import { motion, AnimatePresence } from "motion/react";
 import { Trash2 } from "lucide-react";
@@ -164,6 +164,23 @@ function ConfirmDelete({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  // Esc → cancel (mirrors click-outside-cancel so the modal isn't a
+  // keyboard trap). Ignored while a delete is in flight so the user can't
+  // close mid-RPC and end up in an indeterminate state.
+  const handleKey = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) {
+        e.preventDefault();
+        onCancel();
+      }
+    },
+    [busy, onCancel],
+  );
+  useEffect(() => {
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [handleKey]);
+
   return (
     <motion.div
       className="fixed inset-0 z-50 flex items-center justify-center bg-paper/85 px-6 backdrop-blur-md"
