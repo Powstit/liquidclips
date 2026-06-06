@@ -1433,7 +1433,7 @@ export async function refreshChannel(id: string): Promise<Channel> {
   return res.json();
 }
 
-export async function relinkChannel(id: string): Promise<{ link_url: string }> {
+export async function relinkChannel(id: string): Promise<{ link_url: string; channel: Channel }> {
   const res = await authedFetch(`/channels/${id}/relink`, { method: "POST" });
   if (!res.ok) {
     if (res.status >= 500) throw new BackendOfflineError(`HTTP ${res.status}`);

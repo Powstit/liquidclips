@@ -20,7 +20,7 @@ from sqlalchemy import func as _sqlfunc
 
 from app.db import get_db
 from app.deps import current_user
-from app.features import account_limit as _account_limit
+from app.features import account_limit as _account_limit, is_admin_email
 from app.models import Usage, User
 
 router = APIRouter(prefix="/usage", tags=["usage"])
@@ -109,6 +109,17 @@ def get_usage(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> UsageStatus:
+    # Admin override mirrors sync.py + me.py — admin emails never see usage
+    # caps anywhere in the product. Single source of truth: features.py's
+    # is_admin_email() (env JUNIOR_ADMIN_EMAILS with a hardcoded fallback).
+    if is_admin_email(user.email):
+        return UsageStatus(
+            tier="autopilot",
+            period_start=date.today(),
+            videos_processed=0,
+            cap=None,
+            remaining=None,
+        )
     row = _usage_row(db, user.id)
     cap = _quota_for_tier(user.tier)
     remaining = max(0, cap - row.videos_processed) if cap is not None else None
@@ -127,6 +138,17 @@ def video_started(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> UsageStatus:
+    # Admin emails skip the quota gate entirely — never bump the counter,
+    # never 402. Mirrors get_usage / clip_exported / sync.py so admin
+    # status can't drift between read and write paths.
+    if is_admin_email(user.email):
+        return UsageStatus(
+            tier="autopilot",
+            period_start=date.today(),
+            videos_processed=0,
+            cap=None,
+            remaining=None,
+        )
     cap = _quota_for_tier(user.tier)
     row = _usage_row(db, user.id)
     if cap is not None and row.videos_processed >= cap:
@@ -169,6 +191,16 @@ def clip_exported(
 
     Whichever is lower wins. Paid tiers / founders never count and never block.
     """
+    # Admin override — early-return so the master account NEVER hits the
+    # quota wall on export #101. Mirrors get_usage / video_started / sync.py
+    # so admin status can't drift between paths.
+    if is_admin_email(user.email):
+        return ExportStatus(
+            tier="autopilot",
+            exports_used=0,
+            cap=None,
+            remaining_exports=None,
+        )
     remaining = starter_export_remaining(user)  # None = unlimited (paid/founder)
     # Free-tier IP-pool ceiling — only applies when the personal cap is active.
     if remaining is not None:
