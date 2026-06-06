@@ -7,7 +7,7 @@ export default function Home() {
     <div className="mx-auto max-w-[1240px] px-8 py-20 sm:py-28">
       <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
         <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-        your junior account
+        your liquid clips account
       </div>
 
       <h1 className="mt-6 max-w-[880px] font-display text-[clamp(44px,7vw,88px)] font-bold leading-[0.98] tracking-[-0.04em] text-ink">
@@ -49,11 +49,14 @@ export default function Home() {
       </div>
 
       <footer className="mt-20 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-        <span>account.jnremployee.com</span>
+        <span>Liquid Clips · account</span>
         <div className="flex flex-wrap gap-5">
           <a href="https://liquidclips.app" className="hover:text-ink">liquidclips.app →</a>
+          <a href="https://liquidclips.app/support" className="hover:text-ink">support</a>
           <a href="https://liquidclips.app/refunds" className="hover:text-ink">refunds</a>
           <a href="https://liquidclips.app/privacy" className="hover:text-ink">privacy</a>
+          <a href="https://liquidclips.app/terms" className="hover:text-ink">terms</a>
+          <a href="https://liquidclips.app/account-deletion" className="hover:text-ink">delete account</a>
         </div>
       </footer>
     </div>
