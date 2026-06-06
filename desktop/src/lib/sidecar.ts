@@ -637,7 +637,10 @@ export const sidecar = {
         start: number;
         end: number;
         text: string;
-        words?: Array<{ start: number; end: number; text: string }>;
+        // `color` is optional per-word CSS hex (#RRGGBB) — sidecar persists
+        // it inside each word object so a clipper's painted "money words"
+        // survive a drawer reopen.
+        words?: Array<{ start: number; end: number; text: string; color?: string }>;
       }>;
       source: "edits" | "transcript";
       has_word_data: boolean;
@@ -647,6 +650,11 @@ export const sidecar = {
       // Persisted custom palette — drawer rehydrates react-colorful
       // swatches from this on reopen. Null/undefined for preset-style edits.
       palette?: { primary?: string; secondary?: string; outline?: string } | null;
+      // Persisted caption position (top/middle/bottom + vertical offset).
+      // Drawer rehydrates the position radio + slider from this on reopen.
+      // Null/undefined means the clipper never repositioned this clip and
+      // the bake used the style's hardcoded margin.
+      position?: { align: 2 | 5 | 8; marginV: number } | null;
     }>("get_captions", { slug, idx }),
   editCaptions: (
     slug: string,
@@ -654,6 +662,7 @@ export const sidecar = {
     lines: unknown[],
     style: string,
     palette?: { primary?: string; secondary?: string; outline?: string } | null,
+    position?: { align: 2 | 5 | 8; marginV: number } | null,
   ) =>
     sidecarCall<{
       project: Project;
@@ -662,10 +671,15 @@ export const sidecar = {
       updated_at: string;
       video_path: string;
       palette?: { primary?: string; secondary?: string; outline?: string } | null;
+      // Echoed-back caption position the bake actually used. Undefined when
+      // the clipper hasn't repositioned (i.e. the style's hardcoded margin_v
+      // shipped). Drawer reads this to rehydrate the position controls on
+      // the next open.
+      position?: { align: 2 | 5 | 8; marginV: number } | null;
       // ASS text used to bake. The desktop's libass-wasm overlay renders
       // this directly so the live preview matches the baked MP4 1:1.
       ass_text?: string;
-    }>("edit_captions", { slug, idx, lines, style, palette }),
+    }>("edit_captions", { slug, idx, lines, style, palette, position }),
   addClip: (slug: string, start: number, end: number, title: string) =>
     sidecarCall<{ project: Project }>("add_clip", { slug, start, end, title }),
   removeClip: (slug: string, idx: number) =>

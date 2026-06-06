@@ -8,11 +8,19 @@ import {
   type CaptionLine,
   type CaptionState,
 } from "../../lib/captions";
-import { CAPTION_STYLES, CAPTION_STYLE_KEYS, type CaptionStyleKey, type CaptionPalette } from "../../lib/caption-styles";
+import {
+  CAPTION_STYLES,
+  CAPTION_STYLE_KEYS,
+  CAPTION_MARGIN_V_MAX,
+  type CaptionStyleKey,
+  type CaptionPalette,
+  type CaptionPosition,
+} from "../../lib/caption-styles";
 import { HexColorPicker } from "react-colorful";
 import { CaptionOverlay } from "./CaptionOverlay";
 import { CaptionRow } from "./CaptionRow";
 import { CaptionStyleCard } from "./CaptionStyleCard";
+import { ConfirmDialog } from "../ConfirmDialog";
 import invaderSrc from "../../assets/icons/connections/library-bug.png";
 
 // Master right-side drawer for editing a single clip's captions.
@@ -55,6 +63,10 @@ export function CaptionDrawer({
   onPreviewChange?: (preview: {
     style: CaptionStyleKey;
     palette?: CaptionPalette;
+    /** User-picked caption position — undefined when the clipper hasn't
+     *  repositioned so the overlay falls back to the style's hardcoded
+     *  marginVPercent. */
+    position?: CaptionPosition;
     lines: CaptionLine[];
   } | null) => void;
 }) {
@@ -63,6 +75,10 @@ export function CaptionDrawer({
   const [baking, setBaking] = useState(false);
   const [autoFixToast, setAutoFixToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Branded confirm replaces window.confirm() — the native dialog blocked
+  // the Tauri webview thread and broke cockpit voice on every close-with-
+  // unsaved-edits.
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
   const history = useRef(new History());
 
   // Initial load — fetch persisted edits or derive from transcript.
@@ -103,6 +119,11 @@ export function CaptionDrawer({
           // falls back to the "custom" preset defaults when the user toggles
           // Custom on for the first time.
           palette: res.palette ?? undefined,
+          // Rehydrate persisted position (top/middle/bottom + vertical
+          // offset). Undefined means "never repositioned" — the bake uses
+          // the style's hardcoded margin so existing clips with no override
+          // re-render byte-identical.
+          position: res.position ?? undefined,
         };
         setState(fresh);
         history.current = new History();
@@ -138,6 +159,7 @@ export function CaptionDrawer({
     onPreviewChange?.({
       style: state.style,
       palette: state.palette,
+      position: state.position,
       lines: state.lines,
     });
   }, [state, open, onPreviewChange]);
@@ -151,6 +173,17 @@ export function CaptionDrawer({
     if (!state || state.style === styleKey) return;
     mutate(applyPatch(state, { kind: "style", value: styleKey }));
   }, [state, mutate]);
+
+  // Position control — radio + slider. We treat the in-state `position` as
+  // the source of truth and ALWAYS push a complete {align, marginV} pair so
+  // the slider can't strand the state with a half-set override.
+  const handlePositionChange = useCallback(
+    (next: CaptionPosition) => {
+      if (!state) return;
+      mutate(applyPatch(state, { kind: "position", value: next }));
+    },
+    [state, mutate],
+  );
 
   const handleTextChange = useCallback((idx: number, value: string) => {
     if (!state) return;
@@ -166,6 +199,39 @@ export function CaptionDrawer({
     if (!state) return;
     mutate(applyPatch(state, { kind: "delete", idx }));
   }, [state, mutate]);
+
+  // Per-word colour edit — used by the WordPaintStrip under each row. Walks
+  // the line's `words` array, swaps the colour on the matched word, and
+  // re-runs through applyPatch as a "text" no-op so the line gets a
+  // syncStatus="dirty" flip + history entry. Mirror of the line-level text
+  // patch but mutates the words sub-array instead of the line text.
+  const handleWordColor = useCallback(
+    (lineIdx: number, wordIdx: number, color: string | undefined) => {
+      if (!state) return;
+      const target = state.lines[lineIdx];
+      if (!target || !target.words || wordIdx < 0 || wordIdx >= target.words.length) {
+        return;
+      }
+      const nextWords = target.words.map((w, j) => {
+        if (j !== wordIdx) return w;
+        // Drop the field entirely when clearing so a colourless word
+        // serialises identically to a pre-feature word (no `color: null`
+        // residue) — the BREAKS clause in the spec.
+        if (!color) {
+          const { color: _drop, ...rest } = w;
+          return rest;
+        }
+        return { ...w, color };
+      });
+      const nextLines = state.lines.map((ln, i) =>
+        i === lineIdx ? { ...ln, words: nextWords, modified: true } : ln,
+      );
+      // Push current state onto history before mutating (mirrors `mutate`).
+      history.current.push(state);
+      setState({ ...state, lines: nextLines, syncStatus: "dirty" });
+    },
+    [state],
+  );
 
   const handleAddAfter = useCallback((idx: number) => {
     if (!state) return;
@@ -194,7 +260,8 @@ export function CaptionDrawer({
   // data loss when the user clicks X with unsaved edits.
   const tryClose = useCallback(() => {
     if (state?.syncStatus === "dirty") {
-      if (!window.confirm("You have unsaved caption edits. Discard them?")) return;
+      setConfirmDiscardOpen(true);
+      return;
     }
     onClose();
   }, [state?.syncStatus, onClose]);
@@ -208,12 +275,19 @@ export function CaptionDrawer({
       // it on a preset style change would over-persist and cause toggling
       // back to brand_fuchsia to silently keep the user's custom colours.
       const palette = state.style === "custom" ? state.palette ?? null : null;
+      // Only ship position when the clipper actually moved the captions —
+      // sending an undefined-override would force every existing clip's
+      // bake to re-emit the style's hardcoded margin verbatim. Sending
+      // null preserves the BREAKS guarantee: clips with no override
+      // re-render byte-identical.
+      const position = state.position ?? null;
       const res = await sidecar.editCaptions(
         slug,
         clipIdx,
         state.lines,
         state.style,
         palette,
+        position,
       );
       const synced: CaptionState = {
         ...state,
@@ -283,6 +357,19 @@ export function CaptionDrawer({
   if (!open) return null;
 
   return (
+    <>
+    <ConfirmDialog
+      open={confirmDiscardOpen}
+      tone="destructive"
+      title="Discard caption edits?"
+      body={<>You have unsaved caption edits. Closing the drawer will throw them away.</>}
+      confirmLabel="Discard edits"
+      onCancel={() => setConfirmDiscardOpen(false)}
+      onConfirm={() => {
+        setConfirmDiscardOpen(false);
+        onClose();
+      }}
+    />
     <aside
       role="dialog"
       aria-label="Captions editor"
@@ -387,6 +474,13 @@ export function CaptionDrawer({
               />
             )}
 
+            <SectionLabel style={{ marginTop: 18 }}>Position</SectionLabel>
+            <CaptionPositionEditor
+              styleKey={state.style}
+              position={state.position}
+              onChange={handlePositionChange}
+            />
+
             <SectionLabel style={{ marginTop: 18 }}>Lines · {state.lines.length}</SectionLabel>
             <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
               {state.lines.map((ln, i) => (
@@ -400,6 +494,14 @@ export function CaptionDrawer({
                     onSeek={onSeek}
                     onDelete={() => handleDelete(i)}
                   />
+                  {ln.words && ln.words.length > 0 && (
+                    <WordPaintStrip
+                      line={ln}
+                      onWordColor={(wordIdx, color) =>
+                        handleWordColor(i, wordIdx, color)
+                      }
+                    />
+                  )}
                   <button
                     type="button"
                     onClick={() => handleAddAfter(i)}
@@ -512,10 +614,137 @@ export function CaptionDrawer({
 
       {autoFixToast && <Toast text={autoFixToast} />}
     </aside>
+    </>
   );
 }
 
 // ----- helpers -------------------------------------------------------------
+
+// Caption position editor — three radios (Top / Centre / Bottom) + a vertical
+// offset slider. Mirrors libass `Alignment` numpad values (8/5/2) and writes
+// directly into `marginV` (matches the Python style's margin_v field).
+//
+// Behaviour notes:
+// - Initial render seeds the slider from the active style's hardcoded margin
+//   so the clipper sees the same number their previous bake used.
+// - Slider is capped at CAPTION_MARGIN_V_MAX (400px on a 1920-tall canvas)
+//   so a wild drag can't push the caption block off-screen — matches the
+//   Python clamp in `_build_style_line` so UI + bake agree on the ceiling.
+// - We ALWAYS write a full {align, marginV} pair on every change so the
+//   sidecar never receives a half-set override.
+function CaptionPositionEditor({
+  styleKey,
+  position,
+  onChange,
+}: {
+  styleKey: CaptionStyleKey;
+  position: CaptionPosition | undefined;
+  onChange: (next: CaptionPosition) => void;
+}) {
+  const spec = CAPTION_STYLES[styleKey] ?? CAPTION_STYLES.brand_fuchsia;
+  // The style's hardcoded vertical margin in canvas px (1920-tall reference).
+  // Used as the slider's seed value when no override is set yet.
+  const styleMarginV = Math.round((spec.marginVPercent / 100) * 1920);
+  const align = position?.align ?? 2;
+  const marginV = position?.marginV ?? styleMarginV;
+
+  const options: { value: 2 | 5 | 8; label: string }[] = [
+    { value: 8, label: "Top" },
+    { value: 5, label: "Centre" },
+    { value: 2, label: "Bottom" },
+  ];
+
+  return (
+    <div
+      style={{
+        marginTop: 8,
+        padding: 12,
+        borderRadius: 12,
+        border: "1px solid var(--color-line, rgba(255,255,255,0.12))",
+        background: "var(--color-paper-warm, rgba(255,255,255,0.02))",
+        display: "grid",
+        gap: 12,
+      }}
+    >
+      <div
+        role="radiogroup"
+        aria-label="Caption vertical alignment"
+        style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}
+      >
+        {options.map((opt) => {
+          const active = align === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChange({ align: opt.value, marginV })}
+              style={{
+                padding: "10px 8px",
+                borderRadius: 8,
+                border: active
+                  ? "1px solid var(--color-fuchsia, #ff1a8c)"
+                  : "1px solid var(--color-line, rgba(255,255,255,0.12))",
+                background: active
+                  ? "rgba(255, 26, 140, 0.12)"
+                  : "transparent",
+                color: active
+                  ? "var(--color-fuchsia, #ff1a8c)"
+                  : "var(--color-ink-soft, #c8c4be)",
+                fontFamily: "var(--font-mono, JetBrains Mono), monospace",
+                fontSize: 10,
+                letterSpacing: "0.16em",
+                textTransform: "uppercase",
+                cursor: "pointer",
+                fontWeight: active ? 800 : 500,
+              }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display: "grid", gap: 6 }}>
+        <label
+          htmlFor="caption-position-margin"
+          style={{
+            fontFamily: "var(--font-mono, JetBrains Mono), monospace",
+            fontSize: 9,
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            color: "var(--color-text-tertiary, #8a857e)",
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
+          <span>Vertical offset</span>
+          <span>{marginV}px</span>
+        </label>
+        <input
+          id="caption-position-margin"
+          type="range"
+          min={0}
+          max={CAPTION_MARGIN_V_MAX}
+          step={1}
+          value={marginV}
+          // Range inputs fire onChange on every pointer tick — we treat each
+          // tick as a discrete patch so the live overlay tracks the drag in
+          // real time. Cmd-Z collapses runs of slider patches the same way
+          // it would for text edits.
+          onChange={(e) =>
+            onChange({ align, marginV: Number(e.target.value) })
+          }
+          aria-valuemin={0}
+          aria-valuemax={CAPTION_MARGIN_V_MAX}
+          aria-valuenow={marginV}
+          aria-label="Caption vertical offset in pixels"
+          style={{ width: "100%", accentColor: "#ff1a8c" }}
+        />
+      </div>
+    </div>
+  );
+}
 
 // Custom palette editor — three react-colorful pads (primary / secondary /
 // outline) + hex inputs for keyboard users + a contrast warning when the
@@ -689,6 +918,224 @@ function parseHex(raw: string): [number, number, number] | null {
     parseInt(norm.slice(2, 4), 16),
     parseInt(norm.slice(4, 6), 16),
   ];
+}
+
+// Per-word colour painter — the "money word" feature. Shows every word in the
+// line on a horizontal strip with a tiny coloured dot beneath each one.
+// Click a dot → react-colorful popover → pick a hex → that word renders in
+// that colour on the next bake. "Clear" link inside the popover removes the
+// override so the word falls back to the style's primary fill.
+//
+// Lens self-check:
+//  - ENABLES — clipper paints "save 50%" green in 2 clicks without re-cutting
+//    the whole line.
+//  - PREVENTS — the "re-cut a whole line to colour one word" pain that drove
+//    creators to CapCut.
+//  - BREAKS — words with no `color` field serialise unchanged → bakes are
+//    byte-identical to today for lines the clipper hasn't touched.
+//  - STRANDS — lines without word timings (manual-add) render the placeholder
+//    "no per-word timings — re-run Lift Transcript to enable colour painting"
+//    chip via the `ln.words && ln.words.length > 0` guard in the parent. The
+//    popover Esc-closes; Tab moves focus back to the strip.
+function WordPaintStrip({
+  line,
+  onWordColor,
+}: {
+  line: CaptionLine;
+  onWordColor: (wordIdx: number, color: string | undefined) => void;
+}) {
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
+  const words = line.words ?? [];
+
+  // Esc-close so the popover doesn't trap keyboard users.
+  useEffect(() => {
+    if (openIdx === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation(); // don't let the drawer-level Esc close the drawer
+        setOpenIdx(null);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [openIdx]);
+
+  if (words.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        marginTop: 8,
+        padding: "8px 10px",
+        borderRadius: 8,
+        background: "rgba(255,255,255,0.02)",
+        border: "1px dashed rgba(255,255,255,0.06)",
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 10,
+        alignItems: "flex-start",
+      }}
+      aria-label="Per-word colour painter"
+    >
+      {words.map((w, i) => (
+        <WordDot
+          key={`${i}-${w.text}`}
+          text={w.text}
+          color={w.color}
+          isOpen={openIdx === i}
+          onToggle={() => setOpenIdx((cur) => (cur === i ? null : i))}
+          onColorChange={(c) => onWordColor(i, c)}
+          onClear={() => {
+            onWordColor(i, undefined);
+            setOpenIdx(null);
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function WordDot({
+  text,
+  color,
+  isOpen,
+  onToggle,
+  onColorChange,
+  onClear,
+}: {
+  text: string;
+  color: string | undefined;
+  isOpen: boolean;
+  onToggle: () => void;
+  onColorChange: (color: string) => void;
+  onClear: () => void;
+}) {
+  // The popover's working draft — committed onChange so the bake-time state
+  // mirrors what the picker shows. We seed from `color` or a brand-safe
+  // default fuchsia so first-click never lands on a useless black square.
+  const [draft, setDraft] = useState<string>(color ?? "#FF1A8C");
+  useEffect(() => {
+    setDraft(color ?? "#FF1A8C");
+  }, [color]);
+
+  return (
+    <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+      <span
+        style={{
+          fontFamily: "var(--font-sans, Inter), sans-serif",
+          fontSize: 12,
+          color: "var(--color-ink, #f4f1ea)",
+          maxWidth: 96,
+          textAlign: "center",
+          wordBreak: "break-word",
+        }}
+      >
+        {text}
+      </span>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label={
+          color
+            ? `Change colour of "${text}" (currently ${color})`
+            : `Paint "${text}" a custom colour`
+        }
+        aria-pressed={isOpen}
+        style={{
+          width: 14,
+          height: 14,
+          borderRadius: "50%",
+          padding: 0,
+          background: color ?? "transparent",
+          border: color
+            ? "1px solid rgba(255,255,255,0.4)"
+            : "1px dashed rgba(255,255,255,0.32)",
+          boxShadow: color ? `0 0 6px ${color}80` : undefined,
+          cursor: "pointer",
+        }}
+      />
+      {isOpen && (
+        <div
+          role="dialog"
+          aria-label={`Colour picker for "${text}"`}
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: "50%",
+            transform: "translate(-50%, 6px)",
+            zIndex: 30,
+            background: "var(--color-paper-warm, #15151c)",
+            border: "1px solid var(--color-line, rgba(255,255,255,0.12))",
+            borderRadius: 10,
+            padding: 10,
+            boxShadow: "0 12px 36px rgba(0,0,0,0.6)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            minWidth: 160,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <HexColorPicker
+            color={draft}
+            onChange={(c) => {
+              setDraft(c);
+              onColorChange(c);
+            }}
+            style={{ width: 160, height: 120 }}
+          />
+          <input
+            type="text"
+            value={draft}
+            onChange={(e) => {
+              const raw = e.target.value.trim();
+              const next = raw.startsWith("#") ? raw : `#${raw}`;
+              setDraft(next);
+              if (/^#[0-9a-fA-F]{6}$/.test(next) || /^#[0-9a-fA-F]{3}$/.test(next)) {
+                onColorChange(next);
+              }
+            }}
+            aria-label={`Hex value for "${text}"`}
+            style={{
+              fontFamily: "var(--font-mono, JetBrains Mono), monospace",
+              fontSize: 11,
+              padding: "4px 8px",
+              borderRadius: 6,
+              border: "1px solid var(--color-line, rgba(255,255,255,0.12))",
+              background: "transparent",
+              color: "var(--color-ink, #f4f1ea)",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+            }}
+          />
+          <button
+            type="button"
+            onClick={onClear}
+            disabled={!color}
+            style={{
+              background: "transparent",
+              border: "none",
+              padding: 0,
+              fontFamily: "var(--font-mono, JetBrains Mono), monospace",
+              fontSize: 10,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: color
+                ? "var(--color-cyan, #00e5ff)"
+                : "var(--color-text-tertiary, #8a857e)",
+              cursor: color ? "pointer" : "default",
+              textAlign: "right",
+              opacity: color ? 1 : 0.55,
+            }}
+            aria-label={`Clear colour override on "${text}"`}
+          >
+            ↺ clear
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function SectionLabel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {

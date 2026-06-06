@@ -33,6 +33,7 @@ import { getTelemetryConsent, setTelemetryConsent } from "../lib/telemetry";
 import { resetIntroSeen } from "../lib/intro";
 import { BadgeShelf } from "./BadgeShelf";
 import { HudChip } from "./cockpit/HudChip";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 // Settings panel per spec §3.8 screen 8 — one scrollable page.
 // Opens as a modal sheet from the gear icon in the header.
@@ -94,6 +95,14 @@ export function Settings({ onClose, onSignOut, onOpenSchedule: _onOpenSchedule, 
   const [clipboardError, setClipboardError] = useState<string | null>(null);
   // (8) boot errors surfaced as a top-of-pane banner instead of swallowed.
   const [bootErrors, setBootErrors] = useState<string[]>([]);
+  // Branded confirm primitives — kill the three native `confirm()` calls
+  // that block the Tauri webview thread + break the cockpit voice. Each one
+  // is a tiny dedicated state slot rather than a shared "pending action"
+  // string so the JSX stays explicit and TS knows the shape per dialog.
+  const [confirmApplyUpdateOpen, setConfirmApplyUpdateOpen] = useState(false);
+  const [confirmClearSecret, setConfirmClearSecret] = useState<SecretName | null>(null);
+  const [confirmSignOutOpen, setConfirmSignOutOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   useEffect(() => {
     void meStatus().then(setMe).catch(() => setMe(null));
   }, []);
@@ -135,15 +144,38 @@ export function Settings({ onClose, onSignOut, onOpenSchedule: _onOpenSchedule, 
     setLastUpdateCheck(readLastUpdateCheck());
   }
 
-  async function onApplyUpdate() {
+  function onApplyUpdate() {
     if (updateState.kind !== "available") return;
-    // (3) Confirm before the one-click app restart. During a demo a stray
-    // misclick on this chip would otherwise quit + relaunch mid-recording.
-    const ok = window.confirm(
-      "Install update now? Liquid Clips will quit and relaunch — any unsaved Workspace state will be lost.",
-    );
-    if (!ok) return;
+    // (3) Branded confirm before the one-click app restart. During a demo a
+    // stray misclick on this chip would otherwise quit + relaunch
+    // mid-recording. ConfirmDialog handles Esc + click-outside to cancel.
+    setConfirmApplyUpdateOpen(true);
+  }
+
+  async function performApplyUpdate() {
+    if (updateState.kind !== "available") return;
+    setConfirmApplyUpdateOpen(false);
     await applyUpdate(updateState.update, setUpdateState);
+  }
+
+  async function performSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await sidecar.secretDelete("LICENSE_JWT");
+    } catch {
+      /* best-effort */
+    }
+    // (17) Run onSignOut BEFORE onClose. Closing first unmounts the drawer
+    // and would race with the app-level sign-out handler that may want to
+    // re-open it (e.g. to show a sign-in prompt).
+    try {
+      await onSignOut?.();
+    } finally {
+      setConfirmSignOutOpen(false);
+      setSigningOut(false);
+      onClose();
+    }
   }
 
   useEffect(() => {
@@ -190,18 +222,19 @@ export function Settings({ onClose, onSignOut, onOpenSchedule: _onOpenSchedule, 
     }
   }
 
-  async function clearSecret(name: SecretName) {
+  function clearSecret(name: SecretName) {
     // (5) Destructive confirm for keys whose absence breaks the whole clip
     // pipeline or the activation gate. Without this a single misclick on
-    // OPENAI_API_KEY's "Clear" button silently nukes selection runs.
+    // OPENAI_API_KEY's "Clear" button silently nukes selection runs. For
+    // non-critical keys we skip the modal entirely.
     if (name === "OPENAI_API_KEY" || name === "LICENSE_JWT") {
-      const ok = window.confirm(
-        name === "OPENAI_API_KEY"
-          ? "Clear OPENAI_API_KEY? The clip-selection pipeline needs this key — every Workspace run will fail until you paste it back in."
-          : "Clear LICENSE_JWT? You'll be signed out of Liquid Clips and will need to activate this device again.",
-      );
-      if (!ok) return;
+      setConfirmClearSecret(name);
+      return;
     }
+    void performClearSecret(name);
+  }
+
+  async function performClearSecret(name: SecretName) {
     try {
       await sidecar.secretDelete(name);
       setSecretErrors((prev) => {
@@ -545,21 +578,63 @@ export function Settings({ onClose, onSignOut, onOpenSchedule: _onOpenSchedule, 
             button + monospace version chip. Sticky so it survives the
             scroll list above. */}
         <SettingsBottomBar
-          onSignOut={async () => {
-            if (!confirm("Sign out of Liquid Clips? You'll sign in again to come back in.")) return;
-            try {
-              await sidecar.secretDelete("LICENSE_JWT");
-            } catch {
-              /* best-effort */
-            }
-            // (17) Run onSignOut BEFORE onClose. Closing first unmounts the
-            // drawer and would race with the app-level sign-out handler that
-            // may want to re-open it (e.g. to show a sign-in prompt).
-            await onSignOut?.();
-            onClose();
-          }}
+          onSignOut={() => setConfirmSignOutOpen(true)}
         />
       </div>
+      <ConfirmDialog
+        open={confirmApplyUpdateOpen}
+        tone="neutral"
+        title="Install update now?"
+        body={
+          <>
+            Liquid Clips will quit and relaunch. Any unsaved Workspace state
+            will be lost.
+          </>
+        }
+        confirmLabel="Install and relaunch"
+        onCancel={() => setConfirmApplyUpdateOpen(false)}
+        onConfirm={() => { void performApplyUpdate(); }}
+      />
+      <ConfirmDialog
+        open={confirmClearSecret !== null}
+        tone="destructive"
+        title={
+          confirmClearSecret === "OPENAI_API_KEY"
+            ? "Clear OPENAI_API_KEY?"
+            : "Clear LICENSE_JWT?"
+        }
+        body={
+          confirmClearSecret === "OPENAI_API_KEY" ? (
+            <>
+              The clip-selection pipeline needs this key — every Workspace run
+              will fail until you paste it back in.
+            </>
+          ) : (
+            <>
+              You&apos;ll be signed out of Liquid Clips and will need to
+              activate this device again.
+            </>
+          )
+        }
+        confirmLabel="Clear key"
+        onCancel={() => setConfirmClearSecret(null)}
+        onConfirm={() => {
+          const name = confirmClearSecret;
+          if (!name) return;
+          setConfirmClearSecret(null);
+          void performClearSecret(name);
+        }}
+      />
+      <ConfirmDialog
+        open={confirmSignOutOpen}
+        tone="destructive"
+        title="Sign out of Liquid Clips?"
+        body={<>You&apos;ll sign in again to come back in.</>}
+        confirmLabel="Sign out"
+        busy={signingOut}
+        onCancel={() => { if (!signingOut) setConfirmSignOutOpen(false); }}
+        onConfirm={() => { void performSignOut(); }}
+      />
     </div>
   );
 }

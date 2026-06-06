@@ -15,6 +15,7 @@ import { AlertTriangle, Check, Link, Loader2, X } from "lucide-react";
 import * as backend from "../../lib/backend";
 import { humanError } from "../../lib/sidecar";
 import { SUPPORTED_PLATFORMS, type Channel, type ChannelPlatform } from "./types";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 type State =
   | { kind: "form" }
@@ -40,6 +41,9 @@ export function AddChannelModal({
   const [state, setState] = useState<State>({ kind: "form" });
   const [platform, setPlatform] = useState<ChannelPlatform>("tiktok");
   const [label, setLabel] = useState("");
+  // Branded confirm replaces window.confirm() — the native dialog blocked
+  // the Tauri webview thread and broke the cockpit voice on dirty-close.
+  const [confirmAbandonOpen, setConfirmAbandonOpen] = useState(false);
 
   // Auto-fill label with "<Platform> #N" — gets overwritten on user input.
   useEffect(() => {
@@ -56,10 +60,8 @@ export function AddChannelModal({
   // every state transition.
   function attemptClose() {
     if (isDirty(state)) {
-      const ok = confirm(
-        "Cancel linking? Your half-provisioned channel will be orphaned."
-      );
-      if (!ok) return;
+      setConfirmAbandonOpen(true);
+      return;
     }
     onClose();
   }
@@ -186,6 +188,18 @@ export function AddChannelModal({
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-ink/70 backdrop-blur-md p-6">
+      <ConfirmDialog
+        open={confirmAbandonOpen}
+        tone="destructive"
+        title="Cancel linking?"
+        body={<>Your half-provisioned channel will be orphaned.</>}
+        confirmLabel="Abandon channel"
+        onCancel={() => setConfirmAbandonOpen(false)}
+        onConfirm={() => {
+          setConfirmAbandonOpen(false);
+          onClose();
+        }}
+      />
       <div className="relative w-full max-w-md rounded-3xl border border-line bg-paper shadow-[0_30px_90px_rgba(0,0,0,0.5)]">
         <button
           onClick={attemptClose}

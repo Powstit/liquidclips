@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { Volume2, AudioLines, VolumeX, Captions as CaptionsIcon } from "lucide-react";
+import {
+  Volume2,
+  AudioLines,
+  VolumeX,
+  Captions as CaptionsIcon,
+  Calendar,
+  Send,
+  FolderOpen,
+  Download,
+} from "lucide-react";
 import type { Clip, OverlayType, Project, RatioKey } from "../lib/sidecar";
 import { sidecar, RATIOS } from "../lib/sidecar";
 import { CopyButton } from "./CopyButton";
@@ -13,6 +22,7 @@ import { LAYOUT_TOPOLOGY } from "./clips-feed/layout-cells";
 import { BountyFitChecklist } from "./earn/bounty-fit";
 import { CaptionDrawer, CaptionOverlay } from "./captions/CaptionDrawer";
 import { CAPTION_STYLES, type CaptionStyleKey } from "../lib/caption-styles";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 // Editor modal — the side-door power view from each feed card. Designed to
 // echo the card's vocabulary (same layout icons, same ratio chips) so the
@@ -48,6 +58,7 @@ export function ClipPreview({
   onClose,
   onProjectChange,
   onNavigate,
+  onPublish,
   initialCaptionsOpen = false,
   mode = "modal",
 }: {
@@ -59,6 +70,10 @@ export function ClipPreview({
   onClose: () => void;
   onProjectChange: (p: Project) => void;
   onNavigate?: (direction: -1 | 1) => void;
+  /** Bottom-row Publish button. Parent (ResultsGrid) opens its PublishModal
+   * pre-selected to this clip. Optional so unit-tests and other mounts can
+   * skip the wiring without breaking. */
+  onPublish?: (clipIdx: number) => void;
   /** Open the Captions drawer on mount. Set when the user clicks the
    * captions chip on a ResultsGrid card. */
   initialCaptionsOpen?: boolean;
@@ -72,6 +87,9 @@ export function ClipPreview({
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [trimOpen, setTrimOpen] = useState(false);
+  // Branded confirm primitive replaces native confirm() — the old one
+  // blocked the Tauri webview thread + broke brand voice on every remove.
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [trimStart, setTrimStart] = useState(clip.start);
   const [trimEnd, setTrimEnd] = useState(clip.end);
   const [showVariants, setShowVariants] = useState(false);
@@ -93,6 +111,16 @@ export function ClipPreview({
   // "audio saved" vs "offset saved" based on which field actually changed last.
   const [overlaySaveLabel, setOverlaySaveLabel] = useState<string>("");
 
+  // Bottom-row action state. Schedule popover, save-copy progress, and a
+  // local toast that surfaces success/error for any of these actions without
+  // leaving the editor (per lens audit: don't strand the user mid-action).
+  // Mutually exclusive with the parent's PublishModal — when the parent opens
+  // publish, this popover is closed via the schedule button's own onClick.
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [customSchedule, setCustomSchedule] = useState<string>("");
+  const [saveCopyBusy, setSaveCopyBusy] = useState(false);
+  const [bottomToast, setBottomToast] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
+
   useEffect(() => {
     setTrimStart(clip.start);
     setTrimEnd(clip.end);
@@ -106,6 +134,9 @@ export function ClipPreview({
     setOverlaySaveState("idle");
     setOverlaySaveError(null);
     setOverlaySaveLabel("");
+    setScheduleOpen(false);
+    setCustomSchedule("");
+    setBottomToast(null);
   }, [clip.start, clip.end, clip.title, clip.description, clip.pinned_comment, clip.overlay?.start_offset_s, clip.overlay?.audio_source, index]);
 
   const isDirty =
@@ -375,20 +406,163 @@ export function ClipPreview({
     }
   }
 
-  async function remove() {
-    if (!confirm("Remove this clip? Its files on disk go too.")) return;
+  function remove() {
+    setConfirmRemove(true);
+  }
+
+  async function performRemove() {
     setBusy(true);
     try {
       const r = await sidecar.removeClip(slug, index - 1);
       onProjectChange(r.project);
+      setConfirmRemove(false);
       onClose();
     } catch (e) {
       setActionError(String(e));
       setBusy(false);
+      // Keep the modal open so the user can retry without re-opening it.
+    }
+  }
+
+  // Bottom-row bus: dismiss the local toast after a beat so it doesn't
+  // overstay. Errors stay 5s, success 3s — clipper has time to read either.
+  useEffect(() => {
+    if (!bottomToast) return;
+    const t = window.setTimeout(
+      () => setBottomToast(null),
+      bottomToast.kind === "err" ? 5000 : 3000,
+    );
+    return () => window.clearTimeout(t);
+  }, [bottomToast]);
+
+  // Publishing + reveal + save-copy all need a finished 9:16 render. Gate the
+  // buttons + surface the reason in a tooltip so the disabled state isn't
+  // mysterious. cut_path alone won't do — it's the unframed source.
+  const canPublish = !!clip.vertical_path;
+  const revealPath = clip.vertical_path || clip.cut_path || null;
+
+  async function submitSchedule(whenIso: string) {
+    if (!canPublish || !clip.vertical_path) {
+      setBottomToast({ kind: "err", msg: "No 9:16 render yet — wait for reframe to finish." });
+      return;
+    }
+    setScheduleOpen(false);
+    try {
+      await sidecar.localScheduleAdd([
+        {
+          project_slug: project.slug,
+          clip_idx: index - 1,
+          clip_title: clip.title,
+          vertical_path: clip.vertical_path,
+          // Default platform — the Upload tab's schedule view lets the user
+          // re-target before posting. Picking one keeps this popover fast;
+          // forcing a platform picker here would defeat the "quick schedule".
+          platform: "youtube",
+          scheduled_for: whenIso,
+          caption: clip.title,
+        },
+      ]);
+      setBottomToast({ kind: "ok", msg: "Scheduled — see it in the Upload tab." });
+    } catch (e) {
+      setBottomToast({ kind: "err", msg: `Schedule failed — ${String(e)}` });
+    }
+  }
+
+  function schedulePresetIso(preset: "now" | "1h" | "tomorrow9"): string {
+    const now = new Date();
+    if (preset === "now") return now.toISOString();
+    if (preset === "1h") {
+      const d = new Date(now.getTime() + 60 * 60 * 1000);
+      return d.toISOString();
+    }
+    // Tomorrow 9am in the user's local TZ → ISO UTC.
+    const d = new Date(now);
+    d.setDate(d.getDate() + 1);
+    d.setHours(9, 0, 0, 0);
+    return d.toISOString();
+  }
+
+  async function revealInFinder() {
+    if (!revealPath) {
+      setBottomToast({ kind: "err", msg: "No file on disk yet for this clip." });
+      return;
+    }
+    // Cross-platform "dirname" via string ops — the path is whatever the
+    // sidecar emitted (POSIX on macOS, the only target). No node:path in the
+    // webview, and importing tauri's path API for one split is overkill.
+    const sep = revealPath.includes("\\") ? "\\" : "/";
+    const idx = revealPath.lastIndexOf(sep);
+    const dir = idx > 0 ? revealPath.slice(0, idx) : revealPath;
+    try {
+      await openExternal(dir);
+    } catch (e) {
+      setBottomToast({ kind: "err", msg: `Couldn't open Finder — ${String(e)}` });
+    }
+  }
+
+  async function saveCopyAs() {
+    if (saveCopyBusy) return;
+    if (!revealPath) {
+      setBottomToast({ kind: "err", msg: "No file on disk yet for this clip." });
+      return;
+    }
+    setSaveCopyBusy(true);
+    try {
+      const [{ save }, { copyFile }] = await Promise.all([
+        import("@tauri-apps/plugin-dialog"),
+        import("@tauri-apps/plugin-fs"),
+      ]);
+      // Default filename uses title (sanitised) or falls back to slug. Tauri
+      // dialog will append .mp4 if the user types nothing — defaultPath gives
+      // them a starting point.
+      const baseName = (clip.title || clip.slug || "clip")
+        .replace(/[\\/:*?"<>|]+/g, "_")
+        .trim()
+        .slice(0, 80) || "clip";
+      const dest = await save({
+        defaultPath: `${baseName}.mp4`,
+        filters: [{ name: "Video", extensions: ["mp4"] }],
+      });
+      if (!dest) {
+        // User cancelled the OS dialog — silent return, no toast spam.
+        return;
+      }
+      await copyFile(revealPath, dest);
+      setBottomToast({ kind: "ok", msg: "Copy saved." });
+    } catch (e) {
+      setBottomToast({ kind: "err", msg: `Save failed — ${String(e)}` });
+    } finally {
+      setSaveCopyBusy(false);
+    }
+  }
+
+  function handlePublishClick() {
+    if (!canPublish) {
+      setBottomToast({ kind: "err", msg: "Render a 9:16 cut first — publishing needs vertical." });
+      return;
+    }
+    // Mutual exclusion with the schedule popover. Otherwise opening publish
+    // leaves an open popover floating in the background once the modal lands.
+    setScheduleOpen(false);
+    if (onPublish) {
+      onPublish(index - 1);
+    } else {
+      setBottomToast({ kind: "err", msg: "Publish isn't wired in this view yet." });
     }
   }
 
   const innerCard = (
+    <>
+      <ConfirmDialog
+        open={confirmRemove}
+        tone="destructive"
+        title="Remove this clip?"
+        body={<>Its files on disk go too. This can&apos;t be undone.</>}
+        confirmLabel="Remove clip"
+        busy={busy}
+        onCancel={() => { if (!busy) setConfirmRemove(false); }}
+        onConfirm={() => { void performRemove(); }}
+      />
       <div
         className={
           mode === "window"
@@ -883,20 +1057,172 @@ export function ClipPreview({
 
             {actionError && <p className="font-mono text-[12px] text-[#DC2626]">{actionError}</p>}
 
-            <div className="mt-auto flex items-center gap-2 pt-3">
-              <button onClick={() => videoPath && void openExternal(videoPath)}
-                disabled={!videoPath}
-                className="rounded-full border border-line bg-paper px-4 py-2 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary hover:border-fuchsia hover:text-ink disabled:opacity-40">
-                Open current file
-              </button>
-              <button onClick={remove} disabled={busy}
-                className="ml-auto rounded-full border border-line bg-paper px-4 py-2 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary hover:border-[#DC2626] hover:text-[#DC2626] disabled:opacity-40">
-                Remove
-              </button>
+            {/* Primary action row — schedule + publish on the left (the
+                "ship it" beat), reveal + save copy on the right (utility).
+                Sits above the legacy Play / Remove row so a clipper can
+                ship without closing the editor first. */}
+            <div className="mt-auto flex flex-col gap-2 pt-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Schedule ▾ with quick-pick popover. Disabled until a 9:16
+                    render exists — same precondition as publish. */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setScheduleOpen((o) => !o)}
+                    disabled={!canPublish}
+                    aria-expanded={scheduleOpen}
+                    aria-haspopup="menu"
+                    title={canPublish ? "Schedule a post reminder" : "Needs a 9:16 render first"}
+                    className="inline-flex items-center gap-2 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-semibold text-white shadow-[0_6px_18px_rgba(255,26,140,0.25)] transition-all hover:bg-fuchsia-bright disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Calendar size={14} strokeWidth={2.2} aria-hidden />
+                    Schedule
+                    <span aria-hidden className="text-[10px] opacity-80">▾</span>
+                  </button>
+                  {scheduleOpen && (
+                    <div
+                      role="menu"
+                      aria-label="Schedule presets"
+                      className="absolute bottom-full left-0 z-20 mb-2 w-[260px] rounded-xl border border-line bg-paper p-3 shadow-xl"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                        when
+                      </div>
+                      <div className="grid grid-cols-1 gap-1.5">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => void submitSchedule(schedulePresetIso("now"))}
+                          className="rounded-md border border-line bg-paper px-3 py-1.5 text-left font-sans text-[13px] text-ink hover:border-fuchsia hover:bg-fuchsia-soft/20"
+                        >
+                          Now
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => void submitSchedule(schedulePresetIso("1h"))}
+                          className="rounded-md border border-line bg-paper px-3 py-1.5 text-left font-sans text-[13px] text-ink hover:border-fuchsia hover:bg-fuchsia-soft/20"
+                        >
+                          In 1 hour
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => void submitSchedule(schedulePresetIso("tomorrow9"))}
+                          className="rounded-md border border-line bg-paper px-3 py-1.5 text-left font-sans text-[13px] text-ink hover:border-fuchsia hover:bg-fuchsia-soft/20"
+                        >
+                          Tomorrow, 9:00am
+                        </button>
+                      </div>
+                      <div className="mt-3 border-t border-line pt-2.5">
+                        <label className="block font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                          Pick a time
+                        </label>
+                        <div className="mt-1.5 flex items-center gap-1.5">
+                          <input
+                            type="datetime-local"
+                            value={customSchedule}
+                            onChange={(e) => setCustomSchedule(e.target.value)}
+                            className="flex-1 rounded-md border border-line bg-paper-warm/40 px-2 py-1.5 font-mono text-[12px] text-ink focus:border-fuchsia focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            disabled={!customSchedule}
+                            onClick={() => {
+                              if (!customSchedule) return;
+                              // datetime-local is a naive local string —
+                              // construct a Date so .toISOString shifts it to
+                              // UTC, matching the LocalScheduleNew contract.
+                              const d = new Date(customSchedule);
+                              if (Number.isNaN(d.getTime())) {
+                                setBottomToast({ kind: "err", msg: "Pick a valid time." });
+                                return;
+                              }
+                              void submitSchedule(d.toISOString());
+                            }}
+                            className="rounded-md bg-fuchsia px-3 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-40"
+                          >
+                            Set
+                          </button>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setScheduleOpen(false)}
+                        className="mt-2 w-full rounded-md border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary hover:border-fuchsia hover:text-ink"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Publish now — delegates to ResultsGrid's PublishModal. */}
+                <button
+                  type="button"
+                  onClick={handlePublishClick}
+                  disabled={!canPublish}
+                  title={canPublish ? "Open Publish for this clip" : "Needs a 9:16 render first"}
+                  className="inline-flex items-center gap-2 rounded-full border border-fuchsia bg-paper px-4 py-2 font-sans text-[12px] font-semibold text-fuchsia transition-all hover:bg-fuchsia-soft/20 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Send size={14} strokeWidth={2.2} aria-hidden />
+                  Publish now
+                </button>
+
+                {/* Utility actions live on the right. */}
+                <button
+                  type="button"
+                  onClick={() => void revealInFinder()}
+                  disabled={!revealPath}
+                  title={revealPath ? "Reveal containing folder in Finder" : "No file on disk yet"}
+                  className="ml-auto inline-flex items-center gap-2 rounded-full border border-line bg-paper px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <FolderOpen size={14} strokeWidth={2.2} aria-hidden />
+                  Reveal in Finder
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveCopyAs()}
+                  disabled={!revealPath || saveCopyBusy}
+                  title={revealPath ? "Save a copy to another location" : "No file on disk yet"}
+                  className="inline-flex items-center gap-2 rounded-full border border-line bg-paper px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Download size={14} strokeWidth={2.2} aria-hidden />
+                  {saveCopyBusy ? "Saving…" : "Save copy as…"}
+                </button>
+              </div>
+
+              {/* Bottom toast — non-blocking, auto-dismissing micro-confirm
+                  so the clipper sees outcomes without leaving the editor. */}
+              {bottomToast && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className={`font-mono text-[11px] tracking-[0.04em] ${
+                    bottomToast.kind === "err" ? "text-[#DC2626]" : "text-fuchsia"
+                  }`}
+                >
+                  {bottomToast.msg}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <button onClick={() => videoPath && void openExternal(videoPath)}
+                  disabled={!videoPath}
+                  className="rounded-full border border-line bg-paper px-4 py-2 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary hover:border-fuchsia hover:text-ink disabled:opacity-40">
+                  Play in default app
+                </button>
+                <button onClick={remove} disabled={busy}
+                  className="ml-auto rounded-full border border-line bg-paper px-4 py-2 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary hover:border-[#DC2626] hover:text-[#DC2626] disabled:opacity-40">
+                  Remove
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
+    </>
   );
 
   if (mode === "window") {

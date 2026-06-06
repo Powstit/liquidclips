@@ -14,6 +14,7 @@ import {
   type SubmissionStatus,
 } from "../../lib/submissions";
 import { useBriefs, type AllowedPlatform } from "../../lib/briefs";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 const PLATFORM_OPTIONS: Array<{ id: AllowedPlatform | "other"; label: string }> = [
   { id: "tiktok", label: "TikTok" },
@@ -79,6 +80,9 @@ export function SubmissionForm({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [autoAttributed, setAutoAttributed] = useState(false);
+  // Branded confirm replaces window.confirm() — native dialog blocks Tauri
+  // webview thread and breaks the brand voice on every dirty-close.
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
 
   useEffect(() => {
     if (!editing && !briefId && briefs.length > 0) {
@@ -117,7 +121,10 @@ export function SubmissionForm({
     notes !== initialRef.notes;
 
   function requestClose() {
-    if (isDirty && !window.confirm("Discard this submission?")) return;
+    if (isDirty) {
+      setConfirmDiscardOpen(true);
+      return;
+    }
     onClose();
   }
 
@@ -153,6 +160,18 @@ export function SubmissionForm({
       className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
       onClick={requestClose}
     >
+      <ConfirmDialog
+        open={confirmDiscardOpen}
+        tone="destructive"
+        title="Discard this submission?"
+        body={<>Your unsaved edits will be thrown away.</>}
+        confirmLabel="Discard edits"
+        onCancel={() => setConfirmDiscardOpen(false)}
+        onConfirm={() => {
+          setConfirmDiscardOpen(false);
+          onClose();
+        }}
+      />
       <Card
         elevation="raised"
         padding="none"

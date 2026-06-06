@@ -366,6 +366,12 @@ export function ResultsGrid({
             const next = previewIdx + dir;
             if (next >= 0 && next < project.clips.length) { setPreviewIdx(next); setOpenCaptionsForIdx(null); }
           }}
+          onPublish={(clipIdx) => {
+            // Open PublishModal pre-selected to THIS clip (not
+            // firstRenderedClipIdx). ClipPreview already gates on
+            // clip.vertical_path so we don't need to re-check here.
+            setPublishModal({ mode: "publish-now", clipIdx });
+          }}
         />
       )}
 

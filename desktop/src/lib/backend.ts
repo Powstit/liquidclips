@@ -43,6 +43,11 @@ function routeFor(path: string): string {
 // it lazily so we can keep the helper sync at the surface but resilient when
 // the user hasn't activated yet.
 
+// v0.7.x — Railway now hosts BOTH api.liquidclips.app (new canonical) and
+// api.jnremployee.com (legacy, both pointing at the same service). PROD
+// stays on jnremployee.com until Let's Encrypt finishes issuing the
+// liquidclips.app cert end-to-end. CSP allows both hosts so the flip is a
+// one-line bump once SSL is green.
 const PROD_BACKEND_URL = "https://api.jnremployee.com";
 const DEV_BACKEND_URL = "http://localhost:8000";
 

@@ -51,6 +51,7 @@ import { InvadersOverlay } from "./components/invaders/InvadersOverlay";
 import { OnboardingOverlay } from "./components/onboarding/OnboardingOverlay";
 import { closeInvaders } from "./lib/invaders/store";
 import { Settings } from "./components/Settings";
+import { ConfirmDialog } from "./components/ConfirmDialog";
 import { AchievementToast } from "./components/AchievementToast";
 import { AuthPanel } from "./components/auth/AuthPanel";
 import { useAuthPanel, closeAuthPanel } from "./components/auth/useAuthPanel";
@@ -146,6 +147,15 @@ export default function App() {
   const [inboxOpen, setInboxOpen] = useState(false);
   const [submissionPortalOpen, setSubmissionPortalOpen] = useState(false);
   const [refreshingApp, setRefreshingApp] = useState(false);
+  // Branded confirm primitives — kill the two native `confirm()` calls that
+  // block the Tauri webview thread + break the cockpit voice. The replace-
+  // pipeline confirm carries a Promise resolver so the original drag-drop
+  // listener can `await` the user's answer without polling.
+  const [confirmReplacePipeline, setConfirmReplacePipeline] = useState<
+    { resolve: (ok: boolean) => void } | null
+  >(null);
+  const [confirmSignOutOpen, setConfirmSignOutOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   // Sprint #14c — global "open Settings" bus so any component (e.g. the
   // Earn-tab ConnectionBadge "Sign in with Whop" CTA) can pop Settings open
@@ -510,9 +520,13 @@ export default function App() {
         view.kind === "running" ||
         view.kind === "choosing-intent"
       ) {
-        const ok = window.confirm(
-          "A pipeline is already running. Replace it with this new file? Your in-flight work will be lost.",
-        );
+        // Branded confirm — the native window.confirm() here used to block
+        // the Tauri webview thread and break cockpit voice. We open the
+        // modal and await the user's answer via a Promise resolver so this
+        // listener can continue exactly like before.
+        const ok = await new Promise<boolean>((resolve) => {
+          setConfirmReplacePipeline({ resolve });
+        });
         if (!ok) return;
         cancelRequestedRef.current = true;
         await sidecar.liftCancel().catch(() => undefined);
@@ -1661,19 +1675,10 @@ export default function App() {
         onSignOut={
           // v0.6.38 — Real in-place sign-out (was opening Settings as a
           // proxy). Mirrors the Settings sign-out flow: confirm, clear
-          // LICENSE_JWT in keychain, bounce to FirstRun.
-          signedIn
-            ? async () => {
-                if (!confirm("Sign out of Liquid Clips? You'll sign in again to come back in.")) return;
-                try {
-                  await sidecar.secretDelete("LICENSE_JWT");
-                } catch {
-                  /* best-effort */
-                }
-                setSignedIn(false);
-                setView({ kind: "first-run" });
-              }
-            : undefined
+          // LICENSE_JWT in keychain, bounce to FirstRun. Confirm modal lives
+          // at the root render below so the AvatarPanel can unmount without
+          // killing the dialog mid-RPC.
+          signedIn ? () => setConfirmSignOutOpen(true) : undefined
         }
       />
       {/* NotificationBell is still referenced from a few legacy callers (Earn
@@ -1706,6 +1711,51 @@ export default function App() {
           /sync so a successful checkout / sign-in flips the tier immediately
           without waiting for the next window-focus poll. */}
       <GlobalAuthPanel />
+      {/* Branded confirm dialogs — replace the two prior native confirm()
+          calls (drag-drop pipeline replace + AvatarPanel sign-out). Mounted
+          at root so neither one unmounts when its origin surface goes away. */}
+      <ConfirmDialog
+        open={confirmReplacePipeline !== null}
+        tone="neutral"
+        title="Replace the running pipeline?"
+        body={
+          <>
+            A pipeline is already running. Drop this file in and your in-flight
+            work will be lost.
+          </>
+        }
+        confirmLabel="Replace pipeline"
+        onCancel={() => {
+          confirmReplacePipeline?.resolve(false);
+          setConfirmReplacePipeline(null);
+        }}
+        onConfirm={() => {
+          confirmReplacePipeline?.resolve(true);
+          setConfirmReplacePipeline(null);
+        }}
+      />
+      <ConfirmDialog
+        open={confirmSignOutOpen}
+        tone="destructive"
+        title="Sign out of Liquid Clips?"
+        body={<>You&apos;ll sign in again to come back in.</>}
+        confirmLabel="Sign out"
+        busy={signingOut}
+        onCancel={() => { if (!signingOut) setConfirmSignOutOpen(false); }}
+        onConfirm={async () => {
+          if (signingOut) return;
+          setSigningOut(true);
+          try {
+            await sidecar.secretDelete("LICENSE_JWT");
+          } catch {
+            /* best-effort */
+          }
+          setSignedIn(false);
+          setView({ kind: "first-run" });
+          setConfirmSignOutOpen(false);
+          setSigningOut(false);
+        }}
+      />
     </MainShell>
   );
 }

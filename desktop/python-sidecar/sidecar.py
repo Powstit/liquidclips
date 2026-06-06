@@ -656,6 +656,10 @@ def method_get_captions(params: dict[str, Any]) -> dict[str, Any]:
             # from this on reopen so a clipper who picked custom colours
             # yesterday sees the same swatches today.
             "palette": data.get("palette"),
+            # Persisted caption position (align + marginV). Drawer rehydrates
+            # the radio + slider so the position the clipper baked yesterday
+            # is what they see when they reopen the drawer today.
+            "position": data.get("position"),
         }
 
     # Derive initial line set from transcript.json (word-level). Malformed
@@ -753,12 +757,26 @@ def method_edit_captions(params: dict[str, Any]) -> dict[str, Any]:
     palette = params.get("palette")
     if palette is not None and not isinstance(palette, dict):
         raise ValueError("edit_captions palette must be an object or omitted")
+    # Position is optional — when omitted the style's hardcoded alignment +
+    # margin_v render as before (so existing clips re-bake byte-identical).
+    # Drawer sends `{align: 2|5|8, marginV: 0..400}` so a clipper can move
+    # captions to top (TikTok overlay-friendly), middle, or anywhere along
+    # the vertical axis. `_build_style_line` clamps marginV to the documented
+    # 0-400 range so a bad payload can't push text off-screen.
+    position = params.get("position")
+    if position is not None and not isinstance(position, dict):
+        raise ValueError("edit_captions position must be an object or omitted")
     if not isinstance(slug, str) or not isinstance(idx, int):
         raise ValueError("edit_captions requires slug (str) + idx (int)")
     if not isinstance(lines, list):
         raise ValueError("edit_captions requires lines (list)")
     if not isinstance(style, str):
         raise ValueError("edit_captions style must be a string")
+    # Per-word `color` (optional CSS hex like "#FF00FF") flows through this
+    # method verbatim — generate_ass_from_lines reads it off each word dict
+    # and emits an inline \1c override so the clipper can paint "money words"
+    # without re-cutting the line. No validation here: bad hex is silently
+    # ignored by hex_to_ass so the bake falls back to the style's primary.
 
     project = Project.load(slug)
     if idx < 0 or idx >= len(project.clips):
@@ -784,6 +802,7 @@ def method_edit_captions(params: dict[str, Any]) -> dict[str, Any]:
         "clip_idx": idx,
         "lines": lines,
         "palette": palette,
+        "position": position,
     }
     with edits_path.open("w", encoding="utf-8") as f:
         _json.dump(payload, f, indent=2)
@@ -791,7 +810,9 @@ def method_edit_captions(params: dict[str, Any]) -> dict[str, Any]:
     # Bake. last_baked_ass_text() captures the .ass output for the desktop's
     # libass-wasm overlay so the live preview matches the baked MP4 1:1.
     from captions import bake_captions_to_video, last_baked_ass_text
-    bake_captions_to_video(target, lines, style=style, palette=palette)
+    bake_captions_to_video(
+        target, lines, style=style, palette=palette, position=position
+    )
     ass_text = last_baked_ass_text()
 
     # Update clip metadata so the UI can show "captions: brand_fuchsia · synced".
@@ -804,6 +825,12 @@ def method_edit_captions(params: dict[str, Any]) -> dict[str, Any]:
         # The drawer still keeps the picked colours in React state for the
         # session so toggling Custom back restores them.
         del clip["caption_palette"]
+    # Persist position the same way so the drawer rehydrates the clipper's
+    # last choice and the ClipPreview can show "captions: top" at a glance.
+    if position:
+        clip["caption_position"] = position
+    elif "caption_position" in clip:
+        del clip["caption_position"]
     clip["captions_updated_at"] = now_iso
     project.set_clips(project.clips)
 
@@ -812,6 +839,7 @@ def method_edit_captions(params: dict[str, Any]) -> dict[str, Any]:
         "clip_idx": idx,
         "style": style,
         "palette": palette,
+        "position": position,
         "updated_at": now_iso,
         "video_path": str(target),
         # ASS text used to bake. The desktop's libass-wasm overlay renders

@@ -19,6 +19,7 @@ import {
   type PayoutProvider,
 } from "../../lib/briefs";
 import { humanError } from "../../lib/sidecar";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 const PAYOUT_LABEL: Record<PayoutProvider, string> = {
   whop: "Whop",
@@ -46,6 +47,9 @@ export function CampaignContextStrip({
   // PREVENTS — silent setActive() failures leaving the strip out of sync
   // with what the user just clicked.
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Branded confirm replaces window.confirm() — native dialog blocks Tauri
+  // webview thread + breaks the cockpit voice on detach.
+  const [confirmDetachOpen, setConfirmDetachOpen] = useState(false);
 
   async function applyActive(id: string | null): Promise<void> {
     setSaveError(null);
@@ -58,13 +62,8 @@ export function CampaignContextStrip({
 
   function clearActive(): void {
     // PREVENTS — destructive "Clear" tap dropping the user's chosen
-    // campaign by accident. Confirm before detach.
-    // eslint-disable-next-line no-alert
-    const ok = window.confirm(
-      "Detach this campaign? You can re-attach from the dropdown.",
-    );
-    if (!ok) return;
-    void applyActive(null);
+    // campaign by accident. Branded ConfirmDialog before detach.
+    setConfirmDetachOpen(true);
   }
 
   useEffect(() => {
@@ -181,6 +180,18 @@ export function CampaignContextStrip({
           {saveError}
         </p>
       )}
+      <ConfirmDialog
+        open={confirmDetachOpen}
+        tone="neutral"
+        title="Detach this campaign?"
+        body={<>You can re-attach it from the dropdown any time.</>}
+        confirmLabel="Detach campaign"
+        onCancel={() => setConfirmDetachOpen(false)}
+        onConfirm={() => {
+          setConfirmDetachOpen(false);
+          void applyActive(null);
+        }}
+      />
     </div>
   );
 }

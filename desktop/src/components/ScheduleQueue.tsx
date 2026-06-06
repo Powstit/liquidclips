@@ -5,6 +5,7 @@ import { backend, type ScheduleDto } from "../lib/backend";
 import { sidecar, humanError } from "../lib/sidecar";
 import { PlatformIcon, type PlatformId } from "./PlatformIcon";
 import { HudChip } from "./cockpit/HudChip";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 /** Compact "5 min ago" style stamp for the stale-data caption. */
 function timeSince(ms: number): string {
@@ -106,6 +107,10 @@ export function ScheduleQueue() {
   /** Tick once a minute so the "showing cached data" caption keeps updating
    *  even when the network is wedged and refreshes never succeed. */
   const [, setTick] = useState(0);
+  // Branded confirm replaces window.confirm() — the native dialog blocked
+  // the Tauri webview thread on cancel and broke the cockpit voice.
+  const [confirmCancelRow, setConfirmCancelRow] = useState<ScheduleDto | null>(null);
+  const [cancelBusy, setCancelBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -138,12 +143,16 @@ export function ScheduleQueue() {
     return () => window.clearInterval(id);
   }, []);
 
-  async function cancel(row: ScheduleDto) {
+  function cancel(row: ScheduleDto) {
+    setConfirmCancelRow(row);
+  }
+
+  async function performCancel(row: ScheduleDto) {
     // Whole body wrapped in try/catch so a backend reject, JWT read failure,
     // or network blip surfaces as a per-row error chip instead of an
     // unhandled rejection.
+    setCancelBusy(true);
     try {
-      if (!confirm(`Cancel the ${row.platform} post of "${row.clip_title}"?`)) return;
       const { value: jwt } = await sidecar.licenseJwtRead();
       if (!jwt) {
         setCancelError((cur) => ({ ...cur, [row.id]: "Sign in to cancel scheduled posts." }));
@@ -160,6 +169,9 @@ export function ScheduleQueue() {
       const msg = humanError(e);
       setError(msg);
       setCancelError((cur) => ({ ...cur, [row.id]: msg }));
+    } finally {
+      setCancelBusy(false);
+      setConfirmCancelRow(null);
     }
   }
 
@@ -181,6 +193,29 @@ export function ScheduleQueue() {
 
   return (
     <div className="flex flex-col gap-4">
+      <ConfirmDialog
+        open={confirmCancelRow !== null}
+        tone="destructive"
+        title="Cancel scheduled post?"
+        body={
+          confirmCancelRow ? (
+            <>
+              Cancel the {confirmCancelRow.platform} post of &ldquo;
+              {confirmCancelRow.clip_title}&rdquo;? The slot will be freed up
+              but you can re-queue the same clip later.
+            </>
+          ) : (
+            <>Cancel this scheduled post?</>
+          )
+        }
+        confirmLabel="Cancel post"
+        busy={cancelBusy}
+        onCancel={() => { if (!cancelBusy) setConfirmCancelRow(null); }}
+        onConfirm={() => {
+          if (!confirmCancelRow) return;
+          void performCancel(confirmCancelRow);
+        }}
+      />
       <div className="flex items-center gap-2">
         {(Object.keys(FILTER_LABEL) as FilterKey[]).map((key) => (
           <HudChip key={key} active={filter === key} onClick={() => setFilter(key)}>

@@ -5,6 +5,7 @@ import { BarChart3, Link, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 
 import * as backend from "../lib/backend";
 import { PlatformIcon, type PlatformId } from "./PlatformIcon";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 type ScheduleSubtab = "queue" | "channels" | "analytics";
 
@@ -42,6 +43,9 @@ export default function AyrshareConnectionPanel({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [profileKey, setProfileKey] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Branded confirm replaces window.confirm() — the native dialog blocked
+  // the Tauri webview thread and broke the cockpit voice on disconnect.
+  const [confirmDisconnect, setConfirmDisconnect] = useState<string | null>(null);
 
   // Sprint #14d — listen for the Tauri 'social_link_closed' event the Rust
   // shell emits when the user closes the linking window. Auto-refresh
@@ -129,8 +133,11 @@ export default function AyrshareConnectionPanel({
     }
   }
 
-  async function disconnect(platform: string) {
-    if (!confirm(`Hide ${prettyPlatform(platform)} from publish targets?`)) return;
+  function disconnect(platform: string) {
+    setConfirmDisconnect(platform);
+  }
+
+  async function performDisconnect(platform: string) {
     setBusy(true);
     try {
       const next = await backend.socialDisconnectPlatform(platform);
@@ -318,6 +325,25 @@ export default function AyrshareConnectionPanel({
       {error && (
         <p className="mt-3 font-mono text-[11px] text-[#DC2626]">{error}</p>
       )}
+      <ConfirmDialog
+        open={confirmDisconnect !== null}
+        tone="destructive"
+        title={
+          confirmDisconnect
+            ? `Hide ${prettyPlatform(confirmDisconnect)} from publish targets?`
+            : "Hide platform?"
+        }
+        body={<>You can re-link this platform later from the same panel.</>}
+        confirmLabel="Hide platform"
+        busy={busy}
+        onCancel={() => { if (!busy) setConfirmDisconnect(null); }}
+        onConfirm={() => {
+          const platform = confirmDisconnect;
+          if (!platform) return;
+          setConfirmDisconnect(null);
+          void performDisconnect(platform);
+        }}
+      />
     </div>
   );
 }

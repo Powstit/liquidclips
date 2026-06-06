@@ -240,20 +240,138 @@ _STYLES: dict[str, dict[str, Any]] = {
         "margin_v": 240,
         "words_per_line": 3,
     },
+    "instagram_clean": {
+        # IG Reels-recognisable clean look. White Helvetica Neue with a thin
+        # black outline and a soft drop-shadow — no box, no karaoke fill
+        # (primary == secondary). 4 words/line keeps the read pace IG-native.
+        "fontname": "Helvetica Neue",
+        "fontsize": 64,
+        "secondary_color": "&H00FFFFFF",  # white
+        "primary_color":   "&H00FFFFFF",  # white (karaoke off)
+        "outline_color":   "&H00000000",  # black
+        "back_color":      "&H80000000",  # 50% drop shadow
+        "bold": -1,
+        "outline": 4,
+        "shadow": 2,
+        "border_style": 1,
+        "alignment": 2,
+        "margin_l": 80,
+        "margin_r": 80,
+        "margin_v": 200,
+        "words_per_line": 4,
+    },
+    "news_ticker": {
+        # Bottom news-ticker bar — filled fuchsia box behind white Inter,
+        # no glyph outline, sits low on the frame. 6 words/line so the bar
+        # reads like a broadcast chyron rather than a hype caption. Karaoke
+        # off (primary == secondary).
+        "fontname": "Inter",
+        "fontsize": 56,
+        "secondary_color": "&H00FFFFFF",  # white
+        "primary_color":   "&H00FFFFFF",  # white (karaoke off)
+        "outline_color":   "&H008C1AFF",  # fuchsia (matches the filled box)
+        "back_color":      "&HE08C1AFF",  # near-opaque fuchsia box (#ff1a8c)
+        "bold": -1,
+        "outline": 0,
+        "shadow": 0,
+        "border_style": 3,                # filled box behind glyphs
+        "alignment": 2,
+        "margin_l": 40,
+        "margin_r": 40,
+        "margin_v": 60,                   # low — broadcast chyron position
+        "words_per_line": 6,
+    },
+    "neon_arcade": {
+        # Heavy fuchsia hype — bright fuchsia primary, white secondary, white
+        # outline, glowing cyan back-shadow. Reads like an arcade marquee.
+        # 3 words/line keeps each beat punchy.
+        "fontname": "Inter",
+        "fontsize": 76,
+        "secondary_color": "&H00FFFFFF",  # white baseline
+        "primary_color":   "&H008C1AFF",  # bright fuchsia (#ff1a8c)
+        "outline_color":   "&H00FFFFFF",  # white outline
+        "back_color":      "&HC0FFE500",  # glowing cyan back-shadow (#00e5ff)
+        "bold": -1,
+        "outline": 3,
+        "shadow": 6,
+        "border_style": 1,
+        "alignment": 2,
+        "margin_l": 60,
+        "margin_r": 60,
+        "margin_v": 260,
+        "words_per_line": 3,
+    },
+    "comic_bubble": {
+        # Comic-book pop. Bold yellow primary on white secondary, fat black
+        # outline + fat black shadow, Impact at 80px. 2 words/line so each
+        # beat lands like a panel.
+        "fontname": "Impact",
+        "fontsize": 80,
+        "secondary_color": "&H00FFFFFF",  # white baseline
+        "primary_color":   "&H0000E5FF",  # bold yellow (#ffe500)
+        "outline_color":   "&H00000000",  # black
+        "back_color":      "&HE0000000",  # near-opaque black shadow
+        "bold": -1,
+        "outline": 6,
+        "shadow": 6,
+        "border_style": 1,
+        "alignment": 2,
+        "margin_l": 60,
+        "margin_r": 60,
+        "margin_v": 280,
+        "words_per_line": 2,
+    },
+    "youtube_bold": {
+        # YouTube creator-cam style. White Inter at 72px with a heavy 5px
+        # black outline, no box, light shadow. Karaoke ON with fuchsia
+        # primary so each word pops as it's "sung".
+        "fontname": "Inter",
+        "fontsize": 72,
+        "secondary_color": "&H00FFFFFF",  # white baseline
+        "primary_color":   "&H008C1AFF",  # bright fuchsia (#ff1a8c) karaoke
+        "outline_color":   "&H00000000",  # black
+        "back_color":      "&H80000000",  # subtle shadow
+        "bold": -1,
+        "outline": 5,
+        "shadow": 2,
+        "border_style": 1,
+        "alignment": 2,
+        "margin_l": 80,
+        "margin_r": 80,
+        "margin_v": 240,
+        "words_per_line": 4,
+    },
 }
 
 
 # Public — used by the drawer UI to know which style keys exist and how to
 # label them. Order here is the order the drawer renders the picker cards.
-STYLE_KEYS: list[str] = ["brand_fuchsia", "tiktok_stack", "bold_yellow", "clean_white", "subway_surfer", "custom"]
+STYLE_KEYS: list[str] = [
+    "brand_fuchsia",
+    "tiktok_stack",
+    "bold_yellow",
+    "clean_white",
+    "subway_surfer",
+    "instagram_clean",
+    "news_ticker",
+    "neon_arcade",
+    "comic_bubble",
+    "youtube_bold",
+    "custom",
+]
 
 STYLE_LABELS: dict[str, str] = {
-    "brand_fuchsia": "Brand Fuchsia",
-    "tiktok_stack":  "TikTok Stack",
-    "bold_yellow":   "Bold Yellow",
-    "clean_white":   "Clean White",
-    "subway_surfer": "Subway Surfer",
-    "custom":        "Custom",
+    "brand_fuchsia":   "Brand Fuchsia",
+    "tiktok_stack":    "TikTok Stack",
+    "bold_yellow":     "Bold Yellow",
+    "clean_white":     "Clean White",
+    "subway_surfer":   "Subway Surfer",
+    "instagram_clean": "Instagram Clean",
+    "news_ticker":     "News Ticker",
+    "neon_arcade":     "Neon Arcade",
+    "comic_bubble":    "Comic Bubble",
+    "youtube_bold":    "YouTube Bold",
+    "custom":          "Custom",
 }
 
 
@@ -284,7 +402,11 @@ def style_words_per_line(style_name: str) -> int:
     return int(s.get("words_per_line") or 4)
 
 
-def _build_style_line(style_name: str, palette: dict[str, str] | None = None) -> str:
+def _build_style_line(
+    style_name: str,
+    palette: dict[str, str] | None = None,
+    position: dict | None = None,
+) -> str:
     """Render the `Style: Default,...` block per the V4+ format spec.
 
     `palette` (optional) overrides primary/secondary/outline colours from a
@@ -293,6 +415,13 @@ def _build_style_line(style_name: str, palette: dict[str, str] | None = None) ->
     `secondary`, `outline`; values are CSS hex (#RRGGBB) or None. Anything
     missing / malformed falls back to the named style's preset colour so a
     half-filled palette never breaks the bake.
+
+    `position` (optional) overrides the style's alignment + vertical margin.
+    Shape: {"align": 2|5|8, "marginV": 0..400}. ASS numpad alignments:
+    8 = top-centre, 5 = middle-centre, 2 = bottom-centre (default). Used by
+    the drawer's Position control so clippers can move captions out from
+    under platform overlays (e.g. captions on top because TikTok overlays
+    bottom-right). Malformed values fall back to the style's preset.
     """
     s = _STYLES.get(style_name, _STYLES["bold_yellow"])
     primary = s["primary_color"]
@@ -308,7 +437,26 @@ def _build_style_line(style_name: str, palette: dict[str, str] | None = None) ->
             secondary = s_override
         if o_override:
             outline = o_override
-    s = {**s, "primary_color": primary, "secondary_color": secondary, "outline_color": outline}
+    alignment = s["alignment"]
+    margin_v = s["margin_v"]
+    if position:
+        raw_align = position.get("align")
+        if raw_align in (2, 5, 8):
+            alignment = raw_align
+        raw_margin = position.get("marginV")
+        if isinstance(raw_margin, (int, float)):
+            # Clamp to the slider's documented 0-400 range so a bad payload
+            # can't push captions past the canvas edge or below zero. 400 ≈
+            # 21% of a 1920-tall canvas — still comfortably on-screen.
+            margin_v = int(max(0, min(400, raw_margin)))
+    s = {
+        **s,
+        "primary_color": primary,
+        "secondary_color": secondary,
+        "outline_color": outline,
+        "alignment": alignment,
+        "margin_v": margin_v,
+    }
     # Format columns (per ASS V4+ spec, exact order matters):
     # Name, Fontname, Fontsize,
     # PrimaryColour, SecondaryColour, OutlineColour, BackColour,
@@ -343,17 +491,45 @@ def _build_style_line(style_name: str, palette: dict[str, str] | None = None) ->
     return "Style: " + ",".join(fields)
 
 
-def _dialogue_for_line(line: list[tuple[float, float, str]]) -> str:
-    """Emit one Dialogue event with karaoke fill timing for each word."""
+def _dialogue_for_line(
+    line: list[tuple[float, float, str]] | list[tuple[float, float, str, str | None]],
+) -> str:
+    """Emit one Dialogue event with karaoke fill timing for each word.
+
+    Accepts either 3-tuples `(start, end, text)` (style colour for every word)
+    or 4-tuples `(start, end, text, color_hex)` where `color_hex` may be a CSS
+    hex like `#FF00FF` to paint THIS word a different primary fill, or None
+    to fall back to the line/style default. The per-word override is emitted
+    inline as `{\\1c&HBBGGRR&}<word>{\\1c&H&}` — the trailing `&H&` with no
+    value resets the primary back to the style's default fill so the next
+    karaoke fill picks up the style colour again.
+    """
     if not line:
         return ""
     start_s = line[0][0]
     end_s = line[-1][1]
     parts: list[str] = []
-    for ws, we, text in line:
+    for entry in line:
+        # Tolerant unpack — 3-tuple legacy path stays byte-identical.
+        if len(entry) == 4:
+            ws, we, text, color_hex = entry  # type: ignore[misc]
+        else:
+            ws, we, text = entry  # type: ignore[misc]
+            color_hex = None
         # centiseconds rounded; min 1 centi so each word has at least a tick
         dur_cs = max(1, int(round((we - ws) * 100)))
-        parts.append(f"{{\\kf{dur_cs}}}{_ass_escape(text.strip())}")
+        kf = f"{{\\kf{dur_cs}}}"
+        escaped = _ass_escape(text.strip())
+        ass_color = hex_to_ass(color_hex) if color_hex else None
+        if ass_color:
+            # hex_to_ass gives &H00BBGGRR (alpha byte 00 + BBGGRR). The \1c
+            # inline override only takes the BBGGRR triplet — strip the alpha
+            # prefix and emit as &HBBGGRR&. The reset tag {\1c&H&} restores
+            # the style's primary fill so the NEXT word picks up the default.
+            primary = f"&H{ass_color[4:]}&"
+            parts.append(f"{kf}{{\\1c{primary}}}{escaped}{{\\1c&H&}}")
+        else:
+            parts.append(f"{kf}{escaped}")
     text_field = " ".join(parts)
     return (
         f"Dialogue: 0,{_format_ass_time(start_s)},{_format_ass_time(end_s)},"
@@ -496,6 +672,7 @@ def generate_ass_from_lines(
     canvas_w: int = DEFAULT_PLAY_W,
     canvas_h: int = DEFAULT_PLAY_H,
     palette: dict[str, str] | None = None,
+    position: dict | None = None,
 ) -> _Path:
     """Emit an ASS file directly from user-edited caption lines.
 
@@ -525,7 +702,11 @@ def generate_ass_from_lines(
         if isinstance(words, list) and words:
             # Per-word karaoke: emit one {\kf<centi>} per word with its own
             # duration. Clamp to line bounds in case the editor leaves slop.
-            packed: list[tuple[float, float, str]] = []
+            # Optional per-word `color` (CSS hex like "#FF00FF") becomes an
+            # inline \1c override painting THIS word — the "money word"
+            # highlight every CapCut creator uses. Lines without colour
+            # render byte-identical to the pre-feature output.
+            packed: list[tuple[float, float, str, str | None]] = []
             for w in words:
                 try:
                     ws = max(start_s, float(w.get("start") or start_s))
@@ -535,7 +716,9 @@ def generate_ass_from_lines(
                 text = (w.get("text") or w.get("word") or "").strip()
                 if not text or we <= ws:
                     continue
-                packed.append((ws, we, text))
+                color_raw = w.get("color")
+                color = color_raw if isinstance(color_raw, str) and color_raw.strip() else None
+                packed.append((ws, we, text, color))
             if packed:
                 body_events.append(_dialogue_for_line(packed))
                 continue
@@ -559,7 +742,7 @@ def generate_ass_from_lines(
         "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
         "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
         "Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        f"{_build_style_line(style_key, palette)}\n"
+        f"{_build_style_line(style_key, palette, position)}\n"
         "\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
@@ -578,6 +761,7 @@ def bake_captions_to_video(
     canvas_w: int = DEFAULT_PLAY_W,
     canvas_h: int = DEFAULT_PLAY_H,
     palette: dict[str, str] | None = None,
+    position: dict | None = None,
 ) -> _Path:
     """Burn caption `lines` into `clip_path` using the named style.
 
@@ -613,6 +797,7 @@ def bake_captions_to_video(
             canvas_w=canvas_w,
             canvas_h=canvas_h,
             palette=palette,
+            position=position,
         )
         # Snapshot the ASS file BEFORE the finally-block unlinks it so the
         # sidecar can hand it back to the desktop's libass-wasm overlay
