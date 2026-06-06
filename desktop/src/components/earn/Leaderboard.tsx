@@ -10,9 +10,10 @@
 // perspective. ONE fuchsia accent throughout — silver/gold/bronze tinting
 // is gone; rank rhythm reads from sizing + bracket intensity instead.
 
-import { useEffect, useMemo, useState } from "react";
-import { Trophy } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { RotateCw, Trophy } from "lucide-react";
 import { leaderboardGet, type LeaderboardEntry, type LeaderboardResponse } from "../../lib/backend";
+import { humanError } from "../../lib/sidecar";
 import { TierAvatar, tierForEarnings } from "../TierAvatar";
 
 export function Leaderboard() {
@@ -22,6 +23,19 @@ export function Leaderboard() {
     error: string | null;
   }>({ loading: true, data: null, error: null });
 
+  const load = useCallback(async (): Promise<void> => {
+    setState((s) => ({ ...s, loading: true, error: null }));
+    try {
+      const data = await leaderboardGet();
+      setState({ loading: false, data, error: data ? null : "Leaderboard unavailable" });
+    } catch (e) {
+      // PREVENTS — raw error objects like "[object Object]" or
+      // "TypeError: failed to fetch" leaking into the UI. humanError
+      // maps known failure shapes to recoverable copy.
+      setState({ loading: false, data: null, error: humanError(e) });
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -29,7 +43,7 @@ export function Leaderboard() {
         const data = await leaderboardGet();
         if (!cancelled) setState({ loading: false, data, error: data ? null : "Leaderboard unavailable" });
       } catch (e) {
-        if (!cancelled) setState({ loading: false, data: null, error: String(e) });
+        if (!cancelled) setState({ loading: false, data: null, error: humanError(e) });
       }
     })();
     return () => { cancelled = true; };
@@ -59,6 +73,14 @@ export function Leaderboard() {
         <p className="font-mono text-[12px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
           {state.error ?? "Leaderboard unavailable"}
         </p>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
+        >
+          <RotateCw size={11} strokeWidth={2} />
+          Retry
+        </button>
       </div>
     );
   }

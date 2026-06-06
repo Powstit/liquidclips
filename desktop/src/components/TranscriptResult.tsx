@@ -5,6 +5,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { LiftTranscriptResult } from "../lib/sidecar";
 import { PlatformIcon, type PlatformId } from "./PlatformIcon";
 import { InvadersTrigger } from "./invaders/InvadersTrigger";
+import { LiquidInvaderLoader } from "./LiquidInvaderLoader";
 
 // Result screen for the "Lift transcript" path. No clipping, no LLM — just the
 // transcript, the poster, the original caption, and a clean way to copy/open.
@@ -220,9 +221,14 @@ export function LiftingProgress({
             </button>
           )}
         </div>
-        <h2 className="mt-3 font-display text-[22px] font-semibold leading-tight tracking-[-0.02em] text-ink">
-          Lifting the transcript.
-        </h2>
+        <div className="mt-3 flex items-center gap-3">
+          {/* Brand loader — liquid filling the pixel Invader so the user has a
+              live visual the moment the lift starts (not just a 0% bar). */}
+          <LiquidInvaderLoader size={32} />
+          <h2 className="font-display text-[22px] font-semibold leading-tight tracking-[-0.02em] text-ink">
+            Lifting the transcript.
+          </h2>
+        </div>
         <p className="mt-1 truncate font-mono text-[11px] text-text-tertiary">{url}</p>
 
         <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-paper-elev/60">

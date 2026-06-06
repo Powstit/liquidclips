@@ -95,6 +95,20 @@ def _group_words_into_lines(
 # So &H008C1AFF = opaque (00), blue 8C, green 1A, red FF = #FF1A8C fuchsia.
 # `words_per_line` is a style-level override the caption engine reads when
 # packing words into on-screen units (lower = faster read pace, stacked feel).
+# Module-level stash for the ASS text the most-recent bake produced. Sidecar
+# helpers read it via `last_baked_ass_text()` so they can hand the .ass
+# content back to the desktop's libass-wasm overlay without re-walking the
+# filesystem. Single-threaded sidecar = a module-level dict is fine; the
+# helper resets it before each call to make races impossible.
+_LAST_BAKED_ASS: dict[str, str] = {"text": ""}
+
+
+def last_baked_ass_text() -> str:
+    """Return the ASS text from the most-recent bake. Empty string if no
+    bake has run this session."""
+    return _LAST_BAKED_ASS.get("text", "")
+
+
 _STYLES: dict[str, dict[str, Any]] = {
     "bold_yellow": {
         # Visible-area font sizing — large enough to read on a phone, not so
@@ -202,12 +216,36 @@ _STYLES: dict[str, dict[str, Any]] = {
         "margin_v": 280,
         "words_per_line": 2,
     },
+    "custom": {
+        # User-tunable starter. The drawer's react-colorful trio overrides
+        # primary_color / secondary_color / outline_color at bake time via
+        # the `palette` argument on bake_captions_to_video. Defaults match
+        # brand_fuchsia so a clipper who clicks Custom without dragging the
+        # pickers still gets a brand-safe render. Everything else is the
+        # baseline tikok_stack rhythm — readable on busy footage, 3 words
+        # per line so colour reads cleanly per-word.
+        "fontname": "Inter",
+        "fontsize": 76,
+        "secondary_color": "&H00FFFFFF",
+        "primary_color":   "&H008C1AFF",  # fuchsia default
+        "outline_color":   "&H00100B0B",  # paper-black default
+        "back_color":      "&H80000000",
+        "bold": -1,
+        "outline": 6,
+        "shadow": 3,
+        "border_style": 1,
+        "alignment": 2,
+        "margin_l": 60,
+        "margin_r": 60,
+        "margin_v": 240,
+        "words_per_line": 3,
+    },
 }
 
 
 # Public — used by the drawer UI to know which style keys exist and how to
 # label them. Order here is the order the drawer renders the picker cards.
-STYLE_KEYS: list[str] = ["brand_fuchsia", "tiktok_stack", "bold_yellow", "clean_white", "subway_surfer"]
+STYLE_KEYS: list[str] = ["brand_fuchsia", "tiktok_stack", "bold_yellow", "clean_white", "subway_surfer", "custom"]
 
 STYLE_LABELS: dict[str, str] = {
     "brand_fuchsia": "Brand Fuchsia",
@@ -215,7 +253,29 @@ STYLE_LABELS: dict[str, str] = {
     "bold_yellow":   "Bold Yellow",
     "clean_white":   "Clean White",
     "subway_surfer": "Subway Surfer",
+    "custom":        "Custom",
 }
+
+
+# Hex (#RRGGBB or RRGGBB) → ASS (&HBBGGRR) — react-colorful gives us standard
+# CSS hex; the ASS spec wants byte-reversed RGB with a leading &H00. Tolerant
+# of "#" prefix + 3/6 digit forms. Returns None for bad input so the bake
+# falls back to the style's default colour rather than rendering garbage.
+def hex_to_ass(hex_str: str | None) -> str | None:
+    if not hex_str:
+        return None
+    h = hex_str.strip().lstrip("#")
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    if len(h) != 6:
+        return None
+    try:
+        r = int(h[0:2], 16)
+        g = int(h[2:4], 16)
+        b = int(h[4:6], 16)
+    except ValueError:
+        return None
+    return f"&H00{b:02X}{g:02X}{r:02X}"
 
 
 def style_words_per_line(style_name: str) -> int:
@@ -224,9 +284,31 @@ def style_words_per_line(style_name: str) -> int:
     return int(s.get("words_per_line") or 4)
 
 
-def _build_style_line(style_name: str) -> str:
-    """Render the `Style: Default,...` block per the V4+ format spec."""
+def _build_style_line(style_name: str, palette: dict[str, str] | None = None) -> str:
+    """Render the `Style: Default,...` block per the V4+ format spec.
+
+    `palette` (optional) overrides primary/secondary/outline colours from a
+    user-picked palette. Used by the "custom" style so the react-colorful
+    swatches in the drawer drive what gets baked. Keys: `primary`,
+    `secondary`, `outline`; values are CSS hex (#RRGGBB) or None. Anything
+    missing / malformed falls back to the named style's preset colour so a
+    half-filled palette never breaks the bake.
+    """
     s = _STYLES.get(style_name, _STYLES["bold_yellow"])
+    primary = s["primary_color"]
+    secondary = s["secondary_color"]
+    outline = s["outline_color"]
+    if palette:
+        p_override = hex_to_ass(palette.get("primary")) if palette.get("primary") else None
+        s_override = hex_to_ass(palette.get("secondary")) if palette.get("secondary") else None
+        o_override = hex_to_ass(palette.get("outline")) if palette.get("outline") else None
+        if p_override:
+            primary = p_override
+        if s_override:
+            secondary = s_override
+        if o_override:
+            outline = o_override
+    s = {**s, "primary_color": primary, "secondary_color": secondary, "outline_color": outline}
     # Format columns (per ASS V4+ spec, exact order matters):
     # Name, Fontname, Fontsize,
     # PrimaryColour, SecondaryColour, OutlineColour, BackColour,
@@ -413,6 +495,7 @@ def generate_ass_from_lines(
     style: str = "bold_yellow",
     canvas_w: int = DEFAULT_PLAY_W,
     canvas_h: int = DEFAULT_PLAY_H,
+    palette: dict[str, str] | None = None,
 ) -> _Path:
     """Emit an ASS file directly from user-edited caption lines.
 
@@ -476,7 +559,7 @@ def generate_ass_from_lines(
         "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
         "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
         "Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        f"{_build_style_line(style_key)}\n"
+        f"{_build_style_line(style_key, palette)}\n"
         "\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
@@ -494,6 +577,7 @@ def bake_captions_to_video(
     out_path: _Path | None = None,
     canvas_w: int = DEFAULT_PLAY_W,
     canvas_h: int = DEFAULT_PLAY_H,
+    palette: dict[str, str] | None = None,
 ) -> _Path:
     """Burn caption `lines` into `clip_path` using the named style.
 
@@ -520,6 +604,7 @@ def bake_captions_to_video(
     # try/finally still guards against a half-written file on ffmpeg failure
     # for an out_path that points at an explicit destination).
     bake_ok = False
+    ass_text_snapshot = ""
     try:
         generate_ass_from_lines(
             lines,
@@ -527,7 +612,16 @@ def bake_captions_to_video(
             style=style,
             canvas_w=canvas_w,
             canvas_h=canvas_h,
+            palette=palette,
         )
+        # Snapshot the ASS file BEFORE the finally-block unlinks it so the
+        # sidecar can hand it back to the desktop's libass-wasm overlay
+        # without us shipping a transient path. Same data, no per-clip disk
+        # pollution.
+        try:
+            ass_text_snapshot = ass_path.read_text(encoding="utf-8")
+        except OSError:
+            ass_text_snapshot = ""
 
         cmd = [
             _ffmpeg_bin(), "-nostdin", "-hide_banner",
@@ -555,6 +649,11 @@ def bake_captions_to_video(
         else:
             result = target
         bake_ok = True
+        # Stash the ASS text on the returned Path so the sidecar wrapper can
+        # surface it without a second function signature. Path subclassing
+        # would be the cleaner shape — for now we lean on the caller asking
+        # for it via a sibling helper (`last_baked_ass_text`) instead.
+        _LAST_BAKED_ASS["text"] = ass_text_snapshot
         return result
     finally:
         # Always scrub the .ass transient artefact (per-clip pollution).

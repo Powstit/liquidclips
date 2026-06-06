@@ -4,6 +4,7 @@
 // Same 8-step content, condensed and reframed. Stays out of the main feed
 // so the kid who already knows the loop doesn't see another wall of text.
 
+import { useEffect } from "react";
 import { X } from "lucide-react";
 import { Card, IconButton } from "../primitives";
 
@@ -36,6 +37,16 @@ const STEPS: Array<{ title: string; detail: string }> = [
 ];
 
 export function EarnHowItWorksPopover({ onClose }: { onClose: () => void }) {
+  // PREVENTS — keyboard-only users getting trapped in the popover.
+  // Backdrop click already closes; Esc completes the parity.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent): void {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div
       // Fully opaque scrim — bg-paper at 100% so behind-content can't bleed

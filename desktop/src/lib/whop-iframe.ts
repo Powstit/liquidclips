@@ -28,6 +28,75 @@
 
 import { sidecar } from "./sidecar";
 
+// ──────────────────────────────────────────────────────────────────────
+// junior:whop-auth replay buffer
+//
+// Multiple surfaces (EarnTab, AffiliateHero, BountyList) want to react to a
+// successful Whop auth without each owning a global listener of their own.
+// They subscribe via `subscribeWhopAuth`. If the auth event already fired
+// less than `WHOP_AUTH_REPLAY_MAX_AGE_MS` ago, we replay it to the new
+// subscriber immediately so a late mount doesn't miss the signal.
+//
+// Both the Whop-iframe path (this file) AND the desktop deep-link path
+// (activation.ts) WRITE to this buffer via `recordWhopAuthEvent` — so a
+// subscriber gets one consistent stream regardless of which auth surface
+// fired. Keep the API symmetrical with the dispatched CustomEvent so we
+// can switch the global window event off in the future without breaking
+// downstream code.
+// ──────────────────────────────────────────────────────────────────────
+
+export type WhopAuthEvent = {
+  source: "url" | "postMessage" | "deep-link" | string;
+  // Wall-clock ms timestamp when the event was recorded.
+  at: number;
+};
+
+export const WHOP_AUTH_REPLAY_MAX_AGE_MS = 30_000;
+
+let _lastWhopAuth: WhopAuthEvent | null = null;
+const _whopAuthListeners = new Set<(ev: WhopAuthEvent) => void>();
+
+/** Record a successful Whop auth event into the shared replay buffer and
+ *  fan it out to current subscribers. Callers should ALSO dispatch the
+ *  legacy `junior:whop-auth` CustomEvent on window during the transition
+ *  so old listeners keep working. */
+export function recordWhopAuthEvent(source: WhopAuthEvent["source"]): void {
+  const ev: WhopAuthEvent = { source, at: Date.now() };
+  _lastWhopAuth = ev;
+  for (const cb of _whopAuthListeners) {
+    try {
+      cb(ev);
+    } catch {
+      /* swallow — one bad subscriber can't take down the rest */
+    }
+  }
+}
+
+/** Subscribe to whop-auth events. If a recent event (< 30s) is already in
+ *  the buffer when you subscribe, your callback fires immediately with it —
+ *  so a tab mounted right after sign-in doesn't sit there waiting for the
+ *  next reauth. Returns an unsubscribe fn. */
+export function subscribeWhopAuth(cb: (ev: WhopAuthEvent) => void): () => void {
+  _whopAuthListeners.add(cb);
+  if (_lastWhopAuth && Date.now() - _lastWhopAuth.at < WHOP_AUTH_REPLAY_MAX_AGE_MS) {
+    // Use microtask to avoid surprising synchronous calls during render.
+    queueMicrotask(() => {
+      // Re-read after queueMicrotask — buffer could've been replaced.
+      const snap = _lastWhopAuth;
+      if (snap && Date.now() - snap.at < WHOP_AUTH_REPLAY_MAX_AGE_MS) {
+        try {
+          cb(snap);
+        } catch {
+          /* swallow */
+        }
+      }
+    });
+  }
+  return () => {
+    _whopAuthListeners.delete(cb);
+  };
+}
+
 /** True iff we're running inside a whop.com iframe. Two signals:
  *   1. window.parent !== window  (we're framed)
  *   2. document.referrer matches *.whop.com  (parent is Whop)
@@ -168,6 +237,7 @@ export function attachWhopIframeAuth(opts: {
         scrubUrlAfterCapture();
         if (!cancelled) {
           opts.onTokenCaptured?.("url");
+          recordWhopAuthEvent("url");
           window.dispatchEvent(new CustomEvent("junior:whop-auth", { detail: { source: "url" } }));
         }
       } catch {
@@ -214,6 +284,7 @@ export function attachWhopIframeAuth(opts: {
         await sidecar.whopSetSessionToken(token);
         if (!cancelled) {
           opts.onTokenCaptured?.("postMessage");
+          recordWhopAuthEvent("postMessage");
           window.dispatchEvent(new CustomEvent("junior:whop-auth", { detail: { source: "postMessage" } }));
         }
       } catch {

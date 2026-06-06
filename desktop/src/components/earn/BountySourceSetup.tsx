@@ -45,14 +45,19 @@ export function BountySourceSetup({
 
   async function pickFile() {
     setError(null);
-    const picked = await openDialog({
-      multiple: false,
-      filters: [
-        { name: "Videos", extensions: ["mp4", "MP4", "mov", "MOV", "mkv", "MKV", "webm", "m4v", "M4V", "avi", "AVI", "hevc"] },
-        { name: "All files", extensions: ["*"] },
-      ],
-    });
-    if (typeof picked === "string") onContinue({ kind: "file", path: picked });
+    try {
+      const picked = await openDialog({
+        multiple: false,
+        filters: [
+          { name: "Videos", extensions: ["mp4", "MP4", "mov", "MOV", "mkv", "MKV", "webm", "m4v", "M4V", "avi", "AVI", "hevc"] },
+          { name: "All files", extensions: ["*"] },
+        ],
+      });
+      if (typeof picked === "string") onContinue({ kind: "file", path: picked });
+    } catch (e) {
+      console.error("[bounty-source-setup] file picker failed:", e);
+      setError("Couldn't open file picker — try again or paste a URL.");
+    }
   }
 
   return (
@@ -163,7 +168,15 @@ export function BountySourceSetup({
                     </button>
                   ) : (
                     <button
-                      onClick={() => void openExternal(src.url)}
+                      onClick={async () => {
+                        setError(null);
+                        try {
+                          await openExternal(src.url);
+                        } catch (e) {
+                          console.error("[bounty-source-setup] openExternal failed:", e);
+                          setError("Couldn't open that link — copy it into your browser manually.");
+                        }
+                      }}
                       className="shrink-0 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep"
                       title="Liquid Clips can't fetch this host directly. Open in your browser, download the file, then drop it below."
                     >

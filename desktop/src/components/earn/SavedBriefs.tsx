@@ -234,6 +234,21 @@ function BriefDetailModal({
   const isActive = active?.id === brief.id;
   const [deleting, setDeleting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // PREVENTS — backdrop click silently dropping mid-flight operations.
+  // When a delete / toggle / re-open is in-flight, or an error/notes
+  // edit is unsaved, ask before closing.
+  const dirty = deleting || err !== null;
+
+  function attemptClose(): void {
+    if (!dirty) {
+      onClose();
+      return;
+    }
+    // eslint-disable-next-line no-alert
+    if (window.confirm("You have unsaved changes — close anyway?")) {
+      onClose();
+    }
+  }
 
   async function toggleActive(): Promise<void> {
     try {
@@ -268,7 +283,7 @@ function BriefDetailModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
-      onClick={onClose}
+      onClick={attemptClose}
     >
       <Card
         elevation="raised"
@@ -289,7 +304,7 @@ function BriefDetailModal({
               <Pill tone="neutral">Paid by {PAYOUT_LABEL[brief.payout_provider]}</Pill>
             </div>
           </div>
-          <IconButton variant="ghost" label="Close" onClick={onClose}>
+          <IconButton variant="ghost" label="Close" onClick={attemptClose}>
             <X size={16} />
           </IconButton>
         </header>

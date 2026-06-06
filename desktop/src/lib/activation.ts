@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { sidecar } from "./sidecar";
+import { recordWhopAuthEvent } from "./whop-iframe";
 
 // Central desktop activation bridge. ONE helper, reused by every "sign in"
 // surface (FirstRun, top-nav, Earn, the 401 self-heal prompt) — no per-screen
@@ -86,7 +88,10 @@ async function handleDeepLink(urls: string[]): Promise<void> {
         }),
       );
       // also reuse the existing whop-auth bus so any code listening for that
-      // (EarnTab) gets a free refresh on Whop sign-in too.
+      // (EarnTab) gets a free refresh on Whop sign-in too. Write to the
+      // shared replay buffer first so a tab mounted right AFTER this fires
+      // still picks up the event (within 30s).
+      recordWhopAuthEvent("deep-link");
       window.dispatchEvent(
         new CustomEvent("junior:whop-auth", { detail: { source: "deep-link" } }),
       );
@@ -108,6 +113,13 @@ async function handleDeepLink(urls: string[]): Promise<void> {
       emit({ kind: "activating" });
       await sidecar.secretSet("LICENSE_JWT", token);
     } catch {
+      // Clear pendingChallenge on keychain-write failure so a retry mints a
+      // FRESH challenge instead of being silently de-duped against the stale
+      // one (the browser deep-link could fire again on retry and the second
+      // attempt would race-match this dead challenge and stall). Also stop
+      // the timeout timer — we already emitted the error.
+      clearTimer();
+      pendingChallenge = null;
       emit({ kind: "error", message: "Couldn’t save your license. Try again." });
       return;
     }
@@ -130,8 +142,19 @@ export function initDeepLinks(): Promise<unknown> {
 }
 
 /** Kick off activation. Renders progress via the status store; resolves the
- *  flow through the deep-link listener + onActivated. */
-export async function startActivation(): Promise<void> {
+ *  flow through the deep-link listener + onActivated.
+ *
+ *  Default = in-app: opens the connect-desktop page inside Liquid Clips'
+ *  centered Tauri auth_panel webview, so the user signs in without leaving
+ *  the app. The bridge page on account-app deep-links back via
+ *  `liquidclips://activate?token=…&challenge=…`; Tauri's deep-link plugin
+ *  fires `onOpenUrl` whether the link is triggered from the embedded
+ *  webview or the system browser, so the activation handshake still works.
+ *
+ *  Pass `{ via: "browser" }` to fall back to the system browser — used by
+ *  the "having trouble?" rescue button if the embedded panel ever fails. */
+export async function startActivation(opts?: { via?: "panel" | "browser" }): Promise<void> {
+  const via = opts?.via ?? "panel";
   await initDeepLinks();
   const challenge = randomChallenge();
   pendingChallenge = challenge;
@@ -139,12 +162,19 @@ export async function startActivation(): Promise<void> {
 
   const url = `${CONNECT_URL}?challenge=${encodeURIComponent(challenge)}`;
   try {
-    await openExternal(url);
+    if (via === "panel") {
+      await invoke("open_auth_panel", { url });
+    } else {
+      await openExternal(url);
+    }
   } catch {
     pendingChallenge = null;
     emit({
       kind: "error",
-      message: "Couldn’t open your browser. Visit account.jnremployee.com/connect-desktop to sign in.",
+      message:
+        via === "panel"
+          ? "Couldn’t open the in-app sign-in panel. Try the browser fallback."
+          : "Couldn’t open your browser. Visit account.jnremployee.com/connect-desktop to sign in.",
     });
     return;
   }
@@ -155,7 +185,13 @@ export async function startActivation(): Promise<void> {
   // activates; a fresh attempt overwrites it with a new challenge.
   timer = setTimeout(() => {
     if (pendingChallenge === challenge && (status.kind === "waiting" || status.kind === "opening")) {
-      emit({ kind: "error", message: "Activation timed out. Finish sign-in in your browser, or try again." });
+      emit({
+        kind: "error",
+        message:
+          via === "panel"
+            ? "Activation timed out. Finish sign-in in the panel, or try the browser fallback."
+            : "Activation timed out. Finish sign-in in your browser, or try again.",
+      });
     }
   }, TIMEOUT_MS);
 }
@@ -165,8 +201,15 @@ export function resetActivation(): void {
 }
 
 /** Subscribe to activation status + trigger it. The deep-link listener is a
- *  singleton, so multiple mounted surfaces share one flow safely. */
-export function useActivation(): { status: ActivationStatus; activate: () => Promise<void>; reset: () => void } {
+ *  singleton, so multiple mounted surfaces share one flow safely.
+ *
+ *  `activate(opts?)` defaults to the in-app sign-in panel; pass
+ *  `{ via: "browser" }` for the rescue path if the embedded webview fails. */
+export function useActivation(): {
+  status: ActivationStatus;
+  activate: (opts?: { via?: "panel" | "browser" }) => Promise<void>;
+  reset: () => void;
+} {
   const [s, setS] = useState<ActivationStatus>(status);
   useEffect(() => {
     listeners.add(setS);

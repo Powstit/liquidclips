@@ -1,5 +1,5 @@
-import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { TierIcon } from "./TierIcon";
+import { openAuthPanel } from "./auth/useAuthPanel";
 
 // Replaces clip cards beyond the free-tier cap. One full-card CTA at the
 // position where the next clip would render, with the hidden-clip count
@@ -42,7 +42,7 @@ export function UpgradeLockCard({
 
       <div className="flex flex-col items-center gap-2">
         <button
-          onClick={() => void openExternal("https://account.jnremployee.com/upgrade")}
+          onClick={() => openAuthPanel("upgrade")}
           className="rounded-full bg-fuchsia px-6 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
         >
           Upgrade to Solo →

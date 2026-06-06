@@ -19,7 +19,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { UploadCloud, Layers } from "lucide-react";
+import { readText } from "@tauri-apps/plugin-clipboard-manager";
+import { ClipboardPaste, FolderOpen, Layers, Plus, PlayCircle, AlertTriangle } from "lucide-react";
 import { socialGetConnection, type SocialConnectionState } from "../../lib/backend";
 import {
   humanError,
@@ -89,14 +90,22 @@ export function DirectPublishQueue({
   // closes so a user who just connected sees the gate disappear.
   const [connection, setConnection] = useState<SocialConnectionState | null>(null);
   const [connectionLoading, setConnectionLoading] = useState(true);
+  // Distinguish "fetch failed" from "fetch succeeded but no platforms" — the
+  // UI lies to the user otherwise (a network blip looks identical to a
+  // fresh-install empty state).
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const refreshConnection = useCallback(async () => {
     setConnectionLoading(true);
     try {
       const state = await socialGetConnection();
       setConnection(state);
-    } catch {
-      // Soft-fail — the per-card "connect first" gate handles the empty case.
+      setConnectionError(null);
+    } catch (e) {
+      // Soft-fail for connection state itself, but track the error so we
+      // can show a "couldn't reach status — check Settings" inline instead
+      // of pretending the user just hasn't connected yet.
       setConnection(null);
+      setConnectionError(humanError(e));
     } finally {
       setConnectionLoading(false);
     }
@@ -121,7 +130,89 @@ export function DirectPublishQueue({
   // cursor doesn't fight the async `remove()` that fires after each clip
   // is scheduled (without the snapshot the index would race the persist).
   // null = not in a bulk run.
-  const [bulk, setBulk] = useState<{ remaining: DirectPublishQueueItem[] } | null>(null);
+  const [bulk, setBulk] = useState<{
+    remaining: DirectPublishQueueItem[];
+    /** Total count when the run started — needed for the "stopped at clip 2
+     *  of 5" message after abandon. */
+    total: number;
+  } | null>(null);
+  // When the user Escs out of a bulk walk mid-run, we surface a banner
+  // offering to resume so they don't have to remember where they were.
+  // We capture the abandoned position too for the "stopped at clip X of Y"
+  // microcopy.
+  const [bulkAbandoned, setBulkAbandoned] = useState<{
+    stoppedAt: number;
+    total: number;
+  } | null>(null);
+
+  // Cmd/Ctrl-V on the Schedule surface pastes a finished-clip path. Guards:
+  //   • Ignore the event when focus is in an input / textarea / contenteditable
+  //     so the title-edit field on a ClipReadyCard keeps working normally.
+  //   • Skip when the publish modal is open — same reason; whatever input the
+  //     user is typing into shouldn't be hijacked.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "v") return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
+      }
+      if (modal !== null) return;
+      e.preventDefault();
+      void pasteFromClipboard();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // pasteFromClipboard is stable (closure over setPickError/addPaths); these
+    // are stable enough that re-binding once per modal-open is fine.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modal]);
+
+  // Paste a finished clip from the clipboard — supports:
+  //   • Finder "Copy" of one or more .mp4/.mov/.webm files (newline-separated
+  //     paths in the text payload, or the URI list in `file://` form)
+  //   • A bare path string (one per line) — `/Users/.../clip.mp4`
+  //
+  // Soft-fails to a toast if the clipboard text isn't a recognisable video
+  // path; never blows up. Reuses addPaths so the queue persists identically
+  // to the file-picker flow.
+  async function pasteFromClipboard() {
+    setPickError(null);
+    let raw: string | null = null;
+    try {
+      raw = await readText();
+    } catch (e) {
+      setPickError(humanError(e));
+      return;
+    }
+    if (!raw || !raw.trim()) {
+      setPickError("Clipboard is empty. Copy a finished clip in Finder first.");
+      return;
+    }
+    // Normalise: strip file:// prefix (URI-list paste), trim each line,
+    // drop blanks. Decode URI components so a space in the path comes back
+    // as a real space rather than %20.
+    const candidates = raw
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => (s.startsWith("file://") ? decodeURI(s.replace(/^file:\/\//, "")) : s));
+    const valid = candidates.filter((p) => /\.(mp4|mov|webm)$/i.test(p));
+    if (valid.length === 0) {
+      setPickError(
+        "Clipboard didn't contain an mp4 / mov / webm path. Copy a finished clip in Finder, then paste.",
+      );
+      return;
+    }
+    await addPaths(valid);
+    const skipped = candidates.length - valid.length;
+    if (skipped > 0) {
+      setPickError(
+        `${skipped} item${skipped === 1 ? "" : "s"} skipped — only mp4 / mov / webm are supported.`,
+      );
+    }
+  }
 
   async function pickFiles() {
     setPickError(null);
@@ -198,8 +289,20 @@ export function DirectPublishQueue({
     setModal(null);
     // If a bulk run is in progress and the user closed without finishing
     // (e.g. hit Esc on the second clip), abandon the run rather than
-    // marching through the rest silently.
-    if (bulk !== null) setBulk(null);
+    // marching through the rest silently. Surface a toast + a resume
+    // button so the work isn't silently lost.
+    if (bulk !== null) {
+      const done = bulk.total - bulk.remaining.length;
+      const stoppedAt = done + 1; // 1-indexed for human display
+      if (bulk.remaining.length > 0) {
+        setBulkAbandoned({ stoppedAt, total: bulk.total });
+        setToast(
+          `Bulk walk stopped at clip ${stoppedAt} of ${bulk.total} — restart anytime from the queue.`,
+        );
+        window.setTimeout(() => setToast(null), 6000);
+      }
+      setBulk(null);
+    }
     // Re-read connection so the inline gate clears once the user links.
     void refreshConnection();
   }
@@ -223,7 +326,7 @@ export function DirectPublishQueue({
     if (bulk !== null) {
       const nextQueue = bulk.remaining.filter((it) => it.id !== closedItem?.id);
       if (nextQueue.length > 0) {
-        setBulk({ remaining: nextQueue });
+        setBulk({ remaining: nextQueue, total: bulk.total });
         setModal({ mode: "schedule-one", item: nextQueue[0] });
       } else {
         setBulk(null);
@@ -234,47 +337,96 @@ export function DirectPublishQueue({
   function startBulkSchedule() {
     if (!items || items.length === 0) return;
     // Snapshot at start so adding new items mid-walk doesn't extend the run.
-    setBulk({ remaining: [...items] });
+    setBulk({ remaining: [...items], total: items.length });
+    setBulkAbandoned(null);
+    setModal({ mode: "schedule-one", item: items[0] });
+  }
+
+  function resumeBulkSchedule() {
+    if (!items || items.length === 0) return;
+    setBulk({ remaining: [...items], total: items.length });
+    setBulkAbandoned(null);
     setModal({ mode: "schedule-one", item: items[0] });
   }
 
   const queue = items ?? [];
   const linkedPlatforms = connection?.platforms ?? [];
+  const canResume = bulkAbandoned !== null && queue.length >= 2;
 
   return (
     <section>
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-          <UploadCloud className="h-3.5 w-3.5" strokeWidth={2} />
-          drop a finished clip
+          <FolderOpen className="h-3.5 w-3.5" strokeWidth={2} />
+          finished clips
         </div>
         <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
-          {queue.length > 0 ? `${queue.length} queued` : "click to browse"}
+          {queue.length > 0 ? `${queue.length} queued` : "browse to add"}
         </span>
       </div>
 
-      <button
-        onClick={pickFiles}
-        className="group flex h-[180px] w-full cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed border-line bg-paper transition-all hover:border-fuchsia hover:bg-fuchsia-soft/20"
-      >
-        <p className="font-display text-[20px] font-medium tracking-[-0.02em] text-ink">
-          drop a finished clip
-        </p>
-        <p className="mt-1 font-sans text-[13px] text-text-secondary">
-          mp4 / mov / webm &mdash; single or multi-select
-        </p>
-        <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary group-hover:text-fuchsia-deep">
-          click to browse
-        </p>
-      </button>
+      {/* Button-styled CTA — no dashed drop affordance because no global
+       *  drag listener catches drops onto this surface. The Workspace lane
+       *  owns the only drag-drop handler in the app. Lying with a dashed
+       *  border is the #1 demo failure mode here. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={pickFiles}
+          className="group inline-flex items-center gap-2 rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[13px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+        >
+          <Plus className="h-4 w-4" strokeWidth={2.25} />
+          Browse for a finished clip
+          <span className="font-mono text-[12px] opacity-80">→</span>
+        </button>
+        {/* Paste from clipboard — sibling to Browse so the discoverability is
+            obvious. Cmd-V on this tab does the same thing for keyboard users. */}
+        <button
+          type="button"
+          onClick={() => void pasteFromClipboard()}
+          title="Paste clip path from clipboard (⌘V)"
+          className="inline-flex items-center gap-2 rounded-full border border-fuchsia/40 bg-transparent px-4 py-2.5 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia"
+        >
+          <ClipboardPaste className="h-4 w-4" strokeWidth={2} />
+          Paste clip
+          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">⌘V</span>
+        </button>
+      </div>
+      <p className="mt-2 font-sans text-[12px] text-text-secondary">
+        mp4 / mov / webm &mdash; single or multi-select. Copy a clip in Finder, then ⌘V here to schedule it.
+      </p>
 
       {pickError && (
         <p className="mt-2 font-mono text-[11px] text-[#DC2626]">{pickError}</p>
       )}
       {queueError && (
-        <p className="mt-2 font-mono text-[11px] text-text-tertiary">
-          queue persistence note &mdash; {queueError}
-        </p>
+        // Persist-to-disk failure surfaced as a visible banner — the queue
+        // is still usable in memory, but a restart will lose it. Don't lie.
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-[#DC2626]/40 bg-[#DC2626]/10 px-3 py-2.5 font-sans text-[12px] text-ink">
+          <AlertTriangle className="mt-[2px] h-3.5 w-3.5 shrink-0 text-[#DC2626]" strokeWidth={2.25} />
+          <span>
+            Couldn&rsquo;t save queue to disk &mdash; your clips may not survive a restart. ({queueError})
+          </span>
+        </div>
+      )}
+      {connectionError && (
+        // A connection-state fetch failure used to render as "no platforms
+        // connected" in each card — a lie. Surface it explicitly so the
+        // user knows to check Settings rather than re-link.
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-[#F59E0B]/40 bg-[#F59E0B]/10 px-3 py-2.5 font-sans text-[12px] text-ink">
+          <AlertTriangle className="mt-[2px] h-3.5 w-3.5 shrink-0 text-[#F59E0B]" strokeWidth={2.25} />
+          <span>
+            Couldn&rsquo;t reach social-platform status &mdash; check{" "}
+            <button
+              type="button"
+              onClick={onOpenSchedule ?? onOpenSettings}
+              className="underline decoration-dashed underline-offset-2 hover:text-fuchsia-deep"
+            >
+              Settings &rarr; Channels
+            </button>
+            .
+          </span>
+        </div>
       )}
 
       {items === null ? (
@@ -288,14 +440,31 @@ export function DirectPublishQueue({
               <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
                 <Layers className="h-3.5 w-3.5" strokeWidth={2} />
                 {queue.length} clips ready
+                {canResume && (
+                  <span className="text-text-secondary normal-case tracking-normal font-sans">
+                    &nbsp;&middot; bulk stopped at {bulkAbandoned!.stoppedAt}/{bulkAbandoned!.total}
+                  </span>
+                )}
               </div>
-              <button
-                onClick={startBulkSchedule}
-                className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
-                title="Walks the queue clip-by-clip — pick a time + caption for each."
-              >
-                schedule all ({queue.length})
-              </button>
+              <div className="flex items-center gap-2">
+                {canResume && (
+                  <button
+                    onClick={resumeBulkSchedule}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-paper px-3.5 py-1.5 font-sans text-[12px] font-medium text-fuchsia-deep hover:bg-fuchsia-soft/40"
+                    title="Resume the bulk walk from the current queue."
+                  >
+                    <PlayCircle className="h-3.5 w-3.5" strokeWidth={2} />
+                    resume bulk
+                  </button>
+                )}
+                <button
+                  onClick={startBulkSchedule}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
+                  title="Walks the queue clip-by-clip — pick a time + caption for each."
+                >
+                  schedule all ({queue.length})
+                </button>
+              </div>
             </div>
           )}
           {queue.map((it) => (

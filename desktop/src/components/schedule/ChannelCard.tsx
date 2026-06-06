@@ -4,7 +4,7 @@
 // (rename · refresh · pause · delete). Click rename opens an inline input.
 
 import { useState } from "react";
-import { Pause, Play, RefreshCw, Trash2, Loader2 } from "lucide-react";
+import { BarChart3, Pause, Play, RefreshCw, Trash2, Loader2 } from "lucide-react";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
 import type { Channel } from "./types";
 import { prettyPlatform } from "./types";
@@ -24,6 +24,7 @@ export function ChannelCard({
   onTogglePause,
   onDelete,
   onLinkNow,
+  onOpenAnalytics,
 }: {
   channel: Channel;
   onRename: (label: string) => Promise<void>;
@@ -31,10 +32,15 @@ export function ChannelCard({
   onTogglePause: () => Promise<void>;
   onDelete: () => Promise<void>;
   onLinkNow: () => void;          // opens Tauri WebView via parent
+  /** Analytics Phase 1 — when wired, the posts-count pill becomes a deep-link
+   *  to Schedule → Analytics. Optional; falls back to plain text when the
+   *  host doesn't pass it. */
+  onOpenAnalytics?: (channelId: string) => void;
 }) {
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(channel.label);
   const [busy, setBusy] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const statusStyle = STATUS_STYLES[channel.status];
 
   async function commitRename() {
@@ -47,6 +53,23 @@ export function ChannelCard({
     try {
       await onRename(draft.trim());
       setRenaming(false);
+    } catch {
+      // Parent surfaces the error in the banner; keep rename input open so
+      // the user can correct or cancel.
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Wrap an async action so a rejection from the parent handler doesn't bubble
+  // as an unhandled promise rejection AND doesn't leave the card stuck in
+  // `busy`. The parent banner surfaces the error.
+  async function run(action: () => Promise<void>) {
+    setBusy(true);
+    try {
+      await action();
+    } catch {
+      /* error already surfaced by parent's setError */
     } finally {
       setBusy(false);
     }
@@ -108,49 +131,98 @@ export function ChannelCard({
           <span className={`h-1.5 w-1.5 rounded-full ${statusStyle.dot}`} aria-hidden />
           {statusStyle.label}
         </span>
-        <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
-          {channel.total_posts} posts
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+            {channel.total_posts} posts
+          </span>
+          {/* Analytics Phase 1 — deep-link to Schedule → Analytics. TODO:
+              pre-filter the analytics view by this channel.id once
+              AnalyticsView accepts a `channelFilter` prop (see
+              src/components/schedule/AnalyticsView.tsx:29 — would thread
+              through SchedulePage:54 sub state). Today it just flips the
+              tab so the user lands on the right surface; they can scan the
+              channel row in the table themselves. */}
+          {onOpenAnalytics && (
+            <button
+              type="button"
+              onClick={() => onOpenAnalytics(channel.id)}
+              className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary hover:text-fuchsia-deep"
+              title="View analytics"
+            >
+              <BarChart3 className="h-3 w-3" />
+              analytics →
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Hover row of actions */}
-      <div className="flex items-center justify-between pt-3 opacity-60 transition-opacity group-hover:opacity-100">
-        <div className="flex items-center gap-1">
-          <ActionButton
-            label="refresh"
-            icon={<RefreshCw className="h-3 w-3" />}
-            onClick={async () => { setBusy(true); try { await onRefresh(); } finally { setBusy(false); } }}
-            disabled={busy}
-          />
-          <ActionButton
-            label={channel.status === "paused" ? "resume" : "pause"}
-            icon={channel.status === "paused" ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
-            onClick={async () => { setBusy(true); try { await onTogglePause(); } finally { setBusy(false); } }}
-            disabled={busy || channel.status === "deleted"}
-          />
+      {/* Hover row of actions — flips to inline confirm-delete mode when the
+          user clicks the trash icon. Replaces the native window.confirm()
+          which broke the cockpit aesthetic and trapped keyboard users. */}
+      {confirmingDelete ? (
+        <div className="flex items-center justify-between gap-2 pt-3">
+          <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-secondary">
+            delete this channel?
+          </p>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(false)}
+              disabled={busy}
+              className="rounded-md border border-line bg-paper px-2.5 py-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-secondary hover:border-fuchsia/40 hover:text-ink disabled:opacity-40"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void run(async () => { await onDelete(); }).then(() => setConfirmingDelete(false));
+              }}
+              disabled={busy}
+              className="inline-flex items-center gap-1 rounded-md border border-[#DC2626]/40 bg-[#DC2626]/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-[#DC2626] hover:bg-[#DC2626]/20 disabled:opacity-40"
+            >
+              {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+              Confirm
+            </button>
+          </div>
         </div>
-        <button
-          onClick={async () => {
-            if (!confirm(`Delete "${channel.label}"? This soft-deletes — Ayrshare profile is preserved if you want to re-link later.`)) return;
-            setBusy(true);
-            try { await onDelete(); } finally { setBusy(false); }
-          }}
-          disabled={busy}
-          className="rounded-md p-1.5 text-text-tertiary hover:bg-[#DC2626]/10 hover:text-[#DC2626] disabled:opacity-40"
-          title="Delete channel"
-        >
-          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
-        </button>
-      </div>
+      ) : (
+        <div className="flex items-center justify-between pt-3 opacity-60 transition-opacity group-hover:opacity-100">
+          <div className="flex items-center gap-1">
+            <ActionButton
+              label="refresh"
+              icon={<RefreshCw className="h-3 w-3" />}
+              onClick={() => void run(async () => { await onRefresh(); })}
+              disabled={busy}
+            />
+            <ActionButton
+              label={channel.status === "paused" ? "resume" : "pause"}
+              icon={channel.status === "paused" ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
+              onClick={() => void run(async () => { await onTogglePause(); })}
+              disabled={busy || channel.status === "deleted"}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setConfirmingDelete(true)}
+            disabled={busy}
+            className="rounded-md p-1.5 text-text-tertiary hover:bg-[#DC2626]/10 hover:text-[#DC2626] disabled:opacity-40"
+            title="Delete channel"
+          >
+            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+          </button>
+        </div>
+      )}
 
       {channel.status === "pending_link" && (
+        // Persistent "Finish linking" pill — was previously opacity-0 hover-only
+        // which left keyboard + touch users with no way to discover the action.
         <button
+          type="button"
           onClick={onLinkNow}
-          className="absolute inset-0 rounded-2xl bg-fuchsia/95 text-paper opacity-0 transition-opacity hover:opacity-100"
+          className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-fuchsia px-3 py-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-paper shadow-[0_4px_12px_rgba(255,26,140,0.35)] hover:bg-fuchsia-bright focus:outline-none focus:ring-2 focus:ring-fuchsia/40"
         >
-          <span className="grid h-full place-items-center font-sans text-[13px] font-medium">
-            Finish linking →
-          </span>
+          Finish linking →
         </button>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { syncStatus, type SyncStatus, type Tier } from "./backend";
 
 // Lightweight tier hook. Defaults to "free" when sync hasn't completed or the
@@ -56,28 +56,119 @@ export type TierState = {
   /** The lowest tier that unlocks a capability — used in the upgrade copy. */
   requiredTierFor(cap: PublishCapability): Tier;
   maxConnections: number | null;
+  /** Manually re-pull /sync. Used after a tier-changing user action returns
+   *  (Stripe Checkout, Whop billing). Resolves once the new tier has been
+   *  written into state — caller can `await refreshTier()` then redirect. */
+  refreshTier(): Promise<void>;
 };
 
+// localStorage key for the last-known tier. Keeps the upgrade walls quiet
+// across launches: a Pro user on a flaky network shouldn't flash "Free →
+// upgrade" while /sync is in flight. Synchronous read on first render =
+// the right tier renders on paint 1.
+const TIER_CACHE_KEY = "lc:cached_tier";
+
+const VALID_TIERS = new Set<Tier>(["free", "solo", "pro", "agency", "growth", "autopilot"]);
+
+function readCachedTier(): Tier {
+  // SSR / preview / corrupt-storage safety — anything that throws or returns
+  // an unknown tier degrades to "free", which is what we'd render anyway.
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return "free";
+    const raw = window.localStorage.getItem(TIER_CACHE_KEY);
+    if (raw && VALID_TIERS.has(raw as Tier)) return raw as Tier;
+  } catch {
+    /* swallow — storage can be blocked, full, or disabled */
+  }
+  return "free";
+}
+
+function writeCachedTier(t: Tier): void {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    window.localStorage.setItem(TIER_CACHE_KEY, t);
+  } catch {
+    /* swallow */
+  }
+}
+
 export function useTier(): TierState {
+  // Synchronous cache read on first render — see TIER_CACHE_KEY comment.
+  const [cachedTier, setCachedTier] = useState<Tier>(() => readCachedTier());
   const [status, setStatus] = useState<SyncStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  // Latest in-memory tier — initially the cache, replaced by /sync success.
+  // We never DOWNGRADE this on transient network failure (a flaky tether
+  // should not strip features mid-session).
+  const inMemoryTier = useRef<Tier>(cachedTier);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const s = await syncStatus();
-        if (!cancelled) setStatus(s);
-      } finally {
-        if (!cancelled) setLoading(false);
+  const doRefresh = useCallback(async (signal: { cancelled: boolean }) => {
+    try {
+      const s = await syncStatus();
+      if (signal.cancelled) return;
+      if (s) {
+        setStatus(s);
+        // Admin override — backend marks JUNIOR_ADMIN_EMAILS users as
+        // admin_override=true. Force "agency" so founder demos don't trip
+        // their own upgrade walls. Cache it too so cold boot before /sync
+        // resolves keeps the founder view.
+        const next: Tier = s.admin_override ? "agency" : s.tier;
+        inMemoryTier.current = next;
+        setCachedTier(next);
+        writeCachedTier(next);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+      // s === null: backend reachable but said "no JWT yet" (unactivated).
+      // Treat as a real "free" answer, not a transient failure — overwrite
+      // cache so a previously-paid signed-out machine doesn't keep claiming
+      // Pro after a sign-out.
+      else {
+        setStatus(null);
+        inMemoryTier.current = "free";
+        setCachedTier("free");
+        writeCachedTier("free");
+      }
+    } catch {
+      // Transient network failure — DO NOT degrade. Keep the previous
+      // in-memory tier so an offline user mid-session keeps their features.
+      // setStatus stays at whatever it was (null on cold boot is fine; the
+      // cached tier still drives capability gating).
+    } finally {
+      if (!signal.cancelled) setLoading(false);
+    }
   }, []);
 
-  const tier: Tier = status?.tier ?? "free";
+  useEffect(() => {
+    const signal = { cancelled: false };
+    void doRefresh(signal);
+    return () => {
+      signal.cancelled = true;
+    };
+  }, [doRefresh]);
+
+  // Window focus → re-pull /sync. Covers the canonical "user came back from
+  // Stripe Checkout / Whop billing in their browser" path — without this,
+  // a successful upgrade only flips the UI on next manual reload.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    function onFocus(): void {
+      const signal = { cancelled: false };
+      void doRefresh(signal);
+    }
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [doRefresh]);
+
+  const refreshTier = useCallback(async (): Promise<void> => {
+    const signal = { cancelled: false };
+    await doRefresh(signal);
+  }, [doRefresh]);
+
+  // Prefer the freshest backend tier, then the in-memory cached tier
+  // (which is also what was on disk on cold boot). Never flashes to "free"
+  // on transient failure.
+  const tier: Tier = status?.tier ?? inMemoryTier.current ?? cachedTier;
 
   return {
     tier,
@@ -91,6 +182,7 @@ export function useTier(): TierState {
       return "agency";
     },
     maxConnections: MAX_CONNECTIONS[tier],
+    refreshTier,
   };
 }
 

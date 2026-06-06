@@ -10,7 +10,7 @@
 // the portal, two backdrop-blur layers create nested stacking contexts and
 // the picker visually clashes with the surrounding modal.
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Lock, X } from "lucide-react";
 import { Button, Card, IconButton, Pill } from "../primitives";
@@ -24,6 +24,7 @@ import {
   type AvatarTier,
 } from "../../lib/avatars";
 import { setChosenAvatarId, useChosenAvatarId } from "../../lib/avatarChoice";
+import { humanError } from "../../lib/sidecar";
 
 export function AvatarPicker({
   earnedUsd,
@@ -34,6 +35,10 @@ export function AvatarPicker({
 }) {
   const { avatarId } = useChosenAvatarId();
   const next = nextUnlock(earnedUsd);
+  // PREVENTS — double-click races on the disk write (avatar_choice.json),
+  // and silent failures when the OS denies the write.
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Esc to close + lock background scroll while the picker is open.
   useEffect(() => {
@@ -50,8 +55,16 @@ export function AvatarPicker({
   }, [onClose]);
 
   async function pick(id: string): Promise<void> {
-    await setChosenAvatarId(id);
-    onClose();
+    if (saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await setChosenAvatarId(id);
+      onClose();
+    } catch (e) {
+      setSaveError(`Couldn't save your avatar choice — try again. (${humanError(e)})`);
+      setSaving(false);
+    }
   }
 
   const overlay = (
@@ -114,7 +127,8 @@ export function AvatarPicker({
                         key={entry.id}
                         type="button"
                         onClick={() => unlocked && void pick(entry.id)}
-                        disabled={!unlocked}
+                        disabled={!unlocked || saving}
+                        aria-disabled={!unlocked || saving}
                         title={
                           unlocked
                             ? entry.label
@@ -126,7 +140,7 @@ export function AvatarPicker({
                             : unlocked
                               ? "border-line bg-paper-elev hover:border-fuchsia/40 hover:bg-paper-warm"
                               : "border-line bg-paper-elev opacity-40 cursor-not-allowed"
-                        }`}
+                        } ${saving ? "opacity-60 cursor-wait" : ""}`}
                       >
                         <Avatar avatarId={entry.id} size="md" />
                         <span className="font-mono text-[9px] uppercase tracking-[var(--tracking-eyebrow)] text-text-secondary">
@@ -146,6 +160,15 @@ export function AvatarPicker({
           })}
         </div>
 
+        {saveError && (
+          <div
+            role="alert"
+            className="border-t border-[#DC2626]/40 bg-[#DC2626]/10 px-5 py-2 font-sans text-[12px] text-[#F87171]"
+          >
+            {saveError}
+          </div>
+        )}
+
         <footer className="flex items-center justify-between gap-2 border-t border-line px-5 py-3">
           <span className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
             choice saves per device
@@ -155,6 +178,7 @@ export function AvatarPicker({
               variant="secondary"
               size="sm"
               onClick={() => void pick("")}
+              disabled={saving}
               title="Use your profile photo / initials instead"
             >
               Reset

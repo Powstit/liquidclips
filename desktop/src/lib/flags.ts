@@ -8,6 +8,11 @@
 // constant is the UI's *show the surface at all* switch. Leave true: the
 // surface should be visible everywhere, individual actions degrade to 503/412
 // (Connect first / Server beta) at call time.
+// If true, ScheduleQueue is always shown; the "coming soon" fallback in
+// SchedulePage is dead code unless this flips to false. Verified
+// 2026-06-06: every consumer (SchedulePage, PublishModal, WorkspaceHeader)
+// just renders the live surface. Don't delete the fallback — it's the
+// kill-switch for the "Ayrshare went down" PR-friendly path.
 export const PUBLISHING_ENABLED: boolean = true;
 
 // Hosted LLM (Liquid Clips supplies the model credits so users don't bring an OpenAI

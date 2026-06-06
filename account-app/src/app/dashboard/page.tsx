@@ -304,7 +304,7 @@ export default async function DashboardPage() {
       <footer className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
         <span className="inline-flex items-center gap-2">
           <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-          junior · account
+          liquid clips · account
         </span>
         <div className="flex flex-wrap gap-5">
           <a href="https://liquidclips.app/refunds" className="hover:text-ink">refunds</a>

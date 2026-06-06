@@ -1,5 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
 
+// ──────────────────────────────────────────────────────────────────────
+// ERROR-DISPLAY POLICY (user-journey-lens, lib pass)
+// Every `catch (e) { setError(...) }` MUST run `e` through `humanError(e)`
+// or `formatErrorForUI(e)` before reaching the UI. NEVER `setError(String(e))`
+// — raw `String(e)` leaks Python tracebacks, "[object Object]", Tauri "Error:"
+// prefixes, and "ModuleNotFoundError: ..." to users.
+//
+// New error surfaces (CaptionDrawer, ResultsGrid, PublishModal, etc.) must
+// follow this convention. If you spot a `setError(String(e))` while editing,
+// swap it to `setError(humanError(e))` in the same diff.
+// ──────────────────────────────────────────────────────────────────────
+
 // P0 #4 — when the Python sidecar attaches a structured error envelope it
 // arrives here as a Rust anyhow message prefixed "ENV:{json...}". Caller
 // catches SidecarError and reads .human (friendly) and .code (stable key).
@@ -64,27 +76,178 @@ export function humanError(e: unknown): string {
   // Strip the noisy "Error: " prefix that Tauri / browser sometimes prepends.
   return raw.replace(/^Error:\s*/i, "");
 }
+
+/**
+ * One-line convenience over humanError() for the dozens of catch sites that
+ * just want a string for setError(). Today this is humanError verbatim; the
+ * indirection exists so a future change (telemetry, log-and-redact) can land
+ * in one place without touching every caller.
+ *
+ * Use this in `setError(formatErrorForUI(e))`. NEVER `setError(String(e))`.
+ */
+export function formatErrorForUI(e: unknown): string {
+  return humanError(e);
+}
+
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-export async function sidecarCall<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
-  try {
-    return await invoke<T>("sidecar_call", { method, params });
-  } catch (e) {
-    const raw = e instanceof Error ? e.message : String(e);
-    // Structured envelope from the Python sidecar (see _classify_error +
-    // sidecar.rs JSON-prefix). When present we throw SidecarError so the
-    // FailureCard can render `human` instead of the raw exception string.
-    const envIdx = raw.indexOf("ENV:");
-    if (envIdx >= 0) {
-      try {
-        const env = JSON.parse(raw.slice(envIdx + 4));
-        throw new SidecarError(env);
-      } catch (parseErr) {
-        if (parseErr instanceof SidecarError) throw parseErr;
-        // fall through with raw
-      }
+// ──────────────────────────────────────────────────────────────────────
+// SidecarLifecycle — surface the Rust-side `sidecar:died` crash event to
+// React. Without this, an in-flight RPC promise sits forever and the UI
+// shows a spinner with no recovery path. App.tsx is expected to:
+//   1. call `subscribeSidecarDied(...)` once on mount,
+//   2. on fire, render a global "Liquid Clips needs to restart" overlay
+//      with a Restart button (relaunch via @tauri-apps/plugin-process),
+//   3. every pending sidecarCall promise has ALREADY been rejected with
+//      SidecarCrashedError by this module, so individual screens will
+//      surface their own failure cards in parallel.
+// ──────────────────────────────────────────────────────────────────────
+
+/** Thrown into every pending sidecarCall promise when the Python sidecar
+ *  process dies. Carries the exit code parsed out of the Rust message
+ *  ("sidecar crashed (exit=Some(N)); restart the app"). exit_code is null
+ *  when Rust couldn't read the status (process detached, signal, etc.). */
+export class SidecarCrashedError extends Error {
+  exit_code: number | null;
+  constructor(exit_code: number | null) {
+    super(
+      exit_code == null
+        ? "The video engine stopped unexpectedly. Please restart Liquid Clips."
+        : `The video engine stopped unexpectedly (exit ${exit_code}). Please restart Liquid Clips.`,
+    );
+    this.name = "SidecarCrashedError";
+    this.exit_code = exit_code;
+  }
+}
+
+// Pending-call registry. Every in-flight sidecarCall registers a rejecter
+// and unregisters in its finally block. On sidecar:died we drain the map
+// and reject all of them so screens stop spinning.
+let _pendingSeq = 0;
+const _pendingRejecters = new Map<number, (e: SidecarCrashedError) => void>();
+
+type SidecarDiedInfo = { exit_code: number | null };
+const _sidecarDiedListeners = new Set<(info: SidecarDiedInfo) => void>();
+let _sidecarDiedRustUnlistener: UnlistenFn | null = null;
+let _sidecarDiedAttachInFlight: Promise<void> | null = null;
+
+function _parseExitCodeFromMessage(raw: unknown): number | null {
+  // The Rust side emits a string payload like:
+  //   "sidecar crashed (exit=Some(137)); restart the app"
+  // or "sidecar crashed (exit=None); restart the app"
+  // or "sidecar crashed (exit=wait error: ...); restart the app"
+  // Parse defensively — anything we can't parse becomes null.
+  if (typeof raw !== "string") return null;
+  const m = raw.match(/exit=Some\((-?\d+)\)/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function _fireSidecarDied(info: SidecarDiedInfo): void {
+  // 1. Reject every pending RPC so spinners collapse into recoverable error
+  //    surfaces instead of hanging forever.
+  const rejecters = Array.from(_pendingRejecters.values());
+  _pendingRejecters.clear();
+  for (const reject of rejecters) {
+    try {
+      reject(new SidecarCrashedError(info.exit_code));
+    } catch {
+      /* swallow — one bad subscriber can't take down the rest */
     }
-    throw e;
+  }
+  // 2. Notify UI subscribers (App.tsx renders the restart overlay).
+  for (const cb of _sidecarDiedListeners) {
+    try {
+      cb(info);
+    } catch {
+      /* swallow — same reason */
+    }
+  }
+}
+
+async function _ensureSidecarDiedListening(): Promise<void> {
+  if (_sidecarDiedRustUnlistener || _sidecarDiedAttachInFlight) {
+    return _sidecarDiedAttachInFlight ?? Promise.resolve();
+  }
+  _sidecarDiedAttachInFlight = (async () => {
+    try {
+      _sidecarDiedRustUnlistener = await listen<unknown>("sidecar:died", (ev) => {
+        const exit_code = _parseExitCodeFromMessage(ev.payload);
+        _fireSidecarDied({ exit_code });
+      });
+    } catch {
+      // Listening can fail pre-boot (no Tauri runtime in web preview, etc.).
+      // Silent — subscribers will simply never hear from us, which is fine in
+      // the no-sidecar code path.
+    } finally {
+      _sidecarDiedAttachInFlight = null;
+    }
+  })();
+  return _sidecarDiedAttachInFlight;
+}
+
+/** Subscribe to sidecar-crash events. Returns an unsubscribe fn. Safe to
+ *  call before the Tauri runtime is ready — internally lazy-attaches the
+ *  `sidecar:died` Rust listener on first subscribe. */
+export function subscribeSidecarDied(cb: (info: SidecarDiedInfo) => void): () => void {
+  _sidecarDiedListeners.add(cb);
+  // Lazy-attach so unit tests / preview builds don't crash on missing Tauri.
+  void _ensureSidecarDiedListening();
+  return () => {
+    _sidecarDiedListeners.delete(cb);
+  };
+}
+
+export async function sidecarCall<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+  // Make sure we've subscribed to sidecar:died BEFORE we make a call so an
+  // immediate crash (rare but possible at boot) can still flush this promise.
+  void _ensureSidecarDiedListening();
+
+  const callId = ++_pendingSeq;
+  // We can't actually cancel the underlying Tauri invoke promise. What we CAN
+  // do is settle our outer promise early on crash by racing two settlements:
+  //   - the real invoke result (success or normal rejection)
+  //   - a SidecarCrashedError pushed in by _fireSidecarDied
+  // Whichever resolves/rejects first wins.
+  let crashReject: ((e: SidecarCrashedError) => void) | null = null;
+  const crashSettled = new Promise<never>((_resolve, reject) => {
+    crashReject = reject;
+  });
+  if (crashReject) _pendingRejecters.set(callId, crashReject);
+
+  try {
+    return await Promise.race<T>([
+      (async () => {
+        try {
+          return await invoke<T>("sidecar_call", { method, params });
+        } catch (e) {
+          const raw = e instanceof Error ? e.message : String(e);
+          // Structured envelope from the Python sidecar (see _classify_error +
+          // sidecar.rs JSON-prefix). When present we throw SidecarError so the
+          // FailureCard can render `human` instead of the raw exception string.
+          const envIdx = raw.indexOf("ENV:");
+          if (envIdx >= 0) {
+            try {
+              const env = JSON.parse(raw.slice(envIdx + 4));
+              throw new SidecarError(env);
+            } catch (parseErr) {
+              if (parseErr instanceof SidecarError) throw parseErr;
+              // fall through with raw
+            }
+          }
+          // Also surface a sidecar-crash that the Rust shell propagated as a
+          // normal call rejection (e.g. the pending-map drain in sidecar.rs).
+          if (/sidecar crashed/i.test(raw)) {
+            throw new SidecarCrashedError(_parseExitCodeFromMessage(raw));
+          }
+          throw e;
+        }
+      })(),
+      crashSettled,
+    ]);
+  } finally {
+    _pendingRejecters.delete(callId);
   }
 }
 
@@ -208,6 +371,21 @@ export type Clip = {
   // cut from a source. ClipCard hides "AI estimate" affordances on these
   // (LC Score is a placeholder 70, no sub-score breakdown — don't fake it).
   imported?: boolean;
+  // v0.6.46 — Active caption style after the user's last bake. Sidecar's
+  // method_edit_captions writes this onto the clip after a successful bake,
+  // so the ClipCard captions chip + ClipPreview can render the right style
+  // dot without re-reading the .json file. Undefined = caption baking has
+  // never run for this clip (or pre-0.6.46 project).
+  caption_style?: string;
+  // v0.6.47 — Persisted custom palette for `caption_style === "custom"`.
+  // Drawer rehydrates react-colorful swatches from this on reopen so the
+  // clipper sees the colours they shipped with last time. Cleared by the
+  // sidecar when the user switches off Custom.
+  caption_palette?: {
+    primary?: string;
+    secondary?: string;
+    outline?: string;
+  };
 };
 
 export type Intent = "clips" | "youtube" | "both";
@@ -466,15 +644,28 @@ export const sidecar = {
       has_transcript: boolean;
       transcript_error?: string | null;
       updated_at: string | null;
+      // Persisted custom palette — drawer rehydrates react-colorful
+      // swatches from this on reopen. Null/undefined for preset-style edits.
+      palette?: { primary?: string; secondary?: string; outline?: string } | null;
     }>("get_captions", { slug, idx }),
-  editCaptions: (slug: string, idx: number, lines: unknown[], style: string) =>
+  editCaptions: (
+    slug: string,
+    idx: number,
+    lines: unknown[],
+    style: string,
+    palette?: { primary?: string; secondary?: string; outline?: string } | null,
+  ) =>
     sidecarCall<{
       project: Project;
       clip_idx: number;
       style: string;
       updated_at: string;
       video_path: string;
-    }>("edit_captions", { slug, idx, lines, style }),
+      palette?: { primary?: string; secondary?: string; outline?: string } | null;
+      // ASS text used to bake. The desktop's libass-wasm overlay renders
+      // this directly so the live preview matches the baked MP4 1:1.
+      ass_text?: string;
+    }>("edit_captions", { slug, idx, lines, style, palette }),
   addClip: (slug: string, start: number, end: number, title: string) =>
     sidecarCall<{ project: Project }>("add_clip", { slug, start, end, title }),
   removeClip: (slug: string, idx: number) =>

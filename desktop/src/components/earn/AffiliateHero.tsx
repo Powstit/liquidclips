@@ -21,6 +21,8 @@ import {
   type AffiliateMeResponse,
   type PaymentVisibility,
 } from "../../lib/backend";
+import { humanError } from "../../lib/sidecar";
+import { reportDesktopError } from "../../lib/telemetry";
 import { Pencil } from "lucide-react";
 import { TierAvatar, tierForEarnings, nextTierMilestone } from "../TierAvatar";
 import { QrCode } from "../QrCode";
@@ -63,7 +65,19 @@ type FetchState =
   | { kind: "ok"; data: AffiliateMeResponse };
 
 const CACHE_TTL_MS = 60_000;
+const LOAD_TIMEOUT_MS = 10_000;
 let _cache: { at: number; data: AffiliateMeResponse } | null = null;
+
+// PREVENTS — silent open() failures (no browser configured, deep-link
+// blocked, plugin denied). Without this every external action in the
+// affiliate popover could stay silent and strand the user.
+async function safeOpen(url: string, onError: (msg: string) => void): Promise<void> {
+  try {
+    await openExternal(url);
+  } catch (e) {
+    onError(humanError(e));
+  }
+}
 
 // Cross-component live signal for "Stripe Connect needs the user's attention
 // right now" — true when the user is on the stripe_connect rail, has earned
@@ -104,8 +118,16 @@ export function useAffiliateAttention(): boolean {
             setAttention(computeAttention(data));
           }
         })
-        .catch(() => {
-          /* signed-out / offline → attention stays false */
+        .catch((e: unknown) => {
+          // PREVENTS — stale fuchsia attention dot from rail-attention failure.
+          // We don't change the dot state (could be a false alarm or
+          // signed-out — handled elsewhere), but we DO report so ops sees
+          // it instead of the failure being completely invisible.
+          if (!(e instanceof UnauthorizedError)) {
+            void reportDesktopError("affiliate_attention_fetch_failed", {
+              error_code: e instanceof Error ? e.name : "unknown",
+            });
+          }
         });
     } else {
       setAttention(computeAttention(_cache.data));
@@ -125,8 +147,18 @@ export function AffiliateHero({ onSignIn }: { onSignIn?: () => void }) {
   );
 
   const load = useCallback(async () => {
+    // PREVENTS — infinite spinner if meAffiliate() neither resolves
+    // nor rejects (network drop, sidecar lock-up). After
+    // LOAD_TIMEOUT_MS we flip to the error card with a retry button.
+    let timedOut = false;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      window.setTimeout(() => {
+        timedOut = true;
+        reject(new Error("Couldn't reach payouts — request timed out."));
+      }, LOAD_TIMEOUT_MS);
+    });
     try {
-      const data = await meAffiliate();
+      const data = await Promise.race([meAffiliate(), timeoutPromise]);
       if (!data) {
         // web-preview path — no surface for now
         setState({ kind: "error", message: "Not available in web preview." });
@@ -136,12 +168,12 @@ export function AffiliateHero({ onSignIn }: { onSignIn?: () => void }) {
       setAttention(computeAttention(data));
       setState({ kind: "ok", data });
     } catch (e) {
-      if (e instanceof UnauthorizedError) {
+      if (!timedOut && e instanceof UnauthorizedError) {
         setState({ kind: "signed-out" });
         setAttention(false);
         return;
       }
-      setState({ kind: "error", message: (e as Error).message });
+      setState({ kind: "error", message: humanError(e) });
     }
   }, []);
 
@@ -299,6 +331,7 @@ function LoadingCard() {
 
 function TrialCard({ customer }: { customer: AffiliateCustomer }) {
   const isFree = customer.tier === "free";
+  const [openError, setOpenError] = useState<string | null>(null);
   return (
     <Shell>
       <Eyebrow>your referral business</Eyebrow>
@@ -329,18 +362,23 @@ function TrialCard({ customer }: { customer: AffiliateCustomer }) {
       </ul>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
-          onClick={() => void openExternal("https://account.jnremployee.com/upgrade")}
+          onClick={() => void safeOpen("https://account.jnremployee.com/upgrade", setOpenError)}
           className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
         >
           See plans →
         </button>
         <button
-          onClick={() => void openExternal("https://liquidclips.app/refer")}
+          onClick={() => void safeOpen("https://liquidclips.app/refer", setOpenError)}
           className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
         >
           How the referral program works ↗
         </button>
       </div>
+      {openError && (
+        <p className="mt-2 font-sans text-[12px] text-[#F87171]" role="alert">
+          Couldn&apos;t open browser — {openError}
+        </p>
+      )}
     </Shell>
   );
 }
@@ -348,6 +386,7 @@ function TrialCard({ customer }: { customer: AffiliateCustomer }) {
 // ── F — expired / canceled / refunded ───────────────────────────────────
 
 function LapsedCard({ customer: _customer }: { customer: AffiliateCustomer }) {
+  const [openError, setOpenError] = useState<string | null>(null);
   return (
     <Shell tone="warn">
       <Eyebrow>your referral business</Eyebrow>
@@ -360,19 +399,24 @@ function LapsedCard({ customer: _customer }: { customer: AffiliateCustomer }) {
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
-          onClick={() => void openExternal("https://account.jnremployee.com/upgrade")}
+          onClick={() => void safeOpen("https://account.jnremployee.com/upgrade", setOpenError)}
           className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
         >
           Reactivate →
         </button>
         <button
-          onClick={() => void openExternal("https://partner.jnremployee.com")}
+          onClick={() => void safeOpen("https://partner.jnremployee.com", setOpenError)}
           className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
         >
           <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
           Open partner dashboard
         </button>
       </div>
+      {openError && (
+        <p className="mt-2 font-sans text-[12px] text-[#F87171]" role="alert">
+          Couldn&apos;t open browser — {openError}
+        </p>
+      )}
     </Shell>
   );
 }
@@ -388,6 +432,34 @@ function WhopFetchFailedCard({
 }) {
   const setupUrl = affiliate.payout_setup_url || affiliate.partner_dashboard_url;
   const stripeConnect = affiliate.payout_provider === "stripe_connect";
+  // PREVENTS — retry stampede. After 3 fast retries we lock the button
+  // for 30s so the user can't hammer a downed Whop API. Counter rolls
+  // off on a 60s sliding window.
+  const [retryWindow, setRetryWindow] = useState<number[]>([]);
+  const [lockedUntil, setLockedUntil] = useState(0);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (lockedUntil <= Date.now()) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [lockedUntil]);
+
+  const locked = lockedUntil > now;
+  const lockSecondsLeft = locked ? Math.ceil((lockedUntil - now) / 1000) : 0;
+
+  function handleRetry(): void {
+    const t = Date.now();
+    const recent = [...retryWindow.filter((at) => t - at < 60_000), t];
+    setRetryWindow(recent);
+    if (recent.length >= 3) {
+      setLockedUntil(t + 30_000);
+      setNow(t);
+      return;
+    }
+    onRetry();
+  }
   return (
     <Shell tone="warn">
       <Eyebrow>your referral business</Eyebrow>
@@ -399,22 +471,36 @@ function WhopFetchFailedCard({
           ? "You can promote Liquid Clips without a Whop account. Connect Stripe so commissions have somewhere to land."
           : "Whop&apos;s API didn&apos;t respond, or your affiliate hasn&apos;t been created yet. Both fix themselves quickly — retry, or open your partner dashboard directly."}
       </p>
+      {locked && (
+        <p className="mt-2 font-sans text-[12px] text-[#F87171]">
+          Server still down — try again in a few minutes
+          {lockSecondsLeft > 0 ? ` (${lockSecondsLeft}s).` : "."}
+        </p>
+      )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
-          onClick={onRetry}
-          className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
+          onClick={handleRetry}
+          disabled={locked}
+          aria-disabled={locked}
+          title={locked ? "Server still down — please wait" : undefined}
+          className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep disabled:cursor-not-allowed disabled:opacity-50"
         >
           <RotateCw className="h-3.5 w-3.5" strokeWidth={2} />
           Retry
         </button>
         <button
-          onClick={() => void openExternal(setupUrl)}
+          onClick={() => void safeOpen(setupUrl, setOpenError)}
           className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
         >
           {stripeConnect ? "Set up Stripe Connect" : "Open partner dashboard"}
           <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
         </button>
       </div>
+      {openError && (
+        <p className="mt-2 font-sans text-[12px] text-[#F87171]" role="alert">
+          Couldn&apos;t open browser — {openError}
+        </p>
+      )}
     </Shell>
   );
 }
@@ -446,6 +532,7 @@ function Dashboard({
   const isStripe = customer.billing_provider === "clerk";
   const { avatarId } = useChosenAvatarId();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
   // Founders + admins get a free pass on the unlock ladder so their picker
   // shows everything as available.
   const pickerEarned = isFounder || isAdmin ? Number.POSITIVE_INFINITY : earnedUsd;
@@ -519,7 +606,7 @@ function Dashboard({
             <span className="text-ink">Payment past due</span> &mdash; earnings paused until your card is fixed.
           </p>
           <button
-            onClick={() => void openExternal("https://account.jnremployee.com/billing")}
+            onClick={() => void safeOpen("https://account.jnremployee.com/billing", setOpenError)}
             className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-3.5 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
           >
             Fix payment →
@@ -541,8 +628,9 @@ function Dashboard({
           </p>
           <button
             onClick={() =>
-              void openExternal(
+              void safeOpen(
                 affiliate.payout_setup_url || "https://account.jnremployee.com/dashboard#payouts",
+                setOpenError,
               )
             }
             className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-3.5 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
@@ -599,7 +687,12 @@ function Dashboard({
         <QualificationRow q={affiliate.qualification} />
       )}
 
-      <PaymentRoutingRow customer={customer} affiliate={affiliate} payments={payments} />
+      <PaymentRoutingRow
+        customer={customer}
+        affiliate={affiliate}
+        payments={payments}
+        onOpenError={setOpenError}
+      />
 
       {/* Sprint #12 polish — when Stripe payouts are live (status=active and
           earnings > 0), show a calm confirmation chip so the user trusts
@@ -613,14 +706,21 @@ function Dashboard({
           </div>
         )}
 
+      {openError && (
+        <p className="mt-3 font-sans text-[12px] text-[#F87171]" role="alert">
+          Couldn&apos;t open browser — {openError}
+        </p>
+      )}
+
       <div className="mt-5 flex items-center justify-between gap-3 border-t border-line pt-4">
         <div className="flex items-center gap-2">
           <button
             onClick={() =>
-              void openExternal(
+              void safeOpen(
                 affiliate.payout_provider === "stripe_connect"
                   ? affiliate.payout_setup_url || "https://account.jnremployee.com/dashboard#payouts"
                   : affiliate.partner_dashboard_url,
+                setOpenError,
               )
             }
             className="inline-flex items-center gap-1.5 font-sans text-[12px] font-medium text-text-secondary hover:text-fuchsia-deep"
@@ -658,10 +758,12 @@ function PaymentRoutingRow({
   customer,
   affiliate,
   payments,
+  onOpenError,
 }: {
   customer: AffiliateCustomer;
   affiliate: AffiliateBlock;
   payments?: PaymentVisibility;
+  onOpenError: (msg: string) => void;
 }) {
   const fallback: PaymentVisibility = {
     app_subscription: {
@@ -706,7 +808,7 @@ function PaymentRoutingRow({
         return (
           <button
             key={r.key}
-            onClick={() => void openExternal(r.manage_url)}
+            onClick={() => void safeOpen(r.manage_url, onOpenError)}
             className={`rounded-lg p-2 text-left transition-colors -m-2 ${
               needsAttention
                 ? "bg-fuchsia-soft/40 ring-1 ring-fuchsia/40 hover:bg-fuchsia-soft/60"
@@ -838,27 +940,43 @@ function ReferralLinkRow({ url, disabled }: { url: string; disabled?: boolean })
 
 function CopyLinkButton({ url, disabled }: { url: string; disabled?: boolean }) {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
   async function copy() {
     if (disabled) return;
     try {
       await writeText(url);
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
+      setCopyError(null);
+      window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      /* swallow — keyboard fallback always available via input select */
+      // PREVENTS — silent clipboard failure. The most important affordance
+      // on the affiliate flywheel can't pretend to succeed. We surface a
+      // recoverable instruction and clear after 4s.
+      setCopyError("Couldn't copy — long-press the link to select it manually");
+      window.setTimeout(() => setCopyError(null), 4000);
     }
   }
   return (
-    <button
-      onClick={() => void copy()}
-      disabled={disabled}
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-fuchsia px-3 py-1 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-50"
-      title={copied ? "Copied" : "Copy your default Liquid Clips referral link."}
-      aria-label="Copy your default Liquid Clips referral link."
-    >
-      <CopyIcon className="h-3.5 w-3.5" strokeWidth={2.25} />
-      {copied ? "Copied" : "Copy"}
-    </button>
+    <div className="relative flex flex-col items-end">
+      <button
+        onClick={() => void copy()}
+        disabled={disabled}
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-fuchsia px-3 py-1 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-50"
+        title={copied ? "Copied" : "Copy your default Liquid Clips referral link."}
+        aria-label="Copy your default Liquid Clips referral link."
+      >
+        <CopyIcon className="h-3.5 w-3.5" strokeWidth={2.25} />
+        {copied ? "Copied" : "Copy"}
+      </button>
+      {copyError && (
+        <span
+          role="alert"
+          className="absolute right-0 top-full mt-1 whitespace-nowrap font-sans text-[11px] text-[#F87171]"
+        >
+          {copyError}
+        </span>
+      )}
+    </div>
   );
 }
 

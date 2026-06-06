@@ -18,6 +18,7 @@ import {
   type CampaignBrief,
   type PayoutProvider,
 } from "../../lib/briefs";
+import { humanError } from "../../lib/sidecar";
 
 const PAYOUT_LABEL: Record<PayoutProvider, string> = {
   whop: "Whop",
@@ -42,6 +43,29 @@ export function CampaignContextStrip({
   const { briefs } = useBriefs();
   const [pickerOpen, setPickerOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  // PREVENTS — silent setActive() failures leaving the strip out of sync
+  // with what the user just clicked.
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  async function applyActive(id: string | null): Promise<void> {
+    setSaveError(null);
+    try {
+      await setActive(id);
+    } catch (e) {
+      setSaveError(`Couldn't save — try again. (${humanError(e)})`);
+    }
+  }
+
+  function clearActive(): void {
+    // PREVENTS — destructive "Clear" tap dropping the user's chosen
+    // campaign by accident. Confirm before detach.
+    // eslint-disable-next-line no-alert
+    const ok = window.confirm(
+      "Detach this campaign? You can re-attach from the dropdown.",
+    );
+    if (!ok) return;
+    void applyActive(null);
+  }
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -75,11 +99,16 @@ export function CampaignContextStrip({
               briefs={briefs}
               onPick={(id) => {
                 setPickerOpen(false);
-                void setActive(id);
+                void applyActive(id);
               }}
             />
           )}
         </div>
+        {saveError && (
+          <p role="alert" className="basis-full font-sans text-[11px] text-[#F87171]">
+            {saveError}
+          </p>
+        )}
       </div>
     );
   }
@@ -133,20 +162,25 @@ export function CampaignContextStrip({
               activeId={active.id}
               onPick={(id) => {
                 setPickerOpen(false);
-                void setActive(id);
+                void applyActive(id);
               }}
             />
           )}
         </div>
         <button
           type="button"
-          onClick={() => void setActive(null)}
+          onClick={clearActive}
           className="inline-flex items-center gap-1 rounded-full border border-line bg-paper px-2.5 py-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-secondary hover:border-[#DC2626] hover:text-[#F87171]"
           title="Clear active campaign"
         >
           <X size={11} /> Clear
         </button>
       </div>
+      {saveError && (
+        <p role="alert" className="basis-full font-sans text-[11px] text-[#F87171]">
+          {saveError}
+        </p>
+      )}
     </div>
   );
 }

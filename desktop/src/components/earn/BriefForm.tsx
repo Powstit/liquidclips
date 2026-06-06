@@ -69,10 +69,54 @@ export function BriefForm({ brief, initialSourceUrl, onClose, onSaved }: BriefFo
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Auto-guess platform when sourceUrl changes (create mode only).
+  // Auto-guess platform when sourceUrl changes — but only on the first
+  // detection. If the user has manually picked a platform after that, we don't
+  // overwrite their choice on subsequent URL edits.
+  const [platformUserPicked, setPlatformUserPicked] = useState<boolean>(false);
   useEffect(() => {
-    if (!editing && sourceUrl) setPlatform(guessPlatformFromUrl(sourceUrl));
-  }, [editing, sourceUrl]);
+    if (editing) return;
+    if (platformUserPicked) return;
+    if (!sourceUrl) return;
+    setPlatform(guessPlatformFromUrl(sourceUrl));
+  }, [editing, sourceUrl, platformUserPicked]);
+
+  // Dirty tracking so the backdrop-close path can warn before discarding.
+  // We snapshot the initial values once; any deviation marks the form dirty.
+  const initialRef = useMemo(
+    () => ({
+      sourceUrl: brief?.source_url ?? initialSourceUrl ?? "",
+      title: brief?.title ?? "",
+      payoutLabel: brief?.payout_label ?? "",
+      payoutProvider: brief?.payout_provider ?? "whop",
+      platform: brief?.platform ?? (initialSourceUrl ? guessPlatformFromUrl(initialSourceUrl) : "manual"),
+      allowedPlatforms: brief?.allowed_platforms ?? [],
+      rulesText: (brief?.rules ?? []).join("\n"),
+      requiredAssetsUrl: brief?.required_assets_url ?? "",
+      budgetStatus: brief?.budget_status ?? "",
+      waitlistStatus: brief?.waitlist_status ?? "",
+      notes: brief?.notes ?? "",
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  const isDirty =
+    sourceUrl !== initialRef.sourceUrl ||
+    title !== initialRef.title ||
+    payoutLabel !== initialRef.payoutLabel ||
+    payoutProvider !== initialRef.payoutProvider ||
+    platform !== initialRef.platform ||
+    allowedPlatforms.join("|") !== initialRef.allowedPlatforms.join("|") ||
+    rulesText !== initialRef.rulesText ||
+    requiredAssetsUrl !== initialRef.requiredAssetsUrl ||
+    budgetStatus !== initialRef.budgetStatus ||
+    waitlistStatus !== initialRef.waitlistStatus ||
+    notes !== initialRef.notes;
+
+  function requestClose() {
+    if (isDirty && !window.confirm("Discard this brief?")) return;
+    onClose();
+  }
 
   const canSubmit = useMemo(() => title.trim().length > 0, [title]);
 
@@ -118,7 +162,7 @@ export function BriefForm({ brief, initialSourceUrl, onClose, onSaved }: BriefFo
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
-      onClick={onClose}
+      onClick={requestClose}
     >
       <Card
         elevation="raised"
@@ -160,7 +204,10 @@ export function BriefForm({ brief, initialSourceUrl, onClose, onSaved }: BriefFo
             <Field label="Source platform">
               <Select
                 value={platform}
-                onChange={(v) => setPlatform(v as BriefPlatform)}
+                onChange={(v) => {
+                  setPlatform(v as BriefPlatform);
+                  setPlatformUserPicked(true);
+                }}
                 options={SOURCE_OPTIONS}
               />
             </Field>

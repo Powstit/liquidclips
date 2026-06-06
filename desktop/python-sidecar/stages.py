@@ -383,9 +383,12 @@ def stage_transcribe(project: Project, model_size: str | None = None) -> dict[st
 
     bundled = _bundled_whisper_model_path() if model_size == "tiny" else None
 
-    # Animated captions consume per-word timings (see captions.py). Skip the
-    # word_timestamps cost in Fast Draft where animated captions are off.
-    want_word_timestamps = _animated_captions_enabled()
+    # Word timestamps are cheap on Apple Silicon (mlx-whisper ~5-10% overhead)
+    # and unlock everything downstream: animated burnt-in captions, the live
+    # CaptionDrawer overlay, per-word karaoke colorization, and edit-then-bake.
+    # Without them, Fast Draft clips fall back to a tiny static SRT that reads
+    # as "no captions" to the user. Always pay the cost.
+    want_word_timestamps = True
 
     from whisper_backend import transcribe_auto
 

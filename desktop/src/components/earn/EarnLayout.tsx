@@ -28,9 +28,14 @@ export function EarnLayout({ ticker, rail, main, sidebar }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(
     typeof window === "undefined" ? true : window.innerWidth >= SIDEBAR_AUTOHIDE_BELOW,
   );
+  // PREVENTS — resize listener clobbering an explicit user choice. Once
+  // the user has pinned/unpinned the sidebar by hand, the resize-driven
+  // auto-collapse stops for the rest of the session.
+  const [manualOverride, setManualOverride] = useState(false);
 
   useEffect(() => {
     function onResize(): void {
+      if (manualOverride) return;
       // Only collapse on narrowing; never force-open when the user has
       // explicitly closed it on a wide viewport.
       if (window.innerWidth < SIDEBAR_AUTOHIDE_BELOW) {
@@ -39,7 +44,7 @@ export function EarnLayout({ ticker, rail, main, sidebar }: Props) {
     }
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, []);
+  }, [manualOverride]);
 
   return (
     // v0.5.1 — Arena Deck. Fuchsia + amber tail at the top edge reads as
@@ -68,7 +73,10 @@ export function EarnLayout({ ticker, rail, main, sidebar }: Props) {
 
           <button
             type="button"
-            onClick={() => setSidebarOpen((v) => !v)}
+            onClick={() => {
+              setManualOverride(true);
+              setSidebarOpen((v) => !v);
+            }}
             title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
             aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
             className="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-text-secondary transition-colors hover:text-fuchsia"

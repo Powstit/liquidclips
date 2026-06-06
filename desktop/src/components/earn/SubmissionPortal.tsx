@@ -79,6 +79,17 @@ export function SubmissionPortal({ onClose }: { onClose: () => void }) {
     return () => { cancelled = true; };
   }, []);
 
+  // Keyboard trap fix — Escape closes the modal so keyboard-only users can
+  // exit. Without this, Tab + Esc were dead ends because the close button was
+  // the only escape route and required mouse navigation through the hero strip.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   async function submit() {
     if (!campaign) return;
     track("mc_submission_attempted", { campaign_id: campaign.id, moment_type: momentType });
@@ -115,11 +126,19 @@ export function SubmissionPortal({ onClose }: { onClose: () => void }) {
     disclosureConfirmed;
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-ink/70 backdrop-blur-md p-6">
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-ink/70 backdrop-blur-md p-6"
+      onClick={onClose}
+      role="presentation"
+    >
       {/* Task #69 — HUD chrome wrap for the campaign submission modal.
           Frame sits on the outer container so corner brackets paint
           outside the overflow-y-auto scroller. See docs/RPO_VISUAL_LANGUAGE.md. */}
-      <div className="hud-frame relative w-full max-w-3xl" style={{ borderRadius: 24 }}>
+      <div
+        className="hud-frame relative w-full max-w-3xl"
+        style={{ borderRadius: 24 }}
+        onClick={(e) => e.stopPropagation()}
+      >
       <div className="relative max-h-[92vh] w-full overflow-y-auto rounded-3xl border border-line bg-paper shadow-[0_30px_90px_rgba(0,0,0,0.5)]">
         {/* Hero strip */}
         <div className="relative h-36 overflow-hidden rounded-t-3xl">

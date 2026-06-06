@@ -26,8 +26,8 @@ export default async function DownloadPage() {
       </h1>
 
       <p className="mt-6 max-w-[620px] font-sans text-[18px] leading-relaxed text-text-secondary">
-        Signed, notarised installers ship at the end of the build. While you wait — sign in,
-        try the simulator at app.jnremployee.com, and choose the plan that fits your workflow.
+        Signed, notarised installers ship at the end of the build. While you wait — sign in
+        and choose the plan that fits your workflow.
       </p>
 
       <p className="mt-4 max-w-[620px] rounded-2xl border border-line bg-paper-warm/50 px-4 py-3 font-sans text-[14px] leading-relaxed text-text-secondary">
@@ -130,7 +130,7 @@ export default async function DownloadPage() {
       </section>
 
       <footer className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-        <span>account.jnremployee.com</span>
+        <span>liquid clips · account</span>
         <div className="flex flex-wrap gap-5">
           <a href="https://liquidclips.app" className="hover:text-ink">liquidclips.app</a>
           <a href="https://liquidclips.app/changelog" className="hover:text-ink">changelog</a>

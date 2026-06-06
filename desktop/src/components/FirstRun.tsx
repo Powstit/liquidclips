@@ -142,19 +142,32 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
             className="mt-4 rounded-full border border-line bg-transparent px-5 py-2.5 font-sans text-[14px] font-medium text-ink transition-colors hover:border-fuchsia disabled:opacity-60"
           >
             {act.kind === "opening"
-              ? "Opening browser…"
+              ? "Opening sign-in…"
               : act.kind === "waiting"
-              ? "Waiting for activation…"
+              ? "Waiting for sign-in…"
               : act.kind === "activating"
               ? "Activating…"
               : act.kind === "error"
               ? "Try again →"
-              : "Sign in with browser →"}
+              : "Sign in →"}
           </button>
           {act.kind === "waiting" && (
             <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-              complete sign-in in your browser — Liquid Clips activates automatically
+              finish sign-in in the panel — Liquid Clips activates automatically
             </p>
+          )}
+          {act.kind === "error" && (
+            // Rescue path — if the in-app panel ever fails to bounce the deep
+            // link back, the user can fall back to the system browser flow.
+            <button
+              onClick={() => {
+                startedActivation.current = true;
+                void activate({ via: "browser" });
+              }}
+              className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary underline-offset-2 hover:text-fuchsia hover:underline"
+            >
+              sign in via browser instead
+            </button>
           )}
           {act.kind === "activating" && (
             <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">

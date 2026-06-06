@@ -3,7 +3,7 @@
 // fields only. Brief selector pulls from the saved-briefs list so the user
 // can attribute a clip to a campaign in one tap.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { Button, Card, Input, IconButton, Pill } from "../primitives";
 import {
@@ -31,6 +31,19 @@ const STATUS_OPTIONS: Array<{ id: SubmissionStatus; label: string }> = [
   { id: "rejected", label: "Rejected" },
   { id: "paid", label: "Paid" },
 ];
+
+// Accepts plain digits, "1500", "1.5k", "3m", "2.4M". Falls back to 0 on
+// garbage. parseInt("12k", 10) returned 12 silently — that's a 1,000x lie on
+// the payout estimate, so we coerce suffixes properly here.
+function parseHumanNumber(s: string): number {
+  const m = s.trim().match(/^([\d.]+)\s*([kKmM]?)$/);
+  if (!m) return 0;
+  const v = parseFloat(m[1]);
+  if (!Number.isFinite(v)) return 0;
+  const suffix = m[2].toLowerCase();
+  const mult = suffix === "k" ? 1000 : suffix === "m" ? 1000000 : 1;
+  return Math.round(v * mult);
+}
 
 export type SubmissionFormProps = {
   submission: ClipSubmission | null;
@@ -65,12 +78,48 @@ export function SubmissionForm({
   const [notes, setNotes] = useState(submission?.notes ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [autoAttributed, setAutoAttributed] = useState(false);
 
   useEffect(() => {
     if (!editing && !briefId && briefs.length > 0) {
       setBriefId(briefs[0].id);
+      setAutoAttributed(true);
     }
   }, [editing, briefId, briefs]);
+
+  // Dirty tracking for backdrop-close guard. Snapshot the initial values
+  // once so the form can warn before discarding unsaved work.
+  const initialRef = useMemo(
+    () => ({
+      briefId: submission?.brief_id ?? initialBriefId ?? null,
+      clipPath: submission?.clip_path ?? initialClipPath ?? "",
+      platform: submission?.platform ?? "tiktok",
+      postUrl: submission?.post_url ?? "",
+      status: submission?.status ?? "posted",
+      views: submission ? String(submission.views) : "0",
+      estimated: submission?.estimated_payout ?? "",
+      actual: submission?.actual_payout ?? "",
+      notes: submission?.notes ?? "",
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  const isDirty =
+    briefId !== initialRef.briefId ||
+    clipPath !== initialRef.clipPath ||
+    platform !== initialRef.platform ||
+    postUrl !== initialRef.postUrl ||
+    status !== initialRef.status ||
+    views !== initialRef.views ||
+    estimated !== initialRef.estimated ||
+    actual !== initialRef.actual ||
+    notes !== initialRef.notes;
+
+  function requestClose() {
+    if (isDirty && !window.confirm("Discard this submission?")) return;
+    onClose();
+  }
 
   async function save(): Promise<void> {
     setBusy(true);
@@ -82,7 +131,7 @@ export function SubmissionForm({
         platform,
         post_url: postUrl.trim(),
         status,
-        views: Number.parseInt(views, 10) || 0,
+        views: parseHumanNumber(views),
         estimated_payout: estimated.trim(),
         actual_payout: actual.trim(),
         notes: notes.trim(),
@@ -102,7 +151,7 @@ export function SubmissionForm({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
-      onClick={onClose}
+      onClick={requestClose}
     >
       <Card
         elevation="raised"
@@ -126,7 +175,10 @@ export function SubmissionForm({
           <Field label="Campaign brief">
             <select
               value={briefId ?? ""}
-              onChange={(e) => setBriefId(e.target.value || null)}
+              onChange={(e) => {
+                setBriefId(e.target.value || null);
+                setAutoAttributed(false);
+              }}
               className="h-10 w-full rounded-md border border-line bg-paper px-3 font-sans text-[13px] text-ink outline-none transition-colors focus:border-fuchsia focus:shadow-[var(--glow-sm)]"
             >
               <option value="">— Unattached —</option>
@@ -136,6 +188,11 @@ export function SubmissionForm({
                 </option>
               ))}
             </select>
+            {autoAttributed && briefId && (
+              <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
+                auto-attributed to {briefs.find((b) => b.id === briefId)?.title ?? briefId} — change if needed
+              </p>
+            )}
           </Field>
 
           <div className="grid grid-cols-2 gap-3">

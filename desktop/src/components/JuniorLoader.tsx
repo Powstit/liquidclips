@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { InvadersTrigger } from "./invaders/InvadersTrigger";
+import { LiquidInvaderLoader } from "./LiquidInvaderLoader";
 
 // Brand-voice typing loader. Per spec §3.9 — first-person past tense for done,
 // plain-verb for in-progress, no exclamation, specifics over vibes. Used
@@ -47,12 +48,11 @@ export function JuniorLoader({
         liquid clips
       </div>
       <div className="flex items-center gap-3">
-        <span
-          className="inline-grid h-[36px] w-[36px] place-items-center rounded-lg bg-fuchsia font-mono text-[18px] font-bold leading-none text-white"
-          aria-hidden
-        >
-          /
-        </span>
+        {/* Liquid Invader — pink fuchsia liquid fills the pixel bug bottom-up
+            in a 1.8s loop. Brand signature for "we heard you, hang on" moments.
+            Replaces the static "/" badge so the loading state has a live pulse
+            the user can latch onto from the first frame. */}
+        <LiquidInvaderLoader size={36} />
         <p className="font-mono text-[16px] leading-none text-ink">
           {typed}
           <span className="blink ml-[2px] text-fuchsia">_</span>

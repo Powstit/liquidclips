@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { Link, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import { BarChart3, Link, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 
 import * as backend from "../lib/backend";
 import { PlatformIcon, type PlatformId } from "./PlatformIcon";
+
+type ScheduleSubtab = "queue" | "channels" | "analytics";
 
 const PLATFORM_LABEL: Record<string, string> = {
   tiktok: "TikTok",
@@ -24,7 +26,14 @@ function prettyPlatform(p: string): string {
   return PLATFORM_LABEL[p.toLowerCase()] ?? p[0]?.toUpperCase() + p.slice(1);
 }
 
-export default function AyrshareConnectionPanel() {
+export default function AyrshareConnectionPanel({
+  onOpenSchedule,
+}: {
+  /** Analytics Phase 1 — when the connection is live, surface a "view
+   *  analytics →" chip that jumps the user to Schedule → Analytics. Optional;
+   *  parents that don't wire it just don't render the chip. */
+  onOpenSchedule?: (subtab?: ScheduleSubtab) => void;
+} = {}) {
   const [state, setState] = useState<backend.SocialConnectionState | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -289,6 +298,19 @@ export default function AyrshareConnectionPanel() {
               <Link className="h-3 w-3" />
               link more
             </button>
+            {/* Analytics Phase 1 — only shows once a real connection exists
+                AND the parent wired the onOpenSchedule prop. Falls back to
+                hidden silently otherwise so this never strands users with a
+                button that does nothing. */}
+            {onOpenSchedule && platforms.length > 0 && (
+              <button
+                onClick={() => onOpenSchedule("analytics")}
+                className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:text-ink"
+              >
+                <BarChart3 className="h-3 w-3" />
+                view analytics →
+              </button>
+            )}
           </div>
         </div>
       )}

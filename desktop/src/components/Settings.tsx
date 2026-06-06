@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { Camera, Trash2 } from "lucide-react";
 import { sidecar, humanError, type HardwareInfo, type SecretName } from "../lib/sidecar";
 import { useAvatar, avatarSrc, initialsOf } from "../lib/avatar";
@@ -25,7 +26,8 @@ const BUILD_HASH =
   import.meta.env.MODE;
 const CLIP_STORAGE_PATH = "~/LiquidClips/";
 const LOG_PATH = "~/LiquidClips/projects/<slug>/.progress.json";
-import { syncStatus, meStatus, meAffiliate, type SyncStatus, type MeStatus } from "../lib/backend";
+import { syncStatus, meStatus, meAffiliate, UnauthorizedError, type SyncStatus, type MeStatus } from "../lib/backend";
+import { openAuthPanel } from "./auth/useAuthPanel";
 import { applyUpdate, checkForUpdate, readLastUpdateCheck, type LastUpdateCheck, type UpdateState } from "../lib/updater";
 import { getTelemetryConsent, setTelemetryConsent } from "../lib/telemetry";
 import { resetIntroSeen } from "../lib/intro";
@@ -37,7 +39,6 @@ import { HudChip } from "./cockpit/HudChip";
 
 type Tier = "free" | "solo" | "growth" | "autopilot";
 
-const ACCOUNT_URL = "https://liquidclips.app/dashboard";
 const WHOP_MANAGE_URL = "https://whop.com/jnremployee";
 
 // v0.6.4 — Strict-utility (Whop-pattern) Settings.
@@ -58,7 +59,15 @@ const CATEGORY_LABELS: Record<SettingsCategory, string> = {
   diagnostics: "Diagnostics",
 };
 
-export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () => void; onSignOut?: () => void; onOpenSchedule?: () => void; tier?: Tier }) {
+export function Settings({ onClose, onSignOut, onOpenSchedule: _onOpenSchedule, tier = "free" }: { onClose: () => void; onSignOut?: () => void; onOpenSchedule?: (subtab?: "queue" | "channels" | "analytics") => void; tier?: Tier }) {
+  // Analytics Phase 1 — `onOpenSchedule` is accepted here so the wiring is
+  // in place for when AyrshareConnectionPanel gets mounted inside Settings
+  // (sprint #17 connections section). Today it's a no-op leaf: App.tsx
+  // already forwards the callback, and any future render of
+  // <AyrshareConnectionPanel onOpenSchedule={_onOpenSchedule} /> will Just
+  // Work. Underscore-prefix to silence the unused-var lint without dropping
+  // the contract.
+  void _onOpenSchedule;
   const [secrets, setSecrets] = useState<Record<SecretName, boolean> | null>(null);
   const [hw, setHw] = useState<HardwareInfo | null>(null);
   const [editingKey, setEditingKey] = useState<SecretName | null>(null);
@@ -75,52 +84,166 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
   const [me, setMe] = useState<MeStatus | null>(null);
   // v0.6.4 — Whop-pattern left-rail / right-pane layout.
   const [category, setCategory] = useState<SettingsCategory>("account");
+  // Lens-pass additions —
+  // (1) home dir resolved via Tauri path API rather than the broken
+  //     hardcoded "/Users" string used by the "Open in Finder" button.
+  const [home, setHome] = useState<string | null>(null);
+  // (5) row-level secret errors so a failed keychain write isn't silent.
+  const [secretErrors, setSecretErrors] = useState<Record<string, string>>({});
+  // (6) clipboard copy failures.
+  const [clipboardError, setClipboardError] = useState<string | null>(null);
+  // (8) boot errors surfaced as a top-of-pane banner instead of swallowed.
+  const [bootErrors, setBootErrors] = useState<string[]>([]);
   useEffect(() => {
     void meStatus().then(setMe).catch(() => setMe(null));
   }, []);
 
+  // Resolve the user's real home directory once. The "Open in Finder" chip
+  // depended on a hardcoded "/Users" path which targets the wrong folder on
+  // every Mac — read Tauri's homeDir() and cache it.
+  useEffect(() => {
+    let cancelled = false;
+    void import("@tauri-apps/api/path")
+      .then((m) => m.homeDir())
+      .then((h) => {
+        if (!cancelled) setHome(h);
+      })
+      .catch(() => {
+        if (!cancelled) setHome(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function onCheckForUpdate() {
     setUpdateState({ kind: "checking" });
-    setUpdateState(await checkForUpdate());
+    // (11) Race the updater against a 10s timeout so a hung manifest server
+    // doesn't leave the chip stuck on "Checking…" forever.
+    const timeout = new Promise<UpdateState>((resolve) =>
+      window.setTimeout(
+        () =>
+          resolve({
+            kind: "error",
+            message: "Update server didn't respond — try again later.",
+          }),
+        10_000,
+      ),
+    );
+    const next = await Promise.race([checkForUpdate(), timeout]);
+    setUpdateState(next);
     setLastUpdateCheck(readLastUpdateCheck());
   }
 
   async function onApplyUpdate() {
     if (updateState.kind !== "available") return;
+    // (3) Confirm before the one-click app restart. During a demo a stray
+    // misclick on this chip would otherwise quit + relaunch mid-recording.
+    const ok = window.confirm(
+      "Install update now? Liquid Clips will quit and relaunch — any unsaved Workspace state will be lost.",
+    );
+    if (!ok) return;
     await applyUpdate(updateState.update, setUpdateState);
   }
 
   useEffect(() => {
-    void sidecar.secretsStatus().then((r) => setSecrets(r.secrets));
-    void sidecar.hardwareInfo().then(setHw);
-    void sidecar.checkDeps().then(setDeps).catch((e) => setDepsError(humanError(e)));
+    // (8) Catch each boot probe independently. Previously a failure on any
+    // one of these would silently swallow the rest in the same .then chain
+    // and leave the right pane half-populated with no signal.
+    void sidecar
+      .secretsStatus()
+      .then((r) => setSecrets(r.secrets))
+      .catch((e) => setBootErrors((errs) => [...errs, `secrets: ${humanError(e)}`]));
+    void sidecar
+      .hardwareInfo()
+      .then(setHw)
+      .catch((e) => setBootErrors((errs) => [...errs, `hardware: ${humanError(e)}`]));
+    void sidecar
+      .checkDeps()
+      .then(setDeps)
+      .catch((e) => setDepsError(humanError(e)));
     void syncStatus()
       .then(setSync)
+      .catch((e) => setBootErrors((errs) => [...errs, `sync: ${humanError(e)}`]))
       .finally(() => setSyncChecked(true));
     void onCheckForUpdate();
   }, []);
 
   async function saveSecret(name: SecretName) {
     if (!draftValue.trim()) return;
-    await sidecar.secretSet(name, draftValue.trim());
-    setDraftValue("");
-    setEditingKey(null);
-    const refreshed = await sidecar.secretsStatus();
-    setSecrets(refreshed.secrets);
+    // (5) Try/catch so a failed keychain write surfaces inline instead of
+    // silently swallowing the error and leaving the user thinking it saved.
+    try {
+      await sidecar.secretSet(name, draftValue.trim());
+      setDraftValue("");
+      setEditingKey(null);
+      setSecretErrors((prev) => {
+        if (!(name in prev)) return prev;
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+      const refreshed = await sidecar.secretsStatus();
+      setSecrets(refreshed.secrets);
+    } catch (e) {
+      setSecretErrors((prev) => ({ ...prev, [name]: humanError(e) }));
+    }
   }
 
   async function clearSecret(name: SecretName) {
-    await sidecar.secretDelete(name);
-    const refreshed = await sidecar.secretsStatus();
-    setSecrets(refreshed.secrets);
+    // (5) Destructive confirm for keys whose absence breaks the whole clip
+    // pipeline or the activation gate. Without this a single misclick on
+    // OPENAI_API_KEY's "Clear" button silently nukes selection runs.
+    if (name === "OPENAI_API_KEY" || name === "LICENSE_JWT") {
+      const ok = window.confirm(
+        name === "OPENAI_API_KEY"
+          ? "Clear OPENAI_API_KEY? The clip-selection pipeline needs this key — every Workspace run will fail until you paste it back in."
+          : "Clear LICENSE_JWT? You'll be signed out of Liquid Clips and will need to activate this device again.",
+      );
+      if (!ok) return;
+    }
+    try {
+      await sidecar.secretDelete(name);
+      setSecretErrors((prev) => {
+        if (!(name in prev)) return prev;
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+      const refreshed = await sidecar.secretsStatus();
+      setSecrets(refreshed.secrets);
+    } catch (e) {
+      setSecretErrors((prev) => ({ ...prev, [name]: humanError(e) }));
+    }
   }
 
   async function copyDiagnostics() {
+    // (6) Don't swallow clipboard errors — surface "couldn't copy" inline so
+    // the user knows to select the dump manually.
     const dump = buildDiagnosticsMarkdown({ deps, depsError, hw, sync, me });
-    await writeText(dump);
-    setDiagnosticsCopied(true);
-    window.setTimeout(() => setDiagnosticsCopied(false), 1800);
+    try {
+      await writeText(dump);
+      setClipboardError(null);
+      setDiagnosticsCopied(true);
+      window.setTimeout(() => setDiagnosticsCopied(false), 1800);
+    } catch (e) {
+      setClipboardError(humanError(e));
+    }
   }
+
+  // (4) Esc closes the drawer for keyboard-only users. Previously the drawer
+  // had no Esc handler, no role="dialog" and no aria-modal — a keyboard user
+  // could open Settings and get trapped with no obvious exit.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-ink/40" onClick={onClose}>
@@ -130,6 +253,9 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
       <div
         className="flex h-full w-full max-w-[760px] flex-col bg-paper shadow-2xl"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
       >
         {/* v0.6.4 — Whop-pattern compact header. No painted cover, no glow,
             no animation. Single line: initials + name + tier + email +
@@ -141,7 +267,20 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
             button. Inner pane keeps its own scroll. */}
         <div className="flex min-h-0 flex-1 flex-row">
           <SettingsLeftRail active={category} onSelect={setCategory} />
-          <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto px-7 py-7" key={category}>
+          {/* (12) `key={category}` removed — it was forcing a full remount on
+              every tab switch which made AffiliatePayoutsSection re-fetch and
+              flash its loading state. React reconciles children correctly per
+              tab without the key. (19) `pb-24` keeps the last item clear of
+              the sticky footer on short windows. */}
+          <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto px-7 py-7 pb-24">
+          {bootErrors.length > 0 && (
+            <div className="rounded-lg border border-[#DC2626]/40 bg-[#DC2626]/5 px-3 py-2 font-mono text-[11px] text-[#DC2626]">
+              Some Settings data couldn't load — Liquid Clips helper may be restarting.
+              <span className="block text-text-tertiary normal-case">
+                {bootErrors.join(" · ")}
+              </span>
+            </div>
+          )}
           {category === "account" && (
             <>
               <Section eyebrow="profile" title="Your face on the orbit.">
@@ -194,6 +333,7 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
                       present={secrets[name]}
                       editing={editingKey === name}
                       draftValue={draftValue}
+                      errorMessage={secretErrors[name] ?? null}
                       onEdit={() => {
                         setEditingKey(name);
                         setDraftValue("");
@@ -228,6 +368,7 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
               depsError={depsError}
               hw={hw}
               copied={diagnosticsCopied}
+              clipboardError={clipboardError}
               onCopy={() => void copyDiagnostics()}
             />
           )}
@@ -239,8 +380,17 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
               Every project gets its own subfolder with source, audio, transcript, clips, thumbnails,
               and metadata. Open it any time and find every asset the app made.
             </p>
-            <HudChip active={false} onClick={() => void openExternal(`${homeDir()}/LiquidClips`)}>
-              Open in Finder →
+            {/* (1) Use the real home dir resolved at mount instead of the
+                hardcoded "/Users" string that opened the wrong folder. */}
+            <HudChip
+              active={false}
+              onClick={() => {
+                if (!home) return;
+                void openExternal(`${home}/LiquidClips`);
+              }}
+              disabled={!home}
+            >
+              {home ? "Open in Finder →" : "Locating folder…"}
             </HudChip>
           </Section>
           )}
@@ -319,7 +469,18 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
 
           {category === "about" && (
           <Section eyebrow="about" title='"Made with Liquid Clips" + privacy.'>
-            <Toggle label="Show 'Made with Liquid Clips' watermark on clips" defaultOn={false} />
+            {/* (2) Watermark toggle was dead UI — `defaultOn={false}` with no
+                onChange persisted nothing. Until the burn-in pipeline wires
+                up, render it as a static "Coming soon" row so the user
+                doesn't think flipping it does anything. */}
+            <div className="flex items-center justify-between gap-3 border-t border-line/60 pt-2">
+              <span className="font-sans text-[13px] text-ink">
+                Show 'Made with Liquid Clips' watermark on clips
+              </span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                coming soon
+              </span>
+            </div>
             <Toggle
               label="Send anonymous telemetry (no video content, no transcripts)"
               defaultOn={false}
@@ -340,7 +501,9 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
                   setIntroReset(true);
                 }}
               >
-                {introReset ? "Intro ready to replay" : "Watch intro again →"}
+                {/* (13) Old copy "Watch intro again →" implied immediate
+                    playback. The intro only fires on next launch — say so. */}
+                {introReset ? "Intro ready to replay" : "Plays on next launch →"}
               </HudChip>
               <button
                 type="button"
@@ -389,8 +552,11 @@ export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () =>
             } catch {
               /* best-effort */
             }
+            // (17) Run onSignOut BEFORE onClose. Closing first unmounts the
+            // drawer and would race with the app-level sign-out handler that
+            // may want to re-open it (e.g. to show a sign-in prompt).
+            await onSignOut?.();
             onClose();
-            onSignOut?.();
           }}
         />
       </div>
@@ -441,6 +607,7 @@ function SecretRow({
   present,
   editing,
   draftValue,
+  errorMessage,
   onEdit,
   onDraftChange,
   onCancel,
@@ -451,6 +618,7 @@ function SecretRow({
   present: boolean;
   editing: boolean;
   draftValue: string;
+  errorMessage: string | null;
   onEdit: () => void;
   onDraftChange: (v: string) => void;
   onCancel: () => void;
@@ -468,6 +636,19 @@ function SecretRow({
           spellCheck={false}
           value={draftValue}
           onChange={(e) => onDraftChange(e.target.value)}
+          // (9) Enter submits, Esc cancels — match every other password
+          // field's keyboard contract so power users aren't forced to mouse
+          // over to the Save chip.
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onSave();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              onCancel();
+            }
+          }}
           placeholder={name === "OPENAI_API_KEY" ? "sk-proj-..." : "your key"}
           className="mt-2 w-full border-b border-line bg-transparent px-0 py-2 font-mono text-[12px] text-ink outline-none placeholder:text-text-tertiary focus:border-fuchsia"
         />
@@ -479,28 +660,37 @@ function SecretRow({
             Cancel
           </HudChip>
         </div>
+        {/* (5) Surface keychain write errors inline so the user sees them. */}
+        {errorMessage && (
+          <p className="mt-2 font-mono text-[11px] text-[#DC2626]">{errorMessage}</p>
+        )}
       </div>
     );
   }
   return (
-    <div className="flex items-center justify-between border-t border-line/60 pt-2">
-      <div className="flex items-center gap-2 font-mono text-[12px]">
-        <span
-          className={`inline-block h-1.5 w-1.5 rounded-full ${present ? "bg-fuchsia" : "bg-text-tertiary"}`}
-        />
-        <span className="text-ink">{name}</span>
-        <span className="text-text-tertiary">{present ? "stored" : "not set"}</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <HudChip active={false} onClick={onEdit}>
-          {present ? "Replace" : "Add"}
-        </HudChip>
-        {present && (
-          <HudChip active={false} onClick={onClear}>
-            Clear
+    <div className="flex flex-col gap-1 border-t border-line/60 pt-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 font-mono text-[12px]">
+          <span
+            className={`inline-block h-1.5 w-1.5 rounded-full ${present ? "bg-fuchsia" : "bg-text-tertiary"}`}
+          />
+          <span className="text-ink">{name}</span>
+          <span className="text-text-tertiary">{present ? "stored" : "not set"}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <HudChip active={false} onClick={onEdit}>
+            {present ? "Replace" : "Add"}
           </HudChip>
-        )}
+          {present && (
+            <HudChip active={false} onClick={onClear}>
+              Clear
+            </HudChip>
+          )}
+        </div>
       </div>
+      {errorMessage && (
+        <p className="font-mono text-[11px] text-[#DC2626]">{errorMessage}</p>
+      )}
     </div>
   );
 }
@@ -514,19 +704,58 @@ function AffiliatePayoutsSection() {
   type Aff = Awaited<ReturnType<typeof meAffiliate>>;
   const [data, setData] = useState<Aff | null>(null);
   const [loading, setLoading] = useState(true);
+  // (7) Distinguish "signed out" (UnauthorizedError → null data, generic
+  // copy) from "backend errored" (5xx → show retry button). Previously every
+  // failure rendered the generic "sign in to see your setup" copy, which
+  // hid real outages behind a misleading prompt.
+  const [affiliateError, setAffiliateError] = useState<string | null>(null);
 
-  useEffect(() => {
+  function fetchAffiliate() {
+    setLoading(true);
+    setAffiliateError(null);
     let cancelled = false;
     void meAffiliate()
-      .then((d) => { if (!cancelled) { setData(d); setLoading(false); } })
-      .catch(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+      .then((d) => {
+        if (!cancelled) {
+          setData(d);
+          setLoading(false);
+        }
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        if (e instanceof UnauthorizedError) {
+          setData(null);
+        } else {
+          setAffiliateError(humanError(e));
+        }
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }
+
+  useEffect(() => fetchAffiliate(), []);
 
   if (loading) {
     return (
       <Section eyebrow="affiliate payouts" title="How you get paid.">
         <p className="font-mono text-[11px] text-text-tertiary">Reading your account<span className="blink">_</span></p>
+      </Section>
+    );
+  }
+
+  if (affiliateError) {
+    return (
+      <Section eyebrow="affiliate payouts" title="How you get paid.">
+        <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+          Couldn't reach payouts — {affiliateError}
+        </p>
+        <div className="mt-2">
+          <HudChip active onClick={() => fetchAffiliate()}>
+            Retry →
+          </HudChip>
+        </div>
       </Section>
     );
   }
@@ -603,7 +832,19 @@ function AffiliatePayoutsSection() {
         <div className="mt-3 flex flex-wrap gap-2">
           <HudChip
             active={needsBank}
-            onClick={() => void openExternal(aff.payout_setup_url || "https://account.jnremployee.com/dashboard#payouts")}
+            onClick={() => {
+              // Two-track: Stripe Connect Express links (aff.payout_setup_url)
+              // are single-use Stripe-hosted URLs; they need a real browser to
+              // hold the auth state across the Connect dance, so we open them
+              // externally. The dashboard hash anchor lives on account-app
+              // (same Clerk session as the rest of the app), so it's fine to
+              // host in the in-app auth panel.
+              if (aff.payout_setup_url) {
+                void openExternal(aff.payout_setup_url);
+              } else {
+                openAuthPanel("payouts");
+              }
+            }}
           >
             {needsBank ? "Set up Stripe payouts →" : "Manage Stripe payouts →"}
           </HudChip>
@@ -652,11 +893,15 @@ function Toggle({
   }
   return (
     <button
+      type="button"
+      role="switch"
+      aria-checked={on}
       onClick={flip}
       className="flex items-center justify-between gap-3 border-t border-line/60 pt-2 text-left"
     >
       <span className="font-sans text-[13px] text-ink">{label}</span>
       <span
+        aria-hidden="true"
         className={`relative inline-block h-[20px] w-[36px] rounded-full transition-colors ${
           on ? "bg-fuchsia" : "bg-line"
         }`}
@@ -671,12 +916,6 @@ function Toggle({
   );
 }
 
-function homeDir(): string {
-  // Tauri exposes the home dir on demand; this is the simple form for the
-  // "Open in Finder" button — we always read/write ~/LiquidClips on macOS.
-  return "/Users";
-}
-
 function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
@@ -689,11 +928,14 @@ function SubscriptionAction({
   sync: SyncStatus | null;
 }) {
   // Three states:
-  //   1. activation unknown / no JWT yet → marketing Upgrade flow (jnremployee.com)
-  //   2. Whop-signup user → Whop's hosted manage page (PCI + retention live there)
-  //   3. Clerk direct-signup user → in-app account portal at liquidclips.app/dashboard
+  //   1. activation unknown / no JWT yet → in-app upgrade panel (Clerk sign-up +
+  //      checkout). Opens the Clerk-routed /upgrade page in the desktop's
+  //      auth_panel webview so the user never leaves Liquid Clips.
+  //   2. Whop-signup user → Whop's hosted manage page (PCI + retention live there);
+  //      Whop's cookie domain isn't ours so we still external-open this one.
+  //   3. Clerk direct-signup user → in-app /dashboard panel (Clerk session
+  //      persists in the auth_panel webview).
   const isWhop = sync?.billing_provider === "whop";
-  const url = isWhop ? WHOP_MANAGE_URL : ACCOUNT_URL;
   const label = !syncChecked
     ? "Checking…"
     : isWhop
@@ -704,7 +946,15 @@ function SubscriptionAction({
 
   return (
     <button
-      onClick={() => void openExternal(url)}
+      onClick={() => {
+        if (isWhop) {
+          void openExternal(WHOP_MANAGE_URL);
+        } else if (sync) {
+          openAuthPanel("dashboard");
+        } else {
+          openAuthPanel("upgrade");
+        }
+      }}
       disabled={!syncChecked}
       className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia disabled:opacity-50"
     >
@@ -749,12 +999,12 @@ function WhoAmISection() {
     return (
       <Section eyebrow="account" title="Who Liquid Clips thinks you are.">
         <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-          Couldn't reach the backend. Sign in via{" "}
+          Couldn't reach the backend. Sign in to{" "}
           <a
-            onClick={() => void openExternal("https://account.jnremployee.com/dashboard")}
+            onClick={() => openAuthPanel("sign-in")}
             className="cursor-pointer text-fuchsia hover:text-fuchsia-deep"
           >
-            account.jnremployee.com
+            your Liquid Clips account →
           </a>
           {" "}then come back.
         </p>
@@ -825,15 +1075,38 @@ function DiagnosticsSection({
   depsError,
   hw,
   copied,
+  clipboardError,
   onCopy,
 }: {
   deps: DepsInfo | null;
   depsError: string | null;
   hw: HardwareInfo | null;
   copied: boolean;
+  clipboardError: string | null;
   onCopy: () => void;
 }) {
-  const sidecarStatus = depsError ? "failed" : deps ? deps.ok ? "ready" : "failed" : "starting";
+  // (15) Sidecar "starting" should not stick forever. If deps + depsError are
+  // both still null 10s after mount, surface a recoverable "couldn't reach
+  // sidecar" with a Restart button that relaunches the app.
+  const [sidecarStarting, setSidecarStarting] = useState(false);
+  useEffect(() => {
+    if (deps !== null || depsError !== null) {
+      setSidecarStarting(false);
+      return;
+    }
+    const t = window.setTimeout(() => setSidecarStarting(true), 10_000);
+    return () => window.clearTimeout(t);
+  }, [deps, depsError]);
+
+  const sidecarStatus = depsError
+    ? "failed"
+    : deps
+    ? deps.ok
+      ? "ready"
+      : "failed"
+    : sidecarStarting
+    ? "unreachable"
+    : "starting";
   const missing = deps?.missing ?? [];
   const errors = deps?.errors ? Object.entries(deps.errors) : [];
 
@@ -849,6 +1122,23 @@ function DiagnosticsSection({
           <DebugRow label="Clip storage" value={CLIP_STORAGE_PATH} mono />
           <DebugRow label="Logs" value={LOG_PATH} mono />
         </BracketFrame>
+        {sidecarStarting && !deps && !depsError && (
+          <BracketFrame>
+            <p className="font-mono text-[11px] text-[#DC2626]">
+              Couldn't reach sidecar — try restarting Liquid Clips.
+            </p>
+            <div className="mt-2">
+              <HudChip
+                active
+                onClick={() => {
+                  void relaunch();
+                }}
+              >
+                Restart Liquid Clips →
+              </HudChip>
+            </div>
+          </BracketFrame>
+        )}
         {(missing.length > 0 || errors.length > 0 || depsError) && (
           <BracketFrame>
             <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#DC2626]">
@@ -878,6 +1168,12 @@ function DiagnosticsSection({
         <HudChip active={copied} onClick={onCopy}>
           {copied ? "Copied diagnostics" : "Copy diagnostics to clipboard"}
         </HudChip>
+        {/* (6) Clipboard write failures surface here instead of being eaten. */}
+        {clipboardError && (
+          <p className="font-mono text-[11px] text-[#DC2626]">
+            Couldn't copy — try selecting the dump manually. ({clipboardError})
+          </p>
+        )}
       </Section>
 
       <Section eyebrow="hardware" title="Read-only hardware snapshot.">
@@ -957,6 +1253,12 @@ function buildDiagnosticsMarkdown({
 function SupportSection() {
   const [copied, setCopied] = useState(false);
   const [hw, setHw] = useState<HardwareInfo | null>(null);
+  // (6) Surface clipboard write failures inline instead of silent fail.
+  const [copyError, setCopyError] = useState<string | null>(null);
+  // (14) When `mailto:` has no registered handler `openExternal` rejects
+  // silently — fall back to copying the dump to clipboard + telling the user
+  // to paste it into a support email.
+  const [reportFallback, setReportFallback] = useState<string | null>(null);
 
   useEffect(() => {
     void sidecar.hardwareInfo().then(setHw).catch(() => undefined);
@@ -980,10 +1282,11 @@ function SupportSection() {
     try {
       const dump = await buildDiagnostic();
       await writeText(dump);
+      setCopyError(null);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      /* silent — copy failure is non-critical */
+    } catch (e) {
+      setCopyError(humanError(e));
     }
   }
 
@@ -997,7 +1300,23 @@ function SupportSection() {
         "\n",
     );
     const url = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
-    void openExternal(url).catch(() => undefined);
+    try {
+      await openExternal(url);
+      setReportFallback(null);
+    } catch {
+      // No mail client registered. Copy the dump to clipboard instead so
+      // the user has something to paste into a support email manually.
+      try {
+        await writeText(dump);
+        setReportFallback(
+          `No default mail client — diagnostic copied to clipboard instead, paste into ${SUPPORT_EMAIL}`,
+        );
+      } catch (copyErr) {
+        setReportFallback(
+          `Couldn't open mail client or copy diagnostic (${humanError(copyErr)}) — email ${SUPPORT_EMAIL} manually.`,
+        );
+      }
+    }
   }
 
   return (
@@ -1011,7 +1330,7 @@ function SupportSection() {
           Report an issue →
         </HudChip>
         <HudChip active={copied} onClick={() => void onCopyDiagnostic()}>
-          {copied ? "Copied ✓" : "Copy diagnostic"}
+          {copied ? "Copied" : "Copy diagnostic"}
         </HudChip>
         <a
           onClick={() => void openExternal(`mailto:${SUPPORT_EMAIL}`)}
@@ -1020,6 +1339,14 @@ function SupportSection() {
           {SUPPORT_EMAIL}
         </a>
       </div>
+      {copyError && (
+        <p className="font-mono text-[11px] text-[#DC2626]">
+          Couldn't copy — try selecting the dump manually. ({copyError})
+        </p>
+      )}
+      {reportFallback && (
+        <p className="font-mono text-[11px] text-text-secondary">{reportFallback}</p>
+      )}
     </Section>
   );
 }
@@ -1057,13 +1384,29 @@ function SettingsCompactHeader({
   const effectiveTier = (sync?.tier ?? me?.effective_tier ?? tier) as string;
   const tierLabel = effectiveTier === "free" ? "tier · free" : `tier · ${effectiveTier}`;
 
+  // (16) Read the uploaded avatar from the shared store so the header thumb
+  // matches what shows in the cockpit orbit. Falls back to initials when no
+  // upload exists yet.
+  const avatarUrl = useAvatar((s) => s.url);
+  const avatarBustKey = useAvatar((s) => s.bustKey);
+  const renderedAvatar = avatarSrc({ url: avatarUrl, bustKey: avatarBustKey });
+
   return (
     <header className="flex shrink-0 items-center gap-3 border-b border-line bg-paper px-6 py-4">
       <div
         aria-hidden="true"
-        className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-fuchsia to-fuchsia-deep font-display text-[14px] font-bold text-white"
+        className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-gradient-to-br from-fuchsia to-fuchsia-deep font-display text-[14px] font-bold text-white"
       >
-        {initials}
+        {renderedAvatar ? (
+          <img
+            src={renderedAvatar}
+            alt=""
+            className="h-full w-full object-cover"
+            draggable={false}
+          />
+        ) : (
+          initials
+        )}
       </div>
       <div className="flex min-w-0 flex-1 flex-col leading-tight">
         <span className="truncate font-display text-[15px] font-semibold tracking-[-0.01em] text-ink">
@@ -1163,7 +1506,9 @@ function ProfileAvatarRow({ email }: { email: string | null }) {
     if (loading) return;
     const picked = await openFileDialog({
       multiple: false,
-      filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp"] }],
+      // (10) Include HEIC — iPhone screenshots default to HEIC and were
+      // silently filtered out of the picker.
+      filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "heic"] }],
     });
     if (typeof picked === "string") {
       try {

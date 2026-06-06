@@ -6,7 +6,7 @@ import {
   UnauthorizedError,
   type RewardClipBlock,
 } from "../../lib/backend";
-import { sidecar } from "../../lib/sidecar";
+import { humanError, sidecar } from "../../lib/sidecar";
 import { QrCode } from "../QrCode";
 import { InfoHint } from "../InfoHint";
 
@@ -43,7 +43,7 @@ export function RewardClipsPanel() {
         setState({ kind: "signed-out" });
         return;
       }
-      setState({ kind: "error", message: (e as Error).message });
+      setState({ kind: "error", message: humanError(e) });
     }
   }, []);
 
@@ -81,7 +81,19 @@ export function RewardClipsPanel() {
       )}
 
       {state.kind === "error" && (
-        <EmptyShell hint={`Couldn't load reward clips: ${state.message}`} />
+        <div className="rounded-2xl border border-line bg-paper-warm/30 p-5">
+          <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+            Couldn&apos;t load reward clips: {state.message}
+          </p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
+          >
+            <RotateCw className="h-3.5 w-3.5" strokeWidth={2} />
+            Retry
+          </button>
+        </div>
       )}
 
       {state.kind === "ok" && state.clips.length === 0 && (
@@ -210,25 +222,40 @@ function StatusPill({ status }: { status: string }) {
 
 function CopyShortLink({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
   async function copy() {
     try {
       await writeText(url);
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
+      setCopyError(null);
+      window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      /* input is selectable as a fallback */
+      // PREVENTS — silent clipboard failure. Surface a fallback the user
+      // can act on (select the input + Cmd+C).
+      setCopyError("Couldn't copy — long-press the link to select it manually");
+      window.setTimeout(() => setCopyError(null), 4000);
     }
   }
   return (
-    <button
-      onClick={() => void copy()}
-      title={copied ? "Copied" : "Copy this tracking link."}
-      aria-label="Copy this tracking link."
-      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-fuchsia px-3 py-1 font-sans text-[12px] font-medium text-white opacity-70 transition-opacity duration-150 hover:bg-fuchsia-bright group-hover:opacity-100"
-    >
-      <CopyIcon className="h-3.5 w-3.5" strokeWidth={2.25} />
-      {copied ? "Copied" : "Copy"}
-    </button>
+    <div className="relative flex flex-col items-end">
+      <button
+        onClick={() => void copy()}
+        title={copied ? "Copied" : "Copy this tracking link."}
+        aria-label="Copy this tracking link."
+        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-fuchsia px-3 py-1 font-sans text-[12px] font-medium text-white opacity-70 transition-opacity duration-150 hover:bg-fuchsia-bright group-hover:opacity-100"
+      >
+        <CopyIcon className="h-3.5 w-3.5" strokeWidth={2.25} />
+        {copied ? "Copied" : "Copy"}
+      </button>
+      {copyError && (
+        <span
+          role="alert"
+          className="absolute right-0 top-full mt-1 whitespace-nowrap font-sans text-[11px] text-[#F87171]"
+        >
+          {copyError}
+        </span>
+      )}
+    </div>
   );
 }
 

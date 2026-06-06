@@ -33,9 +33,16 @@ function parseLengthRule(brief: string): { min?: number; max?: number } {
     const q = (m[1] || "").trim();
     const n = toSec(+m[2], m[3]);
     if (/under|below|less than|up to|max|at most|no more than/.test(q)) {
-      rule.max = rule.max != null ? Math.min(rule.max, n) : n;
+      // PREVENTS — borderline clips failing because the brief mentioned
+      // multiple max bounds (e.g. "between 30 and 60s, no more than 90s").
+      // We pick the MORE PERMISSIVE bound so the user doesn't get a
+      // false negative on a clip that any reasonable reader would accept.
+      // The brand will still make the final call on Whop.
+      rule.max = rule.max != null ? Math.max(rule.max, n) : n;
     } else if (/over|above|at least|min|more than/.test(q)) {
-      rule.min = rule.min != null ? Math.max(rule.min, n) : n;
+      // Same heuristic on the lower bound: keep the smaller minimum so
+      // a borderline-short clip isn't rejected by a stricter phrase.
+      rule.min = rule.min != null ? Math.min(rule.min, n) : n;
     }
   }
   return rule;
@@ -52,6 +59,11 @@ export function computeBountyFit(clip: Clip, project: Project): BountyFit | null
   if (!project.whop_bounty_id) return null;
   const brief = project.whop_bounty_description || "";
   const platforms = project.whop_bounty_platforms || [];
+  // PREVENTS — misleading "80+" score on a totally empty brief. With no
+  // text + no platforms + no captions data, the heuristic still happily
+  // claimed a green light. We surface an honest "no brief" signal instead
+  // by returning null; callers render the "Set a brief" copy.
+  if (brief.trim().length === 0 && platforms.length === 0) return null;
   const items: FitItem[] = [];
 
   // 1) Length vs brief
@@ -123,6 +135,11 @@ export function computeBountyFit(clip: Clip, project: Project): BountyFit | null
     weight: 25,
   });
 
+  // If every weight collapsed to 0 (brief gave us nothing to score
+  // against), return null so the UI can render "Set a brief to enable
+  // fit scoring" instead of a meaningless number.
+  const totalWeight = items.reduce((sum, it) => sum + it.weight, 0);
+  if (totalWeight === 0) return null;
   const score = Math.round(items.reduce((sum, it) => sum + (it.ok ? it.weight : 0), 0));
   return { items, score };
 }
@@ -136,7 +153,22 @@ function scoreTone(score: number): string {
 // Compact pill for the clip grid.
 export function BountyFitPill({ clip, project }: { clip: Clip; project: Project }) {
   const fit = computeBountyFit(clip, project);
-  if (!fit) return null;
+  if (!fit) {
+    // Honest signal: we couldn't score because there's no brief content
+    // to score against. Surface as a quiet neutral chip rather than a
+    // misleading number.
+    if (project.whop_bounty_id) {
+      return (
+        <span
+          title="Set a brief to enable fit scoring"
+          className="inline-flex items-center gap-1 rounded-full border border-line bg-paper px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary"
+        >
+          no brief
+        </span>
+      );
+    }
+    return null;
+  }
   return (
     <span
       title={`Reward fit ${fit.score}/100`}
@@ -150,7 +182,22 @@ export function BountyFitPill({ clip, project }: { clip: Clip; project: Project 
 // Full checklist for the clip editor / preview.
 export function BountyFitChecklist({ clip, project }: { clip: Clip; project: Project }) {
   const fit = computeBountyFit(clip, project);
-  if (!fit) return null;
+  if (!fit) {
+    if (project.whop_bounty_id) {
+      return (
+        <div className="rounded-2xl border border-line bg-paper-warm/40 p-4">
+          <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+            reward fit
+            <InfoHint text="Add a brief on the bounty (description, allowed platforms) to unlock fit scoring." />
+          </div>
+          <p className="mt-2 font-sans text-[13px] text-text-secondary">
+            Set a brief to enable fit scoring.
+          </p>
+        </div>
+      );
+    }
+    return null;
+  }
   return (
     <div className="rounded-2xl border border-line bg-paper-warm/40 p-4">
       <div className="flex items-center justify-between">

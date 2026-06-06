@@ -1,3 +1,4 @@
+mod auth_panel;
 mod browse;
 mod sidecar;
 mod social_link;
@@ -139,7 +140,9 @@ pub fn run() {
 
             // Browse Rewards is an in-window native child webview pinned to
             // the right edge. Keep it attached as the main window moves,
-            // resizes, or changes scale factor across displays.
+            // resizes, or changes scale factor across displays. The auth
+            // panel (sign-in / upgrade) follows the same reposition rules
+            // so a window resize doesn't leave the modal stranded off-edge.
             if let Some(main) = app.get_window("main") {
                 let panel_app_handle = app.handle().clone();
                 main.on_window_event(move |event| {
@@ -150,6 +153,7 @@ pub fn run() {
                         | WindowEvent::ScaleFactorChanged { .. }
                         | WindowEvent::Focused(true) => {
                             browse::reposition_panel(&panel_app_handle);
+                            auth_panel::reposition_panel(&panel_app_handle);
                         }
                         _ => {}
                     }
@@ -166,6 +170,9 @@ pub fn run() {
             browse::browse_back,
             browse::browse_forward,
             browse::browse_reload,
+            auth_panel::open_auth_panel,
+            auth_panel::close_auth_panel,
+            auth_panel::is_auth_panel_open,
             social_link::open_social_link_window,
             social_link::close_social_link_window,
         ])

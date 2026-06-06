@@ -10,10 +10,11 @@
 // Splitting them stops the carousel snapping between different heights when
 // you mix a 16:9 video into the 4:1 banner rhythm.
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { ChevronLeft, ChevronRight, Flame, Lock, PlayCircle } from "lucide-react";
 import { backend, type SponsoredCampaign } from "../../lib/backend";
+import { humanError } from "../../lib/sidecar";
 
 type Props = {
   tier?: "free" | "solo" | "pro" | "agency" | null;
@@ -25,22 +26,54 @@ const AUTO_ADVANCE_MS = 6000;
 export function SponsoredBannerCarousel({ tier = null, onUpgrade }: Props) {
   const [campaigns, setCampaigns] = useState<SponsoredCampaign[]>([]);
   const [loading, setLoading] = useState(true);
+  // PREVENTS — silent fetch failure. The previous behaviour rendered
+  // nothing forever; now the user sees an honest tile with retry.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
+
+  const refetch = useCallback((): void => { setReloadTick((n) => n + 1); }, []);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
     void backend
       .campaignsList()
       .then((c) => { if (!cancelled) setCampaigns(c); })
-      .catch(() => { if (!cancelled) setCampaigns([]); })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setCampaigns([]);
+          setLoadError(humanError(e));
+        }
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [reloadTick]);
 
   if (loading) {
     return (
       <section className="flex flex-col gap-2">
         <SectionHeader label="featured" count={0} icon="play" />
         <div className="h-[180px] animate-pulse rounded-3xl border border-line bg-paper-elev/40" />
+      </section>
+    );
+  }
+  if (loadError && campaigns.length === 0) {
+    return (
+      <section className="flex flex-col gap-2">
+        <SectionHeader label="featured" count={0} icon="play" />
+        <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-line bg-paper-elev/40 px-5 py-4">
+          <p className="flex-1 font-sans text-[13px] text-text-secondary">
+            Couldn&apos;t load campaigns &mdash; {loadError}
+          </p>
+          <button
+            type="button"
+            onClick={refetch}
+            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-text-secondary hover:border-fuchsia hover:text-fuchsia"
+          >
+            Retry
+          </button>
+        </div>
       </section>
     );
   }
@@ -159,19 +192,36 @@ function BannerCarousel({
 }) {
   const [idx, setIdx] = useState(0);
   const trackRef = useRef<HTMLDivElement>(null);
+  // PREVENTS — autoplay burning CPU + scrolling the offscreen carousel
+  // every 6s when the user has scrolled away from it. IntersectionObserver
+  // pauses the timer until the carousel is back in view.
+  const [onscreen, setOnscreen] = useState(true);
 
-  // Auto-advance — pauses when user hovers the track.
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) setOnscreen(e.isIntersecting);
+      },
+      { threshold: 0.1 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  // Auto-advance — pauses when user hovers the track OR scrolls it offscreen.
   useEffect(() => {
     if (campaigns.length < 2) return;
     const el = trackRef.current;
     if (!el) return;
-    let paused = false;
-    const onEnter = () => { paused = true; };
-    const onLeave = () => { paused = false; };
+    let hoverPaused = false;
+    const onEnter = () => { hoverPaused = true; };
+    const onLeave = () => { hoverPaused = false; };
     el.addEventListener("mouseenter", onEnter);
     el.addEventListener("mouseleave", onLeave);
     const interval = window.setInterval(() => {
-      if (paused) return;
+      if (hoverPaused || !onscreen) return;
       setIdx((i) => (i + 1) % campaigns.length);
     }, AUTO_ADVANCE_MS);
     return () => {
@@ -179,7 +229,7 @@ function BannerCarousel({
       el.removeEventListener("mouseenter", onEnter);
       el.removeEventListener("mouseleave", onLeave);
     };
-  }, [campaigns.length]);
+  }, [campaigns.length, onscreen]);
 
   // Scroll-snap to the active slide whenever idx changes.
   useEffect(() => {

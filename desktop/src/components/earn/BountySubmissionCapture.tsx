@@ -41,6 +41,21 @@ function writeCaptured(projectSlug: string, id: string): void {
   }
 }
 
+function clearCaptured(projectSlug: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(capturedKey(projectSlug));
+  } catch {
+    /* ignore */
+  }
+}
+
+function humanError(e: unknown): string {
+  if (e instanceof Error && e.message) return e.message;
+  if (typeof e === "string") return e;
+  return "Something went wrong.";
+}
+
 function extractId(input: string): string | null {
   const m = input.trim().match(SUB_ID_RX);
   return m ? m[0] : null;
@@ -53,6 +68,7 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
 
   // If the project changes (navigation between runs) refresh the captured
   // state from storage instead of carrying the old one over.
@@ -61,7 +77,26 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
     setOpen(false);
     setDraft("");
     setError(null);
+    setOpenError(null);
   }, [project.slug]);
+
+  function editCaptured() {
+    // Lets the user fix a wrong paste — flips back to the input state and
+    // clears persistence so a stale ID can't reappear after refresh.
+    clearCaptured(project.slug);
+    setCaptured(null);
+    setDraft("");
+    setError(null);
+    setOpen(true);
+  }
+
+  function clearCapturedState() {
+    clearCaptured(project.slug);
+    setCaptured(null);
+    setDraft("");
+    setError(null);
+    setOpen(false);
+  }
 
   if (!project.whop_bounty_id) return null;
 
@@ -93,9 +128,23 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
           <span className="font-mono text-[11px] text-text-tertiary">·</span>
           <span className="font-mono text-[11px] text-ink">{captured}</span>
         </div>
-        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-          status updates appear in the submitted tab
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+            status updates appear in the submitted tab
+          </span>
+          <button
+            onClick={editCaptured}
+            className="rounded-full border border-line bg-paper px-3 py-1 font-sans text-[11px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
+          >
+            Edit submission ID
+          </button>
+          <button
+            onClick={clearCapturedState}
+            className="rounded-full border border-line bg-transparent px-3 py-1 font-sans text-[11px] font-medium text-text-secondary hover:border-[#DC2626]/40 hover:text-[#DC2626]"
+          >
+            Clear submission
+          </button>
+        </div>
       </div>
     );
   }
@@ -144,8 +193,15 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
         <div className="flex flex-wrap items-center gap-2">
           {bountyUrl && (
             <button
-              onClick={() => {
-                void openExternal(bountyUrl).catch(() => undefined);
+              onClick={async () => {
+                setOpenError(null);
+                try {
+                  await openExternal(bountyUrl);
+                } catch (e) {
+                  setOpenError(
+                    `Couldn't open Whop: ${humanError(e)}. Copy the link and open it manually.`,
+                  );
+                }
               }}
               className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
             >
@@ -160,6 +216,10 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
           </button>
         </div>
       </div>
+
+      {openError && (
+        <p className="mt-2 font-mono text-[11px] text-[#DC2626]">{openError}</p>
+      )}
 
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {checks.map((c) => (

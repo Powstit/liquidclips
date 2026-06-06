@@ -63,7 +63,15 @@ export function WorkingStage({
   currentStage: StageName;
 }) {
   const [cancelRequested, setCancelRequested] = useState(false);
+  // P1 #14 — when the cancel marker is ignored (sidecar wedged, stage about
+  // to checkpoint), "Cancelling…" can sit forever. After 6s we surface a
+  // visible fallback link telling the user they can force-quit.
+  const [cancelStuck, setCancelStuck] = useState(false);
   const [progress, setProgress] = useState<ProgressBlob | null>(null);
+  // P1 #9 — "stalled" warning. If no progress event arrives for 90s the
+  // shimmer becomes a lie. Surface a muted line so the user knows we haven't
+  // forgotten about them — long jobs are normal; silence isn't.
+  const [stalled, setStalled] = useState(false);
 
   // Stage progress arrives via Tauri events the Python sidecar emits between
   // segments / clips. Previously we polled .progress.json on disk, but the
@@ -83,9 +91,35 @@ export function WorkingStage({
     };
   }, [currentStage]);
 
+  // P1 #9 — stall watchdog. Resets every time we get a progress event OR
+  // the stage changes; if 90s pass without either, surface the message.
+  useEffect(() => {
+    setStalled(false);
+    const id = window.setTimeout(() => setStalled(true), 90_000);
+    return () => window.clearTimeout(id);
+  }, [currentStage, progress]);
+
+  // P1 #14 — fallback for ignored cancels. Starts the 6s timer the moment the
+  // user clicks Cancel; cleared if the component unmounts (parent transitions
+  // away to canceled/failed/results).
+  useEffect(() => {
+    if (!cancelRequested) return;
+    const id = window.setTimeout(() => setCancelStuck(true), 6_000);
+    return () => window.clearTimeout(id);
+  }, [cancelRequested]);
+
   async function requestCancel() {
     if (cancelRequested) return;
     setCancelRequested(true);
+    // P0 #3 / #4 — tell App.tsx via window bus so the between-stage loop bails
+    // before the next sidecar call. App.tsx also writes the ~/LiquidClips/
+    // .lift_cancel marker for the sidecar. Both markers fire together; this
+    // is the "real Cancel" path the lens calls out.
+    try {
+      window.dispatchEvent(new CustomEvent("lc:pipeline-cancel"));
+    } catch {
+      /* event constructor unavailable — non-fatal */
+    }
     try {
       // Drop a .cancel marker that Python stages check between segments / clips.
       // Bypasses the blocked RPC channel — file write is instant.
@@ -258,9 +292,19 @@ export function WorkingStage({
                   </>
                 )}
                 {pct === null && (
-                  <div className="ml-6 h-1.5 w-[440px] max-w-full overflow-hidden rounded-full bg-paper-elev/60">
-                    <div className="working-stage-shimmer h-full w-1/3 rounded-full" />
-                  </div>
+                  <>
+                    <div className="ml-6 h-1.5 w-[440px] max-w-full overflow-hidden rounded-full bg-paper-elev/60">
+                      <div className="working-stage-shimmer h-full w-1/3 rounded-full" />
+                    </div>
+                    {/* P1 #9 — stalled message. 90s with no progress event
+                        means the shimmer alone reads as a lie; tell the user
+                        we still expect this to finish. */}
+                    {stalled && (
+                      <p className="ml-6 font-mono text-[11px] italic text-text-tertiary">
+                        Still working — this is taking longer than usual.
+                      </p>
+                    )}
+                  </>
                 )}
               </li>
             );
@@ -299,6 +343,15 @@ export function WorkingStage({
           </>
         )}
       </div>
+      {/* P1 #14 — fallback when the cancel marker is ignored. After 6s of
+          "Cancelling…" the user gets a visible escape hatch. We can't actually
+          force-quit from JS — but telling them they can is better than the
+          button sitting forever in a faux-loading state. */}
+      {cancelRequested && cancelStuck && (
+        <p className="mt-3 font-mono text-[11px] text-text-tertiary">
+          Couldn&apos;t stop — force-quit Liquid Clips if needed.
+        </p>
+      )}
     </div>
   );
 }

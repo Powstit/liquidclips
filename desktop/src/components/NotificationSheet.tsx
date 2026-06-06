@@ -27,6 +27,12 @@ function timeAgo(iso: string): string {
 export function NotificationSheet({ onClose }: { onClose: () => void }) {
   const [items, setItems] = useState<NotificationDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Inline error surface for the row-level actions (markRead / markAllRead /
+  // dismiss). Without this the user clicks "dismiss" on a stale row, the RPC
+  // 401s in the background, and nothing visible changes — they mash the
+  // button trying to figure out why. A small banner + retry restores the
+  // feedback loop.
+  const [actionError, setActionError] = useState<{ message: string; retry: () => void } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -51,27 +57,42 @@ export function NotificationSheet({ onClose }: { onClose: () => void }) {
 
   async function markRead(n: NotificationDto) {
     if (n.read_at) return;
-    const { value: jwt } = await sidecar.licenseJwtRead();
-    if (!jwt) return;
-    await backend.notifications.markRead(jwt, n.id);
-    setItems((cur) =>
-      cur?.map((x) => (x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x)) ?? null,
-    );
+    try {
+      const { value: jwt } = await sidecar.licenseJwtRead();
+      if (!jwt) return;
+      await backend.notifications.markRead(jwt, n.id);
+      setItems((cur) =>
+        cur?.map((x) => (x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x)) ?? null,
+      );
+      setActionError(null);
+    } catch (e) {
+      setActionError({ message: humanError(e), retry: () => void markRead(n) });
+    }
   }
 
   async function markAllRead() {
-    const { value: jwt } = await sidecar.licenseJwtRead();
-    if (!jwt) return;
-    await backend.notifications.markAllRead(jwt);
-    const now = new Date().toISOString();
-    setItems((cur) => cur?.map((x) => ({ ...x, read_at: x.read_at ?? now })) ?? null);
+    try {
+      const { value: jwt } = await sidecar.licenseJwtRead();
+      if (!jwt) return;
+      await backend.notifications.markAllRead(jwt);
+      const now = new Date().toISOString();
+      setItems((cur) => cur?.map((x) => ({ ...x, read_at: x.read_at ?? now })) ?? null);
+      setActionError(null);
+    } catch (e) {
+      setActionError({ message: humanError(e), retry: () => void markAllRead() });
+    }
   }
 
   async function dismiss(n: NotificationDto) {
-    const { value: jwt } = await sidecar.licenseJwtRead();
-    if (!jwt) return;
-    await backend.notifications.dismiss(jwt, n.id);
-    setItems((cur) => cur?.filter((x) => x.id !== n.id) ?? null);
+    try {
+      const { value: jwt } = await sidecar.licenseJwtRead();
+      if (!jwt) return;
+      await backend.notifications.dismiss(jwt, n.id);
+      setItems((cur) => cur?.filter((x) => x.id !== n.id) ?? null);
+      setActionError(null);
+    } catch (e) {
+      setActionError({ message: humanError(e), retry: () => void dismiss(n) });
+    }
   }
 
   return (
@@ -131,6 +152,35 @@ export function NotificationSheet({ onClose }: { onClose: () => void }) {
             <NotificationRow key={n.id} n={n} onClick={() => markRead(n)} onDismiss={() => dismiss(n)} />
           ))}
         </div>
+
+        {/* Row-action error banner — sits at the bottom of the sheet so it
+            doesn't shove inbox content around when it appears. Retry button
+            calls the original action with the same args. */}
+        {actionError && (
+          <div
+            role="alert"
+            className="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t border-[#DC2626]/40 bg-paper/95 px-6 py-3 font-mono text-[11px] text-[#DC2626] backdrop-blur-md"
+          >
+            <span className="min-w-0 flex-1 truncate">{actionError.message}</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={actionError.retry}
+                className="rounded-full border border-[#DC2626]/50 bg-transparent px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#DC2626] transition-colors hover:bg-[#DC2626]/10"
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                onClick={() => setActionError(null)}
+                aria-label="Dismiss error"
+                className="rounded-full bg-transparent px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary transition-colors hover:text-ink"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

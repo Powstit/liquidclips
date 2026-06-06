@@ -5,7 +5,7 @@
 // shares the same fuchsia HUD bracket language as the Workstation tiles.
 // Delete confirmation modal reskinned to match the cockpit modal voice.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open as openPath } from "@tauri-apps/plugin-shell";
 import { motion, AnimatePresence } from "motion/react";
 import { Trash2 } from "lucide-react";
@@ -30,6 +30,13 @@ export function LibraryTab({
   const [filter, setFilter] = useState<LibraryFilter>("all");
   const [confirmDelete, setConfirmDelete] = useState<ProjectLibrarySummary | null>(null);
 
+  // Container ref — used to scope the Cmd-K shortcut so it focuses THIS
+  // tab's search input rather than any other inbox/search field that might
+  // be mounted (e.g. when the user pops the NotificationSheet open over
+  // Library). The selector matches the placeholder text on LibraryWall's
+  // search field.
+  const containerRef = useRef<HTMLDivElement>(null);
+
   async function loadProjects() {
     setLoading(true);
     setError(null);
@@ -45,6 +52,30 @@ export function LibraryTab({
 
   useEffect(() => {
     void loadProjects();
+  }, []);
+
+  // Cmd-K / Ctrl-K → focus the library search input. Small QoL — without
+  // this, keyboard users have to click into the field every time they swap
+  // tabs. Scoped to the LibraryTab container so it doesn't fight other
+  // tabs that may share the same shortcut.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const meta = e.metaKey || e.ctrlKey;
+      if (meta && e.key.toLowerCase() === "k") {
+        const root = containerRef.current;
+        if (!root) return;
+        const input = root.querySelector<HTMLInputElement>(
+          'input[placeholder^="search clips"]'
+        );
+        if (input) {
+          e.preventDefault();
+          input.focus();
+          input.select();
+        }
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const filtered = useMemo(() => {
@@ -118,14 +149,44 @@ export function LibraryTab({
   const archivedCount = projects.filter((p) => p.archived).length;
 
   return (
-    <>
+    <div ref={containerRef}>
+      {error && (
+        // Retry surface — LibraryWall renders its own quieter inline error,
+        // but it has no recovery action. This banner sits above the wall so
+        // a failed loadProjects has an obvious "try again" path; without it
+        // the user is stranded on a dead "Something went wrong" line.
+        <div
+          role="alert"
+          className="mx-auto mb-4 flex w-full max-w-[1180px] items-center justify-between gap-3 rounded-2xl border border-[#DC2626]/30 bg-[#DC2626]/10 px-4 py-3 font-sans text-[13px] text-[#DC2626]"
+        >
+          <span className="min-w-0 flex-1 truncate">{error}</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void loadProjects()}
+              disabled={loading}
+              className="rounded-full border border-[#DC2626]/50 bg-transparent px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#DC2626] transition-colors hover:bg-[#DC2626]/15 disabled:opacity-50"
+            >
+              {loading ? "Retrying…" : "Retry"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              aria-label="Dismiss error"
+              className="rounded-full bg-transparent px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary transition-colors hover:text-ink"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
       <LibraryWall
         projects={projects}
         filtered={filtered}
         filter={filter}
         query={query}
         loading={loading}
-        error={error}
+        error={null}
         openingSlug={openingSlug}
         busySlug={busySlug}
         archivedCount={archivedCount}
@@ -149,7 +210,7 @@ export function LibraryTab({
           />
         )}
       </AnimatePresence>
-    </>
+    </div>
   );
 }
 

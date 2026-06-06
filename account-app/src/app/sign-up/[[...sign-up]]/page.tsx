@@ -43,7 +43,7 @@ export default function SignUpPage() {
         <div className="flex w-full max-w-[460px] flex-col items-center gap-6">
           <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
             <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-            create your junior
+            create your liquid clips account
           </div>
 
           <span

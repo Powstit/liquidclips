@@ -1,10 +1,32 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { Clock, Send, X, CheckCircle2, ExternalLink, Copy } from "lucide-react";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { AlertTriangle, Clock, Send, X, CheckCircle2, ExternalLink, Copy, RefreshCw } from "lucide-react";
 import { sidecar, humanError, type LocalScheduleItem } from "../../lib/sidecar";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
 import { HudChip } from "../cockpit/HudChip";
+
+// 6 hours past scheduled_for + still pending = the sidecar most likely missed
+// the reminder window (laptop asleep, app closed). Surface these explicitly
+// so they don't hide silently inside "Due now."
+const MISSED_REMINDER_THRESHOLD_MS = 6 * 60 * 60 * 1000;
+
+// Heuristic: an RPC rejection that mentions sidecar/spawn/EPIPE/ENOENT is the
+// helper-not-running case, not a transient list failure. We surface a
+// distinct restart affordance instead of pretending the queue is unreadable.
+function isSidecarDown(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    msg.includes("sidecar") ||
+    msg.includes("spawn") ||
+    msg.includes("epipe") ||
+    msg.includes("enoent") ||
+    msg.includes("not running") ||
+    msg.includes("not ready") ||
+    msg.includes("connection refused")
+  );
+}
 
 // Web composer URLs per platform. Liquid Clips copies the caption to the user's
 // clipboard and opens the platform's upload/composer page in the browser —
@@ -66,18 +88,49 @@ function whenRelative(iso: string): string {
  * No backend, no Postiz; runs offline. The 30s refresh tick is enough — the
  * sidecar is the only writer, so we never race ourselves.
  */
+type ToastState = { kind: "error" | "info"; message: string } | null;
+
 export function LocalQueue() {
   const [items, setItems] = useState<LocalScheduleItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sidecarDown, setSidecarDown] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Inline transient feedback (clipboard failure, openExternal failure, action
+  // errors). Auto-dismiss after 6s so it doesn't pile up.
+  const [toast, setToastState] = useState<ToastState>(null);
+  // Pending inline "are you sure?" for cancel — replaces native confirm().
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
+  // Captions surfaced as selectable text when clipboard.writeText fails — the
+  // user can long-press / triple-click to copy manually.
+  const [exposedCaption, setExposedCaption] = useState<{
+    id: string;
+    caption: string;
+  } | null>(null);
+  // Track per-action retry copy on missed-reminder rows.
+  const [retryHintId, setRetryHintId] = useState<string | null>(null);
+
+  function setToast(t: ToastState) {
+    setToastState(t);
+    if (t) {
+      window.setTimeout(() => setToastState((cur) => (cur === t ? null : cur)), 6000);
+    }
+  }
 
   const load = useCallback(async () => {
     try {
       const { items } = await sidecar.localScheduleList();
       setItems(items);
       setError(null);
+      setSidecarDown(false);
     } catch (e) {
-      setError(humanError(e));
+      if (isSidecarDown(e)) {
+        // Distinct "helper isn't running" state — restart is the recovery.
+        setSidecarDown(true);
+        setError(null);
+      } else {
+        setError(humanError(e));
+        setSidecarDown(false);
+      }
     }
   }, []);
 
@@ -94,17 +147,38 @@ export function LocalQueue() {
 
   async function copyAndOpen(item: LocalScheduleItem) {
     setBusyId(item.id);
+    setRetryHintId(null);
     try {
       const caption = item.caption || item.clip_title;
       if (caption) {
         try {
           await writeText(caption);
+          // Clear any prior exposed-caption state for this row on success.
+          setExposedCaption((cur) => (cur?.id === item.id ? null : cur));
         } catch (e) {
           console.warn("clipboard write failed:", e);
+          // The user needs the caption — surface it inline as selectable
+          // text so they can copy it by hand. Don't pretend it worked.
+          setExposedCaption({ id: item.id, caption });
+          setToast({
+            kind: "error",
+            message: "Couldn't copy caption — long-press the text below to select.",
+          });
         }
       }
       const url = COMPOSER_URL[item.platform] ?? null;
-      if (url) await openExternal(url);
+      if (url) {
+        try {
+          await openExternal(url);
+        } catch (e) {
+          // Browser launch failure (sandbox denial, no default browser, etc.)
+          // is silent on macOS otherwise — the user clicks and nothing happens.
+          setToast({
+            kind: "error",
+            message: `Couldn't open ${PLATFORM_LABEL[item.platform] ?? item.platform} — ${humanError(e)}`,
+          });
+        }
+      }
     } finally {
       setBusyId(null);
     }
@@ -115,20 +189,32 @@ export function LocalQueue() {
     try {
       await sidecar.localScheduleMarkPosted(item.id);
       await load();
+    } catch (e) {
+      setRetryHintId(item.id);
+      setToast({ kind: "error", message: `Couldn't mark posted — ${humanError(e)}` });
     } finally {
       setBusyId(null);
     }
   }
 
-  async function cancel(item: LocalScheduleItem) {
-    if (!confirm(`Cancel the ${PLATFORM_LABEL[item.platform] ?? item.platform} post of "${item.clip_title}"?`)) return;
+  async function confirmCancel(item: LocalScheduleItem) {
     setBusyId(item.id);
     try {
       await sidecar.localScheduleCancel(item.id);
+      setConfirmCancelId(null);
       await load();
+    } catch (e) {
+      setRetryHintId(item.id);
+      setToast({ kind: "error", message: `Couldn't cancel reminder — ${humanError(e)}` });
     } finally {
       setBusyId(null);
     }
+  }
+
+  function requestCancel(item: LocalScheduleItem) {
+    // Inline confirm — replaces native confirm() which is a modal trap on
+    // some setups and not styleable.
+    setConfirmCancelId(item.id);
   }
 
   async function remove(item: LocalScheduleItem) {
@@ -136,19 +222,83 @@ export function LocalQueue() {
     try {
       await sidecar.localScheduleRemove(item.id);
       await load();
+    } catch (e) {
+      setRetryHintId(item.id);
+      setToast({ kind: "error", message: `Couldn't remove row — ${humanError(e)}` });
     } finally {
       setBusyId(null);
     }
   }
 
-  if (error) {
+  async function handleRestart() {
+    try {
+      await relaunch();
+    } catch (e) {
+      setToast({
+        kind: "error",
+        message: `Couldn't restart automatically — quit and reopen Liquid Clips manually. (${humanError(e)})`,
+      });
+    }
+  }
+
+  if (sidecarDown) {
     return (
-      <div className="relative bg-transparent p-4 font-mono text-[12px] text-text-secondary">
+      <div className="relative flex flex-col gap-3 bg-transparent p-4 text-text-secondary">
         <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
         <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
         <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
         <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
-        Couldn't read the local schedule — {error}
+        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[#F59E0B]">
+          <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2.25} />
+          helper not running
+        </div>
+        <p className="font-sans text-[13px] leading-snug text-ink">
+          Liquid Clips helper isn&rsquo;t running yet &mdash; your reminders are safe but can&rsquo;t be shown here.
+          Restart Liquid Clips.
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void handleRestart()}
+            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright"
+          >
+            <RefreshCw className="h-3.5 w-3.5" strokeWidth={2.25} />
+            Restart Liquid Clips
+          </button>
+          <button
+            onClick={() => void load()}
+            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-2 font-sans text-[12px] font-medium text-text-secondary hover:text-ink"
+          >
+            Try again
+          </button>
+        </div>
+        {toast && (
+          <p
+            className={`mt-1 font-mono text-[11px] ${
+              toast.kind === "error" ? "text-[#DC2626]" : "text-text-secondary"
+            }`}
+          >
+            {toast.message}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="relative flex flex-col gap-3 bg-transparent p-4 font-mono text-[12px] text-text-secondary">
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
+        <span>Couldn&rsquo;t read the local schedule &mdash; {error}</span>
+        <button
+          onClick={() => void load()}
+          className="inline-flex w-fit items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-[12px] font-medium text-text-secondary hover:text-ink"
+        >
+          <RefreshCw className="h-3.5 w-3.5" strokeWidth={2} />
+          Retry
+        </button>
       </div>
     );
   }
@@ -180,17 +330,58 @@ export function LocalQueue() {
     );
   }
 
+  const rowProps = {
+    busyId,
+    confirmCancelId,
+    exposedCaptionId: exposedCaption?.id ?? null,
+    exposedCaption: exposedCaption?.caption ?? null,
+    retryHintId,
+    onCopyOpen: copyAndOpen,
+    onMarkPosted: markPosted,
+    onRequestCancel: requestCancel,
+    onConfirmCancel: confirmCancel,
+    onAbortCancel: () => setConfirmCancelId(null),
+    onRemove: remove,
+    onRetry: (item: LocalScheduleItem) => {
+      // Generic retry: re-run load. Per-action retries are usually transient
+      // (sidecar JSON-RPC stutter) so a single load() refresh + clear of the
+      // hint is enough.
+      setRetryHintId(null);
+      void load();
+      // Quieten the warning if it was only about this row.
+      if (busyId === item.id) setBusyId(null);
+    },
+  };
+
   return (
     <div className="flex flex-col gap-5">
+      {toast && (
+        <div
+          role="status"
+          className={`relative rounded-xl border px-3 py-2 font-sans text-[12px] ${
+            toast.kind === "error"
+              ? "border-[#DC2626]/40 bg-[#DC2626]/10 text-ink"
+              : "border-line bg-paper text-ink"
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
+      {groups.missed.length > 0 && (
+        <Group
+          title="Missed reminders"
+          tone="warn"
+          items={groups.missed}
+          {...rowProps}
+          markAsMissed
+        />
+      )}
       {groups.due.length > 0 && (
         <Group
           title="Due now"
           tone="fuchsia"
           items={groups.due}
-          busyId={busyId}
-          onCopyOpen={copyAndOpen}
-          onMarkPosted={markPosted}
-          onCancel={cancel}
+          {...rowProps}
         />
       )}
       {groups.upcoming.length > 0 && (
@@ -198,10 +389,7 @@ export function LocalQueue() {
           title="Upcoming"
           tone="neutral"
           items={groups.upcoming}
-          busyId={busyId}
-          onCopyOpen={copyAndOpen}
-          onMarkPosted={markPosted}
-          onCancel={cancel}
+          {...rowProps}
         />
       )}
       {groups.posted.length > 0 && (
@@ -209,8 +397,7 @@ export function LocalQueue() {
           title="Posted"
           tone="dim"
           items={groups.posted}
-          busyId={busyId}
-          onRemove={remove}
+          {...rowProps}
         />
       )}
       {groups.canceled.length > 0 && (
@@ -218,8 +405,7 @@ export function LocalQueue() {
           title="Canceled"
           tone="dim"
           items={groups.canceled}
-          busyId={busyId}
-          onRemove={remove}
+          {...rowProps}
         />
       )}
     </div>
@@ -230,6 +416,7 @@ export function LocalQueue() {
 
 function groupByStatus(items: LocalScheduleItem[]) {
   const now = Date.now();
+  const missed: LocalScheduleItem[] = [];
   const due: LocalScheduleItem[] = [];
   const upcoming: LocalScheduleItem[] = [];
   const posted: LocalScheduleItem[] = [];
@@ -237,43 +424,80 @@ function groupByStatus(items: LocalScheduleItem[]) {
   for (const it of items) {
     if (it.status === "posted") posted.push(it);
     else if (it.status === "canceled") canceled.push(it);
-    else if (new Date(it.scheduled_for).getTime() <= now) due.push(it);
-    else upcoming.push(it);
+    else {
+      const scheduledMs = new Date(it.scheduled_for).getTime();
+      const overdueBy = now - scheduledMs;
+      if (overdueBy > MISSED_REMINDER_THRESHOLD_MS) {
+        // Pending but >6h past — the user almost certainly missed the
+        // reminder window (laptop asleep, app closed). Surface as a
+        // distinct group instead of letting it rot in "Due now."
+        missed.push(it);
+      } else if (scheduledMs <= now) {
+        due.push(it);
+      } else {
+        upcoming.push(it);
+      }
+    }
   }
   // Soonest-first within each pending group; most-recent-first for posted/canceled.
   due.sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime());
   upcoming.sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime());
+  // Missed: most-overdue first so the user sees the worst offenders at the top.
+  missed.sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime());
   posted.sort((a, b) => (b.posted_at || "").localeCompare(a.posted_at || ""));
   canceled.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
-  return { due, upcoming, posted, canceled };
+  return { missed, due, upcoming, posted, canceled };
 }
 
 // ── group ───────────────────────────────────────────────────────────────
+
+type RowProps = {
+  busyId: string | null;
+  confirmCancelId: string | null;
+  exposedCaptionId: string | null;
+  exposedCaption: string | null;
+  retryHintId: string | null;
+  onCopyOpen: (item: LocalScheduleItem) => void;
+  onMarkPosted: (item: LocalScheduleItem) => void;
+  onRequestCancel: (item: LocalScheduleItem) => void;
+  onConfirmCancel: (item: LocalScheduleItem) => Promise<void>;
+  onAbortCancel: () => void;
+  onRemove: (item: LocalScheduleItem) => void;
+  onRetry: (item: LocalScheduleItem) => void;
+};
 
 function Group({
   title,
   tone,
   items,
+  markAsMissed = false,
   busyId,
+  confirmCancelId,
+  exposedCaptionId,
+  exposedCaption,
+  retryHintId,
   onCopyOpen,
   onMarkPosted,
-  onCancel,
+  onRequestCancel,
+  onConfirmCancel,
+  onAbortCancel,
   onRemove,
-}: {
+  onRetry,
+}: RowProps & {
   title: string;
-  tone: "fuchsia" | "neutral" | "dim";
+  tone: "fuchsia" | "neutral" | "dim" | "warn";
   items: LocalScheduleItem[];
-  busyId: string | null;
-  onCopyOpen?: (item: LocalScheduleItem) => void;
-  onMarkPosted?: (item: LocalScheduleItem) => void;
-  onCancel?: (item: LocalScheduleItem) => void;
-  onRemove?: (item: LocalScheduleItem) => void;
+  /** Renders the row in "missed reminder" mode — pill + Mark posted /
+   *  Dismiss pair instead of the standard pending actions. */
+  markAsMissed?: boolean;
 }) {
   const titleCls =
     tone === "fuchsia"
       ? "text-fuchsia-deep"
       : tone === "neutral"
       ? "text-text-secondary"
+      : tone === "warn"
+      ? "text-[#F59E0B]"
       : "text-text-tertiary";
   return (
     <section>
@@ -289,10 +513,17 @@ function Group({
             item={it}
             busy={busyId === it.id}
             urgent={tone === "fuchsia"}
+            missed={markAsMissed}
+            confirmCancelOpen={confirmCancelId === it.id}
+            exposedCaption={exposedCaptionId === it.id ? exposedCaption : null}
+            retryHint={retryHintId === it.id}
             onCopyOpen={onCopyOpen}
             onMarkPosted={onMarkPosted}
-            onCancel={onCancel}
+            onRequestCancel={onRequestCancel}
+            onConfirmCancel={onConfirmCancel}
+            onAbortCancel={onAbortCancel}
             onRemove={onRemove}
+            onRetry={onRetry}
           />
         ))}
       </div>
@@ -306,18 +537,32 @@ function Row({
   item,
   busy,
   urgent,
+  missed,
+  confirmCancelOpen,
+  exposedCaption,
+  retryHint,
   onCopyOpen,
   onMarkPosted,
-  onCancel,
+  onRequestCancel,
+  onConfirmCancel,
+  onAbortCancel,
   onRemove,
+  onRetry,
 }: {
   item: LocalScheduleItem;
   busy: boolean;
   urgent: boolean;
-  onCopyOpen?: (item: LocalScheduleItem) => void;
-  onMarkPosted?: (item: LocalScheduleItem) => void;
-  onCancel?: (item: LocalScheduleItem) => void;
-  onRemove?: (item: LocalScheduleItem) => void;
+  missed: boolean;
+  confirmCancelOpen: boolean;
+  exposedCaption: string | null;
+  retryHint: boolean;
+  onCopyOpen: (item: LocalScheduleItem) => void;
+  onMarkPosted: (item: LocalScheduleItem) => void;
+  onRequestCancel: (item: LocalScheduleItem) => void;
+  onConfirmCancel: (item: LocalScheduleItem) => Promise<void>;
+  onAbortCancel: () => void;
+  onRemove: (item: LocalScheduleItem) => void;
+  onRetry: (item: LocalScheduleItem) => void;
 }) {
   const platformLabel = PLATFORM_LABEL[item.platform] ?? item.platform;
   const isKnownPlatform =
@@ -338,6 +583,14 @@ function Row({
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink">
           {isKnownPlatform && <PlatformIcon id={item.platform as PlatformId} className="h-3.5 w-3.5" />}
           <span>{platformLabel}</span>
+          {missed && (
+            <>
+              <span className="text-text-tertiary">·</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#F59E0B]/15 px-2 py-0.5 text-[#F59E0B]">
+                <AlertTriangle className="h-3 w-3" strokeWidth={2.25} /> missed
+              </span>
+            </>
+          )}
           {item.status === "posted" && (
             <>
               <span className="text-text-tertiary">·</span>
@@ -371,8 +624,46 @@ function Row({
         </p>
       )}
 
+      {exposedCaption && (
+        // Clipboard write failed — surface the text so the user can copy
+        // it manually. Selectable, no truncation, mono so the user can
+        // tell where line breaks land.
+        <div className="mt-2 rounded-lg border border-[#F59E0B]/40 bg-[#F59E0B]/10 p-2">
+          <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#F59E0B]">
+            select and copy manually
+          </p>
+          <p className="select-text whitespace-pre-wrap break-words font-mono text-[12px] text-ink">
+            {exposedCaption}
+          </p>
+        </div>
+      )}
+
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {(item.status === "pending") && onCopyOpen && (
+        {missed && (
+          <>
+            <HudChip
+              active={false}
+              onClick={() => onMarkPosted(item)}
+              disabled={busy}
+              title="If you've already posted this manually, clear it out of the queue."
+            >
+              <Send className="h-3 w-3" strokeWidth={2} />
+              Mark as posted
+            </HudChip>
+            {!confirmCancelOpen && (
+              <button
+                onClick={() => onRequestCancel(item)}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 font-sans text-[12px] font-medium text-text-tertiary hover:text-ink disabled:opacity-50"
+                title="Dismiss this missed reminder."
+              >
+                <X className="h-3.5 w-3.5" strokeWidth={2} />
+                Dismiss
+              </button>
+            )}
+          </>
+        )}
+        {item.status === "pending" && !missed && (
           <button
             onClick={() => onCopyOpen(item)}
             disabled={busy}
@@ -387,7 +678,7 @@ function Row({
             Copy &amp; open {platformLabel}
           </button>
         )}
-        {item.status === "pending" && onMarkPosted && (
+        {item.status === "pending" && !missed && (
           <HudChip
             active={false}
             onClick={() => onMarkPosted(item)}
@@ -398,15 +689,38 @@ function Row({
             Mark posted
           </HudChip>
         )}
-        {item.status === "pending" && onCancel && (
+        {item.status === "pending" && !missed && !confirmCancelOpen && (
           <button
-            onClick={() => onCancel(item)}
+            onClick={() => onRequestCancel(item)}
             disabled={busy}
             className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 font-sans text-[12px] font-medium text-text-tertiary hover:text-[#DC2626] disabled:opacity-50"
           >
             <X className="h-3.5 w-3.5" strokeWidth={2} />
             Cancel
           </button>
+        )}
+        {confirmCancelOpen && (
+          // Inline confirm — replaces window.confirm(), which is a non-
+          // styleable modal trap on Tauri and surfaces no context.
+          <div className="flex flex-wrap items-center gap-2 rounded-full border border-[#DC2626]/40 bg-[#DC2626]/10 px-3 py-1.5">
+            <span className="font-sans text-[12px] text-ink">
+              {missed ? "Dismiss this missed reminder?" : `Cancel this ${platformLabel} reminder?`}
+            </span>
+            <button
+              onClick={() => void onConfirmCancel(item)}
+              disabled={busy}
+              className="rounded-full bg-[#DC2626] px-3 py-1 font-sans text-[12px] font-medium text-paper hover:bg-[#DC2626]/90 disabled:opacity-50"
+            >
+              {busy ? "canceling…" : missed ? "Yes, dismiss" : "Yes, cancel"}
+            </button>
+            <button
+              onClick={onAbortCancel}
+              disabled={busy}
+              className="rounded-full px-3 py-1 font-sans text-[12px] font-medium text-text-secondary hover:text-ink"
+            >
+              Keep it
+            </button>
+          </div>
         )}
         {item.status === "posted" && item.post_url && (
           <HudChip
@@ -420,7 +734,7 @@ function Row({
             Open post
           </HudChip>
         )}
-        {(item.status === "posted" || item.status === "canceled") && onRemove && (
+        {(item.status === "posted" || item.status === "canceled") && (
           <button
             onClick={() => onRemove(item)}
             disabled={busy}
@@ -428,6 +742,18 @@ function Row({
             title="Remove this row from your local history."
           >
             Clear
+          </button>
+        )}
+        {retryHint && (
+          // Last action failed — give the user a one-click retry rather
+          // than make them re-trigger from scratch. The error itself was
+          // toasted above the list.
+          <button
+            onClick={() => onRetry(item)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-[#DC2626] bg-transparent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-[#DC2626] hover:bg-[#DC2626]/10"
+          >
+            <RefreshCw className="h-3 w-3" strokeWidth={2.25} />
+            retry
           </button>
         )}
       </div>

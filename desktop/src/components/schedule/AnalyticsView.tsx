@@ -10,9 +10,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { ArrowUpDown, BarChart3, ExternalLink, Loader2, TrendingUp } from "lucide-react";
+import { AlertTriangle, BarChart3, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
 import * as backend from "../../lib/backend";
+import { humanError } from "../../lib/sidecar";
 import type { AnalyticsOverview, AnalyticsWindow, ChannelAnalyticsRow } from "./types";
 
 const WINDOWS: AnalyticsWindow[] = ["7d", "30d", "90d", "all"];
@@ -30,22 +31,42 @@ export function AnalyticsView() {
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
   const [channelRows, setChannelRows] = useState<ChannelAnalyticsRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>("views");
+  // Bump to force a re-fetch from the error banner's retry button.
+  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    void Promise.all([
-      backend.analyticsOverview(window),
-      backend.analyticsChannels(window),
-    ]).then(([o, ch]) => {
-      if (cancelled) return;
-      setOverview(o);
-      setChannelRows(ch);
-      setLoading(false);
-    });
+    setLoadError(null);
+    // Today backend.analyticsOverview/Channels swallow errors and return
+    // null / [] (see backend.ts:1134-1150). That's being fixed elsewhere.
+    // The try/catch here is the contract we want once they throw — a thrown
+    // rejection lands in `loadError` instead of stranding the user on an
+    // infinite loader or rendering the "No analytics yet" empty state as a
+    // lie. We do NOT treat the legitimate empty-data sentinel (`null` +
+    // `[]`) as an error — that's a genuine first-time state.
+    (async () => {
+      try {
+        const [o, ch] = await Promise.all([
+          backend.analyticsOverview(window),
+          backend.analyticsChannels(window),
+        ]);
+        if (cancelled) return;
+        setOverview(o);
+        setChannelRows(ch);
+      } catch (e) {
+        if (cancelled) return;
+        setOverview(null);
+        setChannelRows([]);
+        setLoadError(humanError(e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
     return () => { cancelled = true; };
-  }, [window]);
+  }, [window, retryNonce]);
 
   const sortedChannels = useMemo(() => {
     const copy = [...channelRows];
@@ -61,7 +82,11 @@ export function AnalyticsView() {
     );
   }
 
-  const noData = !overview || overview.total_posts === 0;
+  // Truthful "no data" check — only render the empty hero when the load
+  // succeeded AND the backend genuinely returned zero posts. A load error is
+  // surfaced explicitly above so the user can retry instead of being lied to
+  // with "no analytics yet".
+  const noData = !loadError && (!overview || overview.total_posts === 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -87,7 +112,25 @@ export function AnalyticsView() {
         </span>
       </div>
 
-      {noData ? (
+      {loadError ? (
+        <div className="flex flex-col items-center gap-3 rounded-3xl border border-[#DC2626]/40 bg-[#DC2626]/5 px-8 py-12 text-center">
+          <span className="grid h-12 w-12 place-items-center rounded-full bg-[#DC2626]/10 text-[#DC2626]">
+            <AlertTriangle size={20} strokeWidth={2.5} />
+          </span>
+          <h3 className="font-display text-[18px] font-semibold tracking-[-0.02em] text-ink">
+            Couldn't load analytics
+          </h3>
+          <p className="max-w-md font-sans text-[13px] leading-relaxed text-text-secondary">
+            {loadError}
+          </p>
+          <button
+            onClick={() => setRetryNonce((n) => n + 1)}
+            className="inline-flex items-center gap-2 rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Retry
+          </button>
+        </div>
+      ) : noData ? (
         <EmptyAnalytics />
       ) : (
         <>
@@ -139,9 +182,20 @@ export function AnalyticsView() {
               </div>
             </div>
             {sortedChannels.length === 0 ? (
-              <p className="px-4 py-6 text-center font-mono text-[11px] text-text-tertiary">
-                no analytics for this window yet
-              </p>
+              // Distinguish "overview ready, per-channel still settling" from
+              // "no posts in this window at all". If we have an overview but
+              // the per-channel breakdown is empty, that's a partial-fail
+              // (or in-flight aggregation) — not the same story as a window
+              // with literally zero posts.
+              overview && overview.total_posts > 0 ? (
+                <p className="px-4 py-6 text-center font-mono text-[11px] text-text-tertiary">
+                  overview ready — per-channel data still loading
+                </p>
+              ) : (
+                <p className="px-4 py-6 text-center font-mono text-[11px] text-text-tertiary">
+                  no analytics for this window yet
+                </p>
+              )
             ) : (
               <ul className="divide-y divide-line/40">
                 {sortedChannels.map((c) => (
@@ -182,7 +236,7 @@ function EmptyAnalytics() {
         No analytics yet
       </h3>
       <p className="max-w-md font-sans text-[13px] leading-relaxed text-text-secondary">
-        Numbers show up here once your first post goes live. Schedule one from the Workspace to get started — analytics refresh every 30 minutes after publish.
+        Numbers show up here once your first post goes live. If you just published, stats appear after the next refresh cycle — usually within 30 minutes. Otherwise, publish a clip from the Workspace to get started.
       </p>
     </div>
   );
@@ -253,5 +307,3 @@ function fmtNum(n: number): string {
   return String(n);
 }
 
-void TrendingUp;
-void ArrowUpDown;

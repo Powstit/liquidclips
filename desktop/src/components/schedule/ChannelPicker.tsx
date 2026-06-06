@@ -7,9 +7,10 @@
 // Multi-select for batch-publish is a follow-up.
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Plus } from "lucide-react";
+import { AlertTriangle, Loader2, Plus } from "lucide-react";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
 import * as backend from "../../lib/backend";
+import { humanError } from "../../lib/sidecar";
 import type { Channel } from "./types";
 
 export function ChannelPicker({
@@ -32,15 +33,23 @@ export function ChannelPicker({
 }) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void backend.listChannels().then((cs) => {
-      if (cancelled) return;
-      const usable = cs.filter((c) => c.status === "active" || c.status === "pending_link");
-      setChannels(usable);
-      setLoading(false);
-    });
+    (async () => {
+      try {
+        const cs = await backend.listChannels();
+        if (cancelled) return;
+        const usable = cs.filter((c) => c.status === "active" || c.status === "pending_link");
+        setChannels(usable);
+      } catch (e) {
+        if (cancelled) return;
+        setLoadError(humanError(e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
     return () => { cancelled = true; };
   }, []);
 
@@ -61,6 +70,28 @@ export function ChannelPicker({
     return (
       <div className="flex items-center gap-2 font-mono text-[11px] text-text-tertiary">
         <Loader2 className="h-3 w-3 animate-spin" /> loading channels…
+      </div>
+    );
+  }
+
+  if (loadError) {
+    // Distinct from the "no channels added yet" empty state — surface the
+    // failure with a recovery path instead of pretending the user has zero
+    // channels.
+    return (
+      <div className="flex flex-col items-start gap-3">
+        <div className="flex items-start gap-2 rounded-xl border border-[#DC2626]/40 bg-[#DC2626]/5 px-4 py-3">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#DC2626] mt-0.5" />
+          <div className="flex flex-col gap-0.5">
+            <p className="font-sans text-[12px] font-medium text-[#DC2626]">
+              Couldn't load channels — open <strong>Schedule → Loadout</strong> to add one
+            </p>
+            <p className="font-mono text-[10px] text-[#DC2626]/80">
+              {loadError}
+            </p>
+          </div>
+        </div>
+        {onAddChannel && <AddChannelButton onClick={onAddChannel} />}
       </div>
     );
   }
