@@ -15,6 +15,9 @@ the rest of the codebase looks for:
                          whop_client.oauth_complete — reads bounties +
                          submissions. NOT a hand-pasted API key; we no longer
                          show a paste box in production builds.)
+  - PEXELS_API_KEY      (optional reaction-library search provider)
+  - PIXABAY_API_KEY     (optional reaction-library search provider)
+  - GIPHY_API_KEY       (optional reaction-library search provider)
 
 Per spec §2.4 point 2: secrets never leave the machine. Decryption is
 in-memory at call time, never logged, never sent to Railway.
@@ -33,6 +36,9 @@ KNOWN_KEYS = (
     "LICENSE_JWT",
     "LIQUIDCLIPS_ONBOARDED",
     "JUNIOR_WHOP_TOKEN",
+    "PEXELS_API_KEY",
+    "PIXABAY_API_KEY",
+    "GIPHY_API_KEY",
 )
 
 

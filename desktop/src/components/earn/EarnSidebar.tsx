@@ -64,12 +64,17 @@ function ActiveBriefSection() {
       </header>
 
       {!active && (
-        <div className="rounded-xl border border-dashed border-line bg-paper-elev/40 p-3">
+        // Cockpit pass: bracket-frame empty state instead of dashed plate.
+        <div className="earn-frame relative p-3">
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
           <p className="font-sans text-[12px] text-ink">No campaign attached.</p>
           <button
             type="button"
             onClick={() => void openBrowsePanel(WHOP_REWARDS_URL)}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-fuchsia px-3 py-1 font-sans text-[11px] font-medium text-white hover:bg-fuchsia-bright"
+            className="mt-2 inline-flex items-center gap-1.5 bg-transparent px-1 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia hover:text-fuchsia-bright"
           >
             <ExternalLink size={11} /> Open browser
           </button>
@@ -77,7 +82,12 @@ function ActiveBriefSection() {
       )}
 
       {active && (
-        <div className="rounded-xl border border-fuchsia/40 bg-fuchsia-soft/30 p-3 shadow-[var(--glow-sm)]">
+        // Cockpit pass: bracket-frame active campaign tile, no glow plate.
+        <div className="earn-frame library-card relative p-3" data-hot="true">
+          <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+          <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+          <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+          <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
           <div className="flex flex-col gap-1">
             <span className="truncate font-sans text-[13px] font-medium text-ink">
               {active.title || "Untitled"}
@@ -89,7 +99,7 @@ function ActiveBriefSection() {
             {expanded && active.allowed_platforms.length > 0 && (
               <div className="mt-1 flex flex-wrap items-center gap-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
                 {active.allowed_platforms.slice(0, 4).map((p) => (
-                  <span key={p} className="rounded border border-line px-1.5 py-0.5">
+                  <span key={p} className="bg-transparent px-1 py-0.5">
                     {PLATFORM_LABEL[p]}
                   </span>
                 ))}

@@ -21,7 +21,7 @@ import os
 from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -140,22 +140,37 @@ class StartLinkResponse(BaseModel):
     profile_key_set: bool
 
 
+# Ayrshare's hosted-link page supports a ?platforms=<p> query to deep-link
+# the user past the platform-picker straight into a single platform's OAuth.
+# We restrict to the four platforms we expose so the URL can never be
+# poisoned with random strings from a client.
+_ALLOWED_PLATFORM_DEEPLINK = {"youtube", "tiktok", "instagram", "x", "facebook", "linkedin"}
+
+
 @router.post("/start-link", response_model=StartLinkResponse)
 def start_link(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
+    platform: str | None = Query(
+        None,
+        description="Optional. When set, the returned URL deep-links the user "
+                    "into a single platform's OAuth (skipping Ayrshare's "
+                    "platform-picker). 'youtube' | 'tiktok' | 'instagram' | 'x' | "
+                    "'facebook' | 'linkedin'.",
+    ),
 ) -> StartLinkResponse:
-    """In-app Ayrshare linking (sprint #14d).
+    """In-app linking — provisions an Ayrshare sub-profile for this user,
+    mints a short-lived JWT, and returns a hosted-link URL the desktop opens
+    in the user's system browser.
 
-    Provisions an Ayrshare sub-profile for this user (or reuses an existing
-    one), mints a short-lived JWT, and returns the hosted-link URL. The
-    desktop opens that URL inside a Tauri WebView so the user can OAuth
-    each platform (TikTok / Reels / YouTube / X) without leaving Liquid Clips
-    or signing up to Ayrshare.
+    Two-tier resolution:
+      1. generateJWT (clean — no Ayrshare login modal, branding hidden)
+      2. profileKey query-param fallback (used when JWT mint fails, e.g.
+         the org RSA private key isn't configured in Ayrshare dashboard)
 
-    Idempotent — repeated calls on the same user re-mint a fresh JWT against
-    the SAME profile key, so a closed-and-reopened linking window keeps the
-    same Ayrshare profile lineage.
+    When `platform` is set, the returned URL is deep-linked into that
+    platform's OAuth — Daniel's UX rule: "a 15-year-old clicks YouTube
+    and lands on Google sign-in, not on an Ayrshare login modal."
     """
     if not ayrshare.is_configured():
         raise HTTPException(
@@ -200,19 +215,55 @@ def start_link(
         db.commit()
         db.refresh(row)
 
-    # 2) Build the hosted-link URL. We use Ayrshare's profileKey query-param
-    # entry point — it accepts just the key and shows the social-accounts
-    # link page directly. The Business-plan generateJWT path needs an org
-    # RSA private key configured in Ayrshare dashboard (manual setup); the
-    # profileKey query-param flow works on every plan and is equally
-    # secure (the key is treated as a bearer credential anyway).
+    # 2) Build the hosted-link URL.
     #
-    # Custom Domain (e.g. social.liquidclips.app) takes over via
-    # AYRSHARE_LINK_DOMAIN env when configured.
+    # FIRST try generateJWT — it returns a URL with the JWT embedded so
+    # Ayrshare's hosted page skips the login modal entirely (Daniel's
+    # 15-year-old test). When the platform arg is set we pass allowedSocial
+    # so the hosted linker only renders that one platform.
+    #
+    # FALLBACK to the profileKey URL if the JWT mint fails — usually
+    # because the org RSA private key isn't yet set up in Ayrshare
+    # dashboard. The user still gets in, they just see the Ayrshare
+    # login modal once.
+    #
+    # AYRSHARE_LINK_DOMAIN env takes over for a Custom Domain.
     domain = (os.environ.get("AYRSHARE_LINK_DOMAIN", "").strip() or "app.ayrshare.com").rstrip("/")
     if not domain.startswith("http"):
         domain = f"https://{domain}"
-    link_url = f"{domain}/social-accounts?profileKey={profile_key}"
+
+    platform_slug: str | None = None
+    if platform:
+        p = platform.strip().lower()
+        if p in _ALLOWED_PLATFORM_DEEPLINK:
+            platform_slug = p
+
+    # JWT-based linking via Ayrshare's RSA Integration Package — returns
+    # a profile.ayrshare.com URL with no Ayrshare-org branding, no login
+    # modal, and (when allowedSocial is set) only the requested platform's
+    # tile rendered. This is the "15-year-old test" path.
+    link_url: str | None = None
+    try:
+        allowed = [platform_slug] if platform_slug else None
+        jwt_response = ayrshare.generate_jwt(profile_key, allowed_social=allowed)
+        url_from_jwt = (jwt_response or {}).get("url")
+        if isinstance(url_from_jwt, str) and url_from_jwt:
+            link_url = url_from_jwt
+    except httpx.HTTPError as exc:
+        log.warning("[social] generateJWT failed, falling back to profileKey URL: %s", exc)
+    except RuntimeError as exc:
+        # AYRSHARE_JWT_PRIVATE_KEY / AYRSHARE_DOMAIN not configured on Railway.
+        log.warning("[social] generateJWT prerequisites missing, falling back: %s", exc)
+    except Exception:  # noqa: BLE001 — any unexpected failure falls back gracefully
+        log.exception("[social] generateJWT raised unexpectedly, falling back")
+
+    if not link_url:
+        # Last-resort fallback (org branding visible). Should only fire when
+        # Railway env isn't set or Ayrshare returns an outage.
+        fallback_url = f"{domain}/social-accounts?profileKey={profile_key}"
+        if platform_slug:
+            fallback_url += f"&platforms={platform_slug}"
+        link_url = fallback_url
 
     return StartLinkResponse(link_url=link_url, profile_key_set=True)
 

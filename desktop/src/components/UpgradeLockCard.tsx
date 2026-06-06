@@ -13,7 +13,11 @@ export function UpgradeLockCard({
   totalClips: number;
 }) {
   return (
-    <article className="relative col-span-1 flex aspect-[3/5] flex-col justify-between overflow-hidden rounded-2xl border border-fuchsia-soft bg-gradient-to-b from-fuchsia-soft/40 via-paper to-paper p-5 shadow-[var(--shadow-e1)] sm:col-span-2 lg:col-span-3">
+    <article className="relative col-span-1 flex aspect-[3/5] flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-b from-fuchsia-soft/30 via-transparent to-transparent p-5 sm:col-span-2 lg:col-span-3">
+      <span className="cockpit-tile-corner-tl" aria-hidden />
+      <span className="cockpit-tile-corner-tr" aria-hidden />
+      <span className="cockpit-tile-corner-bl" aria-hidden />
+      <span className="cockpit-tile-corner-br" aria-hidden />
       <div className="flex items-center justify-between">
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
           locked · free tier

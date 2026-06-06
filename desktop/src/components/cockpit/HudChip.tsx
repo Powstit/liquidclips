@@ -18,6 +18,8 @@ export function HudChip({
   onClick,
   children,
   trailing,
+  disabled,
+  title,
 }: {
   active: boolean;
   onClick: () => void;
@@ -25,6 +27,10 @@ export function HudChip({
   /** Optional trailing slot — used by Library's "Archived" chip to show
    *  the count without breaking the active/inactive visual rhythm. */
   trailing?: ReactNode;
+  /** v0.6.39 — forwarded to the underlying <button>. Agent rounds 3 / 5
+   *  rely on these for Schedule channel picker + queue rows. */
+  disabled?: boolean;
+  title?: string;
 }) {
   const reduced = useReducedMotion();
   return (
@@ -34,7 +40,9 @@ export function HudChip({
       whileHover={reduced ? undefined : { y: -1, transition: { type: "spring", stiffness: 420, damping: 24 } }}
       whileTap={reduced ? undefined : { scale: 0.96 }}
       data-active={active ? "true" : "false"}
-      className="hud-chip relative inline-flex items-center gap-1.5 bg-transparent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] outline-none"
+      disabled={disabled}
+      title={title}
+      className="hud-chip relative inline-flex items-center gap-1.5 bg-transparent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] outline-none disabled:cursor-not-allowed disabled:opacity-50"
     >
       <span aria-hidden="true" className="hud-chip-corner hud-chip-corner-tl" />
       <span aria-hidden="true" className="hud-chip-corner hud-chip-corner-tr" />

@@ -159,10 +159,18 @@ export function WorkingStage({
   const poster = posterPathOf(project);
 
   return (
-    <div className="w-full max-w-[860px]">
+    <div className="library-card w-full max-w-[860px] bg-transparent p-6">
+      <span className="library-card-corner-tl" aria-hidden="true" />
+      <span className="library-card-corner-tr" aria-hidden="true" />
+      <span className="library-card-corner-bl" aria-hidden="true" />
+      <span className="library-card-corner-br" aria-hidden="true" />
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
         {poster && (
-          <div className="aspect-video w-full overflow-hidden rounded-2xl border border-line bg-paper-warm sm:w-[280px] sm:shrink-0">
+          <div className="cockpit-frame aspect-video w-full overflow-hidden rounded-2xl bg-transparent sm:w-[280px] sm:shrink-0">
+            <span className="cockpit-tile-corner-tl" aria-hidden="true" />
+            <span className="cockpit-tile-corner-tr" aria-hidden="true" />
+            <span className="cockpit-tile-corner-bl" aria-hidden="true" />
+            <span className="cockpit-tile-corner-br" aria-hidden="true" />
             <img src={convertFileSrc(poster)} alt="" className="h-full w-full object-cover" />
           </div>
         )}

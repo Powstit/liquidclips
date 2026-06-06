@@ -126,7 +126,12 @@ export function ClipCard({
   }
 
   return (
-    <article className="flex flex-col gap-3 rounded-2xl border border-line bg-paper p-4 shadow-[var(--shadow-e1)] transition-all duration-200 hover:-translate-y-[2px] hover:shadow-[var(--shadow-e2)]">
+    <article className="library-card relative flex flex-col gap-3 rounded-2xl p-4">
+      {/* Cockpit corner brackets — fuchsia HUD frame in lieu of full outline. */}
+      <span className="library-card-corner-tl" aria-hidden />
+      <span className="library-card-corner-tr" aria-hidden />
+      <span className="library-card-corner-bl" aria-hidden />
+      <span className="library-card-corner-br" aria-hidden />
       {/* Header: virality + theme + duration */}
       <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-[0.08em]">
         <div className="flex items-center gap-2">

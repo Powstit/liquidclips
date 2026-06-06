@@ -17,9 +17,13 @@ export function AddClipCard({
     <>
       <button
         onClick={() => setOpen(true)}
-        className="group flex aspect-[3/5] flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-line bg-paper-warm/30 p-4 transition-all hover:border-fuchsia hover:bg-fuchsia-soft/20 hover:shadow-[0_8px_28px_rgba(255,26,140,0.12)]"
+        className="library-card group relative flex aspect-[3/5] flex-col items-center justify-center gap-3 rounded-2xl p-4 transition-all hover:bg-fuchsia-soft/10"
       >
-        <div className="grid h-14 w-14 place-items-center rounded-full border border-line bg-paper font-display text-[28px] font-light text-fuchsia transition-colors group-hover:border-fuchsia group-hover:bg-fuchsia group-hover:text-white">
+        <span className="library-card-corner-tl" aria-hidden />
+        <span className="library-card-corner-tr" aria-hidden />
+        <span className="library-card-corner-bl" aria-hidden />
+        <span className="library-card-corner-br" aria-hidden />
+        <div className="grid h-14 w-14 place-items-center rounded-full border border-fuchsia/40 bg-transparent font-display text-[28px] font-light text-fuchsia transition-colors group-hover:border-fuchsia group-hover:bg-fuchsia group-hover:text-white">
           +
         </div>
         <div className="text-center">

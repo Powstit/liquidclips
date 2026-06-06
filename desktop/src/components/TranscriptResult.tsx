@@ -62,7 +62,11 @@ export function TranscriptResult({
 
       <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-[280px_1fr]">
         <div className="flex flex-col gap-3">
-          <div className="relative overflow-hidden rounded-2xl border border-line bg-ink shadow-[0_2px_12px_rgba(15,15,18,0.06)]">
+          <div className="cockpit-frame relative overflow-hidden rounded-2xl bg-transparent">
+            <span className="cockpit-tile-corner-tl" aria-hidden="true" />
+            <span className="cockpit-tile-corner-tr" aria-hidden="true" />
+            <span className="cockpit-tile-corner-bl" aria-hidden="true" />
+            <span className="cockpit-tile-corner-br" aria-hidden="true" />
             {posterSrc ? (
               <img
                 src={posterSrc}
@@ -79,7 +83,11 @@ export function TranscriptResult({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-line bg-paper p-4">
+          <div className="library-card relative rounded-2xl bg-transparent p-4">
+            <span className="library-card-corner-tl" aria-hidden="true" />
+            <span className="library-card-corner-tr" aria-hidden="true" />
+            <span className="library-card-corner-bl" aria-hidden="true" />
+            <span className="library-card-corner-br" aria-hidden="true" />
             <h3 className="font-display text-[15px] font-semibold leading-snug tracking-[-0.01em] text-ink line-clamp-3">
               {title}
             </h3>
@@ -95,14 +103,18 @@ export function TranscriptResult({
           </div>
 
           {meta.description && (
-            <div className="rounded-2xl border border-line bg-paper-warm/40 p-4">
+            <div className="library-card relative rounded-2xl bg-transparent p-4">
+              <span className="library-card-corner-tl" aria-hidden="true" />
+              <span className="library-card-corner-tr" aria-hidden="true" />
+              <span className="library-card-corner-bl" aria-hidden="true" />
+              <span className="library-card-corner-br" aria-hidden="true" />
               <div className="flex items-center justify-between gap-2">
                 <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
                   Original caption
                 </span>
                 <button
                   onClick={() => void copy("caption", meta.description!)}
-                  className="rounded-full border border-line bg-paper px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary hover:border-fuchsia hover:text-ink"
+                  className="hud-chip hover:!text-fuchsia"
                 >
                   {copied === "caption" ? "copied" : "copy"}
                 </button>
@@ -114,7 +126,11 @@ export function TranscriptResult({
           )}
         </div>
 
-        <div className="rounded-2xl border border-line bg-paper p-5 shadow-[0_2px_12px_rgba(15,15,18,0.04)]">
+        <div className="library-card relative rounded-2xl bg-transparent p-5">
+          <span className="library-card-corner-tl" aria-hidden="true" />
+          <span className="library-card-corner-tr" aria-hidden="true" />
+          <span className="library-card-corner-bl" aria-hidden="true" />
+          <span className="library-card-corner-br" aria-hidden="true" />
           <div className="flex items-center justify-between gap-3">
             <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
               Transcript
@@ -185,7 +201,11 @@ export function LiftingProgress({
   const unifiedPct = computeUnifiedPct(phase, percent);
   return (
     <div className="w-full max-w-[520px]">
-      <div className="rounded-2xl border border-line bg-paper p-6 shadow-[0_2px_12px_rgba(15,15,18,0.04)]">
+      <div className="library-card relative rounded-2xl bg-transparent p-6">
+        <span className="library-card-corner-tl" aria-hidden="true" />
+        <span className="library-card-corner-tr" aria-hidden="true" />
+        <span className="library-card-corner-bl" aria-hidden="true" />
+        <span className="library-card-corner-br" aria-hidden="true" />
         <div className="flex items-center justify-between gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
           <span className="flex items-center gap-2">
             <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
@@ -194,7 +214,7 @@ export function LiftingProgress({
           {onCancel && (
             <button
               onClick={onCancel}
-              className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors hover:border-[#DC2626] hover:text-[#DC2626]"
+              className="rounded-full border border-line bg-transparent px-3 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors hover:border-[#DC2626] hover:text-[#DC2626]"
             >
               Cancel
             </button>

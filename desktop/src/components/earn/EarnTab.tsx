@@ -7,14 +7,15 @@ import { InfoHint } from "../InfoHint";
 import { BountyCard } from "./BountyCard";
 import { BountyFilters } from "./BountyFilters";
 import { BountyDetail } from "./BountyDetail";
-import { SubmittedList } from "./SubmittedList";
-import { ApprovedList } from "./ApprovedList";
 import { Leaderboard } from "./Leaderboard";
 import { RewardClipsPanel } from "./RewardClipsPanel";
 import { EarnLayout } from "./EarnLayout";
 import { EarnTickerStrip } from "./EarnTickerStrip";
 import { EarnIconRail } from "./EarnIconRail";
 import { EarnSidebar } from "./EarnSidebar";
+import { PayoutsView } from "./PayoutsView";
+import { SponsoredBannerCarousel } from "./SponsoredBannerCarousel";
+import { HudChip } from "../cockpit/HudChip";
 import {
   matchesFilter,
   sortBounties,
@@ -34,11 +35,14 @@ import {
 
 const SUBMISSION_IDS_KEY = "junior:my-whop-submissions:v1";
 
+type SubmissionFilter = "all" | "submitted" | "approved" | "denied" | "paid";
+
 export function EarnTab({
   onStartBounty,
   onStartManualBounty,
   onResumeProject,
   onSignIn,
+  userTier,
 }: {
   onStartBounty: (bounty: WhopBounty) => void;
   // Beta fallback path — clipper pasted a bounty by hand, source URL too.
@@ -50,6 +54,9 @@ export function EarnTab({
   // AffiliateHero's "signed-out" CTA wants to send the user to FirstRun —
   // EarnTab proxies to App.tsx which owns the view state machine.
   onSignIn?: () => void;
+  // v0.6.41 — Restored after Agent 4 dropped the prop. SponsoredBannerCarousel
+  // gates campaign visibility on this; Pro/Agency users see locked banners otherwise.
+  userTier?: "free" | "solo" | "pro" | "agency" | null;
 }) {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [authSource, setAuthSource] = useState<
@@ -70,6 +77,11 @@ export function EarnTab({
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [activeBountyId, setActiveBountyId] = useState<string | null>(null);
   const [subTab, setSubTab] = useState<EarnSubTab>("available");
+  // Chip filter for the merged Submissions sub-tab — "All" surfaces every
+  // status, the rest filter down. Whop has no "paid" status today, so the
+  // Paid chip just yields an empty list until backend payout reconciliation
+  // ships.
+  const [submissionFilter, setSubmissionFilter] = useState<SubmissionFilter>("all");
   const [sort, setSort] = useState<SortKey>("best_match");
   const [filterPlatforms, setFilterPlatforms] = useState<ConnectedPlatform[]>([]);
   const [openOnly, setOpenOnly] = useState(true);
@@ -270,8 +282,18 @@ export function EarnTab({
     filterPlatforms,
   );
 
-  const submitted = submissions.filter((s) => s.status === "submitted" || s.status === "claimed" || s.status === "pending");
-  const approved = submissions.filter((s) => s.status === "approved" || s.status === "denied");
+  // Merged Submissions filter. "Paid" is unreachable from Whop's status set
+  // today — backend payout reconciliation will widen this when it lands.
+  const filteredSubmissions = submissions.filter((s) => {
+    if (submissionFilter === "all") return true;
+    if (submissionFilter === "submitted") {
+      return s.status === "submitted" || s.status === "claimed" || s.status === "pending";
+    }
+    if (submissionFilter === "approved") return s.status === "approved";
+    if (submissionFilter === "denied") return s.status === "denied";
+    // submissionFilter === "paid" — no Whop status currently maps; empty list.
+    return false;
+  });
 
   return (
     <EarnLayout
@@ -280,6 +302,10 @@ export function EarnTab({
       main={
         <div className="flex flex-col gap-4">
           <ConnectionBadge source={authSource} />
+
+          {/* v0.6.41 — Sponsored Rewards live only on Earn since v0.6.35.
+              Without this mount the home page has no rewards surface at all. */}
+          <SponsoredBannerCarousel tier={userTier ?? "free"} />
 
           {bountyError && (
             <div className="rounded-2xl border border-[#DC2626]/40 bg-[#DC2626]/5 p-4">
@@ -407,24 +433,157 @@ export function EarnTab({
             </div>
           )}
 
-          {subTab === "submitted" && (
-            <SubmittedList items={submitted} lastChecked={lastChecked} />
+          {subTab === "submissions" && (
+            <SubmissionsView
+              items={filteredSubmissions}
+              filter={submissionFilter}
+              onFilterChange={setSubmissionFilter}
+              lastChecked={lastChecked}
+            />
           )}
 
-          {subTab === "approved" && <ApprovedList items={approved} />}
+          {subTab === "payouts" && <PayoutsView />}
 
           {subTab === "leaderboard" && <Leaderboard />}
 
           {/* Reward Clips · Tracking Links — read-only list of clips the user
               has generated from Content Rewards. Always visible at the bottom
-              regardless of sub-tab (except leaderboard, which is its own
-              focused view). */}
-          {subTab !== "leaderboard" && <RewardClipsPanel />}
+              regardless of sub-tab (except leaderboard + payouts, which are
+              their own focused views). */}
+          {subTab !== "leaderboard" && subTab !== "payouts" && <RewardClipsPanel />}
         </div>
       }
       sidebar={<EarnSidebar />}
     />
   );
+}
+
+
+// Merged Submitted + Approved view. A HudChip row across the top filters by
+// status; the list below renders a unified row per submission with status-
+// driven color treatment (fuchsia eyebrow for paid-ish, #DC2626 for denied,
+// neutral otherwise). Replaces the legacy SubmittedList / ApprovedList split.
+function SubmissionsView({
+  items,
+  filter,
+  onFilterChange,
+  lastChecked,
+}: {
+  items: WhopSubmission[];
+  filter: SubmissionFilter;
+  onFilterChange: (next: SubmissionFilter) => void;
+  lastChecked: Date | null;
+}) {
+  const chips: Array<{ id: SubmissionFilter; label: string }> = [
+    { id: "all", label: "All" },
+    { id: "submitted", label: "Submitted" },
+    { id: "approved", label: "Approved" },
+    { id: "denied", label: "Denied" },
+    { id: "paid", label: "Paid" },
+  ];
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <h1 className="font-display text-[20px] font-semibold leading-tight tracking-[-0.015em] text-ink">
+          Submissions
+        </h1>
+        <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+          polled {lastChecked ? `${agoShort(lastChecked)} ago` : "never"} · auto-refresh every 10 min
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1">
+        {chips.map((c) => (
+          <HudChip key={c.id} active={filter === c.id} onClick={() => onFilterChange(c.id)}>
+            {c.label}
+          </HudChip>
+        ))}
+      </div>
+
+      {items.length === 0 ? (
+        <p className="font-mono text-[12px] text-text-tertiary">
+          Nothing here yet. Publish a clip from a reward and it shows up.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {items.map((s) => (
+            <SubmissionRow key={s.id} item={s} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubmissionRow({ item: s }: { item: WhopSubmission }) {
+  const denied = s.status === "denied";
+  const approved = s.status === "approved";
+  const eyebrowTone = denied
+    ? "text-[#DC2626]"
+    : approved
+      ? "text-fuchsia-deep"
+      : "text-text-tertiary";
+  const payout = s.formattedPayoutAmount
+    ? s.formattedPayoutAmount
+    : s.bounty
+      ? `${currencySymbol(s.bounty.currency)}${s.bounty.rewardPerUnitAmount.toFixed(2)} / 1k`
+      : "—";
+  return (
+    <article
+      className={`rounded-2xl border border-line bg-paper p-4 transition-colors hover:border-fuchsia/40 ${
+        denied ? "opacity-70" : ""
+      }`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h4 className="truncate font-display text-[15px] font-semibold leading-tight tracking-[-0.01em] text-ink">
+            {s.bounty?.title ?? "Reward"}
+          </h4>
+          <p
+            className={`mt-0.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] ${eyebrowTone}`}
+          >
+            {s.status}
+            {s.expiresAt && !approved && !denied
+              ? ` · auto-approves in ${hoursUntil(s.expiresAt)}h`
+              : ""}
+            {approved ? ` · ${s.verifiedVotesCount} verified votes` : ""}
+          </p>
+          {denied && s.denialReason && (
+            <p className="mt-1 font-mono text-[11px] text-[#DC2626]">
+              {s.denialReason}
+            </p>
+          )}
+        </div>
+        <div className="shrink-0 text-right">
+          <div
+            className={`font-display text-[14px] font-semibold tracking-[-0.01em] ${
+              approved ? "text-ink" : "text-text-secondary"
+            }`}
+          >
+            {payout}
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function currencySymbol(currency: string): string {
+  if (currency === "GBP") return "£";
+  if (currency === "USD") return "$";
+  return "";
+}
+
+function agoShort(d: Date): string {
+  const seconds = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h`;
+}
+
+function hoursUntil(iso: string): number {
+  return Math.max(0, Math.floor((new Date(iso).getTime() - Date.now()) / 3600_000));
 }
 
 

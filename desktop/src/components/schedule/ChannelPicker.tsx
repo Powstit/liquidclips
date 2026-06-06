@@ -7,7 +7,7 @@
 // Multi-select for batch-publish is a follow-up.
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
 import * as backend from "../../lib/backend";
 import type { Channel } from "./types";
@@ -17,12 +17,18 @@ export function ChannelPicker({
   onChange,
   filterPlatform,
   disabled,
+  onAddChannel,
 }: {
   value: string | null;                   // selected channel_id
   onChange: (channelId: string | null) => void;
   /** Optional filter — only show channels for this platform. */
   filterPlatform?: string;
   disabled?: boolean;
+  /** Optional "+ Add channel" affordance — rendered at the bottom of the
+   *  picker. Wired by PublishModal to close the modal and open Settings
+   *  → Channels so the user can link a new account without abandoning the
+   *  publish flow. */
+  onAddChannel?: () => void;
 }) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,9 +67,12 @@ export function ChannelPicker({
 
   if (filtered.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-line bg-paper-warm/40 px-4 py-3 font-sans text-[12px] text-text-secondary">
-        No channels added yet. Open <strong>Schedule → Channels</strong> to add one.
-      </p>
+      <div className="flex flex-col items-start gap-3">
+        <p className="rounded-xl border border-dashed border-line bg-paper-warm/40 px-4 py-3 font-sans text-[12px] text-text-secondary">
+          No channels added yet. Open <strong>Schedule → Channels</strong> to add one.
+        </p>
+        {onAddChannel && <AddChannelButton onClick={onAddChannel} />}
+      </div>
     );
   }
 
@@ -87,7 +96,21 @@ export function ChannelPicker({
           </div>
         </div>
       ))}
+      {onAddChannel && <AddChannelButton onClick={onAddChannel} />}
     </div>
+  );
+}
+
+function AddChannelButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-2 inline-flex items-center gap-1.5 self-start rounded-full border border-dashed border-fuchsia/40 bg-transparent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia transition-colors hover:border-fuchsia hover:text-fuchsia-bright"
+    >
+      <Plus className="h-3 w-3" strokeWidth={2.25} />
+      Add channel
+    </button>
   );
 }
 

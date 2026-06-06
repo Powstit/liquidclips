@@ -3,7 +3,7 @@
 // pill background. Bottom icon (Link) opens AffiliateHero as a popover.
 
 import { useState, type ReactNode } from "react";
-import { CheckCircle2, Clock4, Link as LinkIcon, Send, Target, Trophy } from "lucide-react";
+import { Clock4, Link as LinkIcon, Send, Target, Trophy, Wallet } from "lucide-react";
 import { AffiliateHeroPopover, useAffiliateAttention } from "./AffiliateHero";
 import type { EarnTab as EarnSubTab } from "./types";
 
@@ -13,8 +13,8 @@ import type { EarnTab as EarnSubTab } from "./types";
 const ITEMS: Array<{ id: EarnSubTab; label: string; chip: string; icon: ReactNode }> = [
   { id: "available",   label: "Open campaigns", chip: "Open",   icon: <Target size={14} /> },
   { id: "in_progress", label: "In progress",    chip: "Doing",  icon: <Clock4 size={14} /> },
-  { id: "submitted",   label: "Posted clips",   chip: "Posted", icon: <Send size={14} /> },
-  { id: "approved",    label: "Approved",       chip: "Paid",   icon: <CheckCircle2 size={14} /> },
+  { id: "submissions", label: "Submissions",    chip: "SUB",    icon: <Send size={14} /> },
+  { id: "payouts",     label: "Payouts",        chip: "PAY",    icon: <Wallet size={14} /> },
   // Task #69 — "Top affiliates" → "Top allies" per RPO vocab. Sub-tab id
   // ("leaderboard") + chip ("Top") stay; only the hover label flips.
   { id: "leaderboard", label: "Top allies", chip: "Top",    icon: <Trophy size={14} /> },

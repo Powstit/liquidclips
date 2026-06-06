@@ -1,13 +1,13 @@
 // Add-channel wizard (Schedule v2).
 //
 // Three states: form → linking → success. Form collects platform + label.
-// Linking opens the Tauri WebView (reusing sprint #14d's
-// `open_social_link_window`) and polls /channels/{id}/refresh until status
+// Linking opens the user's real browser (Google blocks OAuth in embedded
+// WebViews) and polls /channels/{id}/refresh until status
 // flips to 'active'. Success shows the linked handle + offers "schedule
 // your first post" CTA.
 
 import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Check, Link, Loader2, X } from "lucide-react";
 import * as backend from "../../lib/backend";
@@ -41,8 +41,9 @@ export function AddChannelModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [platform]);
 
-  // Listen for the Tauri window-close event so we know when the user
-  // finished (or abandoned) linking. Reuses sprint #14d's bus.
+  // Listen for the legacy Tauri window-close event. New builds open OAuth in
+  // the user's browser and move to polling immediately, but keeping this makes
+  // old embedded-window calls harmless during rollout.
   const stateRef = useRef(state);
   stateRef.current = state;
   useEffect(() => {
@@ -56,7 +57,7 @@ export function AddChannelModal({
     return () => { unlisten?.(); };
   }, []);
 
-  // Poll for status flip once the linking window closes.
+  // Poll for status flip once the browser link opens.
   useEffect(() => {
     if (state.kind !== "polling") return;
     let cancelled = false;
@@ -69,14 +70,15 @@ export function AddChannelModal({
         if (refreshed.status === "active") {
           clearInterval(interval);
           setState({ kind: "success", channel: refreshed });
-        } else if (attempts >= 10) {
-          // 10 × 1.5s = ~15s of polling. If still pending_link, surface a
+        } else if (attempts >= 40) {
+          // 40 × 1.5s = ~60s of polling. Browser OAuth can take longer than
+          // the old embedded-window path. If still pending_link, surface a
           // soft state: user can close and refresh manually later.
           clearInterval(interval);
           setState({ kind: "success", channel: refreshed });
         }
       } catch {
-        if (attempts >= 10) {
+        if (attempts >= 40) {
           clearInterval(interval);
           setState({ kind: "error", message: "Couldn't verify the link. Try refreshing the channel manually." });
         }
@@ -91,7 +93,8 @@ export function AddChannelModal({
     try {
       const { channel, link_url } = await backend.createChannel({ platform, label: label.trim() });
       setState({ kind: "linking", channel, linkUrl: link_url });
-      await invoke("open_social_link_window", { url: link_url });
+      await openExternal(link_url);
+      setState({ kind: "polling", channel });
     } catch (e) {
       setState({ kind: "error", message: e instanceof Error ? e.message : String(e) });
     }
@@ -119,7 +122,7 @@ export function AddChannelModal({
                   Add a social channel
                 </h2>
                 <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-                  One channel = one social handle. Pick the platform, give it a label, then OAuth the account inside the next window.
+                  One channel = one social handle. Pick the platform, give it a label, then OAuth the account in your browser.
                 </p>
               </header>
 
@@ -161,13 +164,13 @@ export function AddChannelModal({
             <>
               <header className="flex flex-col gap-1">
                 <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-fuchsia-deep">
-                  step 2 of 2 · linking in window
+                  step 2 of 2 · linking in browser
                 </p>
                 <h2 className="font-display text-[20px] font-semibold leading-tight tracking-[-0.02em] text-ink">
-                  Finish linking in the window
+                  Finish linking in your browser
                 </h2>
                 <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-                  A child window opened inside Liquid Clips. OAuth your {state.channel.platform} account there, then close the window.
+                  Your browser opened for {state.channel.platform} OAuth. Finish there, then return to Liquid Clips.
                 </p>
               </header>
               <div className="rounded-xl border border-line bg-paper-warm/40 p-4 text-center">
@@ -177,10 +180,10 @@ export function AddChannelModal({
                 </p>
               </div>
               <button
-                onClick={() => invoke("open_social_link_window", { url: state.linkUrl })}
+                onClick={() => openExternal(state.linkUrl)}
                 className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary hover:text-ink"
               >
-                window closed by mistake? click to reopen
+                browser tab closed by mistake? click to reopen
               </button>
             </>
           )}

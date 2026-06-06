@@ -335,7 +335,7 @@ function TrialCard({ customer }: { customer: AffiliateCustomer }) {
           See plans →
         </button>
         <button
-          onClick={() => void openExternal("https://jnremployee.com/refer")}
+          onClick={() => void openExternal("https://liquidclips.app/refer")}
           className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
         >
           How the referral program works ↗

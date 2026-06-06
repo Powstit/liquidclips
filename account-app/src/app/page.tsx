@@ -49,7 +49,7 @@ export default function Home() {
       </div>
 
       <footer className="mt-20 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-        <span>account.liquidclips.app</span>
+        <span>account.jnremployee.com</span>
         <div className="flex flex-wrap gap-5">
           <a href="https://liquidclips.app" className="hover:text-ink">liquidclips.app →</a>
           <a href="https://liquidclips.app/refunds" className="hover:text-ink">refunds</a>

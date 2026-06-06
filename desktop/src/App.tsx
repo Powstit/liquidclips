@@ -15,6 +15,7 @@ import { WorkstationRoom } from "./components/cockpit/WorkstationRoom";
 import { UploadPortal } from "./components/cockpit/UploadPortal";
 import { AvatarOrbit } from "./components/cockpit/AvatarOrbit";
 import { AvatarPanel } from "./components/cockpit/AvatarPanel";
+import SignalLine from "./components/cockpit/SignalLine";
 import { useAvatar } from "./lib/avatar";
 // v0.6.0 — sidebar nav restructure. The 6 NavTab buttons + Logo moved into
 // SideNav (fixed 64px left rail). Header right-side chips (status / bell /
@@ -43,8 +44,8 @@ import { JuniorLoader } from "./components/JuniorLoader";
 import { Splash } from "./components/Splash";
 import { NotificationBell } from "./components/NotificationBell";
 import { NotificationSheet } from "./components/NotificationSheet";
-import { UploadTab } from "./components/upload/UploadTab";
-import { PayoutsTab } from "./components/payouts/PayoutsTab";
+// v0.6.41 — UploadTab + PayoutsTab retired in Sprint 1 consolidation.
+// Upload queues fold into SchedulePage; Payouts becomes an Earn sub-tab.
 import { LibraryTab } from "./components/library/LibraryTab";
 import { InvadersOverlay } from "./components/invaders/InvadersOverlay";
 import { OnboardingOverlay } from "./components/onboarding/OnboardingOverlay";
@@ -86,14 +87,12 @@ function normalizeTier(t: string | null): "free" | "solo" | "pro" | "agency" | n
 
 type View =
   | { kind: "first-run" }
-  | { kind: "payouts" }
   | { kind: "empty" }
   | { kind: "quota" }
   | { kind: "earn" }
   | { kind: "learn" }
   | { kind: "library" }
   | { kind: "schedule" }
-  | { kind: "upload" }
   | { kind: "community" }
   | { kind: "bounty-setup"; bounty: WhopBounty }
   | { kind: "choosing-intent"; source: { kind: "file"; path: string } | { kind: "url"; url: string }; brief: string; bounty?: WhopBounty }
@@ -147,7 +146,7 @@ export default function App() {
   // → recovers without a restart.
   const [needsActivation, setNeedsActivation] = useState(false);
   // Auth indicator. true once we've confirmed the user has a license JWT in
-  // the keychain (i.e. they've activated via account.liquidclips.app). Drives
+  // the keychain (i.e. they've activated via account.jnremployee.com). Drives
   // the top-nav button copy — "Sign in" while null/false, "Account" once true.
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   // Free clip exports left on the 100-export starter pass. null = unlimited
@@ -396,7 +395,7 @@ export default function App() {
   // persists internally for the session (high score is on disk), so reopening
   // resumes from a fresh wave 1.
   useEffect(() => {
-    const terminalKinds: View["kind"][] = ["results", "lifted", "failed", "canceled", "empty", "earn", "learn", "schedule", "upload", "payouts"];
+    const terminalKinds: View["kind"][] = ["results", "lifted", "failed", "canceled", "empty", "earn", "learn", "schedule"];
     if (terminalKinds.includes(view.kind)) {
       closeInvaders();
     }
@@ -830,10 +829,6 @@ export default function App() {
         return "learn";
       case "schedule":
         return "schedule";
-      case "upload":
-        return "upload";
-      case "payouts":
-        return "payouts";
       case "community":
         return "community";
       case "deps-missing":
@@ -874,12 +869,6 @@ export default function App() {
               break;
             case "schedule":
               setView({ kind: "schedule" });
-              break;
-            case "upload":
-              setView({ kind: "upload" });
-              break;
-            case "payouts":
-              setView({ kind: "payouts" });
               break;
             case "community":
               // v0.6.19 — Community rail click does two things at once:
@@ -936,16 +925,9 @@ export default function App() {
             cockpit — they ignore the parallax CSS vars and shouldn't tilt
             during heavy progress UIs. */}
         <Cockpit>
-        {view.kind === "upload" && (
-          <RoomShell roomKey="upload" align="top">
-            <UploadTab
-              onOpenSettings={() => setSettingsOpen(true)}
-              onOpenProject={(project) => setView({ kind: "results", project })}
-              onOpenSchedule={() => setView({ kind: "schedule" })}
-            />
-          </RoomShell>
-        )}
-
+        {/* v0.6.39 — Ambient bottom-edge ticker rotating rank / next-scheduled
+            / today's leader signals. Fixed-position; below modals (z-20). */}
+        <SignalLine />
         {view.kind === "library" && (
           <RoomShell roomKey="library" align="top">
             <LibraryTab
@@ -953,10 +935,6 @@ export default function App() {
               onGoToWorkstation={() => setView({ kind: "empty" })}
             />
           </RoomShell>
-        )}
-
-        {view.kind === "payouts" && (
-          <RoomShell roomKey="payouts" align="top"><PayoutsTab /></RoomShell>
         )}
 
         {view.kind === "learn" && (
@@ -1173,7 +1151,7 @@ export default function App() {
               <button
                 onClick={() => {
                   void import("@tauri-apps/plugin-shell").then((m) =>
-                    m.open("https://account.liquidclips.app/upgrade"),
+                    m.open("https://account.jnremployee.com/upgrade"),
                   );
                 }}
                 className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white hover:bg-fuchsia-bright"

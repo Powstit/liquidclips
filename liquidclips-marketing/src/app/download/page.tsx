@@ -3,6 +3,22 @@ import Link from "next/link";
 import { PageShell } from "@/components/Chrome";
 import { downloadUrl, supportEmail } from "@/lib/site";
 
+// v0.6.11 — On the /download page itself, downloadUrl loops back here when no
+// real DMG URL is configured (NEXT_PUBLIC_DOWNLOAD_DMG_URL unset). Detect the
+// self-link case and swap the button to a mailto: that captures interest
+// without sending the user nowhere.
+const isPlaceholderUrl = (url: string) =>
+  url === "/download" || url === "https://liquidclips.app/download";
+const downloadCtaHref = isPlaceholderUrl(downloadUrl)
+  ? `mailto:${supportEmail}?subject=${encodeURIComponent("Let me know when Liquid Clips is downloadable")}`
+  : downloadUrl;
+const downloadCtaLabel = isPlaceholderUrl(downloadUrl)
+  ? "Email me when ready"
+  : "Download DMG";
+const heroCtaLabel = isPlaceholderUrl(downloadUrl)
+  ? "Email me when ready"
+  : "Download for Mac";
+
 export const metadata: Metadata = {
   title: "Download Liquid Clips",
   description:
@@ -51,15 +67,17 @@ export default function DownloadPage() {
                 to be an app.
               </p>
               <div className="hero-actions">
-                <a className="button-primary" href={downloadUrl}>
-                  Download for Mac
+                <a className="button-primary" href={downloadCtaHref}>
+                  {heroCtaLabel}
                 </a>
                 <Link className="button-secondary" href="/#pricing">
                   See pricing
                 </Link>
               </div>
               <p className="microcopy">
-                The button always points at the latest published release.
+                {isPlaceholderUrl(downloadUrl)
+                  ? "Public DMG drops at the launch window. Email us and we'll let you know the moment it's live."
+                  : "The button always points at the latest published release."}
               </p>
             </div>
 
@@ -170,8 +188,8 @@ export default function DownloadPage() {
                   Free includes 100 clip exports. No card, no trial timer.
                 </p>
               </div>
-              <a className="button-primary" href={downloadUrl}>
-                Download DMG
+              <a className="button-primary" href={downloadCtaHref}>
+                {downloadCtaLabel}
               </a>
             </div>
           </div>

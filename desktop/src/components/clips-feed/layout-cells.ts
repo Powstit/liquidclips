@@ -35,39 +35,39 @@ export const LAYOUT_TOPOLOGY: Record<LayoutKey, LayoutTopology> = {
   },
   "stack-bottom": {
     key: "stack-bottom",
-    label: "Stack · b-roll bottom",
+    label: "Stack below",
     cells: [
-      { role: "main",  label: "Top — main clip",  rect: { x: 0, y: 0,   w: 1, h: 0.5 }, isMain: true },
-      { role: "broll", label: "Bottom — b-roll",  rect: { x: 0, y: 0.5, w: 1, h: 0.5 } },
+      { role: "main",  label: "Top — main clip",     rect: { x: 0, y: 0,   w: 1, h: 0.5 }, isMain: true },
+      { role: "broll", label: "Bottom — reaction",   rect: { x: 0, y: 0.5, w: 1, h: 0.5 } },
     ],
   },
   "stack-top": {
     key: "stack-top",
-    label: "Stack · b-roll top",
+    label: "Stack above",
     cells: [
-      { role: "broll", label: "Top — b-roll",     rect: { x: 0, y: 0,   w: 1, h: 0.5 } },
-      { role: "main",  label: "Bottom — main",    rect: { x: 0, y: 0.5, w: 1, h: 0.5 }, isMain: true },
+      { role: "broll", label: "Top — reaction",      rect: { x: 0, y: 0,   w: 1, h: 0.5 } },
+      { role: "main",  label: "Bottom — main",       rect: { x: 0, y: 0.5, w: 1, h: 0.5 }, isMain: true },
     ],
   },
   "split-left": {
     key: "split-left",
-    label: "Split · b-roll left",
+    label: "Split left",
     cells: [
-      { role: "broll", label: "Left — b-roll", rect: { x: 0, y: 0, w: 0.5, h: 1 } },
-      { role: "main", label: "Right — main clip", rect: { x: 0.5, y: 0, w: 0.5, h: 1 }, isMain: true },
+      { role: "broll", label: "Left — reaction",     rect: { x: 0,   y: 0, w: 0.5, h: 1 } },
+      { role: "main",  label: "Right — main clip",   rect: { x: 0.5, y: 0, w: 0.5, h: 1 }, isMain: true },
     ],
   },
   "split-right": {
     key: "split-right",
-    label: "Split · b-roll right",
+    label: "Split right",
     cells: [
-      { role: "main", label: "Left — main clip", rect: { x: 0, y: 0, w: 0.5, h: 1 }, isMain: true },
-      { role: "broll", label: "Right — b-roll", rect: { x: 0.5, y: 0, w: 0.5, h: 1 } },
+      { role: "main",  label: "Left — main clip",    rect: { x: 0,   y: 0, w: 0.5, h: 1 }, isMain: true },
+      { role: "broll", label: "Right — reaction",    rect: { x: 0.5, y: 0, w: 0.5, h: 1 } },
     ],
   },
   "pip-br": {
     key: "pip-br",
-    label: "PiP · bottom-right",
+    label: "PiP right",
     cells: [
       { role: "main",  label: "Full — main clip",       rect: { x: 0, y: 0,   w: 1, h: 1 },   isMain: true },
       { role: "inset", label: "Inset — bottom right",   rect: { x: 0.6, y: 0.65, w: 0.36, h: 0.32 } },
@@ -75,7 +75,7 @@ export const LAYOUT_TOPOLOGY: Record<LayoutKey, LayoutTopology> = {
   },
   "pip-bl": {
     key: "pip-bl",
-    label: "PiP · bottom-left",
+    label: "PiP left",
     cells: [
       { role: "main",  label: "Full — main clip",      rect: { x: 0, y: 0,   w: 1, h: 1 },   isMain: true },
       { role: "inset", label: "Inset — bottom left",   rect: { x: 0.04, y: 0.65, w: 0.36, h: 0.32 } },

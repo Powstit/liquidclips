@@ -9,3 +9,5 @@ export { IconButton } from "./IconButton";
 export { Pill } from "./Pill";
 export { HudBadge } from "./HudBadge";
 export type { HudBadgeVariant } from "./HudBadge";
+export { PageHeader } from "./PageHeader";
+export type { PageHeaderProps } from "./PageHeader";

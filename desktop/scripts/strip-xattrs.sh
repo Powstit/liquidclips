@@ -8,6 +8,14 @@ cd "$(dirname "$0")/.."
 
 echo "=== Stripping extended attributes from bundled files ==="
 
+# Stale failed bundles can retain FinderInfo/resource-fork xattrs on the
+# .app directory itself. Tauri creates/signs the macOS bundle after this hook,
+# so remove generated bundle artifacts up front instead of trying to re-sign
+# a dirty prior app.
+rm -rf "src-tauri/target/release/bundle/macos/Liquid Clips.app" 2>/dev/null || true
+rm -rf "src-tauri/target/release/bundle/macos/Liquid Clips.app.tar.gz" 2>/dev/null || true
+rm -rf "src-tauri/target/release/bundle/macos/Liquid Clips.app.tar.gz.sig" 2>/dev/null || true
+
 # Python sidecar
 xattr -cr python-sidecar/*.py 2>/dev/null || true
 xattr -cr python-sidecar/requirements.txt 2>/dev/null || true
@@ -25,5 +33,17 @@ xattr -cr src-tauri/icons/ 2>/dev/null || true
 xattr -cr src-tauri/entitlements* 2>/dev/null || true
 xattr -cr src-tauri/*.xcprivacy 2>/dev/null || true
 xattr -cr src-tauri/target/release/ 2>/dev/null || true
+
+# On this macOS/File Provider setup, the compiled Mach-O can retain
+# com.apple.macl even after `xattr -cr`, and codesign rejects that as
+# "resource fork, Finder information, or similar detritus". Rewriting the
+# file bytes through dd creates a clean executable copy without macl.
+if [ -f "src-tauri/target/release/junior-desktop" ]; then
+  tmp_bin="$(mktemp "src-tauri/target/release/junior-desktop.XXXXXX")"
+  dd if="src-tauri/target/release/junior-desktop" of="$tmp_bin" bs=1048576 status=none
+  chmod 755 "$tmp_bin"
+  mv "$tmp_bin" "src-tauri/target/release/junior-desktop"
+  xattr -cr "src-tauri/target/release/junior-desktop" 2>/dev/null || true
+fi
 
 echo "✓ xattrs stripped"

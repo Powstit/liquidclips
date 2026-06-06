@@ -13,11 +13,24 @@ import pkg from "../../package.json";
 // import settingsCover from "../assets/decks/settings.png";
 const APP_VERSION: string = pkg.version;
 const SUPPORT_EMAIL = "hello@liquidclips.app";
-import { syncStatus, meStatus, meAffiliate, socialGetConnection, type SyncStatus, type MeStatus } from "../lib/backend";
+type BuildEnv = ImportMetaEnv & {
+  readonly VITE_BUILD_HASH?: string;
+  readonly VITE_GIT_SHA?: string;
+  readonly VITE_COMMIT_SHA?: string;
+};
+const BUILD_HASH =
+  (import.meta.env as BuildEnv).VITE_BUILD_HASH ??
+  (import.meta.env as BuildEnv).VITE_GIT_SHA ??
+  (import.meta.env as BuildEnv).VITE_COMMIT_SHA ??
+  import.meta.env.MODE;
+const CLIP_STORAGE_PATH = "~/LiquidClips/";
+const LOG_PATH = "~/LiquidClips/projects/<slug>/.progress.json";
+import { syncStatus, meStatus, meAffiliate, type SyncStatus, type MeStatus } from "../lib/backend";
 import { applyUpdate, checkForUpdate, readLastUpdateCheck, type LastUpdateCheck, type UpdateState } from "../lib/updater";
-import { ChevronRight } from "lucide-react";
 import { getTelemetryConsent, setTelemetryConsent } from "../lib/telemetry";
+import { resetIntroSeen } from "../lib/intro";
 import { BadgeShelf } from "./BadgeShelf";
+import { HudChip } from "./cockpit/HudChip";
 
 // Settings panel per spec §3.8 screen 8 — one scrollable page.
 // Opens as a modal sheet from the gear icon in the header.
@@ -30,16 +43,22 @@ const WHOP_MANAGE_URL = "https://whop.com/jnremployee";
 // v0.6.4 — Strict-utility (Whop-pattern) Settings.
 // Categories drive what the right pane shows; left rail switches between
 // them. No painted decoration inside chrome (the v0.6.3 cover hero retired).
-type SettingsCategory = "account" | "connections" | "keys" | "about";
+type SettingsCategory = "account" | "keys" | "about" | "diagnostics";
+type DepsInfo = {
+  ok: boolean;
+  missing: string[];
+  errors: Record<string, string>;
+  python: string;
+};
 
 const CATEGORY_LABELS: Record<SettingsCategory, string> = {
   account: "Account",
-  connections: "Connections",
   keys: "API keys",
   about: "About",
+  diagnostics: "Diagnostics",
 };
 
-export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: { onClose: () => void; onSignOut?: () => void; onOpenSchedule?: () => void; tier?: Tier }) {
+export function Settings({ onClose, onSignOut, tier = "free" }: { onClose: () => void; onSignOut?: () => void; onOpenSchedule?: () => void; tier?: Tier }) {
   const [secrets, setSecrets] = useState<Record<SecretName, boolean> | null>(null);
   const [hw, setHw] = useState<HardwareInfo | null>(null);
   const [editingKey, setEditingKey] = useState<SecretName | null>(null);
@@ -48,6 +67,10 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
   const [lastUpdateCheck, setLastUpdateCheck] = useState<LastUpdateCheck | null>(() => readLastUpdateCheck());
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const [syncChecked, setSyncChecked] = useState(false);
+  const [deps, setDeps] = useState<DepsInfo | null>(null);
+  const [depsError, setDepsError] = useState<string | null>(null);
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  const [introReset, setIntroReset] = useState(false);
   // v0.6.3 — /me load for the compact header + WhoAmI section.
   const [me, setMe] = useState<MeStatus | null>(null);
   // v0.6.4 — Whop-pattern left-rail / right-pane layout.
@@ -70,6 +93,7 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
   useEffect(() => {
     void sidecar.secretsStatus().then((r) => setSecrets(r.secrets));
     void sidecar.hardwareInfo().then(setHw);
+    void sidecar.checkDeps().then(setDeps).catch((e) => setDepsError(humanError(e)));
     void syncStatus()
       .then(setSync)
       .finally(() => setSyncChecked(true));
@@ -89,6 +113,13 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
     await sidecar.secretDelete(name);
     const refreshed = await sidecar.secretsStatus();
     setSecrets(refreshed.secrets);
+  }
+
+  async function copyDiagnostics() {
+    const dump = buildDiagnosticsMarkdown({ deps, depsError, hw, sync, me });
+    await writeText(dump);
+    setDiagnosticsCopied(true);
+    window.setTimeout(() => setDiagnosticsCopied(false), 1800);
   }
 
   return (
@@ -181,8 +212,6 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
           </Section>
           )}
 
-          {category === "connections" && <ConnectionsSection onOpenSchedule={onOpenSchedule} />}
-
           {category === "account" && <AffiliatePayoutsSection />}
 
           {category === "account" && (
@@ -193,19 +222,26 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
             </Section>
           )}
 
+          {category === "diagnostics" && (
+            <DiagnosticsSection
+              deps={deps}
+              depsError={depsError}
+              hw={hw}
+              copied={diagnosticsCopied}
+              onCopy={() => void copyDiagnostics()}
+            />
+          )}
+
           {category === "about" && (
           <Section eyebrow="output folder" title="Where Liquid Clips writes everything.">
-            <Row label="Folder" value="~/LiquidClips" mono />
+            <Row label="Folder" value={CLIP_STORAGE_PATH} mono />
             <p className="font-sans text-[13px] text-text-secondary">
               Every project gets its own subfolder with source, audio, transcript, clips, thumbnails,
               and metadata. Open it any time and find every asset the app made.
             </p>
-            <button
-              onClick={() => void openExternal(`${homeDir()}/LiquidClips`)}
-              className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia"
-            >
+            <HudChip active={false} onClick={() => void openExternal(`${homeDir()}/LiquidClips`)}>
               Open in Finder →
-            </button>
+            </HudChip>
           </Section>
           )}
 
@@ -228,13 +264,13 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
               again so you can verify the current install without guessing.
             </p>
             <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={onCheckForUpdate}
+              <HudChip
+                active={updateState.kind === "available"}
+                onClick={() => void onCheckForUpdate()}
                 disabled={updateState.kind === "checking" || updateState.kind === "downloading" || updateState.kind === "installing"}
-                className="rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-50"
               >
                 {updateState.kind === "checking" ? "Checking…" : "Check for updates"}
-              </button>
+              </HudChip>
               {updateState.kind === "up-to-date" && (
                 <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
                   ● up to date
@@ -245,12 +281,9 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
                   <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
                     ● {updateState.update.version} ready
                   </span>
-                  <button
-                    onClick={onApplyUpdate}
-                    className="rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
-                  >
+                  <HudChip active onClick={() => void onApplyUpdate()}>
                     Install + relaunch →
-                  </button>
+                  </HudChip>
                 </>
               )}
               {updateState.kind === "downloading" && (
@@ -293,7 +326,30 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
               initial={() => getTelemetryConsent()}
               onChange={(next) => setTelemetryConsent(next)}
             />
-            <Row label="Version" value={APP_VERSION} mono />
+            <div className="flex flex-wrap items-center gap-2 border-t border-line/60 pt-3">
+              <span className="inline-flex items-center rounded-full border border-fuchsia/60 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia">
+                v{APP_VERSION}
+              </span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                build · {BUILD_HASH}
+              </span>
+              <HudChip
+                active={introReset}
+                onClick={() => {
+                  resetIntroSeen();
+                  setIntroReset(true);
+                }}
+              >
+                {introReset ? "Intro ready to replay" : "Watch intro again →"}
+              </HudChip>
+              <button
+                type="button"
+                onClick={() => void openExternal(`mailto:${SUPPORT_EMAIL}`)}
+                className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia hover:text-fuchsia-deep"
+              >
+                {SUPPORT_EMAIL}
+              </button>
+            </div>
             {hw && <Row label="Machine" value={`${hw.ram_gb}GB RAM · ${hw.cpu_count} CPU · ${hw.free_disk_gb}GB free`} />}
             <div className="flex flex-wrap gap-3 pt-1">
               <a
@@ -343,9 +399,16 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
 }
 
 function Section({ eyebrow, title, children }: { eyebrow: string; title: string; children: React.ReactNode }) {
+  // v0.6.39 cockpit pass — transparent panel, fuchsia HUD bracket corners,
+  // no plate. Section is the main reusable "category card" in Settings, so
+  // changing here covers Account / API keys / About at once.
   return (
-    <section className="flex flex-col gap-3 rounded-2xl border border-line bg-paper p-5">
-      <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">{eyebrow}</div>
+    <section className="relative flex flex-col gap-3 p-5">
+      <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+      <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+      <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+      <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
+      <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia">{eyebrow}</div>
       <h3 className="font-display text-[20px] font-semibold tracking-[-0.015em] text-ink">{title}</h3>
       {children}
     </section>
@@ -357,6 +420,18 @@ function Row({ label, value, mono = false }: { label: string; value: string; mon
     <div className="flex items-center justify-between border-t border-line/60 pt-2">
       <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-tertiary">{label}</span>
       <span className={mono ? "font-mono text-[12px] text-ink" : "font-sans text-[14px] text-ink"}>{value}</span>
+    </div>
+  );
+}
+
+function BracketFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative flex flex-col gap-2 p-3">
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
+      {children}
     </div>
   );
 }
@@ -384,8 +459,8 @@ function SecretRow({
 }) {
   if (editing) {
     return (
-      <div className="rounded-xl border border-fuchsia/40 bg-paper p-3">
-        <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-fuchsia-deep">{name}</div>
+      <div className="border-t border-line/60 pt-3">
+        <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-fuchsia">{name}</div>
         <input
           type="password"
           autoFocus
@@ -394,21 +469,15 @@ function SecretRow({
           value={draftValue}
           onChange={(e) => onDraftChange(e.target.value)}
           placeholder={name === "OPENAI_API_KEY" ? "sk-proj-..." : "your key"}
-          className="mt-2 w-full rounded-full border border-line bg-paper-warm/40 px-4 py-2 font-mono text-[12px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
+          className="mt-2 w-full border-b border-line bg-transparent px-0 py-2 font-mono text-[12px] text-ink outline-none placeholder:text-text-tertiary focus:border-fuchsia"
         />
         <div className="mt-3 flex gap-2">
-          <button
-            onClick={onSave}
-            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright"
-          >
+          <HudChip active onClick={onSave}>
             Save
-          </button>
-          <button
-            onClick={onCancel}
-            className="rounded-full border border-line bg-paper px-4 py-1.5 font-sans text-[13px] font-medium text-ink hover:border-fuchsia"
-          >
+          </HudChip>
+          <HudChip active={false} onClick={onCancel}>
             Cancel
-          </button>
+          </HudChip>
         </div>
       </div>
     );
@@ -423,72 +492,16 @@ function SecretRow({
         <span className="text-text-tertiary">{present ? "stored" : "not set"}</span>
       </div>
       <div className="flex items-center gap-2">
-        <button
-          onClick={onEdit}
-          className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary hover:border-fuchsia hover:text-ink"
-        >
+        <HudChip active={false} onClick={onEdit}>
           {present ? "Replace" : "Add"}
-        </button>
+        </HudChip>
         {present && (
-          <button
-            onClick={onClear}
-            className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary hover:border-[#DC2626] hover:text-[#DC2626]"
-          >
+          <HudChip active={false} onClick={onClear}>
             Clear
-          </button>
+          </HudChip>
         )}
       </div>
     </div>
-  );
-}
-
-function ConnectionsSection({ onOpenSchedule }: { onOpenSchedule?: () => void }) {
-  // v0.6.5 — Connections is now a thin summary surface. Linking + per-platform
-  // management live in Schedule. We just report the live count from
-  // /social/connections and deep-link the user across.
-  const [linkedCount, setLinkedCount] = useState<number | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void socialGetConnection()
-      .then((s) => {
-        if (cancelled) return;
-        setLinkedCount(s?.platforms?.length ?? 0);
-      })
-      .catch(() => {
-        if (!cancelled) setLinkedCount(0);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const countLabel =
-    linkedCount === null
-      ? "Checking linked accounts…"
-      : `${linkedCount} account${linkedCount === 1 ? "" : "s"} linked · Manage in Schedule →`;
-
-  return (
-    <Section eyebrow="connected accounts" title="Where Liquid Clips posts on your behalf.">
-      <p className="font-sans text-[13px] text-text-secondary">
-        Each account stays under your control — Liquid Clips reads the handle back from your platform; your password never touches us.
-      </p>
-
-      <button
-        type="button"
-        onClick={onOpenSchedule}
-        disabled={!onOpenSchedule}
-        className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-line bg-paper-elev px-4 py-3 text-left transition-colors hover:border-fuchsia disabled:cursor-default disabled:opacity-60 disabled:hover:border-line"
-      >
-        <span className="font-sans text-[13px] font-medium text-ink">{countLabel}</span>
-        <ChevronRight
-          aria-hidden="true"
-          className="h-4 w-4 shrink-0 text-text-tertiary transition-colors group-hover:text-fuchsia"
-        />
-      </button>
-
-      <WhopConnectionRow />
-    </Section>
   );
 }
 
@@ -540,8 +553,8 @@ function AffiliatePayoutsSection() {
   if (isWhop) {
     return (
       <Section eyebrow="affiliate payouts · whop rail" title="How you get paid through Whop.">
-        <div className="rounded-2xl border border-fuchsia/40 bg-fuchsia-soft/30 p-4">
-          <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-fuchsia-deep">
+        <BracketFrame>
+          <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-fuchsia">
             you're on the whop rail
           </p>
           <p className="mt-2 font-sans text-[14px] leading-relaxed text-ink">
@@ -550,20 +563,14 @@ function AffiliatePayoutsSection() {
           <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
             Lifetime earned: <span className="font-medium text-ink">{earned}</span>. Whop holds your KYC + bank details and runs payouts on their schedule (typically monthly, after a hold period for chargebacks). You don't enter bank details with Liquid Clips — Whop owns that surface.
           </p>
-        </div>
+        </BracketFrame>
         <div className="mt-3 flex flex-wrap gap-2">
-          <a
-            onClick={() => void openExternal(aff.partner_dashboard_url)}
-            className="cursor-pointer rounded-full bg-ink px-4 py-2 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia"
-          >
+          <HudChip active onClick={() => void openExternal(aff.partner_dashboard_url)}>
             Open Whop partner dashboard →
-          </a>
-          <a
-            onClick={() => void openExternal("https://whop.com/dashboard/payouts")}
-            className="cursor-pointer rounded-full border border-line bg-paper px-4 py-2 font-sans text-[12px] font-medium text-ink hover:border-fuchsia"
-          >
+          </HudChip>
+          <HudChip active={false} onClick={() => void openExternal("https://whop.com/dashboard/payouts")}>
             Manage card + payout settings →
-          </a>
+          </HudChip>
         </div>
         <p className="mt-2 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
           your referral link · {aff.referral_url ?? "open dashboard to copy"}
@@ -576,8 +583,8 @@ function AffiliatePayoutsSection() {
     const needsBank = aff.payout_status === "setup_required";
     return (
       <Section eyebrow="affiliate payouts · stripe connect" title="How you get paid through Stripe.">
-        <div className={`rounded-2xl border p-4 ${needsBank ? "border-fuchsia bg-fuchsia-soft/40" : "border-line bg-paper-warm/40"}`}>
-          <p className={`font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] ${needsBank ? "text-fuchsia-deep" : "text-text-tertiary"}`}>
+        <BracketFrame>
+          <p className={`font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] ${needsBank ? "text-fuchsia" : "text-text-tertiary"}`}>
             you're on the stripe connect rail
           </p>
           <p className="mt-2 font-sans text-[14px] leading-relaxed text-ink">
@@ -592,14 +599,14 @@ function AffiliatePayoutsSection() {
               Bank setup is complete. Lifetime earned: <span className="font-medium text-ink">{earned}</span>. Stripe runs payouts on their standard schedule (every 2-7 days depending on your country, after a 7-day rolling hold for new accounts).
             </p>
           )}
-        </div>
+        </BracketFrame>
         <div className="mt-3 flex flex-wrap gap-2">
-          <a
-            onClick={() => void openExternal(aff.payout_setup_url || "https://account.liquidclips.app/dashboard#payouts")}
-            className={`cursor-pointer rounded-full px-4 py-2 font-sans text-[12px] font-medium ${needsBank ? "bg-fuchsia text-paper hover:bg-fuchsia-bright" : "border border-line bg-paper text-ink hover:border-fuchsia"}`}
+          <HudChip
+            active={needsBank}
+            onClick={() => void openExternal(aff.payout_setup_url || "https://account.jnremployee.com/dashboard#payouts")}
           >
             {needsBank ? "Set up Stripe payouts →" : "Manage Stripe payouts →"}
-          </a>
+          </HudChip>
         </div>
         {customer.referrer_affiliate_id && (
           <p className="mt-2 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
@@ -614,7 +621,7 @@ function AffiliatePayoutsSection() {
   return (
     <Section eyebrow="affiliate payouts" title="How you get paid.">
       <p className="font-sans text-[13px] text-text-secondary">
-        We couldn't determine your payout rail. Try signing out and back in, or open Settings → Connections to set up Whop / Stripe.
+        We couldn't determine your payout rail. Try signing out and back in, or open your account dashboard to review payouts.
       </p>
     </Section>
   );
@@ -744,10 +751,10 @@ function WhoAmISection() {
         <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
           Couldn't reach the backend. Sign in via{" "}
           <a
-            onClick={() => void openExternal("https://account.liquidclips.app/dashboard")}
+            onClick={() => void openExternal("https://account.jnremployee.com/dashboard")}
             className="cursor-pointer text-fuchsia hover:text-fuchsia-deep"
           >
-            account.liquidclips.app
+            account.jnremployee.com
           </a>
           {" "}then come back.
         </p>
@@ -761,7 +768,7 @@ function WhoAmISection() {
         Source of truth: junior-backend. Use this row when something looks off
         — backend wins over Clerk metadata or anything cached locally.
       </p>
-      <div className="flex flex-col gap-1 rounded-xl border border-line bg-paper-warm/30 p-3 font-mono text-[12px]">
+      <BracketFrame>
         <DebugRow label="Email" value={me.email ?? "—"} />
         <DebugRow label="Backend user id" value={me.backend_user_id} mono />
         <DebugRow label="Clerk id" value={me.clerk_id ?? "—"} mono />
@@ -793,7 +800,7 @@ function WhoAmISection() {
               : `backend key missing — desktop session: ${whopSource}`
           }
         />
-      </div>
+      </BracketFrame>
     </Section>
   );
 }
@@ -813,127 +820,132 @@ function DebugRow({ label, value, mono = false }: { label: string; value: string
   );
 }
 
-
-// Whop sits inside the Connections section as a "bounty source" — distinct
-// from publish targets (YouTube/TikTok/IG/X) but presented with the same
-// shape so users have one place to manage all platform plumbing. The
-// connection lives in the desktop's OS keychain (JUNIOR_WHOP_TOKEN) and the
-// OAuth flow + session status come from the sidecar, not the backend.
-function WhopConnectionRow() {
-  const [status, setStatus] = useState<
-    "iframe" | "env_user" | "keychain" | "seller_key" | "none" | "loading"
-  >("loading");
-  const [phase, setPhase] = useState<"idle" | "awaiting">("idle");
-  const [error, setError] = useState<string | null>(null);
-
-  async function load() {
-    try {
-      const s = await sidecar.whopSessionStatus();
-      setStatus(s.authenticated ? s.source : "none");
-    } catch {
-      setStatus("none");
-    }
-  }
-
-  useEffect(() => {
-    void load();
-  }, []);
-
-  async function connect() {
-    setError(null);
-    setPhase("awaiting");
-    try {
-      const { authorize_url } = await sidecar.whopOAuthStart();
-      void openExternal(authorize_url).catch(() => undefined);
-      const deadline = Date.now() + 10 * 60 * 1000;
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        if (Date.now() > deadline) {
-          throw new Error("Whop sign-in timed out.");
-        }
-        await new Promise((r) => setTimeout(r, 1000));
-        const st = await sidecar.whopOAuthStatus();
-        if (st.status === "success") {
-          await load();
-          break;
-        }
-        if (st.status === "error") {
-          throw new Error(st.error || "Whop sign-in failed.");
-        }
-        if (st.status === "idle") {
-          throw new Error("Listener stopped — try again.");
-        }
-      }
-    } catch (e) {
-      setError(humanError(e));
-    } finally {
-      setPhase("idle");
-    }
-  }
-
-  async function disconnect() {
-    if (!confirm("Disconnect Whop? You'll need to reconnect to browse Content Rewards again.")) return;
-    try {
-      await sidecar.whopClearSessionToken();
-      await sidecar.secretDelete("JUNIOR_WHOP_TOKEN");
-    } finally {
-      await load();
-    }
-  }
-
-  const connected = status !== "none" && status !== "loading";
-  const sourceLabel =
-    status === "iframe"
-      ? "iframe preview"
-      : status === "env_user"
-        ? "env"
-        : status === "keychain"
-          ? "OAuth · keychain"
-          : status === "seller_key"
-            ? "dev seller key"
-            : "";
+function DiagnosticsSection({
+  deps,
+  depsError,
+  hw,
+  copied,
+  onCopy,
+}: {
+  deps: DepsInfo | null;
+  depsError: string | null;
+  hw: HardwareInfo | null;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  const sidecarStatus = depsError ? "failed" : deps ? deps.ok ? "ready" : "failed" : "starting";
+  const missing = deps?.missing ?? [];
+  const errors = deps?.errors ? Object.entries(deps.errors) : [];
 
   return (
-    <div className="rounded-xl border border-line bg-paper p-3.5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-fuchsia font-mono text-[14px] font-bold leading-none text-white">
-            /
-          </span>
-          <div>
-            <div className="font-sans text-[14px] font-medium text-ink">Whop — Content Rewards</div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-              {status === "loading"
-                ? "checking your session…"
-                : connected
-                  ? `signed in · ${sourceLabel}`
-                  : "sign in to load reward campaigns in the Earn tab"}
-            </div>
-          </div>
-        </div>
-        {connected ? (
-          <button
-            onClick={() => void disconnect()}
-            className="rounded-full border border-line bg-paper px-3.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:border-[#DC2626] hover:text-[#DC2626]"
-          >
-            disconnect
-          </button>
-        ) : (
-          <button
-            onClick={() => void connect()}
-            disabled={phase === "awaiting"}
-            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia-bright disabled:opacity-40"
-            title="Opens whop.com in your browser to authorize Liquid Clips"
-          >
-            {phase === "awaiting" ? "waiting for browser…" : "Sign in with Whop →"}
-          </button>
+    <>
+      <Section eyebrow="diagnostics" title="Sidecar + local machine.">
+        <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+          Copy this when support needs the exact local state behind a failed run.
+        </p>
+        <BracketFrame>
+          <DebugRow label="Sidecar" value={sidecarStatus} />
+          <DebugRow label="Python" value={deps?.python ?? (depsError ? "unavailable" : "checking")} mono />
+          <DebugRow label="Clip storage" value={CLIP_STORAGE_PATH} mono />
+          <DebugRow label="Logs" value={LOG_PATH} mono />
+        </BracketFrame>
+        {(missing.length > 0 || errors.length > 0 || depsError) && (
+          <BracketFrame>
+            <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#DC2626]">
+              missing python modules
+            </p>
+            {depsError && <p className="font-mono text-[11px] text-[#DC2626]">{depsError}</p>}
+            {missing.length > 0 ? (
+              <ul className="flex flex-col gap-1">
+                {missing.map((name) => (
+                  <li key={name} className="font-mono text-[11px] text-[#DC2626]">
+                    {name}{deps?.errors[name] ? `: ${deps.errors[name]}` : ""}
+                  </li>
+                ))}
+              </ul>
+            ) : !depsError ? (
+              <p className="font-mono text-[11px] text-text-tertiary">No module names returned.</p>
+            ) : null}
+            {errors
+              .filter(([name]) => !missing.includes(name))
+              .map(([name, message]) => (
+                <p key={name} className="font-mono text-[11px] text-[#DC2626]">
+                  {name}: {message}
+                </p>
+              ))}
+          </BracketFrame>
         )}
-      </div>
-      {error && (
-        <p className="mt-2 pl-11 font-mono text-[11px] text-[#DC2626]">{error}</p>
-      )}
-    </div>
+        <HudChip active={copied} onClick={onCopy}>
+          {copied ? "Copied diagnostics" : "Copy diagnostics to clipboard"}
+        </HudChip>
+      </Section>
+
+      <Section eyebrow="hardware" title="Read-only hardware snapshot.">
+        <BracketFrame>
+          <DebugRow label="Platform" value={hw?.platform ?? "checking"} />
+          <DebugRow label="RAM" value={hw ? `${hw.ram_gb} GB` : "checking"} />
+          <DebugRow label="CPU" value={hw ? `${hw.cpu_count} logical` : "checking"} />
+          <DebugRow label="Free disk" value={hw ? `${hw.free_disk_gb} GB` : "checking"} />
+          <DebugRow label="Warnings" value={hw?.warnings?.length ? hw.warnings.join(", ") : "none"} />
+        </BracketFrame>
+      </Section>
+    </>
   );
+}
+
+function buildDiagnosticsMarkdown({
+  deps,
+  depsError,
+  hw,
+  sync,
+  me,
+}: {
+  deps: DepsInfo | null;
+  depsError: string | null;
+  hw: HardwareInfo | null;
+  sync: SyncStatus | null;
+  me: MeStatus | null;
+}): string {
+  const sidecarStatus = depsError ? "failed" : deps ? deps.ok ? "ready" : "failed" : "starting";
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "n/a";
+  const missing = deps?.missing?.length ? deps.missing.join(", ") : "none";
+  const errors = deps?.errors && Object.keys(deps.errors).length
+    ? Object.entries(deps.errors).map(([name, message]) => `- ${name}: ${message}`).join("\n")
+    : "- none";
+
+  return [
+    "# Liquid Clips diagnostics",
+    "",
+    `- Version: ${APP_VERSION}`,
+    `- Build: ${BUILD_HASH}`,
+    `- Time: ${new Date().toISOString()}`,
+    `- User agent: ${ua}`,
+    "",
+    "## Account",
+    `- Email: ${me?.email ?? "unknown"}`,
+    `- Backend user id: ${me?.backend_user_id ?? "unknown"}`,
+    `- Tier: ${sync?.tier ?? me?.effective_tier ?? "unknown"}`,
+    "",
+    "## Sidecar",
+    `- Status: ${sidecarStatus}`,
+    `- Python: ${deps?.python ?? "unknown"}`,
+    `- Missing modules: ${missing}`,
+    `- Error: ${depsError ?? "none"}`,
+    "",
+    "## Dependency errors",
+    errors,
+    "",
+    "## Hardware",
+    `- Platform: ${hw?.platform ?? "unknown"}`,
+    `- RAM: ${hw?.ram_gb ?? "?"} GB`,
+    `- CPU: ${hw?.cpu_count ?? "?"}`,
+    `- Free disk: ${hw?.free_disk_gb ?? "?"} GB`,
+    `- Warnings: ${hw?.warnings?.length ? hw.warnings.join(", ") : "none"}`,
+    "",
+    "## Paths",
+    `- Clip storage: ${CLIP_STORAGE_PATH}`,
+    `- Logs: ${LOG_PATH}`,
+  ].join("\n");
 }
 
 
@@ -995,18 +1007,12 @@ function SupportSection() {
         Diagnostic info auto-fills so we can debug without a 20-question thread.
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          onClick={() => void onReportIssue()}
-          className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright"
-        >
+        <HudChip active onClick={() => void onReportIssue()}>
           Report an issue →
-        </button>
-        <button
-          onClick={() => void onCopyDiagnostic()}
-          className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
-        >
+        </HudChip>
+        <HudChip active={copied} onClick={() => void onCopyDiagnostic()}>
           {copied ? "Copied ✓" : "Copy diagnostic"}
-        </button>
+        </HudChip>
         <a
           onClick={() => void openExternal(`mailto:${SUPPORT_EMAIL}`)}
           className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary hover:text-fuchsia-deep"
@@ -1087,10 +1093,10 @@ function SettingsLeftRail({
   active: SettingsCategory;
   onSelect: (c: SettingsCategory) => void;
 }) {
-  const items: SettingsCategory[] = ["account", "connections", "keys", "about"];
+  const items: SettingsCategory[] = ["account", "keys", "about", "diagnostics"];
   return (
     <nav
-      className="flex w-[180px] shrink-0 flex-col gap-1 border-r border-line bg-paper-warm/30 px-3 py-5"
+      className="flex w-[180px] shrink-0 flex-col gap-1 border-r border-line bg-transparent px-3 py-5"
       aria-label="Settings categories"
     >
       {items.map((c) => {
@@ -1102,8 +1108,8 @@ function SettingsLeftRail({
             onClick={() => onSelect(c)}
             className={
               isActive
-                ? "flex items-center gap-2 rounded-xl bg-paper-elev px-3 py-2 font-sans text-[13px] font-medium text-ink"
-                : "flex items-center gap-2 rounded-xl px-3 py-2 font-sans text-[13px] text-text-secondary transition-colors hover:bg-paper-elev/60 hover:text-ink"
+                ? "flex items-center gap-2 px-3 py-2 font-sans text-[13px] font-medium text-ink"
+                : "flex items-center gap-2 px-3 py-2 font-sans text-[13px] text-text-secondary transition-colors hover:text-ink"
             }
             aria-current={isActive ? "page" : undefined}
           >
@@ -1188,7 +1194,7 @@ function ProfileAvatarRow({ email }: { email: string | null }) {
             type="button"
             onClick={() => void pick()}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper-elev px-3.5 py-2 font-sans text-[12px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia disabled:cursor-wait disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-transparent px-3.5 py-2 font-sans text-[12px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia disabled:cursor-wait disabled:opacity-50"
           >
             <Camera className="h-3.5 w-3.5" strokeWidth={2} />
             {renderedSrc ? "Replace" : "Upload"}
@@ -1198,7 +1204,7 @@ function ProfileAvatarRow({ email }: { email: string | null }) {
               type="button"
               onClick={() => void clearAvatar()}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper-elev px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary transition-colors hover:border-[#DC2626] hover:text-[#DC2626] disabled:cursor-wait disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-transparent px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary transition-colors hover:border-[#DC2626] hover:text-[#DC2626] disabled:cursor-wait disabled:opacity-50"
             >
               <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
               Remove

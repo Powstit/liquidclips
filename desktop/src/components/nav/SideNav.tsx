@@ -7,8 +7,6 @@ import libraryBadge from "../../assets/nav-badges/library.png";
 import earnBadge from "../../assets/nav-badges/earn.png";
 import learnBadge from "../../assets/nav-badges/learn.png";
 import scheduleBadge from "../../assets/nav-badges/schedule.png";
-import uploadBadge from "../../assets/nav-badges/upload.png";
-import payoutsBadge from "../../assets/nav-badges/payouts.png";
 import communityBadge from "../../assets/nav-badges/community.png";
 import settingsBadge from "../../assets/nav-badges/settings.png";
 
@@ -34,8 +32,6 @@ export type SideNavKey =
   | "earn"
   | "learn"
   | "schedule"
-  | "upload"
-  | "payouts"
   | "community"
   | "settings";
 
@@ -123,18 +119,6 @@ export function SideNav({
           active={activeKey === "schedule"}
           onClick={() => onSelect("schedule")}
           iconSrc={scheduleBadge}
-        />
-        <SideNavItem
-          label="Upload"
-          active={activeKey === "upload"}
-          onClick={() => onSelect("upload")}
-          iconSrc={uploadBadge}
-        />
-        <SideNavItem
-          label="Payouts"
-          active={activeKey === "payouts"}
-          onClick={() => onSelect("payouts")}
-          iconSrc={payoutsBadge}
         />
         <SideNavItem
           label="Community"

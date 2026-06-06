@@ -7,6 +7,17 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 export const WHOP_REWARDS_URL = "https://whop.com/discover/content-rewards/";
+// v0.7.0 — Liquid Clips central community lives on Whop, embedded in the
+// same Tauri child webview that already serves Browse Rewards. One identity
+// (Whop), one payout trail, one community feed — no separate Discord login.
+// Pointing at the chat module specifically so the first frame is the
+// conversation, not the marketing landing page.
+// v0.6.19 — `/<slug>/chat` returned a "Product not found" frame for our hub.
+// Whop's working landing for member-facing community + chat is the joined-
+// product URL. Logged-out users land on the marketplace page; logged-in
+// members get the joined experience with chat / forum / announcements
+// already routed in the left rail of Whop's own UI.
+export const WHOP_COMMUNITY_URL = "https://whop.com/joined/jnremployee/";
 
 // --- singleton store -----------------------------------------------------
 

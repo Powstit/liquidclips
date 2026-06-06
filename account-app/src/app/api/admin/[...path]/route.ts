@@ -15,6 +15,13 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "https://api.jnremployee.com";
 
+// Next.js 16 route-handler context for a catch-all dynamic segment. Params
+// are now an awaitable Promise (per the Next 15+ async-route-context change),
+// resolving to { path: string[] } for `[...path]`. typedRoutes isn't enabled
+// in next.config.ts, so the auto-generated RouteContext<TPath> global isn't
+// available — we type the shape inline instead.
+type AdminRouteCtx = { params: Promise<{ path: string[] }> };
+
 const ADMIN_FALLBACK = [
   "danieldiyepriye@gmail.com",
   "mrddokubo@gmail.com",
@@ -33,6 +40,9 @@ function adminList(): string[] {
 // can be reached even if the client tries.
 const READ_PATHS = [
   /^overview$/,
+  /^health$/,
+  /^function-heatmap$/,
+  /^alerts$/,
   /^users$/,
   /^users\/[^/]+$/,
   /^users\/[^/]+\/timeline$/,
@@ -42,7 +52,7 @@ const READ_PATHS = [
   /^postiz$/,
   /^bugs$/,
 ];
-const WRITE_PATHS = [/^claims\/[^/]+\/expire$/, /^claims\/[^/]+\/resend$/];
+const WRITE_PATHS = [/^claims\/[^/]+\/expire$/, /^claims\/[^/]+\/resend$/, /^function-heatmap\/run$/, /^alerts\/[^/]+\/read$/];
 
 function pathAllowed(path: string, method: string): boolean {
   const list = method === "POST" ? WRITE_PATHS : READ_PATHS;
@@ -59,7 +69,7 @@ async function requireAdminId(): Promise<string | null> {
   return userId;
 }
 
-async function handle(req: NextRequest, ctx: RouteContext<"/api/admin/[...path]">): Promise<Response> {
+async function handle(req: NextRequest, ctx: AdminRouteCtx): Promise<Response> {
   const adminId = await requireAdminId();
   if (!adminId) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
@@ -95,10 +105,10 @@ async function handle(req: NextRequest, ctx: RouteContext<"/api/admin/[...path]"
   }
 }
 
-export async function GET(req: NextRequest, ctx: RouteContext<"/api/admin/[...path]">): Promise<Response> {
+export async function GET(req: NextRequest, ctx: AdminRouteCtx): Promise<Response> {
   return handle(req, ctx);
 }
 
-export async function POST(req: NextRequest, ctx: RouteContext<"/api/admin/[...path]">): Promise<Response> {
+export async function POST(req: NextRequest, ctx: AdminRouteCtx): Promise<Response> {
   return handle(req, ctx);
 }

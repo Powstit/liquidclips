@@ -75,12 +75,19 @@ export function NotificationSheet({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-ink/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-paper/85 backdrop-blur-md" onClick={onClose}>
       <div
-        className="flex h-full w-full max-w-[560px] flex-col overflow-y-auto bg-paper shadow-2xl"
+        className="relative flex h-full w-full max-w-[560px] flex-col overflow-y-auto bg-transparent"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line bg-paper/85 px-6 py-4 backdrop-blur-[20px]">
+        {/* Fuchsia HUD bracket corners on the sheet itself — frame as cockpit
+            drawer, not solid panel. */}
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
+
+        <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line/60 bg-paper/85 px-6 py-4 backdrop-blur-md">
           <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
             <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
             inbox
@@ -89,13 +96,13 @@ export function NotificationSheet({ onClose }: { onClose: () => void }) {
             <button
               onClick={() => void markAllRead()}
               disabled={!items || items.every((x) => x.read_at)}
-              className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary hover:border-fuchsia hover:text-ink disabled:opacity-40"
+              className="rounded-full bg-transparent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors hover:text-fuchsia disabled:opacity-40"
             >
               Mark all read
             </button>
             <button
               onClick={onClose}
-              className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary hover:border-fuchsia hover:text-ink"
+              className="rounded-full bg-transparent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors hover:text-fuchsia"
             >
               Close
             </button>
@@ -104,7 +111,11 @@ export function NotificationSheet({ onClose }: { onClose: () => void }) {
 
         <div className="flex flex-1 flex-col gap-3 px-6 py-6">
           {error && (
-            <div className="rounded-2xl border border-line bg-paper-warm/50 p-4 font-mono text-[12px] text-text-secondary">
+            <div className="relative bg-transparent p-4 font-mono text-[12px] text-text-secondary">
+              <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+              <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+              <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+              <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
               {error}
             </div>
           )}
@@ -136,15 +147,17 @@ function NotificationRow({
   const isJunior = n.category === "junior_message";
 
   if (isJunior) {
+    // Branded "liquid clips" inbox hero — gets the fuchsia bracket frame so
+    // it reads as a cockpit broadcast, not a system notification.
     return (
       <div
         onClick={onClick}
-        className={`relative rounded-3xl border p-6 transition-colors ${
-          unread
-            ? "border-fuchsia-soft bg-fuchsia-soft/30 cursor-pointer hover:border-fuchsia"
-            : "border-line bg-paper-warm/30 cursor-pointer"
-        }`}
+        className="relative cursor-pointer bg-transparent p-6 transition-opacity hover:opacity-95"
       >
+        <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
         <div className="flex items-center gap-2">
           <span
             className="inline-grid h-[26px] w-[26px] place-items-center rounded-md bg-fuchsia font-mono text-[15px] font-bold leading-none text-white"
@@ -165,11 +178,13 @@ function NotificationRow({
     );
   }
 
+  // Quiet system rows — no card chrome; just a hairline divider so they
+  // recede behind the cockpit drawer brackets and the Junior hero rows.
   return (
     <div
       onClick={onClick}
-      className={`relative cursor-pointer rounded-2xl border p-4 transition-colors ${
-        unread ? "border-line bg-paper hover:border-fuchsia" : "border-line/50 bg-paper-warm/20"
+      className={`relative cursor-pointer border-t border-line/60 bg-transparent p-4 transition-colors first:border-t-0 ${
+        unread ? "" : "opacity-70"
       }`}
     >
       <div className="flex items-center justify-between gap-2">

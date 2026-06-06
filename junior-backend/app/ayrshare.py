@@ -72,10 +72,10 @@ def create_profile(title: str, email: str | None = None) -> dict[str, Any]:
     """POST /profiles/profile — provisions a NEW Ayrshare sub-profile under our
     Business org. Returns {'profileKey': '...', 'refId': '...', 'title': '...'}.
 
-    Used by sprint #14d in-app linking: the user clicks 'Connect socials' in
-    Liquid Clips, we mint a profile via this call, mint a JWT via
-    generate_jwt(), and embed Ayrshare's link page in a Tauri WebView. The
-    user never types a Profile Key — we own the whole lifecycle.
+    Used by sprint #14d linking: the user clicks 'Connect socials' in Liquid
+    Clips, we mint a profile via this call, mint a JWT via generate_jwt(),
+    and open Ayrshare's link page in the user's browser. The user never types
+    a Profile Key — we own the whole lifecycle.
 
     `title` is what shows in Ayrshare's admin dashboard for tracking (we use
     "<email> · liquidclips").
@@ -93,28 +93,76 @@ def create_profile(title: str, email: str | None = None) -> dict[str, Any]:
     return r.json()
 
 
-def generate_jwt(profile_key: str, *, domain: str | None = None, redirect: str | None = None) -> dict[str, Any]:
-    """POST /profiles/generateJWT — mints a short-lived JWT for the user's
-    profile so they can hit Ayrshare's hosted link page WITHOUT logging in.
+def _private_key_pem() -> str:
+    """Load the Ayrshare RSA private key (Integration Package) for signing JWTs.
 
-    Returns {'token': '<jwt>', 'url': 'https://app.ayrshare.com/auth?...'}.
-    The `url` is what we open in the Tauri WebView. Embedding the JWT means
-    the page knows which profile it's linking accounts TO without any
-    Ayrshare account / signup on the user's side.
-
-    `domain` (optional) — Custom Domain set up in Ayrshare admin
-    (e.g. social.liquidclips.app). Branding becomes ours when set; without
-    it the URL stays on app.ayrshare.com but the JWT still skips signup.
-
-    `redirect` (optional) — where Ayrshare bounces the user after they finish
-    linking. We don't need this for the WebView flow because we listen for
-    the window-close event in Rust instead.
+    Two env vars supported:
+      * AYRSHARE_JWT_PRIVATE_KEY      — full PEM content (preferred, what we
+                                         set on Railway).
+      * AYRSHARE_JWT_PRIVATE_KEY_PATH — filesystem path to the .key file
+                                         (handy for local dev).
     """
-    body: dict[str, Any] = {"profileKey": profile_key}
-    if domain:
-        body["domain"] = domain
+    pem = os.environ.get("AYRSHARE_JWT_PRIVATE_KEY", "").strip()
+    if pem:
+        return pem
+    path = os.environ.get("AYRSHARE_JWT_PRIVATE_KEY_PATH", "").strip()
+    if path:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return f.read()
+        except OSError as exc:
+            raise RuntimeError(f"AYRSHARE_JWT_PRIVATE_KEY_PATH set but unreadable: {exc}") from exc
+    raise RuntimeError(
+        "AYRSHARE_JWT_PRIVATE_KEY (or _PATH) is not set — JWT-based linking is disabled. "
+        "Download the Integration Package from app.ayrshare.com/api-key and set the "
+        "private.key contents as the AYRSHARE_JWT_PRIVATE_KEY env var on Railway."
+    )
+
+
+def _domain() -> str:
+    """The Ayrshare-assigned org domain slug (e.g. 'id-GltOg'). Required for
+    generateJWT. Lives in the Integration Package alongside private.key."""
+    return os.environ.get("AYRSHARE_DOMAIN", "").strip()
+
+
+def generate_jwt(
+    profile_key: str,
+    *,
+    allowed_social: list[str] | None = None,
+    redirect: str | None = None,
+    expires_in_minutes: int | None = None,
+) -> dict[str, Any]:
+    """POST /profiles/generateJWT — mints a short-lived RSA-signed JWT for
+    the user's profile. Ayrshare returns a hosted-link URL embedding the JWT;
+    we open it in the user's browser and the user lands on the platform-link
+    page with NO Ayrshare login modal.
+
+    Returns {'status': 'success', 'token': '<jwt>', 'url': 'https://profile.ayrshare.com?jwt=...&domain=...'}.
+
+    `allowed_social` (optional) — restricts the linking page to specific
+    platforms (e.g. ['youtube']). When set, the user sees ONLY those
+    platforms — feels like "Sign in with YouTube" instead of "pick a
+    network." Daniel's 15-year-old UX rule.
+
+    `redirect` (optional) — where Ayrshare bounces the user after they
+    finish linking. Not needed for the WebView flow (we listen for the
+    window-close event in Rust instead).
+
+    `expires_in_minutes` (optional) — JWT TTL. Default per Ayrshare is 5min.
+    """
+    body: dict[str, Any] = {
+        "profileKey": profile_key,
+        "domain": _domain(),
+        "privateKey": _private_key_pem(),
+    }
+    if allowed_social:
+        # Ayrshare's Postman example uses indexed urlencoded keys
+        # `allowedSocial[0]`, but the JSON API accepts a plain array.
+        body["allowedSocial"] = list(allowed_social)
     if redirect:
         body["redirect"] = redirect
+    if expires_in_minutes:
+        body["expiresIn"] = int(expires_in_minutes)
     # generateJWT uses the org key in Authorization, NOT the profile key in
     # the Profile-Key header — that's why _headers() is called without args.
     r = httpx.post(

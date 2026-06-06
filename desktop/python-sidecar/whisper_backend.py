@@ -50,9 +50,17 @@ def transcribe_mlx(
     *,
     model_size: str,
     duration_hint: float,
+    word_timestamps: bool = False,
     on_segment: SegmentCallback | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], Any, str]:
-    """Run mlx-whisper and normalize its dict output to faster-whisper shape."""
+    """Run mlx-whisper and normalize its dict output to faster-whisper shape.
+
+    When word_timestamps=True, mlx-whisper's segments carry a `words` field
+    we pass through unchanged (each entry: {word, start, end, probability?}).
+    Older mlx-whisper builds silently drop the kwarg — segments come back
+    without `words` and the caller decides whether that's acceptable
+    (animated captions need word-level data; LLM clip-pick doesn't).
+    """
     if not mlx_candidate():
         raise RuntimeError("mlx-whisper is only enabled on Apple Silicon macOS")
 
@@ -66,7 +74,7 @@ def transcribe_mlx(
     repo = _mlx_model_repo(model_size)
     kwargs = {
         "path_or_hf_repo": repo,
-        "word_timestamps": False,
+        "word_timestamps": word_timestamps,
         "verbose": False,
     }
     try:
@@ -82,11 +90,22 @@ def transcribe_mlx(
     duration = float(result.get("duration") or duration_hint or 0)
     for raw in raw_segments:
         text = str(raw.get("text") or "").strip()
-        seg = {
+        seg: dict[str, Any] = {
             "start": float(raw.get("start") or 0.0),
             "end": float(raw.get("end") or 0.0),
             "text": text,
         }
+        raw_words = raw.get("words") or []
+        if raw_words:
+            words: list[dict[str, Any]] = []
+            for w in raw_words:
+                words.append({
+                    "start": float(w.get("start") or 0.0),
+                    "end": float(w.get("end") or 0.0),
+                    "word": str(w.get("word") or ""),
+                    "probability": float(w.get("probability") or 0.0),
+                })
+            seg["words"] = words
         segments.append(seg)
         if text:
             text_parts.append(text)
@@ -107,6 +126,7 @@ def transcribe_faster(
     model_size: str,
     bundled_model: Path | None,
     duration_hint: float,
+    word_timestamps: bool = False,
     on_segment: SegmentCallback | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], Any, str]:
     from faster_whisper import WhisperModel
@@ -115,7 +135,7 @@ def transcribe_faster(
     model = WhisperModel(model_ref, device="cpu", compute_type="int8", num_workers=4)
     seg_iter, info = model.transcribe(
         str(audio_path),
-        word_timestamps=False,
+        word_timestamps=word_timestamps,
         vad_filter=False,
         beam_size=1,
         condition_on_previous_text=False,
@@ -125,7 +145,17 @@ def transcribe_faster(
     duration = float(info.duration or duration_hint or 0)
     for seg in seg_iter:
         text = seg.text.strip()
-        out = {"start": seg.start, "end": seg.end, "text": text}
+        out: dict[str, Any] = {"start": seg.start, "end": seg.end, "text": text}
+        if word_timestamps and seg.words:
+            out["words"] = [
+                {
+                    "start": w.start,
+                    "end": w.end,
+                    "word": w.word,
+                    "probability": getattr(w, "probability", 0.0),
+                }
+                for w in seg.words
+            ]
         segments.append(out)
         text_parts.append(text)
         if on_segment:
@@ -139,10 +169,22 @@ def transcribe_auto(
     model_size: str,
     bundled_model: Path | None,
     duration_hint: float,
+    word_timestamps: bool = False,
     on_segment: SegmentCallback | None = None,
     log: Callable[[str], None] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], Any, str]:
-    if mlx_candidate():
+    """Route to the fastest viable backend.
+
+    Policy:
+    - word_timestamps=False (Fast Draft default): try MLX on Apple Silicon, fall
+      back to faster-whisper on any import/runtime failure. MLX is the win here.
+    - word_timestamps=True (Full Polish, animated captions): use faster-whisper
+      directly. MLX skipped because older builds silently drop word_timestamps,
+      and a per-segment fallback after streaming would double-emit progress.
+
+    Returns: (segments, text_parts, info, engine_name).
+    """
+    if mlx_candidate() and not word_timestamps:
         try:
             if log:
                 log(f"[whisper_backend] trying mlx-whisper ({_mlx_model_repo(model_size)})")
@@ -150,6 +192,7 @@ def transcribe_auto(
                 audio_path,
                 model_size=model_size,
                 duration_hint=duration_hint,
+                word_timestamps=False,
                 on_segment=on_segment,
             )
         except Exception as exc:  # noqa: BLE001
@@ -157,11 +200,12 @@ def transcribe_auto(
                 log(f"[whisper_backend] mlx-whisper failed, falling back to faster-whisper: {exc}")
 
     if log:
-        log(f"[whisper_backend] using faster-whisper ({model_size})")
+        log(f"[whisper_backend] using faster-whisper ({model_size}, word_timestamps={word_timestamps})")
     return transcribe_faster(
         audio_path,
         model_size=model_size,
         bundled_model=bundled_model,
         duration_hint=duration_hint,
+        word_timestamps=word_timestamps,
         on_segment=on_segment,
     )

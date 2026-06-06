@@ -66,6 +66,9 @@ BackendEvent = Literal[
     "whop_claim_redeemed",              # token redeemed → pending applied (doc name); props: tier, founder
     "whop_claim_succeeded",             # legacy alias kept for dashboards
     "whop_claim_failed",                # invalid/expired/used token or mismatch
+    # Railway automated launch/function heat-map
+    "function_heatmap_checked",
+    "function_heatmap_failed",
 ]
 
 
