@@ -12,6 +12,7 @@ import { BountyFitPill } from "../earn/bounty-fit";
 import { useCountUp } from "../../lib/useCountUp";
 import { InlineScheduler } from "./InlineScheduler";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { CAPTION_STYLES } from "../../lib/caption-styles";
 
 // Self-contained card. Tap = play preview. Layout icons swap composition in
 // place. Copy buttons inline. "..." opens the side-door full editor for the
@@ -59,6 +60,7 @@ export function ClipCard({
   onOpenEditor,
   onOpenCaptions,
   previewSoundOn = false,
+  previewMotionOn = false,
 }: {
   clip: Clip;
   index: number;          // 1-based
@@ -74,6 +76,12 @@ export function ClipCard({
    *  doesn't blast overlapping audio on cursor drift. Toggle lives in
    *  ClipsBulkToolbar; persisted via useLocalPref under `lc:preview_sound`. */
   previewSoundOn?: boolean;
+  /** When true, hovering the thumbnail auto-plays the video. Default false
+   *  so static posters render unless the clipper explicitly opts in.
+   *  Toggle lives in ClipsBulkToolbar; persisted via useLocalPref under
+   *  `lc:preview_motion`. Respects prefers-reduced-motion automatically — the
+   *  hook returns false during the first render on motion-reduced systems. */
+  previewMotionOn?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -105,10 +113,13 @@ export function ClipCard({
   const currentLayout: LayoutKey = (clip.overlay?.type as LayoutKey) ?? "none";
 
   // Tiny hover-to-preview: start playing on pointer enter, pause + rewind on leave.
-  // When the global preview-sound pref is ON we unmute on enter (one audio
-  // source at a time since only one card can be hovered) and re-mute on leave
-  // so a focus-shift doesn't leave audio playing somewhere off-screen.
+  // Hover-preview is OPT-IN — `previewMotionOn` defaults false. Without it,
+  // hover does nothing and the static poster stays. When the global motion
+  // pref is on, hover plays. When the global sound pref is also on, hover
+  // unmutes. Leave re-mutes + pauses + rewinds so audio never leaks across
+  // cards. Lens fix v0.6.51 — Daniel's "motion on clip is uneeded" finding.
   const onEnter = () => {
+    if (!previewMotionOn) return;
     const v = videoRef.current;
     if (!v) return;
     if (previewSoundOn) v.muted = false;
@@ -299,12 +310,18 @@ export function ClipCard({
           }}
           aria-label={
             clip.caption_style
-              ? `Edit ${clip.caption_style} captions`
+              ? `Edit ${
+                  (CAPTION_STYLES as Record<string, { label: string }>)[clip.caption_style]?.label ??
+                  clip.caption_style.replace("_", " ")
+                } captions`
               : "Add captions"
           }
           title={
             clip.caption_style
-              ? `Captions · ${clip.caption_style.replace("_", " ")}`
+              ? `Captions · ${
+                  (CAPTION_STYLES as Record<string, { label: string }>)[clip.caption_style]?.label ??
+                  clip.caption_style.replace("_", " ")
+                }`
               : "Add captions"
           }
           className="group absolute bottom-2 right-2 inline-flex items-center gap-1.5 rounded-full border border-line/50 bg-black/55 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.12em] text-paper backdrop-blur transition hover:border-fuchsia hover:bg-black/75"

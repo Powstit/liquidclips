@@ -52,8 +52,23 @@ export function ResultsGrid({
   // Default OFF — a 6-12 card grid muting on hover is the only sane default.
   // Toggle lives in ClipsBulkToolbar. Persists across relaunch.
   const [previewSoundOn, setPreviewSoundOn] = useLocalPref<boolean>("lc:preview_sound", false);
+  // Default OFF — static posters render unless the clipper explicitly opts in.
+  // Less motion = less distraction + respects prefers-reduced-motion. Toggle
+  // lives in ClipsBulkToolbar next to the sound button for symmetry.
+  const [previewMotionOn, setPreviewMotionOn] = useLocalPref<boolean>("lc:preview_motion", false);
   const isBounty = !!project.whop_bounty_id;
-  const previewClip = previewIdx !== null ? project.clips[previewIdx] : null;
+  // P1 fix (2026-06-06): bounds-guard the previewIdx lookup. A stale index
+  // after Remove (or after a project mutation that shrinks clips[]) used to
+  // dereference project.clips[<out-of-range>] for one render tick, returning
+  // undefined → ClipPreview rendered with `clip={undefined}` and threw on the
+  // first `clip.title` read. The cleanup at line ~322 (`if (previewIdx >=
+  // p.clips.length) setPreviewIdx(null)`) still runs immediately after, but
+  // it only fires AFTER the bad render. Guard at the read site so the modal
+  // closes cleanly instead of crashing the grid.
+  const previewClip =
+    previewIdx !== null && previewIdx >= 0 && previewIdx < project.clips.length
+      ? project.clips[previewIdx]
+      : null;
   // Publishing requires a 9:16 render — cut_path alone (horizontal) won't do.
   const firstRenderedClipIdx = project.clips.findIndex((c) => !!c.vertical_path);
 
@@ -248,6 +263,8 @@ export function ResultsGrid({
               onProjectChange={onProjectChange}
               previewSoundOn={previewSoundOn}
               onPreviewSoundChange={setPreviewSoundOn}
+              previewMotionOn={previewMotionOn}
+              onPreviewMotionChange={setPreviewMotionOn}
             />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {(() => {
@@ -270,6 +287,7 @@ export function ResultsGrid({
                         onOpenEditor={() => setPreviewIdx(idx)}
                         onOpenCaptions={() => { setPreviewIdx(idx); setOpenCaptionsForIdx(idx); }}
                         previewSoundOn={previewSoundOn}
+                        previewMotionOn={previewMotionOn}
                       />
                     ))}
                     {hidden > 0 && (
