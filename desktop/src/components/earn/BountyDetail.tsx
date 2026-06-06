@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { ExternalLink, PanelRightOpen } from "lucide-react";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { ExternalLink, PanelRightOpen, Check, Copy } from "lucide-react";
 import type { WhopBounty } from "../../lib/sidecar";
 import { PlatformIcon } from "../PlatformIcon";
 import { HudChip } from "../cockpit/HudChip";
@@ -26,6 +28,9 @@ export function BountyDetail({
   const platforms = allowedPlatforms(bounty);
   const sym = bounty.currency === "GBP" ? "£" : bounty.currency === "USD" ? "$" : "";
   const briefUrl = whopBountyUrl(bounty);
+  const [briefOpenError, setBriefOpenError] = useState<string | null>(null);
+  const [briefCopied, setBriefCopied] = useState(false);
+  const [starting, setStarting] = useState(false);
   // Whop's API occasionally returns null for numeric fields the TS type
   // marks as non-null. Coerce here so a single missing value can't TypeError
   // and blank the whole detail view.
@@ -65,32 +70,57 @@ export function BountyDetail({
           </p>
         </div>
         {briefUrl && (
-          <button
-            onClick={async () => {
-              if (BROWSE_PANEL_ENABLED) {
-                try {
-                  await openBrowsePanel(briefUrl);
-                  return;
-                } catch (e) {
-                  console.error("[bounty-detail] Browse panel failed, falling back to system browser:", e);
+          <div className="flex flex-col items-end gap-1.5">
+            <button
+              onClick={async () => {
+                setBriefOpenError(null);
+                let panelOk = false;
+                if (BROWSE_PANEL_ENABLED) {
+                  try {
+                    await openBrowsePanel(briefUrl);
+                    panelOk = true;
+                  } catch (e) {
+                    console.error("[bounty-detail] Browse panel failed, falling back to system browser:", e);
+                  }
                 }
-              }
-              try {
-                await openExternal(briefUrl);
-              } catch (e) {
-                console.error("[bounty-detail] Failed to open brief externally:", e);
-              }
-            }}
-            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-transparent px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary transition-colors hover:border-fuchsia hover:text-fuchsia-deep"
-            title={BROWSE_PANEL_ENABLED
-              ? "Open the brand's brief in the side panel — clip alongside it."
-              : "Open the brand's brief on Whop. Use this when the source video lives in a discussion post Liquid Clips can't read directly."}
-          >
-            {BROWSE_PANEL_ENABLED ? "Open brief in panel" : "Open brief on Whop"}
-            {BROWSE_PANEL_ENABLED
-              ? <PanelRightOpen className="h-3.5 w-3.5" strokeWidth={2} />
-              : <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />}
-          </button>
+                if (panelOk) return;
+                try {
+                  await openExternal(briefUrl);
+                } catch (e) {
+                  console.error("[bounty-detail] Failed to open brief externally:", e);
+                  setBriefOpenError("Couldn't open brief — copy link instead");
+                }
+              }}
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-transparent px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary transition-colors hover:border-fuchsia hover:text-fuchsia-deep"
+              title={BROWSE_PANEL_ENABLED
+                ? "Open the brand's brief in the side panel — clip alongside it."
+                : "Open the brand's brief on Whop. Use this when the source video lives in a discussion post Liquid Clips can't read directly."}
+            >
+              {BROWSE_PANEL_ENABLED ? "Open brief in panel" : "Open brief on Whop"}
+              {BROWSE_PANEL_ENABLED
+                ? <PanelRightOpen className="h-3.5 w-3.5" strokeWidth={2} />
+                : <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />}
+            </button>
+            {briefOpenError && (
+              <div className="flex items-center gap-2 font-mono text-[11px] text-[#DC2626]">
+                <span>{briefOpenError}</span>
+                <button
+                  onClick={async () => {
+                    try {
+                      await writeText(briefUrl);
+                      setBriefCopied(true);
+                      setTimeout(() => setBriefCopied(false), 1500);
+                    } catch (e) {
+                      console.error("[bounty-detail] clipboard write failed:", e);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 rounded-full border border-line bg-paper px-2.5 py-0.5 font-sans text-[11px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
+                >
+                  {briefCopied ? <><Check size={11} strokeWidth={2.5} /> Copied</> : <><Copy size={11} strokeWidth={2.25} /> Copy link</>}
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </header>
 
@@ -196,10 +226,21 @@ export function BountyDetail({
 
       <div className="flex flex-wrap items-center gap-3">
         <button
-          onClick={onStart}
-          className="rounded-full bg-fuchsia px-6 py-3 font-sans text-[15px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+          onClick={async () => {
+            if (starting) return;
+            setStarting(true);
+            try {
+              await Promise.resolve(onStart());
+            } finally {
+              // onStart usually navigates away, but if it stays on this view
+              // we still want the button enabled again.
+              setStarting(false);
+            }
+          }}
+          disabled={starting}
+          className="rounded-full bg-fuchsia px-6 py-3 font-sans text-[15px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          Start clipping →
+          {starting ? "Starting…" : "Start clipping →"}
         </button>
       </div>
       <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">

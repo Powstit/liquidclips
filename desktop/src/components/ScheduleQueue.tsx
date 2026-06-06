@@ -1,9 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { RefreshCw } from "lucide-react";
 import { backend, type ScheduleDto } from "../lib/backend";
 import { sidecar, humanError } from "../lib/sidecar";
 import { PlatformIcon, type PlatformId } from "./PlatformIcon";
 import { HudChip } from "./cockpit/HudChip";
+
+/** Compact "5 min ago" style stamp for the stale-data caption. */
+function timeSince(ms: number): string {
+  const diff = Math.max(0, Date.now() - ms);
+  const mins = Math.round(diff / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
 
 const KNOWN_PLATFORMS: PlatformId[] = ["youtube", "tiktok", "instagram", "x"];
 
@@ -84,6 +97,15 @@ export function ScheduleQueue() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [retrying, setRetrying] = useState<string | null>(null);
+  /** Wall-clock ms of the last successful refresh. Drives the "showing
+   *  cached data" caption when a refresh later fails — otherwise the user
+   *  has no idea whether the rows below are live or stale. */
+  const [lastSuccessfulLoad, setLastSuccessfulLoad] = useState<number | null>(null);
+  /** Per-row inline retry indicator after a cancel failure. */
+  const [cancelError, setCancelError] = useState<Record<string, string>>({});
+  /** Tick once a minute so the "showing cached data" caption keeps updating
+   *  even when the network is wedged and refreshes never succeed. */
+  const [, setTick] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -97,6 +119,7 @@ export function ScheduleQueue() {
       const list = await backend.schedules.list(jwt, { limit: 100 });
       setItems(list);
       setError(null);
+      setLastSuccessfulLoad(Date.now());
     } catch (e) {
       setError(humanError(e));
     }
@@ -108,12 +131,36 @@ export function ScheduleQueue() {
     return () => window.clearInterval(id);
   }, [load]);
 
+  // Re-render the "X ago" caption once a minute so stale-data warnings
+  // don't lie about how stale the data is.
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   async function cancel(row: ScheduleDto) {
-    if (!confirm(`Cancel the ${row.platform} post of "${row.clip_title}"?`)) return;
-    const { value: jwt } = await sidecar.licenseJwtRead();
-    if (!jwt) return;
-    await backend.schedules.cancel(jwt, row.id);
-    void load();
+    // Whole body wrapped in try/catch so a backend reject, JWT read failure,
+    // or network blip surfaces as a per-row error chip instead of an
+    // unhandled rejection.
+    try {
+      if (!confirm(`Cancel the ${row.platform} post of "${row.clip_title}"?`)) return;
+      const { value: jwt } = await sidecar.licenseJwtRead();
+      if (!jwt) {
+        setCancelError((cur) => ({ ...cur, [row.id]: "Sign in to cancel scheduled posts." }));
+        return;
+      }
+      await backend.schedules.cancel(jwt, row.id);
+      setCancelError((cur) => {
+        const next = { ...cur };
+        delete next[row.id];
+        return next;
+      });
+      void load();
+    } catch (e) {
+      const msg = humanError(e);
+      setError(msg);
+      setCancelError((cur) => ({ ...cur, [row.id]: msg }));
+    }
   }
 
   async function retry(row: ScheduleDto) {
@@ -148,7 +195,25 @@ export function ScheduleQueue() {
           <span aria-hidden className="library-card-corner library-card-corner-tr" />
           <span aria-hidden className="library-card-corner library-card-corner-bl" />
           <span aria-hidden className="library-card-corner library-card-corner-br" />
-          <span className="relative z-10">{error}</span>
+          <div className="relative z-10 flex flex-col gap-2">
+            <span>{error}</span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => void load()}
+                className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary hover:text-ink"
+              >
+                <RefreshCw className="h-3 w-3" strokeWidth={2} />
+                retry
+              </button>
+              {lastSuccessfulLoad !== null && items && items.length > 0 && (
+                // Don't lie about freshness — if the refresh failed but we
+                // still have rows from earlier, tell the user they're stale.
+                <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                  last successful refresh: {timeSince(lastSuccessfulLoad)} &mdash; showing cached data
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -244,6 +309,18 @@ export function ScheduleQueue() {
                     className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary hover:text-ink"
                   >
                     cancel
+                  </button>
+                )}
+                {cancelError[row.id] && (
+                  // The cancel RPC rejected for this specific row — keep the
+                  // visible affordance so the user can re-try without
+                  // hunting for the action elsewhere.
+                  <button
+                    onClick={() => void cancel(row)}
+                    className="font-mono text-[11px] uppercase tracking-[0.12em] text-[#DC2626] underline decoration-dashed underline-offset-4 hover:text-fuchsia-deep"
+                    title={cancelError[row.id]}
+                  >
+                    Cancel failed &mdash; retry
                   </button>
                 )}
               </div>

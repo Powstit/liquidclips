@@ -1,5 +1,17 @@
-import { sidecar, type DripSlot } from "./sidecar";
+import { sidecar, humanError as sidecarHumanError, type DripSlot } from "./sidecar";
 import { reportDesktopError } from "./telemetry";
+
+// ─── User-journey-lens timeouts ──────────────────────────────────────────
+// authedFetch wraps every HTTPS call. Without an explicit per-request timeout
+// a dropped TCP socket can hang the UI promise for the OS default (60-300s),
+// which strands the user staring at a permanent spinner mid-demo.
+//
+// Reads (GET/HEAD) get a tighter 30s cap; writes can take longer (publish,
+// upload, transcribe) so they get 60s. Callers can still pass their own
+// AbortSignal via init.signal — we union ours with theirs so caller cancel
+// still works (e.g. user navigates away).
+const REQUEST_TIMEOUT_GET_MS = 30_000;
+const REQUEST_TIMEOUT_WRITE_MS = 60_000;
 
 // Map a backend path to a coarse "route" for telemetry grouping (no ids/PII).
 function routeFor(path: string): string {
@@ -69,12 +81,38 @@ export function setOnUnauthorized(fn: (() => void) | null): void {
   onUnauthorized = fn;
 }
 
+// ─── 401 storm dampener (mid-priority finding #5) ────────────────────────
+// Several authed calls fire in parallel at boot (sync, /me, /me/affiliate,
+// notifications, channels). If the license JWT is stale, all of them 401 in a
+// burst and each one used to call onUnauthorized + secretDelete. The user saw
+// two flashes of the activation prompt or — worse — the second secretDelete
+// raced the first and the keychain ended up in an inconsistent state.
+//
+// We collapse the storm to a single fire within a 5s window. The first 401
+// flips the flag, runs the side-effects, and starts a 5s timer. Subsequent
+// 401s in the window still throw UnauthorizedError (the caller is still
+// unauthorized — they shouldn't proceed) but skip the global handler.
+const UNAUTHORIZED_WINDOW_MS = 5_000;
+let unauthorizedFired = false;
+let unauthorizedResetTimer: ReturnType<typeof setTimeout> | null = null;
+
 // Self-heal on a rejected license JWT (401): the stored token is stale/expired/
 // rotated. Drop ONLY the license token (Whop + other secrets stay), notify the
 // app so it flips to needs-activation + shows the prompt, and throw a typed
 // error so callers don't surface raw "HTTP 401" noise. The token is now gone,
 // so the next authed call hits the no-JWT guard instead of retrying the bad one.
 async function handleUnauthorized(route: string): Promise<never> {
+  if (unauthorizedFired) {
+    // Inside the dedupe window — still throw so the caller knows the request
+    // failed, but DON'T re-fire the global handler / re-delete the secret.
+    throw new UnauthorizedError("license rejected — please sign in to Liquid Clips again");
+  }
+  unauthorizedFired = true;
+  if (unauthorizedResetTimer) clearTimeout(unauthorizedResetTimer);
+  unauthorizedResetTimer = setTimeout(() => {
+    unauthorizedFired = false;
+    unauthorizedResetTimer = null;
+  }, UNAUTHORIZED_WINDOW_MS);
   try {
     await sidecar.secretDelete("LICENSE_JWT");
   } catch {
@@ -85,24 +123,100 @@ async function handleUnauthorized(route: string): Promise<never> {
   throw new UnauthorizedError("license rejected — please sign in to Liquid Clips again");
 }
 
+// ─── Backend-error normaliser (finding #9) ──────────────────────────────
+// Most call sites used `throw new Error("...failed: HTTP " + status)` for
+// every non-2xx, which means a 5xx (server hiccup, retry-friendly) and a 422
+// (user-actionable input error) look identical to the caller. Calling this
+// helper lets the catcher branch on `BackendOfflineError` for "retry / show
+// offline UI" vs a plain Error for "show this message to the user".
+function backendErrorFor(label: string, res: Response): Error {
+  if (res.status >= 500 && res.status <= 599) {
+    return new BackendOfflineError(`HTTP ${res.status}`);
+  }
+  return new Error(`${label}: HTTP ${res.status}`);
+}
+
+// ─── Idempotency-key generator (finding #2) ──────────────────────────────
+// crypto.randomUUID is available in every Tauri webview but defensively fall
+// back so this file compiles in jsdom-style tests too.
+function cryptoRandomId(): string {
+  try {
+    const c = (globalThis as { crypto?: Crypto }).crypto;
+    if (c && typeof c.randomUUID === "function") return c.randomUUID();
+  } catch { /* noop */ }
+  // Non-crypto fallback — only used when crypto.randomUUID is unavailable, which
+  // shouldn't happen in production. Good enough for client-side dedupe keys.
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+// Cache of recently-sent clip_ids → last-known remaining_exports + timestamp.
+// See backend.clipExported for why this exists. Module-level so it survives
+// across re-renders within the same desktop session.
+const _recentExports = new Map<string, { at: number; remaining: number | null }>();
+
+// Pull a header value out of a HeadersInit regardless of which of the three
+// shapes TS allows it to be (Headers, [k,v][], Record<string,string>). Used to
+// detect `Idempotency-Key` / `X-Idempotency-Key` so we know when retrying a
+// write is safe.
+function readHeader(headers: HeadersInit | undefined, name: string): string | null {
+  if (!headers) return null;
+  const lower = name.toLowerCase();
+  if (headers instanceof Headers) return headers.get(name);
+  if (Array.isArray(headers)) {
+    for (const [k, v] of headers) if (k.toLowerCase() === lower) return v;
+    return null;
+  }
+  const rec = headers as Record<string, string>;
+  for (const k of Object.keys(rec)) if (k.toLowerCase() === lower) return rec[k];
+  return null;
+}
+
 async function authedFetch(path: string, init: RequestInit & { jwt?: string | null } = {}): Promise<Response> {
-  const { jwt: maybeJwt, headers, ...rest } = init;
+  const { jwt: maybeJwt, headers, signal: callerSignal, ...rest } = init;
   const jwt = maybeJwt ?? (await licenseJwt());
   if (!jwt) {
     throw new UnauthorizedError("not activated — sign in to Liquid Clips to continue.");
   }
   // Retry transient failures (network drop, 5xx, 429) with exponential backoff.
-  // Only retries idempotent reads; non-GET requests bail on the first failure
-  // so we don't double-submit (e.g. duplicate notification dismiss).
+  // Read methods always retry (safely idempotent at the protocol level). Write
+  // methods retry ONLY when the caller passed an Idempotency-Key — without one,
+  // a network-blip retry could double-submit (duplicate notification dismiss,
+  // duplicate clip-export charge). With one, the backend is contractually
+  // expected to dedupe replays, so two attempts with 500/1500ms back-off is safe.
   const method = (rest.method ?? "GET").toUpperCase();
-  const idempotent = method === "GET" || method === "HEAD";
-  const maxAttempts = idempotent ? 3 : 1;
+  const isRead = method === "GET" || method === "HEAD";
+  const idempotencyKey = readHeader(headers, "Idempotency-Key") ?? readHeader(headers, "X-Idempotency-Key");
+  const canRetry = isRead || idempotencyKey !== null;
+  const maxAttempts = canRetry ? (isRead ? 3 : 2) : 1;
+  // Read back-off: 200ms, 600ms (existing tuning).
+  // Write back-off: 500ms, 1500ms (slower because writes are usually slower).
+  const backoffMs = (attempt: number): number =>
+    isRead ? 200 * Math.pow(3, attempt) : (attempt === 0 ? 500 : 1500);
+
   let lastErr: unknown = null;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    // Per-attempt AbortController — required because fetch() has no built-in
+    // timeout. Without this a dropped TCP / dead WiFi pins the promise until
+    // the OS gives up (60-300s), which in the demo path = permanent spinner.
+    // We also chain the caller's AbortSignal if they passed one so user-cancel
+    // (navigating away, hitting Esc on a modal) still aborts cleanly.
+    const timeoutMs = isRead ? REQUEST_TIMEOUT_GET_MS : REQUEST_TIMEOUT_WRITE_MS;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort("timeout"), timeoutMs);
+    // If the caller aborted before we started, surface that immediately.
+    if (callerSignal) {
+      if (callerSignal.aborted) {
+        clearTimeout(timeoutId);
+        throw callerSignal.reason ?? new DOMException("Aborted", "AbortError");
+      }
+      callerSignal.addEventListener("abort", () => controller.abort(callerSignal.reason), { once: true });
+    }
     let res: Response;
+    let timedOut = false;
     try {
       res = await fetch(`${BACKEND_URL}${path}`, {
         ...rest,
+        signal: controller.signal,
         headers: {
           "content-type": "application/json",
           authorization: `Bearer ${jwt}`,
@@ -110,11 +224,29 @@ async function authedFetch(path: string, init: RequestInit & { jwt?: string | nu
         },
       });
     } catch (e) {
+      // Distinguish our timeout from a caller cancel from a real network drop.
+      // controller.abort("timeout") gives signal.reason === "timeout"; AbortError
+      // from the caller signal bubbles as a separate AbortError instance.
+      timedOut = controller.signal.aborted && controller.signal.reason === "timeout";
       lastErr = e;
+      clearTimeout(timeoutId);
+
+      // Caller-initiated abort — don't retry, propagate the abort.
+      if (callerSignal?.aborted) {
+        throw e;
+      }
+
       if (attempt < maxAttempts - 1) {
-        // exponential backoff: 200ms, 600ms
-        await new Promise((r) => window.setTimeout(r, 200 * Math.pow(3, attempt)));
+        await new Promise((r) => window.setTimeout(r, backoffMs(attempt)));
         continue;
+      }
+      if (timedOut) {
+        void reportDesktopError("request_timeout", {
+          route: routeFor(path),
+          error_code: "RequestTimeoutError",
+          message: `timeout after ${timeoutMs}ms`,
+        });
+        throw new RequestTimeoutError("Request timed out — check your connection and retry");
       }
       void reportDesktopError("backend_offline", {
         route: routeFor(path),
@@ -123,9 +255,11 @@ async function authedFetch(path: string, init: RequestInit & { jwt?: string | nu
       });
       throw new BackendOfflineError("can't reach Liquid Clips — check your connection and retry.");
     }
-    // 429 + 5xx are transient — retry on idempotent reads.
-    if (idempotent && (res.status === 429 || (res.status >= 500 && res.status <= 599)) && attempt < maxAttempts - 1) {
-      await new Promise((r) => window.setTimeout(r, 200 * Math.pow(3, attempt)));
+    clearTimeout(timeoutId);
+    // 429 + 5xx are transient — retry when allowed (reads always; writes only
+    // if Idempotency-Key was set so backend can dedupe).
+    if (canRetry && (res.status === 429 || (res.status >= 500 && res.status <= 599)) && attempt < maxAttempts - 1) {
+      await new Promise((r) => window.setTimeout(r, backoffMs(attempt)));
       continue;
     }
     if (res.status === 401) await handleUnauthorized(routeFor(path));
@@ -286,7 +420,23 @@ export const backend = {
     },
   ): Promise<PublishedTarget[]> => {
     // Tauri lets us POST a file by reading it from the local FS and packing into FormData.
-    const { readFile } = await import("@tauri-apps/plugin-fs");
+    // TODO(lens): large clips (>200MB) should stream via a chunked Tauri sidecar
+    // upload instead of materialising the whole file as Uint8Array in the
+    // renderer's JS heap. Today we ship a hard guard at 500MB so a 1.4GB long-form
+    // export doesn't OOM the webview and crash the app silently.
+    const { readFile, stat } = await import("@tauri-apps/plugin-fs");
+    const MAX_DIRECT_PUBLISH_BYTES = 500 * 1024 * 1024;
+    try {
+      const meta = await stat(args.filePath);
+      if (typeof meta.size === "number" && meta.size > MAX_DIRECT_PUBLISH_BYTES) {
+        throw new PayloadTooLargeError("Clip is too large to publish directly — use Schedule instead");
+      }
+    } catch (e) {
+      // Re-throw our guard; tolerate a missing stat() (older plugin version).
+      if (e instanceof PayloadTooLargeError) throw e;
+      // else: best-effort probe — fall through to the readFile path. The
+      // backend will reject oversize uploads with 413, which surfaces below.
+    }
     const bytes = await readFile(args.filePath);
     const form = new FormData();
     form.append(
@@ -319,6 +469,10 @@ export const backend = {
       throw new Error("Connect a social profile in Settings → Connections before publishing.");
     }
     if (!res.ok) {
+      // finding #9: distinguish 5xx (retry / offline UI) from 4xx (user-actionable)
+      if (res.status >= 500) {
+        throw new BackendOfflineError(`HTTP ${res.status}`);
+      }
       throw new Error(`publish-now failed: HTTP ${res.status} ${await res.text()}`);
     }
     // P1 (Ayrshare) returns {results: [{platform, post_url, post_id, status, error}]}.
@@ -376,7 +530,10 @@ export const backend = {
         scheduled_for: args.scheduledFor,
       }),
     });
-    if (!res.ok) throw new Error(`schedule failed: HTTP ${res.status} ${await res.text()}`);
+    if (!res.ok) {
+      if (res.status >= 500) throw new BackendOfflineError(`HTTP ${res.status}`);
+      throw new Error(`schedule failed: HTTP ${res.status} ${await res.text()}`);
+    }
     return res.json();
   },
 
@@ -387,7 +544,7 @@ export const backend = {
       if (opts.project_slug) params.set("project_slug", opts.project_slug);
       if (opts.limit) params.set("limit", String(opts.limit));
       const res = await authedFetch(`/schedules?${params}`, { jwt });
-      if (!res.ok) throw new Error(`schedules list failed: HTTP ${res.status}`);
+      if (!res.ok) throw backendErrorFor("schedules list failed", res);
       return (await res.json()) as ScheduleDto[];
     },
     cancel: async (jwt: string, id: string) => {
@@ -396,7 +553,7 @@ export const backend = {
         return;
       }
       const res = await authedFetch(`/schedules/${id}`, { method: "DELETE", jwt });
-      if (!res.ok) throw new Error(`cancel failed: HTTP ${res.status}`);
+      if (!res.ok) throw backendErrorFor("cancel failed", res);
     },
     // v0.6.41 — Ayrshare retry. Server resets a failed row's status to
     // "pending" and clears its error so the existing cron picks it up
@@ -404,7 +561,7 @@ export const backend = {
     retry: async (jwt: string, id: string) => {
       if (isWebPreview()) return;
       const res = await authedFetch(`/schedules/${id}/retry`, { method: "POST", jwt });
-      if (!res.ok) throw new Error(`retry failed: HTTP ${res.status}`);
+      if (!res.ok) throw backendErrorFor("retry failed", res);
     },
   },
 
@@ -415,13 +572,13 @@ export const backend = {
       if (opts.unread_only) params.set("unread_only", "true");
       if (opts.limit) params.set("limit", String(opts.limit));
       const res = await authedFetch(`/notifications?${params}`, { jwt });
-      if (!res.ok) throw new Error(`notifications list failed: HTTP ${res.status}`);
+      if (!res.ok) throw backendErrorFor("notifications list failed", res);
       return (await res.json()) as NotificationDto[];
     },
     unreadCount: async (_jwt: string) => {
       if (isWebPreview()) return previewNotifications().filter((n) => !n.read_at).length;
       const res = await authedFetch("/notifications/unread-count", { jwt: _jwt });
-      if (!res.ok) throw new Error(`unread-count failed: HTTP ${res.status}`);
+      if (!res.ok) throw backendErrorFor("unread-count failed", res);
       return ((await res.json()) as { unread: number }).unread;
     },
     markRead: async (jwt: string, id: string) => {
@@ -466,7 +623,7 @@ export const backend = {
         jwt,
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(`notification create failed: HTTP ${res.status}`);
+      if (!res.ok) throw backendErrorFor("notification create failed", res);
       return (await res.json()) as NotificationDto;
     },
   },
@@ -486,6 +643,7 @@ export const backend = {
       body: JSON.stringify({ project_slug: slug, items }),
     });
     if (!res.ok) {
+      if (res.status >= 500) throw new BackendOfflineError(`HTTP ${res.status}`);
       throw new Error(`drip-batch failed: HTTP ${res.status} ${await res.text()}`);
     }
     return res.json();
@@ -498,7 +656,7 @@ export const backend = {
       throw new QuotaExceededError(body.detail || "Free tier cap reached.");
     }
     if (!res.ok) {
-      throw new Error(`usage call failed: HTTP ${res.status}`);
+      throw backendErrorFor("usage call failed", res);
     }
     return res.json();
   },
@@ -510,8 +668,40 @@ export const backend = {
   //
   // Returns the post-increment `remaining_exports` (null = unlimited). Throws
   // QuotaExceededError on 402 so the caller can raise the upgrade wall.
-  clipExported: async (jwt: string): Promise<{ remaining_exports: number | null }> => {
-    const res = await authedFetch("/usage/clip-exported", { method: "POST", jwt });
+  //
+  // ─── Idempotency (finding #2) ────────────────────────────────────────
+  // App.tsx loops this call inside chargeExports() — if a network retry or
+  // a double-click on Export fires it twice for the same clip, the counter
+  // double-debits and a Free user can be wrongly walled. We send
+  // X-Idempotency-Key on every call so the backend can dedupe replays of
+  // the SAME logical export. The frontend ALSO holds a 30s in-memory Set of
+  // recently-sent clip ids; if we see the same id twice within the window we
+  // skip the network call and return the cached previous response.
+  // TODO(backend): honor X-Idempotency-Key in junior-backend's
+  // /usage/clip-exported route — store (user_id, key) -> response for 60s and
+  // replay the prior response on duplicate. Until backend ships that, the
+  // frontend dedupe is the only guard.
+  clipExported: async (
+    jwt: string,
+    opts: { clipId?: string } = {},
+  ): Promise<{ remaining_exports: number | null }> => {
+    const clipId = opts.clipId;
+    if (clipId) {
+      const cached = _recentExports.get(clipId);
+      if (cached && Date.now() - cached.at < 30_000) {
+        // Same id within 30s window — backend has already recorded it.
+        // Return the prior counter so the caller's accounting stays consistent.
+        return { remaining_exports: cached.remaining };
+      }
+    }
+    // Stable key per logical export attempt: clipId if known (so a retry of
+    // THIS attempt dedupes), otherwise a fresh UUID per call.
+    const idempotencyKey = clipId ? `clip-exported:${clipId}` : `clip-exported:${cryptoRandomId()}`;
+    const res = await authedFetch("/usage/clip-exported", {
+      method: "POST",
+      jwt,
+      headers: { "X-Idempotency-Key": idempotencyKey },
+    });
     if (res.status === 402) {
       void reportDesktopError("export_capped", { route: "export", http_status: 402, error_code: "QuotaExceededError" });
       const body = await res.json().catch(() => ({}));
@@ -520,9 +710,18 @@ export const backend = {
       );
     }
     if (!res.ok) {
-      throw new Error(`clip-exported call failed: HTTP ${res.status}`);
+      throw backendErrorFor("clip-exported call failed", res);
     }
-    return (await res.json()) as { remaining_exports: number | null };
+    const body = (await res.json()) as { remaining_exports: number | null };
+    if (clipId) {
+      _recentExports.set(clipId, { at: Date.now(), remaining: body.remaining_exports });
+      // Trim the Set so it can't grow unbounded across a long session.
+      if (_recentExports.size > 256) {
+        const firstKey = _recentExports.keys().next().value;
+        if (firstKey !== undefined) _recentExports.delete(firstKey);
+      }
+    }
+    return body;
   },
 
   // Reward Clips — bridges a generated Junior clip to a Whop Content Reward
@@ -531,7 +730,7 @@ export const backend = {
   rewardClips: {
     list: async (jwt: string): Promise<RewardClipBlock[]> => {
       const res = await authedFetch("/me/reward-clips", { jwt });
-      if (!res.ok) throw new Error(`reward-clips list failed: HTTP ${res.status}`);
+      if (!res.ok) throw backendErrorFor("reward-clips list failed", res);
       const body = (await res.json()) as { reward_clips: RewardClipBlock[] };
       return body.reward_clips;
     },
@@ -545,7 +744,7 @@ export const backend = {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.detail || "Couldn't reach Whop to set up the tracking link — retry shortly.");
       }
-      if (!res.ok) throw new Error(`reward-clip create failed: HTTP ${res.status}`);
+      if (!res.ok) throw backendErrorFor("reward-clip create failed", res);
       const body = (await res.json()) as { reward_clip: RewardClipBlock };
       return body.reward_clip;
     },
@@ -555,7 +754,7 @@ export const backend = {
         jwt,
         body: JSON.stringify(patch),
       });
-      if (!res.ok) throw new Error(`reward-clip patch failed: HTTP ${res.status}`);
+      if (!res.ok) throw backendErrorFor("reward-clip patch failed", res);
       return (await res.json()) as RewardClipBlock;
     },
   },
@@ -568,17 +767,57 @@ export const backend = {
  * Throws `QuotaExceededError` if Free-tier cap is hit.
  * Returns the usage row otherwise.
  */
-export async function maybeCheckQuota(): Promise<{ tier: string; remaining: number | null } | null> {
+/** Tri-state quota probe (finding #8). Callers used to receive `null` for both
+ * "no license" AND "backend hiccuped", which means a 5xx upstream of the
+ * pipeline silently ran the user's quota-bearing job without a debit. Now we
+ * distinguish:
+ *  - { kind: "ok", ... }       → backend confirmed, pipeline can proceed
+ *  - { kind: "unknown", reason } → transient (offline / 5xx / no license).
+ *                                  Caller decides: retry, or ask the user to
+ *                                  retry in a moment, or proceed leniently
+ *                                  (currently App.tsx does the latter — it
+ *                                  reads "unknown" and runs the pipeline).
+ *  - throws QuotaExceededError  → user hit the cap; show the upgrade wall.
+ */
+export type QuotaCheck =
+  | { kind: "ok"; tier: string; remaining: number | null }
+  | { kind: "unknown"; reason: string };
+
+export async function maybeCheckQuota(): Promise<QuotaCheck> {
+  let jwt: string | null = null;
   try {
-    const { value: jwt } = await import("./sidecar").then((m) => m.sidecar.licenseJwtRead());
-    if (!jwt) return null;
-    return await backend.startVideoUsage(jwt);
+    const r = await import("./sidecar").then((m) => m.sidecar.licenseJwtRead());
+    jwt = r.value;
+  } catch (e) {
+    return { kind: "unknown", reason: `keychain unavailable: ${String(e)}` };
+  }
+  if (!jwt) return { kind: "unknown", reason: "no license" };
+  try {
+    const row = await backend.startVideoUsage(jwt);
+    return { kind: "ok", tier: row.tier, remaining: row.remaining };
   } catch (e) {
     if (e instanceof QuotaExceededError) throw e;
-    // No license / backend offline / network — let the pipeline run anyway.
-    // The user gets unlimited until they activate; we error-tolerantly accept that.
-    return null;
+    if (e instanceof UnauthorizedError) {
+      // 401 already flipped the app to needs-activation; downstream pipeline
+      // can run as unauthenticated.
+      return { kind: "unknown", reason: "unauthorized" };
+    }
+    // BackendOfflineError / RequestTimeoutError / unknown — caller decides
+    // whether to proceed or warn the user. Old behavior was silent null →
+    // we keep that lenient default at the call site, but surface the reason
+    // so the UI can show a transient warning ("we couldn't confirm your
+    // remaining quota — proceeding").
+    return { kind: "unknown", reason: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/** Legacy shim — preserves the OLD null-on-transient contract so App.tsx
+ * keeps compiling while it's refactored to the new tri-state. See finding #8.
+ * @deprecated Use maybeCheckQuota() (returns QuotaCheck) instead. */
+export async function maybeCheckQuotaLegacy(): Promise<{ tier: string; remaining: number | null } | null> {
+  const result = await maybeCheckQuota();
+  if (result.kind === "ok") return { tier: result.tier, remaining: result.remaining };
+  return null;
 }
 
 export class QuotaExceededError extends Error {
@@ -600,11 +839,83 @@ export class BackendOfflineError extends Error {
   readonly kind = "backend_offline" as const;
 }
 
+/** Thrown by authedFetch when a request exceeds the per-method timeout
+ * (30s reads, 60s writes). Without this, a dropped TCP can hang the UI
+ * promise for the OS default 60-300s — which mid-demo looks like Liquid Clips
+ * is broken. Catchers should surface "Network slow — try again" and re-enable
+ * whatever action the user took. See finding #1. */
+export class RequestTimeoutError extends Error {
+  readonly kind = "request_timeout" as const;
+}
+
+/** Thrown by publishNow when the source clip exceeds the in-memory upload
+ * ceiling (500MB today). The user should be routed to Schedule (which streams)
+ * instead of having the webview try to materialise 1.4GB as a Uint8Array and
+ * OOM the renderer. See finding #6. */
+export class PayloadTooLargeError extends Error {
+  readonly kind = "payload_too_large" as const;
+}
+
+// ─── humanize backend errors (finding #10) ───────────────────────────────
+// Pair this with sidecar.ts's humanError() so every layer produces consistent
+// friendly strings. The point: screens don't need to know our error taxonomy —
+// they just print humanizeBackendError(e) and it picks the right message.
+export function humanizeBackendError(e: unknown): string {
+  if (e instanceof RequestTimeoutError) return "Network slow — try again.";
+  if (e instanceof BackendOfflineError) return "Can't reach Liquid Clips right now. Check your connection and retry.";
+  if (e instanceof UnauthorizedError) return "Your session expired. Sign in to Liquid Clips again.";
+  if (e instanceof QuotaExceededError) return e.message || "You've hit your plan's limit. Upgrade to keep going.";
+  if (e instanceof PayloadTooLargeError) return e.message || "Clip is too large to publish directly — use Schedule instead.";
+  // Fall through to the sidecar's pattern-matcher so we don't duplicate its
+  // long list of HTTP / Python / network heuristics.
+  return sidecarHumanError(e);
+}
+
+/** Re-export of sidecar.humanError under a stable name from this layer.
+ * Screens that already import humanError from sidecar keep working; new code
+ * that touches network-only errors can pull it from here. See finding #10. */
+export { sidecarHumanError as humanError };
+
 // Tier names match junior-backend/app/features.py FEATURES_BY_TIER. Legacy
 // 'growth' / 'autopilot' are kept here for backend compatibility — the
 // _LEGACY_TIER_ALIASES map on the backend converts them to 'pro' / 'agency'
 // transparently. Public-facing copy in TIER_COPY (useTier.ts) uses Pro / Agency.
 export type Tier = "free" | "solo" | "pro" | "agency" | "growth" | "autopilot";
+
+// Convenience alias — matches the name the user-journey-lens findings used.
+export type TierName = Tier;
+
+// ─── Cached-tier helpers (finding #4) ────────────────────────────────────
+// syncStatus() used to silent-degrade to {tier: "free"} on transient errors,
+// which means a paying user could briefly see fake upgrade walls when the
+// backend hiccuped. The new contract throws BackendOfflineError instead —
+// callers should fall back to the last-known tier persisted via these helpers.
+// They're best-effort; localStorage failures (private browsing, quota) just
+// log and continue.
+const CACHED_TIER_KEY = "junior:cached-tier:v1";
+
+export function readCachedTier(): TierName | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(CACHED_TIER_KEY);
+    if (!raw) return null;
+    // Validate it's one of the known tiers — if we ever rename them this
+    // catches stale stored values cleanly.
+    const valid: TierName[] = ["free", "solo", "pro", "agency", "growth", "autopilot"];
+    return valid.includes(raw as TierName) ? (raw as TierName) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeCachedTier(t: TierName): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CACHED_TIER_KEY, t);
+  } catch {
+    /* localStorage quota or private browsing — best-effort */
+  }
+}
 
 export type FeatureMap = {
   video_quota_monthly: number | null;        // null = unlimited
@@ -633,19 +944,50 @@ export type SyncStatus = {
   // — when null we never show the export gate or the "X free exports left"
   // counter. Backend-authoritative; do not derive client-side.
   remaining_exports: number | null;
+  // True when the user's email is on JUNIOR_ADMIN_EMAILS. useTier forces
+  // "agency" capabilities in this case so a founder demo isn't blocked by its
+  // own upgrade walls. Optional for back-compat with older backends.
+  admin_override?: boolean;
 };
 
 /**
- * Pulls the current subscription state from Junior Backend. Returns null when
- * the user has no JWT (unactivated) — Settings then defaults to the marketing
- * Upgrade flow instead of branching.
+ * Pulls the current subscription state from Junior Backend.
+ *
+ * Contract (finding #4):
+ *  - null              → user has no JWT (unactivated). Settings then defaults
+ *                        to the marketing Upgrade flow instead of branching.
+ *  - SyncStatus        → backend responded with a real subscription row.
+ *  - throws            → backend transport / 5xx error. Callers should fall
+ *                        back to readCachedTier() rather than silently
+ *                        downgrading to "free" (which previously caused paid
+ *                        users to see fake upgrade walls during a hiccup).
+ *                        Catching is required; UnauthorizedError still bubbles.
+ *
+ * On a successful response we also write the tier to localStorage so the next
+ * transient failure has something better than "free" to fall back to.
  */
 export async function syncStatus(): Promise<SyncStatus | null> {
   if (isWebPreview()) return previewSyncStatus();
+  const res = await authedFetch("/sync");
+  if (res.status === 404) return null; // backend has no row for this user
+  if (!res.ok) {
+    // 5xx / 429 / unexpected status — surface as a transport error so the
+    // caller can decide whether to fall back to the cached tier or retry.
+    throw backendErrorFor("sync failed", res);
+  }
+  const body = (await res.json()) as SyncStatus;
+  if (body?.tier) writeCachedTier(body.tier);
+  return body;
+}
+
+/** Legacy shim — preserves the OLD null-on-error contract for any caller
+ * that hasn't been refactored to handle the throw. Prefer the typed syncStatus()
+ * + readCachedTier() pair for new code. Marked deprecated so the audit can
+ * delete remaining callers in a follow-up. See finding #4.
+ * @deprecated Use syncStatus() + readCachedTier() instead. */
+export async function syncStatusLegacy(): Promise<SyncStatus | null> {
   try {
-    const res = await authedFetch("/sync");
-    if (!res.ok) return null;
-    return (await res.json()) as SyncStatus;
+    return await syncStatus();
   } catch {
     return null;
   }
@@ -757,7 +1099,7 @@ export type AffiliateMeResponse = {
 export async function meAffiliate(): Promise<AffiliateMeResponse | null> {
   if (isWebPreview()) return null;
   const res = await authedFetch("/me/affiliate");
-  if (!res.ok) throw new Error(`affiliate fetch failed: HTTP ${res.status}`);
+  if (!res.ok) throw backendErrorFor("affiliate fetch failed", res);
   return (await res.json()) as AffiliateMeResponse;
 }
 
@@ -911,6 +1253,7 @@ export async function createSubmission(input: SubmissionCreateInput): Promise<Su
     throw new Error(detail.message ?? body.detail ?? `HTTP ${res.status}`);
   }
   if (!res.ok) {
+    if (res.status >= 500) throw new BackendOfflineError(`HTTP ${res.status}`);
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail ?? `Submission failed: HTTP ${res.status}`);
   }
@@ -1050,6 +1393,7 @@ export async function createChannel(input: { platform: ChannelPlatform; label: s
     body: JSON.stringify(input),
   });
   if (!res.ok) {
+    if (res.status >= 500) throw new BackendOfflineError(`HTTP ${res.status}`);
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail ?? `Couldn't create channel: HTTP ${res.status}`);
   }
@@ -1063,6 +1407,7 @@ export async function patchChannel(id: string, patch: { label?: string; status?:
     body: JSON.stringify(patch),
   });
   if (!res.ok) {
+    if (res.status >= 500) throw new BackendOfflineError(`HTTP ${res.status}`);
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail ?? `Couldn't update channel: HTTP ${res.status}`);
   }
@@ -1072,6 +1417,7 @@ export async function patchChannel(id: string, patch: { label?: string; status?:
 export async function deleteChannel(id: string): Promise<void> {
   const res = await authedFetch(`/channels/${id}`, { method: "DELETE" });
   if (!res.ok && res.status !== 204) {
+    if (res.status >= 500) throw new BackendOfflineError(`HTTP ${res.status}`);
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail ?? `Couldn't delete channel: HTTP ${res.status}`);
   }
@@ -1080,6 +1426,7 @@ export async function deleteChannel(id: string): Promise<void> {
 export async function refreshChannel(id: string): Promise<Channel> {
   const res = await authedFetch(`/channels/${id}/refresh`, { method: "POST" });
   if (!res.ok) {
+    if (res.status >= 500) throw new BackendOfflineError(`HTTP ${res.status}`);
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail ?? `Couldn't refresh channel: HTTP ${res.status}`);
   }
@@ -1089,6 +1436,7 @@ export async function refreshChannel(id: string): Promise<Channel> {
 export async function relinkChannel(id: string): Promise<{ link_url: string }> {
   const res = await authedFetch(`/channels/${id}/relink`, { method: "POST" });
   if (!res.ok) {
+    if (res.status >= 500) throw new BackendOfflineError(`HTTP ${res.status}`);
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail ?? `Couldn't relink channel: HTTP ${res.status}`);
   }
@@ -1178,20 +1526,77 @@ export async function socialStartLink(
     body: "{}",
   });
   if (!res.ok) {
+    if (res.status >= 500) throw new BackendOfflineError(`HTTP ${res.status}`);
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail ?? `Couldn't start linking: HTTP ${res.status}`);
   }
   return res.json();
 }
 
-export async function socialGetConnection(): Promise<SocialConnectionState | null> {
+/**
+ * Get the user's social-connection state (finding #3).
+ *
+ * Contract:
+ *  - SocialConnectionState   → backend returned a row (may have platforms: [])
+ *  - "no-connection"          → backend returned 404 OR an empty/missing row.
+ *                               Caller should route the user to Settings →
+ *                               Connections to link one.
+ *  - throws BackendOfflineError → transport / 5xx / RequestTimeoutError.
+ *                               Caller should render an "offline" / retry
+ *                               surface, NOT the "connect a profile" CTA.
+ *  - throws UnauthorizedError  → already self-healed by handleUnauthorized.
+ *
+ * Old contract was nullable, which collapsed "no row" and "backend down" into
+ * the same state — PublishModal then sent the user to Settings to "connect"
+ * during what was actually a temporary 503.
+ */
+// ─── socialGetConnection split (finding #3) ──────────────────────────────
+// The strict version distinguishes "no row" from "backend down" so the UI
+// can decide between "Connect a profile" CTA and "We're offline, retry" copy.
+// We can't touch the existing callers in this pass, so the public
+// socialGetConnection() name keeps its old null-on-anything contract for
+// back-compat and new code is asked to migrate to socialGetConnectionStrict().
+
+export async function socialGetConnectionStrict(): Promise<SocialConnectionState | "no-connection"> {
   if (isWebPreview()) {
     return { connected: true, profile_key_set: true, platforms: ["tiktok", "youtube"], active: true };
   }
+  const res = await authedFetch("/social/connections");
+  if (res.status === 404) return "no-connection";
+  if (!res.ok) {
+    // 5xx / 429 / unexpected — surface transport error rather than mis-signal
+    // "go connect a profile" to a user whose backend is briefly down.
+    throw backendErrorFor("social connections failed", res);
+  }
+  const body = (await res.json()) as SocialConnectionState;
+  // Empty-row case: backend returned 200 with no platforms and not connected.
+  // Treat as "no-connection" so the UI shows the same CTA as a 404.
+  if (!body || (!body.connected && (!body.platforms || body.platforms.length === 0))) {
+    return "no-connection";
+  }
+  return body;
+}
+
+/** Back-compat wrapper — preserves the OLD null-on-anything contract so
+ * AyrshareConnectionPanel / PublishModal / SchedulePage / InlineScheduler /
+ * DirectPublishQueue keep compiling untouched. Catches the BackendOfflineError
+ * + collapses "no-connection" → null. New code should call
+ * socialGetConnectionStrict() so the UI can tell "backend down" apart from
+ * "user has no row" — see finding #3 for the journey-lens reason.
+ *
+ * TODO(callers): migrate these sites to socialGetConnectionStrict() and
+ * handle the throw + "no-connection" literal:
+ *   - src/components/AyrshareConnectionPanel.tsx (line 54)
+ *   - src/components/PublishModal.tsx (line 159)
+ *   - src/components/schedule/SchedulePage.tsx (line 82)
+ *   - src/components/clips-feed/InlineScheduler.tsx (lines 101, 130)
+ *   - src/components/upload/DirectPublishQueue.tsx (line 95)
+ *
+ * @deprecated Use socialGetConnectionStrict() instead. */
+export async function socialGetConnection(): Promise<SocialConnectionState | null> {
   try {
-    const res = await authedFetch("/social/connections");
-    if (!res.ok) return null;
-    return (await res.json()) as SocialConnectionState;
+    const result = await socialGetConnectionStrict();
+    return result === "no-connection" ? null : result;
   } catch {
     return null;
   }
@@ -1207,6 +1612,7 @@ export async function socialConnect(profileKey: string): Promise<SocialConnectio
     body: JSON.stringify({ profile_key: profileKey }),
   });
   if (!res.ok) {
+    if (res.status >= 500) throw new BackendOfflineError(`HTTP ${res.status}`);
     const body = await res.text().catch(() => "");
     throw new Error(`connect failed: HTTP ${res.status} ${body}`);
   }
@@ -1218,7 +1624,7 @@ export async function socialRefreshPlatforms(): Promise<SocialConnectionState> {
     return { connected: true, profile_key_set: true, platforms: ["tiktok", "youtube"], active: true };
   }
   const res = await authedFetch("/social/refresh-platforms", { method: "POST" });
-  if (!res.ok) throw new Error(`refresh failed: HTTP ${res.status}`);
+  if (!res.ok) throw backendErrorFor("refresh failed", res);
   return (await res.json()) as SocialConnectionState;
 }
 
@@ -1227,7 +1633,7 @@ export async function socialDisconnectPlatform(platform: string): Promise<Social
     return { connected: true, profile_key_set: true, platforms: ["youtube"], active: true };
   }
   const res = await authedFetch(`/social/disconnect/${encodeURIComponent(platform)}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`disconnect failed: HTTP ${res.status}`);
+  if (!res.ok) throw backendErrorFor("disconnect failed", res);
   return (await res.json()) as SocialConnectionState;
 }
 

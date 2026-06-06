@@ -19,6 +19,7 @@ export function IntentPicker({
   fileSizeMb,
   onPick,
   onCancel,
+  onChangeSource,
 }: {
   source: { kind: "file"; path: string } | { kind: "url"; url: string };
   brief: string;
@@ -26,6 +27,10 @@ export function IntentPicker({
   fileSizeMb?: number;
   onPick: (intent: Intent) => void;
   onCancel: () => void;
+  /** P1 #11 — only relevant for url-kind sources. Routes the user back to
+   *  the URL paste portal so they can fix a mistyped link without having to
+   *  cancel and re-navigate. */
+  onChangeSource?: () => void;
 }) {
   const [typed, setTyped] = useState("");
   const [prediction, setPrediction] = useState<TimePrediction | null>(null);
@@ -100,9 +105,24 @@ export function IntentPicker({
         </p>
       </div>
 
-      <p className="max-w-[520px] truncate font-mono text-[11px] leading-relaxed text-text-tertiary">
-        from <span className="text-text-secondary">{label}</span>
-        {brief && <> · brief: <span className="text-text-secondary">{brief}</span></>}
+      <p className="flex max-w-[560px] flex-wrap items-center gap-2 font-mono text-[11px] leading-relaxed text-text-tertiary">
+        <span>
+          from <span className="text-text-secondary">{label}</span>
+          {brief && <> · brief: <span className="text-text-secondary">{brief}</span></>}
+        </span>
+        {/* P1 #11 — "change URL" affordance. URL-only — file picks don't have
+            a comparable "type it again" surface; the cancel link still works
+            for those. */}
+        {source.kind === "url" && onChangeSource && (
+          <button
+            type="button"
+            onClick={onChangeSource}
+            className="rounded-full border border-line bg-paper px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary transition-colors hover:border-fuchsia hover:text-fuchsia"
+            aria-label="Change source URL"
+          >
+            ← change URL
+          </button>
+        )}
       </p>
 
       {prediction && (

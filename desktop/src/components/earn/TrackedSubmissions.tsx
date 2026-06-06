@@ -5,7 +5,8 @@
 // brief title, post URL, views, payout. Click row to edit; Add to create.
 
 import { useMemo, useState } from "react";
-import { ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { Copy as CopyIcon, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button, Card, IconButton, Pill } from "../primitives";
 import {
   deleteSubmission,
@@ -17,6 +18,7 @@ import {
 } from "../../lib/submissions";
 import { useBriefs } from "../../lib/briefs";
 import { openBrowsePanel } from "../../lib/browse";
+import { humanError } from "../../lib/sidecar";
 import { SubmissionForm } from "./SubmissionForm";
 
 // 6-tone status ladder (locked 2026-05-29):
@@ -107,6 +109,12 @@ export function TrackedSubmissionsTable({
           Log a post
         </Button>
       </header>
+
+      {loading && (
+        <p className="px-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+          Loading submissions&hellip;
+        </p>
+      )}
 
       {error && (
         <div className="rounded-md border border-[#DC2626]/40 bg-[#DC2626]/10 px-3 py-2 font-mono text-[11px] text-[#F87171]">
@@ -219,12 +227,20 @@ function SubmissionRow({
   onEdit: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const [openErrorCopied, setOpenErrorCopied] = useState(false);
 
   async function doDelete(): Promise<void> {
     if (!confirm("Delete this submission?")) return;
     setBusy(true);
+    setError(null);
     try {
       await deleteSubmission(submission.id);
+    } catch (e) {
+      // PREVENTS — silent delete failure. Without this catch the row
+      // pretends to be deleted then re-appears on next refresh.
+      setError(`Couldn't delete — ${humanError(e)}`);
     } finally {
       setBusy(false);
     }
@@ -234,8 +250,23 @@ function SubmissionRow({
     if (!submission.post_url) return;
     try {
       await openBrowsePanel(submission.post_url);
+      setOpenError(null);
+    } catch (e) {
+      // PREVENTS — clicking the post URL silently doing nothing.
+      // Surface a recoverable instruction with a Copy URL fallback.
+      setOpenError(humanError(e));
+      setOpenErrorCopied(false);
+    }
+  }
+
+  async function copyPostUrl(): Promise<void> {
+    if (!submission.post_url) return;
+    try {
+      await writeText(submission.post_url);
+      setOpenErrorCopied(true);
+      window.setTimeout(() => setOpenErrorCopied(false), 2000);
     } catch {
-      /* user can copy it from the URL bar instead */
+      // best-effort — user can select the URL from the row instead
     }
   }
 
@@ -261,6 +292,25 @@ function SubmissionRow({
           </button>
         ) : (
           <span className="font-mono text-[10px] text-text-tertiary">no post URL yet</span>
+        )}
+        {openError && submission.post_url && (
+          <div className="mt-1 flex items-center gap-1.5 font-mono text-[10px] text-[#F87171]" role="alert">
+            <span>Couldn&apos;t open — copy URL:</span>
+            <button
+              type="button"
+              onClick={() => void copyPostUrl()}
+              className="inline-flex items-center gap-1 rounded border border-line bg-paper px-1.5 py-0.5 text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
+              title="Copy this post URL"
+            >
+              <CopyIcon size={10} strokeWidth={2.25} />
+              {openErrorCopied ? "Copied" : "Copy"}
+            </button>
+          </div>
+        )}
+        {error && (
+          <span className="mt-1 font-mono text-[10px] text-[#F87171]" role="alert">
+            {error}
+          </span>
         )}
       </div>
       <span className="text-right font-mono text-[11px] text-ink">

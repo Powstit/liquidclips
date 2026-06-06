@@ -182,18 +182,41 @@ async def publish_now(
                     error=str(err),
                 ))
 
-        # Schedule v2: when channel + scheduled_at are set AND Ayrshare
-        # accepted the post, persist a schedules row so the desktop's queue
-        # surface can find it for cancel/edit. Also bumps total_posts on the
-        # channel for the at-a-glance counter.
-        if channel and scheduled_at:
+        # Schedule v2 — ALWAYS persist a schedules row when channel mode is
+        # in play. Two cases collapse into one persistence path:
+        #
+        #   * scheduled_at set → status="scheduled". Stays that way until the
+        #     Ayrshare webhook (webhooks_ayrshare.py) flips it to "published"
+        #     when the post actually fires. Until then it's cancellable via
+        #     the queue surface.
+        #
+        #   * scheduled_at None (immediate publish) → status="published"
+        #     immediately. Ayrshare's POST response already includes the
+        #     live post_id + post_url, so this row is "real" the moment we
+        #     write it. This unlocks the 30-min cron analytics refresh
+        #     (cron.py:_refresh_post_analytics_tick filters on
+        #     status="published" + ayrshare_scheduled_post_id NOT NULL) for
+        #     the most-common publish path. Before this fix, immediate
+        #     publishes never produced a Schedule row → AnalyticsView showed
+        #     zero forever.
+        #
+        # Counter bump stays for the at-a-glance "X posts" pill on the
+        # channel card.
+        if channel:
             from app.models import Schedule
             scheduled_dt = None
-            try:
-                from datetime import datetime as _dt
-                scheduled_dt = _dt.fromisoformat(scheduled_at.replace("Z", "+00:00"))
-            except Exception:  # noqa: BLE001
-                pass
+            if scheduled_at:
+                try:
+                    from datetime import datetime as _dt
+                    scheduled_dt = _dt.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+                except Exception:  # noqa: BLE001
+                    pass
+            # Immediate publish: stamp scheduled_for to "now" so queue/analytics
+            # ordering by scheduled_for still works for these rows.
+            if scheduled_dt is None:
+                from datetime import datetime as _dt, timezone as _tz
+                scheduled_dt = _dt.now(_tz.utc)
+            row_status = "scheduled" if scheduled_at else "published"
             for r in results:
                 if r.status != "published":
                     continue
@@ -205,16 +228,13 @@ async def publish_now(
                     vertical_path=tmp_path,
                     platform=r.platform,
                     scheduled_for=scheduled_dt,
-                    status="scheduled",
+                    status=row_status,
                     channel_id=channel.id,
                     caption_override=description or None,
                     ayrshare_scheduled_post_id=r.post_id,
                     actual_post_url=r.post_url,
                 )
                 db.add(row)
-            channel.total_posts = (channel.total_posts or 0) + sum(1 for r in results if r.status == "published")
-        elif channel:
-            # Immediate publish (no scheduled_at) — still bump the counter.
             channel.total_posts = (channel.total_posts or 0) + sum(1 for r in results if r.status == "published")
 
         db.commit()

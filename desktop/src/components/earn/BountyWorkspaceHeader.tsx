@@ -12,6 +12,7 @@ const KNOWN: PlatformId[] = ["youtube", "tiktok", "instagram", "x"];
 // leaving: payout, allowed platforms, source, the brief, and the Whop link.
 export function BountyWorkspaceHeader({ project }: { project: Project }) {
   const [briefOpen, setBriefOpen] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
   if (!project.whop_bounty_id) return null;
 
   const sym =
@@ -21,7 +22,8 @@ export function BountyWorkspaceHeader({ project }: { project: Project }) {
   );
   const whopUrl = project.whop_bounty_url;
   const source = project.whop_bounty_source_url;
-  const readyClips = project.clips.filter((c) => c.vertical_path || c.cut_path).length;
+  const readyClipList = project.clips.filter((c) => c.vertical_path || c.cut_path);
+  const readyClips = readyClipList.length;
   const fitScores = project.clips
     .map((c) => computeBountyFit(c, project)?.score)
     .filter((n): n is number => typeof n === "number");
@@ -29,6 +31,26 @@ export function BountyWorkspaceHeader({ project }: { project: Project }) {
     ? Math.round(fitScores.reduce((sum, n) => sum + n, 0) / fitScores.length)
     : null;
   const bestFit = fitScores.length ? Math.max(...fitScores) : null;
+
+  // "next step: submit" was telling users to submit clips that were still
+  // unpolished — exported but no captions, low fit, no virality signal. We
+  // only call a clip ship-ready when at least one of:
+  //   - virality / score signal >= 50 (LLM picked it as a strong cut)
+  //   - captions baked in OR caption files present (caption_style proxy)
+  //   - fit score vs the brief is >= 70
+  // Otherwise the next step is to polish a clip, not submit a weak one.
+  const hasShipReadyClip = readyClipList.some((c) => {
+    if ((c.virality ?? 0) >= 50) return true;
+    if (c.captions_burned || c.srt_path || c.vtt_path) return true;
+    return false;
+  });
+  const fitReady = (bestFit ?? 0) >= 70;
+  const nextStep =
+    readyClips === 0
+      ? "generate"
+      : hasShipReadyClip || fitReady
+        ? "submit"
+        : "polish a clip first";
 
   return (
     <div className="mb-4 rounded-2xl border border-fuchsia-soft bg-fuchsia-soft/25 p-5">
@@ -49,12 +71,25 @@ export function BountyWorkspaceHeader({ project }: { project: Project }) {
           )}
         </div>
         {whopUrl && (
-          <button
-            onClick={() => void openExternal(whopUrl).catch(() => undefined)}
-            className="shrink-0 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep"
-          >
-            Open reward on Whop ↗
-          </button>
+          <div className="flex flex-col items-end gap-1">
+            <button
+              onClick={async () => {
+                setOpenError(null);
+                try {
+                  await openExternal(whopUrl);
+                } catch (e) {
+                  console.error("[bounty-workspace-header] openExternal failed:", e);
+                  setOpenError("Couldn't open Whop — copy the link manually.");
+                }
+              }}
+              className="shrink-0 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep"
+            >
+              Open reward on Whop ↗
+            </button>
+            {openError && (
+              <p className="font-mono text-[11px] text-[#DC2626]">{openError}</p>
+            )}
+          </div>
         )}
       </div>
 
@@ -104,7 +139,7 @@ export function BountyWorkspaceHeader({ project }: { project: Project }) {
         <ProgressTile label="clips ready" value={`${readyClips}/${project.clips.length || 0}`} />
         <ProgressTile label="avg fit" value={avgFit == null ? "—" : `${avgFit}/100`} />
         <ProgressTile label="best clip" value={bestFit == null ? "—" : `${bestFit}/100`} />
-        <ProgressTile label="next step" value={readyClips > 0 ? "submit" : "generate"} />
+        <ProgressTile label="next step" value={nextStep} />
       </div>
 
       {project.whop_bounty_description && (

@@ -19,6 +19,7 @@ import {
   Plus,
   ChevronDown,
   Check,
+  AlertTriangle,
 } from "lucide-react";
 import type { DirectPublishQueueItem } from "../../lib/sidecar";
 import type { SocialConnectionState } from "../../lib/backend";
@@ -149,6 +150,8 @@ export function ClipReadyCard({
   }
 
   // Connect-gate (publish/schedule blocked until profile linked).
+  // Track which action triggered the gate so the copy can match — a
+  // "Publish Now" gate should promise to resume the publish, not the schedule.
   const [gateFor, setGateFor] = useState<ClipReadyAction | null>(null);
   const hasConnection =
     !!connection?.profile_key_set && (connection?.platforms?.length ?? 0) > 0;
@@ -162,7 +165,7 @@ export function ClipReadyCard({
     onAction(mode, item);
   }
 
-  // Schedule dropdown menu — click-outside-to-close.
+  // Schedule dropdown menu — click-outside-to-close, Esc-to-close.
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const scheduleWrapRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -171,8 +174,15 @@ export function ClipReadyCard({
       const wrap = scheduleWrapRef.current;
       if (wrap && !wrap.contains(e.target as Node)) setScheduleOpen(false);
     }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setScheduleOpen(false);
+    }
     window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
   }, [scheduleOpen]);
 
   function pickPreset(preset: SchedulePreset) {
@@ -184,6 +194,10 @@ export function ClipReadyCard({
     }
     onScheduleAt(preset.iso(), item);
   }
+
+  // Detect a moved/deleted file so the user sees a "file not found" recovery
+  // affordance instead of a silently-broken poster frame.
+  const [videoError, setVideoError] = useState(false);
 
   const videoSrc = convertFileSrc(item.file_path);
 
@@ -222,20 +236,54 @@ export function ClipReadyCard({
       <button
         type="button"
         onClick={() => onAction("edit", item)}
-        disabled={busy}
+        disabled={busy || videoError}
         className="group relative block w-full overflow-hidden rounded-xl border border-line bg-ink"
-        title="Click to open the full editor"
+        title={videoError ? "Source file is missing" : "Click to open the full editor"}
       >
         <video
           src={videoSrc}
           muted
           playsInline
           preload="metadata"
+          onError={() => setVideoError(true)}
+          onLoadedMetadata={() => setVideoError(false)}
           className="aspect-video w-full object-cover"
         />
         <span className="pointer-events-none absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-ink/70 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-paper/85 backdrop-blur-sm">
           {item.filename}
         </span>
+        {videoError && (
+          // The file moved or was deleted after being added to the queue.
+          // Offer the only recovery the user can actually take: remove the
+          // dead row so they can re-add from the new location.
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-ink/80 px-4 text-center backdrop-blur-sm">
+            <div className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-paper">
+              <AlertTriangle className="h-3.5 w-3.5 text-[#F59E0B]" strokeWidth={2.25} />
+              file not found
+            </div>
+            <p className="font-sans text-[12px] text-paper/80">
+              The source clip may have moved or been deleted.
+            </p>
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(item.id);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  onRemove(item.id);
+                }
+              }}
+              className="cursor-pointer rounded-full bg-paper px-3 py-1 font-sans text-[12px] font-medium text-ink hover:bg-paper-warm"
+            >
+              Remove from queue
+            </span>
+          </div>
+        )}
       </button>
 
       {/* Connected-platform circles underneath the thumbnail. Click a
@@ -328,24 +376,41 @@ export function ClipReadyCard({
           {scheduleOpen && (
             <div
               role="menu"
-              className="absolute left-0 top-full z-20 mt-1.5 min-w-[180px] overflow-hidden rounded-xl border border-line bg-paper shadow-[0_12px_28px_rgba(11,11,16,0.18)]"
+              className="absolute left-0 top-full z-20 mt-1.5 min-w-[200px] overflow-hidden rounded-xl border border-line bg-paper shadow-[0_12px_28px_rgba(11,11,16,0.18)]"
             >
-              {SCHEDULE_PRESETS.map((p, idx) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => pickPreset(p)}
-                  className={`flex w-full items-center justify-between gap-2 px-3.5 py-2 font-sans text-[12px] text-ink hover:bg-fuchsia-soft/30 hover:text-fuchsia-deep ${
-                    idx === SCHEDULE_PRESETS.length - 1 ? "border-t border-line text-text-secondary" : ""
-                  }`}
-                >
-                  <span>{p.label}</span>
-                  {p.id === "custom" ? null : (
-                    <Check className="h-3 w-3 opacity-0 group-hover/opt:opacity-60" strokeWidth={2} />
-                  )}
-                </button>
-              ))}
+              {SCHEDULE_PRESETS.map((p) => {
+                const isCustom = p.id === "custom";
+                return (
+                  <div
+                    key={p.id}
+                    className={
+                      isCustom ? "border-t border-line" : ""
+                    }
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => pickPreset(p)}
+                      className={`flex w-full items-center justify-between gap-2 px-3.5 py-2 font-sans text-[12px] text-ink hover:bg-fuchsia-soft/30 hover:text-fuchsia-deep ${
+                        isCustom ? "text-text-secondary" : ""
+                      }`}
+                    >
+                      <span>{p.label}</span>
+                      {!isCustom && (
+                        <Check className="h-3 w-3 opacity-0 group-hover/opt:opacity-60" strokeWidth={2} />
+                      )}
+                    </button>
+                    {isCustom && (
+                      // The "custom" preset hands a null ISO to the modal —
+                      // the actual date/time picker lives one step in. Don't
+                      // let the menu label imply this opens an inline picker.
+                      <p className="px-3.5 pb-2 font-sans text-[10px] leading-snug text-text-tertiary">
+                        Use the date/time picker in the next step.
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -365,6 +430,15 @@ export function ClipReadyCard({
 
       {gateFor && !hasConnection && !connectionLoading && (
         <div className="flex flex-col gap-3 rounded-xl border border-fuchsia/30 bg-fuchsia-soft/20 p-4">
+          {/* Action-aware lead so the user knows which intent they came from
+           *  will be honoured after they connect. Without this, the gate
+           *  looks identical for "Publish Now" vs "Schedule" — and the user
+           *  loses the thread of what they were trying to do. */}
+          <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
+            {gateFor === "publish-now"
+              ? "Connect first, then we'll resume your Publish Now"
+              : "Connect first, then we'll resume your Schedule"}
+          </p>
           <ConnectFirstPrompt
             variant="inline"
             onOpenSchedule={onOpenSchedule ?? onOpenSettings}

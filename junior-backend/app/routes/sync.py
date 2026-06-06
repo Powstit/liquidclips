@@ -39,6 +39,11 @@ class SyncResponse(BaseModel):
     # Starter pass — remaining free clip exports (null = unlimited / paid). Lets
     # the desktop show "82 clips left" and block export #101 for free/starter users.
     remaining_exports: int | None
+    # True when the request's user email is on JUNIOR_ADMIN_EMAILS. Backed by
+    # the same is_admin_email() that elevates tier above. The desktop's useTier
+    # short-circuits gates to "agency" when this is true so a founder demo
+    # doesn't get billed by their own paywall during a recording session.
+    admin_override: bool = False
 
 
 @router.get("", response_model=SyncResponse)
@@ -89,4 +94,5 @@ def sync(
         features=tier_features(effective_tier, founder=effective_founder),
         new_license_jwt=new_jwt,
         remaining_exports=None if is_admin else starter_export_remaining(user),
+        admin_override=is_admin,
     )

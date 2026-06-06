@@ -15,7 +15,7 @@
 // `library-card` + four `library-card-corner-*` spans pattern from
 // LibraryCard.tsx. One fuchsia. No red (no destructive surfaces here).
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { CalendarClock, Flame, MessageCircle, Sparkles, Trophy, Zap } from "lucide-react";
 // v0.6.19 — Whop community chat opens in the in-app Tauri child webview (same
@@ -93,9 +93,23 @@ const FEED: Post[] = [
 export function CommunityTab() {
   const pinned = useMemo(() => PINNED, []);
   const feed = useMemo(() => FEED, []);
+  // Surfacing openExternal failures — previously a silent `.catch(() =>
+  // undefined)` meant clicking a CTA that failed to launch the system
+  // browser (Tauri shell scope mismatch, missing handler) looked
+  // indistinguishable from a working click. Now we show an inline retry
+  // line under the hero so the user knows the click registered.
+  const [openError, setOpenError] = useState<{ url: string; message: string } | null>(null);
 
   function go(url: string) {
-    void openExternal(url).catch(() => undefined);
+    openExternal(url)
+      .then(() => setOpenError(null))
+      .catch((e) => {
+        const raw = e instanceof Error ? e.message : String(e);
+        setOpenError({
+          url,
+          message: raw ? `Couldn't open link: ${raw}` : "Couldn't open link.",
+        });
+      });
   }
 
   return (
@@ -113,6 +127,33 @@ export function CommunityTab() {
         <p className="font-sans text-[14px] leading-relaxed text-text-secondary">
           Campaign drops, release notes, and wins from the community. Pinned briefs land here first; live chat opens in the side panel.
         </p>
+        {/* Open-link error surface — small mono line, retry button + dismiss.
+            Sits under the header so it doesn't shift the pinned card layout. */}
+        {openError && (
+          <div
+            role="alert"
+            className="mt-1 flex items-center justify-between gap-3 rounded-2xl border border-[#DC2626]/30 bg-[#DC2626]/10 px-3 py-2 font-mono text-[11px] text-[#DC2626]"
+          >
+            <span className="min-w-0 flex-1 truncate">{openError.message}</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => go(openError.url)}
+                className="rounded-full border border-[#DC2626]/50 bg-transparent px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[#DC2626] transition-colors hover:bg-[#DC2626]/15"
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpenError(null)}
+                aria-label="Dismiss error"
+                className="rounded-full bg-transparent px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary transition-colors hover:text-ink"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Pinned hero card — cockpit language: transparent surface, fuchsia

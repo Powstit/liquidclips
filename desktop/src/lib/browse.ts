@@ -43,8 +43,27 @@ export function useBrowsePanel(): State {
 
 // --- Tauri command wrappers ---------------------------------------------
 
+/**
+ * Open the in-app Browse Rewards child webview. Throws on Rust-side failure
+ * (panel disabled, webview crash, OS denial) rather than silently swallowing
+ * — the previous behaviour stranded users with a "nothing happened" click.
+ *
+ * Callers MUST handle the throw, e.g.:
+ *   try { await openBrowsePanel(url); }
+ *   catch (e) { setError(humanError(e)); }
+ *
+ * TODO(callers): EarnTab + AffiliateHero + any other caller needs to wrap
+ * this in a try/catch and surface the error in their local error surface.
+ * We do not edit those files in this pass.
+ */
 export async function openBrowsePanel(url: string = WHOP_REWARDS_URL): Promise<void> {
-  await invoke<void>("open_browse_panel", { url });
+  try {
+    await invoke<void>("open_browse_panel", { url });
+  } catch (e) {
+    // Make sure the singleton state doesn't lie — we never opened.
+    if (state.open) emit({ open: false, currentUrl: null });
+    throw e;
+  }
   emit({ open: true, currentUrl: url });
 }
 
@@ -69,6 +88,34 @@ export function browseReload(): Promise<void> {
   return invoke<void>("browse_reload");
 }
 
+// --- Browse-panel error event bus ---------------------------------------
+//
+// reconcileBrowsePanel() runs at boot and on focus changes; failing it
+// silently means a broken native webview never surfaces to the user. The
+// emitter below lets App.tsx subscribe and route the failure to a toast,
+// without us editing App.tsx in this pass.
+//
+// TODO(App.tsx): subscribe with subscribeBrowsePanelError(msg => toast(msg)).
+
+const _browsePanelErrorListeners = new Set<(msg: string) => void>();
+
+export function subscribeBrowsePanelError(cb: (msg: string) => void): () => void {
+  _browsePanelErrorListeners.add(cb);
+  return () => {
+    _browsePanelErrorListeners.delete(cb);
+  };
+}
+
+function _emitBrowsePanelError(msg: string): void {
+  for (const l of _browsePanelErrorListeners) {
+    try {
+      l(msg);
+    } catch {
+      /* swallow */
+    }
+  }
+}
+
 // Reconcile React store with Rust state on app boot — covers HMR scenarios
 // where React state resets but the native webview is still attached.
 export async function reconcileBrowsePanel(): Promise<void> {
@@ -77,7 +124,14 @@ export async function reconcileBrowsePanel(): Promise<void> {
     if (open !== state.open) {
       emit({ open, currentUrl: open ? state.currentUrl : null });
     }
-  } catch {
-    /* ignore — pre-boot or sidecar/rust not ready */
+  } catch (e) {
+    // Pre-boot rejections (Rust not ready) are expected — but a sustained
+    // failure is a real bug we want to see. Emit lazily; subscribers (if
+    // any) decide whether to toast. We still don't throw here — boot must
+    // never fail just because reconcile couldn't reach Rust.
+    const raw = e instanceof Error ? e.message : String(e);
+    if (raw && !/not\s+(ready|initialized)|invoke\s+failed/i.test(raw)) {
+      _emitBrowsePanelError(raw);
+    }
   }
 }

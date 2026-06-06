@@ -18,6 +18,7 @@ import { BountyWorkspaceHeader } from "./earn/BountyWorkspaceHeader";
 import { sidecar, type DripSlot } from "../lib/sidecar";
 import { PUBLISHING_ENABLED } from "../lib/flags";
 import { useTier, FREE_TIER_VISIBLE_CLIPS } from "../lib/useTier";
+import { useLocalPref } from "../lib/useLocalPref";
 import { InfoHint } from "./InfoHint";
 
 type Tab = "clips" | "youtube" | "files";
@@ -48,6 +49,9 @@ export function ResultsGrid({
   } | null>(null);
   const [actionToast, setActionToast] = useState<string | null>(null);
   const tier = useTier();
+  // Default OFF — a 6-12 card grid muting on hover is the only sane default.
+  // Toggle lives in ClipsBulkToolbar. Persists across relaunch.
+  const [previewSoundOn, setPreviewSoundOn] = useLocalPref<boolean>("lc:preview_sound", false);
   const isBounty = !!project.whop_bounty_id;
   const previewClip = previewIdx !== null ? project.clips[previewIdx] : null;
   // Publishing requires a 9:16 render — cut_path alone (horizontal) won't do.
@@ -242,6 +246,8 @@ export function ResultsGrid({
               ratio={ratio}
               onRatioChange={setRatio}
               onProjectChange={onProjectChange}
+              previewSoundOn={previewSoundOn}
+              onPreviewSoundChange={setPreviewSoundOn}
             />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {(() => {
@@ -263,6 +269,7 @@ export function ResultsGrid({
                         onProjectChange={onProjectChange}
                         onOpenEditor={() => setPreviewIdx(idx)}
                         onOpenCaptions={() => { setPreviewIdx(idx); setOpenCaptionsForIdx(idx); }}
+                        previewSoundOn={previewSoundOn}
                       />
                     ))}
                     {hidden > 0 && (

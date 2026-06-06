@@ -1,14 +1,17 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { Check, Copy, MessageSquare, MoreVertical, Sparkles, Trash2 } from "lucide-react";
 import type { Clip, OverlayType, Project, RatioKey } from "../../lib/sidecar";
 import { sidecar, RATIOS } from "../../lib/sidecar";
 import { LayoutIcon, LAYOUTS, type LayoutKey } from "./LayoutIcon";
 import { pickOverlaySource } from "../OverlaySourcePicker";
 import { BountyFitPill } from "../earn/bounty-fit";
 import { useCountUp } from "../../lib/useCountUp";
+import { InlineScheduler } from "./InlineScheduler";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 // Self-contained card. Tap = play preview. Layout icons swap composition in
 // place. Copy buttons inline. "..." opens the side-door full editor for the
@@ -55,6 +58,7 @@ export function ClipCard({
   onProjectChange,
   onOpenEditor,
   onOpenCaptions,
+  previewSoundOn = false,
 }: {
   clip: Clip;
   index: number;          // 1-based
@@ -66,10 +70,28 @@ export function ClipCard({
   /** Optional — click on the captions chip opens the editor with the
    * captions drawer pre-opened. Falls back to onOpenEditor when undefined. */
   onOpenCaptions?: () => void;
+  /** When true, the hover-preview unmutes. Default false so a grid of cards
+   *  doesn't blast overlapping audio on cursor drift. Toggle lives in
+   *  ClipsBulkToolbar; persisted via useLocalPref under `lc:preview_sound`. */
+  previewSoundOn?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  // Cockpit error/feedback chip — live for ~3s on a transient failure
+  // (applyLayout, copyAll, remove). Doesn't replace the global toast host
+  // because the card-local error is contextual ("THIS clip's reaction
+  // didn't bake"); a top-of-window toast would orphan the cause.
+  const [cockpitError, setCockpitError] = useState<string | null>(null);
+  // Copy caption success → 1.5s "Copied" label flip so the clipper sees
+  // their action landed without a system toast. Previously this swallowed
+  // its result, so users mashed Copy hoping for a sign of life.
+  const [copied, setCopied] = useState(false);
+  // Branded confirm primitive replaces native confirm() — the old one
+  // blocked the Tauri webview thread + broke brand voice on every remove.
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuPanelRef = useRef<HTMLDivElement>(null);
   const viralityDisplay = useCountUp(clip.virality, { durationMs: 700 });
 
   const videoPath = useMemo(
@@ -83,9 +105,13 @@ export function ClipCard({
   const currentLayout: LayoutKey = (clip.overlay?.type as LayoutKey) ?? "none";
 
   // Tiny hover-to-preview: start playing on pointer enter, pause + rewind on leave.
+  // When the global preview-sound pref is ON we unmute on enter (one audio
+  // source at a time since only one card can be hovered) and re-mute on leave
+  // so a focus-shift doesn't leave audio playing somewhere off-screen.
   const onEnter = () => {
     const v = videoRef.current;
     if (!v) return;
+    if (previewSoundOn) v.muted = false;
     void v.play().catch(() => undefined);
   };
   const onLeave = () => {
@@ -93,11 +119,13 @@ export function ClipCard({
     if (!v) return;
     v.pause();
     v.currentTime = 0;
+    v.muted = true;
   };
 
   async function applyLayout(kind: LayoutKey) {
     if (busy) return;
     setBusy(true);
+    setCockpitError(null);
     try {
       if (kind === "none") {
         const r = await sidecar.applyOverlay(slug, index - 1, null);
@@ -112,9 +140,27 @@ export function ClipCard({
         });
         onProjectChange(r.project);
       }
+    } catch (e) {
+      // Lens fix — was silently leaving the user staring at the old layout
+      // after a failed bake. Surface the cause so they know to retry vs.
+      // pick a different source.
+      const msg = e instanceof Error ? e.message : String(e);
+      setCockpitError(`Layout swap failed — ${msg.slice(0, 90)}`);
+      window.setTimeout(() => setCockpitError(null), 4500);
     } finally {
       setBusy(false);
     }
+  }
+
+  // Reaction shortcut — re-pick the b-roll source for the CURRENT layout
+  // without forcing a layout change. If no layout is set, default to
+  // `pip-bl` (a sensible reaction starter) and open the picker so the
+  // clipper sees the source picker immediately. Aligned with the cockpit
+  // row's promise: every action visible, no modal dance.
+  async function changeReaction() {
+    const startingLayout: LayoutKey =
+      currentLayout !== "none" ? currentLayout : "pip-bl";
+    await applyLayout(startingLayout);
   }
 
   async function copyAll() {
@@ -123,22 +169,69 @@ export function ClipCard({
     if (clip.pinned_comment) parts.push("", `Pin: ${clip.pinned_comment.trim()}`);
     try {
       await writeText(parts.join("\n"));
+      // Lens fix — 1.5s label flip so the user sees the action landed.
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
     } catch (e) {
-      console.warn("copy failed", e);
+      const msg = e instanceof Error ? e.message : "Clipboard write failed";
+      setCockpitError(msg.slice(0, 90));
+      window.setTimeout(() => setCockpitError(null), 4000);
     }
   }
 
-  async function remove() {
-    if (!confirm("Remove this clip? Its files on disk go too.")) return;
+  // Open the branded confirm modal — the actual delete fires from
+  // performRemove() below once the user clicks the destructive button.
+  // Replaced the prior native `confirm()` which blocked the Tauri webview
+  // thread + broke brand voice.
+  function remove() {
+    setConfirmRemove(true);
+  }
+
+  async function performRemove() {
     setBusy(true);
+    setCockpitError(null);
     try {
       const r = await sidecar.removeClip(slug, index - 1);
       onProjectChange(r.project);
+      setConfirmRemove(false);
+      setShowMenu(false);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Remove failed";
+      setCockpitError(msg.slice(0, 90));
+      window.setTimeout(() => setCockpitError(null), 4000);
+      // Keep the modal open so the user can retry without re-opening it.
     } finally {
       setBusy(false);
-      setShowMenu(false);
     }
   }
+
+  // ⋮ menu — lens fix for the keyboard trap. The previous version closed
+  // only on `onMouseLeave`, stranding keyboard-only users + ignoring Esc.
+  // Now: Esc closes, click-outside closes, and the trigger carries
+  // aria-expanded so screen readers report state.
+  useEffect(() => {
+    if (!showMenu) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowMenu(false);
+        menuButtonRef.current?.focus();
+      }
+    }
+    function onPointer(e: PointerEvent) {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (menuPanelRef.current?.contains(t)) return;
+      if (menuButtonRef.current?.contains(t)) return;
+      setShowMenu(false);
+    }
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onPointer);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onPointer);
+    };
+  }, [showMenu]);
 
   return (
     <article className="library-card relative flex flex-col gap-3 rounded-2xl p-4">
@@ -205,13 +298,13 @@ export function ClipCard({
             (onOpenCaptions ?? onOpenEditor)();
           }}
           aria-label={
-            (clip as Clip & { caption_style?: string }).caption_style
-              ? `Edit ${String((clip as Clip & { caption_style?: string }).caption_style)} captions`
+            clip.caption_style
+              ? `Edit ${clip.caption_style} captions`
               : "Add captions"
           }
           title={
-            (clip as Clip & { caption_style?: string }).caption_style
-              ? `Captions · ${String((clip as Clip & { caption_style?: string }).caption_style).replace("_", " ")}`
+            clip.caption_style
+              ? `Captions · ${clip.caption_style.replace("_", " ")}`
               : "Add captions"
           }
           className="group absolute bottom-2 right-2 inline-flex items-center gap-1.5 rounded-full border border-line/50 bg-black/55 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.12em] text-paper backdrop-blur transition hover:border-fuchsia hover:bg-black/75"
@@ -221,9 +314,7 @@ export function ClipCard({
           <span
             aria-hidden
             className="h-1.5 w-1.5 rounded-full"
-            style={{
-              background: captionStyleDot((clip as Clip & { caption_style?: string }).caption_style),
-            }}
+            style={{ background: captionStyleDot(clip.caption_style) }}
           />
         </button>
       </div>
@@ -252,16 +343,50 @@ export function ClipCard({
             );
           })}
         </div>
-        <div className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
-          {RATIOS.map((r) => (
-            <span
-              key={r.key}
-              className={`rounded-full px-2 py-0.5 ${r.key === ratio ? "bg-ink text-paper" : ""}`}
-              title={pathForRatio(clip, r.key) ? `Available for ${r.label}` : "Not yet rendered"}
-            >
-              {r.label}
-            </span>
-          ))}
+        {/* Render-status HUD — three ratio glyphs (portrait / square / landscape).
+            Filled fuchsia when the render exists on disk, hollow when not yet
+            rendered. The active ratio gets an ink ring. Replaces the prior
+            text-label row which read as three faint "white lines" on dark cards. */}
+        <div className="flex items-center gap-1.5" aria-label="Rendered ratios">
+          {RATIOS.map((r) => {
+            const baked = !!pathForRatio(clip, r.key);
+            const active = r.key === ratio;
+            // Glyph dimensions — keep all three the same height so the row reads
+            // as a tidy HUD, vary width to telegraph aspect ratio.
+            const dims =
+              r.key === "vertical"
+                ? { w: 7, h: 12 }
+                : r.key === "square"
+                  ? { w: 11, h: 11 }
+                  : { w: 9, h: 12 };
+            return (
+              <span
+                key={r.key}
+                title={baked ? `Rendered · ${r.label}` : `Not yet rendered · ${r.label}`}
+                aria-label={`${r.label} ${baked ? "rendered" : "not rendered"}${active ? " (active)" : ""}`}
+                className={`grid place-items-center ${active ? "ring-1 ring-ink rounded-[3px]" : ""}`}
+                style={{ padding: 1 }}
+              >
+                <svg
+                  width={dims.w}
+                  height={dims.h}
+                  viewBox={`0 0 ${dims.w} ${dims.h}`}
+                  aria-hidden="true"
+                >
+                  <rect
+                    x="0.5"
+                    y="0.5"
+                    width={dims.w - 1}
+                    height={dims.h - 1}
+                    rx="1.2"
+                    fill={baked ? "var(--color-fuchsia, #ff1a8c)" : "transparent"}
+                    stroke={baked ? "var(--color-fuchsia, #ff1a8c)" : "var(--color-line, rgba(255,255,255,0.28))"}
+                    strokeWidth="1"
+                  />
+                </svg>
+              </span>
+            );
+          })}
         </div>
       </div>
 
@@ -270,50 +395,170 @@ export function ClipCard({
         {clip.title}
       </p>
 
-      {/* Inline actions */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => void copyAll()}
-          disabled={busy}
-          className="flex-1 rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-[12px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia disabled:opacity-50"
-        >
-          Copy caption
-        </button>
-        <button
-          onClick={onOpenEditor}
-          className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary hover:border-fuchsia hover:text-ink"
-          title="Open full editor"
-        >
-          Editor →
-        </button>
-        <div className="relative">
+      {/* Cockpit — under-card edit row. Schedule expands in-place via the
+          existing InlineScheduler (no modal). Caption opens the captions
+          drawer at the editor. Reaction re-opens the overlay-source picker
+          for the current layout. ⋮ holds the secondary actions. */}
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Schedule — self-managed; renders "Schedule" button when closed
+              and the full inline scheduler when expanded. */}
+          <InlineScheduler
+            clip={clip}
+            projectTitle={project.source_filename}
+            compact
+          />
+
+          {/* Caption — pop the side drawer pre-opened. Visible affordance
+              for the most-common edit; mirrors the chip on the thumbnail
+              so keyboard users + touch users can both reach it. */}
           <button
-            onClick={() => setShowMenu((s) => !s)}
-            className="rounded-full border border-line bg-paper px-2 py-1.5 font-mono text-[12px] text-text-secondary hover:border-fuchsia hover:text-ink"
-            aria-label="More actions"
+            type="button"
+            onClick={() => (onOpenCaptions ?? onOpenEditor)()}
+            title="Edit captions (C)"
+            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-[12px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia"
           >
-            ⋮
+            <MessageSquare className="h-3.5 w-3.5" strokeWidth={2} />
+            Caption
           </button>
-          {showMenu && (
-            <div
-              className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-line bg-paper shadow-lg"
-              onMouseLeave={() => setShowMenu(false)}
+
+          {/* Reaction — re-open the b-roll picker for the current layout.
+              If no layout is set, defaults to pip_corner_bl + picker so the
+              clipper sees the picker immediately (no two-step dance). */}
+          <button
+            type="button"
+            onClick={() => void changeReaction()}
+            disabled={busy}
+            title={
+              currentLayout === "none"
+                ? "Add reaction b-roll (R)"
+                : "Change reaction source (R)"
+            }
+            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-[12px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia disabled:opacity-50"
+          >
+            <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
+            {currentLayout === "none" ? "Reaction" : "Change reaction"}
+          </button>
+
+          {/* Copy caption — moved into the cockpit row with a 1.5s
+              "Copied" label flip so the action lands without a system toast. */}
+          <button
+            type="button"
+            onClick={() => void copyAll()}
+            disabled={busy}
+            title="Copy title + description"
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-sans text-[12px] font-medium transition-colors disabled:opacity-50 ${
+              copied
+                ? "border-fuchsia bg-fuchsia text-white"
+                : "border-line bg-paper text-ink hover:border-fuchsia hover:text-fuchsia"
+            }`}
+          >
+            {copied ? (
+              <Check className="h-3.5 w-3.5" strokeWidth={2.25} />
+            ) : (
+              <Copy className="h-3.5 w-3.5" strokeWidth={2} />
+            )}
+            {copied ? "Copied" : "Copy"}
+          </button>
+
+          {/* Spacer pushes ⋮ + Editor → to the right edge */}
+          <span className="flex-1" />
+
+          <button
+            type="button"
+            onClick={onOpenEditor}
+            className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
+            title="Open full editor (Enter)"
+          >
+            Editor →
+          </button>
+
+          <div className="relative">
+            <button
+              ref={menuButtonRef}
+              type="button"
+              onClick={() => setShowMenu((s) => !s)}
+              className="rounded-full border border-line bg-paper px-2 py-1.5 font-mono text-[12px] text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
+              aria-label="More actions"
+              aria-haspopup="menu"
+              aria-expanded={showMenu}
             >
-              <MenuItem onClick={remove}>Remove clip</MenuItem>
-              <MenuItem onClick={() => { onOpenEditor(); setShowMenu(false); }}>Open editor</MenuItem>
-            </div>
-          )}
+              <MoreVertical className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
+            {showMenu && (
+              <div
+                ref={menuPanelRef}
+                role="menu"
+                aria-label="Clip actions"
+                className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-line bg-paper shadow-lg"
+              >
+                <MenuItem
+                  onClick={() => {
+                    onOpenEditor();
+                    setShowMenu(false);
+                  }}
+                >
+                  Open editor
+                </MenuItem>
+                <MenuItem onClick={remove} destructive>
+                  <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
+                  Remove clip
+                </MenuItem>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Card-local error / status chip — surfaces failed layout swaps,
+            failed remove, etc. without orphaning the cause in a global
+            toast. Auto-clears after ~4.5s. */}
+        {cockpitError && (
+          <p
+            role="alert"
+            className="rounded-md border border-[#DC2626]/30 bg-[#DC2626]/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-[#DC2626]"
+          >
+            {cockpitError}
+          </p>
+        )}
       </div>
+
+      <ConfirmDialog
+        open={confirmRemove}
+        tone="destructive"
+        title="Remove this clip?"
+        body={
+          <>
+            <span className="font-medium text-ink">{clip.title}</span> and its
+            rendered files on disk will be removed. This can't be undone.
+          </>
+        }
+        confirmLabel="Remove clip"
+        busy={busy}
+        onCancel={() => setConfirmRemove(false)}
+        onConfirm={() => void performRemove()}
+      />
     </article>
   );
 }
 
-function MenuItem({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+function MenuItem({
+  onClick,
+  children,
+  destructive = false,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+  destructive?: boolean;
+}) {
   return (
     <button
+      role="menuitem"
       onClick={onClick}
-      className="block w-full px-3 py-2 text-left font-sans text-[12px] text-ink hover:bg-paper-warm"
+      className={`flex w-full items-center gap-2 px-3 py-2 text-left font-sans text-[12px] transition-colors ${
+        destructive
+          ? "text-[#DC2626] hover:bg-[#DC2626]/10"
+          : "text-ink hover:bg-paper-warm"
+      }`}
     >
       {children}
     </button>

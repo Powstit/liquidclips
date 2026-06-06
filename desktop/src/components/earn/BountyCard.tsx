@@ -5,6 +5,7 @@
 // description dropped (lives in BountyDetail when opened). Primary action
 // `Start` + secondary `Brief` inline at the bottom.
 
+import { useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import type { WhopBounty } from "../../lib/sidecar";
 import { PlatformIcon } from "../PlatformIcon";
@@ -43,6 +44,14 @@ export function BountyCard({
   const label = opportunityLabel(score);
   const briefUrl = whopBountyUrl(bounty);
   const hot = score >= 78;
+  const [starting, setStarting] = useState(false);
+  const [briefBusy, setBriefBusy] = useState(false);
+
+  // Whop's API occasionally returns null for numeric fields the TS type marks
+  // as non-null. Coerce here so `null spots` never reaches the user.
+  const num = (v: unknown, d = 0): number =>
+    typeof v === "number" && Number.isFinite(v) ? v : d;
+  const spotsRemaining = num(bounty.spotsRemaining);
 
   return (
     <article
@@ -105,7 +114,7 @@ export function BountyCard({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
         <span className="inline-flex items-center gap-1">
           <Users size={11} strokeWidth={2} />
-          <span className="tabular-nums text-ink">{bounty.spotsRemaining}</span>
+          <span className="tabular-nums text-ink">{spotsRemaining}</span>
           <span>spots</span>
         </span>
         <span className="inline-flex items-center gap-1">
@@ -129,11 +138,22 @@ export function BountyCard({
       {/* Actions */}
       <div className="mt-auto flex items-center gap-1.5">
         <button
-          onClick={onStart}
-          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-fuchsia px-3 py-1.5 font-sans text-[12px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+          onClick={async () => {
+            if (starting) return;
+            setStarting(true);
+            try {
+              await Promise.resolve(onStart());
+            } finally {
+              // onStart usually navigates away; reset so the button isn't
+              // stuck if the parent stays on this view.
+              setStarting(false);
+            }
+          }}
+          disabled={starting}
+          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-fuchsia px-3 py-1.5 font-sans text-[12px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          Start
-          <ArrowRight size={12} strokeWidth={2.25} />
+          {starting ? "Starting…" : "Start"}
+          {!starting && <ArrowRight size={12} strokeWidth={2.25} />}
         </button>
         <button
           onClick={onOpen}
@@ -145,24 +165,31 @@ export function BountyCard({
         {briefUrl && (
           <button
             onClick={async () => {
-              if (BROWSE_PANEL_ENABLED) {
-                try {
-                  await openBrowsePanel(briefUrl);
-                  return;
-                } catch (e) {
-                  console.error("[earn] Browse panel failed, falling back to system browser:", e);
-                }
-              }
+              if (briefBusy) return;
+              setBriefBusy(true);
               try {
-                await openExternal(briefUrl);
-              } catch (e) {
-                console.error("[earn] Failed to open brief externally:", e);
+                if (BROWSE_PANEL_ENABLED) {
+                  try {
+                    await openBrowsePanel(briefUrl);
+                    return;
+                  } catch (e) {
+                    console.error("[earn] Browse panel failed, falling back to system browser:", e);
+                  }
+                }
+                try {
+                  await openExternal(briefUrl);
+                } catch (e) {
+                  console.error("[earn] Failed to open brief externally:", e);
+                }
+              } finally {
+                setBriefBusy(false);
               }
             }}
-            className="rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
+            disabled={briefBusy}
+            className="rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep disabled:opacity-60 disabled:cursor-not-allowed"
             title="Open the brand's brief in the side panel"
           >
-            Brief
+            {briefBusy ? "Opening…" : "Brief"}
           </button>
         )}
       </div>
