@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { PageShell } from "@/components/Chrome";
-import { accountUrl, appUrl, downloadUrl } from "@/lib/site";
+import { DownloadCTA, DownloadMeta } from "@/components/DownloadCTA";
+import { accountUrl, appUrl } from "@/lib/site";
 
 const steps = [
   {
@@ -108,16 +109,12 @@ export default function Home() {
                 every file to a cloud editor.
               </p>
               <div className="hero-actions">
-                <a className="button-primary" href={downloadUrl}>
-                  Download for Mac
-                </a>
+                <DownloadCTA variant="primary" />
                 <a className="button-secondary" href={appUrl}>
                   Try the account app
                 </a>
               </div>
-              <p className="microcopy">
-                Universal macOS DMG. Notarized release link turns on after the CI artifact lands.
-              </p>
+              <DownloadMeta />
             </div>
 
             <div className="hero-media" aria-label="Liquid Clips editing workspace preview">
@@ -282,15 +279,13 @@ export default function Home() {
             <div className="download-panel">
               <div>
                 <div className="plan-kicker">Download</div>
-                <h2 className="section-title">Get the public Mac build.</h2>
+                <h2 className="section-title">Get the desktop app.</h2>
                 <p className="section-copy">
-                  The download button points at the latest release until the notarized DMG URL is set
-                  in Vercel as <code>NEXT_PUBLIC_DOWNLOAD_DMG_URL</code>.
+                  One click — your machine, your files. Universal macOS DMG, signed and notarized.
+                  Windows and Linux builds when ready.
                 </p>
               </div>
-              <a className="button-primary" href={downloadUrl}>
-                Download DMG
-              </a>
+              <DownloadCTA variant="primary" />
             </div>
           </div>
         </section>

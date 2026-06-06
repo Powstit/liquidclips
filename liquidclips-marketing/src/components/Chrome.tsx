@@ -47,9 +47,15 @@ export function Footer() {
           <div>
             <h4>Trust</h4>
             <Link href="/help">Help center</Link>
+            <Link href="/support">Support</Link>
+            <Link href="/status">Status</Link>
             <Link href="/privacy">Privacy</Link>
             <Link href="/terms">Terms</Link>
-            <a href={`mailto:${supportEmail}`}>Support</a>
+            <Link href="/eula">EULA</Link>
+            <Link href="/refunds">Refunds</Link>
+            <Link href="/cookies">Cookies</Link>
+            <Link href="/account-deletion">Delete account</Link>
+            <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
           </div>
         </div>
         <div className="footer-bottom">
