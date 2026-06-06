@@ -211,7 +211,7 @@ export function Splash({
           type="button"
           onClick={skipSplash}
           aria-label="Skip splash"
-          className="absolute right-6 top-6 z-20 grid h-11 w-11 place-items-center rounded-full border border-fuchsia bg-black/45 font-mono text-[14px] font-semibold text-paper shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
+          className="absolute right-6 top-6 z-20 grid h-11 w-11 place-items-center rounded-full border border-fuchsia bg-black/45 font-mono text-[14px] font-semibold text-ink shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
         >
           →
         </button>
@@ -232,7 +232,7 @@ export function Splash({
         type="button"
         onClick={skipSplash}
         aria-label="Skip splash"
-        className="absolute right-6 top-6 z-20 grid h-11 w-11 place-items-center rounded-full border border-fuchsia bg-black/45 font-mono text-[14px] font-semibold text-paper shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
+        className="absolute right-6 top-6 z-20 grid h-11 w-11 place-items-center rounded-full border border-fuchsia bg-black/45 font-mono text-[14px] font-semibold text-ink shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
       >
         →
       </button>
@@ -247,13 +247,13 @@ export function Splash({
         <SplashGame ready={ready} onContinue={onContinue} />
       ) : (
         <div className="relative z-10 flex w-[280px] flex-col items-center gap-4">
-          <div className="h-[3px] w-full overflow-hidden rounded-full bg-paper/20">
+          <div className="h-[3px] w-full overflow-hidden rounded-full bg-ink/20">
             <div
-              className="splash-bar-anim h-full bg-paper animate-[splash-bar_1.4s_ease-in-out_infinite]"
+              className="splash-bar-anim h-full bg-fuchsia animate-[splash-bar_1.4s_ease-in-out_infinite]"
               style={{ width: "40%" }}
             />
           </div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper/80">
+          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink/80">
             {TICKS[i]}
           </p>
         </div>
