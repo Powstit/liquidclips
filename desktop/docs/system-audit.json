@@ -1,0 +1,67 @@
+{
+  "audit_at": "2026-06-07T20:16:29.054467+00:00",
+  "installed_app": {
+    "version": "0.7.14",
+    "codesign": "valid",
+    "mtime": "2026-06-07T20:50:18"
+  },
+  "git": {
+    "branch": "main",
+    "head": "2ecb4cf",
+    "uncommitted_files": 0,
+    "untracked_files": 4,
+    "recent_commits": [
+      "2ecb4cf feat: ship-lens v0.7.14 \u2014 Kimi platform badges + overlay templates + grid scale",
+      "2f8760f feat: ship-lens v0.7.13 \u2014 Claude F1\u2013F7 + Kimi K1\u2013K7 + reviewer/gate discipline",
+      "97addb2 fix: visible import feedback + Earn signed-out CTA + SSR smoke gate \u2014 v0.7.11",
+      "d02871a chore(icon): swap macOS app icon to Invader bug \u2014 v0.7.10",
+      "610ed41 feat: ship-lens v0.7.8 punch-list sweep + tauri-plugin-opener hygiene \u2014 v0.7.9"
+    ]
+  },
+  "mechanical_gates": {
+    "tsc": "PASS",
+    "py_compile": "PASS",
+    "check_humanError": "PASS",
+    "smoke_embed": "PASS",
+    "ship_gate": "PASS"
+  },
+  "live_reachability": {
+    "api_jnremployee_health": "200",
+    "api_liquidclips_health": "000000",
+    "embed_liquidclips_earn": "200",
+    "embed_jnremployee_earn": "200",
+    "banner_affiliate_mp4": "200"
+  },
+  "sidecar_rpcs": {
+    "registered_count": 61,
+    "missing_expected": ""
+  },
+  "kimi_mount_state": {
+    "K1_ClipEditDrawer": "MOUNTED",
+    "K4_LibraryQuickPreview": "DARK",
+    "K5_BountySwipe": "DARK",
+    "K6_StudioTour": "DARK",
+    "K7_ActivityOrbit": "DARK",
+    "PlatformBadge": "MOUNTED",
+    "PlatformBadgePicker": "MOUNTED",
+    "OverlayTemplateGallery": "DARK"
+  },
+  "contract_hook_consumption": {
+    "useMultiSelect": "CONSUMED",
+    "useLibraryProject": "CONSUMED",
+    "useBountySwipe": "CONSUMED",
+    "useOnboardingStep": "CONSUMED",
+    "useActivityEvents": "CONSUMED"
+  },
+  "confirmed_wired_integrations": [
+    "Clerk auth (sign-in + activation + satellite cookie)",
+    "Whop affiliate + content rewards (proxy via /whop/*)",
+    "Stripe Connect Express onboarding + payouts",
+    "Ayrshare social publishing (channels + publish-now + webhooks)"
+  ],
+  "reviewer_gate": {
+    "verdict": "PASS",
+    "unaddressed_p0_p1": 0,
+    "reviewed_at": "?"
+  }
+}
