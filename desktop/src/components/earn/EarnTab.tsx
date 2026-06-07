@@ -8,13 +8,23 @@
 // new sponsored placements, bounty card variants, and surface layouts via
 // Vercel auto-deploys instead of an installer rebuild.
 //
+// ship-lens v0.7.14: K5 — mount BountySwipe as native "Discover" sub-tab.
+// The webview owns "All bounties" (the existing full embed); BountySwipe
+// owns first-touch discovery. Switching sub-tabs closes / reopens the
+// native panel because it floats in window coordinates and cannot be
+// hidden behind a DOM stacking context.
+//
 // The component signature stays unchanged so App.tsx's callsite is
 // untouched. Most props are no-ops here because the embed handles those
 // flows itself (manual bounty entry, resume-project, sign-in) — kept on
 // the signature for binary compatibility with the existing parent.
 
+import { useState } from "react";
+import { BountySwipeMount } from "./BountySwipeMount";
 import { EarnPanelMount } from "./EarnPanelMount";
 import type { WhopBounty, BountyContext } from "../../lib/sidecar";
+
+type EarnView = "discover" | "all";
 
 export function EarnTab({
   onStartBounty,
@@ -33,7 +43,68 @@ export function EarnTab({
   onSignIn?: () => void;
   userTier?: "free" | "solo" | "pro" | "agency" | null;
 }) {
-  return <EarnPanelMount onStartBounty={onStartBounty} userTier={userTier} />;
+  const [view, setView] = useState<EarnView>("discover");
+
+  return (
+    <div className="flex h-full w-full flex-col">
+      {/* Sub-tab strip — single row, mono labels match EarnIconRail vocab */}
+      <div
+        className="flex shrink-0 items-center gap-1 border-b border-line bg-paper/60 px-3 py-2"
+        role="tablist"
+        aria-label="Earn views"
+      >
+        <SubTabButton
+          active={view === "discover"}
+          onClick={() => setView("discover")}
+          label="Discover"
+        />
+        <SubTabButton
+          active={view === "all"}
+          onClick={() => setView("all")}
+          label="All bounties"
+        />
+      </div>
+
+      {/* Body — only one mounted at a time so the native webview rect
+          isn't fighting with the swipe deck for the same window pixels. */}
+      <div className="relative min-h-0 flex-1">
+        {view === "discover" ? (
+          <BountySwipeMount
+            onStartBounty={onStartBounty}
+            onBrowseAll={() => setView("all")}
+          />
+        ) : (
+          <EarnPanelMount onStartBounty={onStartBounty} userTier={userTier} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SubTabButton({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={
+        "rounded-md px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors " +
+        (active
+          ? "bg-fuchsia/15 text-fuchsia"
+          : "text-text-tertiary hover:text-text-secondary")
+      }
+    >
+      {label}
+    </button>
+  );
 }
 
 // rememberSubmissionId stayed on this module because callers across the
