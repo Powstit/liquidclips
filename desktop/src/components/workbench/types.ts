@@ -71,8 +71,11 @@ export const LC_WORKBENCH_PREF_KEY = "lc:workbench_session_v1";
 export const LC_WORKBENCH_SCHEMA_VERSION = 1 as const;
 export const MIN_WINDOW_SIZE = { w: 2, h: 2 } as const;
 export const MAX_WINDOW_SIZE = { w: 8, h: 8 } as const;
+// v0.7.14 — grid rows raised 8 → 10 so the canvas comfortably holds Kimi's
+// stated 20-tile cap (8 cols × 10 rows = 80 cells; 20 × 2×2 tiles = 80
+// cells). Previously capped at ~16 useful tiles.
 export const CANVAS_GRID_COLS = 8 as const;
-export const CANVAS_GRID_ROWS = 8 as const;
+export const CANVAS_GRID_ROWS = 10 as const;
 export const WORKBENCH_MIN_WIDTH_PX = 1024 as const;
 
 // Re-export referenced types so siblings can `import { Clip } from "./types"`

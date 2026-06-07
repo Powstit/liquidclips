@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { Clip, OverlayType, Project, RatioKey } from "../lib/sidecar";
 import { sidecar, RATIOS, humanError } from "../lib/sidecar";
+import { PlatformBadgePicker } from "./PlatformBadge";
 import { CopyButton } from "./CopyButton";
 import { InfoTip } from "./InfoTip";
 import { LayoutIcon, LAYOUTS, type LayoutKey } from "./clips-feed/LayoutIcon";
@@ -978,6 +979,25 @@ export function ClipPreview({
                 maxLength={500}
                 placeholder="Leave blank for no pinned comment"
               />
+
+              {/* v0.7.14 — Kimi's PlatformBadgePicker. Selecting platforms
+                  here populates `clip.platforms`, which makes the badges
+                  light up on ClipCard + ClipWindow. */}
+              <div className="flex flex-col gap-2 pt-1">
+                <PlatformBadgePicker
+                  selected={clip.platforms ?? []}
+                  onToggle={async (p) => {
+                    const cur = clip.platforms ?? [];
+                    const next = cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p];
+                    try {
+                      const r = await sidecar.setClipPlatforms(slug, index, next);
+                      onProjectChange(r.project);
+                    } catch (e) {
+                      setActionError(humanError(e));
+                    }
+                  }}
+                />
+              </div>
 
               <div className="flex items-center justify-between gap-3 pt-1">
                 <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">

@@ -1,311 +1,122 @@
 {
-  "reviewed_at": "2026-06-07T20:30:00Z",
-  "reviewer": "ship-lens-reviewer (FINAL integrated v0.7.12+ review \u2014 Kimi K1-K7 + Claude F1-F7 + C2-C6 contracts + K4/K7 cleanup)",
-  "scope": "FINAL gate between LOCAL-COMMIT and PUSH. Combined diff covers: Claude F1-F7 (humanError + onError + withTimeout + masterClipActions purge + Settings.tsx Fragment + ship-gate.sh + pre-commit hook); Claude C2-C5 (useLibraryProject, useBountySwipe, useOnboardingStep, useActivityEvents contracts); Kimi K1-K7 (ClipEditDrawer + EditDrawerMotion.module.css, ClipCard select+onError, Settings K3 panel, LibraryQuickPreview, BountySwipe + SwipeCard, StudioTour + CoachMark, ActivityOrbitParticles + AvatarPanel inbox-mode wiring); Claude cleanup of Kimi files (LibraryQuickPreview re-typed to real ProjectLibrarySummary shape, AvatarPanel JSX repair, ActivityOrbit.tsx recreated). Mechanical gates re-run (tsc 0, py_compile 0, smoke-embed 0, check-humanError 0). Build succeeded, install at /Applications/Liquid Clips.app.",
-  "files_in_diff": [
-    "desktop/package.json",
-    "desktop/python-sidecar/sidecar.py",
-    "desktop/src-tauri/tauri.conf.json",
-    "desktop/src/App.tsx",
-    "desktop/src/components/ClipPreview.tsx",
-    "desktop/src/components/OverlaySourcePicker.tsx",
-    "desktop/src/components/ResultsGrid.tsx",
-    "desktop/src/components/Settings.tsx",
-    "desktop/src/components/clips-feed/ClipCard.tsx",
-    "desktop/src/components/cockpit/AvatarPanel.tsx",
-    "desktop/src/components/cockpit/WorkstationRoom.tsx",
-    "desktop/src/components/workbench/ClipEditDrawer.tsx",
-    "desktop/src/components/workbench/ClipWindow.tsx",
-    "desktop/src/components/workbench/ClipWindowPoster.tsx",
-    "desktop/src/lib/sidecar.ts"
-  ],
-  "new_untracked_files_inspected": [
-    "desktop/src/contracts/useLibraryProject.ts",
-    "desktop/src/contracts/useBountySwipe.ts",
-    "desktop/src/contracts/useOnboardingStep.ts",
-    "desktop/src/contracts/useActivityEvents.ts",
-    "desktop/src/components/workbench/EditDrawerMotion.module.css",
-    "desktop/src/components/clips-feed/GridMasterToolbar.tsx",
-    "desktop/src/components/clips-feed/masterClipActions.ts",
-    "desktop/src/components/cockpit/ActivityOrbit.tsx",
-    "desktop/src/components/cockpit/ActivityOrbitParticles.tsx",
-    "desktop/src/components/cockpit/LibraryQuickPreview.tsx",
-    "desktop/src/components/earn/BountySwipe.tsx",
-    "desktop/src/components/earn/SwipeCard.tsx",
-    "desktop/src/components/onboarding/CoachMark.tsx",
-    "desktop/src/components/onboarding/StudioTour.tsx",
-    "desktop/scripts/check-humanError.sh",
-    "desktop/scripts/ship-gate.sh"
-  ],
+  "review_meta": {
+    "reviewed_at": "2026-06-07T23:00:00Z",
+    "version_under_review": "0.7.14",
+    "head_commit": "2f8760f (v0.7.13 — Claude F1-F7 + Kimi K1-K7)",
+    "working_tree_state": "v0.7.14 changes uncommitted in working tree (package.json + tauri.conf.json + 8 src/sidecar files modified)",
+    "installed_app_version": "0.7.14 (CFBundleShortVersionString verified at /Applications/Liquid Clips.app/Contents/Info.plist)",
+    "reviewer": "ship-lens-reviewer agent",
+    "scope": "Verify Claude's v0.7.14 response to the prior BLOCK review — sidecar producers + UI mounts for PlatformBadge + OverlayTemplateKey + CANVAS_GRID_ROWS raise."
+  },
   "mechanical_gates": {
-    "tsc_noEmit": {
-      "command": "cd desktop && npx --no-install tsc --noEmit",
-      "exit_code": 0,
-      "result": "PASS"
-    },
-    "py_compile_sidecar": {
-      "command": "python3 -m py_compile desktop/python-sidecar/sidecar.py",
-      "exit_code": 0,
-      "result": "PASS"
-    },
-    "smoke_embed": {
-      "command": "bash account-app/scripts/smoke-embed.sh",
-      "exit_code": 0,
-      "result": "PASS \u2014 /embed/earn anchor present, no SSR error digest"
-    },
-    "check_humanError": {
-      "command": "bash desktop/scripts/check-humanError.sh",
-      "exit_code": 0,
-      "result": "PASS \u2014 humanError gate green"
-    },
-    "pre_commit_hook_installed": {
-      "result": "PASS \u2014 .git/hooks/pre-commit \u2192 ../../desktop/scripts/check-humanError.sh (symlink)"
-    }
+    "tsc_noEmit": "PASS (exit 0, zero output)",
+    "py_compile_sidecar": "PASS (sidecar.py + project.py compile clean)",
+    "smoke_embed": "PASS (both /embed/earn surfaces — anchor visible, no SSR error digest)",
+    "humanError_gate": "PASS (no staged TS/TSX; uncommitted diff inspected manually — no raw String(e) / e.message in new code)",
+    "video_onError_regression_grep": "PASS (zero new <video> tags in v0.7.14 diff)",
+    "direct_invoke_regression_grep": "PASS (zero direct invoke() calls bypassing sidecar wrapper in v0.7.14 diff)"
   },
-  "claude_F1_F7_verification": {
-    "F1_humanError_ClipPreview": {
-      "status": "PASS",
-      "evidence": "ClipPreview.tsx uses setActionError(humanError(e)) at line 163; no raw String(e)/e.message setError shapes remain in this file. Prior review's 7 sites are clean."
-    },
-    "F2_Ratio_Layout_UI_removed": {
-      "status": "PASS",
-      "evidence": "GridMasterToolbar.tsx:263-267 explicitly explains the removal: 'applyRatio/applyLayout wrote preferred_ratio/preferred_layout fields no surface read. Per-clip ratio still works via ClipPreview ratio picker; batch ratio+layout return in v0.7.14 with real wiring.' masterClipActions.ts also notes dead-code purge at line 228. Types kept (RatioKey type only \u2014 compile-time, no runtime silent-success)."
-    },
-    "F3_withTimeout_wraps": {
-      "status": "PASS",
-      "evidence": "sidecar.ts withTimeout call sites = 3: line 609 (ingestUrl 300s), line 623 (importReadyClips 60s), line 764 (liftTranscript 600s). All long-running RPCs wrapped."
-    },
-    "F4_video_onError_critical_path": {
-      "status": "PASS",
-      "evidence": "ClipPreview:732 (humanError fallback), ClipWindow:188 (MediaError.code mapping 1/2/3/4), ClipWindowPoster:95 (decorative hide-on-error), OverlaySourcePicker:433+551 (hide-on-error grid scan), ClipCard:375 (full error plate + Reveal in Finder), ClipReadyCard:243. Three remaining sites (Splash:248, SponsoredBannerCarousel:143, ReactionCellPreview:248) are off the critical import\u2192caption\u2192publish flow and explicitly deferred to v0.7.14."
-    },
-    "F5_sidecar_auto_restart": {
-      "status": "DEFER \u2014 explicitly v0.7.14 scope (C1 task #89 still pending)",
-      "evidence": "Not addressed in this v0.7.12 ship. Task #89 is pending \u2014 Rust + TS 1-retry cap. Not blocking because the user has manual reload + the sidecar.ts withTimeout wraps surface SidecarTimeoutError cleanly through humanError."
-    },
-    "F6_T2.6_caption_bake_guard": {
-      "status": "PASS",
-      "evidence": "sidecar.py:992-994 has the in_project guard (Path.parents check). Imported-pack code path verified \u2014 caption bake on imported clips no longer triggers the silent-no-op corner case."
-    },
-    "F7_pre_commit_humanError_hook": {
-      "status": "PASS",
-      "evidence": "desktop/scripts/check-humanError.sh exists + symlinked into .git/hooks/pre-commit. Script exits 0 (green) \u2014 no new setError(String(e)) patterns introduced in v0.7.12 hunks."
-    },
-    "T1_1_success_toast_survives_view_switch": {
-      "status": "PASS",
-      "evidence": "App.tsx:1873-1876 mounts dropError toast at ROOT level (outside MainShell) so the toast survives setView({kind:'results'}) transitions in handleImportDirect."
-    },
-    "T1_2_OnboardingOverlay_gated": {
-      "status": "PASS",
-      "evidence": "Onboarding gated on view.kind === 'empty' per task #75."
-    },
-    "T1_3_Import_tile_loading_dblclick_guard": {
-      "status": "PASS",
-      "evidence": "WorkstationRoom.tsx accepts new optional `importing` prop (default false); when true the import tile renders the loading state + ignores subsequent clicks per task #76."
-    },
-    "T1_5_handleImportDirect_humanError": {
-      "status": "PASS",
-      "evidence": "handleImportDirect catch uses humanError() per task #78."
-    },
-    "T2_6_caption_bake_VERIFY": {
-      "status": "PASS",
-      "evidence": "Sidecar.py edit_captions in_project guard verified at lines 992-994 + 1001."
-    }
-  },
-  "claude_C2_C6_contract_verification": {
-    "C2_useLibraryProject": {
-      "status": "PASS",
-      "evidence": "desktop/src/contracts/useLibraryProject.ts:18-74 \u2014 uses sidecar.listProjects/requestDeleteProject/undoDeleteProject/setProjectArchived; humanError wrapped catches. Kimi's K4 LibraryQuickPreview consumes ProjectLibrarySummary directly (slug/source_filename/clips_count/created_at/cover_thumb_path/imported/done) \u2014 type-honest after Claude's cleanup."
-    },
-    "C3_useBountySwipe": {
-      "status": "PASS",
-      "evidence": "desktop/src/contracts/useBountySwipe.ts:44-105 \u2014 sidecar.whopListBounties(30); localStorage persistence for saved/skipped IDs; humanError catches. v0.7.14 backend sync flagged in header comment."
-    },
-    "C4_useOnboardingStep": {
-      "status": "PASS",
-      "evidence": "desktop/src/contracts/useOnboardingStep.ts:33-105 \u2014 secretsStatus/secretSet/secretDelete on LIQUIDCLIPS_ONBOARDED key; in-memory step index; cancelled-cleanup pattern on the hydration effect."
-    },
-    "C5_useActivityEvents": {
-      "status": "PASS",
-      "evidence": "desktop/src/contracts/useActivityEvents.ts:74-159 \u2014 listens to junior:channel-linked/junior:channel-unlinked/lc:publish-result/lc:payout/lc:bounty-match CustomEvents; localStorage persistence (MAX 50); crypto.randomUUID fallback. ActivityOrbit.tsx consumes this contract correctly."
-    },
-    "C6_version_bump": {
-      "status": "FAIL \u2014 version NOT bumped",
-      "evidence": "desktop/package.json:4 still '0.7.12'. desktop/src-tauri/tauri.conf.json:4 still '0.7.12'. /Applications/Liquid Clips.app CFBundleShortVersionString = 0.7.12. C6 task in tasklist is marked completed but ONLY the pre-commit hook landed \u2014 the bump step did NOT run. Per feedback_version_bump memory, version must be bumped before every build so Daniel can visually verify the install. This means Daniel cannot tell whether the install at /Applications is the OLD v0.7.12 or this new integrated build at a glance."
-    },
-    "C6_pre_commit_hook": {
-      "status": "PASS",
-      "evidence": ".git/hooks/pre-commit symlinks to desktop/scripts/check-humanError.sh and the script exits 0."
-    }
-  },
-  "kimi_K1_K7_verification": {
-    "K1_ClipEditDrawer_mounted": {
-      "status": "PASS",
-      "evidence": "WindowManager.tsx:41 imports ClipEditDrawer, mounts at :417 inside the canvas. DrawerShell at ClipEditDrawer.tsx:75-208 uses query+3-retry+50ms-backoff with centered-drawer fallback \u2014 this CLOSES the prior P1-009 strand from the v0.7.13 review. EditDrawerMotion.module.css exists on disk with .drawerPortal/.drawerContent/.animateRight/.animateLeft classes referenced by the component."
-    },
-    "K2_ClipCard_select_onError": {
-      "status": "PASS",
-      "evidence": "ClipCard.tsx onError plate at :385-389 sets videoError state; full error plate at :398-429 with Reveal-in-Finder. selected/onSelectClick props are optional (legacy callers byte-identical). 200ms hover delay added. ConfirmDialog wrap respects multi-select stopPropagation."
-    },
-    "K3_Settings_panel": {
-      "status": "PASS",
-      "evidence": "Settings.tsx Fragment wrapper at line 373 (the <> that fixes the prior P0-001 JSX parse blocker). tsc green confirms balanced JSX. Total of 9 fragments used throughout the panel \u2014 all balanced."
-    },
-    "K4_LibraryQuickPreview": {
-      "status": "PASS \u2014 Claude's type-cleanup honest",
-      "evidence": "LibraryQuickPreview.tsx:36-42 reads cover_thumb_path; :50 source_filename; :77 source_filename; :82 clips_count; :86 created_at (unix sec via Date(x*1000)); :90 imported/done. All ProjectLibrarySummary fields verified against lib/sidecar.ts type. Comment block at :22-24 documents Claude's correction of Kimi's original `.name`/`.num_clips`/`.date_created`/`.description`/`.poster_path` assumptions. NOT YET MOUNTED \u2014 flagged in code comments as v0.7.14 scope. tsc clean."
-    },
-    "K5_BountySwipe_SwipeCard": {
-      "status": "PASS",
-      "evidence": "BountySwipe.tsx defines local Bounty type (mirrors WhopBounty shape); supports touch gestures + keyboard ArrowLeft/Right + button row; 220ms swipe animation matches CSS. SwipeCard renders stacked depth with z-index 100-i. NOT YET MOUNTED \u2014 v0.7.14 scope per code comments."
-    },
-    "K6_StudioTour_CoachMark": {
-      "status": "PASS",
-      "evidence": "StudioTour.tsx 6-step sequence (workstation \u2192 clips \u2192 select \u2192 schedule \u2192 publish \u2192 earn) with z-[60] overlay. CoachMark.tsx computes tooltip position with viewport clamping; spotlight cutout via border + shadow. Esc skips, Enter/ArrowRight advances. NOT YET MOUNTED \u2014 v0.7.14 scope."
-    },
-    "K7_ActivityOrbit_AvatarPanel": {
-      "status": "PASS \u2014 Claude rewrote ActivityOrbit.tsx",
-      "evidence": "ActivityOrbit.tsx (Claude recreated) imports useActivityEvents from contracts/, filters to unread, dispatches lc:activity-orbit-click. ActivityOrbitParticles.tsx renders up to 5 particles at 72\u00b0 apart with BADGE_COLORS map. AvatarPanel.tsx adds inboxMode/events/focusedEventId/onMarkRead optional props (lines 86-97) consumed at :225-259 to render an Inbox section. AvatarPanel mount in App.tsx:1850-1869 does NOT yet pass the inbox-mode props \u2014 they're declared+typed but unsupplied at the callsite (v0.7.14 wiring). Mandate said 'underscored unused' which is INACCURATE \u2014 the props ARE used in the render body when supplied. tsc clean because they're optional."
-    }
-  },
-  "pattern_grep_results": {
-    "video_elements_without_onError_in_K_files": 0,
-    "video_elements_without_onError_critical_path_total": 0,
-    "video_elements_without_onError_non_critical_total": 3,
-    "non_critical_unhandled_video_sites": [
-      "Splash.tsx:248 (intro autoplay)",
-      "SponsoredBannerCarousel.tsx:143 (decorative carousel)",
-      "ReactionCellPreview.tsx:248 (Workspace stock overlay browser)"
-    ],
-    "raw_String_e_setError_in_K_files": 0,
-    "raw_String_e_setError_outside_critical_path_total": 10,
-    "direct_tauri_invoke_calls_in_K_files": 0,
-    "withTimeout_call_sites": 3,
-    "withTimeout_wrapped_RPCs": [
-      "ingestUrl (300s)",
-      "importReadyClips (60s)",
-      "liftTranscript (600s)"
-    ],
-    "new_animation_libs_imported": 0,
-    "css_modules_referenced_but_missing": 0,
-    "css_module_files_on_disk": [
-      "EditDrawerMotion.module.css (verified)"
-    ]
-  },
-  "p0_p1_hazard_scan": {
-    "modal_layers_z_index_map": {
-      "AvatarPanel_backdrop": "z-40",
-      "AvatarPanel_panel": "z-50",
-      "LibraryQuickPreview": "z-50 (NOT MOUNTED \u2014 v0.7.14)",
-      "ClipEditDrawer_portal": "z-50 (CSS module)",
-      "StudioTour_overlay": "z-60 (NOT MOUNTED \u2014 v0.7.14)"
-    },
-    "z_index_conflict_risk": "LOW \u2014 LibraryQuickPreview + AvatarPanel both at z-50 but cannot be opened simultaneously by any current user path (AvatarPanel close fires before any library open). Not blocking. Documented in v0.7.14 punch-list.",
-    "modal_focus_restoration": "PARTIAL \u2014 LibraryQuickPreview/StudioTour/BountySwipe close via onClose or Esc but do NOT restore focus to the previous trigger element. Not blocking because none are mounted in v0.7.12 ship. Wire focus restoration in v0.7.14 when these are mounted.",
-    "animation_libraries_unimported": "PASS \u2014 only 'motion' imported (already in package.json as ^12.40.0). No new animation deps.",
-    "css_modules_on_disk": "PASS \u2014 EditDrawerMotion.module.css verified at /Users/dipdip/Desktop/jnr/desktop/src/components/workbench/EditDrawerMotion.module.css. No phantom imports."
-  },
-  "findings": [
+  "prior_block_findings_resolved": [
     {
-      "id": "P0-001",
-      "severity": "P0",
-      "phase": "WALK + KARPATHY",
-      "file": "desktop/package.json:4, desktop/src-tauri/tauri.conf.json:4",
-      "summary": "Version NOT bumped \u2014 still 0.7.12. Daniel cannot visually verify the integrated build landed at /Applications because the bundle reads CFBundleShortVersionString = 0.7.12, which matches the OLD pre-integration build.",
-      "evidence": "grep '\"version\"' desktop/package.json desktop/src-tauri/tauri.conf.json shows both at '0.7.12'. /Applications/Liquid Clips.app/Contents/Info.plist CFBundleShortVersionString = 0.7.12. CFBundleVersion = 0.7.12. Task #94 (C6 Bump v0.7.13 + install pre-commit hook + final smoke) is marked completed BUT only the pre-commit hook step landed \u2014 the version bump itself never ran.",
-      "reproduce": "defaults read /Applications/Liquid\\ Clips.app/Contents/Info.plist CFBundleShortVersionString",
-      "suggested_fix": "bash desktop/scripts/bump_patch.sh (or manually bump to 0.7.13 in both package.json and tauri.conf.json), rebuild, re-install. Then Daniel can confirm the new version string in About \u2192 app metadata.",
-      "addressed": true,
-      "blocks_ship_per_feedback_version_bump_memory": true,
-      "rationale": "User memory feedback_version_bump.md explicitly requires patch bump before every build so Daniel can visually verify. Push without bump = silent install replacement risk + confused 'did my install land?' debugging.",
-      "refutation": "Version bumped 0.7.12 \u2192 0.7.13 + rebuilt + sign-cleaned + installed at /Applications. Verified at install: `plutil -p /Applications/Liquid\\ Clips.app/Contents/Info.plist | grep CFBundleShortVersionString` returns 0.7.13."
+      "id": "P0-A (prior cycle)",
+      "title": "PlatformBadge orphan — no parent surface mounts it",
+      "resolution": "RESOLVED. ClipCard.tsx line 441 mounts PlatformBadge at absolute bottom-left gated on `clip.platforms && clip.platforms.length > 0`. ClipWindow.tsx line 184 mounts PlatformBadge at absolute top-right (z-10, pointer-events-none) on the same gate. Both gates correctly hide the badge in the default empty-array / undefined state.",
+      "evidence": "git diff -- desktop/src/components/clips-feed/ClipCard.tsx + desktop/src/components/workbench/ClipWindow.tsx"
     },
     {
-      "id": "P2-002",
-      "severity": "P2",
-      "phase": "STATE",
-      "file": "desktop/src/components/workbench/ClipEditDrawer.tsx:83",
-      "summary": "portalRef ref is declared but never read.",
-      "evidence": "ClipEditDrawer.tsx line 83 declares `const portalRef = useRef<HTMLDivElement | null>(null);` and assigns at :189. No read of portalRef.current anywhere in the file.",
-      "reproduce": "grep -n portalRef.current desktop/src/components/workbench/ClipEditDrawer.tsx",
-      "suggested_fix": "Either delete the ref or use it (e.g., focus management on open). Not blocking \u2014 TS compiles, ref does no harm.",
-      "addressed": false,
-      "reclassified_to": "P2",
-      "reclassification_rationale": "Dead ref. No runtime impact. v0.7.14 polish."
+      "id": "P0-B (prior cycle)",
+      "title": "PlatformBadge has no data producer — types without Python writers",
+      "resolution": "RESOLVED. sidecar.py adds method_set_clip_platforms (validates the 6 PlatformIds — youtube/tiktok/instagram/x/linkedin/facebook — with no escape hatch; rejects unknown ids via ValueError). Registered in METHODS dict at sidecar.py:2795. project.py create_imported_pack now writes `platforms: []` + `overlay_template: None` defaults on every imported clip (project.py:527-528). sidecar.ts adds applyOverlayTemplate + setClipPlatforms wrappers with signatures matching the Python params exactly.",
+      "evidence": "sidecar.py:1278-1308 (method_set_clip_platforms), sidecar.py:2794-2795 (METHODS registration), project.py:527-528 (defaults), sidecar.ts:863-881 (wrappers)"
     },
     {
-      "id": "P2-003",
-      "severity": "P2",
-      "phase": "JOURNEY",
-      "file": "desktop/src/components/cockpit/LibraryQuickPreview.tsx, desktop/src/components/onboarding/StudioTour.tsx, desktop/src/components/earn/BountySwipe.tsx",
-      "summary": "K-modals do not restore focus to the triggering element on close.",
-      "evidence": "LibraryQuickPreview's onClose, StudioTour's onSkip, BountySwipe's swipe handlers all close the modal without calling .focus() on the triggering button. Keyboard-only users land at document.body after close.",
-      "reproduce": "Code review. None are mounted in v0.7.12 ship so the strand is not reachable.",
-      "suggested_fix": "Pass an opener ref through props or capture document.activeElement on mount; restore on close. v0.7.14 scope (when these surfaces actually mount).",
-      "addressed": false,
-      "reclassified_to": "P2",
-      "reclassification_rationale": "All four K-modals are explicitly NOT-YET-MOUNTED in v0.7.12. The strand is not reachable through any current user path. Track in v0.7.14 punch-list."
+      "id": "P0-C (prior cycle)",
+      "title": "OverlayTemplateGallery / OverlayTemplateKey union has no Python handler",
+      "resolution": "RESOLVED at the data layer. sidecar.py adds method_apply_overlay_template (sidecar.py:1227-1273) with the canonical _OVERLAY_TEMPLATE_PRESETS dict mapping all 8 OverlayTemplateKey values to layout+position. None-template clear path handled (sidecar.py:1255-1258 — persists overlay_template = None and returns project). Unknown templates raise ValueError. The real-bake path routes through stages.apply_overlay_to_clip (verified to exist at stages.py:2015) when source_path is provided. Mount of OverlayTemplateGallery itself is explicitly deferred to v0.7.15 per Claude's note — data layer ready, UI mount pending. Acceptable per the defer-list pre-approval.",
+      "evidence": "sidecar.py:1207-1273, stages.py:2015"
     },
     {
-      "id": "P2-004",
-      "severity": "P2",
-      "phase": "GREP",
-      "file": "desktop/src/components/{Splash.tsx:248, earn/SponsoredBannerCarousel.tsx:143, clips-feed/ReactionCellPreview.tsx:248}",
-      "summary": "Three remaining <video> mounts without onError handlers, all off the critical clip-import \u2192 caption \u2192 publish flow.",
-      "evidence": "grep '<video' desktop/src --include='*.tsx' | grep -v _backups | grep -v onError returns 3 sites. Critical-path sites all fixed.",
-      "reproduce": "grep -rn '<video' desktop/src --include='*.tsx' | grep -v _backups",
-      "suggested_fix": "v0.7.14 polish \u2014 Splash with fallback poster, SponsoredBannerCarousel with hide-on-error, ReactionCellPreview with hide-on-error.",
-      "addressed": false,
-      "reclassified_to": "P2",
-      "reclassification_rationale": "Carried over from prior review's reclassification \u2014 off critical path, deferred to v0.7.14."
+      "id": "P0-D (prior cycle)",
+      "title": "CANVAS_GRID_ROWS too small for Kimi's 20-tile cap",
+      "resolution": "RESOLVED. workbench/types.ts raises CANVAS_GRID_ROWS 8 → 10. Comment notes 8 cols × 10 rows = 80 cells, fitting 20 × 2×2 tiles cleanly. Verified findFreeSlot loop bounds (useWorkbenchStore.ts:84-85) use the symbol, not a magic number — auto-adjusts. clampPos (useWorkbenchStore.ts:64-65) uses CANVAS_GRID_ROWS - size.h — correctly enforces new bound. WindowManager.tsx:336 sets gridTemplateRows: repeat(CANVAS_GRID_ROWS, ...) — visual grid matches logical bound. Persisted session restore path clamps incoming pos through clampPos so older 8-row layouts stay valid; no migration needed.",
+      "evidence": "workbench/types.ts:74-78, useWorkbenchStore.ts:64-85 + 143-144, WindowManager.tsx:58-59 + 335-336"
     },
     {
-      "id": "P2-005",
-      "severity": "P2",
-      "phase": "GREP",
-      "file": "desktop/src/components/{UnifiedDropZone.tsx, BrowseRewardsPanel.tsx, earn/SubmissionForm.tsx, earn/BriefForm.tsx, earn/SavedBriefs.tsx, upload/useDirectPublishQueue.ts}",
-      "summary": "10 raw String(e)-shape setError catches remain in non-critical flows (earn, BrowseRewardsPanel, useDirectPublishQueue).",
-      "evidence": "Prior review's grep \u2014 these 10 sites still present. F7 pre-commit hook prevents NEW violations. ClipPreview's 7 sites fixed.",
-      "reproduce": "grep -rn 'String(e)\\|e\\.message' desktop/src --include='*.tsx' --include='*.ts' | grep -v _backups | grep -v humanError | grep -E 'setError|setErr'",
-      "suggested_fix": "Sweep to humanError(e) in v0.7.14. earn/* surfaces highest priority because they surface sidecar errors directly to clippers.",
-      "addressed": false,
-      "reclassified_to": "P2",
-      "reclassification_rationale": "Carried over \u2014 off critical path, deferred to v0.7.14."
-    },
-    {
-      "id": "P3-006",
-      "severity": "P3",
-      "phase": "JOURNEY",
-      "file": "desktop/src/components/cockpit/LibraryQuickPreview.tsx:46, desktop/src/components/cockpit/AvatarPanel.tsx:187",
-      "summary": "LibraryQuickPreview (z-50) and AvatarPanel (z-50) share the same z-index level. If both opened simultaneously, DOM order wins.",
-      "evidence": "LibraryQuickPreview.tsx:46 className contains 'z-50'. AvatarPanel.tsx:187 className contains 'z-50'.",
-      "reproduce": "Code review. No current user path opens both at once. LibraryQuickPreview not mounted in v0.7.12.",
-      "suggested_fix": "Bump LibraryQuickPreview to z-55 or close AvatarPanel before opening LibraryQuickPreview. v0.7.14 when mounted.",
-      "addressed": false,
-      "reclassified_to": "P3",
-      "reclassification_rationale": "Latent \u2014 strand not reachable in v0.7.12 because the new modal isn't mounted yet."
+      "id": "P0-E (prior cycle)",
+      "title": "PlatformBadgePicker has no real data path — Kimi's component was decorative",
+      "resolution": "RESOLVED. ClipPreview.tsx:987 mounts PlatformBadgePicker. onToggle (lines 989-998) computes the next array (toggle semantics), awaits sidecar.setClipPlatforms(slug, index, next), threads the new project via onProjectChange(r.project), and catches errors via setActionError(humanError(e)) — uses the canonical humanError pipeline, no raw String(e). The picker is reachable both via ResultsGrid (clip click → ClipPreview modal) and ClipEditDrawer (workbench tile → edit → ClipPreview).",
+      "evidence": "ClipPreview.tsx:983-1000, ResultsGrid.tsx:386, workbench/ClipEditDrawer.tsx:56"
     }
   ],
-  "regressions_check_against_prior_review": {
-    "P0_001_Settings_Fragment": "STILL FIXED \u2014 tsc green, Fragment wrapper at Settings.tsx:373.",
-    "F3_withTimeout_wraps": "STILL PRESENT \u2014 3 call sites (ingestUrl 300s, importReadyClips 60s, liftTranscript 600s).",
-    "F4_critical_path_onError": "STILL PRESENT \u2014 all 5 critical sites have onError handlers (ClipPreview, ClipWindow, ClipWindowPoster, OverlaySourcePicker x2). ClipCard adds full error plate with Reveal in Finder.",
-    "F1_humanError_ClipPreview": "STILL PRESENT \u2014 humanError used at line 163; no String(e) regressions.",
-    "Previously_NEW_P1_009_DrawerShell_race": "ADDRESSED \u2014 ClipEditDrawer.tsx:89-126 implements 3-retry querySelector with 50ms backoff, then falls back to centered drawer with console.warn. No silent no-op."
+  "new_findings": [
+    {
+      "id": "P2-1",
+      "title": "Silent strand — cut-from-source clips never get platforms / overlay_template defaults written",
+      "severity": "P2 (soft strand, not a hard bug — UI gates defend correctly)",
+      "claim_implicit": "Defaults persist on every clip via the imported-pack pathway.",
+      "actual": "llm.py:503-513 builds the cut-from-source clip dict (out_clips.append({...})) with NO platforms / overlay_template fields. The dict is persisted via project.set_clips() unchanged. So `clip.platforms` is undefined (not empty array) for cut-from-source clips. The TS type marks both optional, so this does not crash, AND the ClipCard + ClipWindow gates use `clip.platforms && clip.platforms.length > 0` which correctly evaluates falsy for undefined. PlatformBadgePicker uses `clip.platforms ?? []` so the picker still works. Net effect: end-user can still pick platforms on cut-from-source clips via the picker, but the underlying record shape is inconsistent between import and cut paths.",
+      "evidence": "llm.py:503-513 (cut-from-source clip factory), project.py:520-528 (import-pack defaults — note import is the ONLY path that writes the defaults), ClipCard.tsx:441 + ClipWindow.tsx:184 (truthy-array gates), ClipPreview.tsx:988 (?? [] coalescing)",
+      "fix_required": "Add `\"platforms\": []` + `\"overlay_template\": None` to the out_clips.append() dict in llm.py:503 — same 2-line surgical fix that landed on project.py:527-528. Keeps record shape consistent across both factory paths. No UI changes needed.",
+      "defer_acceptable": true,
+      "defer_rationale": "UI defends correctly via ?? [] coalescing and truthy-length gates — soft-strand only. Promote to P0 the moment any downstream code (publish routing, analytics aggregation, drip planner) starts iterating clip.platforms WITHOUT the nullish-coalescing guard."
+    },
+    {
+      "id": "P2-2",
+      "title": "PlatformBadge TikTok glyph still renders Latin 'T' — pre-existing design regression carried into v0.7.14",
+      "severity": "P2 (cosmetic, noted in prior cycle as P2)",
+      "claim_implicit": "PlatformBadge ships with brand-correct icons for all 6 platforms.",
+      "actual": "PlatformBadge.tsx:11 + 48-49 + 102-103: TikTok has no Lucide icon, so the badge renders a literal Latin 'T' in a teal circle. Once founders see this they will read it as a placeholder glyph rather than the TikTok wordmark or musical-note. Carried over from v0.7.13 untouched.",
+      "evidence": "PlatformBadge.tsx:11 (icon: () => null), :48-49 + :102-103 ('T' fallback)",
+      "fix_required": "Swap the 'T' fallback for an inline SVG of TikTok's monogram (the music-note glyph is 6 lines of SVG). Picker side has the same issue at line 103.",
+      "defer_acceptable": true,
+      "defer_rationale": "Cosmetic. Brand polish, not data correctness."
+    }
+  ],
+  "explicitly_deferred_items_acknowledged": {
+    "K4_LibraryQuickPreview_not_mounted_into_LibraryTab": "ACCEPTED (P2) — direct-open flow remains the live path; modal-on-tile-click is v0.7.15 polish",
+    "K5_BountySwipe_not_mounted": "ACCEPTED (P2) — Earn is Tauri webview embed; native port is a separate effort",
+    "K6_StudioTour_not_replacing_OnboardingOverlay": "ACCEPTED (P2) — phantom [data-tour] selectors in K6 need real anchor surfaces; v0.7.15",
+    "K7_ActivityOrbit_not_mounted_into_WorkstationRoom": "ACCEPTED (P2) — avatar slot mount pending v0.7.15",
+    "OverlayTemplateGallery_UI_mount": "ACCEPTED (P2) — data layer ready (method_apply_overlay_template + types + canonical preset mapping), UI gallery mount v0.7.15",
+    "F5_sidecar_auto_restart": "ACCEPTED (P2) — 60-90min Rust refactor; current Rust safety net (1h crash-exit) carries"
   },
-  "build_install_state": {
-    "tsc_exit": 0,
-    "py_compile_exit": 0,
-    "smoke_embed_exit": 0,
-    "check_humanError_exit": 0,
-    "installed_app_path": "/Applications/Liquid Clips.app",
-    "installed_version_CFBundleShortVersionString": "0.7.12",
-    "installed_version_CFBundleVersion": "0.7.12",
-    "source_version_package_json": "0.7.12",
-    "source_version_tauri_conf": "0.7.12",
-    "version_mismatch_with_intended_v0.7.13_ship": true
+  "state_inventory_audit": {
+    "Clip.platforms": {
+      "import_pack_path": "WRITES default []",
+      "cut_from_source_path": "DOES NOT WRITE — undefined at rest (see P2-1 above; UI defends with ?? [] / truthy gates)",
+      "ingest_url_path": "Routes through llm.py cut factory — same gap as cut path",
+      "user_picker_path": "Writes via method_set_clip_platforms (validates 6 ids strictly)",
+      "consumers": ["ClipCard PlatformBadge (gated on truthy length)", "ClipWindow PlatformBadge (gated on truthy length)", "ClipPreview PlatformBadgePicker (?? [] coalesce)"]
+    },
+    "Clip.overlay_template": {
+      "import_pack_path": "WRITES default null",
+      "cut_from_source_path": "DOES NOT WRITE — undefined at rest (same gap)",
+      "user_picker_path": "Writes via method_apply_overlay_template (validates against _OVERLAY_TEMPLATE_PRESETS)",
+      "consumers": ["No UI consumers yet — OverlayTemplateGallery deferred to v0.7.15"]
+    }
+  },
+  "mount_audit": {
+    "PlatformBadge_in_ClipCard": "PRESENT (line 441, absolute bottom-left, gated on truthy platforms array)",
+    "PlatformBadge_in_ClipWindow": "PRESENT (line 184, absolute top-right z-10 pointer-events-none, same gate)",
+    "PlatformBadgePicker_in_ClipPreview": "PRESENT (line 987, between pinned-comment field and save row)",
+    "ClipPreview_reachable_from_live_UI": "YES — mounted in ResultsGrid.tsx:386 (clip-card click flow) AND workbench/ClipEditDrawer.tsx:56 (workbench tile → edit flow). Badges WILL light up for an end-user via either entry point."
+  },
+  "regression_grep": {
+    "new_setError_String_e": "NONE in v0.7.14 diff",
+    "new_video_without_onError": "NONE — zero new <video> tags in diff",
+    "new_direct_invoke_calls": "NONE — all sidecar calls route through sidecar.* wrappers"
   },
   "verdict": "PASS",
-  "verdict_rationale": "ONE P0 finding (P0-001 version-bump skipped) blocks ship per Daniel's feedback_version_bump memory and the ship-protocol. Every other mechanical gate is green: tsc exit 0, py_compile exit 0, smoke-embed exit 0, check-humanError exit 0, pre-commit hook installed, no String(e) regressions in K-files, no direct invoke() bypasses, no missing CSS modules, no new animation deps, all K-components type-honest against actual sidecar types after Claude's cleanup. ClipEditDrawer's DrawerShell race (prior P1-009) is CLOSED via 3-retry + centered-drawer fallback. ALL F1-F7 + C2-C5 + T1.* tasks verified-with-evidence. K1-K3 (ClipEditDrawer + ClipCard + Settings panel) are MOUNTED + working; K4-K7 (LibraryQuickPreview + BountySwipe + StudioTour + ActivityOrbit) are TYPED + COMPILE-CLEAN but explicitly NOT-YET-MOUNTED (v0.7.14 scope per code comments) \u2014 so the modal focus / z-index / not-restoring-focus concerns documented as P2/P3 sit on un-reachable code paths. The version bump is the ONLY thing standing between LOCAL-COMMIT and PUSH. Run `bash desktop/scripts/bump_patch.sh && bash scripts/local-install.sh` to confirm the new version visually, then this is PASS. Without the bump, the install at /Applications is indistinguishable from the prior 0.7.12 build and Daniel cannot visually verify which artifact is running.",
-  "shipping_decision_for_daniel": "DO NOT PUSH YET. One action required: bump patch to 0.7.13 in package.json + tauri.conf.json, rebuild + re-install, confirm new version visible in app, then push. All other findings are P2/P3 deferred to v0.7.14 with explicit refutations."
+  "verdict_rationale": "All 5 prior P0/P1 BLOCK findings are RESOLVED with honest data-producer + UI-mount fixes that match the brief verbatim. method_apply_overlay_template + method_set_clip_platforms register, validate strictly, and handle the clear/None paths. ClipCard + ClipWindow render PlatformBadge with correct truthy gates. ClipPreview wires PlatformBadgePicker through sidecar.setClipPlatforms with proper humanError catch + onProjectChange threading. CANVAS_GRID_ROWS raise propagates symbolically through findFreeSlot + clampPos + WindowManager grid template. All mechanical gates (tsc/py_compile/smoke-embed/humanError) green. The two new findings (P2-1 cut-path silent-strand, P2-2 TikTok glyph) are soft — UI defends correctly with ?? [] coalescing and truthy-length gates, and the deferred K4-K7 + OverlayTemplateGallery items are pre-approved as the v0.7.15 punch-list. Installed app at /Applications/Liquid Clips.app reports 0.7.14 — ship signal aligned with working tree.",
+  "v0_7_15_punch_list": [
+    "P2-1 — Add `platforms: []` + `overlay_template: None` to llm.py:503 out_clips.append() so cut-from-source path matches import-pack record shape",
+    "P2-2 — Replace 'T' Latin letter fallback for TikTok in PlatformBadge.tsx:49 + :103 with inline SVG monogram",
+    "K4 — Mount LibraryQuickPreview into LibraryTab modal-on-tile-click",
+    "K5 — Native port BountySwipe into Earn tab (or accept webview Earn stays canonical)",
+    "K6 — Wire StudioTour with real [data-tour] anchors, replace OnboardingOverlay",
+    "K7 — Mount ActivityOrbit into WorkstationRoom avatar slot",
+    "OverlayTemplateGallery — UI mount + wire onSelect → sidecar.applyOverlayTemplate (data layer already ready)",
+    "F5 — sidecar auto-restart (60-90min Rust + TS, 1-retry cap)"
+  ],
+  "ship_recommendation": "Ready to commit v0.7.14 and push pending Daniel's explicit approval per the No-push-until-confirmed rule. The Daniel-review build at /Applications/Liquid Clips.app is already at 0.7.14 ready for the live walk."
 }

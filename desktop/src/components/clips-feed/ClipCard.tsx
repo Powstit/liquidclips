@@ -12,6 +12,7 @@ import { sidecar, RATIOS } from "../../lib/sidecar";
 import { LayoutIcon, LAYOUTS, type LayoutKey } from "./LayoutIcon";
 import { pickOverlaySource } from "../OverlaySourcePicker";
 import { BountyFitPill } from "../earn/bounty-fit";
+import { PlatformBadge } from "../PlatformBadge";
 import { useCountUp } from "../../lib/useCountUp";
 import { InlineScheduler } from "./InlineScheduler";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -433,6 +434,13 @@ export function ClipCard({
         {project.whop_bounty_id && (
           <span className="absolute right-2 top-2">
             <BountyFitPill clip={clip} project={project} />
+          </span>
+        )}
+        {/* v0.7.14 — Kimi's PlatformBadge bottom-left. Hidden when there
+            are no platforms picked yet (default for fresh cuts + imports). */}
+        {clip.platforms && clip.platforms.length > 0 && (
+          <span className="pointer-events-none absolute bottom-2 left-2">
+            <PlatformBadge platforms={clip.platforms} size="sm" />
           </span>
         )}
         {/* Captions chip — bottom-right of the thumbnail. Style colour dot

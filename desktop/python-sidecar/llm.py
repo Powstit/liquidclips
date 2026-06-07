@@ -510,6 +510,11 @@ def pick_clips_from_transcript(
             "slug": _kebab(c.slug or c.title),
             "title_variants": c.title_variants,
             "pinned_comment": c.pinned_comment,
+            # v0.7.14 — Per-clip platform targeting + overlay template.
+            # Mirrors create_imported_pack defaults so cut-from-source and
+            # imported clips both surface the empty-state to the UI cleanly.
+            "platforms": [],
+            "overlay_template": None,
         })
 
     # When the user only asked for YouTube extras we expect no clips — that's
