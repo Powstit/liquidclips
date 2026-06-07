@@ -437,6 +437,7 @@ function ResultCard({
             playsInline
             loop
             preload="none"
+            onError={(e) => { e.currentTarget.style.opacity = "0"; }}
             className={`absolute inset-0 h-full w-full object-cover transition-opacity ${
               hover ? "opacity-100" : "opacity-0"
             }`}
@@ -553,6 +554,7 @@ function ProjectClipCard({
             muted
             playsInline
             loop
+            onError={(e) => { e.currentTarget.style.opacity = "0"; }}
             // v0.7.8 L6 — `metadata` (not `none`) so the browser fetches
             // enough to paint the poster frame at rest. Tiny cost compared
             // to an empty `bg-ink` plate; no audible / decode side effects

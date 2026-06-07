@@ -4,7 +4,7 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { Camera, Trash2 } from "lucide-react";
+import { Camera, Trash2, User, Key, Plug, Info, Activity } from "lucide-react";
 import { sidecar, humanError, type HardwareInfo, type SecretName } from "../lib/sidecar";
 import { useAvatar, avatarSrc, initialsOf } from "../lib/avatar";
 // v0.7.8 S1 — single source of truth for sign-out side-effects. Settings'
@@ -77,6 +77,14 @@ const CATEGORY_LABELS: Record<SettingsCategory, string> = {
   connections: "Connections",
   about: "About",
   diagnostics: "Diagnostics",
+};
+
+const CATEGORY_ICONS: Record<SettingsCategory, React.ComponentType<{ className?: string }>> = {
+  account: User,
+  keys: Key,
+  connections: Plug,
+  about: Info,
+  diagnostics: Activity,
 };
 
 export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: { onClose: () => void; onSignOut?: () => void; onOpenSchedule?: (subtab?: "queue" | "channels" | "analytics") => void; tier?: Tier }) {
@@ -362,17 +370,13 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-ink/40" onClick={onClose}>
-      {/* v0.5.1 — Loadout Deck. Cool slate top-edge band signals "inventory
-          cockpit" — neutral, private, no signal colour bleed. See
-          docs/RPO_VISUAL_LANGUAGE.md. */}
-      <div
-        className="flex h-full w-full max-w-[760px] flex-col bg-paper shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Settings"
-      >
+    <>
+    <div className="flex h-full w-full flex-col bg-paper">
+      {/* v0.7.14 — K3: Settings Full-Screen Panel.
+          Converted from modal slide-out to full-page mount inside the cockpit.
+          Left rail + right content pane. No overlay wrapper.
+          ship-lens v0.7.13: outer Fragment wraps the ConfirmDialogs that
+          live as siblings outside the panel. */}
         {/* v0.6.4 — Whop-pattern compact header. No painted cover, no glow,
             no animation. Single line: initials + name + tier + email +
             close. Stays calm — Settings is a utility surface, not theatre. */}
@@ -787,7 +791,7 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
         onCancel={() => { if (!signingOut) setConfirmSignOutOpen(false); }}
         onConfirm={() => { void performSignOut(); }}
       />
-    </div>
+    </>
   );
 }
 
@@ -1837,11 +1841,12 @@ function SettingsLeftRail({
   const items: SettingsCategory[] = ["account", "keys", "connections", "about", "diagnostics"];
   return (
     <nav
-      className="flex w-[180px] shrink-0 flex-col gap-1 border-r border-line bg-transparent px-3 py-5"
+      className="flex w-[200px] shrink-0 flex-col gap-1 border-r border-line bg-transparent px-3 py-5"
       aria-label="Settings categories"
     >
       {items.map((c) => {
         const isActive = c === active;
+        const Icon = CATEGORY_ICONS[c];
         return (
           <button
             key={c}
@@ -1849,8 +1854,8 @@ function SettingsLeftRail({
             onClick={() => onSelect(c)}
             className={
               isActive
-                ? "flex items-center gap-2 px-3 py-2 font-sans text-[13px] font-medium text-ink"
-                : "flex items-center gap-2 px-3 py-2 font-sans text-[13px] text-text-secondary transition-colors hover:text-ink"
+                ? "flex items-center gap-3 px-3 py-2.5 font-sans text-[13px] font-semibold text-ink"
+                : "flex items-center gap-3 px-3 py-2.5 font-sans text-[13px] text-text-secondary transition-colors hover:text-ink"
             }
             aria-current={isActive ? "page" : undefined}
           >
@@ -1858,10 +1863,12 @@ function SettingsLeftRail({
               aria-hidden="true"
               className={
                 isActive
-                  ? "h-1.5 w-1.5 rounded-full bg-fuchsia shadow-[0_0_8px_var(--color-fuchsia)]"
-                  : "h-1.5 w-1.5 rounded-full bg-text-tertiary/60"
+                  ? "grid h-[36px] w-[36px] place-items-center rounded-xl bg-fuchsia/10 text-fuchsia"
+                  : "grid h-[36px] w-[36px] place-items-center rounded-xl bg-paper-deep text-text-tertiary"
               }
-            />
+            >
+              <Icon className="h-5 w-5" />
+            </span>
             {CATEGORY_LABELS[c]}
           </button>
         );

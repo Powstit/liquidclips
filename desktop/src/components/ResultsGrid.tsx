@@ -1,20 +1,28 @@
-import { useState } from "react";
+// ship-lens v0.7.13: Grid + multi-select COMBINED. The Workbench WindowManager mount was a v0.7.5 regression that broke per-clip flow; selection on the grid IS the multi-clip surface.
+import { useEffect, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { CheckCircle2, FolderOpen, Plus, Film } from "lucide-react";
 import type { Project, RatioKey } from "../lib/sidecar";
+import { ClipPreview } from "./ClipPreview";
 import { DripCalendar } from "./DripCalendar";
 import { PublishModal, type PublishModalMode } from "./PublishModal";
+import { ClipCard as FeedClipCard } from "./clips-feed/ClipCard";
 import { ClipsBulkToolbar } from "./clips-feed/ClipsBulkToolbar";
+import { ClipsBottomBar } from "./clips-feed/ClipsBottomBar";
+import { GridMasterToolbar } from "./clips-feed/GridMasterToolbar";
+import { UpgradeLockCard } from "./UpgradeLockCard";
+import { AddClipCard } from "./AddClipCard";
 import { YouTubeView } from "./YouTubeView";
 import { BountySubmissionCapture } from "./earn/BountySubmissionCapture";
 import { CampaignContextStrip } from "./earn/CampaignContextStrip";
 import { BountyWorkspaceHeader } from "./earn/BountyWorkspaceHeader";
 import { sidecar, type DripSlot } from "../lib/sidecar";
 import { PUBLISHING_ENABLED } from "../lib/flags";
+import { useTier, FREE_TIER_VISIBLE_CLIPS } from "../lib/useTier";
 import { useLocalPref } from "../lib/useLocalPref";
+import { useMultiSelect } from "../lib/useMultiSelect";
 import { InfoHint } from "./InfoHint";
-import { WindowManager } from "./workbench/WindowManager";
 
 type Tab = "clips" | "youtube" | "files";
 
@@ -34,6 +42,8 @@ export function ResultsGrid({
   const intent = project.intent ?? "both";
   const defaultTab: Tab = intent === "youtube" ? "youtube" : "clips";
   const [tab, setTab] = useState<Tab>(defaultTab);
+  const [openCaptionsForIdx, setOpenCaptionsForIdx] = useState<number | null>(null);
+  const [previewIdx, setPreviewIdx] = useState<number | null>(null);
   const [ratio, setRatio] = useState<RatioKey>("vertical");
   const [dripOpen, setDripOpen] = useState(false);
   const [publishModal, setPublishModal] = useState<{
@@ -49,6 +59,49 @@ export function ResultsGrid({
   const isBounty = !!project.whop_bounty_id;
   // Publishing requires a 9:16 render — cut_path alone (horizontal) won't do.
   const firstRenderedClipIdx = project.clips.findIndex((c) => !!c.vertical_path);
+  const tier = useTier();
+  // Multi-select state — selection on the grid IS the workbench experience
+  // post-v0.7.13. Drives both per-card "selected" rings and the floating
+  // GridMasterToolbar fan-out.
+  const { selected, isSelected, toggle, selectAll, clear } = useMultiSelect();
+
+  // Cmd-A → select-all, Esc → clear. Document-level so the chord works
+  // anywhere on the page (the grid root is not always focused). Bails when
+  // focus is inside an input/textarea/contentEditable so the captions drawer's
+  // text fields still get their native Cmd-A / Esc behaviour.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          target.isContentEditable
+        ) {
+          return;
+        }
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === "a" || e.key === "A")) {
+        if (project.clips.length === 0) return;
+        e.preventDefault();
+        selectAll(project.clips.length - 1);
+        return;
+      }
+      if (e.key === "Escape") {
+        // ship-lens v0.7.13 F6 — ClipPreview owns Esc semantics when its
+        // modal is open. Bail so the modal's own keydown can close itself
+        // without us also clearing the grid selection behind it.
+        if (previewIdx !== null) return;
+        if (selected.size === 0) return;
+        e.preventDefault();
+        clear();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [project.clips.length, selectAll, clear, selected.size, previewIdx]);
 
   function openPublish(mode: PublishModalMode) {
     if (firstRenderedClipIdx < 0) {
@@ -78,6 +131,9 @@ export function ResultsGrid({
     setActionToast(`Scheduled ${items.length} reminder${items.length === 1 ? "" : "s"} — see them in the Upload tab.`);
     setDripOpen(false);
   }
+
+  const previewClip = previewIdx !== null ? project.clips[previewIdx] : null;
+  const selectedIdxs = Array.from(selected).sort((a, b) => a - b);
 
   return (
     <div className="w-full max-w-[1080px]">
@@ -234,10 +290,11 @@ export function ResultsGrid({
       <div className="mt-6">
         {tab === "clips" && intent !== "youtube" && (
           <>
-            {/* v0.7.5: Grid view + ViewModeToggle removed. Workbench is the
-                only clips surface — see docs/UI_MAP_workbench.md. The bulk
-                toolbar still ships because ratio + preview prefs are
-                project-wide signals the workbench tile honours. */}
+            {/* v0.7.13: Grid restored as the ONLY clips-tab render. Workbench
+                WindowManager mount is gone — selection on the cards IS the
+                multi-clip surface. ClipsBulkToolbar still ships because
+                ratio + preview prefs are project-wide signals every card
+                honours. */}
             <ClipsBulkToolbar
               project={project}
               ratio={ratio}
@@ -248,7 +305,58 @@ export function ResultsGrid({
               previewMotionOn={previewMotionOn}
               onPreviewMotionChange={setPreviewMotionOn}
             />
-            <WindowManager project={project} onProjectChange={onProjectChange} />
+            {/* Floating master toolbar — only when at least one card is
+                selected. Wired to the same Set<number> the cards read for
+                their "selected" ring, so the toolbar's "Clear" action and
+                the cards stay in sync. */}
+            {selected.size > 0 && (
+              <GridMasterToolbar
+                selectedIdxs={selectedIdxs}
+                project={project}
+                onProjectChange={onProjectChange}
+                onClear={clear}
+              />
+            )}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {(() => {
+                const visibleCount =
+                  tier.tier === "free"
+                    ? Math.min(FREE_TIER_VISIBLE_CLIPS, project.clips.length)
+                    : project.clips.length;
+                const hidden = project.clips.length - visibleCount;
+                return (
+                  <>
+                    {project.clips.slice(0, visibleCount).map((clip, idx) => (
+                      <FeedClipCard
+                        key={`${idx}-${clip.slug}`}
+                        clip={clip}
+                        index={idx + 1}
+                        slug={project.slug}
+                        project={project}
+                        ratio={ratio}
+                        onProjectChange={onProjectChange}
+                        onOpenEditor={() => setPreviewIdx(idx)}
+                        onOpenCaptions={() => { setPreviewIdx(idx); setOpenCaptionsForIdx(idx); }}
+                        previewSoundOn={previewSoundOn}
+                        previewMotionOn={previewMotionOn}
+                        selected={isSelected(idx)}
+                        onSelectClick={(e) => toggle(idx, { meta: e.meta, shift: e.shift })}
+                      />
+                    ))}
+                    {hidden > 0 && (
+                      <UpgradeLockCard hiddenCount={hidden} totalClips={project.clips.length} />
+                    )}
+                    {tier.tier !== "free" && (
+                      <AddClipCard
+                        project={project}
+                        onProjectChange={onProjectChange}
+                      />
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+            <ClipsBottomBar project={project} />
           </>
         )}
         {tab === "youtube" && intent !== "clips" && (
@@ -270,8 +378,36 @@ export function ResultsGrid({
         </div>
       )}
 
-      {/* v0.7.5: the standalone ClipPreview modal mount was removed.
-          The Workbench (WindowManager → ClipEditDrawer) owns the editor now. */}
+      {/* Full-screen edit drawer — opens when a card's edit button is
+          clicked. Pre-v0.7.5 mount restored byte-for-byte; ClipPreview's API
+          (clip/index/slug/totalClips/initialCaptionsOpen) is preserved
+          per the "do not touch ClipPreview" constraint. */}
+      {previewClip && previewIdx !== null && (
+        <ClipPreview
+          clip={previewClip}
+          index={previewIdx + 1}
+          slug={project.slug}
+          project={project}
+          totalClips={project.clips.length}
+          initialCaptionsOpen={openCaptionsForIdx === previewIdx}
+          onClose={() => { setPreviewIdx(null); setOpenCaptionsForIdx(null); }}
+          onProjectChange={(p) => {
+            onProjectChange(p);
+            // If the removed clip was the previewed one, close.
+            if (previewIdx >= p.clips.length) { setPreviewIdx(null); setOpenCaptionsForIdx(null); }
+          }}
+          onNavigate={(dir) => {
+            const next = previewIdx + dir;
+            if (next >= 0 && next < project.clips.length) { setPreviewIdx(next); setOpenCaptionsForIdx(null); }
+          }}
+          onPublish={(clipIdx) => {
+            // Open PublishModal pre-selected to THIS clip (not
+            // firstRenderedClipIdx). ClipPreview already gates on
+            // clip.vertical_path so we don't need to re-check here.
+            setPublishModal({ mode: "publish-now", clipIdx });
+          }}
+        />
+      )}
 
       {dripOpen && (
         <DripCalendar

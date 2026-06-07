@@ -1,8 +1,25 @@
-// ship-lens v0.7.8: S1 — performSignOut now atomic-wipes every sensitive secret (LICENSE_JWT + 6 BYO keys + LIQUIDCLIPS_ONBOARDED), clears the avatar Zustand store, and resets telemetry consent so a Mac handoff doesn't leak the previous user; copy on the confirm dialog now names the API-key wipe explicitly. S5 — top-level fuchsia "engine restarted" banner mounts on the sidecar:died event, auto-dismisses on the next successful sidecar call, exposes a Restart button. S6 — check_deps throw now routes to a remediation card with an empty `missing:[]` (the deps-missing surface renders it gracefully) so a fresh user is never stranded on an empty workspace. v0.7.7 carry-overs preserved: fix #3 sidecar.ping() race, fix #5 Script tile lift wire, fix #9 meStatus discriminated union.
+// ship-lens v0.7.13 Tier 1 fixes landed (T1.1 + T1.2 + T1.3 + T1.5):
+//   T1.1 — Success/error import toast lifted to App root (GlobalToast) so it
+//          survives the empty → results view swap. WorkstationRoom's local
+//          dropError surface still renders for drag-drop rejection on the
+//          empty view (back-compat); the root toast is what survives the
+//          view transition triggered by handleImportDirect.
+//   T1.2 — OnboardingOverlay gated on view.kind === "empty" so a fresh user
+//          mid-import doesn't get the welcome scrim painted over ResultsGrid.
+//   T1.3 — `importing` state + double-click guard in handleImportDirect,
+//          piped to WorkstationRoom so the Import tile dims + shows a
+//          "preparing…" pill while the OS picker + sidecar.importReadyClips
+//          are in flight. Back-compat: WorkstationRoom's `importing` prop
+//          defaults to false.
+//   T1.5 — handleImportDirect catch now routes through humanError() so a
+//          SidecarError surfaces its pre-classified human message instead
+//          of a raw `String(e)` traceback.
+// Carry-overs from v0.7.8 preserved verbatim: S1 atomic-wipe sign-out, S5
+// engine-restart banner, S6 check_deps remediation, v0.7.7 fixes #3/#5/#9.
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import { LogIn } from "lucide-react";
+import { AlertTriangle, CheckCircle2, LogIn } from "lucide-react";
 // motion / AnimatePresence are no longer used directly from App.tsx — the
 // route-level dolly + room-change exit live inside RoomShell. Keeping the
 // import out lets TS strict catch any future regressions where someone
@@ -295,37 +312,63 @@ export default function App() {
   // it so the same modal can drive either pipeline. Default `clips` =
   // Create tile (legacy behaviour). `script` = Script tile → lift_transcript.
   const [uploadPortal, setUploadPortal] = useState<{ open: boolean; intent: "clips" | "script" }>({ open: false, intent: "clips" });
+  // ship-lens v0.7.13 T1.3 — `importing` is the single source of truth for
+  // the Import tile's loading state AND the double-click guard. It's both
+  // a visual signal (Import tile dims + shows a "preparing…" pill via the
+  // WorkstationRoom `importing` prop) and a logical one (the early-return
+  // in handleImportDirect bails on a second invocation mid-flight). Belt
+  // and braces — the disabled tile is the visual half, the guard is the
+  // logical half, because pointer-events can be defeated by a rapid second
+  // click landing between two renders.
+  const [importing, setImporting] = useState(false);
   // Direct import — single click on the Workstation Import tile fires the
   // OS file picker, then routes the resulting Project into ResultsGrid.
   // No intermediate modal, no lane chooser; the picker IS the next surface.
   async function handleImportDirect() {
-    const picked = await open({
-      multiple: true,
-      filters: [
-        { name: "Finished clips", extensions: ["mp4", "MP4", "mov", "MOV", "webm", "WEBM", "m4v", "M4V"] },
-      ],
-    });
-    if (!picked) return;
-    const paths = Array.isArray(picked) ? picked : [picked];
-    if (paths.length === 0) return;
-    // ship-lens v0.7.11: surface visible feedback on BOTH success + failure
-    // so the user knows the click took. The pre-v0.7.11 catch silently
-    // console.error'd while a project saved to disk — exactly the
-    // silent-success-and-no-UI-transition strand the audit named in v0.7.7
-    // and that escaped through v0.7.8. Toast on success confirms the import
-    // landed even if downstream view-routing races (a defence-in-depth
-    // signal). Toast on failure replaces the void.
-    setDropError(null);
+    // ship-lens v0.7.13 T1.3 — double-click guard. A second invocation
+    // mid-import is a no-op so we don't kick off two parallel
+    // importReadyClips calls and race their setView landings.
+    if (importing) return;
+    setImporting(true);
     try {
-      const { project } = await sidecar.importReadyClips(paths);
-      setView({ kind: "results", project });
-      setDropError(
-        `Imported ${paths.length} clip${paths.length === 1 ? "" : "s"} → opening workbench…`,
-      );
-    } catch (e) {
-      console.error("[import-direct] failed:", e);
-      const msg = e instanceof Error ? e.message : String(e);
-      setDropError(`Import failed: ${msg.slice(0, 200)}`);
+      const picked = await open({
+        multiple: true,
+        filters: [
+          { name: "Finished clips", extensions: ["mp4", "MP4", "mov", "MOV", "webm", "WEBM", "m4v", "M4V"] },
+        ],
+      });
+      if (!picked) return;
+      const paths = Array.isArray(picked) ? picked : [picked];
+      if (paths.length === 0) return;
+      // ship-lens v0.7.11: surface visible feedback on BOTH success + failure
+      // so the user knows the click took. The pre-v0.7.11 catch silently
+      // console.error'd while a project saved to disk — exactly the
+      // silent-success-and-no-UI-transition strand the audit named in v0.7.7
+      // and that escaped through v0.7.8.
+      // ship-lens v0.7.13 T1.1 — `dropError` is read by both
+      // WorkstationRoom (mounted only on the empty view) AND by GlobalToast
+      // at App root (mounted everywhere). The success message survives the
+      // setView({ kind: "results" }) transition via the root toast even
+      // though WorkstationRoom has already unmounted.
+      setDropError(null);
+      try {
+        const { project } = await sidecar.importReadyClips(paths);
+        setView({ kind: "results", project });
+        setDropError(
+          `Imported ${paths.length} clip${paths.length === 1 ? "" : "s"} → opening workbench…`,
+        );
+      } catch (e) {
+        console.error("[import-direct] failed:", e);
+        // ship-lens v0.7.13 T1.5 — humanError handles SidecarError's
+        // pre-classified .human field and falls back to e.message /
+        // String(e) for unknown error shapes. Replaces the prior raw
+        // `e instanceof Error ? e.message : String(e)` which leaked
+        // Python tracebacks from a sidecar-side failure straight into
+        // the toast copy.
+        setDropError(`Import failed: ${humanError(e).slice(0, 200)}`);
+      }
+    } finally {
+      setImporting(false);
     }
   }
   // Hydrate avatar store from the sidecar once at app boot. The orbit + the
@@ -1354,6 +1397,7 @@ export default function App() {
               dragHoverActive={dragHoverActive}
               dropError={dropError}
               userTier={userTier}
+              importing={importing}
             />
           </RoomShell>
         )}
@@ -1831,7 +1875,26 @@ export default function App() {
           from JuniorLoader / WorkingStage; auto-closes when the pipeline
           reaches a terminal state (see autoclose effect at App top). */}
       <InvadersOverlay />
-      {showOnboarding && (
+      {/* ship-lens v0.7.13 T1.1 — Root-mounted toast that survives view
+          transitions. handleImportDirect calls setDropError("Imported N
+          clip…") AFTER setView({ kind: "results" }); the WorkstationRoom-
+          local dropError surface unmounts the moment view flips, so the
+          success cue was invisible pre-fix. GlobalToast lives at App root
+          and renders for every view, so the same dropError state drives
+          both the inline WorkstationRoom hint (on empty) AND a persistent
+          bottom-right pill (everywhere else). Tone branches on the message
+          prefix — "Imported" → fuchsia success, anything else → red error.
+          The 4s auto-clear in the dropError useEffect dismisses both
+          surfaces together. */}
+      <GlobalToast message={dropError} />
+      {/* ship-lens v0.7.13 T1.2 — OnboardingOverlay now gated on
+          view.kind === "empty". Pre-fix a fresh user mid-import (empty →
+          importReadyClips → results) saw the welcome scrim painted over
+          ResultsGrid because showOnboarding rendered regardless of view.
+          The overlay belongs to the launchpad surface, not to the
+          workbench — gating it on "empty" keeps every other surface
+          uncovered. */}
+      {showOnboarding && view.kind === "empty" && (
         <OnboardingOverlay
           onComplete={completeOnboarding}
           onOpenSettings={() => setSettingsOpen(true)}
@@ -1956,6 +2019,34 @@ function GlobalAuthPanel() {
 // useEffect and reflects it via setUserTier.
 function setUserTierGlobalEvent(tier: string) {
   window.dispatchEvent(new CustomEvent("lc:tier-refresh", { detail: { tier } }));
+}
+
+// ship-lens v0.7.13 T1.1 — Root-level toast. Lives outside Cockpit + every
+// view branch so it survives setView() transitions (in particular the
+// empty → results swap that handleImportDirect triggers AFTER it sets the
+// success message). Tone branches on the copy prefix: "Imported …" reads
+// as a success (fuchsia + CheckCircle2); everything else is treated as an
+// error (red + AlertTriangle). The 4s auto-clear lives in the dropError
+// useEffect — both this and the WorkstationRoom inline surface dismiss
+// together when the timer fires.
+function GlobalToast({ message }: { message: string | null }) {
+  if (!message) return null;
+  const isSuccess = message.startsWith("Imported");
+  const Icon = isSuccess ? CheckCircle2 : AlertTriangle;
+  const containerClass = isSuccess
+    ? "border-fuchsia bg-paper-elev/95 text-ink shadow-[0_0_28px_rgba(255,26,140,0.45)]"
+    : "border-[#DC2626] bg-paper-elev/95 text-[#DC2626] shadow-[0_0_28px_rgba(220,38,38,0.4)]";
+  const iconClass = isSuccess ? "text-fuchsia" : "text-[#DC2626]";
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className={`fixed bottom-6 right-6 z-50 inline-flex max-w-[420px] items-center gap-2.5 rounded-full border bg-paper-elev/95 px-4 py-2.5 font-mono text-[11px] backdrop-blur-md ${containerClass}`}
+    >
+      <Icon className={`h-4 w-4 shrink-0 ${iconClass}`} strokeWidth={2} />
+      <span className="truncate normal-case tracking-normal">{message}</span>
+    </div>
+  );
 }
 
 // v0.7.8 S1 — Atomic sign-out wipe. Centralised so both the AvatarPanel

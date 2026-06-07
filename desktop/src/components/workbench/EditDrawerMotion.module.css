@@ -1,0 +1,59 @@
+/* EditDrawerMotion.module.css
+ * ship-lens v0.7.14: K1 — Workbench True Drawer
+ * True drawer that slides from the focused tile's nearest screen edge.
+ * Uses transform: translate(0) on the portal to create a containing block
+ * for fixed-position children, so ClipPreview's fixed inset-0 wrapper
+ * fills the portal instead of the entire viewport.
+ */
+
+.drawerPortal {
+  position: fixed;
+  /* Creates a containing block for position: fixed descendants.
+   * Without this, ClipPreview's fixed inset-0 wrapper would fill the
+   * entire viewport. With this, it fills the portal — the drawer. */
+  transform: translate(0);
+  overflow: hidden;
+  border-radius: 16px;
+  z-index: 50;
+  background: transparent;
+  /* Subtle shadow that separates the drawer from the canvas behind it. */
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.drawerContent {
+  height: 100%;
+  width: 100%;
+  will-change: transform;
+}
+
+/* ── Slide-in from right (tile is on the left half of screen) ── */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0.2;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* ── Slide-in from left (tile is on the right half of screen) ── */
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0.2;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animateRight {
+  animation: slideInRight 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animateLeft {
+  animation: slideInLeft 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

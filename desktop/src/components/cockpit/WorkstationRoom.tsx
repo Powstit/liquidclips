@@ -10,6 +10,18 @@
 // when tapped via shared layoutId. The whole room is a calm launch pad — the
 // dopamine surfaces are ambient (orbit ring + signal line) rather than
 // stacked dashboard cards.
+//
+// ship-lens v0.7.13 Tier 1 fixes landed:
+//   T1.3 — New optional `importing` prop (default false). When true the
+//          Import tile dims to opacity-50, takes pointer-events-none, and
+//          shows a small "preparing…" pill at the top of the tile so the
+//          user sees the click took even before the OS file picker pops.
+//          Back-compat: prop is optional with a default, so every existing
+//          caller compiles without changes.
+//   T1.1 (related) — `dropError` is still rendered inline (success+error
+//          toasts under the tile row) for the empty-view case; App.tsx
+//          additionally mounts a root-level GlobalToast that survives the
+//          empty → results transition triggered by handleImportDirect.
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
@@ -24,6 +36,7 @@ export function WorkstationRoom({
   dragHoverActive = false,
   dropError = null,
   userTier = null,
+  importing = false,
 }: {
   /** Single-click Create: opens the compact URL/file portal. The portal
    *  auto-focuses its URL input — no second click to start typing. */
@@ -48,6 +61,12 @@ export function WorkstationRoom({
   /** Drives the SponsoredBannerCarousel mounted below the tiles — tier
    *  controls which campaigns show as locked vs unlocked. */
   userTier?: "free" | "solo" | "pro" | "agency" | null;
+  /** ship-lens v0.7.13 T1.3 — true while handleImportDirect is in flight
+   *  (OS file picker open OR sidecar.importReadyClips running). Dims the
+   *  Import tile, blocks pointer events, and shows a "preparing…" pill
+   *  so a second click before the picker pops doesn't look like a no-op.
+   *  Defaults to false so every existing caller compiles unchanged. */
+  importing?: boolean;
 }) {
   const reduced = useReducedMotion();
   const [greeting, setGreeting] = useState("");
@@ -102,6 +121,8 @@ export function WorkstationRoom({
           onClick={onImport}
           reduced={!!reduced}
           delay={0.15}
+          busy={importing}
+          busyLabel="preparing…"
         />
         <Tile
           layoutId="cockpit-thumbnails"
@@ -215,6 +236,8 @@ function Tile({
   reduced,
   delay,
   disabled = false,
+  busy = false,
+  busyLabel,
 }: {
   layoutId: string;
   icon: React.ReactNode;
@@ -227,32 +250,60 @@ function Tile({
    *  isn't wired yet. Dims the tile + suppresses hover/tap motion + adds
    *  a small "soon" pill so users read it as "coming" not "broken". */
   disabled?: boolean;
+  /** ship-lens v0.7.13 T1.3 — true while the parent action is in flight
+   *  (e.g. handleImportDirect waiting on the OS file picker + sidecar
+   *  importReadyClips). Suppresses clicks via pointer-events-none AND
+   *  the onClick guard, dims to opacity-50, and renders busyLabel as a
+   *  pill at the top of the tile. Independent of `disabled` because the
+   *  semantic differs — disabled = feature not yet wired, busy = wired
+   *  but in flight. */
+  busy?: boolean;
+  busyLabel?: string;
 }) {
+  // ship-lens v0.7.13 T1.3 — busy is treated like disabled for the
+  // interactive surface (no hover lift, no click) but the visual cue is
+  // a "preparing…" pill instead of the "soon" pill so the user reads it
+  // as work-in-progress not feature-missing.
+  const interactionBlocked = disabled || busy;
   return (
     <motion.button
       layoutId={layoutId}
       type="button"
-      onClick={disabled ? undefined : onClick}
-      disabled={disabled}
+      onClick={interactionBlocked ? undefined : onClick}
+      disabled={interactionBlocked}
       initial={reduced ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.92 }}
-      animate={reduced ? { opacity: disabled ? 0.55 : 1 } : { opacity: disabled ? 0.55 : 1, y: 0, scale: 1 }}
+      animate={
+        reduced
+          ? { opacity: disabled ? 0.55 : busy ? 0.5 : 1 }
+          : { opacity: disabled ? 0.55 : busy ? 0.5 : 1, y: 0, scale: 1 }
+      }
       transition={
         reduced
           ? { duration: 0.18 }
           : { delay, type: "spring", stiffness: 280, damping: 26 }
       }
       whileHover={
-        reduced || disabled
+        reduced || interactionBlocked
           ? undefined
           : { scale: 1.04, transition: { type: "spring", stiffness: 360, damping: 22 } }
       }
-      whileTap={reduced || disabled ? undefined : { scale: 0.96 }}
-      className={`cockpit-tile group relative flex h-[220px] w-[220px] flex-col items-center justify-center gap-3 bg-transparent outline-none ${disabled ? "cursor-not-allowed" : ""}`}
-      aria-label={`${title} — ${subtitle}${disabled ? " (coming soon)" : ""}`}
+      whileTap={reduced || interactionBlocked ? undefined : { scale: 0.96 }}
+      className={`cockpit-tile group relative flex h-[220px] w-[220px] flex-col items-center justify-center gap-3 bg-transparent outline-none ${interactionBlocked ? "cursor-not-allowed" : ""} ${busy ? "pointer-events-none" : ""}`}
+      aria-label={`${title} — ${subtitle}${disabled ? " (coming soon)" : ""}${busy ? " (preparing)" : ""}`}
+      aria-busy={busy || undefined}
     >
-      {disabled && (
+      {disabled && !busy && (
         <span className="absolute right-3 top-3 rounded-full border border-fuchsia/30 bg-paper px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-fuchsia">
           soon
+        </span>
+      )}
+      {busy && (
+        <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-fuchsia/40 bg-paper px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-fuchsia">
+          <span className="relative inline-flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fuchsia opacity-70" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-fuchsia" />
+          </span>
+          {busyLabel ?? "working"}
         </span>
       )}
       {/* HUD bracket corners — fuchsia dashed, only at the four corners.

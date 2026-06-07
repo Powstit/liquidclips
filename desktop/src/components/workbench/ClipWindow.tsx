@@ -193,6 +193,21 @@ export function ClipWindow({
             playsInline
             className="h-full w-full bg-black object-contain"
             onClick={(e) => e.stopPropagation()}
+            onError={(e) => {
+              // ship-lens v0.7.13 F4 pattern-grep — apply onError to every
+              // <video> the user can reach on the critical clip-flow. MediaError
+              // codes: 1=aborted, 2=network, 3=decode, 4=unsupported. WebKit
+              // often leaves `.message` empty, so branch on code.
+              const err = e.currentTarget.error;
+              const msg = err?.code === 4
+                ? "Unsupported codec — try re-exporting as H.264 MP4."
+                : err?.code === 3
+                ? "Couldn't decode this clip — the file may be corrupt."
+                : err?.code === 2
+                ? "Network error while loading the clip."
+                : err?.message || "Couldn't play this clip.";
+              console.error("[workbench-clip-video]", msg);
+            }}
           />
         ) : (
           <ClipWindowPoster

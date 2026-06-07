@@ -64,6 +64,11 @@ export function AvatarPanel({
   onOpenSchedule,
   onOpenEarn,
   onSignOut,
+  // K-δ inbox mode props
+  inboxMode,
+  events,
+  focusedEventId,
+  onMarkRead,
 }: {
   open: boolean;
   onClose: () => void;
@@ -78,6 +83,18 @@ export function AvatarPanel({
    *  before resolving. AvatarPanel doesn't await; the underlying handler
    *  fires its own confirm + JWT-delete + view-flip chain. */
   onSignOut?: () => void | Promise<void>;
+  // K-δ inbox mode
+  inboxMode?: boolean;
+  events?: Array<{
+    id: string;
+    kind: string;
+    title: string;
+    body: string;
+    timestamp: number;
+    read: boolean;
+  }>;
+  focusedEventId?: string | null;
+  onMarkRead?: (id: string) => void;
 }) {
   const url = useAvatar((s) => s.url);
   const bustKey = useAvatar((s) => s.bustKey);
@@ -204,7 +221,44 @@ export function AvatarPanel({
                   </div>
                 </button>
               )}
-              {/* 1. Profile header */}
+              {/* 2. Inbox section (K-δ) */}
+              {inboxMode && events && events.length > 0 && (
+                <div className="flex flex-col gap-2 rounded-2xl border border-line bg-paper p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia">
+                      Inbox
+                    </span>
+                    <span className="font-mono text-[10px] text-text-tertiary">
+                      {events.filter(e => !e.read).length} unread
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {events.map((event) => (
+                      <button
+                        key={event.id}
+                        onClick={() => onMarkRead?.(event.id)}
+                        className={`flex flex-col gap-0.5 rounded-xl px-3 py-2 text-left transition-colors ${
+                          event.read
+                            ? "bg-transparent opacity-50"
+                            : "bg-paper-deep hover:bg-paper-elev"
+                        } ${focusedEventId === event.id ? "ring-1 ring-fuchsia/30" : ""}`}
+                      >
+                        <span className="font-sans text-[12px] font-medium text-ink">
+                          {event.title}
+                        </span>
+                        <span className="font-sans text-[11px] text-text-secondary line-clamp-2">
+                          {event.body}
+                        </span>
+                        <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-text-tertiary">
+                          {new Date(event.timestamp).toLocaleDateString()}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 3. Profile header */}
               <header className="flex items-center gap-3 rounded-2xl border border-line bg-paper p-3">
                 <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full border border-fuchsia/40 bg-gradient-to-br from-fuchsia to-fuchsia-deep">
                   {renderedSrc ? (
