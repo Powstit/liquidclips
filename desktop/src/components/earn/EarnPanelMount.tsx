@@ -29,6 +29,7 @@ import {
   type EarnPanelMessage,
 } from "../../lib/earn_panel";
 import { sidecar, type WhopBounty } from "../../lib/sidecar";
+import { openAuthPanel } from "../auth/useAuthPanel";
 
 /** Source of truth for "what submissions has THIS desktop captured?" lives
  *  in `localStorage["junior:my-whop-submissions:v1"]` (see EarnTab.ts's
@@ -165,6 +166,21 @@ export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
         case "lc:nav": {
           const to = typeof msg.to === "string" ? msg.to : "";
           cbRef.current.onNav?.(to);
+          break;
+        }
+        case "lc:open-auth": {
+          // ship-lens v0.7.11: the embed renders a "Link your account"
+          // CTA when Clerk satellite cookies haven't been set yet (the
+          // server-side auth() in /embed/earn returns no userId). The CTA
+          // posts this message; we open the native auth panel which lands
+          // the user on Clerk's hosted page at account.liquidclips.app —
+          // signing in sets the satellite cookie + the panel auto-closes,
+          // and on close we destroy + reopen the earn webview so the
+          // embed re-renders authenticated.
+          const panel = (msg as { panel?: unknown }).panel === "upgrade"
+            ? "upgrade"
+            : "sign-in";
+          openAuthPanel(panel);
           break;
         }
         case "lc:start-bounty": {

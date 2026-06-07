@@ -20,6 +20,7 @@ export type EarnPanelMessage =
   | { type: "lc:nav"; to?: string }
   | { type: "lc:start-bounty"; id?: string }
   | { type: "lc:auth-request" }
+  | { type: "lc:open-auth"; panel?: "sign-in" | "upgrade" }
   | { type: string; [k: string]: unknown };
 
 // --- Tauri command wrappers ---------------------------------------------

@@ -21,6 +21,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { SponsoredCarousel, type SponsoredCampaign } from "@/components/embed/SponsoredCarousel";
 import { BountyList } from "@/components/embed/BountyList";
+import { EmbedSignedOutPanel } from "@/components/embed/EmbedSignedOutPanel";
 import { BACKEND_URL, normalizeTier, type EmbedTier } from "@/lib/embed-auth";
 
 export default async function EmbedEarnPage() {
@@ -31,7 +32,7 @@ export default async function EmbedEarnPage() {
   // without breaking out of the webview. Tell them to sign in from the
   // desktop's account panel instead.
   if (!userId) {
-    return <SignedOutPanel />;
+    return <EmbedSignedOutPanel />;
   }
 
   // Same /affiliate/me read as the embed layout's tier resolver. We pull it
@@ -182,22 +183,8 @@ function ManualEntry() {
   );
 }
 
-function SignedOutPanel() {
-  // No links out — the embed shell has no nav so we can't bounce the user
-  // anywhere. The desktop wraps this surface and handles activation natively.
-  return (
-    <main className="mx-auto flex w-full max-w-[520px] flex-col items-start gap-5 px-5 py-12">
-      <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
-        <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-        earn
-      </div>
-      <h1 className="font-display text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink">
-        Sign in to your desktop app first.
-      </h1>
-      <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-        Open Liquid Clips on your machine and sign in — this surface picks up
-        your account automatically once the desktop is connected.
-      </p>
-    </main>
-  );
-}
+// ship-lens v0.7.12: SignedOutPanel extracted to a client component
+// because React Server Components can't pass inline onClick functions to
+// children. The v0.7.11 inline version rendered the error-boundary digest
+// instead of the panel (the "Earn page is blank" bug). Live at
+// components/embed/EmbedSignedOutPanel.tsx with the "use client" directive.
