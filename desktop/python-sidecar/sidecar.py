@@ -977,6 +977,33 @@ def method_edit_captions(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"clip idx {idx} out of range")
     clip = project.clips[idx]
 
+    # ship-lens v0.7.13 F1 (T2.6) — imported clips' vertical_path/cut_path
+    # point at the user's ORIGINAL source file outside the project dir.
+    # bake_captions_to_video uses atomic-replace via os.replace, so baking
+    # would destroy the original file in-place. Copy into project/clips/
+    # first, repoint the clip record, persist, then bake on the in-project
+    # copy. Already-in-project (or non-imported) clips short-circuit.
+    if clip.get("imported"):
+        vp = clip.get("vertical_path") or clip.get("cut_path")
+        if vp:
+            vp_path = Path(vp)
+            project_clips_dir = project.root / "clips"
+            in_project = (
+                project_clips_dir in vp_path.parents
+                or project.root in vp_path.parents
+            )
+            if vp_path.is_file() and not in_project:
+                project_clips_dir.mkdir(parents=True, exist_ok=True)
+                safe_name = f"{clip.get('slug') or f'clip-{idx + 1:02d}'}.mp4"
+                dst = project_clips_dir / safe_name
+                # Re-use an existing in-project copy from a prior bake attempt.
+                if not dst.exists() or dst.stat().st_size == 0:
+                    import shutil as _shutil
+                    _shutil.copy2(vp_path, dst)
+                clip["vertical_path"] = str(dst)
+                clip["cut_path"] = str(dst)
+                project.save()
+
     target_path = clip.get("vertical_path") or clip.get("cut_path")
     if not target_path:
         raise FileNotFoundError(f"clip {idx} has no rendered video to caption")

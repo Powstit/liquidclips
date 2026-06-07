@@ -100,6 +100,15 @@ export function ClipWindowPoster({
           playsInline
           className="h-full w-full object-cover pointer-events-none"
           aria-hidden
+          onError={(e) => {
+            // ship-lens v0.7.13 F4 — surface decode failures on imported clips
+            // whose source is corrupt / 0-byte / iCloud-placeholder. Silent
+            // because the tile is decorative; signal via aria-label so screen
+            // readers convey the state.
+            const t = e.currentTarget;
+            t.setAttribute("aria-label", "Clip preview unavailable");
+            t.style.opacity = "0";
+          }}
         />
       ) : (
         <div className="grid h-full w-full place-items-center font-mono text-[11px] uppercase tracking-[0.10em] text-paper/40">

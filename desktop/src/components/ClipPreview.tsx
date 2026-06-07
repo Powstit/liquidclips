@@ -12,7 +12,7 @@ import {
   Download,
 } from "lucide-react";
 import type { Clip, OverlayType, Project, RatioKey } from "../lib/sidecar";
-import { sidecar, RATIOS } from "../lib/sidecar";
+import { sidecar, RATIOS, humanError } from "../lib/sidecar";
 import { CopyButton } from "./CopyButton";
 import { InfoTip } from "./InfoTip";
 import { LayoutIcon, LAYOUTS, type LayoutKey } from "./clips-feed/LayoutIcon";
@@ -84,6 +84,9 @@ export function ClipPreview({
   const [ratio, setRatio] = useState<RatioKey>("vertical");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // ship-lens v0.7.13 F4 (T1.7) — surface <video> errors so corrupt /
+  // 0-byte / iCloud-placeholder files don't render as a silent black square.
+  const [videoError, setVideoError] = useState<string | null>(null);
   const [trimOpen, setTrimOpen] = useState(false);
   // Branded confirm primitive replaces native confirm() — the old one
   // blocked the Tauri webview thread + broke brand voice on every remove.
@@ -157,7 +160,7 @@ export function ClipPreview({
       setSaveState("saved");
       window.setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 1800);
     } catch (e) {
-      setActionError(String(e));
+      setActionError(humanError(e));
       setSaveState("idle");
     } finally {
       setBusy(false);
@@ -301,7 +304,7 @@ export function ClipPreview({
         }, 1500);
       } catch (e) {
         if (cancelled) return;
-        const msg = String(e);
+        const msg = humanError(e);
         console.warn("[ClipPreview] applyOverlay (auto-persist) failed:", e);
         setOverlaySaveError(msg);
         setOverlaySaveState("idle");
@@ -377,7 +380,7 @@ export function ClipPreview({
         onProjectChange(r.project);
       }
     } catch (e) {
-      setActionError(String(e));
+      setActionError(humanError(e));
     } finally {
       setBusy(false);
     }
@@ -395,7 +398,7 @@ export function ClipPreview({
       onProjectChange(r.project);
       setTrimOpen(false);
     } catch (e) {
-      setActionError(String(e));
+      setActionError(humanError(e));
     } finally {
       setBusy(false);
     }
@@ -413,7 +416,7 @@ export function ClipPreview({
       setConfirmRemove(false);
       onClose();
     } catch (e) {
-      setActionError(String(e));
+      setActionError(humanError(e));
       setBusy(false);
       // Keep the modal open so the user can retry without re-opening it.
     }
@@ -459,7 +462,7 @@ export function ClipPreview({
       ]);
       setBottomToast({ kind: "ok", msg: "Scheduled — see it in the Upload tab." });
     } catch (e) {
-      setBottomToast({ kind: "err", msg: `Schedule failed — ${String(e)}` });
+      setBottomToast({ kind: "err", msg: `Schedule failed — ${humanError(e)}` });
     }
   }
 
@@ -491,7 +494,7 @@ export function ClipPreview({
     try {
       await openExternal(dir);
     } catch (e) {
-      setBottomToast({ kind: "err", msg: `Couldn't open Finder — ${String(e)}` });
+      setBottomToast({ kind: "err", msg: `Couldn't open Finder — ${humanError(e)}` });
     }
   }
 
@@ -525,7 +528,7 @@ export function ClipPreview({
       await copyFile(revealPath, dest);
       setBottomToast({ kind: "ok", msg: "Copy saved." });
     } catch (e) {
-      setBottomToast({ kind: "err", msg: `Save failed — ${String(e)}` });
+      setBottomToast({ kind: "err", msg: `Save failed — ${humanError(e)}` });
     } finally {
       setSaveCopyBusy(false);
     }
@@ -713,16 +716,36 @@ export function ClipPreview({
             >
               {videoSrc ? (
                 <>
-                  <video
-                    key={videoSrc}
-                    ref={videoEl}
-                    controls
-                    autoPlay
-                    loop
-                    muted={!!clip.overlay?.music_bed}
-                    src={videoSrc}
-                    className="max-h-full max-w-full"
-                  />
+                  {videoError ? (
+                    <div className="flex h-full max-h-full max-w-full flex-col items-center justify-center gap-3 bg-ink/95 p-6 text-center">
+                      <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-fuchsia">
+                        can&apos;t play this clip
+                      </div>
+                      <div className="max-w-[280px] text-[13px] text-paper">
+                        {videoError}
+                      </div>
+                      <div className="text-[11px] text-text-tertiary">
+                        File may be corrupt, empty, or still downloading from iCloud.
+                      </div>
+                    </div>
+                  ) : (
+                    <video
+                      key={videoSrc}
+                      ref={videoEl}
+                      controls
+                      autoPlay
+                      loop
+                      muted={!!clip.overlay?.music_bed}
+                      src={videoSrc}
+                      className="max-h-full max-w-full"
+                      onError={(e) =>
+                        setVideoError(
+                          e.currentTarget.error?.message ??
+                            "Couldn't decode this video.",
+                        )
+                      }
+                    />
+                  )}
                   {/* Live caption overlay — DOM-rendered over the playing video.
                       CRITICAL: only render when the user is actively editing
                       (drawer open + unsaved edits) OR the clip has never been

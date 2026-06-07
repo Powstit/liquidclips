@@ -37,6 +37,7 @@ export class SidecarError extends Error {
  */
 export function humanError(e: unknown): string {
   if (e instanceof SidecarError) return e.human;
+  if (e instanceof SidecarTimeoutError) return e.human;
   const raw = e instanceof Error ? e.message : String(e);
   // Catch the unhelpful String() coercions of non-Error throwables so the
   // user never sees "null" / "undefined" / "[object Object]" as a message.
@@ -107,6 +108,31 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
  *  process dies. Carries the exit code parsed out of the Rust message
  *  ("sidecar crashed (exit=Some(N)); restart the app"). exit_code is null
  *  when Rust couldn't read the status (process detached, signal, etc.). */
+/** ship-lens v0.7.13 F3 — wraps any sidecarCall in a Promise.race against
+ *  a setTimeout. Used by importReadyClips (60s) and any future long-running
+ *  RPC we want to cap before the 1h Rust safety net. SidecarTimeoutError
+ *  carries a `human` field so humanError() can render it cleanly. */
+export class SidecarTimeoutError extends Error {
+  readonly human: string;
+  constructor(method: string, ms: number) {
+    super(`Sidecar method "${method}" timed out after ${ms}ms`);
+    this.name = "SidecarTimeoutError";
+    this.human = `The engine is taking longer than expected on "${method}". Try again, or quit and reopen Liquid Clips.`;
+  }
+}
+
+export async function withTimeout<T>(p: Promise<T>, ms: number, method: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new SidecarTimeoutError(method, ms)), ms);
+  });
+  try {
+    return await Promise.race([p, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export class SidecarCrashedError extends Error {
   exit_code: number | null;
   constructor(exit_code: number | null) {
@@ -575,18 +601,30 @@ export const sidecar = {
       ...(brief ? { brief } : {}),
       ...(bounty ? { bounty } : {}),
     }),
+  // ship-lens v0.7.13 F3-extended — ingestUrl wraps yt-dlp + ffmpeg muxing,
+  // both prone to hang on flaky networks / age-walled videos. 5min cap is
+  // generous for legitimate downloads (10-min 1080p ~ 90s) and well within
+  // the 1h Rust safety net.
   ingestUrl: (url: string, brief?: string, intent: Intent = "both", bounty?: BountyContext) =>
-    sidecarCall<{ project: Project; downloaded_path: string }>("ingest_url", {
+    withTimeout(sidecarCall<{ project: Project; downloaded_path: string }>("ingest_url", {
       url,
       intent,
       ...(brief ? { brief } : {}),
       ...(bounty ? { bounty } : {}),
-    }),
+    }), 300_000, "ingest_url"),
   // v0.6.9 — Import finished MP4/MOV/WEBM clips into a normal Project so they
   // land in ResultsGrid with full stack/split/remix/schedule/publish. No
   // transcribe/llm/cut/reframe — every stage pre-marked done by the sidecar.
+  // ship-lens v0.7.13 F3 — wrap with 60s timeout. A hung Python sidecar
+  // (corrupt MP4, frozen ffmpeg, stuck SMB/iCloud probe) would otherwise
+  // leave the picker closed with no UI feedback indefinitely. SidecarTimeoutError
+  // surfaces via humanError as "engine taking longer than expected".
   importReadyClips: (paths: string[]) =>
-    sidecarCall<{ project: Project }>("import_ready_clips", { paths }),
+    withTimeout(
+      sidecarCall<{ project: Project }>("import_ready_clips", { paths }),
+      60_000,
+      "import_ready_clips",
+    ),
   // v0.6.35 — Cockpit avatar surface. The sidecar canonicalises the upload
   // to ~/LiquidClips/avatar.png so the frontend caches off one URL + bust
   // counter (see useAvatar in lib/avatar.ts).
@@ -722,7 +760,8 @@ export const sidecar = {
     idx: number,
     fields: { title?: string; description?: string; pinned_comment?: string },
   ) => sidecarCall<{ project: Project }>("update_clip_meta", { slug, idx, ...fields }),
-  liftTranscript: (url: string) => sidecarCall<LiftTranscriptResult>("lift_transcript", { url }),
+  liftTranscript: (url: string) =>
+    withTimeout(sidecarCall<LiftTranscriptResult>("lift_transcript", { url }), 600_000, "lift_transcript"),
   // Write the lift-cancel marker so an in-flight lift_transcript raises at
   // its next 2s poll. Safe to call even when nothing is running — just
   // writes a marker that the next lift_transcript will clear on start.

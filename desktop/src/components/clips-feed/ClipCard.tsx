@@ -1,9 +1,12 @@
 "use client";
 
+// ship-lens v0.7.13: select + onError. Selection state lifted to parent via onSelectClick — the grid manages a Set<number>. onError plate replaces the silent-black-square strand for corrupt / iCloud-placeholder / 0-byte files.
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { Check, Copy, MessageSquare, MoreVertical, Sparkles, Trash2 } from "lucide-react";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { AlertTriangle, Check, Copy, MessageSquare, MoreVertical, Sparkles, Trash2 } from "lucide-react";
 import type { Clip, OverlayType, Project, RatioKey } from "../../lib/sidecar";
 import { sidecar, RATIOS } from "../../lib/sidecar";
 import { LayoutIcon, LAYOUTS, type LayoutKey } from "./LayoutIcon";
@@ -61,6 +64,8 @@ export function ClipCard({
   onOpenCaptions,
   previewSoundOn = false,
   previewMotionOn = false,
+  selected,
+  onSelectClick,
 }: {
   clip: Clip;
   index: number;          // 1-based
@@ -82,6 +87,16 @@ export function ClipCard({
    *  `lc:preview_motion`. Respects prefers-reduced-motion automatically — the
    *  hook returns false during the first render on motion-reduced systems. */
   previewMotionOn?: boolean;
+  /** Multi-select state — when true, the card renders a fuchsia HUD ring +
+   *  ticked checkbox. Only meaningful when `onSelectClick` is also provided. */
+  selected?: boolean;
+  /** Multi-select click handler. When provided (parent grid is managing a
+   *  Set<number> of selected indices), the card surfaces a checkbox and the
+   *  primary background click forwards meta/shift to the parent so it can
+   *  toggle / range-select / additive-select. When undefined (legacy
+   *  callers), the card is byte-identical to v0.7.12: no checkbox, no ring,
+   *  no background click handler. */
+  onSelectClick?: (e: { meta: boolean; shift: boolean }) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -97,6 +112,11 @@ export function ClipCard({
   // Branded confirm primitive replaces native confirm() — the old one
   // blocked the Tauri webview thread + broke brand voice on every remove.
   const [confirmRemove, setConfirmRemove] = useState(false);
+  // <video> onError plate — when the file is corrupt / 0-byte / an iCloud
+  // dataless placeholder, the element used to render as a silent black square.
+  // Now we surface the message + a Reveal-in-Finder button so the clipper
+  // can act. Null while the video is healthy.
+  const [videoError, setVideoError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLDivElement>(null);
@@ -110,6 +130,29 @@ export function ClipCard({
   const thumb = clip.thumbnails?.[0]?.path;
   const thumbSrc = thumb ? convertFileSrc(thumb) : null;
 
+  // Reset the error plate whenever the underlying file changes — picking a
+  // different ratio or rebaking an overlay should give the new render a
+  // fresh chance to load before we surface another failure.
+  useEffect(() => {
+    setVideoError(null);
+  }, [videoSrc]);
+
+  // Reveal the broken file's parent folder in Finder so the clipper can
+  // confirm / restore the iCloud placeholder / re-render. Matches the
+  // pattern used in ClipPreview.revealInFinder.
+  async function revealBrokenFile() {
+    if (!videoPath) return;
+    const sep = videoPath.includes("\\") ? "\\" : "/";
+    const idx = videoPath.lastIndexOf(sep);
+    const dir = idx > 0 ? videoPath.slice(0, idx) : videoPath;
+    try {
+      await openExternal(dir);
+    } catch {
+      // Swallow — the plate is informational. A failed Finder open isn't
+      // worth a second nested error UI inside the fallback overlay.
+    }
+  }
+
   const currentLayout: LayoutKey = (clip.overlay?.type as LayoutKey) ?? "none";
 
   // Tiny hover-to-preview: start playing on pointer enter, pause + rewind on leave.
@@ -118,14 +161,27 @@ export function ClipCard({
   // pref is on, hover plays. When the global sound pref is also on, hover
   // unmutes. Leave re-mutes + pauses + rewinds so audio never leaks across
   // cards. Lens fix v0.6.51 — Daniel's "motion on clip is uneeded" finding.
+  // K2 enhancement — 200ms hover delay prevents thrash on rapid cursor drift;
+  // skip autoplay when the card is selected (avoids drawing attention away
+  // from selection state).
+  const hoverTimerRef = useRef<number | null>(null);
   const onEnter = () => {
-    if (!previewMotionOn) return;
-    const v = videoRef.current;
-    if (!v) return;
-    if (previewSoundOn) v.muted = false;
-    void v.play().catch(() => undefined);
+    if (!previewMotionOn || selected) return;
+    if (hoverTimerRef.current) {
+      window.clearTimeout(hoverTimerRef.current);
+    }
+    hoverTimerRef.current = window.setTimeout(() => {
+      const v = videoRef.current;
+      if (!v) return;
+      if (previewSoundOn) v.muted = false;
+      void v.play().catch(() => undefined);
+    }, 200);
   };
   const onLeave = () => {
+    if (hoverTimerRef.current) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
     const v = videoRef.current;
     if (!v) return;
     v.pause();
@@ -244,8 +300,28 @@ export function ClipCard({
     };
   }, [showMenu]);
 
+  // Multi-select wiring — only active when the parent grid passed
+  // `onSelectClick`. The handler forwards meta/shift so the grid can
+  // implement toggle / range / additive selection without the card
+  // needing to know the rules. Legacy callers (no onSelectClick) get
+  // the same `<article>` they had in v0.7.12 — no extra wrapper, no
+  // background click handler, no ring, no checkbox.
+  const selectable = typeof onSelectClick === "function";
+  const handleCardClick = selectable
+    ? (e: React.MouseEvent<HTMLElement>) => {
+        onSelectClick?.({ meta: e.metaKey, shift: e.shiftKey });
+      }
+    : undefined;
+  const ringClass = selectable && selected
+    ? " ring-2 ring-fuchsia ring-offset-2 ring-offset-ink"
+    : "";
+
   return (
-    <article className="library-card relative flex flex-col gap-3 rounded-2xl p-4">
+    <article
+      className={`library-card relative flex flex-col gap-3 rounded-2xl p-4${ringClass}`}
+      onClick={handleCardClick}
+      aria-selected={selectable ? !!selected : undefined}
+    >
       {/* Cockpit corner brackets — fuchsia HUD frame in lieu of full outline. */}
       <span className="library-card-corner-tl" aria-hidden />
       <span className="library-card-corner-tr" aria-hidden />
@@ -254,6 +330,29 @@ export function ClipCard({
       {/* Header: virality + theme + duration */}
       <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-[0.08em]">
         <div className="flex items-center gap-2">
+          {/* Selection checkbox — only rendered when the parent grid
+              passed `onSelectClick`. Stops propagation so it's the SOLE
+              path that fires the handler when clicked (doesn't double-
+              fire via the article background). */}
+          {selectable && (
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={!!selected}
+              aria-label={selected ? "Deselect clip" : "Select clip"}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectClick?.({ meta: e.metaKey, shift: e.shiftKey });
+              }}
+              className={`grid h-4 w-4 place-items-center rounded-[3px] border transition-colors ${
+                selected
+                  ? "border-fuchsia bg-fuchsia text-white"
+                  : "border-line bg-paper text-transparent hover:border-fuchsia"
+              }`}
+            >
+              <Check className="h-3 w-3" strokeWidth={3} />
+            </button>
+          )}
           <span className={`rounded-full px-2 py-0.5 ${viralityClass(clip.virality)}`}>
             {viralityDisplay}
           </span>
@@ -272,7 +371,7 @@ export function ClipCard({
         onMouseEnter={onEnter}
         onMouseLeave={onLeave}
       >
-        {videoSrc ? (
+        {videoSrc && videoError === null ? (
           <video
             key={videoSrc}
             ref={videoRef}
@@ -283,12 +382,49 @@ export function ClipCard({
             preload="metadata"
             poster={thumbSrc ?? undefined}
             className="h-full w-full object-cover"
+            onError={(e) =>
+              setVideoError(
+                e.currentTarget.error?.message ?? "couldn't play this clip",
+              )
+            }
           />
-        ) : thumbSrc ? (
+        ) : thumbSrc && videoError === null ? (
           <img src={thumbSrc} alt={clip.title} className="h-full w-full object-cover" />
-        ) : (
+        ) : videoError === null ? (
           <div className="grid h-full place-items-center font-mono text-[11px] text-text-tertiary">
             no preview
+          </div>
+        ) : null}
+        {/* onError fallback plate — replaces the silent black square for
+            corrupt / 0-byte / iCloud-placeholder files. Surfaces the cause +
+            a Reveal-in-Finder button so the clipper can act. */}
+        {videoError !== null && (
+          <div
+            role="alert"
+            className="absolute inset-0 grid place-items-center bg-ink/95 p-4 text-paper"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex max-w-[220px] flex-col items-center gap-2 text-center">
+              <AlertTriangle
+                className="h-6 w-6 text-[#DC2626]"
+                strokeWidth={2.25}
+                aria-hidden
+              />
+              <p className="font-sans text-[12px] leading-snug text-paper">
+                This clip can't play — {videoError}
+              </p>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void revealBrokenFile();
+                }}
+                disabled={!videoPath}
+                className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-fuchsia px-3 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-white transition-colors hover:bg-fuchsia-bright disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Reveal in Finder
+              </button>
+            </div>
           </div>
         )}
         <span className="pointer-events-none absolute left-2 top-2 font-display text-[20px] font-bold italic text-fuchsia drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
@@ -336,8 +472,14 @@ export function ClipCard({
         </button>
       </div>
 
-      {/* Layout picker — visual icons */}
-      <div className="flex items-center justify-between">
+      {/* Layout picker — visual icons. When the parent enabled multi-
+          select, we halt propagation at this row so clicking a layout
+          icon doesn't also toggle selection. When `selectable` is false
+          this is a no-op (no parent onClick to bubble into). */}
+      <div
+        className="flex items-center justify-between"
+        onClick={selectable ? (e) => e.stopPropagation() : undefined}
+      >
         <div className="flex items-center gap-1">
           {LAYOUTS.map((l) => {
             const active = currentLayout === l.key;
@@ -415,8 +557,13 @@ export function ClipCard({
       {/* Cockpit — under-card edit row. Schedule expands in-place via the
           existing InlineScheduler (no modal). Caption opens the captions
           drawer at the editor. Reaction re-opens the overlay-source picker
-          for the current layout. ⋮ holds the secondary actions. */}
-      <div className="flex flex-col gap-2">
+          for the current layout. ⋮ holds the secondary actions. The whole
+          cockpit halts propagation when selectable so its buttons don't
+          double-fire as a selection toggle. */}
+      <div
+        className="flex flex-col gap-2"
+        onClick={selectable ? (e) => e.stopPropagation() : undefined}
+      >
         <div className="flex flex-wrap items-center gap-2">
           {/* Schedule — self-managed; renders "Schedule" button when closed
               and the full inline scheduler when expanded. */}
@@ -539,21 +686,46 @@ export function ClipCard({
         )}
       </div>
 
-      <ConfirmDialog
-        open={confirmRemove}
-        tone="destructive"
-        title="Remove this clip?"
-        body={
-          <>
-            <span className="font-medium text-ink">{clip.title}</span> and its
-            rendered files on disk will be removed. This can't be undone.
-          </>
-        }
-        confirmLabel="Remove clip"
-        busy={busy}
-        onCancel={() => setConfirmRemove(false)}
-        onConfirm={() => void performRemove()}
-      />
+      {/* ConfirmDialog. When the parent grid enabled multi-select, we wrap
+          in a propagation-stop div so dialog clicks don't bubble into the
+          article's selection handler. When `selectable` is false we render
+          the dialog directly — no wrapper — so the no-selection codepath
+          is byte-identical to v0.7.12 (no extra empty flex child). */}
+      {selectable ? (
+        <div onClick={(e) => e.stopPropagation()}>
+          <ConfirmDialog
+            open={confirmRemove}
+            tone="destructive"
+            title="Remove this clip?"
+            body={
+              <>
+                <span className="font-medium text-ink">{clip.title}</span> and its
+                rendered files on disk will be removed. This can't be undone.
+              </>
+            }
+            confirmLabel="Remove clip"
+            busy={busy}
+            onCancel={() => setConfirmRemove(false)}
+            onConfirm={() => void performRemove()}
+          />
+        </div>
+      ) : (
+        <ConfirmDialog
+          open={confirmRemove}
+          tone="destructive"
+          title="Remove this clip?"
+          body={
+            <>
+              <span className="font-medium text-ink">{clip.title}</span> and its
+              rendered files on disk will be removed. This can't be undone.
+            </>
+          }
+          confirmLabel="Remove clip"
+          busy={busy}
+          onCancel={() => setConfirmRemove(false)}
+          onConfirm={() => void performRemove()}
+        />
+      )}
     </article>
   );
 }
