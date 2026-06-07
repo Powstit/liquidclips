@@ -2,8 +2,20 @@
 //
 // Lists every channel the user has linked + "+ Add Channel" button. Channels
 // are added one at a time — same flow, repeated. No bulk wizard.
+//
+// SERVES (per UI_MAP_workbench.md `## SURFACE: Connect-channel flow`):
+//   • `(O #2)` "I want this clip on these platforms" — Connect / Finish
+//     linking buttons get the user from "no channel" to "active channel".
+//   • `(O #4)` "I want proof it shipped" — applied to the link itself:
+//     subscribes to `junior:channel-linked`, refreshes the affected row,
+//     and emits a global success or failure toast so the proof lands
+//     within ~1s of OAuth completion (no manual refresh).
+//   • `(O #4 — interim proof)` — inline "Waiting for browser…" state on
+//     each platform's Connect button, with a 90s fallback that flips to
+//     "Still waiting — try Reconnect" so a stuck OAuth is visible instead
+//     of an infinite spinner.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Plus, Loader2, RefreshCw } from "lucide-react";
@@ -12,6 +24,28 @@ import { humanError } from "../../lib/sidecar";
 import type { Channel } from "./types";
 import { ChannelCard } from "./ChannelCard";
 import { AddChannelModal } from "./AddChannelModal";
+
+// 90s matches the Connect-channel flow contract.
+const CONNECT_TIMEOUT_MS = 90_000;
+
+function platformLabel(p: Channel["platform"]): string {
+  switch (p) {
+    case "instagram": return "Instagram";
+    case "tiktok":    return "TikTok";
+    case "youtube":   return "YouTube";
+    case "x":         return "X";
+    case "linkedin":  return "LinkedIn";
+    case "facebook":  return "Facebook";
+    case "threads":   return "Threads";
+  }
+}
+
+function emitToast(kind: "success" | "error" | "info", message: string): void {
+  // Reuses the app-wide `lc:toast` bus mounted by GlobalToastHost.
+  window.dispatchEvent(
+    new CustomEvent("lc:toast", { detail: { kind, message } }),
+  );
+}
 
 export function ChannelsManager({
   onOpenAnalytics,
@@ -30,6 +64,54 @@ export function ChannelsManager({
   // (which would lie that the user has zero channels).
   const [loadError, setLoadError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+
+  // Per-channel "Waiting for browser…" state. Keyed by channel id so a
+  // multi-channel user can have several Connect flows queued without them
+  // stomping on each other's spinners. `timedOut` flips when the 90s timer
+  // fires so the row can switch copy to "Still waiting — try Reconnect"
+  // without losing the connecting context.
+  const [connecting, setConnecting] = useState<
+    Map<string, { timedOut: boolean }>
+  >(new Map());
+  const connectTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
+
+  const startConnectingTimer = useCallback((channelId: string) => {
+    // Clear any prior timer for this channel — a re-click of "Finish
+    // linking" should restart the 90s window rather than fire a stale
+    // "stuck" flip a few seconds in.
+    const prev = connectTimers.current.get(channelId);
+    if (prev) clearTimeout(prev);
+    const handle = setTimeout(() => {
+      setConnecting((cur) => {
+        const next = new Map(cur);
+        const entry = next.get(channelId);
+        if (entry) next.set(channelId, { timedOut: true });
+        return next;
+      });
+    }, CONNECT_TIMEOUT_MS);
+    connectTimers.current.set(channelId, handle);
+  }, []);
+
+  const finishConnecting = useCallback((channelId: string) => {
+    const t = connectTimers.current.get(channelId);
+    if (t) clearTimeout(t);
+    connectTimers.current.delete(channelId);
+    setConnecting((cur) => {
+      if (!cur.has(channelId)) return cur;
+      const next = new Map(cur);
+      next.delete(channelId);
+      return next;
+    });
+  }, []);
+
+  // Unmount safety — clear every live timer so a remount doesn't inherit
+  // a stuck-state flip for a channel that's already long gone.
+  useEffect(() => () => {
+    for (const t of connectTimers.current.values()) clearTimeout(t);
+    connectTimers.current.clear();
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,6 +137,56 @@ export function ChannelsManager({
       .then((u) => { unlisten = u; });
     return () => { unlisten?.(); };
   }, [load]);
+
+  // Subscribe to `junior:channel-linked` (dispatched by activation.ts when
+  // the `liquidclips://channel-linked` deep link fires after Ayrshare's
+  // OAuth completes). Refresh the affected row server-side, then re-fetch
+  // listChannels so the UI catches anything Ayrshare patched server-side,
+  // then emit the global success / failure toast per the contract.
+  useEffect(() => {
+    async function onLinked(ev: Event) {
+      const detail = (ev as CustomEvent<{ channelId: string | null }>).detail ?? { channelId: null };
+      const cid = detail.channelId;
+      let refreshed: Channel | null = null;
+      if (cid) {
+        try {
+          refreshed = await backend.refreshChannel(cid);
+          setChannels((cur) => cur.map((c) => (c.id === cid ? refreshed! : c)));
+        } catch {
+          /* swallow — listChannels below still provides the latest snapshot. */
+        }
+      }
+      try {
+        const list = await backend.listChannels();
+        setChannels(list);
+        const target: Channel | null =
+          refreshed
+          ?? (cid ? list.find((c) => c.id === cid) ?? null : null);
+        if (target) {
+          if (target.status === "active") {
+            const handle = target.handle ? `@${target.handle}` : target.label;
+            emitToast(
+              "success",
+              `${platformLabel(target.platform)} connected as ${handle}`,
+            );
+          } else if (target.status === "pending_link") {
+            emitToast(
+              "error",
+              `Couldn't confirm ${platformLabel(target.platform)} link — try Reconnect`,
+            );
+          }
+        }
+        if (cid) finishConnecting(cid);
+      } catch {
+        /* silent — surfacing a phantom toast on a refresh failure would
+           lie about the OAuth's actual outcome. */
+      }
+    }
+    window.addEventListener("junior:channel-linked", onLinked as EventListener);
+    return () => {
+      window.removeEventListener("junior:channel-linked", onLinked as EventListener);
+    };
+  }, [finishConnecting]);
 
   async function handleRename(id: string, label: string) {
     try {
@@ -102,15 +234,24 @@ export function ChannelsManager({
     // (mints a fresh URL — original might be stale). Google + most OAuth
     // providers block embedded webviews, so launch the user's real browser
     // instead of `invoke("open_social_link_window", ...)`.
+    setConnecting((cur) => {
+      const next = new Map(cur);
+      next.set(c.id, { timedOut: false });
+      return next;
+    });
+    startConnectingTimer(c.id);
     try {
       const { link_url } = await backend.relinkChannel(c.id);
       await openExternal(link_url);
       // Optimistic refresh after a short delay so the channel card flips to
       // active without the user re-opening the tab. We still surface errors
       // from the relink mint above, but a soft post-OAuth refresh is best-
-      // effort — swallow its errors.
+      // effort — swallow its errors. The deep-link listener is the primary
+      // path; this is a fallback for the (rare) case where the bounce page
+      // can't reach the desktop.
       setTimeout(() => { void load(); }, 2000);
     } catch (e) {
+      finishConnecting(c.id);
       setError(humanError(e));
     }
   }
@@ -199,18 +340,57 @@ export function ChannelsManager({
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {channels.map((c) => (
-              <ChannelCard
-                key={c.id}
-                channel={c}
-                onRename={(label) => handleRename(c.id, label)}
-                onRefresh={() => handleRefresh(c.id)}
-                onTogglePause={() => handleTogglePause(c)}
-                onDelete={() => handleDelete(c.id)}
-                onLinkNow={() => void handleLinkNow(c)}
-                onOpenAnalytics={onOpenAnalytics}
-              />
-            ))}
+            {channels.map((c) => {
+              const conn = connecting.get(c.id);
+              return (
+                <div key={c.id} className="flex flex-col gap-2">
+                  <ChannelCard
+                    channel={c}
+                    onRename={(label) => handleRename(c.id, label)}
+                    onRefresh={() => handleRefresh(c.id)}
+                    onTogglePause={() => handleTogglePause(c)}
+                    onDelete={() => handleDelete(c.id)}
+                    onLinkNow={() => void handleLinkNow(c)}
+                    onOpenAnalytics={onOpenAnalytics}
+                  />
+                  {conn && (
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="flex items-center justify-between gap-2 rounded-xl border border-fuchsia/40 bg-fuchsia/10 px-3 py-2"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        {!conn.timedOut && (
+                          <span
+                            aria-hidden
+                            className="inline-block h-2.5 w-2.5 shrink-0 animate-spin rounded-full border border-fuchsia border-t-transparent"
+                          />
+                        )}
+                        <span className="truncate font-mono text-[11px] uppercase tracking-[0.14em] text-fuchsia">
+                          {conn.timedOut
+                            ? `Still waiting — try Reconnect`
+                            : `Waiting for browser…`}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (conn.timedOut) {
+                            // Restart the connect flow + 90s timer.
+                            void handleLinkNow(c);
+                          } else {
+                            finishConnecting(c.id);
+                          }
+                        }}
+                        className="rounded-full border border-fuchsia/40 bg-paper-elev px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia hover:bg-fuchsia/10"
+                      >
+                        {conn.timedOut ? "reconnect" : "cancel"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </>
       )}

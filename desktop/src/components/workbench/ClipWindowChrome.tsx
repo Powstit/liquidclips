@@ -1,30 +1,26 @@
-// Workbench tile chrome — top bar above every ClipWindow.
+// SURFACE: Workbench tile chrome
+// MAP TAGS: (S "select for batch") tick checkbox | (O #1) truncated title
+//           (O #2) AccountBindingChip avatars/dot
+// See docs/UI_MAP_workbench.md — the contract.
 //
-// Renders the tick checkbox (selection — does NOT change focus), title, and
-// close button. Reserves a slot for the per-window account-binding chip;
-// Agent 5 wires the real chip into `[data-slot="account-binding"]` later.
-// Until then the slot stays empty (and benign) so this file ships first.
+// One-row chrome bar above every ClipWindow. Never wraps. NO Close X (per
+// Cut list: "Per-tile Close X button — creates 12 destructive buttons one
+// click away — moved to Cmd-Backspace + right-click"). NO clip number, NO
+// theme tag, NO time range, NO LC score in the chrome — the LC score + why
+// microcopy is hover-only on the poster, owned by ClipWindowPoster.
 //
-// Visual language: cockpit-tile fuchsia HUD corner brackets (same dashed
-// language as LibraryCard / UploadPortal), mono uppercase title.
+// Focused-only fuchsia bracket corners are retained — they're (O #1) "I
+// want to see what each clip is" cockpit-language proof that this tile is
+// active, not chrome decoration.
+//
+// Removal of a tile happens via:
+//   • Cmd-Backspace on focused tile (WindowManager keydown owner)
+//   • Right-click → "Remove" (WindowManager context menu)
+// Neither path lives in the chrome anymore.
 
-import { useMemo, useState } from "react";
 import { useWorkbenchStore } from "./useWorkbenchStore";
-import { ConfirmDialog } from "../ConfirmDialog";
 import { AccountBindingChip } from "./AccountBindingChip";
 import type { Clip, WindowId } from "./types";
-
-// Heuristic for unsaved edits: the captions drawer's last Apply writes
-// caption_palette in the bake. If the user opened the drawer and applied
-// within the last 5 minutes, treat the window as "recently edited" and
-// guard the close with a confirm. No signal → close silently.
-function recentlyEdited(clip: Clip): boolean {
-  // `caption_palette` is the only persisted timestamp-adjacent signal on
-  // Clip today. Real "last edit time" would need a sidecar field; for now
-  // presence-of-custom-palette is a soft heuristic. Refine when Agent 1
-  // adds a window-level dirty flag.
-  return !!clip.caption_palette;
-}
 
 export function ClipWindowChrome({
   windowId,
@@ -37,37 +33,20 @@ export function ClipWindowChrome({
   selected: boolean;
   focused: boolean;
 }) {
-  // Selector-scoped subscriptions — chrome only re-renders when its own
-  // window's slice changes, not on every canvas move.
   const toggleSelected = useWorkbenchStore((s) => s.toggleSelected);
-  const removeWindow = useWorkbenchStore((s) => s.removeWindow);
-
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const isDirtyHeuristic = useMemo(() => recentlyEdited(clip), [clip]);
 
   function handleTick(e: React.MouseEvent) {
     e.stopPropagation();
     toggleSelected(windowId);
   }
 
-  function handleClose(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (isDirtyHeuristic) {
-      setConfirmOpen(true);
-      return;
-    }
-    removeWindow(windowId);
-  }
-
   return (
     <div
-      className="relative flex items-center gap-2 border-b border-line bg-paper px-2.5 py-1.5"
+      className="relative flex h-7 items-center gap-2 border-b border-line bg-paper px-2.5"
       data-window-id={windowId}
       data-focused={focused ? "true" : "false"}
     >
-      {/* Fuchsia HUD bracket corners — cockpit-tile language. Only visible
-          when this window is focused; otherwise the chrome stays quiet so
-          a 100-tile grid doesn't strobe. */}
+      {/* Fuchsia HUD bracket corners — focused-only. */}
       {focused && (
         <>
           <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
@@ -113,39 +92,6 @@ export function ClipWindowChrome({
       <div data-slot="account-binding" className="shrink-0">
         <AccountBindingChip windowId={windowId} />
       </div>
-
-      {/* Close window — confirms when the recently-edited heuristic fires. */}
-      <button
-        type="button"
-        onClick={handleClose}
-        aria-label="Close this window"
-        title="Close this window"
-        className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-text-tertiary hover:bg-fuchsia-soft/40 hover:text-fuchsia"
-      >
-        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
-          <path
-            d="M2 2 L8 8 M8 2 L2 8"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-          />
-        </svg>
-      </button>
-
-      <ConfirmDialog
-        open={confirmOpen}
-        title="Close this window?"
-        body="You have recent caption edits on this clip. Closing the window keeps the saved bake on disk, but in-flight drafts inside the captions drawer are lost."
-        confirmLabel="Close window"
-        cancelLabel="Keep open"
-        tone="destructive"
-        onConfirm={() => {
-          setConfirmOpen(false);
-          removeWindow(windowId);
-        }}
-        onCancel={() => setConfirmOpen(false)}
-      />
     </div>
   );
 }

@@ -4,6 +4,16 @@
 // which channels that window will fan out to when scheduled. Click → popover
 // with a checklist of every channel from the user's account.
 //
+// SERVES (per UI_MAP_workbench.md):
+//   • Workbench surface: `(O #2)` "I want this clip on these platforms"
+//     — the avatar stack on the window header is the persistent proof of
+//     which platforms this window is bound to.
+//   • Connect-channel flow surface: `(O #2)(O #4)` — the popover's empty
+//     state hosts the "Connect Instagram" / "Connect TikTok" buttons
+//     (one-click connect) and the inline "Waiting for browser…" interim-
+//     proof state. After the deep link fires, this chip refreshes its
+//     channel list and emits the global success toast (O #4).
+//
 // VISUAL VOCABULARY — matches the existing cockpit/scheduler language:
 //   • fuchsia border, transparent fill
 //   • font-mono [10px] uppercase tracking-[0.16em] labels
@@ -11,19 +21,50 @@
 //   • PlatformIcon for known platforms, mono fallback glyph for new ones
 //
 // EMPTY-STATE: when no channels exist at all, we don't dead-end the user
-// inside the popover. We point them at Settings → Connections (the same
-// destination InlineScheduler uses for its empty branch) so the journey
-// continues out of the chip rather than terminating in it.
+// inside the popover. We surface Connect Instagram / Connect TikTok
+// buttons in-place (one-click connect, per the contract) AND a fallback
+// link to Settings → Connections for everything else.
 //
 // PERSISTENCE: store.bindChannels writes through to localStorage via the
 // existing persistedSession debounce (Agent 1) — bindings survive reboot.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { useWorkbenchStore } from "./useWorkbenchStore";
-import { listChannels, type Channel } from "../../lib/backend";
+import {
+  createChannel,
+  listChannels,
+  refreshChannel,
+  type Channel,
+  type ChannelPlatform,
+} from "../../lib/backend";
 import type { WindowId } from "./types";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
 import windowEmptyBindUrl from "../../assets/workbench/window-empty-bind.png";
+
+// 90s matches the Connect-channel flow contract: any longer and the user
+// is staring at a spinner with no signal that anything went wrong.
+const CONNECT_TIMEOUT_MS = 90_000;
+
+function platformLabel(p: ChannelPlatform): string {
+  switch (p) {
+    case "instagram": return "Instagram";
+    case "tiktok":    return "TikTok";
+    case "youtube":   return "YouTube";
+    case "x":         return "X";
+    case "linkedin":  return "LinkedIn";
+    case "facebook":  return "Facebook";
+    case "threads":   return "Threads";
+  }
+}
+
+function emitToast(kind: "success" | "error" | "info", message: string): void {
+  // Reuses the app-wide `lc:toast` bus mounted by GlobalToastHost — no new
+  // dependencies, no per-surface toast widget.
+  window.dispatchEvent(
+    new CustomEvent("lc:toast", { detail: { kind, message } }),
+  );
+}
 
 // The four platforms PlatformIcon ships glyphs for. Anything else falls
 // back to a mono first-letter pill (same pattern as InlineScheduler line
@@ -82,6 +123,26 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  // Inline "Waiting for browser…" state for the per-popover Connect
+  // Instagram / Connect TikTok buttons. `connecting.timedOut` flips when
+  // the 90s timer fires so we can show the "Still waiting — try Reconnect"
+  // copy without losing the connecting context. `pendingChannelId` is the
+  // channel just created (still pending_link until OAuth completes) so the
+  // deep-link listener can target the right row when it refreshes.
+  const [connecting, setConnecting] = useState<{
+    platform: ChannelPlatform;
+    channelId: string | null;
+    timedOut: boolean;
+  } | null>(null);
+  const connectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function clearConnectTimer() {
+    if (connectTimerRef.current != null) {
+      clearTimeout(connectTimerRef.current);
+      connectTimerRef.current = null;
+    }
+  }
 
   // Channel lookup map — selecting from boundChannelIds without scanning the
   // whole list every render.
@@ -149,6 +210,104 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
       window.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  // Deep-link subscriber. `activation.ts` dispatches `junior:channel-linked`
+  // whenever the browser bounces back via `liquidclips://channel-linked`
+  // after Ayrshare OAuth completes. We refresh the affected channel and
+  // re-fetch the full list so the chip flips state (and the popover, if
+  // still open, shows the freshly active row). When the just-connected
+  // channel belongs to THIS window's connecting flow, we also drop a
+  // global success toast and dismiss the inline waiting state.
+  useEffect(() => {
+    async function onLinked(ev: Event) {
+      const detail = (ev as CustomEvent<{ channelId: string | null }>).detail ?? { channelId: null };
+      const cid = detail.channelId;
+      let refreshed: Channel | null = null;
+      if (cid) {
+        try {
+          refreshed = await refreshChannel(cid);
+        } catch {
+          /* server-side refresh failed — listChannels below still gives
+             us the latest snapshot, just without the immediate flip. */
+        }
+      }
+      try {
+        const list = await listChannels();
+        setChannels(list);
+        setLoadState("loaded");
+        // Only this window's connecting flow owns the toast — multiple
+        // mounted chips across windows would otherwise all fire on the
+        // same event. ChannelsManager owns the global "no chip mounted"
+        // case (per the contract).
+        if (connecting && (connecting.channelId === cid || cid === null)) {
+          const target = refreshed
+            ?? (cid ? list.find((c) => c.id === cid) ?? null : null);
+          if (target && target.status === "active") {
+            const handle = target.handle ? `@${target.handle}` : target.label;
+            emitToast(
+              "success",
+              `${platformLabel(target.platform)} connected as ${handle}`,
+            );
+          } else if (target && target.status === "pending_link") {
+            emitToast(
+              "error",
+              `Couldn't confirm ${platformLabel(target.platform)} link — try Reconnect`,
+            );
+          }
+          clearConnectTimer();
+          setConnecting(null);
+        }
+      } catch {
+        /* swallow — the popover's load-state path handles surfaced
+           errors; a silent failure here is preferable to a phantom toast. */
+      }
+    }
+    window.addEventListener("junior:channel-linked", onLinked as EventListener);
+    return () => {
+      window.removeEventListener("junior:channel-linked", onLinked as EventListener);
+    };
+  }, [connecting]);
+
+  // Unmount safety — never leak a pending timeout into a remounted chip
+  // that would emit a "stuck" toast for a connection the user already
+  // closed.
+  useEffect(() => () => clearConnectTimer(), []);
+
+  async function startConnect(platform: ChannelPlatform) {
+    // Optimistic state so the click feels instant; we'll either replace it
+    // with the real channel id once createChannel resolves, or clear it on
+    // error.
+    setConnecting({ platform, channelId: null, timedOut: false });
+    clearConnectTimer();
+    connectTimerRef.current = setTimeout(() => {
+      setConnecting((cur) =>
+        cur && cur.platform === platform ? { ...cur, timedOut: true } : cur,
+      );
+    }, CONNECT_TIMEOUT_MS);
+
+    try {
+      const { channel, link_url } = await createChannel({
+        platform,
+        label: platformLabel(platform),
+      });
+      setConnecting({ platform, channelId: channel.id, timedOut: false });
+      await openExternal(link_url);
+    } catch (e) {
+      clearConnectTimer();
+      setConnecting(null);
+      emitToast(
+        "error",
+        e instanceof Error && e.message
+          ? e.message
+          : `Couldn't start ${platformLabel(platform)} connect — try again.`,
+      );
+    }
+  }
+
+  function cancelConnecting() {
+    clearConnectTimer();
+    setConnecting(null);
+  }
 
   function toggleChannel(id: string) {
     const next = boundChannelIds.includes(id)
@@ -266,15 +425,72 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
             </div>
           ) : channels && channels.length === 0 ? (
             // STRANDS guard: a user with zero channels would otherwise see
-            // an empty popover with no way forward. Mirror InlineScheduler's
-            // "open Settings → Connections" CTA so the journey continues.
-            <div className="flex flex-col gap-2">
-              <p className="font-sans text-[12px] text-text-secondary">
-                No channels yet — connect one to start scheduling clips.
-              </p>
-              <p className="font-mono text-[11px] text-text-tertiary">
-                Open Settings → Connections to add a platform.
-              </p>
+            // an empty popover with no way forward. Per the Connect-channel
+            // flow contract: one-click Connect Instagram / Connect TikTok
+            // here, with an inline "Waiting for browser…" state + 90s
+            // timeout. Settings → Connections stays as the catch-all link
+            // for other platforms / re-link / diagnose.
+            <div className="flex flex-col gap-3">
+              {connecting ? (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex flex-col gap-2 rounded-lg border border-fuchsia/40 bg-fuchsia/10 px-3 py-2"
+                >
+                  <div className="flex items-center gap-2">
+                    {!connecting.timedOut && (
+                      <span
+                        aria-hidden
+                        className="inline-block h-2.5 w-2.5 animate-spin rounded-full border border-fuchsia border-t-transparent"
+                      />
+                    )}
+                    <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-fuchsia">
+                      {connecting.timedOut
+                        ? `Still waiting — try Reconnect`
+                        : `Waiting for browser…`}
+                    </span>
+                  </div>
+                  <p className="font-sans text-[12px] text-text-secondary">
+                    {connecting.timedOut
+                      ? `Finish ${platformLabel(connecting.platform)} sign-in in your browser, then click Reconnect.`
+                      : `Finish ${platformLabel(connecting.platform)} sign-in in your browser — we'll flip this chip the moment it lands.`}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={cancelConnecting}
+                    className="inline-flex w-fit items-center rounded-full border border-fuchsia/40 bg-paper-elev px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia hover:bg-fuchsia/10"
+                  >
+                    {connecting.timedOut ? "reconnect" : "cancel"}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <p className="font-sans text-[12px] text-text-secondary">
+                    No channels yet — connect one to start scheduling clips.
+                  </p>
+                  <div className="flex flex-col gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => void startConnect("instagram")}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-fuchsia bg-fuchsia/15 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.16em] text-fuchsia hover:bg-fuchsia/25"
+                    >
+                      <PlatformIcon id="instagram" className="h-3 w-3" />
+                      Connect Instagram
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void startConnect("tiktok")}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-fuchsia bg-fuchsia/15 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.16em] text-fuchsia hover:bg-fuchsia/25"
+                    >
+                      <PlatformIcon id="tiktok" className="h-3 w-3" />
+                      Connect TikTok
+                    </button>
+                  </div>
+                  <p className="font-mono text-[11px] text-text-tertiary">
+                    Need YouTube, X, or another platform? Open Settings → Connections.
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             <div className="flex max-h-64 flex-col gap-1 overflow-y-auto pr-1">

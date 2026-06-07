@@ -3,25 +3,17 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { CheckCircle2, FolderOpen, Plus, Film } from "lucide-react";
 import type { Project, RatioKey } from "../lib/sidecar";
-import { ClipPreview } from "./ClipPreview";
 import { DripCalendar } from "./DripCalendar";
 import { PublishModal, type PublishModalMode } from "./PublishModal";
-import { ClipCard as FeedClipCard } from "./clips-feed/ClipCard";
 import { ClipsBulkToolbar } from "./clips-feed/ClipsBulkToolbar";
-import { ClipsBottomBar } from "./clips-feed/ClipsBottomBar";
-import { UpgradeLockCard } from "./UpgradeLockCard";
-import { AddClipCard } from "./AddClipCard";
 import { YouTubeView } from "./YouTubeView";
 import { BountySubmissionCapture } from "./earn/BountySubmissionCapture";
 import { CampaignContextStrip } from "./earn/CampaignContextStrip";
 import { BountyWorkspaceHeader } from "./earn/BountyWorkspaceHeader";
 import { sidecar, type DripSlot } from "../lib/sidecar";
 import { PUBLISHING_ENABLED } from "../lib/flags";
-import { useTier, FREE_TIER_VISIBLE_CLIPS } from "../lib/useTier";
 import { useLocalPref } from "../lib/useLocalPref";
 import { InfoHint } from "./InfoHint";
-import { useWorkbenchStore } from "./workbench/useWorkbenchStore";
-import { ViewModeToggle } from "./workbench/ViewModeToggle";
 import { WindowManager } from "./workbench/WindowManager";
 
 type Tab = "clips" | "youtube" | "files";
@@ -42,8 +34,6 @@ export function ResultsGrid({
   const intent = project.intent ?? "both";
   const defaultTab: Tab = intent === "youtube" ? "youtube" : "clips";
   const [tab, setTab] = useState<Tab>(defaultTab);
-  const [openCaptionsForIdx, setOpenCaptionsForIdx] = useState<number | null>(null);
-  const [previewIdx, setPreviewIdx] = useState<number | null>(null);
   const [ratio, setRatio] = useState<RatioKey>("vertical");
   const [dripOpen, setDripOpen] = useState(false);
   const [publishModal, setPublishModal] = useState<{
@@ -51,27 +41,12 @@ export function ResultsGrid({
     clipIdx: number;
   } | null>(null);
   const [actionToast, setActionToast] = useState<string | null>(null);
-  const tier = useTier();
-  // Default OFF — a 6-12 card grid muting on hover is the only sane default.
-  // Toggle lives in ClipsBulkToolbar. Persists across relaunch.
+  // Default OFF — kept so ClipsBulkToolbar's preview-sound + preview-motion
+  // toggles still wire to localStorage; the workbench tile honours them via
+  // the workbench store on a future pass.
   const [previewSoundOn, setPreviewSoundOn] = useLocalPref<boolean>("lc:preview_sound", false);
-  // Default OFF — static posters render unless the clipper explicitly opts in.
-  // Less motion = less distraction + respects prefers-reduced-motion. Toggle
-  // lives in ClipsBulkToolbar next to the sound button for symmetry.
   const [previewMotionOn, setPreviewMotionOn] = useLocalPref<boolean>("lc:preview_motion", false);
   const isBounty = !!project.whop_bounty_id;
-  // P1 fix (2026-06-06): bounds-guard the previewIdx lookup. A stale index
-  // after Remove (or after a project mutation that shrinks clips[]) used to
-  // dereference project.clips[<out-of-range>] for one render tick, returning
-  // undefined → ClipPreview rendered with `clip={undefined}` and threw on the
-  // first `clip.title` read. The cleanup at line ~322 (`if (previewIdx >=
-  // p.clips.length) setPreviewIdx(null)`) still runs immediately after, but
-  // it only fires AFTER the bad render. Guard at the read site so the modal
-  // closes cleanly instead of crashing the grid.
-  const previewClip =
-    previewIdx !== null && previewIdx >= 0 && previewIdx < project.clips.length
-      ? project.clips[previewIdx]
-      : null;
   // Publishing requires a 9:16 render — cut_path alone (horizontal) won't do.
   const firstRenderedClipIdx = project.clips.findIndex((c) => !!c.vertical_path);
 
@@ -259,15 +234,10 @@ export function ResultsGrid({
       <div className="mt-6">
         {tab === "clips" && intent !== "youtube" && (
           <>
-            {/* View mode toggle — Grid vs Workbench. Mounted ABOVE the bulk
-                toolbar so the user picks "where" before they pick "what":
-                seeing the mode they're in is the higher-priority signal.
-                ClipsBulkToolbar stays mounted in both modes because the
-                ratio + preview-sound + preview-motion toggles are
-                project-wide prefs the workbench still honours. */}
-            <div className="mb-3 flex items-center justify-end">
-              <ViewModeToggle />
-            </div>
+            {/* v0.7.5: Grid view + ViewModeToggle removed. Workbench is the
+                only clips surface — see docs/UI_MAP_workbench.md. The bulk
+                toolbar still ships because ratio + preview prefs are
+                project-wide signals the workbench tile honours. */}
             <ClipsBulkToolbar
               project={project}
               ratio={ratio}
@@ -278,55 +248,7 @@ export function ResultsGrid({
               previewMotionOn={previewMotionOn}
               onPreviewMotionChange={setPreviewMotionOn}
             />
-            {/* Branch on view. Grid path is byte-identical to the previous
-                implementation — workbench path defers the entire canvas to
-                WindowManager. ClipPreview at the bottom stays mounted in
-                both modes (Workbench leaves it idle, Grid uses it for the
-                full-screen edit drawer). */}
-            {useWorkbenchStore((s) => s.view) === "workbench" ? (
-              <WindowManager project={project} onProjectChange={onProjectChange} />
-            ) : (
-              <>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {(() => {
-                    const visibleCount =
-                      tier.tier === "free"
-                        ? Math.min(FREE_TIER_VISIBLE_CLIPS, project.clips.length)
-                        : project.clips.length;
-                    const hidden = project.clips.length - visibleCount;
-                    return (
-                      <>
-                        {project.clips.slice(0, visibleCount).map((clip, idx) => (
-                          <FeedClipCard
-                            key={`${idx}-${clip.slug}`}
-                            clip={clip}
-                            index={idx + 1}
-                            slug={project.slug}
-                            project={project}
-                            ratio={ratio}
-                            onProjectChange={onProjectChange}
-                            onOpenEditor={() => setPreviewIdx(idx)}
-                            onOpenCaptions={() => { setPreviewIdx(idx); setOpenCaptionsForIdx(idx); }}
-                            previewSoundOn={previewSoundOn}
-                            previewMotionOn={previewMotionOn}
-                          />
-                        ))}
-                        {hidden > 0 && (
-                          <UpgradeLockCard hiddenCount={hidden} totalClips={project.clips.length} />
-                        )}
-                        {tier.tier !== "free" && (
-                          <AddClipCard
-                            project={project}
-                            onProjectChange={onProjectChange}
-                          />
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-                <ClipsBottomBar project={project} />
-              </>
-            )}
+            <WindowManager project={project} onProjectChange={onProjectChange} />
           </>
         )}
         {tab === "youtube" && intent !== "clips" && (
@@ -348,32 +270,8 @@ export function ResultsGrid({
         </div>
       )}
 
-      {previewClip && previewIdx !== null && (
-        <ClipPreview
-          clip={previewClip}
-          index={previewIdx + 1}
-          slug={project.slug}
-          project={project}
-          totalClips={project.clips.length}
-          initialCaptionsOpen={openCaptionsForIdx === previewIdx}
-          onClose={() => { setPreviewIdx(null); setOpenCaptionsForIdx(null); }}
-          onProjectChange={(p) => {
-            onProjectChange(p);
-            // If the removed clip was the previewed one, close.
-            if (previewIdx >= p.clips.length) { setPreviewIdx(null); setOpenCaptionsForIdx(null); }
-          }}
-          onNavigate={(dir) => {
-            const next = previewIdx + dir;
-            if (next >= 0 && next < project.clips.length) { setPreviewIdx(next); setOpenCaptionsForIdx(null); }
-          }}
-          onPublish={(clipIdx) => {
-            // Open PublishModal pre-selected to THIS clip (not
-            // firstRenderedClipIdx). ClipPreview already gates on
-            // clip.vertical_path so we don't need to re-check here.
-            setPublishModal({ mode: "publish-now", clipIdx });
-          }}
-        />
-      )}
+      {/* v0.7.5: the standalone ClipPreview modal mount was removed.
+          The Workbench (WindowManager → ClipEditDrawer) owns the editor now. */}
 
       {dripOpen && (
         <DripCalendar

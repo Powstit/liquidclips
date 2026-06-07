@@ -98,12 +98,21 @@ async function handleDeepLink(urls: string[]): Promise<void> {
       return;
     }
 
-    // v0.7.x — channel-linked deep link fires after Ayrshare's OAuth
+    // v0.7.5 — channel-linked deep link fires after Ayrshare's OAuth
     // completes successfully. The account-app's /channel-linked bounce
-    // page hits this scheme with ?cid=<channel_id>. InlineScheduler +
-    // ChannelsManager subscribe to `junior:channel-linked` to short-circuit
-    // their poll loops — gets the status flip from "linking" to "active"
-    // in <1s instead of 30-60s.
+    // page hits this scheme with ?cid=<channel_id>. Pattern:
+    //
+    //   1. Bounce page → `liquidclips://channel-linked?cid=…`.
+    //   2. We dispatch `junior:channel-linked` once with detail.channelId.
+    //   3. AccountBindingChip (per workbench window) + ChannelsManager
+    //      (Settings → Connections) subscribe. Each subscriber calls
+    //      backend.refreshChannel(cid) + backend.listChannels(), flips
+    //      the affected row to `active`, then emits a `lc:toast` via the
+    //      GlobalToastHost bus ("Instagram connected as @handle" on
+    //      success; "Couldn't confirm <Platform> link — try Reconnect" if
+    //      the row stays `pending_link`). The 90s waiting-state timer
+    //      lives on each subscriber so a stuck OAuth surfaces as
+    //      "Still waiting — try Reconnect" rather than an infinite spinner.
     if (u.hostname === "channel-linked") {
       const cid = u.searchParams.get("cid") ?? u.searchParams.get("channel_id");
       window.dispatchEvent(
