@@ -1,3 +1,4 @@
+// ship-lens v0.7.8 L1: every filter chip shows its own muted trailing count, derived in-place from `projects` + the same predicate `applyFilter` uses, so "Reactions (0)" and "Rewards (0)" no longer masquerade as "go look in here" on an empty wall.
 // v0.6.36 — Library wall (cockpit pass).
 //
 // Replaces the v0.6.34 LibraryTab grid with a transparent wall of floating
@@ -26,6 +27,25 @@ export const LIBRARY_FILTERS: { key: LibraryFilter; label: string }[] = [
   { key: "rewards", label: "Rewards" },
   { key: "archived", label: "Archived" },
 ];
+
+/** Same predicate `LibraryTab` already uses to filter `projects → filtered`, but
+ *  applied per-chip so each filter chip can show its own headcount. Mirrors
+ *  LibraryTab's `useMemo` rules exactly: archived only ever appears on the
+ *  "archived" chip, ready needs `done`, reactions needs `reacted_count > 0`,
+ *  etc. Search query is intentionally ignored — the count answers "how many
+ *  live here", not "how many match my current search". */
+function countForFilter(projects: ProjectLibrarySummary[], filter: LibraryFilter): number {
+  return projects.reduce((n, p) => {
+    if (filter === "archived") return n + (p.archived ? 1 : 0);
+    if (p.archived) return n;
+    if (filter === "all") return n + 1;
+    if (filter === "ready") return n + (p.done ? 1 : 0);
+    if (filter === "reacted") return n + (p.reacted_count > 0 ? 1 : 0);
+    if (filter === "imported") return n + (p.imported ? 1 : 0);
+    if (filter === "rewards") return n + (p.whop_bounty_id ? 1 : 0);
+    return n;
+  }, 0);
+}
 
 export function LibraryWall({
   projects,
@@ -102,16 +122,23 @@ export function LibraryWall({
           right as an inline pill. No card frame around either. */}
       <section className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-1.5">
-          {LIBRARY_FILTERS.map((item) => (
-            <HudChip
-              key={item.key}
-              active={filter === item.key}
-              onClick={() => onFilterChange(item.key)}
-              trailing={item.key === "archived" && archivedCount > 0 ? `${archivedCount}` : null}
-            >
-              {item.label}
-            </HudChip>
-          ))}
+          {LIBRARY_FILTERS.map((item) => {
+            // v0.7.8 L1 — per-chip count, derived in-place from `projects` +
+            // the same predicate `LibraryTab` uses. We render the count only
+            // when > 0; chips with no matches stay clean ("Reactions" without
+            // a "(0)" trailer) so the bar still scans calm on an empty wall.
+            const count = countForFilter(projects, item.key);
+            return (
+              <HudChip
+                key={item.key}
+                active={filter === item.key}
+                onClick={() => onFilterChange(item.key)}
+                trailing={count > 0 ? `${count}` : null}
+              >
+                {item.label}
+              </HudChip>
+            );
+          })}
         </div>
         <label className="flex min-w-[220px] items-center gap-2 rounded-full border border-line bg-transparent px-3 py-2 focus-within:border-fuchsia">
           <Search className="h-4 w-4 shrink-0 text-text-tertiary" strokeWidth={2} />

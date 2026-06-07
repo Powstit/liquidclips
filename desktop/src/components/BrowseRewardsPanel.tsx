@@ -1,3 +1,4 @@
+// ship-lens v0.7.8: E6 — chrome now reflects `loading` from the singleton store, surfaces a "Still loading…" prompt with a Reload button if loading stays true for 10s, and subscribes to `subscribeBrowsePanelError` so Rust-emitted (or timeout-fallback) errors land as an inline toast. Pre-fix the panel had no honest loading state and silently lied on Rust errors.
 // Chrome bar pinned to the top of the embedded Browse Rewards webview.
 // The native WKWebView (owned by Rust — see src-tauri/src/browse.rs) sits
 // 72px below this bar inside the same Liquid Clips window.
@@ -18,7 +19,9 @@ import {
   browseForward,
   browseReload,
   closeBrowsePanel,
+  ensureBrowsePanelEventBridge,
   openBrowsePanel,
+  subscribeBrowsePanelError,
   useBrowsePanel,
   WHOP_REWARDS_URL,
 } from "../lib/browse";
@@ -38,7 +41,7 @@ function normalize(raw: string): string {
 }
 
 export function BrowseRewardsPanel() {
-  const { open, currentUrl } = useBrowsePanel();
+  const { open, currentUrl, loading } = useBrowsePanel();
   const [draft, setDraft] = useState(currentUrl ?? WHOP_REWARDS_URL);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -47,6 +50,22 @@ export function BrowseRewardsPanel() {
   useEffect(() => {
     if (currentUrl) setDraft(currentUrl);
   }, [currentUrl]);
+
+  // v0.7.8 fix E6 — subscribe to Rust-side panel errors AND the 10s
+  // timeout's soft "still loading" signal. Both flow through the same bus,
+  // so the UI handler treats them the same way: surface inline copy with a
+  // Reload affordance instead of pretending the navigation succeeded.
+  // Bridge boot is idempotent — multiple mounts only attach the Tauri
+  // listeners once.
+  useEffect(() => {
+    void ensureBrowsePanelEventBridge();
+    const unsubscribe = subscribeBrowsePanelError((msg) => {
+      setErr(msg || "Couldn't load this page — try Reload.");
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   if (!open) return null;
 
@@ -74,6 +93,17 @@ export function BrowseRewardsPanel() {
     } finally {
       setBusy(false);
     }
+  }
+
+  // v0.7.8 fix E6 — the singleton store flips `loading` off after 10s and
+  // emits a soft error onto the bus. When BOTH flags are present
+  // (loading false + err set + currentUrl set) we render a Reload button
+  // alongside the error copy. The plain `loading` state alone gets a
+  // subtle "loading…" pill so the user knows something is happening.
+  async function reload() {
+    if (!currentUrl) return;
+    setErr(null);
+    await go(currentUrl);
   }
 
   return (
@@ -158,7 +188,26 @@ export function BrowseRewardsPanel() {
           title="Browse Opus.pro — AI clipping platform with campaigns"
           onOpen={go}
         />
-        {err && <span className="ml-auto truncate text-[#DC2626]">{err}</span>}
+        {/* v0.7.8 fix E6 — loading + error states. Loading is a subtle pill
+            so the chrome doesn't yell; error gets the inline reload button. */}
+        {loading && !err && (
+          <span className="ml-auto inline-flex items-center gap-1 text-fuchsia">
+            <span className="pulse-dot inline-block h-1 w-1 rounded-full bg-fuchsia" />
+            loading…
+          </span>
+        )}
+        {err && (
+          <span className="ml-auto inline-flex items-center gap-2 truncate text-[#DC2626]">
+            <span className="truncate">{err}</span>
+            <button
+              type="button"
+              onClick={() => void reload()}
+              className="shrink-0 rounded-full border border-[#DC2626]/40 px-2 py-0.5 text-[#DC2626] transition-colors hover:bg-[#DC2626]/10"
+            >
+              Reload
+            </button>
+          </span>
+        )}
       </div>
       {showSaveForm && (
         <BriefForm

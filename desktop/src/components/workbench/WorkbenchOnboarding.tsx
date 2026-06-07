@@ -1,3 +1,4 @@
+// ship-lens v0.7.8: W4 — Workbench is single-mode (no Grid). Removed dead `view !== "workbench"` guards; onboarding visibility now depends solely on `seen` + `winCount > 0`.
 // First-open Workbench onboarding overlay.
 //
 // Shown ONCE per user (persisted in localStorage via useLocalPref). Three
@@ -29,22 +30,20 @@ const SEEN_KEY = "lc:workbench_onboarding_seen";
 
 export function WorkbenchOnboarding() {
   const [seen, setSeen] = useLocalPref<boolean>(SEEN_KEY, false);
-  const view = useWorkbenchStore((s) => s.view);
   const winCount = useWorkbenchStore((s) => s.windows.size);
 
   // Esc dismisses too — keyboard users shouldn't have to mouse over the
   // overlay to clear it.
   useEffect(() => {
-    if (seen || view !== "workbench" || winCount === 0) return;
+    if (seen || winCount === 0) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setSeen(true);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [seen, view, winCount, setSeen]);
+  }, [seen, winCount, setSeen]);
 
   if (seen) return null;
-  if (view !== "workbench") return null;
   if (winCount === 0) return null;
 
   function dismiss() {

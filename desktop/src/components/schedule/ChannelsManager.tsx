@@ -1,3 +1,15 @@
+// ship-lens v0.7.8: S8 — the per-card "analytics →" chip used to receive
+// onOpenAnalytics(channel.id) but AnalyticsView doesn't yet accept a
+// channelFilter prop, so clicking it just flipped tabs with no filter
+// applied. Shipping a lie. Until AnalyticsView gains the filter (parked
+// for v0.7.9), the chip is hidden by NOT forwarding onOpenAnalytics from
+// ChannelsManager into each ChannelCard. The Channels sub-tab still
+// renders without the chip; the tab swap path in SchedulePage that fires
+// onOpenAnalytics from ChannelsManager remains wired so a future
+// re-enable is one-line. Pattern-grep result: ChannelCard's onOpenAnalytics
+// is the only consumer of this prop, so cutting at the parent silences
+// every dead-end click site.
+//
 // Channels sub-tab of the Schedule page (Schedule v2).
 //
 // Lists every channel the user has linked + "+ Add Channel" button. Channels
@@ -48,11 +60,14 @@ function emitToast(kind: "success" | "error" | "info", message: string): void {
 }
 
 export function ChannelsManager({
-  onOpenAnalytics,
+  onOpenAnalytics: _onOpenAnalytics,
 }: {
-  /** Analytics Phase 1 — passed through to each ChannelCard so the
-   *  "analytics →" link flips SchedulePage's sub-tab. Optional; cards hide
-   *  the link when omitted. */
+  /** v0.7.8 S8 — kept in the props contract (SchedulePage still passes it)
+   *  but NOT forwarded into ChannelCard, because AnalyticsView can't yet
+   *  apply a channelFilter — the chip just flipped tabs with no filter
+   *  applied, shipping a lie. Underscore-prefix silences the unused-var
+   *  lint; re-enable is a one-line restore once analytics gains the
+   *  filter (parked: v0.7.9 punch-list item). */
   onOpenAnalytics?: (channelId: string) => void;
 } = {}) {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -351,7 +366,9 @@ export function ChannelsManager({
                     onTogglePause={() => handleTogglePause(c)}
                     onDelete={() => handleDelete(c.id)}
                     onLinkNow={() => void handleLinkNow(c)}
-                    onOpenAnalytics={onOpenAnalytics}
+                    /* v0.7.8 S8 — analytics chip cut at the parent (see top
+                       of file). Don't forward onOpenAnalytics — the card
+                       will hide the chip when the prop is undefined. */
                   />
                   {conn && (
                     <div

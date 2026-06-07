@@ -1,3 +1,4 @@
+// ship-lens v0.7.8: W7 — "+ window" tile + clip-picker popover formally added to the UI map (was already rendered; map was silent on it). No code changes here — singleton playingId already replaces the old ActiveVideoPool, and Esc cascade is unchanged.
 // SURFACE: Workbench canvas
 // MAP TAGS: (O #1)(O #2)(O #3)(O #4) — owns the tile grid + Edit drawer mount
 //           (S) keyboard: E, Space, Cmd-Backspace, Cmd-A, Tab, Esc cascade

@@ -1,3 +1,4 @@
+// ship-lens v0.7.8 L4: destructive delete now goes through the sidecar tombstone trio (request → finalize / undo) so the user has 5s + an Undo button before `rmtree` lands. Card disappears from the wall optimistically; on undo we splice the row back into local state without a round-trip refresh.
 // v0.6.36 — Library tab (cockpit pass).
 //
 // Data layer (sidecar.listProjects + filter / search / archive / delete RPCs)
@@ -8,9 +9,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open as openPath } from "@tauri-apps/plugin-shell";
 import { motion, AnimatePresence } from "motion/react";
-import { Trash2 } from "lucide-react";
+import { RotateCcw, Trash2 } from "lucide-react";
 import { humanError, sidecar, type Project, type ProjectLibrarySummary } from "../../lib/sidecar";
 import { LibraryWall, type LibraryFilter } from "../cockpit/LibraryWall";
+
+/** v0.7.8 L4 — Lifetime of the Undo toast in ms. After this the sidecar's
+ *  `finalize_delete_project` runs and the tombstone is rmtree'd for real.
+ *  5s is the standard Gmail/Linear undo window — enough time for "wait I
+ *  didn't mean that", short enough that the disk doesn't fill up with
+ *  zombie projects. */
+const UNDO_WINDOW_MS = 5000;
+
+/** v0.7.8 L4 — One pending tombstone at a time. Each delete carries the
+ *  project summary (for restore via splice), a timeout id (so manual undo
+ *  cancels the auto-finalize), and the original sort-position so an undo
+ *  puts the card back where it was, not at the bottom of the wall. */
+type PendingTombstone = {
+  project: ProjectLibrarySummary;
+  /** Original insertion index in the `projects` array at the moment of
+   *  delete. Lets us re-splice the card into the same slot on undo. */
+  originalIndex: number;
+  timeoutId: number;
+};
 
 export function LibraryTab({
   onOpenProject,
@@ -29,6 +49,13 @@ export function LibraryTab({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<LibraryFilter>("all");
   const [confirmDelete, setConfirmDelete] = useState<ProjectLibrarySummary | null>(null);
+  // v0.7.8 L4 — Pending tombstones. Only one at a time (delete is a focused
+  // user action; queueing multiple toasts would cause the timer/restore
+  // logic to get tangled and the user to lose track of which Undo applies
+  // to which project). If a second delete arrives mid-window the previous
+  // one is finalized immediately (consistent with Gmail's "newer toast
+  // commits the older one").
+  const [pendingTombstone, setPendingTombstone] = useState<PendingTombstone | null>(null);
 
   // Container ref — used to scope the Cmd-K shortcut so it focuses THIS
   // tab's search input rather than any other inbox/search field that might
@@ -132,19 +159,107 @@ export function LibraryTab({
     }
   }
 
+  // v0.7.8 L4 — Finalize a tombstone: sidecar rmtree's the renamed dir.
+  // Idempotent on the sidecar side (returns `removed: 0` if nothing
+  // matches), so a missed timer or a second click never crashes. Errors
+  // are swallowed into the inline banner — the project is already gone
+  // from the user's perspective, so we just report the cleanup failure.
+  const finalizeTombstone = useCallback(async (slug: string) => {
+    try {
+      await sidecar.finalizeDeleteProject(slug);
+    } catch (e) {
+      setError(humanError(e));
+    }
+  }, []);
+
+  // v0.7.8 L4 — Restore a tombstoned project. Splices the saved summary
+  // back into `projects` at its original index so the visual position
+  // doesn't shuffle. The sidecar's `undo_delete_project` is no-op-safe if
+  // the project already exists (handles the rare "user re-imported the
+  // same slug while undo was pending" race).
+  async function undoTombstone(t: PendingTombstone) {
+    clearTimeout(t.timeoutId);
+    setPendingTombstone(null);
+    try {
+      await sidecar.undoDeleteProject(t.project.slug);
+      setProjects((prev) => {
+        // Don't re-insert if the project somehow re-appeared via refresh.
+        if (prev.some((x) => x.slug === t.project.slug)) return prev;
+        const next = prev.slice();
+        const at = Math.min(t.originalIndex, next.length);
+        next.splice(at, 0, t.project);
+        return next;
+      });
+    } catch (e) {
+      setError(humanError(e));
+    }
+  }
+
   async function deleteProject(p: ProjectLibrarySummary) {
     setBusySlug(p.slug);
     setError(null);
     try {
-      await sidecar.deleteProject(p.slug);
+      // v0.7.8 L4 — If a tombstone is already pending, finalize it first.
+      // Sequencing rule: the newer delete commits the older one (Gmail
+      // semantics). This way the user never sees two Undo toasts fight
+      // for the same slot and the older project's tombstone gets cleaned
+      // up rather than living forever.
+      if (pendingTombstone) {
+        clearTimeout(pendingTombstone.timeoutId);
+        await finalizeTombstone(pendingTombstone.project.slug);
+      }
+      // Capture the original index BEFORE we drop the row so undo can
+      // splice the card back at the same visual position.
+      const originalIndex = projects.findIndex((x) => x.slug === p.slug);
+      await sidecar.requestDeleteProject(p.slug);
       setProjects((prev) => prev.filter((x) => x.slug !== p.slug));
       setConfirmDelete(null);
+      // Schedule the finalize. Stored on state so manual Undo can cancel.
+      // setTimeout returns a number in browsers / Tauri webview, not
+      // NodeJS.Timeout, so we cast through unknown for portability.
+      const timeoutId = window.setTimeout(() => {
+        setPendingTombstone((curr) => {
+          if (curr && curr.project.slug === p.slug) {
+            void finalizeTombstone(p.slug);
+            return null;
+          }
+          return curr;
+        });
+      }, UNDO_WINDOW_MS);
+      setPendingTombstone({
+        project: p,
+        originalIndex: originalIndex >= 0 ? originalIndex : 0,
+        timeoutId,
+      });
     } catch (e) {
       setError(humanError(e));
     } finally {
       setBusySlug(null);
     }
   }
+
+  // v0.7.8 L4 — Mirror `pendingTombstone` onto a ref so the unmount
+  // cleanup below reads the latest value (a closure on state would be
+  // stuck at null forever).
+  const pendingTombstoneRef = useRef<PendingTombstone | null>(null);
+  useEffect(() => {
+    pendingTombstoneRef.current = pendingTombstone;
+  }, [pendingTombstone]);
+
+  // v0.7.8 L4 — On unmount, finalize any pending tombstone. Otherwise a
+  // user navigating away inside the 5s window would leave the tombstone
+  // dir lingering on disk indefinitely (next list_projects skips it, so
+  // it's invisible junk). Fire-and-forget — sidecar finalize is
+  // idempotent and runs in the background.
+  useEffect(() => {
+    return () => {
+      const pending = pendingTombstoneRef.current;
+      if (pending) {
+        clearTimeout(pending.timeoutId);
+        void sidecar.finalizeDeleteProject(pending.project.slug).catch(() => {});
+      }
+    };
+  }, []);
 
   const archivedCount = projects.filter((p) => p.archived).length;
 
@@ -210,7 +325,60 @@ export function LibraryTab({
           />
         )}
       </AnimatePresence>
+
+      {/* v0.7.8 L4 — Undo toast. Lives bottom-center over the cockpit so
+          it's findable but doesn't cover the wall. Auto-dismisses on
+          finalize-timer expiry (in the deleteProject handler) — we don't
+          need a separate exit animation key because the state flip from
+          truthy to null lets AnimatePresence handle the unmount. */}
+      <AnimatePresence>
+        {pendingTombstone && (
+          <UndoToast
+            project={pendingTombstone.project}
+            onUndo={() => void undoTombstone(pendingTombstone)}
+          />
+        )}
+      </AnimatePresence>
     </div>
+  );
+}
+
+function UndoToast({
+  project,
+  onUndo,
+}: {
+  project: ProjectLibrarySummary;
+  onUndo: () => void;
+}) {
+  // v0.7.8 L4 — Compact horizontal toast. Fuchsia accent on the Undo CTA
+  // so the destructive-recovery affordance reads against the muted toast
+  // body. No close button — the timer is the close button.
+  return (
+    <motion.div
+      role="status"
+      aria-live="polite"
+      className="pointer-events-none fixed bottom-6 left-1/2 z-40 -translate-x-1/2"
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 18 }}
+      transition={{ type: "spring", stiffness: 320, damping: 26 }}
+    >
+      <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-line bg-ink/95 px-4 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur-md">
+        <Trash2 className="h-3.5 w-3.5 shrink-0 text-text-tertiary" strokeWidth={2.2} />
+        <span className="max-w-[280px] truncate font-sans text-[12px] text-white">
+          Deleted{" "}
+          <span className="font-medium text-white">{project.source_filename}</span>
+        </span>
+        <button
+          type="button"
+          onClick={onUndo}
+          className="inline-flex items-center gap-1 rounded-full bg-fuchsia px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-white transition-colors hover:bg-fuchsia-bright"
+        >
+          <RotateCcw className="h-3 w-3" strokeWidth={2.4} />
+          Undo
+        </button>
+      </div>
+    </motion.div>
   );
 }
 

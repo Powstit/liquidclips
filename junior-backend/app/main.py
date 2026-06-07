@@ -130,6 +130,12 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE social_channels ADD COLUMN IF NOT EXISTS last_probe_at timestamptz",
         "ALTER TABLE social_channels ADD COLUMN IF NOT EXISTS last_probe_error varchar",
         "ALTER TABLE social_channels ADD COLUMN IF NOT EXISTS link_attempts integer NOT NULL DEFAULT 0",
+        # ship-lens v0.7.8 P1 — stamp when a channel.unlinked webhook flips
+        # the row to 'unlinked'. Distinguishes platform-side revoke (TikTok
+        # expired my token) from user-side never-linked (pending_link) so
+        # the UI can show the right copy ("Disconnected — reconnect" vs.
+        # "Finish linking"). New column, NULL on legacy rows.
+        "ALTER TABLE social_channels ADD COLUMN IF NOT EXISTS last_unlinked_at timestamptz",
         # schedules extended for channel_id + caption_override + Ayrshare ids
         "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS channel_id varchar REFERENCES social_channels(id) ON DELETE SET NULL",
         "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS caption_override text",
