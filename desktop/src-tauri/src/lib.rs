@@ -137,6 +137,10 @@ pub fn run() {
             let state = tauri::async_runtime::block_on(async move {
                 sidecar::SidecarState::spawn(app_handle, &script_path_clone)
             })?;
+            // F5 — register the stdin holder BEFORE app.manage so the
+            // wait-task respawn path can swap in the new pipe after a
+            // sidecar crash. set_stdin_holder is a OnceLock — idempotent.
+            sidecar::set_stdin_holder(state.stdin_holder());
             app.manage(state);
 
             // Browse Rewards is an in-window native child webview pinned to
