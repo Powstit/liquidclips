@@ -520,6 +520,12 @@ class Project:
                 "vertical_path": str(vp),
                 "thumbnails": thumbnails,
                 "imported": True,
+                # v0.7.14 — per-clip publish targeting + overlay template.
+                # Empty / null defaults mean "user hasn't picked yet"; Kimi's
+                # PlatformBadge + OverlayTemplateGallery write these via
+                # method_set_clip_platforms / method_apply_overlay_template.
+                "platforms": [],
+                "overlay_template": None,
             })
 
         # Pre-mark every stage as done so ResultsGrid + downstream UI don't

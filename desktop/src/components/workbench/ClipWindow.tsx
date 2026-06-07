@@ -24,6 +24,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useWorkbenchStore } from "./useWorkbenchStore";
+import { PlatformBadge } from "../PlatformBadge";
 import { ClipWindowChrome } from "./ClipWindowChrome";
 import { ClipWindowPoster } from "./ClipWindowPoster";
 import type { WindowId } from "./types";
@@ -179,6 +180,13 @@ export function ClipWindow({
         focused={focused}
       />
       <div className="relative flex-1 overflow-hidden">
+        {/* v0.7.14 — PlatformBadge stack top-right of the tile. Hidden when
+            no platforms selected (default state on imports + fresh cuts). */}
+        {clip.platforms && clip.platforms.length > 0 && (
+          <span className="pointer-events-none absolute right-1.5 top-1.5 z-10">
+            <PlatformBadge platforms={clip.platforms} size="sm" />
+          </span>
+        )}
         {isPlaying && videoSrc ? (
           // Single explicitly-mounted <video>. NO `autoPlay`, NO `loop`. We
           // call .play() from the effect above only after the user gesture.

@@ -1203,6 +1203,112 @@ def method_apply_overlay(params: dict[str, Any]) -> dict[str, Any]:
     return {"project": project.to_dict()}
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# v0.7.14 — per-clip platforms + overlay templates
+# ──────────────────────────────────────────────────────────────────────────
+
+# Kimi's K-η OverlayTemplateKey → canonical reaction layout signal. The
+# sidecar's stages.apply_overlay_to_clip is already the engine for placing
+# reactions; this just translates Kimi's 8 user-facing templates into the
+# layout codes the stages module already understands. Keeping the mapping
+# here keeps the TS + Python sides honest about what each key means.
+_OVERLAY_TEMPLATE_PRESETS: dict[str, dict[str, Any]] = {
+    "pip_bottom_right":   {"layout": "pip", "position": "bottom-right"},
+    "pip_bottom_left":    {"layout": "pip", "position": "bottom-left"},
+    "pip_top_right":      {"layout": "pip", "position": "top-right"},
+    "pip_top_left":       {"layout": "pip", "position": "top-left"},
+    "side_by_side_right": {"layout": "side-by-side", "position": "right"},
+    "side_by_side_left":  {"layout": "side-by-side", "position": "left"},
+    "react_overlay":      {"layout": "fullscreen", "position": "center"},
+    "bottom_strip":       {"layout": "strip", "position": "bottom"},
+}
+
+
+def method_apply_overlay_template(params: dict[str, Any]) -> dict[str, Any]:
+    """Stamp a Kimi-OverlayTemplateGallery template onto a clip.
+
+    Two paths today: (1) if the caller provided a `source_path` we route
+    through method_apply_overlay so the template renders a real overlay. (2)
+    otherwise we just persist `overlay_template` on the clip record so the
+    UI can re-render the picker in its already-applied state — the bake
+    waits for the user to pick a source.
+
+    Params:
+      slug  — project slug
+      idx   — clip index
+      template — one of OVERLAY_TEMPLATE_KEYS or null (to clear)
+      source_path — optional; when present, drives a real overlay bake
+    """
+    slug = params.get("slug")
+    idx = params.get("idx")
+    template = params.get("template")
+    source_path = params.get("source_path")
+    if not isinstance(slug, str) or not isinstance(idx, int):
+        raise ValueError("apply_overlay_template requires slug (str) + idx (int)")
+    if template is not None and template not in _OVERLAY_TEMPLATE_PRESETS:
+        raise ValueError(f"unknown overlay template: {template!r}")
+
+    project = Project.load(slug)
+    if idx < 0 or idx >= len(project.clips):
+        raise ValueError(f"clip idx {idx} out of range")
+    clip = project.clips[idx]
+
+    if template is None:
+        clip["overlay_template"] = None
+        project.save()
+        return {"project": project.to_dict()}
+
+    clip["overlay_template"] = template
+
+    if isinstance(source_path, str) and source_path:
+        preset = _OVERLAY_TEMPLATE_PRESETS[template]
+        overlay_spec = {
+            "type": "reaction",
+            "source_path": source_path,
+            "layout": preset["layout"],
+            "position": preset["position"],
+        }
+        stages.apply_overlay_to_clip(project, idx, overlay_spec)
+    else:
+        project.save()
+
+    return {"project": project.to_dict()}
+
+
+def method_set_clip_platforms(params: dict[str, Any]) -> dict[str, Any]:
+    """Update a clip's per-platform publish target list.
+
+    Kimi's PlatformBadgePicker writes here. Empty list = "no platforms
+    picked yet" (the default state on fresh cuts + imports).
+
+    Params:
+      slug  — project slug
+      idx   — clip index
+      platforms — list of platform id strings (youtube|tiktok|instagram|x|linkedin|facebook)
+    """
+    slug = params.get("slug")
+    idx = params.get("idx")
+    platforms = params.get("platforms")
+    if not isinstance(slug, str) or not isinstance(idx, int):
+        raise ValueError("set_clip_platforms requires slug (str) + idx (int)")
+    if not isinstance(platforms, list):
+        raise ValueError("platforms must be a list")
+    valid = {"youtube", "tiktok", "instagram", "x", "linkedin", "facebook"}
+    cleaned: list[str] = []
+    for p in platforms:
+        if not isinstance(p, str) or p not in valid:
+            raise ValueError(f"invalid platform id: {p!r}")
+        if p not in cleaned:
+            cleaned.append(p)
+
+    project = Project.load(slug)
+    if idx < 0 or idx >= len(project.clips):
+        raise ValueError(f"clip idx {idx} out of range")
+    project.clips[idx]["platforms"] = cleaned
+    project.save()
+    return {"project": project.to_dict()}
+
+
 def _safe_reaction_slug(value: str) -> str:
     s = re.sub(r"[^a-zA-Z0-9._-]+", "-", value.strip().lower()).strip("-")
     return s[:80] or "reaction"
@@ -2685,6 +2791,8 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "start_run": method_start_run,
     "ingest_url": method_ingest_url,
     "import_ready_clips": method_import_ready_clips,
+    "apply_overlay_template": method_apply_overlay_template,
+    "set_clip_platforms": method_set_clip_platforms,
     "save_avatar": method_save_avatar,
     "clear_avatar": method_clear_avatar,
     "avatar_status": method_avatar_status,

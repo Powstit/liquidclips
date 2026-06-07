@@ -412,7 +412,39 @@ export type Clip = {
     secondary?: string;
     outline?: string;
   };
+  // v0.7.14 — Per-clip platform targeting. Kimi's PlatformBadge reads this
+  // to render the connected social icons on cards + workbench tiles. Empty
+  // / undefined = no platforms picked yet (default state on imports + fresh
+  // cuts). Populated by the user via PlatformBadgePicker in ClipPreview.
+  platforms?: PlatformId[];
+  // v0.7.14 — Pre-made overlay template the clipper picked. Cleared when the
+  // user manually edits the overlay so we don't lie about which template is
+  // active. None when no template applied.
+  overlay_template?: OverlayTemplateKey | null;
 };
+
+/** v0.7.14 — Social platform identifiers used by PlatformBadge + clip
+ *  publish routing. Tracks platforms the desktop can publish to. */
+export type PlatformId =
+  | "youtube"
+  | "tiktok"
+  | "instagram"
+  | "x"
+  | "linkedin"
+  | "facebook";
+
+/** v0.7.14 — Reaction overlay template keys used by Kimi's
+ *  OverlayTemplateGallery. The sidecar maps each key to a canonical layout
+ *  + position when applied via `apply_overlay_template`. */
+export type OverlayTemplateKey =
+  | "pip_bottom_right"
+  | "pip_bottom_left"
+  | "pip_top_right"
+  | "pip_top_left"
+  | "side_by_side_right"
+  | "side_by_side_left"
+  | "react_overlay"
+  | "bottom_strip";
 
 export type Intent = "clips" | "youtube" | "both";
 
@@ -828,6 +860,25 @@ export const sidecar = {
     } | null,
   ) =>
     sidecarCall<{ project: Project }>("apply_overlay", { slug, idx, overlay }),
+  // v0.7.14 — Kimi's OverlayTemplateGallery: 8 pre-made reaction layouts.
+  // sourcePath optional: when omitted we persist the template choice on the
+  // clip but skip the bake, so the picker re-renders in its applied state
+  // until the user picks a reaction source.
+  applyOverlayTemplate: (
+    slug: string,
+    idx: number,
+    template: OverlayTemplateKey | null,
+    sourcePath?: string,
+  ) =>
+    sidecarCall<{ project: Project }>("apply_overlay_template", {
+      slug,
+      idx,
+      template,
+      ...(sourcePath ? { source_path: sourcePath } : {}),
+    }),
+  // v0.7.14 — Kimi's PlatformBadgePicker: per-clip publish target set.
+  setClipPlatforms: (slug: string, idx: number, platforms: PlatformId[]) =>
+    sidecarCall<{ project: Project }>("set_clip_platforms", { slug, idx, platforms }),
   dripPlan: (slug: string, weeks: 1 | 2 | 3 | 4, userTzOffsetHours: number) =>
     sidecarCall<{ slots: DripSlot[] }>("drip_plan", { slug, weeks, user_tz_offset_hours: userTzOffsetHours }),
 
