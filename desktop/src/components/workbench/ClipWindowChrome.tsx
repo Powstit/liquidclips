@@ -11,6 +11,7 @@
 import { useMemo, useState } from "react";
 import { useWorkbenchStore } from "./useWorkbenchStore";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { AccountBindingChip } from "./AccountBindingChip";
 import type { Clip, WindowId } from "./types";
 
 // Heuristic for unsaved edits: the captions drawer's last Apply writes
@@ -108,10 +109,10 @@ export function ClipWindowChrome({
         {clip.title || "(untitled)"}
       </span>
 
-      {/* Account-binding slot — Agent 5 mounts the per-window channel chip
-          here. Empty until they ship; layout reserves the gap so the title
-          doesn't jump when the chip arrives. */}
-      <div data-slot="account-binding" className="shrink-0" />
+      {/* Per-window channel binding — drives Master Schedule fan-out. */}
+      <div data-slot="account-binding" className="shrink-0">
+        <AccountBindingChip windowId={windowId} />
+      </div>
 
       {/* Close window — confirms when the recently-edited heuristic fires. */}
       <button

@@ -222,11 +222,26 @@ export function Splash({
 
   return (
     <div
-      className="relative flex h-full w-full flex-col items-center justify-center gap-8 overflow-hidden bg-paper"
-      style={{ backgroundImage: `url(${splashArt})`, backgroundSize: "cover", backgroundPosition: "center" }}
+      className={`relative flex h-full w-full flex-col items-center justify-center gap-8 overflow-hidden ${
+        stage === "game" ? "bg-ink" : "bg-paper"
+      }`}
+      style={
+        stage === "game"
+          ? { backgroundColor: "#0b0b10" }
+          : { backgroundImage: `url(${splashArt})`, backgroundSize: "cover", backgroundPosition: "center" }
+      }
     >
-      {/* Soft scrim so the light mark + text stay legible over the art. */}
-      <div className="pointer-events-none absolute inset-0 bg-black/25" />
+      {/* Stage-aware scrim — light translucent for loading (lets the splash
+          art breathe through), dense near-black for gameplay so the fuchsia
+          invaders pop instead of getting washed out by the paper-coloured art
+          behind them. Daniel's "reduce background transparency during
+          gameplay" finding — 25% black was nowhere near enough on the bright
+          backdrop; 90% reads as a near-solid dark game arena. */}
+      <div
+        className={`pointer-events-none absolute inset-0 ${
+          stage === "game" ? "bg-black/90" : "bg-black/25"
+        }`}
+      />
 
       <button
         type="button"
