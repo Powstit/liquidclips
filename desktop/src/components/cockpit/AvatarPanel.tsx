@@ -50,6 +50,7 @@ import { sidecar, type LocalScheduleItem } from "../../lib/sidecar";
 import { useSubmissions } from "../../lib/submissions";
 import { fmtUsd } from "../../lib/payoutsAggregations";
 import { useAvatar, avatarSrc, initialsOf } from "../../lib/avatar";
+import { ActivityOrbit } from "./ActivityOrbit";
 
 type Tier = "free" | "solo" | "pro" | "agency" | "growth" | "autopilot" | null;
 
@@ -260,14 +261,21 @@ export function AvatarPanel({
 
               {/* 3. Profile header */}
               <header className="flex items-center gap-3 rounded-2xl border border-line bg-paper p-3">
-                <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full border border-fuchsia/40 bg-gradient-to-br from-fuchsia to-fuchsia-deep">
-                  {renderedSrc ? (
-                    <img src={renderedSrc} alt="" className="h-full w-full object-cover" draggable={false} />
-                  ) : (
-                    <span className="flex h-full w-full items-center justify-center font-display text-[16px] font-bold text-white">
-                      {initials}
-                    </span>
-                  )}
+                {/* ship-lens v0.7.14 K-δ — ActivityOrbit mounts as a sibling of
+                    the avatar circle inside this relative wrapper so its
+                    `absolute inset-0` particles orbit the visible avatar
+                    without being clipped by the circle's overflow-hidden. */}
+                <div className="relative h-12 w-12 shrink-0">
+                  <div className="relative h-12 w-12 overflow-hidden rounded-full border border-fuchsia/40 bg-gradient-to-br from-fuchsia to-fuchsia-deep">
+                    {renderedSrc ? (
+                      <img src={renderedSrc} alt="" className="h-full w-full object-cover" draggable={false} />
+                    ) : (
+                      <span className="flex h-full w-full items-center justify-center font-display text-[16px] font-bold text-white">
+                        {initials}
+                      </span>
+                    )}
+                  </div>
+                  <ActivityOrbit />
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col">
                   <h2 className="line-clamp-1 font-display text-[16px] font-semibold leading-tight tracking-[-0.015em] text-ink">
