@@ -1,5 +1,6 @@
 mod auth_panel;
 mod browse;
+mod earn_panel;
 mod sidecar;
 mod social_link;
 
@@ -173,6 +174,11 @@ pub fn run() {
             auth_panel::open_auth_panel,
             auth_panel::close_auth_panel,
             auth_panel::is_auth_panel_open,
+            earn_panel::open_earn_panel,
+            earn_panel::close_earn_panel,
+            earn_panel::resize_earn_panel,
+            earn_panel::is_earn_panel_open,
+            earn_panel::post_to_earn_panel,
             social_link::open_social_link_window,
             social_link::close_social_link_window,
         ])
