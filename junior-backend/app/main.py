@@ -8,9 +8,12 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.cron import start_cron, stop_cron
@@ -182,6 +185,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Sponsored-campaign banner art lives at /static/campaigns/*.
+# Campaign records reference these URLs; without the mount the desktop's
+# SponsoredBannerCarousel silently renders empty cards.
+_STATIC_DIR = Path(__file__).parent / "static"
+if _STATIC_DIR.is_dir():
+    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 app.include_router(webhooks_clerk.router)
 app.include_router(webhooks_whop.router)
