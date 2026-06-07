@@ -1,8 +1,17 @@
 // ship-lens v0.7.14: K-γ — StudioTour
 // SURFACE: Onboarding Interactive Studio Tour
 // CONTRACT: useOnboardingStep.ts (Claude C4)
-// Guided walkthrough of the app: Workstation → Clips → Select → Schedule → Publish → Earn.
-// Uses CoachMark components for contextual highlighting. 6-step sequence.
+// Guided walkthrough of the app: Workstation → Clips → Schedule → Earn.
+// Uses CoachMark components for contextual highlighting.
+//
+// v0.7.14 mount pass: STEP_SEQUENCE trimmed from 6 → 4 steps. The original
+// `select` (workbench) and `publish` steps targeted surfaces that do not
+// exist on the first-run empty view (workbench is a selection state on the
+// results grid; publish lives per-clip inside ClipCard, which is also off-
+// screen at tour time). CoachMark renders nothing when querySelector misses,
+// which would have shipped two broken steps with no Next button. Trimming
+// to the four globally-visible nav-rail anchors keeps the tour reliable on
+// every visible surface.
 
 import { useState, useEffect, useCallback } from "react";
 import { CoachMark } from "./CoachMark";
@@ -10,9 +19,7 @@ import { CoachMark } from "./CoachMark";
 export type TourStep =
   | "workstation"
   | "clips"
-  | "select"
   | "schedule"
-  | "publish"
   | "earn";
 
 interface StudioTourProps {
@@ -23,9 +30,7 @@ interface StudioTourProps {
 const STEP_SEQUENCE: TourStep[] = [
   "workstation",
   "clips",
-  "select",
   "schedule",
-  "publish",
   "earn",
 ];
 
@@ -42,37 +47,25 @@ const STEP_CONFIG: Record<
     title: "Welcome to your studio",
     body: "This is your cockpit. Create clips from URLs, import files, or pick up where you left off.",
     target: "[data-tour='workstation']",
-    position: "bottom",
+    position: "right",
   },
   clips: {
     title: "Your clips live here",
-    body: "Every clip you generate shows up in this grid. Hover to preview, click to edit, select many to act on them all.",
+    body: "Every clip you generate shows up in your library. Hover to preview, click to edit, select many to act on them all.",
     target: "[data-tour='clips-grid']",
-    position: "top",
-  },
-  select: {
-    title: "Select and compare",
-    body: "Shift-click or Cmd-click to select multiple clips. Open the workbench to compare them side by side.",
-    target: "[data-tour='workbench']",
-    position: "left",
+    position: "right",
   },
   schedule: {
     title: "Queue your posts",
     body: "Drag clips to the calendar to schedule them. The auto-drip button finds the best times for you.",
     target: "[data-tour='schedule']",
-    position: "bottom",
-  },
-  publish: {
-    title: "Publish everywhere",
-    body: "One click publishes to every platform. The app writes platform-specific copy so you don't have to.",
-    target: "[data-tour='publish']",
     position: "right",
   },
   earn: {
     title: "Get paid",
     body: "Browse brand bounties that match your style. Swipe right to start clipping for cash.",
     target: "[data-tour='earn']",
-    position: "bottom",
+    position: "right",
   },
 };
 
