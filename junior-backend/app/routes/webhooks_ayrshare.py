@@ -1,12 +1,24 @@
 """Ayrshare webhook receiver.
 
+ship-lens v0.7.8 P1 — channel.unlinked now flips status to "unlinked" (NOT
+"pending_link"). The two states LOOK identical at the API surface but mean
+very different things to the user:
+
+  - pending_link : I never finished the OAuth dance — show "Finish linking"
+  - unlinked     : The platform revoked my session (TikTok token expired,
+                   I disconnected on the social side) — show
+                   "Disconnected — reconnect" with a red dot.
+
+Conflating them sent users back through the "first-time link" copy when
+they'd actually completed it, which felt like the app forgot their account.
+
 Endpoint: POST /webhooks/ayrshare
 
 Ayrshare emits a POST to this URL when a scheduled post fires (success or
 failure), an analytics window closes, a channel is linked/unlinked, or a
 token refresh updates a profile. We flip the corresponding schedules row
 (`scheduled` → `published` / `failed`) and the corresponding
-social_channels row (`pending_link` → `active`, `active` → `pending_link`)
+social_channels row (`pending_link` → `active`, `active` → `unlinked`)
 without having to poll Ayrshare every minute.
 
 Configure the URL on Ayrshare's dashboard (Settings → Webhooks):
@@ -213,8 +225,11 @@ async def ayrshare_webhook(
       - social_channels.last_probe_at stamped
 
     Side effects on `channel.unlinked`:
-      - social_channels.status = 'pending_link' (only if no newer probe)
-      - social_channels.last_probe_at stamped
+      - social_channels.status = 'unlinked' (only if no newer probe)
+        — ship-lens v0.7.8 P1: was 'pending_link', but that conflated
+        "user never finished OAuth" with "platform revoked access".
+      - social_channels.last_unlinked_at stamped (when the revoke happened)
+      - social_channels.last_probe_at stamped (when we noticed)
     """
     t_start = time.monotonic()
     raw_body = await request.body()
@@ -311,10 +326,15 @@ async def ayrshare_webhook(
                 int((time.monotonic() - t_start) * 1000),
             )
         else:  # channel.unlinked / channel.disconnected
-            channel.status = "pending_link"
+            # ship-lens v0.7.8 P1 — "unlinked" instead of "pending_link" so
+            # the UI can tell apart "never linked" from "TikTok revoked my
+            # session". last_unlinked_at stamps the revoke moment (vs.
+            # last_probe_at which ticks on every refresh).
+            channel.status = "unlinked"
+            channel.last_unlinked_at = now
             channel.last_probe_at = now
             log.info(
-                "[ayrshare] channel unlinked id=%s platform=%s (dur_ms=%d)",
+                "[ayrshare] channel unlinked id=%s platform=%s status=unlinked (dur_ms=%d)",
                 channel.id, channel.platform,
                 int((time.monotonic() - t_start) * 1000),
             )

@@ -1413,8 +1413,12 @@ export type SocialConnectionState = {
 export type ChannelPlatform =
   | "tiktok" | "instagram" | "youtube" | "x" | "linkedin" | "facebook" | "threads";
 
+// ship-lens v0.7.8 P1 — `unlinked` distinguishes "platform revoked my access"
+// (TikTok session expired, I disconnected on the social side) from
+// `pending_link` ("I never finished the OAuth dance"). Backend stamps
+// last_unlinked_at when it lands; surfaces as "Disconnected — reconnect" copy.
 export type ChannelStatus =
-  | "pending_link" | "active" | "error" | "paused" | "deleted";
+  | "pending_link" | "active" | "error" | "paused" | "deleted" | "unlinked";
 
 export type Channel = {
   id: string;

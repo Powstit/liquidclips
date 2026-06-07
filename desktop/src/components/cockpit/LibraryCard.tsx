@@ -1,3 +1,4 @@
+// ship-lens v0.7.8 L3 + L5: LibraryCard stops pretending half-broken projects are healthy "In progress" tiles — `pipeline_failed` flips the chip to red "Pipeline failed" (failed wins over in-progress), `source_exists === false` raises a muted "Source missing" eyebrow, and `whop_bounty_id` adds a fuchsia "Whop Bounty" chip (truncated, full-title tooltip).
 // ship-lens v0.7.7: fix #2a — imported packs render the same bug-glyph fallback as broken projects; add an "Imported · N clips" eyebrow + a distinct corner pip so the wall distinguishes the two states at a glance.
 // v0.6.36 — LibraryCard.
 //
@@ -14,11 +15,14 @@
 import { motion, useReducedMotion } from "motion/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
+  AlertTriangle,
   Archive as ArchiveIcon,
   ArchiveRestore,
+  FileWarning,
   FolderOpen,
   Layers,
   Trash2,
+  Trophy,
   WandSparkles,
 } from "lucide-react";
 import type { ProjectLibrarySummary } from "../../lib/sidecar";
@@ -114,10 +118,37 @@ export function LibraryCard({
 
         {/* Status chips — float at the corners, only visible when relevant. */}
         <div className="pointer-events-none absolute left-2 top-2 flex flex-col gap-1">
-          {project.done ? (
+          {/* v0.7.8 L3 — `pipeline_failed` is the strongest of the three
+              terminal states. Failed wins over "Ready" (a half-finished
+              run that errored on reframe still has clips on disk but is
+              not actually ready) and over "In progress" (a failure isn't
+              a "waiting" state — the user needs to know it stopped). The
+              chip's red accent matches the destructive Delete button so
+              the visual language is consistent across "something is
+              broken with this project." */}
+          {project.pipeline_failed ? (
+            <StatusChip danger>
+              <AlertTriangle className="h-2.5 w-2.5" strokeWidth={2.4} />
+              Pipeline failed
+            </StatusChip>
+          ) : project.done ? (
             <StatusChip>Ready</StatusChip>
           ) : (
             <StatusChip dim>In progress</StatusChip>
+          )}
+          {/* v0.7.8 L3 — `source_exists === false` is a muted eyebrow, not
+              a chip in the bright row, because it's an "FYI" state, not a
+              "this is broken" state. The user moved the source file —
+              clips on disk still play, but a re-run won't work. We render
+              this BELOW the status chip so the priority ordering is:
+              what's broken first, then what's missing on disk, then
+              imported/archived metadata. `=== false` (not just falsy) so a
+              v0.7.7 cached summary missing the field stays silent. */}
+          {project.source_exists === false && (
+            <StatusChip dim>
+              <FileWarning className="h-2.5 w-2.5" strokeWidth={2.4} />
+              Source missing
+            </StatusChip>
           )}
           {/* v0.7.7 ship-lens fix #2a — imported packs land here without a
               `cover_thumb_path` (Project.create_imported_pack at
@@ -137,6 +168,25 @@ export function LibraryCard({
           )}
         </div>
         <div className="pointer-events-none absolute right-2 top-2 flex flex-col items-end gap-1">
+          {/* v0.7.8 L5 — Whop bounty chip. ProjectLibrarySummary already
+              carries `whop_bounty_id` + `whop_bounty_title` from the
+              sidecar (no extra hydration). Fuchsia accent (Liquid Clips
+              brand) over the Whop trophy — bounty work is the Earn
+              flywheel, so it earns the bright slot. Title is truncated to
+              ~16 chars to keep the chip within the card width; the full
+              title sits in the hover tooltip via `title` attribute on the
+              wrapper span (StatusChip is presentational so we wrap it). */}
+          {project.whop_bounty_id && (
+            <span
+              title={project.whop_bounty_title ?? "Whop Bounty"}
+              className="pointer-events-auto"
+            >
+              <StatusChip glow>
+                <Trophy className="h-2.5 w-2.5" strokeWidth={2.4} />
+                {truncateBountyTitle(project.whop_bounty_title)}
+              </StatusChip>
+            </span>
+          )}
           {project.archived && (
             <StatusChip>
               <ArchiveIcon className="h-2.5 w-2.5" strokeWidth={2.4} />
@@ -204,15 +254,22 @@ function StatusChip({
   children,
   glow = false,
   dim = false,
+  danger = false,
 }: {
   children: React.ReactNode;
   glow?: boolean;
   dim?: boolean;
+  /** v0.7.8 L3 — red destructive accent for "Pipeline failed". Matches the
+   *  destructive Delete button's #DC2626 so the visual language of
+   *  "something is broken" is consistent across the card. */
+  danger?: boolean;
 }) {
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] backdrop-blur-sm ${
-        glow
+        danger
+          ? "bg-[#DC2626]/85 text-white shadow-[0_0_18px_rgba(220,38,38,0.5)]"
+          : glow
           ? "bg-fuchsia/85 text-white shadow-[0_0_18px_rgba(255,26,140,0.6)]"
           : dim
           ? "bg-ink/70 text-white/60"
@@ -222,6 +279,16 @@ function StatusChip({
       {children}
     </span>
   );
+}
+
+/** v0.7.8 L5 — Truncate Whop bounty title to ~16 chars for the corner chip.
+ *  Returns "Whop Bounty" when title is null/empty so the chip never shows
+ *  a bare icon. Full title is preserved in the hover tooltip on the
+ *  wrapping span. */
+function truncateBountyTitle(title: string | null): string {
+  if (!title || !title.trim()) return "Whop Bounty";
+  const trimmed = title.trim();
+  return trimmed.length > 16 ? `${trimmed.slice(0, 15)}…` : trimmed;
 }
 
 function RingButton({

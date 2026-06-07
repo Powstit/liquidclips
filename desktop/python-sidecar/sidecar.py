@@ -302,6 +302,7 @@ def method_get_project(params: dict[str, Any]) -> dict[str, Any]:
     return {"project": project.to_dict()}
 
 
+# ship-lens v0.7.8 L2 + L4: `method_list_projects` skips `.lc-tombstone-*` dirs (5s undo window) and now emits `source_exists` + `pipeline_failed` so LibraryCard can stop pretending half-broken projects are healthy "In progress" tiles.
 def method_list_projects(params: dict[str, Any]) -> dict[str, Any]:
     """List local Liquid Clips projects, newest first.
 
@@ -323,6 +324,11 @@ def method_list_projects(params: dict[str, Any]) -> dict[str, Any]:
     out: list[dict[str, Any]] = []
     if root.is_dir():
         for proj_dir in root.iterdir():
+            # v0.7.8 L4 — tombstoned dirs (5s undo window) are not real
+            # projects and must never surface in Library. They're cleaned up
+            # by `finalize_delete_project` or restored by `undo_delete_project`.
+            if ".lc-tombstone-" in proj_dir.name:
+                continue
             pj = proj_dir / "project.json"
             if not pj.is_file():
                 continue
@@ -352,6 +358,14 @@ def method_list_projects(params: dict[str, Any]) -> dict[str, Any]:
                     and (stages.get("llm", {}) or {}).get("status") == "done"
                 )
             )
+            # v0.7.8 L2 — `pipeline_failed` flips true when ANY stage went
+            # `failed`. The desktop renders a red "Pipeline failed" chip on
+            # the card so a half-broken run no longer masquerades as a quiet
+            # "In progress" tile waiting for the user to be patient.
+            pipeline_failed = any(
+                isinstance(stage, dict) and stage.get("status") == "failed"
+                for stage in stages.values()
+            )
             imported = any(bool(c.get("imported")) for c in clips if isinstance(c, dict))
             reacted_count = sum(
                 1
@@ -371,6 +385,21 @@ def method_list_projects(params: dict[str, Any]) -> dict[str, Any]:
                     if isinstance(p, str) and p:
                         cover_thumb_path = p
                         break
+            # v0.7.8 L2 — `source_exists` answers "can this project still
+            # play / reframe?" The Project.load security scrub upstream
+            # blanks `source_path` to "" when the path is unsafe or missing,
+            # so an empty string here is the same signal as "the file isn't
+            # on disk anymore." LibraryCard renders a "Source missing"
+            # eyebrow off this flag so the user knows the difference between
+            # "rendering soon" and "you moved this file to the Trash."
+            raw_source = data.get("source_path")
+            if isinstance(raw_source, str) and raw_source:
+                try:
+                    source_exists = os.path.exists(raw_source)
+                except OSError:
+                    source_exists = False
+            else:
+                source_exists = False
             out.append({
                 "slug": data.get("slug") or proj_dir.name,
                 "root": data.get("root") or str(proj_dir),
@@ -387,6 +416,8 @@ def method_list_projects(params: dict[str, Any]) -> dict[str, Any]:
                 "archived": is_archived,
                 "archived_at": archived_marker.stat().st_mtime if is_archived else None,
                 "cover_thumb_path": cover_thumb_path,
+                "source_exists": bool(source_exists),
+                "pipeline_failed": bool(pipeline_failed),
             })
     out.sort(key=lambda p: float(p.get("updated_at") or p.get("created_at") or 0), reverse=True)
     return {"projects": out[:limit]}
@@ -417,7 +448,13 @@ def method_set_project_archived(params: dict[str, Any]) -> dict[str, Any]:
 
 def method_delete_project(params: dict[str, Any]) -> dict[str, Any]:
     """Permanently delete a project: rm -rf the slug folder under CLIPS_HOME/projects.
-    Refuses to traverse outside the projects root."""
+    Refuses to traverse outside the projects root.
+
+    v0.7.8 — Kept for back-compat with any caller that still wants the
+    legacy one-shot destructive delete. New Library code uses the L4
+    tombstone trio (`request_delete_project` + `undo_delete_project` +
+    `finalize_delete_project`) so deletions land with a 5s Undo window.
+    """
     import shutil
     from project import CLIPS_HOME
     slug = params.get("slug")
@@ -435,6 +472,105 @@ def method_delete_project(params: dict[str, Any]) -> dict[str, Any]:
         raise FileNotFoundError(f"project not found: {slug}")
     shutil.rmtree(proj_dir)
     return {"slug": slug, "deleted": True}
+
+
+# ship-lens v0.7.8 L4 — Tombstone delete trio.
+#
+# `delete_project` was a one-shot `shutil.rmtree`. A misclick lost work. The
+# Library now stages every delete via these three calls:
+#
+#   1. request_delete_project   — atomic rename → `<slug>.lc-tombstone-<ts>`.
+#                                  Card disappears from list immediately
+#                                  (list_projects skips tombstoned dirs).
+#   2. undo_delete_project      — atomic rename back. The Library toast's
+#                                  "Undo" button calls this within the 5s
+#                                  window.
+#   3. finalize_delete_project  — `rmtree` of the tombstoned dir. Called on
+#                                  toast expiry; idempotent against missing
+#                                  tombstone (user already hit Undo).
+#
+# Path safety mirrors the legacy `delete_project` validator: same
+# slug/escape checks, same "never the root" guard, same resolve-then-startswith.
+def _resolve_project_slug(slug: object) -> tuple[Path, Path]:
+    """Shared slug validator for the tombstone trio. Returns (projects_root,
+    proj_dir) both `.resolve()`d. Raises on any traversal attempt."""
+    from project import CLIPS_HOME
+    if not isinstance(slug, str) or not slug:
+        raise ValueError("slug (str) required")
+    if "/" in slug or "\\" in slug or slug in {".", ".."}:
+        raise ValueError(f"invalid slug: {slug!r}")
+    projects_root = (CLIPS_HOME / "projects").resolve()
+    proj_dir = (projects_root / slug).resolve()
+    if not str(proj_dir).startswith(str(projects_root) + "/") and proj_dir != projects_root:
+        raise ValueError(f"slug escapes projects root: {slug!r}")
+    if proj_dir == projects_root:
+        raise ValueError("refusing to operate on the projects root")
+    return projects_root, proj_dir
+
+
+def method_request_delete_project(params: dict[str, Any]) -> dict[str, Any]:
+    """Stage a delete: atomic rename `<proj_dir>` → `<proj_dir>.lc-tombstone-<ts>`.
+
+    Returns the tombstone path so the caller can show "Undo" in a toast.
+    `list_projects` filters out `.lc-tombstone-*` dirs so the project
+    disappears from the wall immediately."""
+    import time
+    slug = params.get("slug")
+    _projects_root, proj_dir = _resolve_project_slug(slug)
+    if not proj_dir.is_dir():
+        raise FileNotFoundError(f"project not found: {slug}")
+    ts = int(time.time())
+    tombstone = proj_dir.with_name(f"{proj_dir.name}.lc-tombstone-{ts}")
+    # Atomic on the same filesystem (every Library project lives under
+    # CLIPS_HOME so this assumption holds for the desktop install).
+    proj_dir.rename(tombstone)
+    return {"slug": slug, "tombstone_path": str(tombstone), "tombstoned_at": ts}
+
+
+def method_undo_delete_project(params: dict[str, Any]) -> dict[str, Any]:
+    """Restore the most recent tombstone for `slug` back to its original name.
+
+    Finds `<slug>.lc-tombstone-*` directories under the projects root and
+    picks the newest by mtime (in case multiple tombstones exist for the
+    same slug across crashes — should be rare but we don't want to lose the
+    fresh one). Idempotent: if a non-tombstoned `slug` dir already exists
+    (somebody recreated the project), we raise rather than overwrite."""
+    projects_root, proj_dir = _resolve_project_slug(params.get("slug"))
+    slug = params.get("slug")
+    if proj_dir.is_dir():
+        # Already restored OR somebody re-imported with the same slug. Either
+        # way the caller's intent is "the project should be visible again";
+        # treat as a no-op success rather than failing the Undo flow.
+        return {"slug": slug, "restored": True, "no_op": True}
+    candidates: list[Path] = []
+    for child in projects_root.iterdir():
+        if child.is_dir() and child.name.startswith(f"{slug}.lc-tombstone-"):
+            candidates.append(child)
+    if not candidates:
+        raise FileNotFoundError(f"no tombstone found for slug: {slug}")
+    # Newest tombstone wins (mtime, not parse the suffix — survives clock
+    # skew between request and undo on the same machine).
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    newest = candidates[0]
+    newest.rename(proj_dir)
+    # Older tombstones (if any) stay where they are — they're a different
+    # deletion event and the user hasn't asked to undo those.
+    return {"slug": slug, "restored": True, "no_op": False}
+
+
+def method_finalize_delete_project(params: dict[str, Any]) -> dict[str, Any]:
+    """Permanently remove all tombstones for `slug` (rmtree). Called on toast
+    expiry. Idempotent: if no tombstones exist (user already hit Undo, or
+    the previous finalize succeeded), returns ok with `removed: 0`."""
+    import shutil
+    projects_root, _proj_dir = _resolve_project_slug(params.get("slug"))
+    slug = params.get("slug")
+    removed = 0
+    for child in projects_root.iterdir():
+        if child.is_dir() and child.name.startswith(f"{slug}.lc-tombstone-"):
+            shutil.rmtree(child)
+            removed += 1
+    return {"slug": slug, "finalized": True, "removed": removed}
 
 
 def method_list_bounty_projects(_params: dict[str, Any]) -> dict[str, Any]:
@@ -2530,6 +2666,10 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "list_projects": method_list_projects,
     "set_project_archived": method_set_project_archived,
     "delete_project": method_delete_project,
+    # v0.7.8 L4 — tombstone delete trio (5s Undo window in Library).
+    "request_delete_project": method_request_delete_project,
+    "undo_delete_project": method_undo_delete_project,
+    "finalize_delete_project": method_finalize_delete_project,
     "list_bounty_projects": method_list_bounty_projects,
     "get_metadata": method_get_metadata,
     "secrets_status": method_secrets_status,

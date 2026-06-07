@@ -1,9 +1,9 @@
+// ship-lens v0.7.8: W4+W5 — drop view/setView (no Grid mode) + drop ActiveVideoPool/promoteToPool/MAX_ACTIVE_VIDEOS (WindowManager owns singleton playingId).
 // Workbench Zustand store.
 //
 // Single source of truth for the workbench surface:
 //   - windows: Map<WindowId, WindowState>  (live editor tiles on the canvas)
 //   - selection: which ids are selected, which is focused
-//   - pool: which ids currently have a live <video> mounted (≤ MAX_ACTIVE_VIDEOS)
 //   - lastProjectSlug/lastClipCount: lets us reconcile when the user switches
 //     projects without re-mounting the workbench.
 //
@@ -11,28 +11,29 @@
 // debounced write to localStorage via ./persistedSession. We also register
 // the store with persistedSession's beforeunload flush so an unclean close
 // still saves the user's session.
+//
+// Video playback: at most ONE <video> mounts per canvas at any time —
+// WindowManager owns a singleton `playingId` (useState) and ClipWindow
+// reads it via prop. The old ActiveVideoPool / promoteToPool / pool
+// eviction policy is gone (v0.7.8 W5) because the singleton makes the
+// pool a 1-element list with no eviction decision left to make.
 
 import { create } from "zustand";
 import type {
-  ActiveVideoPool,
   PersistedSession,
   Project,
-  RatioKey,
   SelectionModel,
   WindowId,
   WindowState,
   WorkbenchStore,
-  WorkbenchView,
 } from "./types";
 import {
   CANVAS_GRID_COLS,
   CANVAS_GRID_ROWS,
   LC_WORKBENCH_SCHEMA_VERSION,
-  MAX_ACTIVE_VIDEOS,
   MAX_WINDOW_SIZE,
   MIN_WINDOW_SIZE,
 } from "./types";
-import { evictionTarget } from "./activeVideoPool";
 import {
   flush,
   read as readPersisted,
@@ -120,7 +121,6 @@ function snapshotToPersisted(state: WorkbenchStore): PersistedSession {
   }
   return {
     version: LC_WORKBENCH_SCHEMA_VERSION,
-    view: state.view,
     byProject,
   };
 }
@@ -179,28 +179,17 @@ function schedulePersist(): void {
 // ---------------------------------------------------------------------------
 // initial state from persisted blob (synchronous so first render is correct)
 
-const persistedAtBoot = readPersisted();
-
-const initialView: WorkbenchView = persistedAtBoot.view;
 const initialWindows: Map<WindowId, WindowState> = new Map();
 const initialSelection: SelectionModel = { selectedIds: new Set(), focusedId: null };
-const initialPool: ActiveVideoPool = { ids: [], reason: {} };
 
 // ---------------------------------------------------------------------------
 // store
 
 export const useWorkbenchStore = create<WorkbenchStore>((set) => ({
-  view: initialView,
   windows: initialWindows,
   selection: initialSelection,
-  pool: initialPool,
   lastProjectSlug: null,
   lastClipCount: 0,
-
-  setView(next) {
-    set({ view: next });
-    schedulePersist();
-  },
 
   addWindow(clipIdx) {
     const id = newId();
@@ -235,13 +224,9 @@ export const useWorkbenchStore = create<WorkbenchStore>((set) => ({
       const selectedIds = new Set(s.selection.selectedIds);
       selectedIds.delete(id);
       const focusedId = s.selection.focusedId === id ? null : s.selection.focusedId;
-      const poolIds = s.pool.ids.filter((x) => x !== id);
-      const poolReason = { ...s.pool.reason };
-      delete poolReason[id];
       return {
         windows,
         selection: { selectedIds, focusedId },
-        pool: { ids: poolIds, reason: poolReason },
       };
     });
     schedulePersist();
@@ -355,48 +340,6 @@ export const useWorkbenchStore = create<WorkbenchStore>((set) => ({
     schedulePersist();
   },
 
-  promoteToPool(id, reason) {
-    set((s) => {
-      if (!s.windows.has(id)) return s;
-      // Update reason; move to MRU tail.
-      const ids = s.pool.ids.filter((x) => x !== id);
-      const reasonMap = { ...s.pool.reason };
-      // Enforce single "focused" reason — promoting a new focused entry
-      // demotes any previous focused entry to "pinned" so it doesn't block
-      // eviction forever after focus moves.
-      if (reason === "focused") {
-        for (const otherId of Object.keys(reasonMap)) {
-          if (otherId !== id && reasonMap[otherId] === "focused") {
-            reasonMap[otherId] = "pinned";
-          }
-        }
-      }
-      ids.push(id);
-      reasonMap[id] = reason;
-      let nextPool: ActiveVideoPool = { ids, reason: reasonMap };
-      // Evict while over capacity. evictionTarget returns null when every
-      // entry is protected — in that case we drop the new entry on the floor
-      // (we keep the protected entries; remove the one we were trying to add).
-      while (nextPool.ids.length > MAX_ACTIVE_VIDEOS) {
-        const victim = evictionTarget(nextPool, reason);
-        if (!victim) {
-          // Every entry protected. Pull the new one (tail) back off.
-          const trimmedIds = nextPool.ids.filter((x) => x !== id);
-          const trimmedReason = { ...nextPool.reason };
-          delete trimmedReason[id];
-          nextPool = { ids: trimmedIds, reason: trimmedReason };
-          break;
-        }
-        const trimmedIds = nextPool.ids.filter((x) => x !== victim);
-        const trimmedReason = { ...nextPool.reason };
-        delete trimmedReason[victim];
-        nextPool = { ids: trimmedIds, reason: trimmedReason };
-      }
-      return { pool: nextPool };
-    });
-    // Pool membership is runtime-only — not persisted. No schedulePersist().
-  },
-
   reconcileProject(project: Project) {
     const slug = project.slug;
     const clipCount = project.clips.length;
@@ -413,24 +356,18 @@ export const useWorkbenchStore = create<WorkbenchStore>((set) => ({
         for (const id of s.selection.selectedIds) if (windows.has(id)) selectedIds.add(id);
         const focusedId = s.selection.focusedId && windows.has(s.selection.focusedId)
           ? s.selection.focusedId : null;
-        const poolIds = s.pool.ids.filter((id) => windows.has(id));
-        const poolReason: ActiveVideoPool["reason"] = {};
-        for (const id of poolIds) poolReason[id] = s.pool.reason[id];
         return {
           windows,
           selection: { selectedIds, focusedId },
-          pool: { ids: poolIds, reason: poolReason },
           lastClipCount: clipCount,
         };
       }
-      // Project switch — drop pool entirely (different <video> srcs), hydrate
-      // from persisted state for this project.
+      // Project switch — hydrate windows from persisted state for this project.
       const persisted = readPersisted();
       const { windows, selection } = hydrateForProject(persisted, slug, clipCount);
       return {
         windows,
         selection,
-        pool: { ids: [], reason: {} },
         lastProjectSlug: slug,
         lastClipCount: clipCount,
       };
@@ -445,4 +382,5 @@ getStateRef = () => useWorkbenchStore.getState();
 setFlushSource(() => snapshotToPersisted(useWorkbenchStore.getState()));
 
 // Type-only exports for sibling files.
-export type { WorkbenchStore, RatioKey };
+export type { WorkbenchStore } from "./types";
+export type { RatioKey } from "../../lib/sidecar";

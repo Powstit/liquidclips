@@ -1,4 +1,4 @@
-// ship-lens v0.7.7: fix #9 — migrated meStatus() callsite to meStatusLegacy(); panel only needs `.email`/`.effective_tier` for HUD copy, expired-banner UX lives in Settings.
+// ship-lens v0.7.8: S7 — meAffiliate() no longer swallows UnauthorizedError into the empty-affiliate render; the lifetime / clipping / affiliate stat strip and the referral row gain a top-of-panel "Session expired — re-activate" banner so a paying user with an aged-out JWT sees the actual remediation path instead of a $0 dashboard that lies about their earnings. v0.7.7 carry-over: meStatus() migrated to meStatusLegacy() (panel only needs `.email`/`.effective_tier` for HUD copy).
 // v0.6.35 — Avatar Panel (dropdown HUD).
 //
 // Summoned by tapping AvatarOrbit. Holds every signal the v0.6.4 stickiness
@@ -40,10 +40,12 @@ import {
   meStatusLegacy,
   meAffiliate,
   leaderboardGet,
+  UnauthorizedError,
   type MeStatus,
   type AffiliateMeResponse,
   type LeaderboardResponse,
 } from "../../lib/backend";
+import { openAuthPanel } from "../auth/useAuthPanel";
 import { sidecar, type LocalScheduleItem } from "../../lib/sidecar";
 import { useSubmissions } from "../../lib/submissions";
 import { fmtUsd } from "../../lib/payoutsAggregations";
@@ -83,12 +85,28 @@ export function AvatarPanel({
   const [aff, setAff] = useState<AffiliateMeResponse | null>(null);
   const [board, setBoard] = useState<LeaderboardResponse | null>(null);
   const [scheduled, setScheduled] = useState<LocalScheduleItem[]>([]);
+  // v0.7.8 S7 — true when meAffiliate() (or any /me read) rejected with
+  // UnauthorizedError. Pre-fix every failure mapped to `aff === null` and
+  // the panel rendered $0 stats with no nudge. Now the top of the panel
+  // shows a fuchsia "Session expired — re-activate" banner the user can
+  // click to open the auth panel in sign-in mode.
+  const [sessionExpired, setSessionExpired] = useState(false);
   const { submissions } = useSubmissions();
 
   useEffect(() => {
     if (!open) return;
     void meStatusLegacy().then(setMe).catch(() => setMe(null));
-    void meAffiliate().then(setAff).catch(() => setAff(null));
+    void meAffiliate()
+      .then((data) => {
+        setAff(data);
+        setSessionExpired(false);
+      })
+      .catch((e) => {
+        setAff(null);
+        if (e instanceof UnauthorizedError) {
+          setSessionExpired(true);
+        }
+      });
     void leaderboardGet().then(setBoard).catch(() => setBoard(null));
     void sidecar
       .localScheduleList()
@@ -160,6 +178,32 @@ export function AvatarPanel({
           >
             {/* Scrollable inner column so the footer rail can stay sticky. */}
             <div className="flex flex-col gap-3 overflow-y-auto pr-1">
+              {/* v0.7.8 S7 — Session-expired banner. Mounts only when the
+                  meAffiliate fetch rejected with UnauthorizedError, i.e.
+                  the backend explicitly rejected the local JWT. Pre-fix
+                  this branch fell through to the regular HUD with $0
+                  stats; the user had no signal their account was actually
+                  fine and just needed a fresh activation. */}
+              {sessionExpired && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    openAuthPanel("sign-in");
+                  }}
+                  className="flex w-full items-center justify-between gap-2 rounded-2xl border border-fuchsia/50 bg-fuchsia-soft/40 px-3 py-2.5 text-left transition-colors hover:bg-fuchsia-soft/60"
+                  aria-label="Session expired — re-activate this device"
+                >
+                  <div className="flex min-w-0 flex-col">
+                    <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-fuchsia">
+                      session expired
+                    </span>
+                    <span className="font-sans text-[12px] leading-snug text-fuchsia-deep">
+                      Re-activate this device to keep earning →
+                    </span>
+                  </div>
+                </button>
+              )}
               {/* 1. Profile header */}
               <header className="flex items-center gap-3 rounded-2xl border border-line bg-paper p-3">
                 <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full border border-fuchsia/40 bg-gradient-to-br from-fuchsia to-fuchsia-deep">

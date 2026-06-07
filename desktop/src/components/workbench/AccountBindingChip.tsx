@@ -1,3 +1,15 @@
+// ship-lens v0.7.8 P1+P4 — Two fixes:
+//   P1: handle the new "unlinked" channel status (TikTok revoked our access)
+//       distinct from "pending_link" (never finished OAuth). The deep-link
+//       handler toasts "Disconnected — reconnect" when the post-OAuth refresh
+//       lands a row in `unlinked`, and the popover row renders with the
+//       reconnect hint instead of the bind-as-usual styling.
+//   P4: every non-deleted channel in the popover renders with a status-
+//       aware disabled state + hint. Active rows toggle; error / paused /
+//       pending_link / unlinked rows are inert (not bindable) and surface
+//       the recovery hint in their tooltip and inline badge instead of
+//       letting the user bind a channel that can't actually publish.
+//
 // Per-window account-binding chip.
 //
 // Renders a tiny clickable chip on each workbench window header that shows
@@ -173,7 +185,10 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
       try {
         const list = await listChannels();
         if (cancelled) return;
-        setChannels(list);
+        // ship-lens v0.7.8 P4 — Surface every non-deleted channel; the row
+        // rendering below disables non-active rows with a status-aware hint
+        // so the user knows what to do (vs. seeing the row disappear).
+        setChannels(list.filter((c) => c.status !== "deleted"));
         setLoadState("loaded");
       } catch (e) {
         if (cancelled) return;
@@ -233,7 +248,8 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
       }
       try {
         const list = await listChannels();
-        setChannels(list);
+        // ship-lens v0.7.8 P4 — same non-deleted filter as the initial load.
+        setChannels(list.filter((c) => c.status !== "deleted"));
         setLoadState("loaded");
         // Only this window's connecting flow owns the toast — multiple
         // mounted chips across windows would otherwise all fire on the
@@ -247,6 +263,15 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
             emitToast(
               "success",
               `${platformLabel(target.platform)} connected as ${handle}`,
+            );
+          } else if (target && target.status === "unlinked") {
+            // ship-lens v0.7.8 P1 — A link attempt that lands on `unlinked`
+            // means the platform refused / revoked us — call that out
+            // explicitly instead of saying "try Reconnect" which sounds
+            // like our error.
+            emitToast(
+              "error",
+              `${platformLabel(target.platform)} disconnected — reconnect from Settings`,
             );
           } else if (target && target.status === "pending_link") {
             emitToast(
@@ -496,23 +521,35 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
             <div className="flex max-h-64 flex-col gap-1 overflow-y-auto pr-1">
               {channels!.map((channel) => {
                 const selected = boundChannelIds.includes(channel.id);
-                const pendingLink = channel.status === "pending_link";
+                // ship-lens v0.7.8 P4 — Per-status view model: only active
+                // channels are bindable; everything else renders disabled
+                // with a status-specific hint. Same language as the
+                // InlineScheduler + ChannelPicker chips so the user gets
+                // the SAME copy across every surface that shows channels.
+                const row = rowViewFor(channel.status);
+                const isActive = row.kind === "active";
                 return (
                   <button
                     key={channel.id}
                     type="button"
                     onClick={() => toggleChannel(channel.id)}
-                    disabled={pendingLink}
-                    aria-pressed={selected}
+                    disabled={!isActive}
+                    aria-pressed={isActive ? selected : undefined}
                     title={
-                      pendingLink
-                        ? "Finish linking this channel in Settings before binding."
-                        : `${channel.platform} · ${channel.handle ?? channel.label}`
+                      isActive
+                        ? `${channel.platform} · ${channel.handle ?? channel.label}`
+                        : `${channel.platform} · ${channel.label} — ${row.hint}`
                     }
                     className={
-                      selected
-                        ? "flex items-center gap-2 rounded-lg border border-fuchsia bg-fuchsia/15 px-2 py-1.5 text-left font-sans text-[12px] text-fuchsia"
-                        : "flex items-center gap-2 rounded-lg border border-line bg-paper-elev px-2 py-1.5 text-left font-sans text-[12px] text-text-secondary hover:border-fuchsia hover:text-fuchsia disabled:opacity-50"
+                      isActive
+                        ? selected
+                          ? "flex items-center gap-2 rounded-lg border border-fuchsia bg-fuchsia/15 px-2 py-1.5 text-left font-sans text-[12px] text-fuchsia"
+                          : "flex items-center gap-2 rounded-lg border border-line bg-paper-elev px-2 py-1.5 text-left font-sans text-[12px] text-text-secondary hover:border-fuchsia hover:text-fuchsia"
+                        : row.kind === "unlinked" || row.kind === "error"
+                        ? "flex cursor-not-allowed items-center gap-2 rounded-lg border border-[#DC2626]/40 bg-[#DC2626]/5 px-2 py-1.5 text-left font-sans text-[12px] text-[#DC2626] opacity-80"
+                        : row.kind === "paused"
+                        ? "flex cursor-not-allowed items-center gap-2 rounded-lg border border-text-tertiary/40 bg-text-tertiary/5 px-2 py-1.5 text-left font-sans text-[12px] text-text-tertiary opacity-80"
+                        : "flex cursor-not-allowed items-center gap-2 rounded-lg border border-[#F59E0B]/40 bg-[#F59E0B]/5 px-2 py-1.5 text-left font-sans text-[12px] text-[#F59E0B] opacity-90"
                     }
                   >
                     <ChannelAvatar channel={channel} />
@@ -520,12 +557,18 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
                     <span
                       aria-hidden
                       className={
-                        selected
-                          ? "font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia"
-                          : "font-mono text-[10px] uppercase tracking-[0.16em] text-text-tertiary"
+                        isActive
+                          ? selected
+                            ? "font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia"
+                            : "font-mono text-[10px] uppercase tracking-[0.16em] text-text-tertiary"
+                          : row.kind === "unlinked" || row.kind === "error"
+                          ? "font-mono text-[10px] uppercase tracking-[0.16em] text-[#DC2626]"
+                          : row.kind === "paused"
+                          ? "font-mono text-[10px] uppercase tracking-[0.16em] text-text-tertiary"
+                          : "font-mono text-[10px] uppercase tracking-[0.16em] text-[#F59E0B]"
                       }
                     >
-                      {pendingLink ? "pending" : selected ? "on" : "off"}
+                      {isActive ? (selected ? "on" : "off") : row.badge}
                     </span>
                   </button>
                 );
@@ -536,4 +579,51 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
       )}
     </div>
   );
+}
+
+// ship-lens v0.7.8 P1+P4 — Per-status view model for a non-active channel
+// row. badge = inline label; hint = tooltip / aria description. The copy
+// here mirrors ChannelPicker (v0.7.7 #7) + InlineScheduler (v0.7.8 P3) so
+// every surface that shows channels uses the same words.
+type RowView =
+  | { kind: "active" }
+  | { kind: "pending"; badge: string; hint: string }
+  | { kind: "unlinked"; badge: string; hint: string }
+  | { kind: "error"; badge: string; hint: string }
+  | { kind: "paused"; badge: string; hint: string }
+  | { kind: "unknown"; badge: string; hint: string };
+
+function rowViewFor(status: Channel["status"]): RowView {
+  switch (status) {
+    case "active":
+      return { kind: "active" };
+    case "pending_link":
+      return {
+        kind: "pending",
+        badge: "finish linking",
+        hint: "Finish linking this channel in Settings before binding",
+      };
+    case "unlinked":
+      // ship-lens v0.7.8 P1 — Platform-side revoke. NOT "pending" — the
+      // user did finish the OAuth once; the platform has since cut us off.
+      return {
+        kind: "unlinked",
+        badge: "disconnected",
+        hint: "Disconnected — reconnect from Settings → Connections",
+      };
+    case "error":
+      return {
+        kind: "error",
+        badge: "reconnect",
+        hint: "This channel needs to be reconnected — open Settings → Connections",
+      };
+    case "paused":
+      return {
+        kind: "paused",
+        badge: "paused",
+        hint: "Paused — resume in Settings → Connections before binding",
+      };
+    default:
+      return { kind: "unknown", badge: status, hint: `Status: ${status}` };
+  }
 }

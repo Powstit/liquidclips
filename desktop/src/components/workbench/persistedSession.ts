@@ -1,3 +1,4 @@
+// ship-lens v0.7.8: W4 — drop dead `view` field from PersistedSession (no Grid mode); back-compat reader accepts old blobs with stale `view` and discards the field on next write.
 // Workbench session persistence.
 //
 // Writes a tiny JSON blob to localStorage so reopening a project lands the
@@ -13,16 +14,16 @@ import { LC_WORKBENCH_PREF_KEY, LC_WORKBENCH_SCHEMA_VERSION } from "./types";
 function emptyState(): PersistedSession {
   return {
     version: LC_WORKBENCH_SCHEMA_VERSION,
-    view: "grid",
     byProject: {},
   };
 }
 
 function isPersistedSession(value: unknown): value is PersistedSession {
+  // v0.7.8 W4: legacy blobs may carry a `view` field — we accept and silently
+  // discard it. Only `version` + `byProject` shape matter going forward.
   if (!value || typeof value !== "object") return false;
-  const v = value as { version?: unknown; view?: unknown; byProject?: unknown };
+  const v = value as { version?: unknown; byProject?: unknown };
   if (v.version !== LC_WORKBENCH_SCHEMA_VERSION) return false;
-  if (v.view !== "grid" && v.view !== "workbench") return false;
   if (!v.byProject || typeof v.byProject !== "object") return false;
   return true;
 }
@@ -38,7 +39,9 @@ function safeLocalStorage(): Storage | null {
 }
 
 /** Read the persisted blob. Always returns a valid PersistedSession —
- *  on parse error, schema mismatch, or missing key, returns an empty state. */
+ *  on parse error, schema mismatch, or missing key, returns an empty state.
+ *  v0.7.8 W4: normalizes legacy blobs by returning only `{ version, byProject }`
+ *  — any stale `view` field on disk is dropped on first read. */
 export function read(): PersistedSession {
   const ls = safeLocalStorage();
   if (!ls) return emptyState();
@@ -47,7 +50,7 @@ export function read(): PersistedSession {
     if (!raw) return emptyState();
     const parsed: unknown = JSON.parse(raw);
     if (!isPersistedSession(parsed)) return emptyState();
-    return parsed;
+    return { version: parsed.version, byProject: parsed.byProject };
   } catch {
     return emptyState();
   }

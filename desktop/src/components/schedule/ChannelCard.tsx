@@ -10,9 +10,15 @@ import type { Channel } from "./types";
 import { prettyPlatform } from "./types";
 import { diagnoseChannel, humanizeBackendError } from "../../lib/backend";
 
+// ship-lens v0.7.8 P1 — `unlinked` added so the new status (platform-side
+// revoke) lights up here too instead of falling back to `undefined` and
+// blanking the status dot. Distinct copy from `pending_link` ("needs
+// linking") because the user did finish OAuth once; the platform later
+// revoked us.
 const STATUS_STYLES: Record<Channel["status"], { dot: string; label: string }> = {
   active:       { dot: "bg-fuchsia",   label: "active" },
   pending_link: { dot: "bg-[#F59E0B]", label: "needs linking" },
+  unlinked:     { dot: "bg-[#DC2626]", label: "disconnected — reconnect" },
   error:        { dot: "bg-[#DC2626]", label: "reconnect" },
   paused:       { dot: "bg-text-tertiary", label: "paused" },
   deleted:      { dot: "bg-text-tertiary", label: "deleted" },

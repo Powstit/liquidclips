@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { sidecar, humanError, type HardwareInfo } from "../lib/sidecar";
 import { useActivation } from "../lib/activation";
+import { useTier } from "../lib/useTier";
 import { Logo } from "./Logo";
 
+// ship-lens v0.7.8: E7 — the "01 — required" badge now flips to "optional · hosted AI active" for Solo / Pro / Agency users. Pre-fix Pro+ users were told the OpenAI key was required when their hosted AI already had it covered. Card 2 (sign-in) stays "required" because hosted AI needs the JWT.
 // First-run flow per spec §3.8 screen 1.
 // Single screen: brand mark → one optional key paste → done.
 // Hardware probe runs silently in the background and surfaces a one-line
@@ -15,9 +17,23 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [hw, setHw] = useState<HardwareInfo | null>(null);
   const { status: act, activate } = useActivation();
+  // v0.7.8 fix E7 — useTier() is synchronous-on-first-render via its cache,
+  // so the badge renders correctly on paint 1. A paid user already cached
+  // as Pro / Agency from a prior install sees "optional · hosted AI active"
+  // without flicker. Cold-boot Free users see "required", which is also
+  // correct — hosted AI doesn't apply to them.
+  const { tier } = useTier();
   // Only react to an activation WE started from this screen, so a stale "done"
   // from a prior flow can't auto-advance an unrelated mount.
   const startedActivation = useRef(false);
+
+  // v0.7.8 fix E7 — hosted AI is gated by useTier's matrix (`any_connection`
+  // proxies it today; Free's entry is false). We collapse the legacy growth
+  // / autopilot aliases here too — they share Pro/Agency capabilities. The
+  // only `required` tier is Free. `channel` isn't in the Tier union today
+  // (the embed types include it, but the desktop normalizes it via the
+  // backend's _LEGACY_TIER_ALIASES → pro before it ever lands here).
+  const hostedAIActive = tier !== "free";
 
   useEffect(() => {
     sidecar.hardwareInfo().then(setHw).catch(() => undefined);
@@ -75,16 +91,39 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
           <span className="library-card-corner-tr" aria-hidden="true" />
           <span className="library-card-corner-bl" aria-hidden="true" />
           <span className="library-card-corner-br" aria-hidden="true" />
-          <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
-            01 — add your OpenAI key · required
+          {/* v0.7.8 fix E7 — badge + headline reflect the cached tier. Pro+
+              users get "optional · hosted AI active"; the key is a fallback
+              for when hosted AI is rate-limited or temporarily down. Free
+              users still see "required" — hosted AI isn't on their plan. */}
+          <div
+            className={`font-mono text-[11px] uppercase tracking-[0.12em] ${
+              hostedAIActive ? "text-text-tertiary" : "text-fuchsia-deep"
+            }`}
+          >
+            01 — add your OpenAI key ·{" "}
+            {hostedAIActive ? "optional · hosted AI active" : "required"}
           </div>
           <h2 className="mt-2 font-display text-[22px] font-semibold tracking-[-0.015em] text-ink">
-            Add your OpenAI key to power clip selection.
+            {hostedAIActive
+              ? "Add your OpenAI key (optional)."
+              : "Add your OpenAI key to power clip selection."}
           </h2>
           <p className="mt-1 font-sans text-[13px] text-text-secondary">
-            Liquid Clips runs locally — every plan uses your own OpenAI key for clip selection today.
-            Stored encrypted in your OS keychain, sent only to OpenAI when Liquid Clips calls it.
-            Hosted AI (no key needed) is in private beta.
+            {hostedAIActive ? (
+              <>
+                Your plan includes hosted AI — clip selection runs through
+                Liquid Clips infrastructure without a key. Pasting your own
+                OpenAI key keeps you covered if hosted AI is rate-limited;
+                stored encrypted in your OS keychain.
+              </>
+            ) : (
+              <>
+                Liquid Clips runs locally — every plan uses your own OpenAI
+                key for clip selection today. Stored encrypted in your OS
+                keychain, sent only to OpenAI when Liquid Clips calls it.
+                Hosted AI (no key needed) is in private beta.
+              </>
+            )}
           </p>
           <div className="mt-4 flex items-center gap-3">
             <input
@@ -110,12 +149,25 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
           {error && (
             <p className="mt-3 font-mono text-[12px] text-[#DC2626]">{error}</p>
           )}
-          <button
-            onClick={() => void openExternal("https://platform.openai.com/api-keys")}
-            className="mt-4 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia hover:text-fuchsia-deep"
-          >
-            Where do I get a key? →
-          </button>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => void openExternal("https://platform.openai.com/api-keys")}
+              className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia hover:text-fuchsia-deep"
+            >
+              Where do I get a key? →
+            </button>
+            {/* v0.7.8 fix E7 — Pro+ users can skip the key paste because
+                hosted AI is already wired. The card 2 sign-in step is the
+                actual gate (hosted AI requires a valid LICENSE_JWT). */}
+            {hostedAIActive && (
+              <button
+                onClick={onComplete}
+                className="ml-auto font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary underline-offset-2 hover:text-fuchsia hover:underline"
+              >
+                Skip — use hosted AI →
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="library-card relative mt-4 rounded-3xl bg-transparent p-7">

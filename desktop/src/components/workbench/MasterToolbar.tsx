@@ -1,3 +1,4 @@
+// ship-lens v0.7.8: W1 — drop Play all / Pause all buttons (singleton playingId makes master playback a lie); workbench tile default is static, per the UI map's "Static tile" conflict resolution.
 // Workbench master toolbar — selection chip + master action fan-out.
 //
 // The cockpit-tile bracket corners + mono uppercase labels match the rest
@@ -31,9 +32,7 @@ import {
   Captions as CaptionsIcon,
   ChevronDown,
   Layers as LayersIcon,
-  Pause,
   Pencil as PencilIcon,
-  Play,
   Ratio as RatioIcon,
   Send,
   Trash2,
@@ -63,7 +62,6 @@ type ToolbarStore = {
   clearSelection: () => void;
   setRatio?: (id: WindowId, ratio: RatioKey | null) => void;
   setCaptionsOpen?: (id: WindowId, open: boolean) => void;
-  promoteToPool?: (id: WindowId, reason: "playing") => void;
 };
 
 type Props = {
@@ -99,10 +97,6 @@ export function MasterToolbar({ project, onProjectChange }: Props) {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
 
-  // When playback is toggled we flip an internal "playing" indicator —
-  // pause_all is a no-op RPC-wise but the icon needs to reflect intent.
-  const [playing, setPlaying] = useState(false);
-
   // Close the popover whenever selection drops to zero — otherwise the
   // user can re-open a stale popover that targets nothing.
   useEffect(() => {
@@ -135,7 +129,6 @@ export function MasterToolbar({ project, onProjectChange }: Props) {
         project,
         onProjectChange,
         {
-          promoteToPool: store.promoteToPool,
           defaultCaption: (c) => c.description || c.title || "",
         },
       );
@@ -146,8 +139,6 @@ export function MasterToolbar({ project, onProjectChange }: Props) {
       if (action.kind === "apply_ratio" && store.setRatio) {
         for (const id of result.ok) store.setRatio(id, action.ratio);
       }
-      if (action.kind === "play_all") setPlaying(true);
-      if (action.kind === "pause_all") setPlaying(false);
       if (action.kind === "remove") {
         // Store reconciliation is the store's job — once it sees a new
         // project with fewer clips it'll prune the removed windows. We
@@ -179,7 +170,6 @@ export function MasterToolbar({ project, onProjectChange }: Props) {
       ]),
     );
     return fanOut(action, ids, windowsLite, project, onProjectChange, {
-      promoteToPool: store.promoteToPool,
       defaultCaption: (c) => c.description || c.title || "",
     });
   }
@@ -315,30 +305,12 @@ export function MasterToolbar({ project, onProjectChange }: Props) {
             );
           })()}
 
-          {/* Play / Pause — immediate, no popover. */}
-          <button
-            type="button"
-            disabled={!enabled}
-            onClick={() =>
-              void dispatch(
-                playing ? { kind: "pause_all" } : { kind: "play_all" },
-                playing ? "Pause all" : "Play all",
-              )
-            }
-            className={actionBtn(enabled)}
-            aria-label={playing ? "Pause all selected" : "Play all selected"}
-            aria-pressed={playing}
-          >
-            {playing ? (
-              <>
-                <Pause className="h-3.5 w-3.5" /> Pause all
-              </>
-            ) : (
-              <>
-                <Play className="h-3.5 w-3.5" /> Play all
-              </>
-            )}
-          </button>
+          {/* v0.7.8 W1: Play all / Pause all removed. Singleton playingId in
+              WindowManager allows ONE <video> at a time per canvas — a master
+              "play all" toggle was a silent no-op (returned ok without
+              starting playback). The UI map's static-tile default wins:
+              the user clicks a tile to play it, Space pauses the focused
+              tile. Mass playback is not a real outcome here. */}
 
           {/* Remove — destructive, two-step confirm via popover. */}
           <button

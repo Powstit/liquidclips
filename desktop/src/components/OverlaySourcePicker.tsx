@@ -1,3 +1,4 @@
+// ship-lens v0.7.8 L6: ProjectClipCard no longer shows an empty `bg-ink` plate when the clip has no `thumbnails[0].path`; falls back to the paused video preview-frame (same family as ClipWindowPoster's v0.7.7 fix #1).
 import { useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -526,9 +527,25 @@ function ProjectClipCard({
       className="group overflow-hidden rounded-lg border border-paper/10 bg-paper/5 text-left transition-all hover:border-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.18)]"
     >
       <div className="relative aspect-[9/16] bg-ink">
-        {thumbSrc && !hover && (
-          <img src={thumbSrc} alt={clip.title} className="h-full w-full object-cover" />
-        )}
+        {/* v0.7.8 L6 — Same family as the v0.7.7 ClipWindowPoster fix #1.
+            Before: when `thumbnails[0]?.path` was missing AND the user
+            wasn't hovering, this tile showed an empty `bg-ink` plate —
+            indistinguishable from an outright broken clip. After: if a
+            thumbnail exists we use it (cheap, no decode), otherwise we
+            always-mount the video element with `preload="metadata"` so
+            frame 0 paints at rest. Hover still swaps to the playing
+            video via the existing opacity transition; we just stop
+            hiding the video at rest when the only thing to show IS the
+            video. */}
+        {thumbSrc ? (
+          <img
+            src={thumbSrc}
+            alt={clip.title}
+            className={`absolute inset-0 h-full w-full object-cover transition-opacity ${
+              hover ? "opacity-0" : "opacity-100"
+            }`}
+          />
+        ) : null}
         {videoSrc && (
           <video
             ref={videoRef}
@@ -536,9 +553,15 @@ function ProjectClipCard({
             muted
             playsInline
             loop
-            preload="none"
+            // v0.7.8 L6 — `metadata` (not `none`) so the browser fetches
+            // enough to paint the poster frame at rest. Tiny cost compared
+            // to an empty `bg-ink` plate; no audible / decode side effects
+            // because the element stays paused + muted until hover.
+            preload="metadata"
             className={`absolute inset-0 h-full w-full object-cover transition-opacity ${
-              hover ? "opacity-100" : "opacity-0"
+              // v0.7.8 L6 — When there's no thumbnail, the video IS the
+              // resting frame, so it should be visible at rest too.
+              hover || !thumbSrc ? "opacity-100" : "opacity-0"
             }`}
           />
         )}

@@ -1,3 +1,16 @@
+// ship-lens v0.7.8 P3 — Stop silently dropping non-active channels.
+//
+// Previously `channelRows.filter((c) => c.status === "active")` collapsed
+// error / paused / pending_link / unlinked channels into a phantom "no
+// channels" empty state, so a user whose TikTok session had expired saw
+// "No platforms connected yet — pick one to start scheduling clips" with
+// fresh dashed connect chips — as if the system had forgotten they ever
+// linked TikTok. Same family of bug as v0.7.7 #7 (ChannelPicker).
+//
+// Fix: render ALL non-deleted channels. Active ones stay clickable +
+// selectable. Non-active ones render as disabled chips with a status-aware
+// hint and resume-the-flow click target where applicable.
+//
 // v0.6.4 — Inline scheduler. Lives ON the clip card; no modal.
 //
 // Daniel's locked direction (no drawer, no modal): every clip should
@@ -150,10 +163,15 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
           listChannels(),
         ]);
         if (cancelled) return;
-        const activeChannels = channelRows.filter((c) => c.status === "active");
+        // ship-lens v0.7.8 P3 — Keep every non-deleted channel so the chip
+        // row truthfully shows the user's accounts; only "active" channels
+        // get the default-on selection so we don't silently try to schedule
+        // to a TikTok with a revoked token.
+        const visibleChannels = channelRows.filter((c) => c.status !== "deleted");
+        const activeChannels = visibleChannels.filter((c) => c.status === "active");
         const state: SocialConnectionState | null =
           strict === "no-connection" ? null : strict;
-        setChannels(activeChannels);
+        setChannels(visibleChannels);
         setConnLoadState({ kind: "loaded", conn: state });
         setPickedChannelIds(new Set(activeChannels.map((c) => c.id)));
         // Default-check every connected platform — Daniel's locked
@@ -186,11 +204,15 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
         socialGetConnectionStrict(),
         listChannels(),
       ]);
-      const activeChannels = channelRows.filter((c) => c.status === "active");
+      // ship-lens v0.7.8 P3 — Same fix as the initial-load path: surface
+      // non-active channels (pending_link / error / paused / unlinked) with
+      // a recovery hint instead of dropping them from the chip row.
+      const visibleChannels = channelRows.filter((c) => c.status !== "deleted");
+      const activeChannels = visibleChannels.filter((c) => c.status === "active");
       const state: SocialConnectionState | null =
         strict === "no-connection" ? null : strict;
       setConnLoadState({ kind: "loaded", conn: state });
-      setChannels(activeChannels);
+      setChannels(visibleChannels);
       setPickedChannelIds((cur) => {
         const next = new Set(cur);
         for (const c of activeChannels) next.add(c.id);
@@ -354,7 +376,22 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
         // swallow N-1 successes that DID land on the server. allSettled lets
         // us surface "scheduled K of N" instead of lying that everything
         // failed.
-        const ids = Array.from(pickedChannelIds);
+        // ship-lens v0.7.8 P3 — Filter the selection to currently-active
+        // channels at submit time. A channel that flipped to unlinked / error
+        // / pending_link between the user's pick and the submit must NOT be
+        // pushed to Ayrshare; the backend would just reject it with a
+        // confusing per-platform error.
+        const activeIds = new Set(
+          channels.filter((c) => c.status === "active").map((c) => c.id),
+        );
+        const ids = Array.from(pickedChannelIds).filter((id) => activeIds.has(id));
+        if (ids.length === 0) {
+          setStatus({
+            kind: "error",
+            message: "None of the selected channels are active — reconnect at least one before scheduling.",
+          });
+          return;
+        }
         const settled = await Promise.allSettled(
           ids.map((channelId) =>
             backend.publishNow(jwt, {
@@ -551,47 +588,87 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
             </p>
           </div>
         ) : hasChannels ? (
+          // ship-lens v0.7.8 P3 — Render EVERY non-deleted channel so the
+          // user can see (and act on) error / paused / pending_link /
+          // unlinked rows instead of seeing the chip silently disappear.
+          // Active rows toggle on click. Non-active rows resume their flow
+          // (pending_link / unlinked → re-open OAuth; error → relink;
+          // paused → instruct user to Settings, since pause is owned
+          // there). The hint is the title attribute so a hover surfaces
+          // WHY the row is unselectable.
           <div className="flex flex-wrap gap-2">
             {channels.map((channel) => {
-              const selected = pickedChannelIds.has(channel.id);
               const id = channel.platform as PlatformId;
               const known = ["youtube", "tiktok", "instagram", "x"].includes(id);
-              const pendingLink = channel.status === "pending_link";
+              const selected = pickedChannelIds.has(channel.id);
+              const platform = channel.platform;
+              const platformPretty = prettyPlatform(platform);
+              const view = chipViewFor(channel.status);
+              const isActive = view.kind === "active";
+              const canResume =
+                (view.kind === "pending" || view.kind === "unlinked" || view.kind === "error")
+                && platform in PLATFORM_LABELS;
               return (
                 <button
                   key={channel.id}
                   type="button"
                   onClick={() => {
-                    // pending_link channels need OAuth completion, not
-                    // selection. Click resumes the link flow on the existing
-                    // channel (backend dedupes via the new idempotent
-                    // upsert + frontend prefers relink over create).
-                    if (pendingLink && channel.platform in PLATFORM_LABELS) {
-                      void connectPlatform(channel.platform as ConnectionPlatform);
-                    } else {
+                    if (isActive) {
                       toggleChannel(channel.id);
+                    } else if (canResume) {
+                      // Resume the OAuth dance on the existing channel.
+                      // Same path as connectPlatform → prefers relink so the
+                      // backend doesn't spawn a fresh sub-profile that would
+                      // strand the real handle on the OLD one.
+                      void connectPlatform(platform as ConnectionPlatform);
                     }
+                    // paused rows are intentionally inert here — pause is
+                    // a Settings-owned action; clicking should not flip it
+                    // from this surface.
                   }}
+                  // pickedChannelIds only gets seeded from active rows, so
+                  // disabling here is purely visual; even without disabled
+                  // a non-active row's onClick path does the right thing.
+                  disabled={!isActive && !canResume}
                   className={
-                    pendingLink
+                    isActive
+                      ? selected
+                        ? "inline-flex items-center gap-2 rounded-full border-2 border-fuchsia bg-fuchsia/15 px-3 py-1.5 font-sans text-[12px] font-semibold text-fuchsia"
+                        : "inline-flex items-center gap-2 rounded-full border border-line bg-paper-elev px-3 py-1.5 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia"
+                      : view.kind === "paused"
+                      ? "inline-flex items-center gap-2 rounded-full border border-text-tertiary/40 bg-text-tertiary/5 px-3 py-1.5 font-sans text-[12px] font-medium text-text-tertiary opacity-80"
+                      : view.kind === "unlinked" || view.kind === "error"
                       ? "inline-flex items-center gap-2 rounded-full border border-[#DC2626]/40 bg-[#DC2626]/10 px-3 py-1.5 font-sans text-[12px] font-medium text-[#DC2626] hover:bg-[#DC2626]/15"
-                      : selected
-                      ? "inline-flex items-center gap-2 rounded-full border-2 border-fuchsia bg-fuchsia/15 px-3 py-1.5 font-sans text-[12px] font-semibold text-fuchsia"
-                      : "inline-flex items-center gap-2 rounded-full border border-line bg-paper-elev px-3 py-1.5 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia"
+                      : // pending_link
+                        "inline-flex items-center gap-2 rounded-full border border-[#F59E0B]/40 bg-[#F59E0B]/10 px-3 py-1.5 font-sans text-[12px] font-medium text-[#F59E0B] hover:bg-[#F59E0B]/15"
                   }
                   title={
-                    pendingLink
-                      ? `Finish linking ${prettyPlatform(channel.platform)} — click to resume`
-                      : `${prettyPlatform(channel.platform)} ${channel.handle ?? channel.label}`
+                    isActive
+                      ? `${platformPretty} ${channel.handle ?? channel.label}`
+                      : `${platformPretty} ${channel.label} — ${view.hint}`
                   }
                 >
-                  <span className={pendingLink ? "grid h-5 w-5 place-items-center rounded-full bg-[#DC2626] text-paper" : selected ? "grid h-5 w-5 place-items-center rounded-full bg-fuchsia text-paper" : "grid h-5 w-5 place-items-center rounded-full bg-ink text-paper"}>
-                    {known ? <PlatformIcon id={id} className="h-2.5 w-2.5" /> : (
+                  <span
+                    className={
+                      isActive
+                        ? selected
+                          ? "grid h-5 w-5 place-items-center rounded-full bg-fuchsia text-paper"
+                          : "grid h-5 w-5 place-items-center rounded-full bg-ink text-paper"
+                        : view.kind === "paused"
+                        ? "grid h-5 w-5 place-items-center rounded-full bg-text-tertiary text-paper"
+                        : view.kind === "unlinked" || view.kind === "error"
+                        ? "grid h-5 w-5 place-items-center rounded-full bg-[#DC2626] text-paper"
+                        : "grid h-5 w-5 place-items-center rounded-full bg-[#F59E0B] text-paper"
+                    }
+                  >
+                    {known ? (
+                      <PlatformIcon id={id} className="h-2.5 w-2.5" />
+                    ) : (
                       <span className="font-mono text-[9px]">{channel.platform[0]?.toUpperCase()}</span>
                     )}
                   </span>
-                  <span className="max-w-[150px] truncate">
-                    {pendingLink ? `Finish ${prettyPlatform(channel.platform)} link` : channel.label}
+                  <span className="max-w-[180px] truncate">
+                    {isActive ? channel.label : `${channel.label} · ${view.badge}`}
                   </span>
                 </button>
               );
@@ -778,4 +855,52 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
       ) : null}
     </section>
   );
+}
+
+// ship-lens v0.7.8 P3 — Status-aware view model for a non-active channel
+// chip. The badge is the short label rendered next to the channel name; the
+// hint is the tooltip / accessible description that tells the user what's
+// wrong and what to do about it. Mirrors the per-status copy in ChannelPicker
+// (v0.7.7 #7) so the language stays consistent across surfaces.
+type ChipView =
+  | { kind: "active" }
+  | { kind: "pending"; badge: string; hint: string }
+  | { kind: "unlinked"; badge: string; hint: string }
+  | { kind: "error"; badge: string; hint: string }
+  | { kind: "paused"; badge: string; hint: string }
+  | { kind: "unknown"; badge: string; hint: string };
+
+function chipViewFor(status: Channel["status"]): ChipView {
+  switch (status) {
+    case "active":
+      return { kind: "active" };
+    case "pending_link":
+      return {
+        kind: "pending",
+        badge: "finish linking",
+        hint: "Finish linking — click to resume",
+      };
+    case "unlinked":
+      // ship-lens v0.7.8 P1 — Distinct from pending_link. The user finished
+      // OAuth at least once; the platform has since revoked our session.
+      return {
+        kind: "unlinked",
+        badge: "disconnected — reconnect",
+        hint: "Disconnected — click to reconnect",
+      };
+    case "error":
+      return {
+        kind: "error",
+        badge: "reconnect",
+        hint: "Reconnect — open Settings → Connections if this persists",
+      };
+    case "paused":
+      return {
+        kind: "paused",
+        badge: "paused",
+        hint: "Paused — resume in Settings before publishing",
+      };
+    default:
+      return { kind: "unknown", badge: status, hint: `Status: ${status}` };
+  }
 }

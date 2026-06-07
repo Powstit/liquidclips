@@ -2,6 +2,11 @@
 
 Single source of truth for table shapes. Alembic migrations are generated
 from these.
+
+ship-lens v0.7.8 P1 — SocialChannel.status now includes "unlinked" so the
+UI can distinguish "I never linked this" (pending_link) from "the platform
+revoked my access" (unlinked). last_unlinked_at stamps when the revoke
+happened so we can surface "Disconnected 2h ago" copy if needed later.
 """
 
 from __future__ import annotations
@@ -270,8 +275,17 @@ class SocialChannel(Base):
     ayrshare_profile_key: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     ayrshare_ref_id: Mapped[str | None] = mapped_column(String, nullable=True)
     handle: Mapped[str | None] = mapped_column(String, nullable=True)                  # @username, pulled from Ayrshare /user
-    status: Mapped[str] = mapped_column(String, nullable=False, default="pending_link")  # pending_link | active | error | paused | deleted
+    # ship-lens v0.7.8 P1 — Added "unlinked" so a platform-side revoke (TikTok
+    # token expiry / user manually disconnecting on the social side) is
+    # distinguishable from "user never finished the OAuth dance" (pending_link).
+    # No SQL enum constraint — string column, normalized in the webhook + UI.
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending_link")  # pending_link | active | error | paused | deleted | unlinked
     last_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # ship-lens v0.7.8 P1 — Stamped when channel.unlinked / channel.disconnected
+    # fires. Lets admin + UI surface "Disconnected 3h ago" copy without
+    # inferring it from last_probe_at (which ticks on every refresh and would
+    # lie about how long ago the revoke actually happened).
+    last_unlinked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     total_posts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)        # denormalized for fast list views
     # Observability — every time we PROBE the channel against Ayrshare (refresh,
     # create, relink), stamp the wall clock and (if it failed) the short error.

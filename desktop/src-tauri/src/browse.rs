@@ -8,7 +8,7 @@
 use tauri::{
     webview::WebviewBuilder, AppHandle, LogicalPosition, LogicalSize, Manager, WebviewUrl,
 };
-use tauri_plugin_shell::ShellExt;
+use tauri_plugin_opener::OpenerExt;
 
 pub const PANEL_LABEL: &str = "browse_panel";
 pub const PANEL_WIDTH: f64 = 560.0;
@@ -62,7 +62,7 @@ pub async fn open_browse_panel(app: AppHandle, url: String) -> Result<(), String
         .map_err(|e| format!("invalid url: {e}"))?;
 
     if is_commerce_url(&parsed_url) {
-        let _ = app.shell().open(parsed_url.to_string(), None);
+        let _ = app.opener().open_url(parsed_url.to_string(), None::<&str>);
         return Ok(());
     }
 
@@ -86,7 +86,7 @@ pub async fn open_browse_panel(app: AppHandle, url: String) -> Result<(), String
                 let target = nav_url.to_string();
                 let app = app_for_filter.clone();
                 tauri::async_runtime::spawn(async move {
-                    let _ = app.shell().open(target, None);
+                    let _ = app.opener().open_url(target, None::<&str>);
                 });
                 return false;
             }

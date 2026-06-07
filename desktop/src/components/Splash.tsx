@@ -1,3 +1,4 @@
+// ship-lens v0.7.8: E8 — intro <video autoPlay> can be blocked by macOS WebKit autoplay rules; pre-fix the user saw 28.5s of black before the splash advanced. Now we detect the play() rejection, render a centered "Tap to play" overlay, and resume on click.
 import { useEffect, useRef, useState } from "react";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
@@ -60,6 +61,11 @@ export function Splash({
   const [copied, setCopied] = useState(false);
   const [stage, setStage] = useState<SplashStage>(() => firstStage());
   const introVideoRef = useRef<HTMLVideoElement>(null);
+  // v0.7.8 fix E8 — when macOS WebKit blocks the video's initial play() the
+  // element stays at frame zero (black). We catch the rejection and flip
+  // this to true so the user gets a clear "Tap to play" affordance. Click
+  // calls play() inside the user-gesture context, which always succeeds.
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
 
   useEffect(() => {
     if (failed) return;
@@ -80,6 +86,47 @@ export function Splash({
     }
     return undefined;
   }, [stage, failed]);
+
+  // v0.7.8 fix E8 — kick the play() promise once the <video> mounts. WebKit's
+  // autoplay rules can deny `autoPlay` even with `muted` + `playsInline` in a
+  // Tauri webview if the user hasn't yet interacted with the window (e.g.
+  // first launch from Finder double-click). We catch the rejection and
+  // surface a tap-to-play overlay instead of leaving 28.5s of black.
+  useEffect(() => {
+    if (stage !== "intro") return;
+    const v = introVideoRef.current;
+    if (!v) return;
+    // The element starts with autoPlay enabled, so the browser already tried.
+    // We piggyback on the resulting promise — if WebKit silently dropped it,
+    // calling play() again from here gives us a real rejection to read.
+    const p = v.play();
+    if (p && typeof p.then === "function") {
+      p.then(() => {
+        // Worked — make sure the overlay isn't lingering from a prior mount.
+        setAutoplayBlocked(false);
+      }).catch(() => {
+        // Rejected — almost certainly the autoplay-blocked path on WebKit.
+        // The overlay handles the recovery (user click → play()).
+        setAutoplayBlocked(true);
+      });
+    }
+  }, [stage]);
+
+  function tapToPlay() {
+    const v = introVideoRef.current;
+    if (!v) return;
+    // Inside the click handler the user gesture is fresh, so play() resolves.
+    const p = v.play();
+    if (p && typeof p.then === "function") {
+      p.then(() => setAutoplayBlocked(false)).catch(() => {
+        // Still failed (rare — e.g. media decode error). Advance past the
+        // intro so the user isn't trapped on a black screen forever.
+        advanceFromIntro();
+      });
+    } else {
+      setAutoplayBlocked(false);
+    }
+  }
 
   function advanceFromIntro() {
     markIntroSeen();
@@ -215,6 +262,30 @@ export function Splash({
         >
           →
         </button>
+        {/* v0.7.8 fix E8 — tap-to-play overlay. Only renders when the
+            initial play() promise was rejected (autoplay-blocked). The
+            backdrop sits above the video but below the skip button so
+            users can still bypass the intro entirely if they prefer. */}
+        {autoplayBlocked && (
+          <button
+            type="button"
+            onClick={tapToPlay}
+            aria-label="Tap to play intro"
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/55 backdrop-blur-sm transition-colors hover:bg-black/65 focus:outline-none focus:ring-2 focus:ring-fuchsia"
+          >
+            <span className="grid h-20 w-20 place-items-center rounded-full border border-fuchsia bg-black/60 text-fuchsia shadow-[var(--glow-sm)]">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <polygon points="6 4 20 12 6 20 6 4" />
+              </svg>
+            </span>
+            <span className="font-display text-[20px] font-semibold tracking-[-0.01em] text-paper">
+              Tap to play
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper/70">
+              your browser blocked autoplay
+            </span>
+          </button>
+        )}
         <style>{splashStyle}</style>
       </div>
     );

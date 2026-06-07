@@ -1,4 +1,4 @@
-// ship-lens v0.7.7: fix #9 — consume meStatus discriminated union so an expired JWT lands on a fuchsia "re-activate this device" banner instead of looking identical to a never-signed-in state.
+// ship-lens v0.7.8: S1 — performSignOut now atomic-wipes every sensitive secret via performAtomicSignOutWipe (centralised in App.tsx) so handing the Mac to someone else doesn't leak OpenAI / Anthropic / Whop / Pexels / Pixabay / Giphy / onboarded keys; the Log-out confirm copy names the API-key clear explicitly. S2 — 5th left-rail tab "Connections" mounts AyrshareConnectionPanel + a per-channel status list (linked / pending_link / unlinked / error) sourced from listChannels() + whopSessionStatus(); Whop session source and Ayrshare profile-key presence both surface in the same pane. S3 — API-keys pane reads sidecar.openaiKeyStatus() on mount so the OPENAI_API_KEY green dot ALSO lights when the key is resolved via env-var (keychain empty was a silent UI lie). v0.7.7 carry-over: fix #9 meStatus discriminated union for expired sessions.
 import { useEffect, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
@@ -7,6 +7,14 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { Camera, Trash2 } from "lucide-react";
 import { sidecar, humanError, type HardwareInfo, type SecretName } from "../lib/sidecar";
 import { useAvatar, avatarSrc, initialsOf } from "../lib/avatar";
+// v0.7.8 S1 — single source of truth for sign-out side-effects. Settings'
+// own performSignOut used to call sidecar.secretDelete("LICENSE_JWT") in
+// isolation; without this import, BYO API keys + onboarded flag remained on
+// the keychain when a user signed out from Settings (same leak the AvatarPanel
+// path had). One helper, both call sites.
+import { performAtomicSignOutWipe } from "../App";
+import { Channel } from "../lib/backend";
+import AyrshareConnectionPanel from "./AyrshareConnectionPanel";
 
 // Single source of truth — pulled from package.json so a stale constant can't
 // land in the Settings → About row again after a ship.
@@ -50,7 +58,12 @@ const WHOP_MANAGE_URL = "https://whop.com/jnremployee";
 // v0.6.4 — Strict-utility (Whop-pattern) Settings.
 // Categories drive what the right pane shows; left rail switches between
 // them. No painted decoration inside chrome (the v0.6.3 cover hero retired).
-type SettingsCategory = "account" | "keys" | "about" | "diagnostics";
+// v0.7.8 S2 — "connections" tab added. Mounts AyrshareConnectionPanel +
+// a per-channel link-state list + the Whop session source so the user
+// has ONE pane that answers "what's connected to publish from here?" — was
+// previously fragmented between Settings (Ayrshare hidden / unmounted),
+// Schedule → Channels (link state only), and WhoAmI (Whop session source).
+type SettingsCategory = "account" | "keys" | "connections" | "about" | "diagnostics";
 type DepsInfo = {
   ok: boolean;
   missing: string[];
@@ -61,20 +74,26 @@ type DepsInfo = {
 const CATEGORY_LABELS: Record<SettingsCategory, string> = {
   account: "Account",
   keys: "API keys",
+  connections: "Connections",
   about: "About",
   diagnostics: "Diagnostics",
 };
 
-export function Settings({ onClose, onSignOut, onOpenSchedule: _onOpenSchedule, tier = "free" }: { onClose: () => void; onSignOut?: () => void; onOpenSchedule?: (subtab?: "queue" | "channels" | "analytics") => void; tier?: Tier }) {
-  // Analytics Phase 1 — `onOpenSchedule` is accepted here so the wiring is
-  // in place for when AyrshareConnectionPanel gets mounted inside Settings
-  // (sprint #17 connections section). Today it's a no-op leaf: App.tsx
-  // already forwards the callback, and any future render of
-  // <AyrshareConnectionPanel onOpenSchedule={_onOpenSchedule} /> will Just
-  // Work. Underscore-prefix to silence the unused-var lint without dropping
-  // the contract.
-  void _onOpenSchedule;
+export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: { onClose: () => void; onSignOut?: () => void; onOpenSchedule?: (subtab?: "queue" | "channels" | "analytics") => void; tier?: Tier }) {
+  // v0.7.8 S2 — `onOpenSchedule` is now actively consumed by the Connections
+  // tab: the AyrshareConnectionPanel's "view analytics →" chip + the per-
+  // channel link list's "manage channels →" chip both jump into Schedule's
+  // sub-tabs without leaving Settings' left-rail context. Pre-fix the
+  // callback was accepted but unused; the chip silently no-op'd.
   const [secrets, setSecrets] = useState<Record<SecretName, boolean> | null>(null);
+  // v0.7.8 S3 — openaiKeyStatus reports "is there ANY resolvable OpenAI key"
+  // (env var → keychain → dev file). Pre-fix Settings only checked the
+  // keychain via secretsStatus(); a user with OPENAI_API_KEY exported in
+  // their shell / .env saw a RED dot for OPENAI_API_KEY despite every
+  // pipeline call working — silent UI lie. Tracked independently so the
+  // truth-source of "available" can light the green dot, and a "via env
+  // var" suffix surfaces when the keychain leg is empty.
+  const [openaiAvailable, setOpenaiAvailable] = useState<boolean | null>(null);
   const [hw, setHw] = useState<HardwareInfo | null>(null);
   const [editingKey, setEditingKey] = useState<SecretName | null>(null);
   const [draftValue, setDraftValue] = useState("");
@@ -193,11 +212,14 @@ export function Settings({ onClose, onSignOut, onOpenSchedule: _onOpenSchedule, 
   async function performSignOut() {
     if (signingOut) return;
     setSigningOut(true);
-    try {
-      await sidecar.secretDelete("LICENSE_JWT");
-    } catch {
-      /* best-effort */
-    }
+    // v0.7.8 S1 — single atomic wipe call. Pre-fix this only deleted
+    // LICENSE_JWT, leaving every BYO API key (OpenAI / Anthropic / Whop /
+    // Pexels / Pixabay / Giphy) and the LIQUIDCLIPS_ONBOARDED flag on the
+    // keychain — the next user on the Mac would inherit the prior user's
+    // billing surface. performAtomicSignOutWipe also resets telemetry
+    // consent + clears the avatar Zustand store so the orbit doesn't bleed
+    // the prior face into the next session.
+    await performAtomicSignOutWipe();
     // (17) Run onSignOut BEFORE onClose. Closing first unmounts the drawer
     // and would race with the app-level sign-out handler that may want to
     // re-open it (e.g. to show a sign-in prompt).
@@ -218,6 +240,14 @@ export function Settings({ onClose, onSignOut, onOpenSchedule: _onOpenSchedule, 
       .secretsStatus()
       .then((r) => setSecrets(r.secrets))
       .catch((e) => setBootErrors((errs) => [...errs, `secrets: ${humanError(e)}`]));
+    // v0.7.8 S3 — separate "is any OpenAI key resolvable" probe. Result
+    // flows into the SecretRow's `presentOverride` for OPENAI_API_KEY so
+    // env-var-only users see the green dot. Failure leaves it null — the
+    // keychain check still drives the dot, matching pre-v0.7.8 behaviour.
+    void sidecar
+      .openaiKeyStatus()
+      .then((r) => setOpenaiAvailable(r.available))
+      .catch(() => setOpenaiAvailable(null));
     void sidecar
       .hardwareInfo()
       .then(setHw)
@@ -440,11 +470,29 @@ export function Settings({ onClose, onSignOut, onOpenSchedule: _onOpenSchedule, 
             </p>
             {secrets && (
               <div className="flex flex-col gap-2">
-                {(Object.keys(secrets) as SecretName[]).map((name) => (
+                {(Object.keys(secrets) as SecretName[]).map((name) => {
+                  // v0.7.8 S3 — env-var resolution flows into the green dot
+                  // for OPENAI_API_KEY only. Other secrets (BYO Anthropic,
+                  // license JWT, etc.) keep the keychain-only signal. The
+                  // suffix renders when keychain is empty but env-var
+                  // resolution says present, so the user knows the dot is
+                  // lit by something they can't manage from this pane.
+                  const isOpenai = name === "OPENAI_API_KEY";
+                  const keychainPresent = secrets[name];
+                  const effectivePresent =
+                    isOpenai && openaiAvailable === true
+                      ? true
+                      : keychainPresent;
+                  const sourceSuffix =
+                    isOpenai && !keychainPresent && openaiAvailable === true
+                      ? "via env var"
+                      : null;
+                  return (
                     <SecretRow
                       key={name}
                       name={name}
-                      present={secrets[name]}
+                      present={effectivePresent}
+                      sourceSuffix={sourceSuffix}
                       editing={editingKey === name}
                       draftValue={draftValue}
                       errorMessage={secretErrors[name] ?? null}
@@ -460,7 +508,8 @@ export function Settings({ onClose, onSignOut, onOpenSchedule: _onOpenSchedule, 
                       onSave={() => void saveSecret(name)}
                       onClear={() => void clearSecret(name)}
                     />
-                  ))}
+                  );
+                })}
               </div>
             )}
           </Section>
@@ -485,6 +534,20 @@ export function Settings({ onClose, onSignOut, onOpenSchedule: _onOpenSchedule, 
               clipboardError={clipboardError}
               onCopy={() => void copyDiagnostics()}
             />
+          )}
+
+          {/* v0.7.8 S2 — Connections pane. Three stacked surfaces that all
+              answer the same user question — "what's wired up to publish /
+              earn from this Mac?". Pre-fix this data lived in three places:
+              AyrshareConnectionPanel existed as a component but was never
+              mounted, WhoAmISection buried whopSessionStatus in the
+              Account tab, and ChannelsManager surfaced per-channel link
+              state on the Schedule page. Now one pane shows all three.
+              Forwarding onOpenSchedule lets the Ayrshare "view analytics →"
+              chip jump into Schedule → Analytics without leaving Settings'
+              left-rail context. */}
+          {category === "connections" && (
+            <ConnectionsSection onOpenSchedule={onOpenSchedule} />
           )}
 
           {category === "about" && (
@@ -709,9 +772,17 @@ export function Settings({ onClose, onSignOut, onOpenSchedule: _onOpenSchedule, 
       <ConfirmDialog
         open={confirmSignOutOpen}
         tone="destructive"
-        title="Sign out of Liquid Clips?"
-        body={<>You&apos;ll sign in again to come back in.</>}
-        confirmLabel="Sign out"
+        title="Sign out and forget your API keys on this Mac?"
+        body={
+          <>
+            We&apos;ll clear your Liquid Clips session AND every API key you
+            stored in the keychain on this machine — OpenAI, Anthropic, Whop,
+            Pexels, Pixabay, Giphy. Useful if you&apos;re handing the Mac to
+            someone else. You&apos;ll paste your keys back in next time you
+            sign in.
+          </>
+        }
+        confirmLabel="Sign out + clear keys"
         busy={signingOut}
         onCancel={() => { if (!signingOut) setConfirmSignOutOpen(false); }}
         onConfirm={() => { void performSignOut(); }}
@@ -761,6 +832,7 @@ function BracketFrame({ children }: { children: React.ReactNode }) {
 function SecretRow({
   name,
   present,
+  sourceSuffix,
   editing,
   draftValue,
   errorMessage,
@@ -772,6 +844,10 @@ function SecretRow({
 }: {
   name: SecretName;
   present: boolean;
+  /** v0.7.8 S3 — muted "via env var" suffix shown next to "stored" when the
+   *  key is resolvable but the keychain leg is empty. Renders only when
+   *  callers explicitly pass it, so non-OpenAI rows are unaffected. */
+  sourceSuffix?: string | null;
   editing: boolean;
   draftValue: string;
   errorMessage: string | null;
@@ -832,6 +908,9 @@ function SecretRow({
           />
           <span className="text-ink">{name}</span>
           <span className="text-text-tertiary">{present ? "stored" : "not set"}</span>
+          {sourceSuffix && (
+            <span className="text-text-tertiary/70 italic">· {sourceSuffix}</span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <HudChip active={false} onClick={onEdit}>
@@ -1217,6 +1296,164 @@ function WhoAmISection() {
 }
 
 
+// v0.7.8 S2 — One-stop "what's connected to publish from this Mac?" pane.
+//
+// Three sources of truth, three surfaces, one user question:
+//   1. AyrshareConnectionPanel — Ayrshare profile-key presence + linked
+//      platforms (the publish backend). Pre-fix: existed as a component but
+//      was never mounted; users connected accounts on Schedule but had no
+//      way to verify the key/platform state from a Settings pane.
+//   2. ConnectionsChannelsList — per-channel link state (active / pending_link
+//      / paused / error) — same primitives ChannelsManager renders, but
+//      read-only. Click-through jumps to the Schedule → Channels sub-tab
+//      where the full rename / refresh / pause / delete chrome lives.
+//   3. WhopSessionRow — desktop's Whop OAuth token source (iframe / env_user
+//      / keychain / seller_key / none). Same row WhoAmI shows, lifted up
+//      so the user doesn't have to switch tabs to debug Earn-tab access.
+function ConnectionsSection({
+  onOpenSchedule,
+}: {
+  onOpenSchedule?: (subtab?: "queue" | "channels" | "analytics") => void;
+}) {
+  return (
+    <>
+      <Section eyebrow="publish backend" title="What can post on your behalf.">
+        <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+          Liquid Clips publishes through Ayrshare. Each social account OAuths directly with the platform; your credentials never sit on our servers. Link or rename channels from Schedule → Channels.
+        </p>
+        <AyrshareConnectionPanel onOpenSchedule={onOpenSchedule} />
+      </Section>
+      <ConnectionsChannelsList onOpenSchedule={onOpenSchedule} />
+      <WhopSessionRow />
+    </>
+  );
+}
+
+function ConnectionsChannelsList({
+  onOpenSchedule,
+}: {
+  onOpenSchedule?: (subtab?: "queue" | "channels" | "analytics") => void;
+}) {
+  const [channels, setChannels] = useState<Channel[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void import("../lib/backend")
+      .then((m) => m.listChannels())
+      .then((list) => {
+        if (!cancelled) setChannels(list);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(humanError(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <Section eyebrow="channels" title="Per-channel link state.">
+      <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+        Read-only snapshot of every channel Schedule knows about. Rename,
+        refresh, pause, or delete from Schedule → Channels.
+      </p>
+      {channels === null && !error && (
+        <p className="font-mono text-[11px] text-text-tertiary">
+          Reading channels<span className="blink">_</span>
+        </p>
+      )}
+      {error && (
+        <p className="font-mono text-[11px] text-[#DC2626]">
+          Couldn&apos;t reach the channels endpoint — {error}
+        </p>
+      )}
+      {channels && channels.length === 0 && !error && (
+        <p className="font-sans text-[13px] text-text-secondary">
+          No channels linked yet. Schedule → Channels → Add channel.
+        </p>
+      )}
+      {channels && channels.length > 0 && (
+        <BracketFrame>
+          {channels.map((c) => (
+            <ChannelStatusRow key={c.id} channel={c} />
+          ))}
+        </BracketFrame>
+      )}
+      {onOpenSchedule && (
+        <div>
+          <HudChip active={false} onClick={() => onOpenSchedule("channels")}>
+            Manage channels →
+          </HudChip>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function ChannelStatusRow({ channel }: { channel: Channel }) {
+  // Status palette mirrors ChannelCard.tsx so a user comparing the two
+  // surfaces reads the same colour language. Unknown statuses fall back to
+  // text-tertiary instead of throwing or rendering blank — exhaustive types
+  // can drift if the backend adds a new ChannelStatus before the desktop
+  // does, and a silent render would lie about the connection's real state.
+  const statusInfo: { label: string; tone: string } = (() => {
+    switch (channel.status) {
+      case "active":
+        return { label: "linked", tone: "text-fuchsia" };
+      case "pending_link":
+        return { label: "pending link", tone: "text-[#F59E0B]" };
+      case "paused":
+        return { label: "paused", tone: "text-text-secondary" };
+      case "error":
+        return { label: "error", tone: "text-[#DC2626]" };
+      default:
+        return { label: String(channel.status), tone: "text-text-tertiary" };
+    }
+  })();
+  const handle = channel.handle ? `@${channel.handle}` : channel.platform;
+  return (
+    <div className="flex items-center justify-between gap-3 border-t border-line/60 pt-1 first:border-t-0 first:pt-0">
+      <span className="truncate font-sans text-[12px] text-ink" title={`${channel.label} · ${handle}`}>
+        {channel.label} · <span className="text-text-tertiary">{handle}</span>
+      </span>
+      <span className={`font-mono text-[10px] uppercase tracking-[0.12em] ${statusInfo.tone}`}>
+        {statusInfo.label}
+      </span>
+    </div>
+  );
+}
+
+function WhopSessionRow() {
+  const [source, setSource] = useState<string>("…");
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void sidecar
+      .whopSessionStatus()
+      .then((s) => {
+        if (!cancelled) setSource(s.source ?? "none");
+      })
+      .catch((e) => {
+        if (!cancelled) setError(humanError(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return (
+    <Section eyebrow="whop session" title="Where the Earn tab reads from.">
+      <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+        Liquid Clips needs a Whop session to load bounties and pay you out.
+        This row reports the source of the current desktop token.
+      </p>
+      <BracketFrame>
+        <DebugRow label="Source" value={error ?? source} />
+      </BracketFrame>
+    </Section>
+  );
+}
+
 function DebugRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3 border-t border-line/60 pt-1 first:border-t-0 first:pt-0">
@@ -1597,7 +1834,7 @@ function SettingsLeftRail({
   active: SettingsCategory;
   onSelect: (c: SettingsCategory) => void;
 }) {
-  const items: SettingsCategory[] = ["account", "keys", "about", "diagnostics"];
+  const items: SettingsCategory[] = ["account", "keys", "connections", "about", "diagnostics"];
   return (
     <nav
       className="flex w-[180px] shrink-0 flex-col gap-1 border-r border-line bg-transparent px-3 py-5"

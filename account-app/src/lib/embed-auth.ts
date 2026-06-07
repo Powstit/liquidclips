@@ -1,3 +1,4 @@
+// ship-lens v0.7.8: fix E1 — added `authStatus` to surface the JWT-bridge stall state (4s wait → "stalled") so BountyList never renders a forever-skeleton when desktop never replies. Wire on EmbedAuthBridge timer; consumed by BountyList.
 // ship-lens v0.7.7: fix #10 — desktop pushes my-whop-submission IDs via the auth-jwt reply so the embed's status pills stop being silently empty
 // SURFACE: embed auth helper
 // MAP TAGS: (O #7 — proof of identity) — every embed surface relies on this
@@ -26,6 +27,24 @@ export type EmbedTier =
   | "autopilot"
   | null;
 
+/** Lifecycle status of the JWT-bridge handshake.
+ *
+ *  v0.7.8 fix E1 — the JWT arrives over postMessage from the desktop parent.
+ *  Pre-v0.7.8 we had no UX for "userId is present but the desktop never
+ *  answered" → BountyList's skeleton rendered forever. The bridge now arms
+ *  a 4s timer at mount; if no JWT lands by then we flip to `"stalled"` and
+ *  consumers (BountyList) render a "couldn't reach desktop" panel + retry.
+ *
+ *  States:
+ *  - `idle`     — userId is null OR we haven't bothered to request yet
+ *                 (page rendered for an unauthenticated user / outside-iframe
+ *                 preview); not an error.
+ *  - `pending`  — request was sent, 4s timer running, no reply yet.
+ *  - `ok`       — JWT arrived; steady state.
+ *  - `stalled`  — 4s elapsed with no `lc:auth-jwt` reply. Consumer surfaces
+ *                 an honest fallback + retry CTA. */
+export type EmbedAuthStatus = "idle" | "pending" | "ok" | "stalled";
+
 export type EmbedAuthState = {
   /** Clerk userId from server-side auth() (null when not signed in). */
   userId: string | null;
@@ -45,6 +64,14 @@ export type EmbedAuthState = {
    *  reading its own localStorage (which would always be empty because
    *  the embed origin never wrote anything to it). */
   submissionIds: string[];
+  /** v0.7.8 fix E1 — JWT-bridge handshake state. Wired by EmbedAuthBridge,
+   *  consumed by BountyList so the skeleton doesn't render forever when the
+   *  desktop parent never answers `lc:auth-request`. */
+  authStatus: EmbedAuthStatus;
+  /** v0.7.8 fix E1 — manual retry. Re-sends `lc:auth-request` and re-arms
+   *  the 4s stall timer. The "Reopen Earn" / "Retry" CTA on the stalled
+   *  panel calls this. No-op outside an iframe (silent). */
+  requestAuth: () => void;
 };
 
 export const EMBED_AUTH_DEFAULT: EmbedAuthState = {
@@ -52,6 +79,10 @@ export const EMBED_AUTH_DEFAULT: EmbedAuthState = {
   tier: null,
   jwt: null,
   submissionIds: [],
+  authStatus: "idle",
+  // Default context is a no-op — outside the bridge there's no parent to
+  // post to. The real implementation lives in EmbedAuthBridge.
+  requestAuth: () => {},
 };
 
 // Message protocol — kept tiny on purpose so the desktop parent can mirror it

@@ -1,5 +1,6 @@
 "use client";
 
+// ship-lens v0.7.8: E1 — renders a "couldn't reach desktop — reopen Earn" panel + retry when EmbedAuthBridge surfaces authStatus="stalled" (prevents forever-skeleton); E4 — Start CTA disabled with "0 spots left" badge when spotsRemaining===0; E5 — added `paid` to Submission status union with green/fuchsia pillTone.
 // ship-lens v0.7.7: fix #10 — SubmissionStatusIsland reads submission IDs from EmbedAuthBridge context (desktop-pushed), not localStorage (was always empty due to origin prefix mismatch)
 // SURFACE: bounty list (embed port of EarnTab bounty grid + BountyCard)
 // MAP TAGS: (O #5)(O #6) bounty list
@@ -59,7 +60,7 @@ type Tier =
 
 export function BountyList({ userTier = null }: { userTier?: Tier }) {
   void userTier; // reserved for future tier-gated bounties — kept in the shape today.
-  const { jwt, submissionIds } = useEmbedAuth();
+  const { jwt, submissionIds, authStatus, requestAuth } = useEmbedAuth();
   const [bounties, setBounties] = useState<WhopBounty[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +96,35 @@ export function BountyList({ userTier = null }: { userTier?: Tier }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchBounties();
   }, [jwt, fetchBounties]);
+
+  // v0.7.8 fix E1 — stall state takes precedence over loading. Pre-fix this
+  // path used to render skeletons forever when the desktop parent never
+  // answered `lc:auth-request` (e.g. user opened the embed URL in a regular
+  // browser, or the Tauri webview lost the parent reference). Now we render
+  // an honest "couldn't reach desktop" card with a retry button that
+  // re-fires the postMessage and re-arms the stall timer.
+  if (authStatus === "stalled" && !jwt) {
+    return (
+      <section className="flex flex-col gap-3">
+        <Heading />
+        <div className="rounded-2xl border border-[#EAB308]/40 bg-[#EAB308]/10 p-4">
+          <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#A87A00]">
+            connection paused
+          </div>
+          <p className="mt-2 font-sans text-[13px] text-text-secondary">
+            Couldn&apos;t reach desktop — reopen Earn from the Liquid Clips
+            sidebar, or retry below.
+          </p>
+          <button
+            onClick={() => requestAuth()}
+            className="mt-3 rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-text-secondary hover:border-fuchsia hover:text-ink"
+          >
+            Retry
+          </button>
+        </div>
+      </section>
+    );
+  }
 
   // Loading state — show until the JWT arrives AND the first fetch settles.
   if (!jwt || loading) {
@@ -281,16 +311,31 @@ function BountyCard({ bounty }: { bounty: WhopBounty }) {
       {/* Actions — only "Start clipping" in the embed. The desktop intercepts
           and routes natively. No Brief / Details in the embed today — those
           live on the desktop's BountyDetail surface and would require a
-          per-bounty sub-route to render here. */}
+          per-bounty sub-route to render here.
+
+          v0.7.8 fix E4 — closed bounties (spotsRemaining===0) replace the
+          Start button with a "0 spots left" badge. Pre-fix the CTA was
+          clickable on closed campaigns; Whop's submit-bounty endpoint then
+          rejected with a confusing 4xx by the time the user landed in
+          Workspace. This surface ships the rejection at the source. */}
       <div className="mt-auto flex items-center gap-1.5">
-        <button
-          onClick={onStart}
-          disabled={starting}
-          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-fuchsia px-3 py-1.5 font-sans text-[12px] font-medium text-white transition-all hover:bg-fuchsia-bright disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          {starting ? "Starting…" : "Start clipping"}
-          {!starting && <ArrowRightIcon />}
-        </button>
+        {spotsRemaining <= 0 ? (
+          <span
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary"
+            title="This bounty has no open spots."
+          >
+            0 spots left
+          </span>
+        ) : (
+          <button
+            onClick={onStart}
+            disabled={starting}
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-fuchsia px-3 py-1.5 font-sans text-[12px] font-medium text-white transition-all hover:bg-fuchsia-bright disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {starting ? "Starting…" : "Start clipping"}
+            {!starting && <ArrowRightIcon />}
+          </button>
+        )}
       </div>
     </article>
   );
@@ -307,7 +352,14 @@ type WhopSubmission = {
     | "approved"
     | "denied"
     | "expired"
-    | "unclaimed";
+    | "unclaimed"
+    // v0.7.8 fix E5 — terminal user-relevant state. The backend's Whop
+    // GraphQL passthrough already returns "paid" for accepted submissions
+    // that have been disbursed; pre-fix the union dropped it, and React's
+    // pill fell through to the "default secondary" tone (looks identical
+    // to plain "submitted"). Adds a green/fuchsia tone below so the user
+    // sees "paid" land distinctly when the money clears.
+    | "paid";
   formattedPayoutAmount: string | null;
   bounty?: { id: string; title: string };
 };
@@ -409,6 +461,12 @@ function SubmissionStatusIsland({
 }
 
 function pillTone(status: WhopSubmission["status"]): string {
+  // v0.7.8 fix E5 — `paid` is the terminal success state. Tone uses both the
+  // brand fuchsia (matches "approved") and a green accent on the dot so the
+  // user can tell "money cleared" apart from "approved, payment pending" at
+  // a glance. Approved → fuchsia. Paid → fuchsia border + green fill, the
+  // single celebratory pill in the system.
+  if (status === "paid") return "border-fuchsia/60 bg-[#16A34A]/10 text-[#16A34A]";
   if (status === "approved") return "border-fuchsia/40 bg-fuchsia-soft/30 text-fuchsia-deep";
   if (status === "denied") return "border-[#DC2626]/40 bg-[#DC2626]/5 text-[#F87171]";
   return "border-line bg-paper-warm/40 text-text-secondary";

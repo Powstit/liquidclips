@@ -17,6 +17,8 @@
     "fs:allow-appdata-meta-recursive",
     "shell:default",
     "shell:allow-open",
+    "opener:default",
+    "opener:allow-open-url",
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-read-text",
     "updater:default",

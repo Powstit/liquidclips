@@ -32,7 +32,7 @@ use tauri::{
     webview::{PageLoadEvent, WebviewBuilder},
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl,
 };
-use tauri_plugin_shell::ShellExt;
+use tauri_plugin_opener::OpenerExt;
 
 pub const PANEL_LABEL: &str = "earn_panel";
 
@@ -236,7 +236,7 @@ pub async fn open_earn_panel(app: AppHandle) -> Result<(), String> {
                 let target = nav_url.to_string();
                 let app = app_for_filter.clone();
                 tauri::async_runtime::spawn(async move {
-                    let _ = app.shell().open(target, None);
+                    let _ = app.opener().open_url(target, None::<&str>);
                 });
                 return false;
             }

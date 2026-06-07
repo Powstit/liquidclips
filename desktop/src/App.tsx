@@ -1,4 +1,4 @@
-// ship-lens v0.7.7: fix #3 — wrap sidecar.ping() with an 8s race timeout so a stuck Python boot routes the splash to the failed/Restart card instead of hanging forever; fix #5 — route the Script tile to the real liftTranscript handler instead of the clips pipeline; fix #9 — consume the meStatus discriminated union (kind: "ok" | "expired" | "signed-out") so expired sessions can fire the re-activate banner.
+// ship-lens v0.7.8: S1 — performSignOut now atomic-wipes every sensitive secret (LICENSE_JWT + 6 BYO keys + LIQUIDCLIPS_ONBOARDED), clears the avatar Zustand store, and resets telemetry consent so a Mac handoff doesn't leak the previous user; copy on the confirm dialog now names the API-key wipe explicitly. S5 — top-level fuchsia "engine restarted" banner mounts on the sidecar:died event, auto-dismisses on the next successful sidecar call, exposes a Restart button. S6 — check_deps throw now routes to a remediation card with an empty `missing:[]` (the deps-missing surface renders it gracefully) so a fresh user is never stranded on an empty workspace. v0.7.7 carry-overs preserved: fix #3 sidecar.ping() race, fix #5 Script tile lift wire, fix #9 meStatus discriminated union.
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
@@ -58,14 +58,14 @@ import { AuthPanel } from "./components/auth/AuthPanel";
 import { useAuthPanel, closeAuthPanel } from "./components/auth/useAuthPanel";
 import { isAdminEmail } from "./lib/useTier";
 import { recordAchievement } from "./lib/achievements";
-import { humanError, sidecar, visibleStagesFor, pipelineStagesFor, backgroundStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type StageName } from "./lib/sidecar";
+import { humanError, sidecar, subscribeSidecarDied, visibleStagesFor, pipelineStagesFor, backgroundStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type SecretName, type StageName } from "./lib/sidecar";
 import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
 import { initDeepLinks, setOnActivated } from "./lib/activation";
 import { HOSTED_LLM_ENABLED } from "./lib/flags";
 import { closeBrowsePanel, openBrowsePanel, reconcileBrowsePanel, useBrowsePanel, WHOP_COMMUNITY_URL, WHOP_REWARDS_URL } from "./lib/browse";
 import { CommunityTab } from "./components/CommunityTab";
 import { BrowseRewardsPanel } from "./components/BrowseRewardsPanel";
-import { reportDesktopError } from "./lib/telemetry";
+import { reportDesktopError, setTelemetryConsent } from "./lib/telemetry";
 import { applyUpdate, checkForUpdate, type UpdateState } from "./lib/updater";
 import { TranscriptResult, LiftingProgress } from "./components/TranscriptResult";
 import { IntentPicker } from "./components/IntentPicker";
@@ -157,6 +157,13 @@ export default function App() {
   >(null);
   const [confirmSignOutOpen, setConfirmSignOutOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  // v0.7.8 S5 — mid-session sidecar crash banner. `engineRestartReason`
+  // captures the exit code the Rust shell parsed out of the death event so
+  // we can surface "engine restarted (exit N)" copy when present. Auto-
+  // dismisses after the NEXT successful sidecar call lands — see the
+  // `sidecarCallSuccessAt` heartbeat below. Restart button calls relaunch.
+  const [engineRestartReason, setEngineRestartReason] = useState<{ exit_code: number | null } | null>(null);
+  const [engineRestarting, setEngineRestarting] = useState(false);
 
   // Sprint #14c — global "open Settings" bus so any component (e.g. the
   // Earn-tab ConnectionBadge "Sign in with Whop" CTA) can pop Settings open
@@ -166,6 +173,45 @@ export default function App() {
     window.addEventListener("lc:open-settings", open);
     return () => window.removeEventListener("lc:open-settings", open);
   }, []);
+
+  // v0.7.8 S5 — surface mid-session sidecar crashes as a top-level fuchsia
+  // banner. Pre-fix the only path to learn about a sidecar:died event was
+  // via individual RPC rejections (SidecarCrashedError) — which only screens
+  // with an in-flight call surfaced. A user looking at the cockpit landing
+  // could lose the engine and never see a hint. subscribeSidecarDied is the
+  // single-source-of-truth event Rust emits on Python death; the banner
+  // mounts the moment it fires.
+  useEffect(() => {
+    const unsubscribe = subscribeSidecarDied((info) => {
+      setEngineRestartReason({ exit_code: info.exit_code });
+    });
+    return unsubscribe;
+  }, []);
+
+  // Auto-dismiss the engine-restart banner once a sidecar call comes back
+  // clean. Cheap heartbeat: ping every 4s while the banner is up; clear on
+  // first success. Failure leaves the banner mounted so the Restart button
+  // remains visible. We don't run the heartbeat when the banner is down,
+  // so steady-state cost is zero.
+  useEffect(() => {
+    if (!engineRestartReason) return;
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      try {
+        await sidecar.ping();
+        if (!cancelled) setEngineRestartReason(null);
+      } catch {
+        /* sidecar still down — keep the banner mounted */
+      }
+    };
+    void tick();
+    const interval = window.setInterval(() => void tick(), 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [engineRestartReason]);
 
   // P0 #3 — WorkingStage Cancel fires `lc:pipeline-cancel`; App.tsx flips the
   // shared ref so the between-stage loop bails before the next sidecar call.
@@ -325,9 +371,21 @@ export default function App() {
               !secrets.OPENAI_API_KEY;
             setShowOnboarding(firstRun);
           }
-        } catch {
-          // check_deps itself failed — sidecar is too broken to even probe.
-          // Fall through; pipeline calls will surface their own errors.
+        } catch (e) {
+          // v0.7.8 S6 — check_deps itself failed: don't strand a fresh user
+          // on an empty workspace with no remediation card. Route them to
+          // the deps-missing surface with an empty `missing` list — that
+          // view renders the raw probe error in the <details> "raw import
+          // errors" pane and surfaces a Retry chip so the user can pull a
+          // fresh probe without restarting. Mirrors the recovery path that
+          // sidecar.ping() failure already takes via setSidecarStatus.
+          const probeMessage = humanError(e);
+          setView({
+            kind: "deps-missing",
+            missing: [],
+            errors: { check_deps: probeMessage },
+            python: "unavailable",
+          });
         }
         sidecar.preloadWhisper().catch(() => undefined);
         // Check for a license JWT in the keychain. Presence = signed in. We
@@ -1615,6 +1673,37 @@ export default function App() {
         </div>
       )}
 
+      {/* v0.7.8 S5 — mid-session sidecar crash banner. Auto-mounts when
+          subscribeSidecarDied fires; auto-dismisses on the next successful
+          sidecar.ping() landed via the 4s heartbeat above; Restart button
+          fires the tauri-plugin-process relaunch so the user can short-
+          circuit the recovery without quitting from the menu bar. */}
+      {engineRestartReason && (
+        <div className="flex items-center justify-between border-t border-fuchsia-soft bg-fuchsia-soft/40 px-6 py-2">
+          <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
+            ● Engine restarted{engineRestartReason.exit_code != null ? ` (exit ${engineRestartReason.exit_code})` : ""} — features may need a moment
+          </div>
+          <button
+            onClick={async () => {
+              if (engineRestarting) return;
+              setEngineRestarting(true);
+              try {
+                const m = await import("@tauri-apps/plugin-process");
+                await m.relaunch();
+              } catch {
+                /* relaunch is best-effort; user can still quit + reopen */
+              } finally {
+                setEngineRestarting(false);
+              }
+            }}
+            disabled={engineRestarting}
+            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-50"
+          >
+            {engineRestarting ? "Restarting…" : "Restart Liquid Clips"}
+          </button>
+        </div>
+      )}
+
       {updateBanner.kind === "available" && (
         <div className="flex items-center justify-between border-t border-fuchsia-soft bg-fuchsia-soft/40 px-6 py-2">
           <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
@@ -1776,19 +1865,29 @@ export default function App() {
       <ConfirmDialog
         open={confirmSignOutOpen}
         tone="destructive"
-        title="Sign out of Liquid Clips?"
-        body={<>You&apos;ll sign in again to come back in.</>}
-        confirmLabel="Sign out"
+        title="Sign out and forget your API keys on this Mac?"
+        body={
+          <>
+            We&apos;ll clear your Liquid Clips session AND every API key you
+            stored in the keychain on this machine — OpenAI, Anthropic, Whop,
+            Pexels, Pixabay, Giphy. Useful if you&apos;re handing the Mac to
+            someone else. You&apos;ll paste your keys back in next time you
+            sign in.
+          </>
+        }
+        confirmLabel="Sign out + clear keys"
         busy={signingOut}
         onCancel={() => { if (!signingOut) setConfirmSignOutOpen(false); }}
         onConfirm={async () => {
           if (signingOut) return;
           setSigningOut(true);
-          try {
-            await sidecar.secretDelete("LICENSE_JWT");
-          } catch {
-            /* best-effort */
-          }
+          // v0.7.8 S1 — atomic wipe. Single secret-delete only cleared the
+          // license; the BYO API keys + onboarded flag stayed on disk, so a
+          // second user inheriting the Mac picked up the prior user's OpenAI
+          // bill or could re-open the app already "onboarded" with no fresh
+          // welcome. Promise.all covers the whole inventory in parallel and
+          // never aborts a single delete on one failure — best-effort wins.
+          await performAtomicSignOutWipe();
           setSignedIn(false);
           setView({ kind: "first-run" });
           setConfirmSignOutOpen(false);
@@ -1844,6 +1943,51 @@ function GlobalAuthPanel() {
 // useEffect and reflects it via setUserTier.
 function setUserTierGlobalEvent(tier: string) {
   window.dispatchEvent(new CustomEvent("lc:tier-refresh", { detail: { tier } }));
+}
+
+// v0.7.8 S1 — Atomic sign-out wipe. Centralised so both the AvatarPanel
+// confirm modal and the Settings drawer sign-out call the same primitive
+// and can't drift. Wipes ALL sensitive keychain entries (the prior single-
+// secret delete left BYO OpenAI / Anthropic / Whop tokens lying around for
+// the next user of the Mac), clears the avatar Zustand store so the orbit
+// face doesn't bleed into the next session, and resets telemetry consent
+// to its opt-out default — re-opting in is a positive action the next
+// signed-in user should take, not an inherited toggle. ALL deletes run in
+// parallel; one failure won't poison the rest because each leg has its
+// own `.catch(() => undefined)` swallow.
+//
+// EXHAUSTIVENESS — `SECRETS_TO_WIPE_ON_SIGN_OUT` is the contract. If a new
+// secret name is added to `SecretName` in lib/sidecar.ts, add it here too.
+const SECRETS_TO_WIPE_ON_SIGN_OUT: SecretName[] = [
+  "LICENSE_JWT",
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "JUNIOR_WHOP_TOKEN",
+  "PEXELS_API_KEY",
+  "PIXABAY_API_KEY",
+  "GIPHY_API_KEY",
+  "LIQUIDCLIPS_ONBOARDED",
+];
+
+export async function performAtomicSignOutWipe(): Promise<void> {
+  await Promise.all([
+    ...SECRETS_TO_WIPE_ON_SIGN_OUT.map((name) =>
+      sidecar.secretDelete(name).catch(() => undefined),
+    ),
+    // Avatar store clear — the orbit face is technically derivable from the
+    // backend's /me row, but the local PNG also lives in ~/LiquidClips/avatar.png
+    // and the Zustand store will paint the prior user's face until refresh().
+    // useAvatar.getState().clear() handles both the disk delete and the
+    // store reset in one call.
+    useAvatar.getState().clear().catch(() => undefined),
+  ]);
+  // Reset telemetry to opt-out — Mac handoff posture. The next user
+  // explicitly opts in via Settings → About → Send anonymous telemetry.
+  try {
+    setTelemetryConsent(false);
+  } catch {
+    /* best-effort */
+  }
 }
 
 // Wraps the main app surface. Browse Rewards is a native child webview pinned

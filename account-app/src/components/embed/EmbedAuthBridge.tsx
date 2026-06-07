@@ -1,5 +1,6 @@
 "use client";
 
+// ship-lens v0.7.8: fix E1 — added 4s stall timer + manual retry. When `userId` is set but no `lc:auth-jwt` reply lands within 4s we flip `authStatus` to "stalled" so BountyList renders an honest "couldn't reach desktop" panel instead of skeletons forever.
 // ship-lens v0.7.7: fix #10 — bridge now relays desktop-pushed submissionIds into context (sessionStorage cache only; desktop owns truth)
 // SURFACE: embed auth bridge (client)
 // MAP TAGS: (O #7 — proof of identity)
@@ -30,15 +31,23 @@
 //     `localStorage["junior:my-whop-submissions:v1"]` stays the source of
 //     truth; the sessionStorage echo is a UX smoother, never authoritative.
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   EMBED_AUTH_DEFAULT,
   EMBED_MSG,
   normalizeTier,
   type EmbedAuthState,
+  type EmbedAuthStatus,
   type EmbedAuthMessage,
   type EmbedTier,
 } from "@/lib/embed-auth";
+
+/** v0.7.8 fix E1 — how long we wait for `lc:auth-jwt` before flipping the
+ *  context's `authStatus` from "pending" to "stalled". 4s is the spec value;
+ *  generous for slow boot races, short enough that the user notices.
+ *  The desktop's auth-request handler in EarnPanelMount completes in <100ms
+ *  steady-state, so anything over this window is a real bridge failure. */
+const AUTH_REPLY_STALL_MS = 4000;
 
 const EmbedAuthContext = createContext<EmbedAuthState>(EMBED_AUTH_DEFAULT);
 
@@ -95,6 +104,46 @@ export function EmbedAuthBridge({
   const [submissionIds, setSubmissionIds] = useState<string[]>(
     readCachedSubmissionIds,
   );
+  // v0.7.8 fix E1 — only mark "pending" when there's actually a user to
+  // resolve. Without a userId we have no desktop session to phone home to;
+  // the page sits in "idle" and BountyList renders a sign-in shell, not a
+  // stall warning.
+  const [authStatus, setAuthStatus] = useState<EmbedAuthStatus>(
+    initialUserId ? "pending" : "idle",
+  );
+  /** v0.7.8 fix E1 — the 4s stall timer. Kept in a ref so the retry handler
+   *  can clear+re-arm it without re-running the mount effect. */
+  const stallTimerRef = useRef<number | null>(null);
+
+  /** v0.7.8 fix E1 — Re-send `lc:auth-request` and reset the stall timer.
+   *  Exposed on the context so BountyList's "Reopen Earn" retry button can
+   *  call it. Safe outside an iframe — the postMessage just throws into the
+   *  catch and we stay in `pending` until the timer fires. */
+  const requestAuth = useCallback(() => {
+    if (typeof window === "undefined") return;
+    // Clear any in-flight stall countdown so a retry doesn't get out-raced
+    // by the old timer.
+    if (stallTimerRef.current !== null) {
+      window.clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+    setAuthStatus(initialUserId ? "pending" : "idle");
+    try {
+      const req: EmbedAuthMessage = { type: EMBED_MSG.AUTH_REQUEST };
+      window.parent.postMessage(req, "*");
+    } catch {
+      /* not in an iframe — degrade silently */
+    }
+    // Re-arm the 4s stall timer for retries too.
+    if (initialUserId) {
+      stallTimerRef.current = window.setTimeout(() => {
+        // Only stall if the JWT still hasn't landed. The message handler
+        // below clears the timer eagerly, so this fires only on real timeouts.
+        setAuthStatus((prev) => (prev === "pending" ? "stalled" : prev));
+        stallTimerRef.current = null;
+      }, AUTH_REPLY_STALL_MS);
+    }
+  }, [initialUserId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -114,6 +163,12 @@ export function EmbedAuthBridge({
         >;
         if (typeof incoming.value === "string" && incoming.value.length > 0) {
           setJwt(incoming.value);
+          // v0.7.8 fix E1 — successful reply clears the stall guard.
+          if (stallTimerRef.current !== null) {
+            window.clearTimeout(stallTimerRef.current);
+            stallTimerRef.current = null;
+          }
+          setAuthStatus("ok");
         }
         const t = normalizeTier(incoming.tier ?? null);
         if (t) setTier(t);
@@ -145,8 +200,24 @@ export function EmbedAuthBridge({
       /* not in an iframe — degrade silently */
     }
 
-    return () => window.removeEventListener("message", onMessage);
-  }, []);
+    // v0.7.8 fix E1 — arm the 4s stall timer iff there's a user expecting a
+    // JWT. Without `initialUserId` there's nothing to resolve and we stay in
+    // "idle" (BountyList renders sign-in copy, not the stall panel).
+    if (initialUserId) {
+      stallTimerRef.current = window.setTimeout(() => {
+        setAuthStatus((prev) => (prev === "pending" ? "stalled" : prev));
+        stallTimerRef.current = null;
+      }, AUTH_REPLY_STALL_MS);
+    }
+
+    return () => {
+      window.removeEventListener("message", onMessage);
+      if (stallTimerRef.current !== null) {
+        window.clearTimeout(stallTimerRef.current);
+        stallTimerRef.current = null;
+      }
+    };
+  }, [initialUserId]);
 
   const value = useMemo<EmbedAuthState>(
     () => ({
@@ -154,8 +225,10 @@ export function EmbedAuthBridge({
       tier,
       jwt,
       submissionIds,
+      authStatus,
+      requestAuth,
     }),
-    [initialUserId, tier, jwt, submissionIds],
+    [initialUserId, tier, jwt, submissionIds, authStatus, requestAuth],
   );
 
   return (

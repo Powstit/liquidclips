@@ -1,3 +1,4 @@
+// ship-lens v0.7.8: W1 — drop play_all/pause_all (singleton playingId means master playback is a lie; "static tile default" wins). W6 — drop dead clip.remix.active_path branch (no factory writes RemixState).
 // Master action fan-out — pure async functions, no React.
 //
 // The MasterToolbar enqueues a MasterAction over a Set<WindowId> selection.
@@ -30,8 +31,10 @@ export type WindowLite = {
 
 function clipVideoPath(clip: Clip | undefined): string | null {
   if (!clip) return null;
+  // v0.7.8 W6: dropped `clip.remix?.active_path?.vertical` — no sidecar
+  // method writes RemixState today, so the branch was permanently dead.
+  // Source of truth is overlay-applied path → canonical vertical_path.
   return (
-    clip.remix?.active_path?.vertical ||
     clip.overlay?.applied_paths?.vertical ||
     clip.vertical_path ||
     null
@@ -65,9 +68,6 @@ export async function fanOut(
   project: Project,
   onProjectChange: (p: Project) => void,
   helpers?: {
-    /** Optional callback invoked for play_all / pause_all — these don't
-     *  hit the sidecar; they nudge the in-memory active-video pool. */
-    promoteToPool?: (id: WindowId, reason: "playing") => void;
     /** Caption used by schedule when the user didn't override per-clip. */
     defaultCaption?: (clip: Clip) => string;
   },
@@ -141,10 +141,10 @@ export async function fanOut(
 
         case "apply_ratio": {
           // The store owns per-window ratio. We don't write anything to the
-          // sidecar for ratio — the bake reads it from the clip's existing
-          // vertical/square/portrait files. The toolbar updates the store
-          // separately; here we just acknowledge so the toast counts right.
-          // If a future render path is added this is where we'd call it.
+          // sidecar — ClipWindow's videoSrc memo reads ratio from the store
+          // and prefers the matching square/portrait file (falling back to
+          // vertical_path when the chosen ratio file doesn't exist).
+          // v0.7.8 W2: ratio is now wired end-to-end (see ClipWindow.tsx).
           ok.push(id);
           break;
         }
@@ -229,20 +229,6 @@ export async function fanOut(
           } else {
             ok.push(id);
           }
-          break;
-        }
-
-        case "play_all": {
-          helpers?.promoteToPool?.(id, "playing");
-          ok.push(id);
-          break;
-        }
-
-        case "pause_all": {
-          // No RPC — the store owns playback. The toolbar flips the toggle
-          // and individual ClipPreview <video> elements react to the pool
-          // state. We just acknowledge so the toast counts match.
-          ok.push(id);
           break;
         }
 
