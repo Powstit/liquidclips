@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { RotateCcw, Trash2 } from "lucide-react";
 import { humanError, sidecar, type Project, type ProjectLibrarySummary } from "../../lib/sidecar";
 import { LibraryWall, type LibraryFilter } from "../cockpit/LibraryWall";
+import { LibraryQuickPreview } from "../cockpit/LibraryQuickPreview";
 
 /** v0.7.8 L4 — Lifetime of the Undo toast in ms. After this the sidecar's
  *  `finalize_delete_project` runs and the tombstone is rmtree'd for real.
@@ -49,6 +50,12 @@ export function LibraryTab({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<LibraryFilter>("all");
   const [confirmDelete, setConfirmDelete] = useState<ProjectLibrarySummary | null>(null);
+  // v0.7.14 K-α — Quick-preview modal. Tile click opens this lightweight
+  // summary first; the modal's Open CTA then routes through `openProject`
+  // to the full workstation. Lets the user verify "is this the right
+  // project?" without paying the full sidecar.getProject + workstation
+  // mount cost on every misclick.
+  const [previewProject, setPreviewProject] = useState<ProjectLibrarySummary | null>(null);
   // v0.7.8 L4 — Pending tombstones. Only one at a time (delete is a focused
   // user action; queueing multiple toasts would cause the timer/restore
   // logic to get tangled and the user to lose track of which Undo applies
@@ -308,7 +315,15 @@ export function LibraryTab({
         onFilterChange={setFilter}
         onQueryChange={setQuery}
         onRefresh={() => void loadProjects()}
-        onOpen={(slug) => void openProject(slug)}
+        onOpen={(slug) => {
+          // v0.7.14 K-α — Tile click opens the LibraryQuickPreview modal
+          // first. The modal's Open CTA then triggers `openProject(slug)`
+          // which routes to the full workstation. Use the cached summary
+          // from `projects` so the preview is instant — no extra RPC.
+          const summary = projects.find((p) => p.slug === slug);
+          if (summary) setPreviewProject(summary);
+          else void openProject(slug);
+        }}
         onOpenFolder={(p) => void openPath(p.root).catch((e) => setError(humanError(e)))}
         onArchive={(p) => void toggleArchived(p)}
         onDelete={(p) => setConfirmDelete(p)}
@@ -339,6 +354,24 @@ export function LibraryTab({
           />
         )}
       </AnimatePresence>
+
+      {/* v0.7.14 K-α — LibraryQuickPreview. Mounted here so a library tile
+          click shows a lightweight summary modal (poster + clip count +
+          date + status) before paying the full workstation mount cost.
+          The modal's Open CTA closes the preview and routes through the
+          existing openProject pipeline so the workspace surface is the
+          single source of truth for the heavy load. */}
+      {previewProject && (
+        <LibraryQuickPreview
+          project={previewProject}
+          onClose={() => setPreviewProject(null)}
+          onOpen={() => {
+            const slug = previewProject.slug;
+            setPreviewProject(null);
+            void openProject(slug);
+          }}
+        />
+      )}
     </div>
   );
 }
