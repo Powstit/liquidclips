@@ -1,3 +1,4 @@
+// ship-lens v0.7.7: fix #9 — migrated meStatus() callsite to meStatusLegacy(); panel only needs `.email`/`.effective_tier` for HUD copy, expired-banner UX lives in Settings.
 // v0.6.35 — Avatar Panel (dropdown HUD).
 //
 // Summoned by tapping AvatarOrbit. Holds every signal the v0.6.4 stickiness
@@ -31,8 +32,12 @@ import {
   Upload as UploadIcon,
   Link as LinkIcon,
 } from "lucide-react";
+// v0.7.7 ship-lens fix #9 — AvatarPanel reads `.email`/`.effective_tier` only
+// for HUD copy. The new meStatus discriminated union is owned by Settings.tsx
+// (re-activate banner UX); the panel stays on the legacy `MeStatus | null`
+// shim so existing render paths don't need to branch on the union.
 import {
-  meStatus,
+  meStatusLegacy,
   meAffiliate,
   leaderboardGet,
   type MeStatus,
@@ -82,7 +87,7 @@ export function AvatarPanel({
 
   useEffect(() => {
     if (!open) return;
-    void meStatus().then(setMe).catch(() => setMe(null));
+    void meStatusLegacy().then(setMe).catch(() => setMe(null));
     void meAffiliate().then(setAff).catch(() => setAff(null));
     void leaderboardGet().then(setBoard).catch(() => setBoard(null));
     void sidecar

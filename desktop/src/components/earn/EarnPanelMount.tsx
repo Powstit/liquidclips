@@ -1,3 +1,4 @@
+// ship-lens v0.7.7: fix #10 — auth-jwt reply now ships my-whop-submission IDs so the embed's status pills stop being silently empty (origin prefix mismatch made the embed's own localStorage read return [] forever)
 // SURFACE: Earn webview mount
 // MAP TAGS: (O #5)(O #6)(O #7) hosted Earn surface
 // See docs/UI_MAP_embed_surfaces.md — the contract.
@@ -27,6 +28,28 @@ import {
   type EarnPanelMessage,
 } from "../../lib/earn_panel";
 import { sidecar, type WhopBounty } from "../../lib/sidecar";
+
+/** Source of truth for "what submissions has THIS desktop captured?" lives
+ *  in `localStorage["junior:my-whop-submissions:v1"]` (see EarnTab.ts's
+ *  `rememberSubmissionId` + BountySubmissionCapture). The embed webview is
+ *  a different origin (account.liquidclips.app) so it cannot read that key
+ *  directly — we ship the contents along with the auth-jwt reply.
+ *  v0.7.7 fix #10 Path A. */
+const DESKTOP_SUBMISSION_IDS_KEY = "junior:my-whop-submissions:v1";
+
+function readSubmissionIdsFromKeychain(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(DESKTOP_SUBMISSION_IDS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((x): x is string => typeof x === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
 
 type Props = {
   // Workspace hand-off when the embed clicks "Start clipping" on a bounty
@@ -137,12 +160,20 @@ export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
           // Path 2 from UI_MAP_embed_surfaces.md §"Auth bridge". Only
           // fires if Clerk satellite cookies didn't cross over to the
           // child webview's cookie partition.
+          //
+          // v0.7.7 fix #10 Path A: we also ship the submission ID list
+          // from the desktop's own localStorage. The embed webview is a
+          // different origin and cannot read that key — the bridge IS the
+          // only path. Even on errors we still include the IDs so the
+          // status pills can render while the embed re-tries the JWT.
+          const submissionIds = readSubmissionIdsFromKeychain();
           try {
             const { value } = await sidecar.licenseJwtRead();
             await postToEarnPanel({
               type: "lc:auth-jwt",
               value: value ?? null,
               tier: cbRef.current.userTier ?? null,
+              submissionIds,
             });
           } catch (e) {
             console.error("[earn-panel] license read failed:", e);
@@ -150,6 +181,7 @@ export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
               type: "lc:auth-jwt",
               value: null,
               tier: cbRef.current.userTier ?? null,
+              submissionIds,
               error: String(e),
             }).catch(() => {
               /* the webview may have closed in between */

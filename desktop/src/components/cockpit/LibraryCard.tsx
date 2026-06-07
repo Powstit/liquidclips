@@ -1,3 +1,4 @@
+// ship-lens v0.7.7: fix #2a — imported packs render the same bug-glyph fallback as broken projects; add an "Imported · N clips" eyebrow + a distinct corner pip so the wall distinguishes the two states at a glance.
 // v0.6.36 — LibraryCard.
 //
 // A single project tile on the Library wall. Transparent background, fuchsia
@@ -16,6 +17,7 @@ import {
   Archive as ArchiveIcon,
   ArchiveRestore,
   FolderOpen,
+  Layers,
   Trash2,
   WandSparkles,
 } from "lucide-react";
@@ -116,6 +118,22 @@ export function LibraryCard({
             <StatusChip>Ready</StatusChip>
           ) : (
             <StatusChip dim>In progress</StatusChip>
+          )}
+          {/* v0.7.7 ship-lens fix #2a — imported packs land here without a
+              `cover_thumb_path` (Project.create_imported_pack at
+              python-sidecar/project.py:381 never writes one). Before this
+              fix, the wall rendered the same bug-glyph fallback for
+              imported-but-fine projects AND truly-broken projects, so
+              Daniel couldn't tell them apart at a glance. The pip chip is
+              persistent (not hover-only) so the distinction lands on the
+              calm wall reading, not just under cursor. Agent B is
+              generating real covers for imports in parallel; this badge
+              stays even after covers ship — provenance is useful signal. */}
+          {project.imported && (
+            <StatusChip>
+              <Layers className="h-2.5 w-2.5" strokeWidth={2.4} />
+              Imported · {project.clips_count} clip{project.clips_count === 1 ? "" : "s"}
+            </StatusChip>
           )}
         </div>
         <div className="pointer-events-none absolute right-2 top-2 flex flex-col items-end gap-1">

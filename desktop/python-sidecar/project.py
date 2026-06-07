@@ -1,3 +1,4 @@
+# ship-lens v0.7.7: fix #2b — generate cover thumbnail at import time so imported clips render a real frame, not a black square.
 """
 Liquid Clips project folder manager.
 
@@ -210,6 +211,67 @@ def _probe_duration_seconds(path: Path) -> float:
     return 0.0
 
 
+def _generate_cover_thumbnail(src: Path, dest: Path, *, at_seconds: float = 1.0) -> bool:
+    """Extract a single JPEG frame from `src` at `at_seconds` and write it to
+    `dest`. Returns True on success, False on any failure — the caller is
+    expected to fall back to a per-clip empty thumbnails list so one bad import
+    doesn't blow up the whole pack.
+
+    The ffmpeg binary path is resolved via `stages.ffmpeg_bin()` (matches the
+    bundled / env / PATH chain every other pipeline call uses), with a hard
+    fallback to a bare `ffmpeg` lookup so unit tests that don't import stages
+    cleanly still resolve.
+    """
+    import subprocess
+    here = Path(__file__).resolve().parent
+    # Try stages.ffmpeg_bin() first so we hit the bundled binary in prod / dev.
+    # Importing inside the function keeps project.py importable without stages
+    # being on sys.path (older test harnesses do this).
+    try:
+        import stages as _stages  # type: ignore
+        primary = _stages.ffmpeg_bin()
+    except Exception:
+        primary = None
+    candidates: list[str] = []
+    if primary:
+        candidates.append(primary)
+    candidates.extend([str(here / "bin" / "ffmpeg"), "ffmpeg"])
+    # Make sure the parent dir exists — SUBDIRS already creates `thumbnails/`,
+    # but a custom projects_root in tests may not.
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return False
+    # Clamp the seek so a 0.4s clip doesn't seek past EOF and produce an empty
+    # output file. ffmpeg silently writes a 0-byte JPEG in that case.
+    duration = _probe_duration_seconds(src)
+    seek = min(at_seconds, max(duration - 0.05, 0.0)) if duration > 0 else 0.0
+    for bin_path in candidates:
+        try:
+            subprocess.check_call(
+                [bin_path,
+                 "-y",
+                 "-ss", f"{seek:.3f}",
+                 "-i", str(src),
+                 "-frames:v", "1",
+                 "-q:v", "2",
+                 str(dest)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=20,
+            )
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            continue
+        # Validate the output actually exists + is non-empty. Some ffmpeg
+        # builds exit 0 but write a 0-byte file on a malformed seek.
+        try:
+            if dest.is_file() and dest.stat().st_size > 0:
+                return True
+        except OSError:
+            pass
+    return False
+
+
 def _validate_source_path(source_path: str) -> Path:
     """Resolve `source_path` and ensure it is a real local file inside one of
     the allowed roots. Rejects URLs, device files, FIFOs, and symlinks that
@@ -418,10 +480,29 @@ class Project:
             (candidate / sub).mkdir()
 
         clips: list[dict[str, Any]] = []
+        thumbs_dir = candidate / "thumbnails"
         for idx, vp in enumerate(validated, start=1):
             duration = _probe_duration_seconds(vp)
             title = vp.stem.replace("-", " ").replace("_", " ").strip() or f"Imported clip {idx}"
             clip_slug = _validate_slug(slugify(vp.stem) or f"imported-{idx}")
+            # ship-lens v0.7.7 #2b — seed one cover frame so ResultsGrid /
+            # ClipWindowPoster / LibraryCard render the real first frame
+            # instead of the black-square fallback. ffmpeg failures are
+            # non-fatal: leave thumbnails empty for THIS clip and let the
+            # frontend fallback (paused <video> from vertical_path) take over.
+            thumbnails: list[dict[str, Any]] = []
+            cover_path = thumbs_dir / f"{clip_slug}-cover.jpg"
+            try:
+                if _generate_cover_thumbnail(vp, cover_path, at_seconds=1.0):
+                    thumbnails.append({"path": str(cover_path), "t": 1.0})
+            except Exception as exc:  # noqa: BLE001 — log + degrade, never raise.
+                # Stderr so it surfaces in `npm run tauri dev` without ever
+                # breaking the import for the remaining clips.
+                import sys
+                sys.stderr.write(
+                    f"[create_imported_pack] cover thumbnail for {vp.name} failed: "
+                    f"{type(exc).__name__}: {exc}\n"
+                )
             clips.append({
                 "start": 0.0,
                 "end": duration,
@@ -437,6 +518,7 @@ class Project:
                 "pinned_comment": "",
                 "cut_path": str(vp),
                 "vertical_path": str(vp),
+                "thumbnails": thumbnails,
                 "imported": True,
             })
 

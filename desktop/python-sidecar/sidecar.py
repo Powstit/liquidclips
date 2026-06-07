@@ -1,3 +1,4 @@
+# ship-lens v0.7.7: fix #6 — validate_openai_key RPC so the Settings green-dot reflects "key actually works" instead of "key is present."
 """
 Junior — Python sidecar.
 
@@ -29,6 +30,7 @@ import traceback
 import re
 import shutil
 import ssl
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -506,6 +508,62 @@ def method_openai_key_status(_params: dict[str, Any]) -> dict[str, Any]:
     pre-run guard uses this so a key set via env/dev-file doesn't false-block."""
     from llm import openai_key_available
     return {"available": openai_key_available()}
+
+
+def method_validate_openai_key(_params: dict[str, Any]) -> dict[str, Any]:
+    """ship-lens v0.7.7 #6 — Verify the stored OPENAI_API_KEY actually works by
+    pinging /v1/models with a 5-second timeout. Settings used to flip a green
+    dot the moment a key landed in the keychain regardless of whether it was
+    valid — users would save a bad key and only find out at run time when the
+    clip-picker stage failed.
+
+    Resolution order matches `llm.resolve_openai_key()` so a key set via env or
+    dev-file flows through too.
+
+    Shape: {"valid": bool, "error": str | None}.
+    Never raises — every failure mode (no key, network, HTTP 4xx/5xx, timeout)
+    folds into a structured response so the Rust shell never sees an RPC error.
+    Network ceiling 5s — sidecar stays responsive even on a wedged connection.
+    """
+    # Lazy import — avoids loading llm.py at sidecar boot when the user hasn't
+    # touched Settings yet.
+    try:
+        from llm import resolve_openai_key
+        key = resolve_openai_key()
+    except Exception:
+        key = None
+    if not key:
+        return {"valid": False, "error": "no API key — set OPENAI_API_KEY in Settings → API keys"}
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/models",
+        headers={
+            "Authorization": f"Bearer {key}",
+            "User-Agent": "Liquid Clips key validation",
+        },
+    )
+    try:
+        with _urlopen(req, timeout=5.0) as resp:
+            code = resp.getcode()
+            if code == 200:
+                return {"valid": True, "error": None}
+            return {"valid": False, "error": f"OpenAI returned HTTP {code}"}
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            return {"valid": False, "error": "invalid API key"}
+        if e.code == 429:
+            return {"valid": False, "error": "rate limited — try again in a moment"}
+        if e.code >= 500:
+            return {"valid": False, "error": "OpenAI is having an outage"}
+        return {"valid": False, "error": f"OpenAI returned HTTP {e.code}"}
+    except TimeoutError:
+        return {"valid": False, "error": "timed out"}
+    except urllib.error.URLError as e:
+        reason = getattr(e, "reason", e)
+        if isinstance(reason, TimeoutError) or "timed out" in str(reason).lower():
+            return {"valid": False, "error": "timed out"}
+        return {"valid": False, "error": "couldn't reach OpenAI"}
+    except (OSError, ssl.SSLError):
+        return {"valid": False, "error": "couldn't reach OpenAI"}
 
 
 def method_secret_get(params: dict[str, Any]) -> dict[str, Any]:
@@ -2476,6 +2534,7 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "get_metadata": method_get_metadata,
     "secrets_status": method_secrets_status,
     "openai_key_status": method_openai_key_status,
+    "validate_openai_key": method_validate_openai_key,
     "secret_get": method_secret_get,
     "secret_set": method_secret_set,
     "secret_delete": method_secret_delete,

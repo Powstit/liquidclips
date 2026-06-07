@@ -1,3 +1,4 @@
+// ship-lens v0.7.7: fix #3 — wrap sidecar.ping() with an 8s race timeout so a stuck Python boot routes the splash to the failed/Restart card instead of hanging forever; fix #5 — route the Script tile to the real liftTranscript handler instead of the clips pipeline; fix #9 — consume the meStatus discriminated union (kind: "ok" | "expired" | "signed-out") so expired sessions can fire the re-activate banner.
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
@@ -244,7 +245,10 @@ export default function App() {
   // v0.6.36 — Portal lost its lane prop. Import now bypasses the modal
   // entirely (direct file picker); the portal only exists for the Create
   // URL/file flow.
-  const [uploadPortal, setUploadPortal] = useState<{ open: boolean }>({ open: false });
+  // v0.7.7 ship-lens fix #5 — UploadPortal now carries which tile launched
+  // it so the same modal can drive either pipeline. Default `clips` =
+  // Create tile (legacy behaviour). `script` = Script tile → lift_transcript.
+  const [uploadPortal, setUploadPortal] = useState<{ open: boolean; intent: "clips" | "script" }>({ open: false, intent: "clips" });
   // Direct import — single click on the Workstation Import tile fires the
   // OS file picker, then routes the resulting Project into ResultsGrid.
   // No intermediate modal, no lane chooser; the picker IS the next surface.
@@ -280,7 +284,24 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        await sidecar.ping();
+        // v0.7.7 ship-lens fix #3 — sidecar.ping() goes through sidecarCall,
+        // which only settles on (a) Tauri invoke returning or (b) the
+        // sidecar:died crash event. A stuck Python interpreter that's
+        // alive-but-not-responsive (heavy import deadlock, signed-binary
+        // gatekeeper prompt, hung mlx-whisper warm-up, etc.) never fires
+        // either — the boot hangs forever and the user sees a frozen
+        // splash with no Restart affordance. Wrapping with an 8s race
+        // routes that case into setSidecarStatus("failed"), which the
+        // Splash already renders as the Restart / Copy / Email card.
+        await Promise.race([
+          sidecar.ping(),
+          new Promise<never>((_, rej) =>
+            window.setTimeout(
+              () => rej(new Error("sidecar ping timeout after 8s")),
+              8000,
+            ),
+          ),
+        ]);
         // Preflight every heavy import before the user can paste a URL —
         // catches the "system Python missing yt-dlp / faster-whisper" silent
         // hang at boot instead of mid-pipeline. Failure routes to the
@@ -327,9 +348,14 @@ export default function App() {
         // useTier.ts so App.tsx's parallel userTier state never drifts.
         void import("./lib/backend")
           .then(async (m) => {
+            // v0.7.7 ship-lens fix #9 — meStatus now returns a discriminated
+            // union; the boot-time admin-fallback only needs `.email`, so
+            // meStatusLegacy() preserves the prior `MeStatus | null` shape
+            // without dropping the new "expired" signal (Settings consumes
+            // the union directly to fire the re-activate banner).
             const [s, me] = await Promise.all([
               m.syncStatus().catch(() => null),
-              m.meStatus().catch(() => null),
+              m.meStatusLegacy().catch(() => null),
             ]);
             return { s, me };
           })
@@ -492,7 +518,7 @@ export default function App() {
       // close before the file-type check too so the inline drop-error toast
       // shown by WorkstationRoom isn't occluded by the modal.
       if (uploadPortal.open) {
-        setUploadPortal({ open: false });
+        setUploadPortal((u) => ({ ...u, open: false }));
       }
       // Whitelist video extensions — Tauri will hand us folder paths or
       // unrelated files (zip, txt) on a stray drop. Reject early so the
@@ -895,10 +921,10 @@ export default function App() {
     await sidecar.secretSet("LIQUIDCLIPS_ONBOARDED", "v1").catch(() => undefined);
   }
 
-  // v0.6.36 — Script-mode lift retained but no longer wired from the home.
-  // The compact UploadPortal only handles URL/file ingestion now; we'll
-  // re-expose this when there's a clear surface for "transcript only" again.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // v0.7.7 ship-lens fix #5 — Re-wired from the Script tile. UploadPortal in
+  // `intent: "script"` calls onPasteUrlScript(url) which invokes this
+  // function. The "lifting" → "lifted" → TranscriptResult flow is the same
+  // path the original Script-mode UI used before it was parked in v0.6.36.
   async function _onLiftTranscript(url: string) {
     let unlistenProgress: (() => void) | null = null;
     const myGen = ++liftGenRef.current;
@@ -965,9 +991,10 @@ export default function App() {
       unlistenProgress?.();
     }
   }
-  // Keep the reference live so TS doesn't flag the script-mode lift as
-  // dead while it's parked. When we re-expose script mode, drop this void.
-  void _onLiftTranscript;
+  // v0.7.7 ship-lens fix #5 — _onLiftTranscript is now actively wired from
+  // the Script tile via UploadPortal onPasteUrlScript; the void-keep-alive
+  // is gone. The "lifted" view renders TranscriptResult; existing project
+  // routing still picks up where it always has.
 
   // Splash — sidecar still booting OR user hasn't dismissed the embedded
   // Invaders game yet. Even when the sidecar comes up fast, the splash
@@ -1230,7 +1257,7 @@ export default function App() {
           // works across the AnimatePresence boundary.
           <RoomShell roomKey="workstation">
             <WorkstationRoom
-              onCreate={() => setUploadPortal({ open: true })}
+              onCreate={() => setUploadPortal({ open: true, intent: "clips" })}
               onImport={() => void handleImportDirect()}
               onThumbnails={() => {
                 // v0.7.1 — placeholder until the thumbnail-pack feature
@@ -1244,13 +1271,14 @@ export default function App() {
                 );
               }}
               onScript={() => {
-                // v0.7.1 — wire Script tile to the existing Lift Transcript
-                // flow. Same UploadPortal as Create; user pastes a URL and
-                // the pipeline auto-routes to liftTranscript (transcript only,
-                // no clip cutting). This is the "Script mode that was removed
-                // from previous UI" — restored as an explicit tile so users
-                // don't have to know it's behind the Create entry.
-                setUploadPortal({ open: true });
+                // v0.7.7 ship-lens fix #5 — Script tile now opens the same
+                // UploadPortal modal in `intent: "script"` so the URL Go
+                // button routes to _onLiftTranscript (transcript only, no
+                // clip cutting). Previously this opened the portal in
+                // default (clips) mode, so the tile promised
+                // "transcript · captions ready" and silently ran the clips
+                // pipeline instead — Daniel's #5 punch-list bug.
+                setUploadPortal({ open: true, intent: "script" });
               }}
               dragHoverActive={dragHoverActive}
               dropError={dropError}
@@ -1261,9 +1289,15 @@ export default function App() {
         {view.kind === "empty" && (
           <UploadPortal
             open={uploadPortal.open}
-            onClose={() => setUploadPortal({ open: false })}
+            intent={uploadPortal.intent}
+            onClose={() => setUploadPortal((u) => ({ ...u, open: false }))}
             onPickFile={pickFile}
             onPasteUrl={onPasteUrl}
+            // v0.7.7 ship-lens fix #5 — Script-mode URL handler. liftTranscript
+            // sets view to "lifting" → "lifted" → TranscriptResult render.
+            // Same existing routing that the original Script-mode lift used
+            // before the surface was retired.
+            onPasteUrlScript={(url: string) => void _onLiftTranscript(url)}
             dragHoverActive={dragHoverActive}
           />
         )}
@@ -1280,7 +1314,10 @@ export default function App() {
             // pre-filled-as-empty for a clean retype.
             onChangeSource={() => {
               setView({ kind: "empty" });
-              setUploadPortal({ open: true });
+              // v0.7.7 — change-source always returns to clips mode; the
+              // IntentPicker only ever shows for the clips pipeline, so
+              // "change URL" routes back to the same launcher.
+              setUploadPortal({ open: true, intent: "clips" });
             }}
           />
         )}
@@ -1410,7 +1447,9 @@ export default function App() {
                     const m = await import("./lib/backend");
                     const [s, me] = await Promise.all([
                       m.syncStatus(),
-                      m.meStatus().catch(() => null),
+                      // v0.7.7 ship-lens fix #9 — legacy shim; recheck only
+                      // needs `.email` for the admin fallback.
+                      m.meStatusLegacy().catch(() => null),
                     ]);
                     // Same three-signal admin embed used at boot + useTier.
                     // Without this, the recheck handler would strip admin
@@ -1776,7 +1815,9 @@ function GlobalAuthPanel() {
           .then(async (m) => {
             const [s, me] = await Promise.all([
               m.syncStatus(),
-              m.meStatus().catch(() => null),
+              // v0.7.7 ship-lens fix #9 — legacy shim; AuthPanel completion
+              // only needs `.email` for the admin override.
+              m.meStatusLegacy().catch(() => null),
             ]);
             return { s, me };
           })

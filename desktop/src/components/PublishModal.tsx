@@ -1,3 +1,4 @@
+// ship-lens v0.7.7: fix #4 — summarisePublish branches on `status` so failed platforms no longer render as "tiktok: null" claiming success.
 import { useEffect, useRef, useState } from "react";
 import { openAuthPanel } from "./auth/useAuthPanel";
 import {
@@ -607,9 +608,67 @@ function UpgradeWall({
 
 // ── helpers ────────────────────────────────────────────────────────────
 
-function summarisePublish(results: PublishedTarget[]): string {
+/**
+ * ship-lens v0.7.7 #4 — Publish result shape mirrors what
+ * `junior-backend/app/routes/publish.py::PerPlatformResult` actually returns
+ * before backend.publishNow's adapter strips it down to PublishedTarget. The
+ * adapter today only forwards rows it considers successful, BUT it leaves a
+ * back-compat seam: any row with `posted_at` is passed through, even when its
+ * `post_url` is null. Mixed-success calls were rendering `"tiktok: null"` toasts
+ * that lied about success. We widen the input type and branch defensively on
+ * `status` so failures and scheduled rows render the truth, no matter which
+ * adapter shape landed.
+ */
+type PublishedResult = PublishedTarget & {
+  status?: "success" | "published" | "failed" | "scheduled" | string | null;
+  message?: string | null;
+  error?: string | null;
+  post_url?: string | null;
+};
+
+/** True if the summary represents at least one failed platform — the caller
+ * uses this to render an error-toned toast and the modal banner. */
+export function publishHasFailures(results: PublishedResult[]): boolean {
+  if (results.length === 0) return false;
+  return results.some((r) => isFailedStatus(r));
+}
+
+function isFailedStatus(r: PublishedResult): boolean {
+  const s = (r.status ?? "").toLowerCase();
+  if (s === "failed" || s === "error") return true;
+  // Status not surfaced (legacy PublishedTarget) → infer from a null/empty
+  // post_url. A real successful publish always carries a URL.
+  if (!r.status && (r.post_url === null || r.post_url === "")) return true;
+  return false;
+}
+
+function summariseOne(r: PublishedResult): string {
+  const s = (r.status ?? "").toLowerCase();
+  if (s === "scheduled") return `${r.platform}: scheduled`;
+  if (s === "failed" || s === "error") {
+    const msg = r.message || r.error;
+    return msg ? `${r.platform}: failed (${msg})` : `${r.platform}: failed`;
+  }
+  if (s === "success" || s === "published" || (!r.status && r.post_url)) {
+    return r.post_url ? `${r.platform}: ${r.post_url}` : `${r.platform}: posted`;
+  }
+  if (!r.status && (r.post_url === null || r.post_url === "")) {
+    return `${r.platform}: failed`;
+  }
+  // Unknown status string — surface it verbatim instead of pretending success.
+  return `${r.platform}: ${r.status}`;
+}
+
+function summarisePublish(results: PublishedResult[]): string {
   if (results.length === 0) return "No targets confirmed.";
-  return results.map((r) => `${r.platform}: ${r.post_url}`).join(" · ");
+  const parts = results.map(summariseOne).join(" · ");
+  // Toast tone: ResultsGrid renders the raw string with no severity, so we
+  // bake the severity into the copy itself. A "Failed —" prefix is enough for
+  // a user to know the action didn't land without redesigning the toast.
+  const failed = results.filter(isFailedStatus).length;
+  if (failed === 0) return parts;
+  if (failed === results.length) return `Failed — ${parts}`;
+  return `Some failed (${failed} of ${results.length}) — ${parts}`;
 }
 
 function toLocalDatetimeInput(d: Date): string {

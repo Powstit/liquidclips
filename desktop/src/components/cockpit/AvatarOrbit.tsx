@@ -1,3 +1,4 @@
+// ship-lens v0.7.7: fix #9 — migrated meStatus() callsite to meStatusLegacy(); orbit only needs `.email` for initials/fallback, expired-banner UX lives in Settings.
 // v0.6.35 — Avatar Orbit.
 //
 // Replaces the v0.6.34 top-right header chrome (sidecar status pulse,
@@ -13,7 +14,11 @@ import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { Crown } from "lucide-react";
 import { useAvatar, avatarSrc, initialsOf } from "../../lib/avatar";
-import { meStatus, meAffiliate, type MeStatus, type AffiliateMeResponse } from "../../lib/backend";
+// v0.7.7 ship-lens fix #9 — AvatarOrbit reads `.email` for the initials and
+// avatar fallback only; the new meStatus discriminated union is consumed by
+// Settings.tsx for the expired-banner UX, so the orbit stays on the legacy
+// shim to preserve its `MeStatus | null` shape.
+import { meStatusLegacy, meAffiliate, type MeStatus, type AffiliateMeResponse } from "../../lib/backend";
 import { fmtUsd } from "../../lib/payoutsAggregations";
 
 type SidecarStatus = "starting" | "ready" | "failed";
@@ -38,7 +43,7 @@ export function AvatarOrbit({
 
   useEffect(() => {
     void refresh();
-    void meStatus().then(setMe).catch(() => setMe(null));
+    void meStatusLegacy().then(setMe).catch(() => setMe(null));
     void meAffiliate().then(setAff).catch(() => setAff(null));
   }, [refresh]);
 

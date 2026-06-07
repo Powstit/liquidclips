@@ -602,6 +602,12 @@ export const sidecar = {
   // file) — used by the pre-run key guard. More accurate than secretsStatus,
   // which only reports the keychain.
   openaiKeyStatus: () => sidecarCall<{ available: boolean }>("openai_key_status"),
+  // ship-lens v0.7.7 #6 — actively pings OpenAI /v1/models with a 5s timeout
+  // so the Settings green dot reflects "key actually works," not just "key is
+  // present." Returns a structured response (never throws) — caller branches
+  // on `valid` + renders `error` inline next to the field on Save.
+  validateOpenaiKey: (): Promise<{ valid: boolean; error: string | null }> =>
+    sidecarCall<{ valid: boolean; error: string | null }>("validate_openai_key"),
   // Restricted to LICENSE_JWT on the sidecar side — other secrets stay opaque.
   licenseJwtRead: () =>
     sidecarCall<{ name: "LICENSE_JWT"; value: string | null }>("secret_get", { name: "LICENSE_JWT" }),

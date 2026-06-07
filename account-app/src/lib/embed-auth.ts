@@ -1,3 +1,4 @@
+// ship-lens v0.7.7: fix #10 — desktop pushes my-whop-submission IDs via the auth-jwt reply so the embed's status pills stop being silently empty
 // SURFACE: embed auth helper
 // MAP TAGS: (O #7 — proof of identity) — every embed surface relies on this
 // to know "who is the desktop user" before fetching tier-gated data.
@@ -35,12 +36,22 @@ export type EmbedAuthState = {
    *  `lc:auth-request` postMessage. Used for client-side calls to
    *  /whop/bounties and friends. */
   jwt: string | null;
+  /** Submission IDs the desktop remembers from past Whop posts. The desktop
+   *  owns this list (its `rememberSubmissionId` writes to
+   *  `localStorage["junior:my-whop-submissions:v1"]`); the webview is a
+   *  different origin and can't read that key directly. Path A from
+   *  v0.7.7 fix #10: the desktop ships the list in the `lc:auth-jwt`
+   *  reply, and SubmissionStatusIsland polls from here instead of
+   *  reading its own localStorage (which would always be empty because
+   *  the embed origin never wrote anything to it). */
+  submissionIds: string[];
 };
 
 export const EMBED_AUTH_DEFAULT: EmbedAuthState = {
   userId: null,
   tier: null,
   jwt: null,
+  submissionIds: [],
 };
 
 // Message protocol — kept tiny on purpose so the desktop parent can mirror it
@@ -61,7 +72,15 @@ export const EMBED_MSG = {
 
 export type EmbedAuthMessage =
   | { type: typeof EMBED_MSG.AUTH_REQUEST }
-  | { type: typeof EMBED_MSG.AUTH_JWT; value: string; tier?: EmbedTier };
+  | {
+      type: typeof EMBED_MSG.AUTH_JWT;
+      value: string;
+      tier?: EmbedTier;
+      /** Submission IDs the desktop tracks via `rememberSubmissionId`.
+       *  Optional because older desktop builds (pre-v0.7.7) don't ship
+       *  this field — embed degrades to an empty list, no crash. */
+      submissionIds?: string[];
+    };
 
 /** Production backend — same URL the account-app dashboard already calls.
  *  api.jnremployee.com is the canonical custom domain on Railway; the desktop

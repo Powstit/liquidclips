@@ -1,3 +1,4 @@
+// ship-lens v0.7.7: fix #1 — imported clips have no thumbnails[0]; fall back to a paused <video> at vertical_path/cut_path so the workbench tile renders the first frame as a static poster instead of an empty "no preview" plate.
 // SURFACE: Workbench tile poster
 // MAP TAGS: (O #1) static poster (default state)
 //           (O #3) hover-only LC score + "why" overlay
@@ -8,6 +9,16 @@
 // component — NO <video> mounted, NO autoplay, NO sound. The founder's
 // verbatim feedback: "Keep clip static. … I'm hearing sound in workbench
 // but no display." This is the fix.
+//
+// v0.7.7 ship-lens fix #1 — imported packs (Project.create_imported_pack
+// at python-sidecar/project.py:381) never write `thumbnails`. When that
+// field is missing we used to render an empty "no preview" plate, so the
+// whole workbench wall looked broken on Library → Open of an imported pack.
+// Now we fall back to a paused <video preload="metadata"> mounted at the
+// clip's vertical_path (or cut_path) which renders the first frame as a
+// static poster — no autoplay, no loop, no sound, no scrub. Keyed on slug
+// so a sibling Clip swap reloads cleanly instead of stretching the prior
+// frame.
 //
 // Hover-only overlay (bottom-left of poster):
 //   • LC score pill (with virality-based fuchsia tint)
@@ -47,6 +58,16 @@ export function ClipWindowPoster({
     const t = clip.thumbnails?.[0]?.path;
     return t ? convertFileSrc(t) : null;
   }, [clip.thumbnails]);
+  // v0.7.7 ship-lens fix #1 — imported pack clips never write `thumbnails`
+  // (see python-sidecar/project.py:381 create_imported_pack). vertical_path
+  // is the canonical 9:16 render; cut_path is the pre-reframe rough cut
+  // used for clips that haven't been reframed yet (Fast Draft tail).
+  // Either is fine as a first-frame poster.
+  const fallbackVideoSrc = useMemo(() => {
+    if (thumbSrc) return null;
+    const p = clip.vertical_path || clip.cut_path;
+    return p ? convertFileSrc(p) : null;
+  }, [thumbSrc, clip.vertical_path, clip.cut_path]);
 
   return (
     <button
@@ -63,6 +84,22 @@ export function ClipWindowPoster({
           loading="lazy"
           decoding="async"
           className="h-full w-full object-cover"
+        />
+      ) : fallbackVideoSrc ? (
+        // v0.7.7 ship-lens fix #1 — paused first-frame poster for clips
+        // that have no thumbnail yet (imported packs, Fast Draft pre-thumb
+        // tail). preload="metadata" pulls the keyframe but never starts
+        // playback; muted + no autoplay + no loop keep the wall quiet.
+        // `key={clip.slug}` so reordering tiles doesn't stretch a stale
+        // frame across a new source.
+        <video
+          key={clip.slug}
+          src={fallbackVideoSrc}
+          preload="metadata"
+          muted
+          playsInline
+          className="h-full w-full object-cover pointer-events-none"
+          aria-hidden
         />
       ) : (
         <div className="grid h-full w-full place-items-center font-mono text-[11px] uppercase tracking-[0.10em] text-paper/40">

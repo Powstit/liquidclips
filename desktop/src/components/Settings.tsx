@@ -1,3 +1,4 @@
+// ship-lens v0.7.7: fix #9 — consume meStatus discriminated union so an expired JWT lands on a fuchsia "re-activate this device" banner instead of looking identical to a never-signed-in state.
 import { useEffect, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
@@ -26,7 +27,11 @@ const BUILD_HASH =
   import.meta.env.MODE;
 const CLIP_STORAGE_PATH = "~/LiquidClips/";
 const LOG_PATH = "~/LiquidClips/projects/<slug>/.progress.json";
-import { syncStatus, meStatus, meAffiliate, UnauthorizedError, type SyncStatus, type MeStatus } from "../lib/backend";
+// v0.7.7 ship-lens fix #9 — Settings owns the surface where the meStatus
+// discriminated union actually matters. The "expired" case fires the
+// fuchsia re-activate banner; "signed-out" keeps the existing Sign-in copy.
+// WhoAmISection also reads the union so its empty-state copy is honest.
+import { syncStatus, meStatus, meAffiliate, UnauthorizedError, type SyncStatus, type MeStatus, type MeStatusResult } from "../lib/backend";
 import { openAuthPanel } from "./auth/useAuthPanel";
 import { applyUpdate, checkForUpdate, readLastUpdateCheck, type LastUpdateCheck, type UpdateState } from "../lib/updater";
 import { getTelemetryConsent, setTelemetryConsent } from "../lib/telemetry";
@@ -83,6 +88,11 @@ export function Settings({ onClose, onSignOut, onOpenSchedule: _onOpenSchedule, 
   const [introReset, setIntroReset] = useState(false);
   // v0.6.3 — /me load for the compact header + WhoAmI section.
   const [me, setMe] = useState<MeStatus | null>(null);
+  // v0.7.7 ship-lens fix #9 — Track whether the most recent /me failed because
+  // the JWT was rejected (expired) vs. there was never a token. The fuchsia
+  // re-activate banner mounts when this flips true. "signed-out" stays
+  // identical to the prior `me === null` behaviour.
+  const [sessionExpired, setSessionExpired] = useState(false);
   // v0.6.4 — Whop-pattern left-rail / right-pane layout.
   const [category, setCategory] = useState<SettingsCategory>("account");
   // Lens-pass additions —
@@ -104,7 +114,29 @@ export function Settings({ onClose, onSignOut, onOpenSchedule: _onOpenSchedule, 
   const [confirmSignOutOpen, setConfirmSignOutOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   useEffect(() => {
-    void meStatus().then(setMe).catch(() => setMe(null));
+    // v0.7.7 ship-lens fix #9 — Consume the discriminated union. "ok" populates
+    // the user header + WhoAmI; "expired" raises the re-activate banner;
+    // "signed-out" preserves the original null-render (caller already shows
+    // a Sign-in prompt). Failures from the awaited Promise itself are
+    // treated as signed-out; the meStatus() implementation already collapses
+    // its own thrown transports into kind: "signed-out".
+    void meStatus()
+      .then((r: MeStatusResult) => {
+        if (r.kind === "ok") {
+          setMe(r.data);
+          setSessionExpired(false);
+        } else if (r.kind === "expired") {
+          setMe(null);
+          setSessionExpired(true);
+        } else {
+          setMe(null);
+          setSessionExpired(false);
+        }
+      })
+      .catch(() => {
+        setMe(null);
+        setSessionExpired(false);
+      });
   }, []);
 
   // Resolve the user's real home directory once. The "Open in Finder" chip
@@ -203,10 +235,31 @@ export function Settings({ onClose, onSignOut, onOpenSchedule: _onOpenSchedule, 
 
   async function saveSecret(name: SecretName) {
     if (!draftValue.trim()) return;
-    // (5) Try/catch so a failed keychain write surfaces inline instead of
-    // silently swallowing the error and leaving the user thinking it saved.
+    // ship-lens v0.7.7 fix #6: validate OPENAI_API_KEY against the live API
+    // BEFORE persisting to keychain. The pre-v0.7.7 behaviour was to write
+    // any string and light the green dot — a paste-typo or revoked key
+    // produced a "saved" UI lie that only revealed itself mid-pipeline run.
+    // For other secret types (LICENSE_JWT, BYO Anthropic, source-image
+    // creds), no validation exists so we keep the write-first behaviour.
     try {
       await sidecar.secretSet(name, draftValue.trim());
+      if (name === "OPENAI_API_KEY") {
+        const result = await sidecar.validateOpenaiKey();
+        if (!result.valid) {
+          // Surface the rejection inline, clear the key from keychain so the
+          // green dot doesn't lie about an invalid value being "stored", and
+          // leave the editor open with the original draft so the user can
+          // correct it.
+          await sidecar.secretDelete(name).catch(() => undefined);
+          const refreshed = await sidecar.secretsStatus();
+          setSecrets(refreshed.secrets);
+          setSecretErrors((prev) => ({
+            ...prev,
+            [name]: result.error ?? "invalid OpenAI key",
+          }));
+          return;
+        }
+      }
       setDraftValue("");
       setEditingKey(null);
       setSecretErrors((prev) => {
@@ -312,6 +365,34 @@ export function Settings({ onClose, onSignOut, onOpenSchedule: _onOpenSchedule, 
               <span className="block text-text-tertiary normal-case">
                 {bootErrors.join(" · ")}
               </span>
+            </div>
+          )}
+          {/* v0.7.7 ship-lens fix #9 — the JWT was present but rejected by
+              /me. Before this fix Settings rendered the same "Sign in to
+              your Liquid Clips account" copy whether the user was a fresh
+              install OR a paying user whose token had aged out — they
+              looked identical because meStatus() collapsed both into null.
+              Banner only mounts when meStatus() returned kind: "expired",
+              so the signed-out case keeps the original prompt path. */}
+          {sessionExpired && (
+            <div
+              role="alert"
+              className="flex flex-col gap-2 rounded-lg border border-fuchsia/50 bg-fuchsia-soft/40 px-4 py-3 text-fuchsia-deep"
+            >
+              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia">
+                session expired
+              </span>
+              <p className="font-sans text-[13px] leading-snug">
+                Your session expired — re-activate this device to keep
+                publishing, scheduling, and earning.
+              </p>
+              <button
+                type="button"
+                onClick={() => openAuthPanel("sign-in")}
+                className="self-start rounded-full bg-fuchsia px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-white transition-colors hover:bg-fuchsia-bright"
+              >
+                Re-activate this device →
+              </button>
             </div>
           )}
           {category === "account" && (
@@ -1050,11 +1131,16 @@ function WhoAmISection() {
 
   useEffect(() => {
     void (async () => {
+      // v0.7.7 ship-lens fix #9 — WhoAmI also reads the discriminated union;
+      // an expired token shows the same "Couldn't reach the backend" state
+      // here because the section's job is to print the backend's row, and
+      // there's no row to print. The top-of-Settings re-activate banner
+      // already nudges the user toward sign-in for both outcomes.
       const [m, sess] = await Promise.all([
         meStatus(),
         sidecar.whopSessionStatus().catch(() => null),
       ]);
-      setMe(m);
+      setMe(m.kind === "ok" ? m.data : null);
       setWhopSource(sess?.source ?? "none");
       setLoading(false);
     })();
