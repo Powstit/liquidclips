@@ -14,6 +14,7 @@ import {
 import type { Clip, OverlayType, Project, RatioKey } from "../lib/sidecar";
 import { sidecar, RATIOS, humanError } from "../lib/sidecar";
 import { PlatformBadgePicker } from "./PlatformBadge";
+import { OverlayTemplateGallery } from "./OverlayTemplateGallery";
 import { CopyButton } from "./CopyButton";
 import { InfoTip } from "./InfoTip";
 import { LayoutIcon, LAYOUTS, type LayoutKey } from "./clips-feed/LayoutIcon";
@@ -122,6 +123,11 @@ export function ClipPreview({
   const [customSchedule, setCustomSchedule] = useState<string>("");
   const [saveCopyBusy, setSaveCopyBusy] = useState(false);
   const [bottomToast, setBottomToast] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
+  // v0.7.14 — OverlayTemplateGallery mount. Opens a popover with the 8
+  // pre-made reaction layouts; selecting one calls apply_overlay_template on
+  // the sidecar so the clip's overlay_template field is persisted.
+  const [overlayTplOpen, setOverlayTplOpen] = useState(false);
+  const [overlayTplBusy, setOverlayTplBusy] = useState(false);
 
   useEffect(() => {
     setTrimStart(clip.start);
@@ -384,6 +390,26 @@ export function ClipPreview({
       setActionError(humanError(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  // v0.7.14 — Persist the picked overlay template via apply_overlay_template.
+  // Sidecar accepts a null source_path so the user can park a template choice
+  // before they pick a reaction clip; the next reaction-source selection then
+  // applies it for real. Refresh project state so clip.overlay_template flips
+  // immediately and the gallery's "selected" highlight updates.
+  async function applyOverlayTemplateKey(key: import("../lib/sidecar").OverlayTemplateKey) {
+    if (overlayTplBusy) return;
+    setOverlayTplBusy(true);
+    setActionError(null);
+    try {
+      const r = await sidecar.applyOverlayTemplate(slug, index - 1, key);
+      onProjectChange(r.project);
+      setOverlayTplOpen(false);
+    } catch (e) {
+      setActionError(humanError(e));
+    } finally {
+      setOverlayTplBusy(false);
     }
   }
 
@@ -979,6 +1005,45 @@ export function ClipPreview({
                 maxLength={500}
                 placeholder="Leave blank for no pinned comment"
               />
+
+              {/* v0.7.14 — OverlayTemplateGallery mount. Sibling sub-section
+                  above PlatformBadgePicker. Small "Choose layout" trigger
+                  opens the 8-tile gallery in an inline popover; selecting one
+                  calls apply_overlay_template on the sidecar and refreshes the
+                  project so clip.overlay_template reflects the choice. */}
+              <div className="flex flex-col gap-2 pt-1">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                      Overlay template
+                    </span>
+                    {clip.overlay_template && (
+                      <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-fuchsia">
+                        {clip.overlay_template.replace(/_/g, " ")}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOverlayTplOpen((o) => !o)}
+                    disabled={overlayTplBusy}
+                    aria-expanded={overlayTplOpen}
+                    aria-haspopup="dialog"
+                    className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary hover:border-fuchsia hover:text-ink disabled:opacity-50"
+                  >
+                    {overlayTplOpen ? "Hide layouts" : "Choose layout"}
+                  </button>
+                </div>
+                {overlayTplOpen && (
+                  <div className="rounded-xl border border-line bg-paper-warm/30 p-3">
+                    <OverlayTemplateGallery
+                      selectedId={clip.overlay_template ?? undefined}
+                      onSelect={(template) => void applyOverlayTemplateKey(template.key)}
+                      onClose={() => setOverlayTplOpen(false)}
+                    />
+                  </div>
+                )}
+              </div>
 
               {/* v0.7.14 — Kimi's PlatformBadgePicker. Selecting platforms
                   here populates `clip.platforms`, which makes the badges

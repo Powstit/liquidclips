@@ -3,8 +3,14 @@
 // Simple structured overlays: PIP positions, side-by-side, react overlay.
 // No webcam recording — just static/structured overlay positioning.
 
+import type { OverlayTemplateKey } from "../lib/sidecar";
+
 interface OverlayTemplate {
   id: string;
+  /** Canonical sidecar key passed to `apply_overlay_template`. The visual `id`
+   *  is a slug used for React keys + CSS; `key` is the contract with the
+   *  python sidecar so the two can't drift. */
+  key: OverlayTemplateKey;
   name: string;
   description: string;
   position: "bottom-right" | "bottom-left" | "top-right" | "top-left" | "side-right" | "side-left" | "full-bottom" | "react-overlay";
@@ -17,6 +23,7 @@ interface OverlayTemplate {
 const TEMPLATES: OverlayTemplate[] = [
   {
     id: "pip-br",
+    key: "pip_bottom_right",
     name: "PIP Bottom-Right",
     description: "Small window in the bottom-right corner",
     position: "bottom-right",
@@ -26,6 +33,7 @@ const TEMPLATES: OverlayTemplate[] = [
   },
   {
     id: "pip-bl",
+    key: "pip_bottom_left",
     name: "PIP Bottom-Left",
     description: "Small window in the bottom-left corner",
     position: "bottom-left",
@@ -35,6 +43,7 @@ const TEMPLATES: OverlayTemplate[] = [
   },
   {
     id: "side-right",
+    key: "side_by_side_right",
     name: "Side-by-Side Right",
     description: "Split screen with main on left, overlay on right",
     position: "side-right",
@@ -44,6 +53,7 @@ const TEMPLATES: OverlayTemplate[] = [
   },
   {
     id: "side-left",
+    key: "side_by_side_left",
     name: "Side-by-Side Left",
     description: "Split screen with main on right, overlay on left",
     position: "side-left",
@@ -53,6 +63,7 @@ const TEMPLATES: OverlayTemplate[] = [
   },
   {
     id: "react-overlay",
+    key: "react_overlay",
     name: "React Overlay",
     description: "Full overlay with transparency for reaction content",
     position: "react-overlay",
@@ -62,6 +73,7 @@ const TEMPLATES: OverlayTemplate[] = [
   },
   {
     id: "pip-tr",
+    key: "pip_top_right",
     name: "PIP Top-Right",
     description: "Small window in the top-right corner",
     position: "top-right",
@@ -71,6 +83,7 @@ const TEMPLATES: OverlayTemplate[] = [
   },
   {
     id: "pip-tl",
+    key: "pip_top_left",
     name: "PIP Top-Left",
     description: "Small window in the top-left corner",
     position: "top-left",
@@ -80,6 +93,7 @@ const TEMPLATES: OverlayTemplate[] = [
   },
   {
     id: "full-bottom",
+    key: "bottom_strip",
     name: "Bottom Strip",
     description: "Wide strip at the bottom of the video",
     position: "full-bottom",
@@ -90,7 +104,9 @@ const TEMPLATES: OverlayTemplate[] = [
 ];
 
 interface OverlayTemplateGalleryProps {
-  selectedId?: string;
+  /** Canonical sidecar key of the currently-applied template. Highlight the
+   *  matching tile so the picker reflects clip.overlay_template. */
+  selectedId?: OverlayTemplateKey | null;
   onSelect: (template: OverlayTemplate) => void;
   onClose: () => void;
 }
@@ -113,7 +129,7 @@ export function OverlayTemplateGallery({ selectedId, onSelect, onClose }: Overla
 
       <div className="grid grid-cols-2 gap-2">
         {TEMPLATES.map((template) => {
-          const isSelected = template.id === selectedId;
+          const isSelected = template.key === selectedId;
           return (
             <button
               key={template.id}
