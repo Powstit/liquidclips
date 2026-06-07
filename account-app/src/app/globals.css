@@ -34,6 +34,7 @@
   --color-ink-soft: var(--ink-soft);
   --color-paper: var(--paper);
   --color-paper-warm: var(--paper-warm);
+  --color-paper-elev: var(--paper-elev);
   --color-line: var(--line);
   --color-text-secondary: var(--text-secondary);
   --color-text-tertiary: var(--text-tertiary);
@@ -63,3 +64,49 @@ body {
   50% { opacity: 0; }
 }
 .blink { animation: blink 1s steps(1) infinite; }
+
+/* =====================================================================
+   Embed surfaces — /embed/earn ports the desktop's "cockpit card" chrome
+   (transparent fill, fuchsia HUD bracket corners). These classes mirror
+   the desktop tokens in desktop/src/index.css so a sponsored video card
+   here lays out identically to the one inside the native Workstation
+   tile. DO NOT redefine the brand colours here — the @theme block above
+   is the single source of truth (fuchsia #FF1A8C / ink / paper).
+   ===================================================================== */
+.library-card {
+  position: relative;
+  border-radius: 14px;
+  background: transparent;
+  transition: filter 240ms ease;
+  cursor: pointer;
+}
+.library-card:hover {
+  filter: drop-shadow(0 18px 50px rgba(255, 26, 140, 0.4));
+}
+.library-card-corner {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-style: dashed;
+  border-color: var(--fuchsia);
+  border-width: 0;
+  filter: drop-shadow(0 0 4px rgba(255, 26, 140, 0.5));
+  transition: filter 240ms ease, width 240ms ease, height 240ms ease;
+  pointer-events: none;
+  z-index: 2;
+}
+.library-card-corner-tl { top: 0; left: 0;    border-top-width: 1.5px;    border-left-width: 1.5px;  }
+.library-card-corner-tr { top: 0; right: 0;   border-top-width: 1.5px;    border-right-width: 1.5px; }
+.library-card-corner-bl { bottom: 0; left: 0; border-bottom-width: 1.5px; border-left-width: 1.5px;  }
+.library-card-corner-br { bottom: 0; right: 0;border-bottom-width: 1.5px; border-right-width: 1.5px; }
+.library-card:hover .library-card-corner {
+  width: 24px;
+  height: 24px;
+  filter: drop-shadow(0 0 10px rgba(255, 26, 140, 1));
+}
+.library-card[data-hot="true"] .library-card-corner {
+  width: 22px;
+  height: 22px;
+  filter: drop-shadow(0 0 10px rgba(255, 26, 140, 0.95));
+}
