@@ -308,11 +308,24 @@ export default function App() {
     if (!picked) return;
     const paths = Array.isArray(picked) ? picked : [picked];
     if (paths.length === 0) return;
+    // ship-lens v0.7.11: surface visible feedback on BOTH success + failure
+    // so the user knows the click took. The pre-v0.7.11 catch silently
+    // console.error'd while a project saved to disk — exactly the
+    // silent-success-and-no-UI-transition strand the audit named in v0.7.7
+    // and that escaped through v0.7.8. Toast on success confirms the import
+    // landed even if downstream view-routing races (a defence-in-depth
+    // signal). Toast on failure replaces the void.
+    setDropError(null);
     try {
       const { project } = await sidecar.importReadyClips(paths);
       setView({ kind: "results", project });
+      setDropError(
+        `Imported ${paths.length} clip${paths.length === 1 ? "" : "s"} → opening workbench…`,
+      );
     } catch (e) {
       console.error("[import-direct] failed:", e);
+      const msg = e instanceof Error ? e.message : String(e);
+      setDropError(`Import failed: ${msg.slice(0, 200)}`);
     }
   }
   // Hydrate avatar store from the sidecar once at app boot. The orbit + the
