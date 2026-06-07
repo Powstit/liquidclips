@@ -95,18 +95,21 @@ export function SideNav({
           active={activeKey === "workspace"}
           onClick={() => onSelect("workspace")}
           iconSrc={workspaceBadge}
+          dataTour="workstation"
         />
         <SideNavItem
           label="Library"
           active={activeKey === "library"}
           onClick={() => onSelect("library")}
           iconSrc={libraryBadge}
+          dataTour="clips-grid"
         />
         <SideNavItem
           label="Earn"
           active={activeKey === "earn"}
           onClick={() => onSelect("earn")}
           iconSrc={earnBadge}
+          dataTour="earn"
         />
         <SideNavItem
           label="Learn"
@@ -119,6 +122,7 @@ export function SideNav({
           active={activeKey === "schedule"}
           onClick={() => onSelect("schedule")}
           iconSrc={scheduleBadge}
+          dataTour="schedule"
         />
         <SideNavItem
           label="Community"
