@@ -32,6 +32,7 @@ import {
   ChevronDown,
   Layers as LayersIcon,
   Pause,
+  Pencil as PencilIcon,
   Play,
   Ratio as RatioIcon,
   Send,
@@ -58,9 +59,10 @@ import { useWorkbenchStore } from "./useWorkbenchStore";
 
 type ToolbarStore = {
   windows: Map<WindowId, WindowLite & { boundChannelIds?: string[] }>;
-  selection: { selectedIds: Set<WindowId> };
+  selection: { selectedIds: Set<WindowId>; focusedId: WindowId | null };
   clearSelection: () => void;
   setRatio?: (id: WindowId, ratio: RatioKey | null) => void;
+  setCaptionsOpen?: (id: WindowId, open: boolean) => void;
   promoteToPool?: (id: WindowId, reason: "playing") => void;
 };
 
@@ -288,6 +290,30 @@ export function MasterToolbar({ project, onProjectChange }: Props) {
               )
             }
           />
+
+          {/* Edit ▾ — visible affordance for users who haven't memorised `E`.
+              Opens the Edit drawer on the focused tile via the store. Not
+              gated on selection (the drawer edits ONE tile — the focused
+              one). Disabled when there is no focused window. */}
+          {(() => {
+            const focusedId = store.selection.focusedId;
+            const canEdit = !!focusedId && !!store.setCaptionsOpen;
+            return (
+              <button
+                type="button"
+                disabled={!canEdit}
+                onClick={() => {
+                  if (!focusedId || !store.setCaptionsOpen) return;
+                  store.setCaptionsOpen(focusedId, true);
+                }}
+                className={actionBtn(canEdit)}
+                aria-label="Edit focused tile"
+                title={canEdit ? "Edit focused tile (E)" : "Focus a tile first"}
+              >
+                <PencilIcon className="h-3.5 w-3.5" /> Edit ▾
+              </button>
+            );
+          })()}
 
           {/* Play / Pause — immediate, no popover. */}
           <button
