@@ -1095,6 +1095,16 @@ def method_add_clip(params: dict[str, Any]) -> dict[str, Any]:
 
     project = Project.load(slug)
 
+    # v0.7.16 fix — Add Clip needs the project transcript to bake captions in
+    # stage_reframe. On fresh projects where Lift Transcript hasn't run yet,
+    # stage_reframe raised "transcript.srt missing — stage 3 must run before
+    # reframe" as the raw error. Detect upfront and surface an actionable
+    # message so the user knows to lift first.
+    if not (project.root / "transcript" / "transcript.srt").exists():
+        raise FileNotFoundError(
+            "Lift the transcript first — Add Clip needs the source transcribed."
+        )
+
     # Slug stays deterministic from title — kebab-case, ascii letters/digits only.
     title_str = str(title)[:120].strip() or "manual-clip"
     raw = re.sub(r"[^a-z0-9]+", "-", title_str.lower()).strip("-") or "manual-clip"

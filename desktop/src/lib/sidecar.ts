@@ -51,6 +51,12 @@ export function humanError(e: unknown): string {
   if (/ModuleNotFoundError|No module named/i.test(raw)) {
     return "The sidecar is missing a required Python package. Open Settings → Diagnose, or reinstall the app.";
   }
+  // v0.7.16 — defence-in-depth for the Add-Clip transcript guard. If any
+  // path surfaces the raw stage_reframe error, still show the actionable
+  // message rather than the FileNotFoundError trace.
+  if (/transcript\.srt missing|stage 3 must run before reframe/i.test(raw)) {
+    return "Lift the transcript first — Add Clip needs the source transcribed.";
+  }
   if (/Private video|members-only|login required|sign in to confirm/i.test(raw)) {
     return "That source is private or login-walled. Public links work; private ones don't.";
   }
