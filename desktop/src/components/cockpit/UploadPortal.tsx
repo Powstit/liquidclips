@@ -1,3 +1,4 @@
+// ship-lens v0.7.7: fix #5 — Script tile mode. UploadPortal now accepts an `intent: "clips" | "script"` prop so the Script tile no longer silently runs the clips pipeline. Script mode wires URL submit to onPasteUrlScript (lift_transcript), file pick stays disabled in script mode because the Python sidecar's lift_transcript path is URL-only (yt-dlp + faster-whisper) — surfaced inline so the user reads "URL only" instead of guessing why drop is dead.
 // v0.6.36 — Upload portal (compact).
 //
 // One job: take a URL paste or a file drop and ship it to the pipeline.
@@ -8,6 +9,15 @@
 // That's the entire surface. Anything else lives in Settings or surfaces
 // itself later (e.g. script-mode transcripts come back via a discoverable
 // switch once Daniel says where).
+//
+// v0.7.7 ship-lens fix #5 — `intent` prop carries the launcher tile's
+// promise. `"clips"` is the default (Create tile → URL/file → clips
+// pipeline). `"script"` (Script tile) routes the URL submit through
+// onPasteUrlScript (lift_transcript) and disables file pick — the
+// underlying sidecar method (python-sidecar/sidecar.py:1563
+// method_lift_transcript) is URL-only (yt-dlp pull), so a file drop
+// has nowhere to land. The label switches to "transcript mode" so the
+// promise on the tile lines up with the actual pipeline that fires.
 
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
@@ -16,17 +26,30 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 
 const URL_RE = /^https?:\/\/[^\s]+\.[^\s]+/i;
 
+export type UploadPortalIntent = "clips" | "script";
+
 export function UploadPortal({
   open,
   onClose,
   onPickFile,
   onPasteUrl,
+  onPasteUrlScript,
+  intent = "clips",
   dragHoverActive = false,
 }: {
   open: boolean;
   onClose: () => void;
   onPickFile: (brief: string) => void;
   onPasteUrl: (url: string, brief: string) => void;
+  /** v0.7.7 ship-lens fix #5 — Script-mode URL handler. When `intent ==="script"`,
+   *  submit routes here (lift_transcript) instead of onPasteUrl (clips
+   *  pipeline). Optional so existing Create callers don't have to wire it. */
+  onPasteUrlScript?: (url: string) => void;
+  /** v0.7.7 ship-lens fix #5 — which pipeline does Go fire?
+   *  - "clips" (default) — URL + file → clips pipeline (legacy behaviour)
+   *  - "script" — URL → lift_transcript; file pick disabled (sidecar
+   *    lift_transcript is URL-only). */
+  intent?: UploadPortalIntent;
   // Driven by App.tsx's global `tauri://drag-enter` / `drag-leave` listener
   // so the dashed bracket lights up for the REAL native drag, not a
   // browser-synth drag event (which can't give us a usable file path).
@@ -61,6 +84,11 @@ export function UploadPortal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // v0.7.7 ship-lens fix #5 — Script-mode requires the parent to provide a
+  // URL handler (lift_transcript). If the parent ever forgets to wire it
+  // we fall back to clips-mode rather than silently failing the user.
+  const isScript = intent === "script" && typeof onPasteUrlScript === "function";
+
   function submitUrl() {
     const trimmed = url.trim();
     if (!trimmed) {
@@ -68,19 +96,39 @@ export function UploadPortal({
       // bug — Finder would pop out of nowhere with no link between keystroke
       // and dialog. Surface an inline hint instead; the explicit "browse"
       // button below the input is the documented file path.
-      setError("Paste a link, or use “or drop a file · browse” below.");
+      // v0.7.7 — Script mode has no file path, so the hint switches to "paste a link" only.
+      setError(
+        isScript
+          ? "Paste a link — Script mode pulls transcript from a URL."
+          : "Paste a link, or use “or drop a file · browse” below.",
+      );
       return;
     }
     if (!URL_RE.test(trimmed)) {
-      setError("Doesn't look like a URL. Paste a YouTube / TikTok / IG / X link, or drop a file.");
+      setError(
+        isScript
+          ? "Doesn't look like a URL. Paste a YouTube / TikTok / IG / X link to lift a transcript."
+          : "Doesn't look like a URL. Paste a YouTube / TikTok / IG / X link, or drop a file.",
+      );
       return;
     }
     setError(null);
-    onPasteUrl(trimmed, "");
+    if (isScript && onPasteUrlScript) {
+      onPasteUrlScript(trimmed);
+    } else {
+      onPasteUrl(trimmed, "");
+    }
     onClose();
   }
 
   async function browseForFile() {
+    // v0.7.7 ship-lens fix #5 — Script mode is URL-only. Guard the click
+    // even though the button is disabled, so a programmatic invocation
+    // never silently routes a file into the wrong pipeline.
+    if (isScript) {
+      setError("Script mode is URL only — paste a link above.");
+      return;
+    }
     const picked = await openFileDialog({
       multiple: false,
       filters: [
@@ -139,9 +187,13 @@ export function UploadPortal({
 
             <div className="flex flex-col gap-5">
               <header className="flex flex-col gap-1">
-                <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-fuchsia">create</span>
+                {/* v0.7.7 ship-lens fix #5 — eyebrow + headline switch per
+                    mode so the user sees the pipeline they're firing. */}
+                <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-fuchsia">
+                  {isScript ? "transcript mode" : "clips mode"}
+                </span>
                 <h2 className="font-display text-[22px] font-semibold leading-tight tracking-[-0.02em] text-ink">
-                  Paste a link or drop a file.
+                  {isScript ? "Paste a link to lift the transcript." : "Paste a link or drop a file."}
                 </h2>
               </header>
 
@@ -164,7 +216,7 @@ export function UploadPortal({
                         submitUrl();
                       }
                     }}
-                    placeholder="paste a YouTube / TikTok / IG / X link"
+                    placeholder={isScript ? "paste a link — transcript only" : "paste a YouTube / TikTok / IG / X link"}
                     className="min-w-0 flex-1 bg-transparent font-sans text-[14px] text-ink outline-none placeholder:text-text-tertiary"
                     autoComplete="off"
                     autoCorrect="off"
@@ -183,10 +235,18 @@ export function UploadPortal({
                 <button
                   type="button"
                   onClick={() => void browseForFile()}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 font-mono text-[11px] uppercase tracking-[0.16em] text-text-tertiary transition-colors hover:bg-fuchsia/10 hover:text-fuchsia"
+                  disabled={isScript}
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 font-mono text-[11px] uppercase tracking-[0.16em] transition-colors ${
+                    isScript
+                      ? "cursor-not-allowed text-text-tertiary/45"
+                      : "text-text-tertiary hover:bg-fuchsia/10 hover:text-fuchsia"
+                  }`}
+                  title={isScript ? "Script mode is URL only — paste a link above." : undefined}
                 >
                   <FolderOpen className="h-3.5 w-3.5" strokeWidth={2} />
-                  or drop a file · browse
+                  {/* v0.7.7 ship-lens fix #5 — file pick disabled in script
+                      mode (lift_transcript is URL-only on the sidecar). */}
+                  {isScript ? "file drop · URL only in transcript mode" : "or drop a file · browse"}
                 </button>
               </div>
 

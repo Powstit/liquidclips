@@ -1,3 +1,5 @@
+// ship-lens v0.7.7: fix #7 — surface error / expired / paused channels with a recovery hint instead of silently dropping them and rendering "No channels added yet."
+//
 // Channel picker — single- or multi-select chips of the user's channels,
 // grouped by platform. Used by PublishModal and (eventually) the calendar
 // click-cell flow.
@@ -7,7 +9,7 @@
 // Multi-select for batch-publish is a follow-up.
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Loader2, Plus } from "lucide-react";
+import { AlertTriangle, Loader2, Plus, RefreshCw, PauseCircle, Link2 } from "lucide-react";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
 import * as backend from "../../lib/backend";
 import { humanError } from "../../lib/sidecar";
@@ -19,6 +21,7 @@ export function ChannelPicker({
   filterPlatform,
   disabled,
   onAddChannel,
+  onManageChannels,
 }: {
   value: string | null;                   // selected channel_id
   onChange: (channelId: string | null) => void;
@@ -30,6 +33,12 @@ export function ChannelPicker({
    *  → Channels so the user can link a new account without abandoning the
    *  publish flow. */
   onAddChannel?: () => void;
+  /** ship-lens v0.7.7 #7 — Route the user to the ChannelsManager surface
+   *  when a non-active channel needs attention (reconnect after Ayrshare
+   *  token expiry, resume after pause, finish OAuth on pending_link).
+   *  Falls back to `onAddChannel` when not provided so existing callers
+   *  keep working without code churn. */
+  onManageChannels?: () => void;
 }) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,8 +50,13 @@ export function ChannelPicker({
       try {
         const cs = await backend.listChannels();
         if (cancelled) return;
-        const usable = cs.filter((c) => c.status === "active" || c.status === "pending_link");
-        setChannels(usable);
+        // ship-lens v0.7.7 #7 — Keep every non-deleted channel. Active rows
+        // are clickable; pending_link / error / paused rows render as
+        // disabled chips with a recovery hint so the user knows the row
+        // exists and what to do next, instead of seeing "No channels added
+        // yet" when there are in fact several waiting on action.
+        const visible = cs.filter((c) => c.status !== "deleted");
+        setChannels(visible);
       } catch (e) {
         if (cancelled) return;
         setLoadError(humanError(e));
@@ -50,7 +64,6 @@ export function ChannelPicker({
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
   }, []);
 
   const filtered = useMemo(() => {
@@ -107,8 +120,35 @@ export function ChannelPicker({
     );
   }
 
+  // ship-lens v0.7.7 #7 — Count needs-attention channels so the picker can
+  // render a single inline hint above the chips (e.g. "1 needs reconnecting")
+  // — pure signal, no decoration.
+  const needsAttention = filtered.filter((c) => c.status !== "active").length;
+  const manageHandler = onManageChannels ?? onAddChannel;
+
   return (
     <div className="flex flex-col gap-3">
+      {needsAttention > 0 && (
+        <div className="flex items-start gap-2 rounded-xl border border-[#F59E0B]/40 bg-[#F59E0B]/5 px-3 py-2">
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-[#F59E0B]" />
+          <div className="flex flex-col gap-0.5">
+            <p className="font-sans text-[11px] font-medium text-[#F59E0B]">
+              {needsAttention === 1
+                ? "1 channel needs attention before it can publish"
+                : `${needsAttention} channels need attention before they can publish`}
+            </p>
+            {manageHandler && (
+              <button
+                type="button"
+                onClick={manageHandler}
+                className="self-start font-mono text-[10px] uppercase tracking-[0.12em] text-[#F59E0B]/90 underline-offset-2 hover:underline"
+              >
+                Open Schedule → Channels
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       {Object.entries(grouped).map(([platform, list]) => (
         <div key={platform} className="flex flex-col gap-2">
           <p className="font-mono text-[9px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
@@ -145,6 +185,47 @@ function AddChannelButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+/** ship-lens v0.7.7 #7 — Per-status copy + icon shown on disabled chips. The
+ *  "active" branch is rendered without any badge so the happy-path chip stays
+ *  visually quiet. */
+type ChipState =
+  | { kind: "active" }
+  | { kind: "pending"; label: string; tooltip: string }
+  | { kind: "reconnect"; label: string; tooltip: string }
+  | { kind: "paused"; label: string; tooltip: string }
+  | { kind: "unknown"; label: string; tooltip: string };
+
+function chipStateFor(status: Channel["status"]): ChipState {
+  switch (status) {
+    case "active":
+      return { kind: "active" };
+    case "pending_link":
+      return {
+        kind: "pending",
+        label: "link",
+        tooltip: "Finish linking this channel before publishing",
+      };
+    case "error":
+      return {
+        kind: "reconnect",
+        label: "reconnect",
+        tooltip: "This channel needs to be reconnected — open Schedule → Channels",
+      };
+    case "paused":
+      return {
+        kind: "paused",
+        label: "paused",
+        tooltip: "Paused — resume in Schedule → Channels before publishing",
+      };
+    default:
+      return {
+        kind: "unknown",
+        label: status,
+        tooltip: `Status: ${status}`,
+      };
+  }
+}
+
 function ChannelChip({
   channel,
   selected,
@@ -158,11 +239,12 @@ function ChannelChip({
 }) {
   const id = ((channel.platform as string) === "twitter" ? "x" : channel.platform) as PlatformId;
   const known = ["youtube", "tiktok", "instagram", "x"].includes(id);
+  const state = chipStateFor(channel.status);
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      title={channel.status === "pending_link" ? "Finish linking this channel before publishing" : channel.handle ?? channel.label}
+      title={state.kind === "active" ? channel.handle ?? channel.label : state.tooltip}
       className={`group inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-sans text-[12px] font-medium transition-colors ${
         selected
           ? "border-fuchsia bg-fuchsia text-paper"
@@ -175,9 +257,27 @@ function ChannelChip({
         )}
       </span>
       <span className="truncate max-w-[140px]">{channel.label}</span>
-      {channel.status === "pending_link" && (
-        <span className="rounded-full bg-[#F59E0B]/20 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.08em] text-[#F59E0B]">
-          link
+      {state.kind === "pending" && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#F59E0B]/20 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.08em] text-[#F59E0B]">
+          <Link2 className="h-2.5 w-2.5" strokeWidth={2.5} />
+          {state.label}
+        </span>
+      )}
+      {state.kind === "reconnect" && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#DC2626]/20 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.08em] text-[#DC2626]">
+          <RefreshCw className="h-2.5 w-2.5" strokeWidth={2.5} />
+          {state.label}
+        </span>
+      )}
+      {state.kind === "paused" && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-text-tertiary/20 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.08em] text-text-tertiary">
+          <PauseCircle className="h-2.5 w-2.5" strokeWidth={2.5} />
+          {state.label}
+        </span>
+      )}
+      {state.kind === "unknown" && (
+        <span className="rounded-full bg-text-tertiary/20 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.08em] text-text-tertiary">
+          {state.label}
         </span>
       )}
     </button>

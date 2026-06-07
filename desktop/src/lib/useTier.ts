@@ -1,5 +1,6 @@
+// ship-lens v0.7.7: fix #9 — switched useTier off the raw meStatus() to the legacy shim; the admin-email fallback only consumes `.email`, and the discriminated union's expired-banner UX is owned by Settings.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { meStatus, syncStatus, type SyncStatus, type Tier } from "./backend";
+import { meStatusLegacy, syncStatus, type SyncStatus, type Tier } from "./backend";
 
 // Lightweight tier hook. Defaults to "free" when sync hasn't completed or the
 // user has no license JWT, so gating UX renders immediately on first paint
@@ -133,7 +134,7 @@ export function useTier(): TierState {
       // account uncapped even mid-deploy.
       const [s, me] = await Promise.all([
         syncStatus(),
-        meStatus().catch(() => null),
+        meStatusLegacy().catch(() => null),
       ]);
       if (signal.cancelled) return;
       const adminByEmail = isAdminEmail(me?.email);
