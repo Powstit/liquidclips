@@ -33,6 +33,10 @@ type SideNavItemProps = SideNavItemBaseProps & {
   // for no real gain).
   iconSrc?: string;
   Icon?: LucideIcon;
+  /** v0.7.14 K-γ mount — opt-in anchor key for StudioTour's CoachMark
+   *  spotlight (`[data-tour="<key>"]`). Set per SideNav item where the tour
+   *  expects to land. */
+  dataTour?: string;
 };
 
 export function SideNavItem({
@@ -41,6 +45,7 @@ export function SideNavItem({
   onClick,
   iconSrc,
   Icon,
+  dataTour,
 }: SideNavItemProps) {
   // Local pulse trigger — toggled true on click, cleared on animation end.
   // Cheaper than re-mounting the bar; the keyframe handles the timing.
@@ -63,6 +68,7 @@ export function SideNavItem({
       aria-label={label}
       title={label}
       data-active={active ? "true" : "false"}
+      data-tour={dataTour}
       className="lc-sidenav-item group relative flex w-full flex-col items-center justify-center gap-1 py-3"
     >
       {/* Left-edge fuchsia indicator bar — only visible when active. */}

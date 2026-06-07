@@ -67,6 +67,8 @@ import { NotificationSheet } from "./components/NotificationSheet";
 import { LibraryTab } from "./components/library/LibraryTab";
 import { InvadersOverlay } from "./components/invaders/InvadersOverlay";
 import { OnboardingOverlay } from "./components/onboarding/OnboardingOverlay";
+import { StudioTour } from "./components/onboarding/StudioTour";
+import { useOnboardingStep } from "./contracts/useOnboardingStep";
 import { closeInvaders } from "./lib/invaders/store";
 import { Settings } from "./components/Settings";
 import { ConfirmDialog } from "./components/ConfirmDialog";
@@ -182,6 +184,25 @@ export default function App() {
   const [engineRestartReason, setEngineRestartReason] = useState<{ exit_code: number | null } | null>(null);
   const [engineRestarting, setEngineRestarting] = useState(false);
 
+  // ship-lens v0.7.14 K-γ mount — StudioTour contract hook. Reads the
+  // LIQUIDCLIPS_ONBOARDED keychain flag; while not done + not hydrating,
+  // we mount <StudioTour /> as a top-layer overlay (z-60). Tour itself
+  // owns its 4-step sequence (workstation → clips → schedule → earn); we
+  // call begin() once so the contract's stepId tracking is consumed, and
+  // forward Skip/Finish to skip()/finish() which write the keychain flag.
+  // Settings → "Replay tour" can call reset() later to re-fire.
+  const {
+    isDone: tourDone,
+    hydrating: tourHydrating,
+    stepId: tourStepId,
+    begin: beginTour,
+    skip: skipTour,
+    finish: finishTour,
+  } = useOnboardingStep();
+  // Local guard so a single render cycle doesn't call begin() twice (the
+  // hook's begin is idempotent but we still want one click of intent).
+  const tourBegunRef = useRef(false);
+
   // Sprint #14c — global "open Settings" bus so any component (e.g. the
   // Earn-tab ConnectionBadge "Sign in with Whop" CTA) can pop Settings open
   // without prop-drilling setSettingsOpen everywhere.
@@ -204,6 +225,17 @@ export default function App() {
     });
     return unsubscribe;
   }, []);
+
+  // ship-lens v0.7.14 K-γ mount — fire begin() once the keychain hydrate
+  // resolves to "not done". One call per session; subsequent renders are
+  // no-ops via the ref guard. View gating happens at render time below.
+  useEffect(() => {
+    if (tourHydrating) return;
+    if (tourDone) return;
+    if (tourBegunRef.current) return;
+    tourBegunRef.current = true;
+    beginTour(["workstation", "clips", "schedule", "earn"]);
+  }, [tourHydrating, tourDone, beginTour]);
 
   // Auto-dismiss the engine-restart banner once a sidecar call comes back
   // clean. Cheap heartbeat: ping every 4s while the banner is up; clear on
@@ -1901,6 +1933,28 @@ export default function App() {
           onTrySample={() => onPasteUrl(SAMPLE_ONBOARDING_URL, "")}
         />
       )}
+      {/* ship-lens v0.7.14 K-γ mount — StudioTour overlay. Gated on the
+          contract hook's hydrate + done flags so we only mount once the
+          keychain read has resolved AND the user has not finished the
+          tour before. tourStepId tracks the contract's stepIdx — null
+          means skipped/finished/never-begun, so we additionally check it
+          to unmount the moment Skip/Finish runs (CoachMark's own state
+          would otherwise re-render the next step until the keychain
+          write settles). Suppressed during OnboardingOverlay so two
+          welcome surfaces never stack on the empty view. */}
+      {!tourHydrating &&
+        !tourDone &&
+        tourStepId !== null &&
+        !(showOnboarding && view.kind === "empty") && (
+          <StudioTour
+            onComplete={() => {
+              void finishTour();
+            }}
+            onSkip={() => {
+              void skipTour();
+            }}
+          />
+        )}
       {/* Achievement unlock toasts (sprint #18a) — global mount, listens on
           the achievements bus, slides in for ~5s when a badge unlocks. */}
       <AchievementToast />
