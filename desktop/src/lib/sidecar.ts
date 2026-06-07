@@ -38,6 +38,7 @@ export class SidecarError extends Error {
 export function humanError(e: unknown): string {
   if (e instanceof SidecarError) return e.human;
   if (e instanceof SidecarTimeoutError) return e.human;
+  if (e instanceof SidecarRestartedError) return e.human;
   const raw = e instanceof Error ? e.message : String(e);
   // Catch the unhelpful String() coercions of non-Error throwables so the
   // user never sees "null" / "undefined" / "[object Object]" as a message.
@@ -118,6 +119,20 @@ export class SidecarTimeoutError extends Error {
     super(`Sidecar method "${method}" timed out after ${ms}ms`);
     this.name = "SidecarTimeoutError";
     this.human = `The engine is taking longer than expected on "${method}". Try again, or quit and reopen Liquid Clips.`;
+  }
+}
+
+/** F5 — thrown when the Rust shell auto-restarted the Python sidecar
+ *  mid-RPC. In-flight calls reject with this so the UI can toast
+ *  "engine restarted — try again" rather than show a generic failure.
+ *  The next sidecarCall after a restart will hit the freshly-spawned
+ *  process and (typically) succeed. */
+export class SidecarRestartedError extends Error {
+  readonly human: string;
+  constructor() {
+    super("The engine restarted unexpectedly. Try again.");
+    this.name = "SidecarRestartedError";
+    this.human = "The engine restarted unexpectedly. Try again.";
   }
 }
 
@@ -256,9 +271,21 @@ export async function sidecarCall<T = unknown>(method: string, params: Record<st
           if (envIdx >= 0) {
             try {
               const env = JSON.parse(raw.slice(envIdx + 4));
+              // F5 — Rust-side restart envelopes. `sidecar_restarted` =
+              // child exited mid-RPC, a fresh process is already running,
+              // user can retry. `sidecar_exhausted` = restart cap consumed,
+              // app needs a full relaunch. Both surface via humanError.
+              if (env && typeof env === "object" && env.error === "sidecar_restarted") {
+                throw new SidecarRestartedError();
+              }
+              if (env && typeof env === "object" && env.error === "sidecar_exhausted") {
+                throw new SidecarCrashedError(null);
+              }
               throw new SidecarError(env);
             } catch (parseErr) {
               if (parseErr instanceof SidecarError) throw parseErr;
+              if (parseErr instanceof SidecarRestartedError) throw parseErr;
+              if (parseErr instanceof SidecarCrashedError) throw parseErr;
               // fall through with raw
             }
           }
