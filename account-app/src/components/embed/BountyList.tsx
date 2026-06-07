@@ -1,5 +1,6 @@
 "use client";
 
+// ship-lens v0.7.7: fix #10 — SubmissionStatusIsland reads submission IDs from EmbedAuthBridge context (desktop-pushed), not localStorage (was always empty due to origin prefix mismatch)
 // SURFACE: bounty list (embed port of EarnTab bounty grid + BountyCard)
 // MAP TAGS: (O #5)(O #6) bounty list
 //            (S "start in one click") Start CTA
@@ -58,7 +59,7 @@ type Tier =
 
 export function BountyList({ userTier = null }: { userTier?: Tier }) {
   void userTier; // reserved for future tier-gated bounties — kept in the shape today.
-  const { jwt } = useEmbedAuth();
+  const { jwt, submissionIds } = useEmbedAuth();
   const [bounties, setBounties] = useState<WhopBounty[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -159,7 +160,7 @@ export function BountyList({ userTier = null }: { userTier?: Tier }) {
 
       {/* Live submission status pills — sub-island so this section's shell
           (loading / error / grid) stays the steady-state render. */}
-      <SubmissionStatusIsland jwt={jwt} />
+      <SubmissionStatusIsland jwt={jwt} submissionIds={submissionIds} />
     </section>
   );
 }
@@ -311,10 +312,15 @@ type WhopSubmission = {
   bounty?: { id: string; title: string };
 };
 
-const SUBMISSION_IDS_KEY = "lc:embed:my-whop-submissions:v1";
 const POLL_INTERVAL_MS = 8000;
 
-function SubmissionStatusIsland({ jwt }: { jwt: string }) {
+function SubmissionStatusIsland({
+  jwt,
+  submissionIds,
+}: {
+  jwt: string;
+  submissionIds: string[];
+}) {
   const [items, setItems] = useState<WhopSubmission[]>([]);
 
   const fetchOne = useCallback(
@@ -334,19 +340,26 @@ function SubmissionStatusIsland({ jwt }: { jwt: string }) {
     [jwt],
   );
 
+  // Stable join key so the refresh callback only re-creates when the actual
+  // list contents change — re-renders that hand back the same array values
+  // shouldn't reset the poll loop.
+  const idsKey = submissionIds.join(",");
+
   const refresh = useCallback(async () => {
-    const ids = readSubmissionIds();
-    if (ids.length === 0) {
+    if (submissionIds.length === 0) {
       setItems([]);
       return;
     }
     const results: WhopSubmission[] = [];
-    for (const id of ids) {
+    for (const id of submissionIds) {
       const s = await fetchOne(id);
       if (s) results.push(s);
     }
     setItems(results);
-  }, [fetchOne]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- idsKey is the
+    // stable identity for submissionIds; including the array itself causes
+    // refresh churn on every parent re-render with the same contents.
+  }, [fetchOne, idsKey]);
 
   // 8s poll per spec. Pauses on tab hidden so a backgrounded webview doesn't
   // hammer the backend.
@@ -399,18 +412,6 @@ function pillTone(status: WhopSubmission["status"]): string {
   if (status === "approved") return "border-fuchsia/40 bg-fuchsia-soft/30 text-fuchsia-deep";
   if (status === "denied") return "border-[#DC2626]/40 bg-[#DC2626]/5 text-[#F87171]";
   return "border-line bg-paper-warm/40 text-text-secondary";
-}
-
-function readSubmissionIds(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(SUBMISSION_IDS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
 }
 
 /* ── card helpers (ported from desktop/src/components/earn/types.ts) ── */

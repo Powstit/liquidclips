@@ -1,3 +1,4 @@
+// ship-lens v0.7.7: fix #9 — meStatus now returns a discriminated union ({ kind: "ok" | "expired" | "signed-out" }) so callers can distinguish "JWT was rejected" from "never signed in" — Settings consumes the union to fire the re-activate banner, legacy email-only callsites use the meStatusLegacy() shim.
 import { sidecar, humanError as sidecarHumanError, type DripSlot } from "./sidecar";
 import { reportDesktopError } from "./telemetry";
 
@@ -1109,11 +1110,49 @@ export async function meAffiliate(): Promise<AffiliateMeResponse | null> {
 }
 
 
-export async function meStatus(): Promise<MeStatus | null> {
-  if (isWebPreview()) return null;
+/**
+ * v0.7.7 ship-lens fix #9 — meStatus discriminated union.
+ *
+ * The previous contract returned `MeStatus | null` and silently lumped
+ * three very different states into the same `null`:
+ *   - never signed in (no JWT in keychain)        — UnauthorizedError caught
+ *   - stale / expired JWT (401 from /me)          — UnauthorizedError caught
+ *   - transport hiccup (network, 5xx, DNS)        — generic Error caught
+ *
+ * Settings then rendered the same "Sign in to your Liquid Clips account"
+ * card for all three, so a paying user whose token expired silently looked
+ * identical to a fresh install. They never saw "your session expired —
+ * re-activate this device" because the code couldn't tell.
+ *
+ * The new return type distinguishes:
+ *   - { kind: "ok", data }       — backend returned the row.
+ *   - { kind: "expired" }        — JWT rejected (401). User had a token
+ *                                  but it's no longer valid; fire the
+ *                                  re-activation banner.
+ *   - { kind: "signed-out" }     — no JWT at all OR backend offline.
+ *                                  Existing "Sign in" copy applies.
+ *
+ * The legacy `meStatus()` callsites used `.catch(() => null)` over this
+ * function — kept compatible by adding `meStatusLegacy()`. New callers
+ * (Settings) read the union directly.
+ */
+export type MeStatusResult =
+  | { kind: "ok"; data: MeStatus }
+  | { kind: "expired" }
+  | { kind: "signed-out" };
+
+export async function meStatus(): Promise<MeStatusResult> {
+  if (isWebPreview()) return { kind: "signed-out" };
   try {
     const res = await authedFetch("/me");
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // The 401-path is caught by authedFetch + handleUnauthorized and
+      // thrown as UnauthorizedError below; this branch covers 5xx / 404
+      // / unexpected statuses. Treat as "signed-out" so the user sees
+      // the Sign-in card rather than a misleading "session expired"
+      // banner when the backend is simply unreachable.
+      return { kind: "signed-out" };
+    }
     const body = (await res.json()) as MeStatus;
     // Wire backend_user_id into the telemetry user_ref so Admin HQ can group
     // errors by user without us sending an email / JWT / Clerk id. Best-effort —
@@ -1124,10 +1163,29 @@ export async function meStatus(): Promise<MeStatus | null> {
     } catch {
       /* telemetry module unavailable — silently skip */
     }
-    return body;
-  } catch {
-    return null;
+    return { kind: "ok", data: body };
+  } catch (e) {
+    // UnauthorizedError = the JWT was present but rejected. Surface as
+    // "expired" so Settings can render the fuchsia re-activate banner.
+    // Any other thrown error is a transport hiccup — collapse to
+    // "signed-out" (caller falls back to cached state).
+    if (e instanceof UnauthorizedError) return { kind: "expired" };
+    return { kind: "signed-out" };
   }
+}
+
+/**
+ * Legacy callers that haven't been refactored to the union. Returns the old
+ * `MeStatus | null` contract: ok → data, otherwise → null. The boot-time
+ * /sync race in App.tsx, useTier, AvatarOrbit, AvatarPanel use this shim
+ * because they only ever consumed `.email` for the admin-fallback check —
+ * none of them rendered the expired banner. New callers should consume
+ * meStatus() directly so the expired state can land where it matters.
+ * @deprecated Prefer meStatus() — the union carries the "expired" signal.
+ */
+export async function meStatusLegacy(): Promise<MeStatus | null> {
+  const r = await meStatus();
+  return r.kind === "ok" ? r.data : null;
 }
 
 // ── Social connections (P1 — Ayrshare) ─────────────────────────────────

@@ -1,3 +1,4 @@
+// ship-lens v0.7.7: fix #8 — ConnectionBadge reads real Whop link state instead of lying `linked={true}`
 // SURFACE: Earn tab (becomes webview) — /embed/earn
 // MAP TAGS:
 //   (O #7 — proof of identity) Connection badge
@@ -37,7 +38,17 @@ export default async function EmbedEarnPage() {
   // again here (not from a context, which would force this page to be a
   // client component) so the campaigns can render server-side with the
   // correct visibility gating already applied — no flash of locked content.
-  const tier = await fetchTier(userId);
+  //
+  // We now also read the Whop link state from the SAME call — the customer
+  // shape already carries `whop_connected: bool(user.whop_user_id)` (see
+  // junior-backend/app/routes/affiliate.py:165). Three honest states:
+  //   • "linked"    — backend confirmed Whop user id is present
+  //   • "unlinked"  — backend responded, Whop user id is empty
+  //   • "unknown"   — backend errored / non-OK — we say so out loud rather
+  //                   than rendering a confident "not linked" lie.
+  const affiliate = await fetchAffiliate(userId);
+  const tier = affiliate.tier;
+  const linkStatus = affiliate.linkStatus;
 
   // Public route — no auth needed for /campaigns. Server-side fetch keeps the
   // markup deterministic; the carousel never has to render a "loading" state.
@@ -45,11 +56,12 @@ export default async function EmbedEarnPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-[960px] flex-col gap-6 px-5 py-6">
-      {/* (O #7 — proof of identity) Connection badge — server-rendered
-          since we already know whether Clerk identified the user. The
-          desktop-side Whop badge ("source: keychain / iframe") lives natively
-          on the parent; this badge mirrors what the user can verify HERE. */}
-      <ConnectionBadge linked />
+      {/* (O #7 — proof of identity) Connection badge — server-rendered.
+          Reads /affiliate/me on the server so the link state is honest from
+          the first paint. The desktop-side Whop badge ("source: keychain /
+          iframe") lives natively on the parent; this badge mirrors what the
+          user can verify HERE. */}
+      <ConnectionBadge status={linkStatus} />
 
       {/* (O #5) Sponsored rewards — featured video row + image banner carousel.
           1:1 port of desktop SponsoredBannerCarousel; tier-gating preserved. */}
@@ -70,7 +82,18 @@ export default async function EmbedEarnPage() {
 
 /* ── Server-side fetchers ────────────────────────────────────────── */
 
-async function fetchTier(clerkUserId: string): Promise<EmbedTier> {
+/** Three honest states for the Whop connection badge.
+ *  Splitting "unknown" from "unlinked" matters because the user's next action
+ *  differs — for "unknown" we should not promise they're unlinked when our
+ *  check itself failed. */
+type WhopLinkStatus = "linked" | "unlinked" | "unknown";
+
+type AffiliateInfo = {
+  tier: EmbedTier;
+  linkStatus: WhopLinkStatus;
+};
+
+async function fetchAffiliate(clerkUserId: string): Promise<AffiliateInfo> {
   try {
     const res = await fetch(
       `${BACKEND_URL}/affiliate/me?clerk_user_id=${encodeURIComponent(clerkUserId)}`,
@@ -79,11 +102,22 @@ async function fetchTier(clerkUserId: string): Promise<EmbedTier> {
         cache: "no-store",
       },
     );
-    if (!res.ok) return null;
-    const data = (await res.json()) as { customer?: { tier?: string | null } };
-    return normalizeTier(data.customer?.tier ?? null);
+    if (!res.ok) return { tier: null, linkStatus: "unknown" };
+    // junior-backend/app/routes/affiliate.py:165 — whop_connected = bool(user.whop_user_id).
+    // That's the single source of truth for "did this user finish the Whop
+    // link step on desktop?" — no need to parse a status string.
+    const data = (await res.json()) as {
+      customer?: { tier?: string | null; whop_connected?: boolean | null };
+    };
+    const tier = normalizeTier(data.customer?.tier ?? null);
+    const linkStatus: WhopLinkStatus = data.customer?.whop_connected
+      ? "linked"
+      : "unlinked";
+    return { tier, linkStatus };
   } catch {
-    return null;
+    // Network/DNS/Railway 502 etc. We say "unknown" so the badge doesn't
+    // claim "not linked" when we genuinely couldn't ask.
+    return { tier: null, linkStatus: "unknown" };
   }
 }
 
@@ -100,8 +134,11 @@ async function fetchCampaigns(): Promise<SponsoredCampaign[]> {
 
 /* ── Inline sub-components ───────────────────────────────────────── */
 
-function ConnectionBadge({ linked }: { linked: boolean }) {
-  if (linked) {
+function ConnectionBadge({ status }: { status: WhopLinkStatus }) {
+  // Three honest renderings — never lie about what we know.
+  // The CTA copy differs by state so the user's next action is clear inside
+  // the webview (which has no native nav back to /sign-in / settings).
+  if (status === "linked") {
     return (
       <span className="inline-flex w-fit items-center gap-2 rounded-full border border-line bg-paper-warm/40 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary">
         <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
@@ -109,10 +146,20 @@ function ConnectionBadge({ linked }: { linked: boolean }) {
       </span>
     );
   }
+  if (status === "unlinked") {
+    return (
+      <span className="inline-flex w-fit items-center gap-2 rounded-full border border-fuchsia/40 bg-fuchsia-soft/30 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-fuchsia-deep">
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
+        link whop on desktop
+      </span>
+    );
+  }
+  // "unknown" — backend was unreachable. Distinct copy + tone so the user
+  // doesn't read this as "we confirmed you're not linked".
   return (
-    <span className="inline-flex w-fit items-center gap-2 rounded-full border border-fuchsia/40 bg-fuchsia-soft/30 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-fuchsia-deep">
-      <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-      whop not linked
+    <span className="inline-flex w-fit items-center gap-2 rounded-full border border-line bg-paper-warm/40 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+      <span className="inline-block h-1.5 w-1.5 rounded-full bg-text-tertiary" />
+      couldn&apos;t check whop status
     </span>
   );
 }
