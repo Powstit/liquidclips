@@ -1,3 +1,4 @@
+// ship-lens v0.7.8: E2 — `pushRect` is now rAF-debounced. Pre-fix, ResizeObserver + window-resize each fired `resize_earn_panel(invoke)` synchronously; dragging the window queued dozens of IPC calls per frame and starved the main thread. We stash the latest rect, schedule one rAF, fire on tick, clear the scheduled flag. Cancelled cleanly on unmount.
 // ship-lens v0.7.7: fix #10 — auth-jwt reply now ships my-whop-submission IDs so the embed's status pills stop being silently empty (origin prefix mismatch made the embed's own localStorage read return [] forever)
 // SURFACE: Earn webview mount
 // MAP TAGS: (O #5)(O #6)(O #7) hosted Earn surface
@@ -89,26 +90,44 @@ export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
   // Pin the webview to the container rect, every resize. window.scrollX/Y
   // are zero in the Tauri shell — the chrome doesn't scroll — so the
   // bounding rect already gives us window-relative coordinates.
+  //
+  // v0.7.8 fix E2 — pushRect is rAF-debounced. ResizeObserver + window-resize
+  // can each fire dozens of times per frame during an active window drag;
+  // each call used to translate 1:1 into an `invoke("resize_earn_panel")`
+  // which is a JSON-serialised IPC roundtrip to Rust. Dropping that into
+  // an rAF cap means at most one IPC per animation frame, and the user
+  // never sees more than one paint-pair of misalignment during a drag.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
+    let scheduled = false;
+    let rafId = 0;
+
     function pushRect(): void {
-      const node = containerRef.current;
-      if (!node) return;
-      const r = node.getBoundingClientRect();
-      // Round to whole logical pixels — sub-pixel Position values cause
-      // WKWebView to flicker on retina displays.
-      void resizeEarnPanel({
-        x: Math.round(r.left),
-        y: Math.round(r.top),
-        w: Math.round(r.width),
-        h: Math.round(r.height),
-      }).catch((e) => {
-        // Resize before the webview attaches is expected on first mount;
-        // Rust returns Ok with no-op in that case. Anything else means
-        // we mis-wired the bridge.
-        console.warn("[earn-panel] resize failed:", e);
+      // Coalesce: each event sets the flag; only the first event in this
+      // animation frame actually schedules the rAF tick.
+      if (scheduled) return;
+      scheduled = true;
+      rafId = window.requestAnimationFrame(() => {
+        scheduled = false;
+        rafId = 0;
+        const node = containerRef.current;
+        if (!node) return;
+        const r = node.getBoundingClientRect();
+        // Round to whole logical pixels — sub-pixel Position values cause
+        // WKWebView to flicker on retina displays.
+        void resizeEarnPanel({
+          x: Math.round(r.left),
+          y: Math.round(r.top),
+          w: Math.round(r.width),
+          h: Math.round(r.height),
+        }).catch((e) => {
+          // Resize before the webview attaches is expected on first mount;
+          // Rust returns Ok with no-op in that case. Anything else means
+          // we mis-wired the bridge.
+          console.warn("[earn-panel] resize failed:", e);
+        });
       });
     }
 
@@ -122,6 +141,13 @@ export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", pushRect);
+      // Cancel any pending rAF tick so unmount-then-remount in HMR doesn't
+      // see a stale tick fire into a dead container.
+      if (rafId !== 0) {
+        window.cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      scheduled = false;
     };
   }, []);
 

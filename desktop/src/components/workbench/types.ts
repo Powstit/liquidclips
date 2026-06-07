@@ -1,3 +1,4 @@
+// ship-lens v0.7.8: W4+W5 — drop dead `view` union (no Grid mode) + drop dead ActiveVideoPool/MAX_ACTIVE_VIDEOS (singleton playingId in WindowManager replaces the pool).
 // Workbench shared types + constants.
 //
 // Single source of truth for the workbench feature surface. Agents 2-5
@@ -9,7 +10,6 @@ import type { CaptionStyleKey, CaptionPalette } from "../../lib/caption-styles";
 import type { LayoutKey } from "../clips-feed/LayoutIcon";
 
 export type WindowId = string; // crypto.randomUUID()
-export type WorkbenchView = "grid" | "workbench";
 
 export type WindowState = {
   id: WindowId;
@@ -32,8 +32,6 @@ export type MasterAction =
   | { kind: "apply_layout"; layout: LayoutKey; sourcePath?: string }
   | { kind: "apply_ratio"; ratio: RatioKey }
   | { kind: "schedule"; channels: string[]; when: "now" | "1h" | "24h"; captionOverride?: string }
-  | { kind: "play_all" }
-  | { kind: "pause_all" }
   | { kind: "remove" };
 
 export type MasterActionResult = {
@@ -41,19 +39,11 @@ export type MasterActionResult = {
   failed: Array<{ id: WindowId; clipIdx: number; reason: string }>;
 };
 
-export type ActiveVideoPool = {
-  ids: WindowId[];
-  reason: Record<WindowId, "focused" | "hover" | "playing" | "pinned">;
-};
-
 export type WorkbenchStore = {
-  view: WorkbenchView;
   windows: Map<WindowId, WindowState>;
   selection: SelectionModel;
-  pool: ActiveVideoPool;
   lastProjectSlug: string | null;
   lastClipCount: number;
-  setView(next: WorkbenchView): void;
   addWindow(clipIdx: number): WindowId;
   removeWindow(id: WindowId): void;
   moveWindow(id: WindowId, pos: { col: number; row: number }): void;
@@ -65,13 +55,11 @@ export type WorkbenchStore = {
   selectAll(): void;
   clearSelection(): void;
   setFocused(id: WindowId | null): void;
-  promoteToPool(id: WindowId, reason: ActiveVideoPool["reason"][string]): void;
   reconcileProject(project: Project): void;
 };
 
 export type PersistedSession = {
   version: 1;
-  view: WorkbenchView;
   byProject: Record<string, {
     windows: Array<Pick<WindowState, "id" | "clipIdx" | "pos" | "size" | "manual" | "boundChannelIds" | "ratio">>;
     selectedIds: WindowId[];
@@ -81,7 +69,6 @@ export type PersistedSession = {
 
 export const LC_WORKBENCH_PREF_KEY = "lc:workbench_session_v1";
 export const LC_WORKBENCH_SCHEMA_VERSION = 1 as const;
-export const MAX_ACTIVE_VIDEOS = 6 as const;
 export const MIN_WINDOW_SIZE = { w: 2, h: 2 } as const;
 export const MAX_WINDOW_SIZE = { w: 8, h: 8 } as const;
 export const CANVAS_GRID_COLS = 8 as const;

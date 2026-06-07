@@ -1,5 +1,6 @@
 "use client";
 
+// ship-lens v0.7.8: E3 — `coming_soon` campaigns now render a diagonal fuchsia ribbon in the top-left and the CTA becomes "Notify me" (posts `lc:nav` for a future notify backend). Pre-fix coming-soon campaigns looked identical to public ones; users clicked through expecting open campaigns.
 // SURFACE: sponsored carousel (embed port of desktop SponsoredBannerCarousel)
 // MAP TAGS: (O #5) discovery | (O #5 — see what's locked) upgrade overlay
 // See desktop/docs/UI_MAP_embed_surfaces.md — the contract.
@@ -62,9 +63,18 @@ export function SponsoredCarousel({
 
   const go = useCallback((c: SponsoredCampaign) => {
     // Bounce to the desktop parent — never load whop.com inside the embed.
+    // v0.7.8 fix E3 — coming-soon campaigns reuse the same channel for now:
+    // we ship a `target: "notify"` so the desktop can later branch to a
+    // notify-me sheet without us redeploying the embed. Until that backend
+    // exists, the desktop falls back to its current `lc:nav` no-op handler
+    // — no broken UX, just no notify confirmation toast yet.
     try {
       window.parent.postMessage(
-        { type: EMBED_MSG.NAV_CAMPAIGN, target: "campaign", id: c.id },
+        {
+          type: EMBED_MSG.NAV_CAMPAIGN,
+          target: isComingSoon(c) ? "notify" : "campaign",
+          id: c.id,
+        },
         "*",
       );
     } catch {
@@ -121,6 +131,13 @@ function VideoCard({
   locked: boolean;
   onClick: () => void;
 }) {
+  // v0.7.8 fix E3 — coming-soon campaigns swap the brand CTA for "Notify me"
+  // and overlay a fuchsia diagonal ribbon. We still wire `onClick` (the
+  // button posts `lc:nav` with target="notify") so the desktop can choose
+  // to open a notify sheet later; for now the postMessage is the no-op the
+  // existing handler ignores, which is the desired "nothing visible
+  // happens yet" UX while the backend lands.
+  const comingSoon = isComingSoon(c);
   return (
     <button
       type="button"
@@ -142,6 +159,7 @@ function VideoCard({
           draggable={false}
         />
         {locked && <LockedOverlay />}
+        {comingSoon && <ComingSoonRibbon />}
       </div>
       <div className="flex items-center justify-between gap-3 px-3 pt-3 font-mono text-[10px] uppercase tracking-[0.14em]">
         <div className="flex flex-wrap items-center gap-3 text-text-tertiary">
@@ -160,7 +178,11 @@ function VideoCard({
             locked ? "text-text-tertiary" : "text-fuchsia"
           }`}
         >
-          {locked ? "Upgrade →" : c.cta_text}
+          {locked
+            ? "Upgrade →"
+            : comingSoon
+              ? "Notify me →"
+              : c.cta_text}
         </span>
       </div>
     </button>
@@ -305,6 +327,7 @@ function CarouselSlide({
   locked: boolean;
   onClick: () => void;
 }) {
+  const comingSoon = isComingSoon(c);
   return (
     <button
       type="button"
@@ -334,9 +357,13 @@ function CarouselSlide({
             draggable={false}
           />
           {locked && <LockedOverlay />}
+          {/* v0.7.8 fix E3 — ribbon overlays the banner art so the user
+              never mistakes a coming-soon campaign for a live one. */}
+          {comingSoon && <ComingSoonRibbon />}
         </div>
       ) : (
-        <div className="px-6 py-7">
+        <div className="relative px-6 py-7">
+          {comingSoon && <ComingSoonRibbon />}
           <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia">
             {c.brand ?? "campaign"}
           </p>
@@ -358,6 +385,49 @@ function CarouselSlide({
 
 function isVideoUrl(url: string): boolean {
   return /\.(mp4|webm|mov)(\?|#|$)/i.test(url);
+}
+
+/** v0.7.8 fix E3 — coming-soon is encoded on the wire two ways depending on
+ *  which factory emitted the record:
+ *   • `type === "coming_soon"` — set when the backend treats the campaign
+ *     itself as pre-launch (it doesn't go live until a future date).
+ *   • `status === "coming_soon"` — set when the campaign exists but its
+ *     funding/scheduling hasn't crossed the threshold yet.
+ *  Either signal is enough to flip the surface to coming-soon UX. */
+function isComingSoon(c: SponsoredCampaign): boolean {
+  return c.type === "coming_soon" || c.status === "coming_soon";
+}
+
+/** v0.7.8 fix E3 — top-left diagonal ribbon. Pure CSS — no font/icon deps.
+ *  Renders fuchsia + ink so it pops on both image and dark-bg banners. */
+function ComingSoonRibbon() {
+  return (
+    <div
+      className="pointer-events-none absolute left-0 top-0 z-10 overflow-hidden"
+      style={{ width: 110, height: 110 }}
+      aria-hidden="true"
+    >
+      <span
+        className="absolute font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-white"
+        style={{
+          background: "linear-gradient(135deg, #FF1A8C 0%, #B30D5E 100%)",
+          // Position so the ribbon's centre sits across the top-left corner.
+          // 36deg rotation matches the classic 45deg minus a small offset so
+          // the text reads diagonally without clipping on rounded card corners.
+          transform: "rotate(-45deg)",
+          transformOrigin: "center",
+          top: 22,
+          left: -28,
+          width: 140,
+          textAlign: "center",
+          padding: "4px 0",
+          boxShadow: "0 4px 12px rgba(255, 26, 140, 0.35)",
+        }}
+      >
+        Coming soon
+      </span>
+    </div>
+  );
 }
 
 function LockedOverlay() {

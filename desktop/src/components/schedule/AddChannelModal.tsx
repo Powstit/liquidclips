@@ -1,16 +1,28 @@
+// ship-lens v0.7.8 P2 — Aligned this modal's connect-flow timing to the
+// rest of the app:
+//   - poll window cap 60s → 90s (matches AccountBindingChip + ChannelsManager)
+//   - dropped the legacy `social_link_closed` Tauri listener (the deep-link
+//     path took over in v0.7.5 and the Tauri window-close event has not been
+//     emitted by Rust since)
+//   - added the `junior:channel-linked` listener (the v0.7.5 deep-link path,
+//     dispatched by activation.ts when liquidclips://channel-linked fires)
+// Result: the three "I'm waiting for an OAuth to come back" surfaces now
+// share one timing + one event, so the user gets consistent feedback whether
+// they entered the flow from the modal, from the workbench chip, or from
+// ChannelsManager.
+//
 // Add-channel wizard (Schedule v2).
 //
 // States: form → creating → linking → polling → success | still-pending | error.
 // Form collects platform + label. Linking opens the user's real browser
 // (Google blocks OAuth in embedded WebViews) and polls /channels/{id}/refresh
-// until status flips to 'active'. If the 60s poll window expires without an
+// until status flips to 'active'. If the 90s poll window expires without an
 // 'active' flip we surface a distinct still-pending UI — NOT a fake success —
 // so the user can re-open the browser or hand the pending channel back to
 // the parent honestly.
 
 import { useEffect, useRef, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { AlertTriangle, Check, Link, Loader2, X } from "lucide-react";
 import * as backend from "../../lib/backend";
 import { humanError } from "../../lib/sidecar";
@@ -78,23 +90,42 @@ export function AddChannelModal({
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  // Listen for the legacy Tauri window-close event. New builds open OAuth in
-  // the user's browser and move to polling immediately, but keeping this makes
-  // old embedded-window calls harmless during rollout.
+  // ship-lens v0.7.8 P2 — Listen for the deep-link signal that activation.ts
+  // dispatches when the browser bounces back via `liquidclips://channel-linked`
+  // after Ayrshare OAuth completes. This is the v0.7.5+ contract:
+  // ChannelsManager + AccountBindingChip already use it, the modal was the
+  // last surface still listening to the deprecated `social_link_closed`
+  // Tauri window-close event. When the deep link lands for the channel this
+  // modal is currently linking, hop the state machine straight to polling so
+  // the refresh fires immediately instead of waiting for the next 1.5s tick.
   const stateRef = useRef(state);
   stateRef.current = state;
   useEffect(() => {
-    let unlisten: UnlistenFn | undefined;
-    void listen("social_link_closed", () => {
+    function onLinked(ev: Event) {
+      const detail =
+        (ev as CustomEvent<{ channelId: string | null }>).detail ?? { channelId: null };
+      const cid = detail.channelId;
       const s = stateRef.current;
-      if (s.kind === "linking") {
-        setState({ kind: "polling", channel: s.channel });
-      }
-    }).then((u) => { unlisten = u; });
-    return () => { unlisten?.(); };
+      if (s.kind !== "linking") return;
+      // Only react when the deep link's channel matches the one we're
+      // currently linking — another modal/chip's link event must not bump
+      // this modal forward.
+      if (cid && cid !== s.channel.id) return;
+      setState({ kind: "polling", channel: s.channel });
+    }
+    window.addEventListener("junior:channel-linked", onLinked as EventListener);
+    return () => {
+      window.removeEventListener("junior:channel-linked", onLinked as EventListener);
+    };
   }, []);
 
   // Poll for status flip once the browser link opens.
+  // ship-lens v0.7.8 P2 — Cap raised from 40 ticks (60s) to 60 ticks (90s) so
+  // this modal matches the AccountBindingChip + ChannelsManager 90s window.
+  // The 60s window was shorter than the other two surfaces, which meant a
+  // slow TikTok age-gate completed for users coming in via the chip but
+  // surfaced as "Linking didn't complete in time" for users coming in via
+  // this modal — same OAuth, different verdict, depending on entry point.
   useEffect(() => {
     if (state.kind !== "polling") return;
     let cancelled = false;
@@ -107,8 +138,8 @@ export function AddChannelModal({
         if (refreshed.status === "active") {
           clearInterval(interval);
           setState({ kind: "success", channel: refreshed });
-        } else if (attempts >= 40) {
-          // 40 × 1.5s = ~60s of polling. If status still isn't 'active',
+        } else if (attempts >= 60) {
+          // 60 × 1.5s = ~90s of polling. If status still isn't 'active',
           // STOP lying about success — surface a distinct still-pending UI
           // so the user can re-open the browser or continue with a
           // pending_link status the parent can render honestly.
@@ -120,7 +151,7 @@ export function AddChannelModal({
           });
         }
       } catch {
-        if (attempts >= 40) {
+        if (attempts >= 60) {
           clearInterval(interval);
           setState({
             kind: "error",
@@ -329,7 +360,7 @@ export function AddChannelModal({
                   Linking didn't complete in time
                 </h2>
                 <p className="max-w-sm text-center font-sans text-[13px] leading-relaxed text-text-secondary">
-                  We waited a minute and didn't see {state.label} flip to active. Re-open the browser tab to finish, or continue and we'll mark it pending — you can resume from the channel card.
+                  We waited 90 seconds and didn't see {state.label} flip to active. Re-open the browser tab to finish, or continue and we'll mark it pending — you can resume from the channel card.
                 </p>
               </div>
               <div className="flex flex-col gap-2">

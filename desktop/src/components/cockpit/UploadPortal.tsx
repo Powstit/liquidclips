@@ -1,3 +1,4 @@
+// ship-lens v0.7.8: E9 — `URL_RE` was `/^https?:\/\/[^\s]+\.[^\s]+/i` (accepts `https://x.y`, `https://random.tracker`, any nonsense with a dot). Tightened to a host allowlist matching the sidecar's yt-dlp ingest scope: youtube.com, youtu.be, instagram.com, tiktok.com, twitter.com, x.com, facebook.com, vimeo.com, reddit.com. Anything else surfaces inline "We don't support this URL yet — paste from…" so the user fails fast at the input instead of inside the pipeline.
 // ship-lens v0.7.7: fix #5 — Script tile mode. UploadPortal now accepts an `intent: "clips" | "script"` prop so the Script tile no longer silently runs the clips pipeline. Script mode wires URL submit to onPasteUrlScript (lift_transcript), file pick stays disabled in script mode because the Python sidecar's lift_transcript path is URL-only (yt-dlp + faster-whisper) — surfaced inline so the user reads "URL only" instead of guessing why drop is dead.
 // v0.6.36 — Upload portal (compact).
 //
@@ -24,7 +25,40 @@ import { motion, AnimatePresence } from "motion/react";
 import { ArrowRight, FolderOpen, X } from "lucide-react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 
-const URL_RE = /^https?:\/\/[^\s]+\.[^\s]+/i;
+/** v0.7.8 fix E9 — host allowlist mirrors `desktop/src/lib/sourceHosts.ts`
+ *  + the two extras the spec called out (facebook, reddit). Anything not on
+ *  this list gets a "we don't support this URL yet" inline error instead of
+ *  failing inside yt-dlp two minutes later with a generic 4xx. Order is
+ *  deliberate — most-likely paste-source hosts first. */
+const SUPPORTED_URL_HOSTS: RegExp[] = [
+  /(^|\.)youtube\.com$/i,
+  /^youtu\.be$/i,
+  /(^|\.)tiktok\.com$/i,
+  /^vm\.tiktok\.com$/i,
+  /(^|\.)instagram\.com$/i,
+  /(^|\.)twitter\.com$/i,
+  /(^|\.)x\.com$/i,
+  /(^|\.)facebook\.com$/i,
+  /^fb\.watch$/i,
+  /(^|\.)vimeo\.com$/i,
+  /^player\.vimeo\.com$/i,
+  /(^|\.)reddit\.com$/i,
+];
+
+/** v0.7.8 fix E9 — true iff `raw` is a well-formed http(s) URL pointing at
+ *  one of the SUPPORTED_URL_HOSTS. Two-stage check (URL parse → hostname
+ *  allowlist) so we reject "https://x.y" (which the old regex accepted) and
+ *  weird whitespace-trick pastes (which `new URL` throws on). */
+function isSupportedPortalUrl(raw: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+  return SUPPORTED_URL_HOSTS.some((rx) => rx.test(url.hostname));
+}
 
 export type UploadPortalIntent = "clips" | "script";
 
@@ -104,11 +138,14 @@ export function UploadPortal({
       );
       return;
     }
-    if (!URL_RE.test(trimmed)) {
+    if (!isSupportedPortalUrl(trimmed)) {
+      // v0.7.8 fix E9 — single message covers both "not a URL at all" and
+      // "URL is valid but host not in the allowlist". Listing the supported
+      // hosts inline is the recovery path; pre-fix the old regex let an
+      // unsupported host (a Whop bounty page, an analytics tracker) pass
+      // and the pipeline failed two minutes later with a generic 4xx.
       setError(
-        isScript
-          ? "Doesn't look like a URL. Paste a YouTube / TikTok / IG / X link to lift a transcript."
-          : "Doesn't look like a URL. Paste a YouTube / TikTok / IG / X link, or drop a file.",
+        "We don't support this URL yet — paste from YouTube, Instagram, TikTok, X, Facebook, Vimeo, or Reddit.",
       );
       return;
     }

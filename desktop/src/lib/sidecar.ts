@@ -446,6 +446,7 @@ export type BountyProjectSummary = {
   whop_bounty_currency: string | null;
 };
 
+// ship-lens v0.7.8 L2: ProjectLibrarySummary now carries `source_exists` + `pipeline_failed` (both optional for back-compat with older cached builds returning the v0.7.7 shape).
 export type ProjectLibrarySummary = {
   slug: string;
   root: string;
@@ -462,6 +463,15 @@ export type ProjectLibrarySummary = {
   archived: boolean;
   archived_at: number | null;
   cover_thumb_path: string | null;
+  /** v0.7.8 L2 — `False` when the on-disk source file the project was built
+   *  from has been moved / trashed / scrubbed by the Project.load security
+   *  check. Optional because older app installs may have cached the v0.7.7
+   *  shape; treat absent as "unknown, don't render the missing-source
+   *  eyebrow." */
+  source_exists?: boolean;
+  /** v0.7.8 L2 — `True` when any pipeline stage went to status `failed`.
+   *  Optional for the same back-compat reason as `source_exists`. */
+  pipeline_failed?: boolean;
 };
 
 export type StageName = "ingest" | "audio" | "transcribe" | "llm" | "cut" | "reframe" | "thumbs";
@@ -594,6 +604,23 @@ export const sidecar = {
     sidecarCall<{ slug: string; archived: boolean }>("set_project_archived", { slug, archived }),
   deleteProject: (slug: string) =>
     sidecarCall<{ slug: string; deleted: true }>("delete_project", { slug }),
+  // ship-lens v0.7.8 L4 — Tombstone delete trio. LibraryCard's destructive
+  // action now stages the delete (`requestDeleteProject`) and shows a 5s
+  // "Undo" toast. Click → `undoDeleteProject`. Toast expiry →
+  // `finalizeDeleteProject`. Replaces the legacy one-shot `deleteProject`
+  // for the Library UI; the legacy method stays exposed for any
+  // back-compat caller.
+  requestDeleteProject: (slug: string) =>
+    sidecarCall<{ slug: string; tombstone_path: string; tombstoned_at: number }>(
+      "request_delete_project",
+      { slug },
+    ),
+  undoDeleteProject: (slug: string) =>
+    sidecarCall<{ slug: string; restored: true; no_op: boolean }>("undo_delete_project", { slug }),
+  finalizeDeleteProject: (slug: string) =>
+    sidecarCall<{ slug: string; finalized: true; removed: number }>("finalize_delete_project", {
+      slug,
+    }),
   listBountyProjects: () =>
     sidecarCall<{ projects: BountyProjectSummary[] }>("list_bounty_projects"),
   getMetadata: (slug: string) => sidecarCall<{ metadata: Record<string, string> }>("get_metadata", { slug }),
