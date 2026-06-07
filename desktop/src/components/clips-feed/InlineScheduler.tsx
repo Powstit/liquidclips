@@ -494,6 +494,13 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
   const allPlatforms: ConnectionPlatform[] = ["youtube", "tiktok", "instagram", "x"];
   const hasChannels = channels.length > 0;
   const selectedCount = hasChannels ? pickedChannelIds.size : picked.size;
+  // v0.7.16 — surface WHY the schedule button is disabled when the only
+  // channels we have are non-active (pending_link / unlinked / error). The
+  // raw "Schedule to 0 channels" copy made Daniel think the picker had a
+  // bug; really he needed to finish OAuth on the IG channel before it
+  // could count.
+  const anyActiveChannel = hasChannels && channels.some((c) => c.status === "active");
+  const allChannelsNeedLinking = hasChannels && !anyActiveChannel;
   // Distinguish "user is signed in but has zero connections of any kind"
   // (the master-account-stuck-on-loader bug) from the legacy single-profile
   // fallback where the user HAS a SocialConnection row with platforms but no
@@ -773,6 +780,11 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
         {status.kind === "busy" ? (
           <>
             <Loader2 className="h-3 w-3 animate-spin" /> scheduling…
+          </>
+        ) : allChannelsNeedLinking && selectedCount === 0 ? (
+          <>
+            <Send className="h-3 w-3" />
+            Finish linking a channel first
           </>
         ) : (
           <>
