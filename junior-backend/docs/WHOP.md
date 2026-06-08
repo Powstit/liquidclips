@@ -77,18 +77,29 @@ If a paid-conversion webhook fires and the referrer hasn't viewed their dashboar
 
 ## 5. Whop plan IDs (live)
 
+Public-facing tier names on liquidclips.app are **Free / Solo / Pro / Agency**.
+Internally we still store the legacy values `solo / growth / autopilot`; the
+alias map in `app/features.py::_LEGACY_TIER_ALIASES` translates `growth → pro`
+and `autopilot → agency` for display. Renaming the stored values is a
+schema-and-data migration, not done here.
+
 In `routes/webhooks_whop.py:PLAN_TIER_BY_ID`:
 
-| Plan ID | Title | Tier | Price |
-|---|---|---|---|
-| `plan_qe8AFXj9J3SWi` | Junior Solo | `solo` | $29.99/mo |
-| `plan_dhssNse4FfPlI` | Junior Growth | `growth` | $99.99/mo |
-| `plan_BvDBrtybhbxNg` | Junior Autopilot | `autopilot` | $199.99/mo |
-| `plan_OieNCPrvkw9U4` | Founder Lifetime | `autopilot` + `founder_flag` | $500 one-time |
+| Plan ID | Public name | Whop label | Stored tier | Price |
+|---|---|---|---|---|
+| `plan_qe8AFXj9J3SWi` | Liquid Clips Solo | jnr Solo | `solo` | $29.99/mo |
+| `plan_dhssNse4FfPlI` | Liquid Clips Pro | jnr Pro | `growth` *(→ pro)* | $99.99/mo |
+| `plan_BvDBrtybhbxNg` | Liquid Clips Agency | jnr Agency | `autopilot` *(→ agency)* | $199.99/mo |
+| `plan_OieNCPrvkw9U4` | Liquid Clips Founder Lifetime | Founder Lifetime | `autopilot` + `founder_flag` | $500 one-time |
 
-Title-fallback (`PLAN_TIER_BY_TITLE`) handles legacy aliases (`channel → growth`, `pro → growth`, etc.). Whop returns `title=null` on the v2 API for most plans, so **match by plan_id first**.
+Title-fallback (`PLAN_TIER_BY_TITLE`) handles three brand vocabularies in
+parallel: **liquid clips X** (public/site), **jnr X** (current Whop dashboard
+label), and **junior X** (legacy, kept for back-compat). Whop returns
+`title=null` on the v2 API for most plans, so **match by plan_id first**.
 
-When new Partner Engine plans (Free / Pro $29.99 / Runner $79 / Agency $149) are created on Whop, add their `plan_xxx` IDs to `PLAN_TIER_BY_ID`. The desktop tier matrix is unchanged.
+When new plan IDs are minted under the Liquid Clips brand, add them to
+`PLAN_TIER_BY_ID` — do NOT remove the legacy IDs above, existing memberships
+still resolve through them.
 
 ---
 
