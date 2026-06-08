@@ -82,6 +82,19 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS cached_earnings_at timestamptz",
         "CREATE INDEX IF NOT EXISTS ix_users_cached_earnings ON users (cached_lifetime_earnings_usd DESC) WHERE cached_lifetime_earnings_usd > 0",
         "CREATE INDEX IF NOT EXISTS ix_users_ip_address ON users (ip_address) WHERE ip_address IS NOT NULL",
+        # Partner Engine (LiquidClips-Partner-Engine.md). The YT-Partner-style
+        # ladder: clip bounties (open) → dedicated TikTok ($10 RPM) → Partner
+        # (50% recurring) at 10 paid referrals + verified dedicated account.
+        # referred_paid_subs is incremented by webhooks_whop._handle_payment_succeeded
+        # on the first trial→paid transition (and decremented on invalid/refund).
+        # The unlock service POSTs a per-affiliate Whop commission override and
+        # records its id here so we can later archive/update it.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_paid_subs integer NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS tiktok_handle varchar",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS tiktok_verification_code varchar",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS tiktok_verified_at timestamptz",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS partner_unlocked_at timestamptz",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_commission_override_id varchar",
         # Legacy tier rename — "channel" was the 0.4.x name for what is now "pro"
         # in the v2 matrix. Idempotent because rerun affects zero rows after first pass.
         "UPDATE users SET tier = 'pro' WHERE tier = 'channel'",
