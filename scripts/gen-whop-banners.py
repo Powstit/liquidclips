@@ -39,23 +39,34 @@ QUALITY = "high"
 
 SHARED_BRAND_BLOCK = (
     "Brand: Liquid Clips. Aesthetic is cinematic dark, HUD-cyberpunk. "
-    "Backdrop is pure ink #0B0B10 with subtle volumetric haze. Sole accent "
-    "colour is one neon fuchsia #FF1A8C used for glow, scan lines, edge-lit "
-    "geometric cubes floating in space, and bracket framing in the four "
-    "corners. Type is crisp white sans-serif. No other colours. No emojis. "
+    "Backdrop is pure ink #0B0B10. Subtle volumetric haze only at the "
+    "FAR edges of the canvas — the centre is clean and dark. Sole "
+    "accent colour is one neon fuchsia #FF1A8C used for edge-lit "
+    "wireframe geometric cubes floating in space and thin bracket marks "
+    "at the canvas corners. NO glow effects on type or text. NO halo, NO "
+    "bloom on lettering. Headline type is CRISP solid white sans-serif "
+    "with hard edges, sitting on a frosted-glass dark-grey strip "
+    "(rgb 16/16/22 at 80% opacity) so the white is fully legible against "
+    "the dark backdrop. Bloom and glow live ONLY on the fuchsia cubes and "
+    "scan lines, NEVER on the typography. No other colours. No emojis. "
     "No people. No stock photography. No drop shadows. No skeumorphic UI. "
-    "Composition is widescreen 16:9 cinematic. Negative space heavy at "
-    "centre. Wordmark area kept clean. Photo-real lighting on the "
-    "geometric props, not flat illustration. Subtle film-grain. Editorial, "
-    "premium, expensive feel — Apple keynote meets Tron Legacy."
+    "No watermarks. Composition is widescreen 16:9 cinematic. Photo-real "
+    "lighting on the geometric props, not flat illustration. Subtle "
+    "film-grain. Editorial, premium, expensive feel — Apple keynote "
+    "meets Tron Legacy. Spell every word EXACTLY as written; do not "
+    "alter, abbreviate, or invent letters."
 )
 
 WORDMARK_BLOCK = (
-    "Place the Liquid Clips wordmark prominently in the lower-left or "
-    "centre: a small pink pixel-art space-invader glyph next to the words "
-    "'LIQUID / CLIPS' stacked vertically on either side of a thin slash "
-    "separator. Wordmark in fuchsia + white. Tall, narrow sans-serif "
-    "letterforms."
+    "Place the Liquid Clips wordmark in the lower-left corner inside a "
+    "clean dark area free of cubes and haze: first a small pink pixel-art "
+    "space-invader glyph (~50px), then to its right the words spelled "
+    "exactly L-I-Q-U-I-D on the top line and C-L-I-P-S on the bottom "
+    "line, stacked, separated by a thin fuchsia slash glyph between the "
+    "lines. Both words rendered in tall narrow solid white sans-serif "
+    "letters, uppercase, with NO glow and NO bloom on the letters. The "
+    "wordmark text must read EXACTLY 'LIQUID' and 'CLIPS' — no missing "
+    "or extra letters."
 )
 
 BANNERS = [
@@ -65,13 +76,19 @@ BANNERS = [
         "headline": "CLIP & EARN",
         "subhead": "Cut long videos into clips. Earn per view. Become a Partner.",
         "extra": (
-            "Hero shot. Headline 'CLIP & EARN' set in oversized condensed "
-            "sans-serif uppercase, centred upper-middle, slight fuchsia "
-            "outer-glow on the ampersand. Beneath it: 'Cut long videos "
-            "into clips. Earn per view. Become a Partner.' in smaller "
-            "white sans. Three fuchsia-lit cubes floating behind the "
-            "headline at staggered depths, motion-blurred at the edges. "
-            "Corner brackets in fuchsia at all four corners of the canvas."
+            "Compositional layout: a horizontal frosted-glass dark strip "
+            "(60% canvas width, vertically centred) holds all type. INSIDE "
+            "that strip and only inside it: the headline 'CLIP & EARN' in "
+            "oversized condensed solid white sans-serif uppercase letters "
+            "with hard crisp edges (NO glow on the letters); directly "
+            "underneath in smaller solid white sans the line "
+            "'Cut long videos into clips. Earn per view. Become a Partner.' "
+            "OUTSIDE the strip, scattered behind it in the dark backdrop: "
+            "three fuchsia wireframe cubes floating at staggered depths "
+            "with fuchsia edge-glow ON THE CUBES ONLY. Thin fuchsia "
+            "bracket marks at all four corners. The ampersand '&' between "
+            "CLIP and EARN is solid white, same weight as the other "
+            "letters, NO halo. Every letter spelled exactly as written."
         ),
     },
     {
@@ -80,13 +97,18 @@ BANNERS = [
         "headline": "CLIP & EARN",
         "subhead": "Local-first clip studio. Whop-secure billing.",
         "extra": (
-            "Subtitle reads 'LOCAL · MAC · WINDOWS · NO WATERMARK' in "
-            "small uppercase fuchsia at the very top. Headline 'CLIP & "
-            "EARN' centred. Below: 'Local-first clip studio. Whop-secure "
-            "billing.' in white sans. A single large fuchsia-edged cube "
-            "rotated and lit from inside on the right side of the canvas, "
-            "as if floating in deep space. Subtle horizontal scan lines "
-            "across the lower third."
+            "Compositional layout: left half of canvas holds a vertical "
+            "frosted-glass dark strip with all type. Right half holds a "
+            "single large fuchsia wireframe cube rotated 30 degrees and "
+            "lit from inside, floating in deep space, fuchsia glow ON THE "
+            "CUBE ONLY. INSIDE the left strip: a small uppercase fuchsia "
+            "subtitle at the top reading exactly 'LOCAL · MAC · WINDOWS · "
+            "NO WATERMARK' (spell L-O-C-A-L, do not invent letters). "
+            "Below that, the headline 'CLIP & EARN' in oversized "
+            "condensed solid white sans uppercase, crisp edges, no glow. "
+            "Below the headline, smaller solid white sans: 'Local-first "
+            "clip studio. Whop-secure billing.' Subtle horizontal scan "
+            "lines across the lower third of the canvas."
         ),
     },
     {
@@ -95,13 +117,19 @@ BANNERS = [
         "headline": "$5 PER 1K VIEWS",
         "subhead": "Clip Liquid Clips. Post anywhere. Get paid.",
         "extra": (
-            "Top-left small caps fuchsia chip reads 'CAMPAIGN A · OPEN'. "
-            "Headline '$5 PER 1K VIEWS' centred in oversized condensed "
-            "sans uppercase, the dollar sign drawn taller with a fuchsia "
-            "glow. Subhead 'Clip Liquid Clips. Post anywhere. Get paid.' "
-            "beneath. Three glowing fuchsia hexagonal arrows pointing "
-            "right at the bottom edge, evoking the bounty flow. Scan "
-            "lines diagonal across the upper right corner."
+            "Compositional layout: vertical frosted-glass dark strip on "
+            "the left half holds all type. Right half holds the geometry. "
+            "INSIDE the left strip, top: small uppercase fuchsia chip "
+            "reading exactly 'CAMPAIGN A · OPEN'. Beneath: headline '$5 "
+            "PER 1K VIEWS' in oversized condensed solid white sans "
+            "uppercase, crisp hard edges, NO glow on any digit or letter. "
+            "Beneath: solid white sans subhead 'Clip Liquid Clips. Post "
+            "anywhere. Get paid.' OUTSIDE the strip on the right half: "
+            "three fuchsia wireframe cubes at staggered depths with "
+            "fuchsia edge-glow ON THE CUBES ONLY. Three small solid "
+            "fuchsia chevron arrows pointing right at the bottom-right "
+            "corner, suggesting flow. Diagonal scan lines in the upper "
+            "right behind the cubes."
         ),
     },
     {
@@ -110,15 +138,20 @@ BANNERS = [
         "headline": "$10 PER 1K VIEWS",
         "subhead": "Dedicated Liquid Clips channel only. Partner-gated.",
         "extra": (
-            "Top-left small caps fuchsia chip reads 'CAMPAIGN B · "
-            "PARTNER GATED'. Headline '$10 PER 1K VIEWS' centred in "
-            "oversized condensed sans uppercase, doubled glow halo "
-            "around the '$10' to signal premium tier. Subhead "
-            "'Dedicated Liquid Clips channel only. Partner-gated.' "
-            "beneath. A solitary fuchsia padlock icon emblem sits low-"
-            "right, half-dissolved in fuchsia particles. Heavier "
-            "vignetting around the canvas edges than Campaign A — this "
-            "is the locked-tier banner, premium feel."
+            "Compositional layout: vertical frosted-glass dark strip on "
+            "the left half holds all type. Right half holds the geometry. "
+            "INSIDE the left strip, top: small uppercase fuchsia chip "
+            "reading exactly 'CAMPAIGN B · PARTNER GATED' (spell "
+            "P-A-R-T-N-E-R G-A-T-E-D exactly). Beneath: headline '$10 PER "
+            "1K VIEWS' in oversized condensed solid white sans uppercase, "
+            "crisp hard edges, NO glow on any digit or letter. Beneath: "
+            "solid white sans subhead 'Dedicated Liquid Clips channel "
+            "only. Partner-gated.' OUTSIDE the strip on the right half: "
+            "a single fuchsia wireframe cube with a solid fuchsia "
+            "padlock icon emblem inset on its front face, lit from "
+            "within. Heavier dark vignette around the canvas edges than "
+            "Campaign A — premium locked-tier feel. No particles or "
+            "dissolving effects on the icon."
         ),
     },
 ]
