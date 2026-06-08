@@ -88,6 +88,17 @@ export function LibraryTab({
     void loadProjects();
   }, []);
 
+  // v0.7.31 — external triggers (e.g. ThumbnailStudio "Use as cover" writing
+  // cover_choice.json) dispatch lc:library-refresh so the wall tile updates
+  // without requiring a tab switch.
+  useEffect(() => {
+    function onRefresh() {
+      void loadProjects();
+    }
+    window.addEventListener("lc:library-refresh", onRefresh);
+    return () => window.removeEventListener("lc:library-refresh", onRefresh);
+  }, []);
+
   // Cmd-K / Ctrl-K → focus the library search input. Small QoL — without
   // this, keyboard users have to click into the field every time they swap
   // tabs. Scoped to the LibraryTab container so it doesn't fight other

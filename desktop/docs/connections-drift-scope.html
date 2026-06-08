@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Social connections — drift scope (mockup vs live app)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        --ink: #0B0B10;
+        --paper: #F4F0EA;
+        --paper-warm: #1A1A22;
+        --line: rgba(255, 255, 255, 0.12);
+        --line-2: rgba(255, 255, 255, 0.18);
+        --fuchsia: #FF1A8C;
+        --ok: #00E5FF;
+        --warn: #F59E0B;
+        --muted: rgba(244, 240, 234, 0.5);
+        --mono: ui-monospace, "SF Mono", Menlo, monospace;
+        --display: "Space Grotesk", "Inter", system-ui, sans-serif;
+      }
+      html, body { margin: 0; background: var(--ink); color: var(--paper); font-family: var(--display); }
+
+      header {
+        padding: 2rem 2rem 1rem;
+        border-bottom: 1px solid var(--line);
+      }
+      header h1 { margin: 0 0 0.25rem; font-size: 1.25rem; }
+      header .sub {
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        color: rgba(244, 240, 234, 0.55);
+      }
+      header .tag {
+        display: inline-block;
+        margin-right: 0.5rem;
+        padding: 0.1rem 0.55rem;
+        background: rgba(255, 26, 140, 0.15);
+        color: var(--fuchsia);
+        border-radius: 999px;
+        font-size: 0.65rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-bottom: 1px solid var(--line); }
+      .col { padding: 2rem; }
+      .col + .col { border-left: 1px solid var(--line); }
+      .col h2 { margin: 0 0 0.5rem; font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+      .col h3 { margin: 0 0 1.5rem; font-size: 1.05rem; font-weight: 600; }
+      .col h3 .meta { font-family: var(--mono); font-size: 0.7rem; color: rgba(244, 240, 234, 0.4); font-weight: 400; }
+
+      .panel-frame {
+        background: var(--paper-warm);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 18px 16px;
+        max-width: 460px;
+      }
+      .panel-frame .title {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: rgba(244, 240, 234, 0.55);
+        margin-bottom: 10px;
+      }
+
+      /* ─────── MOCKUP — ch-row pattern (verbatim from
+                docs/cockpit-handoffs-demo.html L150-160) ─────── */
+      .ch-row {
+        display: flex; align-items: center; gap: 10px;
+        padding: 9px 12px;
+        border: 1px solid var(--line-2);
+        border-radius: 6px;
+        cursor: pointer;
+        margin-top: 6px;
+      }
+      .ch-row.on {
+        border-color: var(--fuchsia);
+        background: rgba(255, 45, 149, 0.05);
+      }
+      .ch-row .dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: var(--ok);
+      }
+      .ch-row .dot.warn { background: var(--warn); }
+      .ch-row .name { font-size: 13px; font-weight: 500; }
+      .ch-row .handle {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+        margin-left: auto;
+      }
+      .ch-row .handle.warn { color: var(--warn); }
+      .ch-row .toggle {
+        width: 32px; height: 18px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        position: relative;
+        flex: none;
+      }
+      .ch-row.on .toggle { background: var(--fuchsia); }
+      .ch-row .toggle::after {
+        content: "";
+        width: 14px; height: 14px;
+        border-radius: 50%;
+        background: white;
+        position: absolute;
+        top: 2px; left: 2px;
+        transition: 0.15s;
+      }
+      .ch-row.on .toggle::after { left: 16px; }
+
+      /* ─────── LIVE APP — ChannelCard pattern (transcribed from
+                src/components/schedule/ChannelCard.tsx + library-card css) ─────── */
+      .live-frame {
+        background: var(--paper-warm);
+        border-radius: 12px;
+        padding: 14px;
+        position: relative;
+        border: 1px solid transparent;
+      }
+      .live-frame::before, .live-frame::after,
+      .live-frame .corner-bl, .live-frame .corner-br {
+        content: "";
+        position: absolute;
+        width: 10px; height: 10px;
+        border: 1.5px solid var(--fuchsia);
+        opacity: 0.4;
+      }
+      .live-frame::before { top: 4px; left: 4px; border-right: 0; border-bottom: 0; }
+      .live-frame::after { top: 4px; right: 4px; border-left: 0; border-bottom: 0; }
+      .live-frame .corner-bl { bottom: 4px; left: 4px; border-right: 0; border-top: 0; }
+      .live-frame .corner-br { bottom: 4px; right: 4px; border-left: 0; border-top: 0; }
+      .live-frame + .live-frame { margin-top: 12px; }
+
+      .live-top { display: flex; align-items: flex-start; gap: 12px; }
+      .live-platform-icon {
+        width: 40px; height: 40px;
+        background: var(--ink);
+        border-radius: 12px;
+        display: grid; place-items: center;
+        flex: none;
+      }
+      .live-platform-icon svg { stroke: var(--paper); fill: none; stroke-width: 2; }
+      .live-label { font-size: 14px; font-weight: 500; color: var(--paper); }
+      .live-handle { font-family: var(--mono); font-size: 11px; color: rgba(244, 240, 234, 0.45); margin-top: 2px; }
+
+      .live-mid { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+      .live-status {
+        display: inline-flex; gap: 6px; align-items: center;
+        font-family: var(--mono); font-size: 10px;
+        letter-spacing: 0.12em; text-transform: uppercase;
+        color: rgba(244, 240, 234, 0.6);
+      }
+      .live-status .dot {
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: var(--fuchsia);
+      }
+      .live-status.warn .dot { background: var(--warn); }
+      .live-meta { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 10px; color: rgba(244, 240, 234, 0.4); }
+      .live-meta .analytics { color: rgba(244, 240, 234, 0.6); cursor: pointer; }
+
+      .live-actions {
+        display: flex; justify-content: space-between; align-items: center;
+        padding-top: 12px; margin-top: 12px;
+        border-top: 1px solid var(--line);
+        opacity: 0.6;
+      }
+      .live-frame:hover .live-actions { opacity: 1; }
+      .live-actions-group { display: flex; gap: 6px; }
+      .live-action {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 4px 8px;
+        font-family: var(--mono); font-size: 10px;
+        letter-spacing: 0.1em; text-transform: uppercase;
+        color: rgba(244, 240, 234, 0.6);
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .live-action.danger { color: rgba(244, 240, 234, 0.35); }
+      .live-action.danger:hover { color: #DC2626; }
+
+      /* CONNECTION panel — the AyrshareConnectionPanel chip pattern */
+      .connect-panel-frame {
+        background: var(--paper-warm);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 16px;
+        max-width: 460px;
+      }
+      .connect-heading { display: flex; align-items: center; gap: 8px; }
+      .connect-heading svg { stroke: var(--fuchsia); width: 16px; height: 16px; fill: none; stroke-width: 2; }
+      .connect-heading h4 { margin: 0; font-size: 14px; }
+      .connect-heading .badge {
+        font-family: var(--mono); font-size: 9px;
+        background: rgba(255, 26, 140, 0.1); color: var(--fuchsia);
+        padding: 2px 8px; border-radius: 999px;
+        letter-spacing: 0.12em; text-transform: uppercase;
+      }
+      .connect-body { font-size: 12.5px; color: rgba(244, 240, 234, 0.7); margin-top: 6px; line-height: 1.5; }
+      .connect-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+      .connect-chip {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 6px 12px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        font-size: 12px; font-weight: 500;
+      }
+      .connect-chip .badge {
+        width: 20px; height: 20px;
+        background: var(--ink); color: var(--paper);
+        border-radius: 50%;
+        display: grid; place-items: center;
+      }
+      .connect-chip .badge svg { width: 11px; height: 11px; stroke: white; fill: none; stroke-width: 2; }
+      .connect-chip .close { margin-left: 4px; color: rgba(244, 240, 234, 0.4); cursor: pointer; }
+      .connect-actions { display: flex; align-items: center; gap: 14px; margin-top: 12px; }
+      .connect-actions .link {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-family: var(--mono); font-size: 10px;
+        letter-spacing: 0.1em; text-transform: uppercase;
+        color: rgba(244, 240, 234, 0.65);
+      }
+
+      /* delta table */
+      .delta { padding: 2rem; }
+      .delta h2 {
+        margin: 0 0 1rem; font-size: 0.75rem;
+        letter-spacing: 0.18em; text-transform: uppercase;
+        color: rgba(244, 240, 234, 0.55);
+      }
+      table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+      th, td {
+        text-align: left;
+        padding: 0.75rem 0.75rem;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      th {
+        font-family: var(--mono); font-size: 0.7rem;
+        color: rgba(244, 240, 234, 0.5);
+        text-transform: uppercase; letter-spacing: 0.1em;
+        font-weight: 400;
+      }
+      td.tag-col { width: 7rem; }
+      td.where-col { width: 14rem; font-family: var(--mono); font-size: 0.75rem; color: rgba(244, 240, 234, 0.55); }
+      td.from-col, td.to-col { font-family: var(--mono); font-size: 0.75rem; }
+      td.from-col { color: rgba(244, 240, 234, 0.85); }
+      td.to-col { color: rgba(255, 26, 140, 0.95); }
+      td.severity-col { width: 5rem; }
+      .sev {
+        display: inline-block; padding: 0.15rem 0.5rem;
+        border-radius: 4px;
+        font-family: var(--mono); font-size: 0.7rem; font-weight: 600;
+      }
+      .sev-high { background: rgba(255, 26, 140, 0.18); color: #FF1A8C; }
+      .sev-med { background: rgba(245, 158, 11, 0.18); color: #F59E0B; }
+      .sev-low { background: rgba(0, 229, 255, 0.12); color: #00E5FF; }
+      .note { padding: 0 2rem 2rem; font-size: 0.85rem; color: rgba(244, 240, 234, 0.7); line-height: 1.6; max-width: 56rem; }
+      .note h2 {
+        font-size: 0.75rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(244, 240, 234, 0.55);
+        margin-bottom: 0.75rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Social connections — UI drift</h1>
+      <div class="sub">
+        <span class="tag">scope</span>
+        Mockup: <code>docs/cockpit-handoffs-demo.html L150-160, L463-466</code>
+        &nbsp;·&nbsp;
+        Live: <code>src/components/AyrshareConnectionPanel.tsx (363 lines)</code>
+        &nbsp;+&nbsp;
+        <code>src/components/schedule/ChannelCard.tsx (327 lines)</code>
+      </div>
+    </header>
+
+    <section class="grid">
+      <!-- ─────── LEFT: MOCKUP ─────── -->
+      <div class="col">
+        <h2>Mockup (designed)</h2>
+        <h3>Single ch-row pattern <span class="meta">— one component, one job</span></h3>
+
+        <div class="panel-frame">
+          <div class="title">Settings · Connections</div>
+
+          <div class="ch-row on">
+            <span class="dot"></span>
+            <span class="name">Instagram</span>
+            <span class="handle">@daniel.gloss</span>
+            <span class="toggle"></span>
+          </div>
+          <div class="ch-row on">
+            <span class="dot"></span>
+            <span class="name">TikTok</span>
+            <span class="handle">@dgloss</span>
+            <span class="toggle"></span>
+          </div>
+          <div class="ch-row on">
+            <span class="dot"></span>
+            <span class="name">YouTube Shorts</span>
+            <span class="handle">@dgloss</span>
+            <span class="toggle"></span>
+          </div>
+          <div class="ch-row">
+            <span class="dot warn"></span>
+            <span class="name">X</span>
+            <span class="handle warn">paused · resume in Settings</span>
+            <span class="toggle"></span>
+          </div>
+        </div>
+
+        <p style="font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 18px; line-height: 1.6; max-width: 460px;">
+          <strong style="color: rgba(244,240,234,0.8);">5 elements per row:</strong>
+          dot · name · handle · toggle · (microcopy slot). One row per platform,
+          same pattern everywhere it appears (Settings → Connections AND in the
+          per-clip Routes modal — see <code>cockpit-handoffs-demo.html L463-466</code>).
+          Total surface: ~80 lines of CSS, ~12 lines of HTML per channel block.
+        </p>
+      </div>
+
+      <!-- ─────── RIGHT: LIVE APP ─────── -->
+      <div class="col">
+        <h2>Live app (built)</h2>
+        <h3>Two surfaces, two patterns <span class="meta">— chip panel + library-card</span></h3>
+
+        <!-- AyrshareConnectionPanel preview -->
+        <div class="connect-panel-frame">
+          <div class="connect-heading">
+            <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <h4>Publishing — Ayrshare</h4>
+            <span class="badge">live</span>
+          </div>
+          <p class="connect-body">
+            Connect TikTok, Instagram, YouTube, and X to publish from Liquid
+            Clips. Each account OAuths directly with the platform — your
+            credentials never sit on our servers.
+          </p>
+          <div class="connect-chips">
+            <span class="connect-chip">
+              <span class="badge"><svg viewBox="0 0 24 24"><rect width="20" height="20" x="2" y="2" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path></svg></span>
+              Instagram <span class="close">×</span>
+            </span>
+            <span class="connect-chip">
+              <span class="badge">T</span>
+              TikTok <span class="close">×</span>
+            </span>
+            <span class="connect-chip">
+              <span class="badge"><svg viewBox="0 0 24 24"><path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17"></path><path d="m10 15 5-3-5-3z"></path></svg></span>
+              YouTube <span class="close">×</span>
+            </span>
+            <span class="connect-chip">
+              <span class="badge"><svg viewBox="0 0 24 24"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2"></path></svg></span>
+              X <span class="close">×</span>
+            </span>
+          </div>
+          <div class="connect-actions">
+            <span class="link">⟳ refresh</span>
+            <span class="link">+ link more</span>
+            <span class="link">↗ view analytics</span>
+          </div>
+        </div>
+
+        <p style="font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 18px; margin-bottom: 18px; line-height: 1.6; max-width: 460px;">
+          <strong style="color: rgba(244,240,234,0.8);">+ a separate ChannelCard surface (Schedule → Channels):</strong>
+        </p>
+
+        <!-- ChannelCard preview -->
+        <div class="live-frame">
+          <span class="corner-bl"></span>
+          <span class="corner-br"></span>
+          <div class="live-top">
+            <div class="live-platform-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24"><rect width="20" height="20" x="2" y="2" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path></svg>
+            </div>
+            <div>
+              <div class="live-label">Instagram · Daniel</div>
+              <div class="live-handle">@daniel.gloss</div>
+            </div>
+          </div>
+          <div class="live-mid">
+            <span class="live-status"><span class="dot"></span> active</span>
+            <span class="live-meta">
+              42 posts
+              <span class="analytics">↗ analytics</span>
+            </span>
+          </div>
+          <div class="live-actions">
+            <div class="live-actions-group">
+              <span class="live-action">⟳ refresh</span>
+              <span class="live-action">⏸ pause</span>
+            </div>
+            <span class="live-action danger">🗑</span>
+          </div>
+        </div>
+
+        <div class="live-frame">
+          <span class="corner-bl"></span>
+          <span class="corner-br"></span>
+          <div class="live-top">
+            <div class="live-platform-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2"></path></svg>
+            </div>
+            <div>
+              <div class="live-label">X · Daniel</div>
+              <div class="live-handle">paused</div>
+            </div>
+          </div>
+          <div class="live-mid">
+            <span class="live-status warn"><span class="dot"></span> reconnect</span>
+            <span class="live-meta">
+              7 posts
+              <span class="analytics">↗ analytics</span>
+            </span>
+          </div>
+          <div class="live-actions">
+            <div class="live-actions-group">
+              <span class="live-action">⟳ refresh</span>
+              <span class="live-action">▶ resume</span>
+            </div>
+            <span class="live-action danger">🗑</span>
+          </div>
+        </div>
+
+        <p style="font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 18px; line-height: 1.6; max-width: 460px;">
+          <strong style="color: rgba(244,240,234,0.8);">~20 elements per card:</strong>
+          icon container · label · handle · status pill (with dot) · post count ·
+          analytics chip · refresh action · pause/resume action · delete action ·
+          confirm-delete inline mode · pending_link diagnose flow · rename inline
+          input · busy spinners · ConfirmDialog modal for disconnect. Total
+          surface: 363 + 327 = <strong style="color: var(--fuchsia);">690 lines across 2 files</strong>.
+        </p>
+      </div>
+    </section>
+
+    <section class="delta">
+      <h2>Drift inventory</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th class="severity-col">Severity</th>
+            <th class="tag-col">What</th>
+            <th class="where-col">Where</th>
+            <th class="from-col">Mockup</th>
+            <th class="to-col">Live app</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td><span class="sev sev-high">P0</span></td>
+            <td>Two surfaces vs one</td>
+            <td>AyrshareConnectionPanel.tsx + schedule/ChannelCard.tsx</td>
+            <td>One <code>ch-row</code> pattern, lives in Settings → Connections. The Routes modal (per-clip) reuses the same row pattern. ~80 LOC total.</td>
+            <td>Two completely separate surfaces, two different layouts. Connection-by-chip (AyrshareConnectionPanel) vs channel-by-card (ChannelCard). User sees them in two different views and has to learn two interaction models. 690 LOC.</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td><span class="sev sev-high">P0</span></td>
+            <td>Per-row complexity</td>
+            <td>schedule/ChannelCard.tsx L109-303</td>
+            <td>5 elements per row: dot · name · handle · toggle · (microcopy slot).</td>
+            <td>~20 elements per card: corner brackets · 40×40 icon container · label/inline-rename · handle · status pill · posts counter · analytics chip · refresh · pause/resume · delete · confirm-delete inline mode · pending_link diagnose panel · result strip · 3 modal spinners · ConfirmDialog for disconnect.</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td><span class="sev sev-high">P0</span></td>
+            <td>Missing toggle UX</td>
+            <td>ChannelCard.tsx — no pill toggle exists</td>
+            <td>The pill toggle (32×18) is the primary affordance: tap-to-route-this-channel. Mockup users immediately understand "this is on, that's off."</td>
+            <td>No toggle anywhere. Pause/resume + delete + refresh actions live in hover row at the bottom. The "is this channel currently routing for me?" question has no clear single visual answer.</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td><span class="sev sev-med">P1</span></td>
+            <td>Connection vs routing mixed</td>
+            <td>AyrshareConnectionPanel.tsx</td>
+            <td>"Connection" = once per platform, lives in Settings. "Routes" = per clip, lives in a modal triggered from the cockpit. Two different concepts, two surfaces.</td>
+            <td>AyrshareConnectionPanel does connection but not routing. ChannelCard does channel-level pause but not per-clip routing. The per-clip routing surface (ClipCard cockpit Routes modal) opens yet a THIRD pattern (lines 463-466 of mockup were never built).</td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td><span class="sev sev-med">P1</span></td>
+            <td>Disconnect-by-×</td>
+            <td>AyrshareConnectionPanel.tsx L278-285, L328-346</td>
+            <td>Toggle off the row's pill. Confirmable inline (microcopy says "paused · resume in Settings").</td>
+            <td>Tiny × on each chip → opens a destructive-tone ConfirmDialog modal that says "Hide [platform] from publish targets?" Different word ("hide"), different verb, native-feel.</td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td><span class="sev sev-med">P1</span></td>
+            <td>Status taxonomy</td>
+            <td>ChannelCard.tsx L18-25</td>
+            <td>2 states: <code>on</code> (green dot) / <code>warn</code> (amber dot + microcopy).</td>
+            <td>6 states: <code>active · pending_link · unlinked · error · paused · deleted</code>. Three of those (<code>unlinked</code>, <code>error</code>, <code>pending_link</code>) all surface as red/amber dots with similar reconnect copy. User has to read the microcopy carefully to know which one applies.</td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td><span class="sev sev-low">P2</span></td>
+            <td>Corner brackets</td>
+            <td>ChannelCard.tsx L114-117</td>
+            <td>None — flat 1px border, 6px radius.</td>
+            <td>4 absolutely-positioned <code>library-card-corner</code> brackets in fuchsia. Adds visual chrome that doesn't pay rent on this surface.</td>
+          </tr>
+          <tr>
+            <td>8</td>
+            <td><span class="sev sev-low">P2</span></td>
+            <td>Platform icon container</td>
+            <td>ChannelCard.tsx L119-125</td>
+            <td>None — name field is the platform identifier.</td>
+            <td>40×40 dark-ink rounded square with outline icon inside. Doubles the visual weight of the row.</td>
+          </tr>
+          <tr>
+            <td>9</td>
+            <td><span class="sev sev-low">P2</span></td>
+            <td>Hover affordance</td>
+            <td>ChannelCard.tsx L216 (opacity-60 → 100)</td>
+            <td>None — toggle is always visible.</td>
+            <td>Action row at 60% opacity until hover. Discoverable only by hovering — bad for touch and reduced-motion users.</td>
+          </tr>
+          <tr>
+            <td>10</td>
+            <td><span class="sev sev-low">P2</span></td>
+            <td>Inline rename</td>
+            <td>ChannelCard.tsx L127-148</td>
+            <td>None — no concept of renaming a channel.</td>
+            <td>Click the channel label → inline input opens. Mockup doesn't have this; the handle <em>is</em> the label.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="note">
+      <h2>Recommended path forward</h2>
+      <p>
+        Revert to the <code>ch-row</code> pattern. Delete <code>ChannelCard.tsx</code>
+        (327 lines), simplify <code>AyrshareConnectionPanel.tsx</code> from chip-list
+        to ch-row list (~120 lines after the cut). Build the missing Routes modal
+        from <code>cockpit-handoffs-demo.html L460-471</code> so the per-clip routing
+        affordance lands using the SAME ch-row component.
+      </p>
+      <p>
+        Single source of truth for "is this channel routing for me right now?" —
+        the pill toggle. Status complexity collapses from 6 states to 2 (<code>on</code> /
+        <code>warn</code>) with the specific reason in the microcopy slot. Backend
+        behavior (Ayrshare connect/diagnose/pause/delete) is unchanged — these are
+        UI accretion fixes, not protocol changes.
+      </p>
+      <p>
+        Net diff: <strong>~690 LOC removed, ~250 LOC added</strong> for the unified
+        component + new Routes modal. <strong>—440 net</strong>. One file
+        (<code>ChannelRow.tsx</code>) becomes the single visual contract for every
+        social channel everywhere in the app.
+      </p>
+    </section>
+  </body>
+</html>

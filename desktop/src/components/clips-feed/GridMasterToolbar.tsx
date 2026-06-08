@@ -99,18 +99,18 @@ export function GridMasterToolbar({
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
 
-  // Close any open popover the moment selection drops to zero — otherwise
-  // a stale Schedule modal could fire on an empty selection.
-  useEffect(() => {
-    if (selectedIdxs.length === 0 && popover.kind !== "none") {
-      setPopover({ kind: "none" });
-    }
-  }, [selectedIdxs.length, popover.kind]);
+  // v0.7.18 — Cockpit promotion. The toolbar now ALWAYS renders as a
+  // persistent bottom dashboard. When the user has nothing selected, the
+  // target falls back to the entire project (ALL clips). When they DO
+  // select, the target narrows to the selection. The "X clear" affordance
+  // only renders when there's an active selection.
+  const isAllMode = selectedIdxs.length === 0;
+  const effectiveIdxs = isAllMode
+    ? project.clips.map((_, i) => i)
+    : selectedIdxs;
 
-  if (selectedIdxs.length === 0) return null;
-
-  const selectionSize = selectedIdxs.length;
-  const enabled = !busy;
+  const selectionSize = effectiveIdxs.length;
+  const enabled = !busy && selectionSize > 0;
 
   function closePopover() {
     setPopover({ kind: "none" });
@@ -193,25 +193,27 @@ export function GridMasterToolbar({
   return (
     <div
       role="toolbar"
-      aria-label="Grid master toolbar"
-      className="sticky top-4 z-50 mx-auto mb-4 w-full max-w-5xl"
+      aria-label="Cockpit"
+      className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full px-4 pb-4"
     >
-      <div className="relative flex flex-wrap items-center gap-3 rounded-xl border-2 border-fuchsia/60 bg-paper-warm/95 px-3 py-2 shadow-[0_18px_44px_rgba(11,11,16,0.35)] backdrop-blur">
+      <div className="relative mx-auto flex max-w-6xl flex-wrap items-center gap-3 rounded-2xl border-2 border-fuchsia/60 bg-paper-warm/95 px-4 py-2.5 shadow-[0_-18px_60px_-12px_rgba(255,26,140,0.22),0_-1px_0_0_rgba(255,26,140,0.18)] backdrop-blur-xl">
         <BracketCorners />
 
-        {/* Selection chip — always-visible scope for every action below. */}
+        {/* Target chip — "All N clips" when nothing selected, "N selected" otherwise. */}
         <div className="flex items-center gap-2 rounded-md border border-fuchsia/40 bg-paper/50 px-2.5 py-1">
           <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia">
-            {selectionSize} selected
+            {isAllMode ? `All ${selectionSize}` : `${selectionSize} selected`}
           </span>
-          <button
-            type="button"
-            onClick={onClear}
-            className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia/80 hover:bg-fuchsia/10 hover:text-fuchsia"
-            aria-label="Clear selection"
-          >
-            Clear <X className="h-3 w-3" />
-          </button>
+          {!isAllMode && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia/80 hover:bg-fuchsia/10 hover:text-fuchsia"
+              aria-label="Clear selection"
+            >
+              Clear <X className="h-3 w-3" />
+            </button>
+          )}
         </div>
 
         <span className="h-5 w-px bg-fuchsia/15" aria-hidden />
@@ -278,7 +280,7 @@ export function GridMasterToolbar({
             onOpenSettings={onOpenSettings}
             onApply={(channels, when) =>
               void runSideEffect("Scheduled", () =>
-                scheduleClips(project, selectedIdxs, when, channels),
+                scheduleClips(project, effectiveIdxs, when, channels),
               )
             }
             onMissingChannels={() =>
@@ -301,7 +303,7 @@ export function GridMasterToolbar({
             onOpenSettings={onOpenSettings}
             onApply={(channels) =>
               void runSideEffect("Published", () =>
-                publishClipsNow(project, selectedIdxs, channels),
+                publishClipsNow(project, effectiveIdxs, channels),
               )
             }
             onMissingChannels={() =>
@@ -321,7 +323,7 @@ export function GridMasterToolbar({
             disabled={busy}
             onApply={(style) =>
               void runMutating("Applied caption style to", () =>
-                applyCaptionStyle(project, selectedIdxs, style, null),
+                applyCaptionStyle(project, effectiveIdxs, style, null),
               )
             }
             onClose={closePopover}

@@ -122,6 +122,20 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
   const [sessionExpired, setSessionExpired] = useState(false);
   // v0.6.4 — Whop-pattern left-rail / right-pane layout.
   const [category, setCategory] = useState<SettingsCategory>("account");
+  // v0.7.30 (IG-006 Bug 1 fix) — Listen for "open this specific tab"
+  // requests dispatched by the cockpit's "Connect a channel →" button.
+  // Routes users straight to Connections without a manual tab hunt.
+  useEffect(() => {
+    function onOpenTab(e: Event) {
+      const ce = e as CustomEvent<{ tab?: SettingsCategory }>;
+      const tab = ce.detail?.tab;
+      if (tab && (["account", "keys", "connections", "about", "diagnostics"] as SettingsCategory[]).includes(tab)) {
+        setCategory(tab);
+      }
+    }
+    window.addEventListener("lc:settings-open-tab", onOpenTab as EventListener);
+    return () => window.removeEventListener("lc:settings-open-tab", onOpenTab as EventListener);
+  }, []);
   // Lens-pass additions —
   // (1) home dir resolved via Tauri path API rather than the broken
   //     hardcoded "/Users" string used by the "Open in Finder" button.

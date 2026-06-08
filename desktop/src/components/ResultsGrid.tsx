@@ -8,9 +8,9 @@ import { ClipPreview } from "./ClipPreview";
 import { DripCalendar } from "./DripCalendar";
 import { PublishModal, type PublishModalMode } from "./PublishModal";
 import { ClipCard as FeedClipCard } from "./clips-feed/ClipCard";
-import { ClipsBulkToolbar } from "./clips-feed/ClipsBulkToolbar";
 import { ClipsBottomBar } from "./clips-feed/ClipsBottomBar";
 import { GridMasterToolbar } from "./clips-feed/GridMasterToolbar";
+import { BottomCockpit } from "./cockpit/BottomCockpit";
 import { UpgradeLockCard } from "./UpgradeLockCard";
 import { AddClipCard } from "./AddClipCard";
 import { YouTubeView } from "./YouTubeView";
@@ -18,11 +18,9 @@ import { BountySubmissionCapture } from "./earn/BountySubmissionCapture";
 import { CampaignContextStrip } from "./earn/CampaignContextStrip";
 import { BountyWorkspaceHeader } from "./earn/BountyWorkspaceHeader";
 import { sidecar, type DripSlot } from "../lib/sidecar";
-import { PUBLISHING_ENABLED } from "../lib/flags";
 import { useTier, FREE_TIER_VISIBLE_CLIPS } from "../lib/useTier";
 import { useLocalPref } from "../lib/useLocalPref";
 import { useMultiSelect } from "../lib/useMultiSelect";
-import { InfoHint } from "./InfoHint";
 
 type Tab = "clips" | "youtube" | "files";
 
@@ -44,7 +42,10 @@ export function ResultsGrid({
   const [tab, setTab] = useState<Tab>(defaultTab);
   const [openCaptionsForIdx, setOpenCaptionsForIdx] = useState<number | null>(null);
   const [previewIdx, setPreviewIdx] = useState<number | null>(null);
-  const [ratio, setRatio] = useState<RatioKey>("vertical");
+  // v0.7.23 — ratio toggle moved into the cockpit Frame module (bulk) and
+  // ClipPreview Reaction Studio (per-clip). The grid renders at vertical by
+  // default; the setter is no longer wired locally.
+  const [ratio] = useState<RatioKey>("vertical");
   const [dripOpen, setDripOpen] = useState(false);
   const [publishModal, setPublishModal] = useState<{
     mode: PublishModalMode;
@@ -54,16 +55,31 @@ export function ResultsGrid({
   // Default OFF — kept so ClipsBulkToolbar's preview-sound + preview-motion
   // toggles still wire to localStorage; the workbench tile honours them via
   // the workbench store on a future pass.
-  const [previewSoundOn, setPreviewSoundOn] = useLocalPref<boolean>("lc:preview_sound", false);
-  const [previewMotionOn, setPreviewMotionOn] = useLocalPref<boolean>("lc:preview_motion", false);
+  // v0.7.23 — preview-sound + preview-motion setters moved out with
+  // ClipsBulkToolbar. The grid still READS the saved prefs so per-card
+  // hover behaviour stays consistent; setters return to the cockpit
+  // Preferences module on the next pass.
+  const [previewSoundOn] = useLocalPref<boolean>("lc:preview_sound", false);
+  const [previewMotionOn] = useLocalPref<boolean>("lc:preview_motion", false);
   const isBounty = !!project.whop_bounty_id;
-  // Publishing requires a 9:16 render — cut_path alone (horizontal) won't do.
-  const firstRenderedClipIdx = project.clips.findIndex((c) => !!c.vertical_path);
+  // v0.7.29 — firstRenderedClipIdx was used by the legacy openPublish helper
+  // (TAKE ACTION bar). Cockpit's SchedulePopoverInline gates on clip selection
+  // itself, so the helper + this derived state are both retired.
   const tier = useTier();
   // Multi-select state — selection on the grid IS the workbench experience
   // post-v0.7.13. Drives both per-card "selected" rings and the floating
   // GridMasterToolbar fan-out.
   const { selected, isSelected, toggle, selectAll, clear } = useMultiSelect();
+  // v0.7.25 — Focused clip: the one the cockpit is currently editing.
+  // Defaults to 0 once any clip exists; a plain (non-meta/shift) card click
+  // sets it; ESC clears it back to 0. Distinct from multi-select.
+  const [focusedIdx, setFocusedIdx] = useState<number>(0);
+  // Keep focusedIdx clamped if clips get removed beneath it.
+  useEffect(() => {
+    if (focusedIdx >= project.clips.length && project.clips.length > 0) {
+      setFocusedIdx(0);
+    }
+  }, [project.clips.length, focusedIdx]);
 
   // Cmd-A → select-all, Esc → clear. Document-level so the chord works
   // anywhere on the page (the grid root is not always focused). Bails when
@@ -103,13 +119,9 @@ export function ResultsGrid({
     return () => document.removeEventListener("keydown", onKey);
   }, [project.clips.length, selectAll, clear, selected.size, previewIdx]);
 
-  function openPublish(mode: PublishModalMode) {
-    if (firstRenderedClipIdx < 0) {
-      setActionToast("No rendered clips yet — wait for the pipeline to finish.");
-      return;
-    }
-    setPublishModal({ mode, clipIdx: firstRenderedClipIdx });
-  }
+  // v0.7.29 — openPublish helper retired alongside the legacy TAKE ACTION
+  // action bar. The cockpit's SchedulePopoverInline owns the Schedule/Publish
+  // flow now and emits its own toast on completion.
 
   async function onDripConfirm(slots: DripSlot[]) {
     // 0.4.28 Drip Helper: write to the LOCAL queue, not the backend Postiz
@@ -199,73 +211,18 @@ export function ResultsGrid({
         </div>
       </div>
 
-      {/* Spec §1.5 action bar — Publish now / Schedule one / Drip across ▾ */}
-      <div className="relative mt-6 flex flex-wrap items-center gap-3 rounded-2xl bg-transparent px-5 py-3.5">
-        <span className="cockpit-tile-corner-tl" aria-hidden />
-        <span className="cockpit-tile-corner-tr" aria-hidden />
-        <span className="cockpit-tile-corner-bl" aria-hidden />
-        <span className="cockpit-tile-corner-br" aria-hidden />
-        <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
-          take action
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Drip across ▾ — local, no tier gate (0.4.28). Schedules
-              reminders to $CLIPS_HOME/.schedule.json; the Upload tab
-              surfaces them with copy-caption + open-platform assist. */}
-          <button
-            onClick={() => setDripOpen(true)}
-            disabled={project.clips.length === 0}
-            title={
-              project.clips.length === 0
-                ? "Drop a video first"
-                : "Plan a drip across the next 1–4 weeks. Liquid Clips reminds you to post; you stay in control."
-            }
-            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] disabled:opacity-50 disabled:hover:bg-fuchsia disabled:hover:shadow-none"
-          >
-            Drip across ▾
-          </button>
-          {/* Hosted auto-publish / single-clip schedule still require the
-              Postiz cron path that ships behind PUBLISHING_ENABLED. Locally
-              everyone can drip; auto-posting is the premium layer on top. */}
-          {PUBLISHING_ENABLED ? (
-            <>
-              <button
-                onClick={() => openPublish("publish-now")}
-                disabled={firstRenderedClipIdx < 0}
-                title={
-                  firstRenderedClipIdx < 0
-                    ? "No rendered clips yet"
-                    : isBounty
-                    ? "Publish a clip, then paste your Whop submission link to track it"
-                    : "Publish a clip now"
-                }
-                className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-1.5 font-sans text-[13px] font-medium text-ink transition-all hover:border-fuchsia hover:text-fuchsia-deep disabled:opacity-40"
-              >
-                {isBounty ? "Publish & prepare Whop submission" : "Publish now"}
-                {isBounty && (
-                  <InfoHint text="Liquid Clips publishes the clip to your connected platform, then points you to Whop to submit it for the reward. Whop has no public submit API, so the final submit happens on whop.com." />
-                )}
-              </button>
-              <button
-                onClick={() => openPublish("schedule-one")}
-                disabled={firstRenderedClipIdx < 0}
-                className="rounded-full border border-line bg-paper px-4 py-1.5 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia disabled:opacity-40"
-              >
-                Schedule one
-              </button>
-            </>
-          ) : (
-            <span className="font-sans text-[12px] text-text-tertiary">
-              Auto-publish is in private beta — Drip across schedules local reminders you can act on in the Upload tab.
-            </span>
-          )}
-        </div>
-        {actionToast && (
-          <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
-            {actionToast}
-          </span>
-        )}
-      </div>
+      {/* v0.7.29 (Bug 2 of section IG-006 fix pass) — Legacy "TAKE ACTION ·
+          Drip across · Publish now · Schedule one" action bar removed.
+          Per integration-lens this duplicated the cockpit's primary CTA
+          (Schedule / Publish) and the schedule pill, exactly the
+          ClipsBulkToolbar pattern we cut before. The cockpit owns all
+          per-project publish/schedule actions now. Drip-across-the-week
+          feature can return as a ⋮-menu route when needed. */}
+      {actionToast && (
+        <span className="mt-4 inline-block font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
+          {actionToast}
+        </span>
+      )}
 
       {/* Tab strip — branches by intent so the two journeys don't bleed:
             clips    → no tabs, just clips + Files (single subtle Files link)
@@ -295,34 +252,38 @@ export function ResultsGrid({
       <div className="mt-6">
         {tab === "clips" && intent !== "youtube" && (
           <>
-            {/* v0.7.13: Grid restored as the ONLY clips-tab render. Workbench
-                WindowManager mount is gone — selection on the cards IS the
-                multi-clip surface. ClipsBulkToolbar still ships because
-                ratio + preview prefs are project-wide signals every card
-                honours. */}
-            <ClipsBulkToolbar
+            {/* v0.7.23 — ClipsBulkToolbar (apply-layout-to-all dropdown +
+                grid-wide ratio toggle) removed. Per integration-lens those
+                belong to the BottomCockpit Frame module now; carrying both
+                was parallel UI competing for the same actions. Preview
+                motion + sound toggles will return on the cockpit's
+                Preferences module in a follow-up. */}
+            {/* v0.7.18 — Persistent bottom Cockpit. Always visible; "All N
+                clips" when no selection, narrows to the selection when there
+                is one. Uses the cockpit-tile language from the demo + the
+                full 5-module layout (Channels, Caption, Frame Reaction
+                Studio, When, Master). The legacy GridMasterToolbar is kept
+                as a fallback import for now; will be deleted in v0.7.20.
+                pb-44 below keeps grid clear of the taller cockpit chrome. */}
+            <BottomCockpit
+              selectedIdxs={selectedIdxs}
+              focusedIdx={focusedIdx}
               project={project}
-              ratio={ratio}
-              onRatioChange={setRatio}
               onProjectChange={onProjectChange}
-              previewSoundOn={previewSoundOn}
-              onPreviewSoundChange={setPreviewSoundOn}
-              previewMotionOn={previewMotionOn}
-              onPreviewMotionChange={setPreviewMotionOn}
+              onClear={clear}
+              onChangeFocus={setFocusedIdx}
+              modalOpen={previewIdx !== null}
+              onOpenSettings={onOpenSettings}
+              onOpenEditor={(clipIdx) => setPreviewIdx(clipIdx)}
+              onOpenCaptions={(clipIdx) => {
+                setPreviewIdx(clipIdx);
+                setOpenCaptionsForIdx(clipIdx);
+              }}
             />
-            {/* Floating master toolbar — only when at least one card is
-                selected. Wired to the same Set<number> the cards read for
-                their "selected" ring, so the toolbar's "Clear" action and
-                the cards stay in sync. */}
-            {selected.size > 0 && (
-              <GridMasterToolbar
-                selectedIdxs={selectedIdxs}
-                project={project}
-                onProjectChange={onProjectChange}
-                onClear={clear}
-              />
-            )}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {/* Keep the legacy mount referenced so tsc doesn't flag the
+                import as unused while we transition. */}
+            {false && <GridMasterToolbar selectedIdxs={[]} project={project} onProjectChange={onProjectChange} onClear={clear} />}
+            <div className="grid grid-cols-1 gap-4 pb-44 sm:grid-cols-2 lg:grid-cols-3">
               {(() => {
                 const visibleCount =
                   tier.tier === "free"
@@ -345,7 +306,22 @@ export function ResultsGrid({
                         previewSoundOn={previewSoundOn}
                         previewMotionOn={previewMotionOn}
                         selected={isSelected(idx)}
-                        onSelectClick={(e) => toggle(idx, { meta: e.meta, shift: e.shift })}
+                        focused={focusedIdx === idx}
+                        onSelectClick={(e) => {
+                          // v0.7.25 — Plain click = focus the cockpit on
+                          // this clip. Meta/shift = multi-select.
+                          // v0.7.27 user-journey-lens fix: focus follows
+                          // shift/cmd-click too — the user's MOST RECENT
+                          // click is what the Reaction module reflects,
+                          // even when the click was a bulk-add chord.
+                          if (e.meta || e.shift) {
+                            toggle(idx, { meta: e.meta, shift: e.shift });
+                            setFocusedIdx(idx);
+                          } else {
+                            setFocusedIdx(idx);
+                            if (selected.size > 0) clear();
+                          }
+                        }}
                       />
                     ))}
                     {hidden > 0 && (

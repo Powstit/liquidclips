@@ -5,6 +5,12 @@ import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { sidecar } from "./sidecar";
 import { recordWhopAuthEvent } from "./whop-iframe";
 
+// ───── IRON GATE IG-004 (v0.4.21 + v0.7.x) — see desktop/docs/IRON_GATES.md ─────
+// Auth + activation bridge. Pairs with the 401-self-heal path in backend.ts
+// and the `junior://` deep-link plugin in src-tauri/src/lib.rs. Don't add a
+// manual JWT paste flow, don't remove the in-flight 401 flag, don't mutate
+// the deep-link URL scheme without updating both Rust + backend redirect.
+//
 // Central desktop activation bridge. ONE helper, reused by every "sign in"
 // surface (FirstRun, top-nav, Earn, the 401 self-heal prompt) — no per-screen
 // hacks. Flow:
