@@ -1,21 +1,21 @@
 {
-  "audit_at": "2026-06-07T20:16:29.054467+00:00",
+  "audit_at": "2026-06-08T06:07:14.065774+00:00",
   "installed_app": {
-    "version": "0.7.14",
+    "version": "0.7.16",
     "codesign": "valid",
-    "mtime": "2026-06-07T20:50:18"
+    "mtime": "2026-06-07T22:38:56"
   },
   "git": {
     "branch": "main",
-    "head": "2ecb4cf",
-    "uncommitted_files": 0,
-    "untracked_files": 4,
+    "head": "627e9a4",
+    "uncommitted_files": 1,
+    "untracked_files": 2,
     "recent_commits": [
-      "2ecb4cf feat: ship-lens v0.7.14 \u2014 Kimi platform badges + overlay templates + grid scale",
-      "2f8760f feat: ship-lens v0.7.13 \u2014 Claude F1\u2013F7 + Kimi K1\u2013K7 + reviewer/gate discipline",
-      "97addb2 fix: visible import feedback + Earn signed-out CTA + SSR smoke gate \u2014 v0.7.11",
-      "d02871a chore(icon): swap macOS app icon to Invader bug \u2014 v0.7.10",
-      "610ed41 feat: ship-lens v0.7.8 punch-list sweep + tauri-plugin-opener hygiene \u2014 v0.7.9"
+      "627e9a4 fix(scheduler+addclip): two live-walk bugs from v0.7.15 \u2014 v0.7.16",
+      "b227fea chore(version): bump to v0.7.15 \u2014 6 mount + sidecar restart batch",
+      "6aa879e feat(sidecar): auto-restart on unexpected exit + SidecarRestartedError \u2014 F5",
+      "fae5ba6 feat(mount): OverlayTemplateGallery UI into ClipPreview \u2014 was DARK",
+      "86fac05 feat(mount): K5 BountySwipe into Earn tab as native preview \u2014 was DARK"
     ]
   },
   "mechanical_gates": {
@@ -38,13 +38,13 @@
   },
   "kimi_mount_state": {
     "K1_ClipEditDrawer": "MOUNTED",
-    "K4_LibraryQuickPreview": "DARK",
-    "K5_BountySwipe": "DARK",
-    "K6_StudioTour": "DARK",
-    "K7_ActivityOrbit": "DARK",
+    "K4_LibraryQuickPreview": "MOUNTED",
+    "K5_BountySwipe": "MOUNTED",
+    "K6_StudioTour": "MOUNTED",
+    "K7_ActivityOrbit": "MOUNTED",
     "PlatformBadge": "MOUNTED",
     "PlatformBadgePicker": "MOUNTED",
-    "OverlayTemplateGallery": "DARK"
+    "OverlayTemplateGallery": "MOUNTED"
   },
   "contract_hook_consumption": {
     "useMultiSelect": "CONSUMED",
