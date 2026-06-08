@@ -33,35 +33,57 @@ settings = get_settings()
 
 
 # Map Whop plan IDs → our internal tiers.
-# Whop is for affiliate-tracked + one-time sales (Founder £500 is the only
-# active Whop product right now). Recurring tiers go through Clerk Billing.
+#
+# Public-facing tier names on liquidclips.app are **Free / Solo / Pro / Agency**
+# (see liquidclips-marketing/src/app/terms/page.tsx + help/billing-and-plans).
+# Internally we still store the legacy values `solo / growth / autopilot`; the
+# alias map in app/features.py::_LEGACY_TIER_ALIASES translates `growth → pro`
+# and `autopilot → agency` at the entitlement-read layer. Don't rename the
+# stored values without migrating every existing row + alias map together.
+#
 # Keys are lowercased — the lookup lowercases the incoming plan title so a
-# title cased differently by Whop ("Junior Solo") still resolves.
+# title cased differently by Whop ("Liquid Clips Solo") still resolves. We
+# carry BOTH the new "liquid clips X" / "jnr X" titles and the legacy
+# "junior X" titles so a Whop rename can land without a backend deploy.
 PLAN_TIER_BY_TITLE = {
-    "junior pro": "growth",      # legacy prod_V8UzHw4fxCqaJ — back-compat
+    # New brand — Liquid Clips
+    "liquid clips solo": "solo",
+    "liquid clips pro": "growth",       # public "Pro" → internal "growth"
+    "liquid clips agency": "autopilot", # public "Agency" → internal "autopilot"
+    "liquid clips founder": "autopilot",
+    # Whop dashboard shorthand — "jnr X"
+    "jnr solo": "solo",
+    "jnr pro": "growth",
+    "jnr agency": "autopilot",
+    "jnr founder": "autopilot",
+    # Legacy — Junior brand (pre-rebrand). Kept so old memberships keep mapping.
     "junior solo": "solo",
+    "junior pro": "growth",      # legacy prod_V8UzHw4fxCqaJ — back-compat
     "junior growth": "growth",
     "junior channel": "growth",  # legacy alias
     "junior autopilot": "autopilot",
-    # Founder is a one-time £500 unlock; founder_flag also gets set in
-    # _tier_from_event so they get Autopilot entitlements forever.
     "junior founder": "autopilot",
 }
 
 # PRIMARY mapping: Whop plans here carry no `title` (the v2 API returns title=null),
 # so title-matching is unreliable — match by the stable plan id first. These are
-# the live USD plans on Junior Pro (prod_V8UzHw4fxCqaJ), created 2026-05-25.
+# the live USD plans on the LiquidClips Whop product (prod_V8UzHw4fxCqaJ),
+# created 2026-05-25 under the legacy "Junior" brand and currently labelled
+# "jnr X" on the Whop dashboard. Public site copy reads "Liquid Clips Solo / Pro
+# / Agency". When new plan IDs are minted under the Liquid Clips brand, add
+# them here — do NOT remove the legacy IDs, existing memberships still resolve
+# through them.
 PLAN_TIER_BY_ID = {
-    "plan_qe8AFXj9J3SWi": "solo",       # Junior Solo  $29.99/mo
-    "plan_dhssNse4FfPlI": "growth",     # Junior Growth $99.99/mo
-    "plan_BvDBrtybhbxNg": "autopilot",  # Junior Autopilot $199.99/mo
+    "plan_qe8AFXj9J3SWi": "solo",       # Liquid Clips Solo   ($29.99/mo)
+    "plan_dhssNse4FfPlI": "growth",     # Liquid Clips Pro    ($99.99/mo) — internal tier still "growth"
+    "plan_BvDBrtybhbxNg": "autopilot",  # Liquid Clips Agency ($199.99/mo) — internal tier still "autopilot"
 }
 
 # Founder is a $500 one-time unlock → Autopilot tier + founder_flag forever.
 # Match by plan id: the webhook can send title=null (like the renewal plans
 # above do), so a title-only check would let a Founder buy fall through to
 # "growth". Keep this set in sync with the live Whop "Founder Lifetime" plan.
-FOUNDER_PLAN_IDS = {"plan_OieNCPrvkw9U4"}  # "Founder Lifetime" $500 one-time
+FOUNDER_PLAN_IDS = {"plan_OieNCPrvkw9U4"}  # "Liquid Clips Founder Lifetime" $500 one-time
 
 
 def _verify_signature(body: bytes, header_sig: str | None) -> None:
