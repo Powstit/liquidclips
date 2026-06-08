@@ -88,6 +88,19 @@ class User(Base):
     stripe_connect_payouts_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     stripe_connect_charges_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
+    # Partner Engine (LiquidClips-Partner-Engine.md). referred_paid_subs is the
+    # local transactional counter (Whop's active_members_count is read live for
+    # the dashboard but is not safe to gate state changes on). tiktok_handle +
+    # tiktok_verification_code + tiktok_verified_at drive the code-in-bio gate.
+    # partner_unlocked_at + whop_commission_override_id mark the user as a
+    # Partner — set together when the unlock service POSTs the 50% override.
+    referred_paid_subs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tiktok_handle: Mapped[str | None] = mapped_column(String, nullable=True)
+    tiktok_verification_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    tiktok_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    partner_unlocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    whop_commission_override_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
