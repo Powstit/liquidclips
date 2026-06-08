@@ -264,6 +264,28 @@ def _normalize_bounty(node: dict[str, Any]) -> dict[str, Any]:
 # --- endpoints -----------------------------------------------------------
 
 
+def _filter_partner_only(bounties: list[dict[str, Any]], user: User) -> list[dict[str, Any]]:
+    """Partner Engine — hide the dedicated-channel ($10 RPM) campaign from
+    non-Partners. Partner status is local (user.partner_unlocked_at set by
+    services/partner_unlock.py). If WHOP_CAMPAIGN_B_ID env var isn't set
+    yet (pre-Step 8), this is a no-op — Whop dashboard config hasn't
+    happened, so Campaign B doesn't exist to filter.
+
+    Match is against `experience.id` on each bounty node. Whop's "campaign"
+    is an experience under the hood.
+    """
+    settings = get_settings()
+    campaign_b = (settings.whop_campaign_b_id or "").strip()
+    if not campaign_b:
+        return bounties
+    if user.partner_unlocked_at is not None:
+        return bounties
+    return [
+        b for b in bounties
+        if not (isinstance(b.get("experience"), dict) and b["experience"].get("id") == campaign_b)
+    ]
+
+
 @router.get("/bounties")
 async def list_bounties(
     user: Annotated[User, Depends(current_user)],
@@ -271,10 +293,16 @@ async def list_bounties(
     first: int = 30,
 ) -> dict[str, Any]:
     """Return public Content Rewards bounties. License-JWT-gated so a leaked
-    desktop key can only browse what the App API Key can already see."""
+    desktop key can only browse what the App API Key can already see.
+
+    Partner Engine: non-Partners see only Campaign A ($5 RPM). The $10
+    RPM dedicated-channel Campaign B is filtered out by experience.id
+    against WHOP_CAMPAIGN_B_ID. The cache key includes the partner flag
+    so a Partner unlock doesn't get masked by a stale prospect cache."""
     _ = db  # current_user already opened the session
     first = _clamp_bounty_list_first(first)
-    cache_key = f"bounties:{first}"
+    is_partner = user.partner_unlocked_at is not None
+    cache_key = f"bounties:{first}:partner={int(is_partner)}"
     cached = _cache_get(cache_key)
     if cached is not None:
         return {"bounties": cached, "source": "cache"}
@@ -282,9 +310,11 @@ async def list_bounties(
     data = await _whop_gql(_LIST_BOUNTIES, {"first": first})
     edges = (data.get("publicBounties") or {}).get("edges") or []
     bounties = [_normalize_bounty(edge["node"]) for edge in edges if edge and edge.get("node")]
+    bounties = _filter_partner_only(bounties, user)
     _cache_put(cache_key, bounties, _BOUNTY_LIST_TTL)
     log.info(
-        "[whop_proxy] list_bounties for user=%s count=%d", user.id, len(bounties)
+        "[whop_proxy] list_bounties user=%s partner=%s count=%d",
+        user.id, is_partner, len(bounties),
     )
     return {"bounties": bounties, "source": "live"}
 
@@ -294,9 +324,17 @@ async def get_bounty(
     bounty_id: str,
     user: Annotated[User, Depends(current_user)],
 ) -> dict[str, Any]:
+    """Single-bounty detail. Same Partner Engine gate as the list endpoint
+    — a non-Partner who deep-links to a Campaign B bounty (e.g. shared
+    URL) gets a 404 instead of the brief. Returning 404 (vs 403) keeps
+    the existence of Campaign B opaque to non-Partners."""
     cache_key = f"bounty:{bounty_id}"
     cached = _cache_get(cache_key)
     if cached is not None:
+        # Cache stores the raw bounty; gate runs on every read so an unlock
+        # mid-TTL takes effect immediately.
+        if not _filter_partner_only([cached], user):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Bounty not found")
         return {"bounty": cached, "source": "cache"}
     data = await _whop_gql(_BOUNTY_DETAIL, {"id": bounty_id})
     bounty = data.get("publicBounty")
@@ -304,6 +342,8 @@ async def get_bounty(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Bounty not found")
     bounty = _normalize_bounty(bounty)
     _cache_put(cache_key, bounty, _BOUNTY_DETAIL_TTL)
+    if not _filter_partner_only([bounty], user):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Bounty not found")
     log.info("[whop_proxy] get_bounty %s for user=%s", bounty_id, user.id)
     return {"bounty": bounty, "source": "live"}
 
