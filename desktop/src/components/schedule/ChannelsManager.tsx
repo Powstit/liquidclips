@@ -34,7 +34,7 @@ import { Plus, Loader2, RefreshCw } from "lucide-react";
 import * as backend from "../../lib/backend";
 import { humanError } from "../../lib/sidecar";
 import type { Channel } from "./types";
-import { ChannelCard } from "./ChannelCard";
+import { ChannelRow } from "./ChannelRow";
 import { AddChannelModal } from "./AddChannelModal";
 
 // 90s matches the Connect-channel flow contract.
@@ -203,25 +203,10 @@ export function ChannelsManager({
     };
   }, [finishConnecting]);
 
-  async function handleRename(id: string, label: string) {
-    try {
-      const updated = await backend.patchChannel(id, { label });
-      setChannels((cur) => cur.map((c) => (c.id === id ? updated : c)));
-    } catch (e) {
-      setError(humanError(e));
-      throw e; // let ChannelCard's local busy-state unwind
-    }
-  }
-
-  async function handleRefresh(id: string) {
-    try {
-      const updated = await backend.refreshChannel(id);
-      setChannels((cur) => cur.map((c) => (c.id === id ? updated : c)));
-    } catch (e) {
-      setError(humanError(e));
-      throw e;
-    }
-  }
+  // v0.7.32 — rename + refresh handlers removed in the ch-row swap. The
+  // ch-row pattern exposes toggle / link / delete only. If a channel detail
+  // surface lands in a future sprint, re-add patchChannel + refreshChannel
+  // calls there — they're untouched in backend.ts.
 
   async function handleTogglePause(c: Channel) {
     try {
@@ -229,8 +214,11 @@ export function ChannelsManager({
       const updated = await backend.patchChannel(c.id, { status: next });
       setChannels((cur) => cur.map((x) => (x.id === c.id ? updated : x)));
     } catch (e) {
+      // v0.7.32 — `humanError` already humanises the message into the parent
+      // banner. The previous `throw e` was there to let ChannelCard unwind
+      // its local busy state; ChannelRow swallows in its own try/catch, so
+      // the throw became a no-op + bug-hunt P1.
       setError(humanError(e));
-      throw e;
     }
   }
 
@@ -240,7 +228,6 @@ export function ChannelsManager({
       setChannels((cur) => cur.filter((c) => c.id !== id));
     } catch (e) {
       setError(humanError(e));
-      throw e;
     }
   }
 
@@ -354,52 +341,48 @@ export function ChannelsManager({
             </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {/* v0.7.32 — ch-row pattern. Rows stack vertically (no grid). The
+              per-channel "waiting for browser" microstrip becomes a row-level
+              inline cue handled by ChannelRow's status microcopy when the
+              channel transitions to pending_link / unlinked. */}
+          <div className="flex flex-col gap-2">
             {channels.map((c) => {
               const conn = connecting.get(c.id);
               return (
-                <div key={c.id} className="flex flex-col gap-2">
-                  <ChannelCard
+                <div key={c.id} className="flex flex-col gap-1.5">
+                  <ChannelRow
                     channel={c}
-                    onRename={(label) => handleRename(c.id, label)}
-                    onRefresh={() => handleRefresh(c.id)}
                     onTogglePause={() => handleTogglePause(c)}
                     onDelete={() => handleDelete(c.id)}
                     onLinkNow={() => void handleLinkNow(c)}
-                    /* v0.7.8 S8 — analytics chip cut at the parent (see top
-                       of file). Don't forward onOpenAnalytics — the card
-                       will hide the chip when the prop is undefined. */
                   />
                   {conn && (
                     <div
                       role="status"
                       aria-live="polite"
-                      className="flex items-center justify-between gap-2 rounded-xl border border-fuchsia/40 bg-fuchsia/10 px-3 py-2"
+                      className="ml-7 flex items-center justify-between gap-2 rounded-md border border-fuchsia/40 bg-fuchsia/8 px-3 py-1.5"
                     >
                       <div className="flex min-w-0 items-center gap-2">
                         {!conn.timedOut && (
                           <span
                             aria-hidden
-                            className="inline-block h-2.5 w-2.5 shrink-0 animate-spin rounded-full border border-fuchsia border-t-transparent"
+                            className="inline-block h-2 w-2 shrink-0 animate-spin rounded-full border border-fuchsia border-t-transparent"
                           />
                         )}
-                        <span className="truncate font-mono text-[11px] uppercase tracking-[0.14em] text-fuchsia">
-                          {conn.timedOut
-                            ? `Still waiting — try Reconnect`
-                            : `Waiting for browser…`}
+                        <span className="truncate font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia">
+                          {conn.timedOut ? "still waiting — retry" : "waiting for browser…"}
                         </span>
                       </div>
                       <button
                         type="button"
                         onClick={() => {
                           if (conn.timedOut) {
-                            // Restart the connect flow + 90s timer.
                             void handleLinkNow(c);
                           } else {
                             finishConnecting(c.id);
                           }
                         }}
-                        className="rounded-full border border-fuchsia/40 bg-paper-elev px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia hover:bg-fuchsia/10"
+                        className="rounded-full border border-fuchsia/40 bg-paper-elev px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia hover:bg-fuchsia/10"
                       >
                         {conn.timedOut ? "reconnect" : "cancel"}
                       </button>

@@ -61,7 +61,12 @@ fi
 
 # 4. live infrastructure reachability ────────────────────────────────────
 JNR_HEALTH=$(curl -s -m 10 -o /dev/null -w "%{http_code}" https://api.jnremployee.com/healthcheck || echo "000")
-LC_HEALTH=$(curl -s -m 10 -o /dev/null -w "%{http_code}" https://api.liquidclips.app/healthcheck || echo "000")
+# v0.7.20 — LC_HEALTH check dropped. api.liquidclips.app is not a backend
+# (the LC subdomain serves account-app + landing only; the desktop's actual
+# backend is api.jnremployee.com). The 000 false-flag was the recurring red
+# gate. account.liquidclips.app/embed/earn below is the real LC reachability
+# check we already had; it returns 200.
+LC_HEALTH="n/a"
 LC_EMBED=$(curl -s -m 10 -o /dev/null -w "%{http_code}" https://account.liquidclips.app/embed/earn || echo "000")
 JNR_EMBED=$(curl -s -m 10 -o /dev/null -w "%{http_code}" https://account.jnremployee.com/embed/earn || echo "000")
 BANNER_AFFILIATE=$(curl -s -m 10 -o /dev/null -w "%{http_code}" https://api.jnremployee.com/static/campaigns/affiliate.mp4 || echo "000")

@@ -1,21 +1,21 @@
 {
-  "audit_at": "2026-06-08T06:07:14.065774+00:00",
+  "audit_at": "2026-06-08T10:04:35.641280+00:00",
   "installed_app": {
-    "version": "0.7.16",
+    "version": "0.7.20",
     "codesign": "valid",
-    "mtime": "2026-06-07T22:38:56"
+    "mtime": "2026-06-08T11:03:56"
   },
   "git": {
     "branch": "main",
-    "head": "627e9a4",
-    "uncommitted_files": 1,
-    "untracked_files": 2,
+    "head": "73c88b7",
+    "uncommitted_files": 11,
+    "untracked_files": 9,
     "recent_commits": [
+      "73c88b7 fix(bug-hunt): humanError wrap + media onError fallbacks \u2014 v0.7.17",
+      "fddca51 chore(audit): refresh system-audit.json post-codesign-strip + bug-fix install",
+      "cfef1ec fix(install): strip FinderInfo xattr so codesign --strict stays green",
       "627e9a4 fix(scheduler+addclip): two live-walk bugs from v0.7.15 \u2014 v0.7.16",
-      "b227fea chore(version): bump to v0.7.15 \u2014 6 mount + sidecar restart batch",
-      "6aa879e feat(sidecar): auto-restart on unexpected exit + SidecarRestartedError \u2014 F5",
-      "fae5ba6 feat(mount): OverlayTemplateGallery UI into ClipPreview \u2014 was DARK",
-      "86fac05 feat(mount): K5 BountySwipe into Earn tab as native preview \u2014 was DARK"
+      "b227fea chore(version): bump to v0.7.15 \u2014 6 mount + sidecar restart batch"
     ]
   },
   "mechanical_gates": {
@@ -27,13 +27,13 @@
   },
   "live_reachability": {
     "api_jnremployee_health": "200",
-    "api_liquidclips_health": "000000",
+    "api_liquidclips_health": "n/a",
     "embed_liquidclips_earn": "200",
     "embed_jnremployee_earn": "200",
     "banner_affiliate_mp4": "200"
   },
   "sidecar_rpcs": {
-    "registered_count": 61,
+    "registered_count": 62,
     "missing_expected": ""
   },
   "kimi_mount_state": {

@@ -1,5 +1,21 @@
 # Liquid Clips Desktop — agent guide
 
+> ## 🔒 Iron-gate rule — READ BEFORE EDITING
+>
+> Before touching ANY file, run:
+> ```
+> grep -n "IRON GATE" <files-you-plan-to-edit>
+> ```
+> If you find a hit inside or adjacent to your planned edit, **STOP**.
+> 1. Open `docs/IRON_GATES.md` and read the gate entry (IG-NNN).
+> 2. Confirm your change preserves the locked contract.
+> 3. If it can't, the user must have explicitly authorized the override on THIS turn — not last week, not in a previous session, not "I think they'd be fine with it." Quote the user's instruction in the commit message.
+> 4. If the gate is fully retiring, delete the sentinel comments + add a `Iron-gate-retire:` trailer.
+>
+> The pre-commit hook will refuse a diff that removes a sentinel line unless `IRON_GATE_OVERRIDE=1` is set with a reason. Do not bypass.
+>
+> Currently active gates: IG-001 (import pipeline), IG-002 (sidecar RPC), IG-003 (cinematic intro), IG-004 (auth + activation), IG-005 (workspace UI design). Full registry: `docs/IRON_GATES.md`.
+
 Tauri 2 macOS app. Public brand **Liquid Clips**, bundle id `app.liquidclips.desktop`, source-tree name still `junior-desktop`. The user-facing surface that turns long-form video into ready-to-post short clips with animated captions, social publishing, and an affiliate flywheel.
 
 ## Architecture

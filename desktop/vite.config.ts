@@ -30,7 +30,14 @@ const webShims: Record<string, string> = isWeb
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   clearScreen: false,
-  resolve: { alias: webShims },
+  resolve: {
+    alias: {
+      // shadcn standard alias — `import { cn } from "@/lib/utils"` etc.
+      // Paired with tsconfig.json "paths": { "@/*": ["src/*"] }.
+      "@": resolve(__dirname, "src"),
+      ...webShims,
+    },
+  },
   define: isWeb ? { "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV ?? "production") } : {},
   build: isWeb ? { outDir: "dist-web" } : undefined,
   server: {

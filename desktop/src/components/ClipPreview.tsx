@@ -2,24 +2,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import {
-  Volume2,
-  AudioLines,
-  VolumeX,
   Captions as CaptionsIcon,
   Calendar,
   Send,
   FolderOpen,
   Download,
 } from "lucide-react";
-import type { Clip, OverlayType, Project, RatioKey } from "../lib/sidecar";
+import type { Clip, Project, RatioKey } from "../lib/sidecar";
 import { sidecar, RATIOS, humanError } from "../lib/sidecar";
 import { PlatformBadgePicker } from "./PlatformBadge";
 import { OverlayTemplateGallery } from "./OverlayTemplateGallery";
 import { CopyButton } from "./CopyButton";
 import { InfoTip } from "./InfoTip";
-import { LayoutIcon, LAYOUTS, type LayoutKey } from "./clips-feed/LayoutIcon";
-import { pickOverlaySource } from "./OverlaySourcePicker";
-import { ReactionCellPreview } from "./clips-feed/ReactionCellPreview";
+import { type LayoutKey } from "./clips-feed/LayoutIcon";
+import { ReactionControls } from "./clips-feed/ReactionControls";
 import { LAYOUT_TOPOLOGY } from "./clips-feed/layout-cells";
 import { BountyFitChecklist } from "./earn/bounty-fit";
 import { CaptionDrawer, CaptionOverlay } from "./captions/CaptionDrawer";
@@ -103,16 +99,8 @@ export function ClipPreview({
   const [descDraft, setDescDraft] = useState(clip.description);
   const [pinDraft, setPinDraft] = useState(clip.pinned_comment ?? "");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
-  const [brollOffset, setBrollOffset] = useState(clip.overlay?.start_offset_s ?? 0);
-  const [audioSource, setAudioSource] = useState<"main" | "broll" | "muted">(clip.overlay?.audio_source ?? "main");
-  // Auto-persist for the reaction Audio + Offset controls. These used to be
-  // "set local state and hope the user clicks a layout tile again" — silent
-  // data loss on modal close. See P0 audit 2026-06-06.
-  const [overlaySaveState, setOverlaySaveState] = useState<"idle" | "saving" | "saved">("idle");
-  const [overlaySaveError, setOverlaySaveError] = useState<string | null>(null);
-  // Microcopy text — separated from the saving/saved beat so we can pick
-  // "audio saved" vs "offset saved" based on which field actually changed last.
-  const [overlaySaveLabel, setOverlaySaveLabel] = useState<string>("");
+  // v0.7.25 — brollOffset, audioSource, overlaySaveState/Error/Label all
+  // live inside ReactionControls now (single source of truth, two surfaces).
 
   // Bottom-row action state. Schedule popover, save-copy progress, and a
   // local toast that surfaces success/error for any of these actions without
@@ -137,15 +125,11 @@ export function ClipPreview({
     setDescDraft(clip.description);
     setPinDraft(clip.pinned_comment ?? "");
     setSaveState("idle");
-    setBrollOffset(clip.overlay?.start_offset_s ?? 0);
-    setAudioSource(clip.overlay?.audio_source ?? "main");
-    setOverlaySaveState("idle");
-    setOverlaySaveError(null);
-    setOverlaySaveLabel("");
     setScheduleOpen(false);
     setCustomSchedule("");
     setBottomToast(null);
   }, [clip.start, clip.end, clip.title, clip.description, clip.pinned_comment, clip.overlay?.start_offset_s, clip.overlay?.audio_source, index]);
+
 
   const isDirty =
     titleDraft !== clip.title ||
@@ -259,73 +243,9 @@ export function ClipPreview({
     return () => { cancelled = true; };
   }, [slug, index, clip.vertical_path, videoCacheBuster]);
 
-  // P0 fix (2026-06-06): debounced persistence for Audio + Offset controls.
-  // Old behaviour: setAudioSource / setBrollOffset only mutated local React
-  // state. The value was sent to the backend on the NEXT layout-tile click via
-  // applyLayout's closure capture. If the user changed audio + closed the
-  // modal: silently lost. Now we mirror the change to the backend with a 400ms
-  // debounce.
-  //
-  // Loop safety: the effect only fires when local state DIVERGES from the
-  // current clip prop (compared on every render). After the RPC succeeds, the
-  // parent receives a new project where clip.overlay.audio_source ==
-  // audioSource, so the divergence check is false and the effect doesn't re-
-  // fire. The sync-from-prop effect above won't refire either because the
-  // value is already equal.
-  //
-  // Precondition: an overlay must already exist (source_path is required by
-  // the applyOverlay API). The Audio/Offset UI is only mounted when
-  // layout !== "none", which guarantees overlay.source_path — but we still
-  // guard here in case clip prop arrives mid-transition.
-  useEffect(() => {
-    const overlay = clip.overlay;
-    if (!overlay || !overlay.source_path) return;
-    const audioDiverges = audioSource !== (overlay.audio_source ?? "main");
-    const offsetDiverges = Math.abs(brollOffset - (overlay.start_offset_s ?? 0)) > 1e-6;
-    if (!audioDiverges && !offsetDiverges) return;
-    // Pick the microcopy that reflects whatever changed. If both diverge in
-    // the same window, "reaction saved" is more accurate than picking one.
-    const label =
-      audioDiverges && offsetDiverges
-        ? "reaction saved"
-        : audioDiverges
-        ? "audio saved"
-        : "offset saved";
-    let cancelled = false;
-    const handle = window.setTimeout(async () => {
-      setOverlaySaveState("saving");
-      setOverlaySaveError(null);
-      setOverlaySaveLabel(label);
-      try {
-        const r = await sidecar.applyOverlay(slug, index - 1, {
-          type: overlay.type,
-          source_path: overlay.source_path,
-          start_offset_s: brollOffset,
-          audio_source: audioSource,
-        });
-        if (cancelled) return;
-        onProjectChange(r.project);
-        setOverlaySaveState("saved");
-        window.setTimeout(() => {
-          setOverlaySaveState((s) => (s === "saved" ? "idle" : s));
-        }, 1500);
-      } catch (e) {
-        if (cancelled) return;
-        const msg = humanError(e);
-        console.warn("[ClipPreview] applyOverlay (auto-persist) failed:", e);
-        setOverlaySaveError(msg);
-        setOverlaySaveState("idle");
-      }
-    }, 400);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(handle);
-    };
-    // Intentionally exclude onProjectChange — the parent passes a fresh ref
-    // every render and re-running this effect on parent re-renders would
-    // schedule (and immediately cancel) a save on every keystroke elsewhere.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioSource, brollOffset, slug, index, clip.overlay]);
+  // v0.7.25 — Auto-persist of audio + offset moved into ReactionControls.
+  // The component owns the debounced applyOverlay write whether mounted in
+  // the cockpit (compact) or here (full studio).
 
   // Esc closes, ←/→ navigate.
   // P0 fix (2026-06-06): explicit ownership of Esc so the modal doesn't yank
@@ -356,42 +276,8 @@ export function ClipPreview({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, onNavigate, index, totalClips, captionsOpen]);
 
-  // Apply a launch-safe b-roll layout. The renderer supports one extra source
-  // per clip; the advanced cell editor stays hidden until the backend supports
-  // independent cells / audio / music beds end-to-end.
-  async function applyLayout(kind: LayoutKey, opts?: { forcePick?: boolean }) {
-    if (busy) return;
-    setBusy(true);
-    setActionError(null);
-    try {
-      if (kind === "none") {
-        const r = await sidecar.applyOverlay(slug, index - 1, null);
-        onProjectChange(r.project);
-      } else {
-        // Re-use an existing reaction source when switching layouts. The
-        // "Change reaction clip" button is the explicit path to pick a new
-        // file/source; layout buttons should feel like layout buttons.
-        const existing = clip.overlay?.source_path;
-        let source: string | undefined = existing;
-        if (opts?.forcePick || !source) {
-          const pick = await pickOverlaySource({ project, excludeIdx: index - 1 });
-          if (pick.kind === "cancel") return;
-          source = pick.path;
-        }
-        const r = await sidecar.applyOverlay(slug, index - 1, {
-          type: kind as OverlayType,
-          source_path: source,
-          start_offset_s: brollOffset,
-          audio_source: audioSource,
-        });
-        onProjectChange(r.project);
-      }
-    } catch (e) {
-      setActionError(humanError(e));
-    } finally {
-      setBusy(false);
-    }
-  }
+  // v0.7.25 — applyLayout owned by ReactionControls (the shared per-clip
+  // writer for clip.overlay). ClipPreview no longer needs its own copy.
 
   // v0.7.14 — Persist the picked overlay template via apply_overlay_template.
   // Sidecar accepts a null source_path so the user can park a template choice
@@ -819,144 +705,18 @@ export function ClipPreview({
             {/* Cell editor */}
             <BountyFitChecklist clip={clip} project={project} />
 
-            <section className="space-y-3">
-              {/* Layout strip — reaction layouts as labeled icon tiles */}
-              <div className="rounded-2xl border border-fuchsia-soft bg-fuchsia-soft/15 p-4">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <div>
-                    <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep">
-                      reaction studio
-                    </div>
-                    <p className="mt-0.5 font-sans text-[12px] leading-snug text-text-secondary">
-                      Add a second clip. Stack, split, or PiP.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-3 grid grid-cols-3 gap-1.5 sm:grid-cols-4">
-                  {LAYOUTS.map((item) => {
-                    const active = layout === item.key;
-                    return (
-                      <button
-                        key={item.key}
-                        onClick={() => void applyLayout(item.key)}
-                        disabled={busy}
-                        title={item.label}
-                        aria-pressed={active}
-                        className={`flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-lg border px-1.5 py-2 transition-all ${
-                          active
-                            ? "border-fuchsia bg-fuchsia text-white shadow-[var(--glow-sm)]"
-                            : "border-line bg-paper text-ink hover:border-fuchsia hover:bg-fuchsia-soft/20"
-                        } disabled:opacity-50`}
-                      >
-                        <LayoutIcon kind={item.key} />
-                        <span className="text-center font-sans text-[10px] font-medium leading-tight">
-                          {item.label}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Playable cell preview */}
-              <ReactionCellPreview
-                kind={layout}
-                mainPath={clip.vertical_path || clip.cut_path || null}
-                mainTitle={clip.title}
-                reactionPath={clip.overlay?.source_path ?? null}
-                audioSource={audioSource}
-                busy={busy}
-                onPick={() => void applyLayout(layout === "none" ? "stack-bottom" : layout, { forcePick: true })}
-                onRemove={() => void applyLayout("none")}
-                onApply={() => void applyLayout(layout)}
+            {/* v0.7.25 — Reaction Studio uses the shared ReactionControls so
+                the modal + cockpit Reaction module emit identical writes.
+                #reaction-studio id retained so any external scroll target
+                (deep-link, anchor) still resolves. */}
+            <section id="reaction-studio" className="scroll-mt-6">
+              <ReactionControls
+                clip={clip}
+                clipIdx={index - 1}
+                slug={slug}
+                project={project}
+                onProjectChange={onProjectChange}
               />
-
-              {/* Audio + timing — only when there's a reaction layout */}
-              {layout !== "none" && (
-                <div className="space-y-3 rounded-xl border border-line bg-paper p-3.5">
-                  <div>
-                    <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-                      audio
-                    </div>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {([
-                        ["main",  "Main",     Volume2],
-                        ["broll", "Reaction", AudioLines],
-                        ["muted", "Muted",    VolumeX],
-                      ] as const).map(([key, label, Icon]) => {
-                        const on = audioSource === key;
-                        return (
-                          <button
-                            key={key}
-                            onClick={() => setAudioSource(key)}
-                            aria-pressed={on}
-                            className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 font-sans text-[12px] font-medium transition-colors ${
-                              on
-                                ? "border-fuchsia bg-fuchsia text-white"
-                                : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
-                            }`}
-                          >
-                            <Icon size={13} strokeWidth={2.2} />
-                            {label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <label className="block">
-                    <div className="mb-1 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-                      <span>Reaction starts at {brollOffset.toFixed(1)}s</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setBrollOffset(0)}
-                          className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary hover:text-fuchsia"
-                        >
-                          start at beginning
-                        </button>
-                        <span className="text-text-tertiary/40">·</span>
-                        <button
-                          type="button"
-                          onClick={() => setBrollOffset(clip.overlay?.start_offset_s ?? 0)}
-                          className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary hover:text-fuchsia"
-                        >
-                          reset
-                        </button>
-                      </div>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={60}
-                      step={0.5}
-                      value={brollOffset}
-                      onChange={(e) => setBrollOffset(Number(e.target.value))}
-                      className="w-full accent-fuchsia"
-                    />
-                  </label>
-
-                  {/* Auto-save state chip — micro-confirms that the value the
-                      clipper just dragged actually landed in project.json. */}
-                  {(overlaySaveState !== "idle" || overlaySaveError) && (
-                    <div
-                      aria-live="polite"
-                      className="flex items-center justify-end font-mono text-[10px] uppercase tracking-[0.12em]"
-                    >
-                      {overlaySaveError ? (
-                        <span className="text-[#DC2626]">
-                          save failed — try a layout tile to retry
-                        </span>
-                      ) : overlaySaveState === "saving" ? (
-                        <span className="text-text-tertiary">saving…</span>
-                      ) : (
-                        <span className="text-fuchsia">{overlaySaveLabel || "saved"}</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
             </section>
 
             {/* Post-ready text Liquid Clips wrote for you. One header, three sub-blocks

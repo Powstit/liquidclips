@@ -8,15 +8,13 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { AlertTriangle, Check, Copy, MessageSquare, MoreVertical, Sparkles, Trash2 } from "lucide-react";
 import type { Clip, OverlayType, Project, RatioKey } from "../../lib/sidecar";
-import { sidecar, RATIOS } from "../../lib/sidecar";
-import { LayoutIcon, LAYOUTS, type LayoutKey } from "./LayoutIcon";
+import { sidecar } from "../../lib/sidecar";
+import { type LayoutKey } from "./LayoutIcon";
 import { pickOverlaySource } from "../OverlaySourcePicker";
 import { BountyFitPill } from "../earn/bounty-fit";
 import { PlatformBadge } from "../PlatformBadge";
 import { useCountUp } from "../../lib/useCountUp";
-import { InlineScheduler } from "./InlineScheduler";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { CAPTION_STYLES } from "../../lib/caption-styles";
 
 // Self-contained card. Tap = play preview. Layout icons swap composition in
 // place. Copy buttons inline. "..." opens the side-door full editor for the
@@ -26,17 +24,6 @@ function formatHms(s: number): string {
   const m = Math.floor(s / 60);
   const r = Math.floor(s % 60);
   return `${m}:${r.toString().padStart(2, "0")}`;
-}
-
-function captionStyleDot(style: string | undefined): string {
-  switch (style) {
-    case "brand_fuchsia": return "#ff1a8c";
-    case "tiktok_stack":  return "#00e5ff";
-    case "bold_yellow":   return "#ffff00";
-    case "clean_white":   return "#f4f1ea";
-    case "subway_surfer": return "linear-gradient(135deg, #00e5ff, #ff1a8c)";
-    default:              return "rgba(244, 241, 234, 0.25)";
-  }
 }
 
 function viralityClass(v: number): string {
@@ -67,6 +54,7 @@ export function ClipCard({
   previewMotionOn = false,
   selected,
   onSelectClick,
+  focused = false,
 }: {
   clip: Clip;
   index: number;          // 1-based
@@ -91,6 +79,12 @@ export function ClipCard({
   /** Multi-select state — when true, the card renders a fuchsia HUD ring +
    *  ticked checkbox. Only meaningful when `onSelectClick` is also provided. */
   selected?: boolean;
+  /** v0.7.25 — Focused (cockpit-target) state. Plain card click sets this;
+   *  the cockpit's Reaction / Caption / etc. modules operate on this clip.
+   *  Visually distinct from `selected` — pulsing brighter ring + corner glow.
+   *  Coexists with `selected` (a focused clip can also be part of a bulk set
+   *  when shift/cmd-clicked on top). */
+  focused?: boolean;
   /** Multi-select click handler. When provided (parent grid is managing a
    *  Set<number> of selected indices), the card surfaces a checkbox and the
    *  primary background click forwards meta/shift to the parent so it can
@@ -313,9 +307,16 @@ export function ClipCard({
         onSelectClick?.({ meta: e.metaKey, shift: e.shiftKey });
       }
     : undefined;
-  const ringClass = selectable && selected
+  // Selection ring is the bulk-target ring (kept). Focus ring is brighter
+  // and offset less — distinct visually so a focused-AND-selected clip
+  // shows both bands.
+  const selectedRingClass = selectable && selected
     ? " ring-2 ring-fuchsia ring-offset-2 ring-offset-ink"
     : "";
+  const focusedRingClass = focused
+    ? " outline outline-2 outline-offset-[3px] outline-fuchsia/70 shadow-[0_0_24px_rgba(255,26,140,0.32)]"
+    : "";
+  const ringClass = selectedRingClass + focusedRingClass;
 
   return (
     <article
@@ -443,143 +444,47 @@ export function ClipCard({
             <PlatformBadge platforms={clip.platforms} size="sm" />
           </span>
         )}
-        {/* Captions chip — bottom-right of the thumbnail. Style colour dot
-            shows at-a-glance which style is on this clip. Click → open
-            editor with the Captions drawer pre-opened. */}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            (onOpenCaptions ?? onOpenEditor)();
-          }}
-          aria-label={
-            clip.caption_style
-              ? `Edit ${
-                  (CAPTION_STYLES as Record<string, { label: string }>)[clip.caption_style]?.label ??
-                  clip.caption_style.replace("_", " ")
-                } captions`
-              : "Add captions"
-          }
-          title={
-            clip.caption_style
-              ? `Captions · ${
-                  (CAPTION_STYLES as Record<string, { label: string }>)[clip.caption_style]?.label ??
-                  clip.caption_style.replace("_", " ")
-                }`
-              : "Add captions"
-          }
-          className="group absolute bottom-2 right-2 inline-flex items-center gap-1.5 rounded-full border border-line/50 bg-black/55 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.12em] text-paper backdrop-blur transition hover:border-fuchsia hover:bg-black/75"
-        >
-          <span aria-hidden>▣</span>
-          <span>cap</span>
-          <span
-            aria-hidden
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ background: captionStyleDot(clip.caption_style) }}
-          />
-        </button>
+        {/* v0.7.20 — CAP pill, layout picker row, and render-status HUD all
+            removed. Per the integration-lens, captions live in the cockpit
+            Caption module, layout selection lives in the cockpit Frame
+            module (bulk) + ClipPreview Reaction Studio (per-clip), and the
+            render-status was decorative HUD with no actionable signal. The
+            card now matches the demo's display-only pattern. */}
       </div>
 
-      {/* Layout picker — visual icons. When the parent enabled multi-
-          select, we halt propagation at this row so clicking a layout
-          icon doesn't also toggle selection. When `selectable` is false
-          this is a no-op (no parent onClick to bubble into). */}
-      <div
-        className="flex items-center justify-between"
-        onClick={selectable ? (e) => e.stopPropagation() : undefined}
-      >
-        <div className="flex items-center gap-1">
-          {LAYOUTS.map((l) => {
-            const active = currentLayout === l.key;
-            return (
-              <button
-                key={l.key}
-                onClick={() => void applyLayout(l.key)}
-                disabled={busy}
-                title={l.label}
-                className={`flex items-center justify-center rounded-md p-1.5 transition-colors ${
-                  active
-                    ? "bg-fuchsia-soft/60 text-fuchsia-deep"
-                    : "text-text-tertiary hover:bg-paper-warm hover:text-ink"
-                } disabled:opacity-50`}
-                aria-label={l.label}
-                aria-pressed={active}
-              >
-                <LayoutIcon kind={l.key} />
-              </button>
-            );
-          })}
+      {/* v0.7.19 — Per the integration-lens audit + Daniel's locked demo
+          (docs/clip-dashboard-demo.html), the card is now PURE display +
+          select target. Every action — Caption, Reaction, Layout, Copy,
+          Editor →, Remove, Schedule, Publish — moved to either the bottom
+          Cockpit (bulk) or the ClipPreview modal (per-clip deep edit).
+          The under-card cockpit row was duplicating affordances that
+          already live in those canonical surfaces. */}
+      <div className="pt-1">
+        <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-text-tertiary opacity-55">
+          title
         </div>
-        {/* Render-status HUD — three ratio glyphs (portrait / square / landscape).
-            Filled fuchsia when the render exists on disk, hollow when not yet
-            rendered. The active ratio gets an ink ring. Replaces the prior
-            text-label row which read as three faint "white lines" on dark cards. */}
-        <div className="flex items-center gap-1.5" aria-label="Rendered ratios">
-          {RATIOS.map((r) => {
-            const baked = !!pathForRatio(clip, r.key);
-            const active = r.key === ratio;
-            // Glyph dimensions — keep all three the same height so the row reads
-            // as a tidy HUD, vary width to telegraph aspect ratio.
-            const dims =
-              r.key === "vertical"
-                ? { w: 7, h: 12 }
-                : r.key === "square"
-                  ? { w: 11, h: 11 }
-                  : { w: 9, h: 12 };
-            return (
-              <span
-                key={r.key}
-                title={baked ? `Rendered · ${r.label}` : `Not yet rendered · ${r.label}`}
-                aria-label={`${r.label} ${baked ? "rendered" : "not rendered"}${active ? " (active)" : ""}`}
-                className={`grid place-items-center ${active ? "ring-1 ring-ink rounded-[3px]" : ""}`}
-                style={{ padding: 1 }}
-              >
-                <svg
-                  width={dims.w}
-                  height={dims.h}
-                  viewBox={`0 0 ${dims.w} ${dims.h}`}
-                  aria-hidden="true"
-                >
-                  <rect
-                    x="0.5"
-                    y="0.5"
-                    width={dims.w - 1}
-                    height={dims.h - 1}
-                    rx="1.2"
-                    fill={baked ? "var(--color-fuchsia, #ff1a8c)" : "transparent"}
-                    stroke={baked ? "var(--color-fuchsia, #ff1a8c)" : "var(--color-line, rgba(255,255,255,0.28))"}
-                    strokeWidth="1"
-                  />
-                </svg>
-              </span>
-            );
-          })}
+        <p className="mt-1 line-clamp-2 font-display text-[15px] font-semibold leading-snug tracking-[-0.01em] text-ink">
+          {clip.title}
+        </p>
+        <div className="mt-2 flex items-center gap-2 font-mono text-[10px] text-text-secondary opacity-75">
+          <span>{formatCardDur(clip.end - clip.start)}</span>
+          <span className="opacity-40">·</span>
+          <span>score {clip.virality ?? 0}</span>
         </div>
       </div>
 
-      {/* Title — readable, copyable */}
-      <p className="line-clamp-2 font-display text-[16px] font-semibold leading-snug tracking-[-0.01em] text-ink">
-        {clip.title}
-      </p>
-
-      {/* Cockpit — under-card edit row. Schedule expands in-place via the
-          existing InlineScheduler (no modal). Caption opens the captions
-          drawer at the editor. Reaction re-opens the overlay-source picker
-          for the current layout. ⋮ holds the secondary actions. The whole
-          cockpit halts propagation when selectable so its buttons don't
-          double-fire as a selection toggle. */}
+      {/* hidden wrapper kept so the ConfirmDialog below can still mount
+          inside a propagation-stop div under selectable mode. The display
+          chrome above is the only visible surface. */}
       <div
-        className="flex flex-col gap-2"
+        className="hidden"
         onClick={selectable ? (e) => e.stopPropagation() : undefined}
       >
         <div className="flex flex-wrap items-center gap-2">
-          {/* Schedule — self-managed; renders "Schedule" button when closed
-              and the full inline scheduler when expanded. */}
-          <InlineScheduler
-            clip={clip}
-            projectTitle={project.source_filename}
-            compact
-          />
+          {/* v0.7.18 — Per-card InlineScheduler removed. Schedule + Publish
+              now live in the persistent bottom cockpit (GridMasterToolbar
+              promoted to fixed-bottom). Card stays focused on preview +
+              quick Caption / Editor entry points. */}
 
           {/* Caption — pop the side drawer pre-opened. Visible affordance
               for the most-common edit; mirrors the chip on the thumbnail
@@ -736,6 +641,13 @@ export function ClipCard({
       )}
     </article>
   );
+}
+
+function formatCardDur(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 function MenuItem({
