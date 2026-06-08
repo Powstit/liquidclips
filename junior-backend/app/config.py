@@ -31,6 +31,18 @@ class Settings(BaseSettings):
     whop_company_id: str = "biz_0IMrpJRrTJID1u"
     whop_app_id: str = "app_hLphExdFzjEQsM"
 
+    # Partner Engine (LIQUIDCLIPS-PARTNER-ENGINE.md). When LIVE=true, the
+    # unlock service POSTs a 50% commission override to Whop for qualified
+    # affiliates. Stays false until the exact override endpoint is confirmed
+    # in Whop's API docs; until then the service stamps partner_unlocked_at
+    # locally so Campaign B gating still works but no Whop write happens.
+    partner_unlock_live: bool = False
+    # Content Rewards "experience" IDs — Campaign A = open ($5 RPM),
+    # Campaign B = dedicated-channel ($10 RPM, Partner-gated). Set on
+    # Railway once the campaigns are created in the Whop dashboard.
+    whop_campaign_a_id: str = ""
+    whop_campaign_b_id: str = ""
+
     # License JWT signing — Ed25519. Generated on first boot if absent and
     # written to JUNIOR_JWT_PRIVATE_PEM (env) for Railway persistence.
     jwt_private_pem: str = ""  # PEM-encoded private key; auto-generated locally
