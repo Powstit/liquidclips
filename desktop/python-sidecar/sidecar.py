@@ -265,6 +265,11 @@ def method_avatar_status(_params: dict[str, Any]) -> dict[str, Any]:
     return {"present": False, "path": None, "mtime": None}
 
 
+# ───── IRON GATE IG-001 (v0.7.13) — see desktop/docs/IRON_GATES.md ─────
+# Locked import pipeline. Pairs with handleImportDirect in src/App.tsx.
+# Don't change the 60s timeout, the cover-frame ffmpeg call (in project.py),
+# the humanError() wrap on the catch, or the double-click guard on the tile.
+# Add new import sources as siblings, never refactor this in place.
 def method_import_ready_clips(params: dict[str, Any]) -> dict[str, Any]:
     """v0.6.9 — Import finished MP4/MOV/WEBM clips into a normal Project so
     they land on ResultsGrid with full stack/split/remix/schedule/publish.
@@ -373,18 +378,31 @@ def method_list_projects(params: dict[str, Any]) -> dict[str, Any]:
                 if isinstance(c, dict)
                 and bool(((c.get("overlay") or {}).get("applied_paths") or {}))
             )
-            # Best cover thumbnail = first clip's rank-1 thumbnail. Powers the
-            # Library thumbnails-view grid without requiring a full project hydrate.
+            # Best cover thumbnail. v0.7.31 — prefer the user's explicit pick
+            # from cover_choice.json (written by thumbnail_use_as_cover) so the
+            # "Use as cover" CTA in ThumbnailStudio actually propagates to the
+            # Library wall. Falls back to the first clip's rank-1 frame so
+            # auto-cover still works for any project that never used the picker.
             cover_thumb_path: str | None = None
-            for c in clips:
-                if not isinstance(c, dict):
-                    continue
-                thumbs = c.get("thumbnails") or []
-                if thumbs and isinstance(thumbs[0], dict):
-                    p = thumbs[0].get("path")
-                    if isinstance(p, str) and p:
-                        cover_thumb_path = p
-                        break
+            choice_path = proj_dir / "cover_choice.json"
+            if choice_path.exists():
+                try:
+                    choice = json.loads(choice_path.read_text(encoding="utf-8"))
+                    chosen = choice.get("path") if isinstance(choice, dict) else None
+                    if isinstance(chosen, str) and chosen and os.path.exists(chosen):
+                        cover_thumb_path = chosen
+                except (OSError, json.JSONDecodeError):
+                    pass
+            if cover_thumb_path is None:
+                for c in clips:
+                    if not isinstance(c, dict):
+                        continue
+                    thumbs = c.get("thumbnails") or []
+                    if thumbs and isinstance(thumbs[0], dict):
+                        p = thumbs[0].get("path")
+                        if isinstance(p, str) and p:
+                            cover_thumb_path = p
+                            break
             # v0.7.8 L2 — `source_exists` answers "can this project still
             # play / reframe?" The Project.load security scrub upstream
             # blanks `source_path` to "" when the path is unsafe or missing,
@@ -1144,6 +1162,63 @@ def method_add_clip(params: dict[str, Any]) -> dict[str, Any]:
     return {"project": project.to_dict()}
 
 
+def method_duplicate_clip(params: dict[str, Any]) -> dict[str, Any]:
+    """v0.7.18 — Duplicate an existing rendered clip without re-cutting.
+
+    Used by the new bottom cockpit's "+" tile (replaces the old AddClip
+    dialog). The duplicate inherits the source clip's title (with " (copy)"
+    suffix), routing platforms, ratio, captions, pinned comment, overlay,
+    AND reuses the same rendered MP4 paths — instant, no ffmpeg re-encode.
+    Slug auto-suffixes -v2 / -v3 to stay unique within the project.
+    """
+    import copy as _copy
+    slug = params.get("slug")
+    source_idx = params.get("source_idx")
+    if not isinstance(slug, str):
+        raise ValueError("duplicate_clip requires slug (str)")
+    if not isinstance(source_idx, int):
+        raise ValueError("duplicate_clip requires source_idx (int)")
+
+    project = Project.load(slug)
+    if source_idx < 0 or source_idx >= len(project.clips):
+        raise ValueError(f"source_idx {source_idx} out of range")
+
+    source = project.clips[source_idx]
+    if not source.get("vertical_path") and not source.get("cut_path"):
+        raise FileNotFoundError("Source clip has no rendered video yet — wait for it to finish first.")
+
+    # Deep-copy so list/dict fields (thumbnails, overlay, platforms, title_variants)
+    # aren't shared by reference.
+    new_clip: dict[str, Any] = _copy.deepcopy(source)
+
+    # Slug: source.slug-v2, -v3 etc. (first unused).
+    base = str(source.get("slug") or "clip").rstrip("0123456789").rstrip("-v")
+    existing = {c.get("slug") for c in project.clips}
+    n = 2
+    while True:
+        candidate = f"{base}-v{n}"
+        if candidate not in existing:
+            break
+        n += 1
+    new_clip["slug"] = candidate
+
+    # Title: " (copy)" suffix.
+    title = str(source.get("title") or "Untitled")
+    new_clip["title"] = f"{title} (copy)" if not title.endswith(" (copy)") else title
+
+    # Reset the would-be-confusing state (the duplicate is a separate clip,
+    # not the same one — it gets its own schedule, its own pinned comment
+    # behaviour, but inherits the routing + caption style + ratio).
+    # The user explicitly opted in to duplicating; reset variants so the
+    # duplicate doesn't claim variants generated for the source.
+    new_clip["title_variants"] = []
+    # Caption edits are clip-indexed on disk; the duplicate gets the source's
+    # baked captions (same MP4 file) but doesn't inherit pending edits.
+
+    project.set_clips([*project.clips, new_clip])
+    return {"project": project.to_dict()}
+
+
 def method_remove_clip(params: dict[str, Any]) -> dict[str, Any]:
     """Drop a clip from the project, delete its artefacts on disk."""
     from pathlib import Path
@@ -1189,6 +1264,13 @@ def method_remove_clip(params: dict[str, Any]) -> dict[str, Any]:
     return {"project": project.to_dict()}
 
 
+# ───── IRON GATE IG-006 (v0.7.30) — see desktop/docs/IRON_GATES.md ─────
+# Bake-state contract. On ffmpeg failure, persist
+# clip.overlay.bake_status="error" + bake_error + bake_started_at so the
+# cockpit's red error strip survives reloads. On success, CLEAR those
+# fields so the cockpit doesn't render a stale error after a successful
+# retry. Don't write bake_status="pending" here; this RPC is synchronous
+# and the client's busy state drives the pending strip.
 def method_apply_overlay(params: dict[str, Any]) -> dict[str, Any]:
     """Apply (or strip) a b-roll overlay on a single clip's reframed renders.
 
@@ -1199,7 +1281,15 @@ def method_apply_overlay(params: dict[str, Any]) -> dict[str, Any]:
 
     Renders one `<base>-overlay.mp4` per ratio the clip has already. Returns
     the refreshed project.
+
+    v0.7.30 (IG-006 Bug 3 fix) — writes overlay.bake_status="error" and
+    overlay.bake_error on ffmpeg failure so the cockpit + card-level error
+    strips can surface a persistent message + Retry pill. Successful bakes
+    clear both fields. Pending state during the bake is surfaced
+    client-side because this RPC is synchronous; the cockpit's busy flag
+    drives the teal pending strip while the call is in flight.
     """
+    import time as _time
     slug = params.get("slug")
     idx = params.get("idx")
     overlay_spec = params.get("overlay")
@@ -1209,7 +1299,40 @@ def method_apply_overlay(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("overlay must be an object or null")
 
     project = Project.load(slug)
-    stages.apply_overlay_to_clip(project, idx, overlay_spec)
+    try:
+        stages.apply_overlay_to_clip(project, idx, overlay_spec)
+        # On success, clear any prior error fields the cockpit may still be
+        # rendering. Pending state isn't written here because the RPC is
+        # synchronous; client-side busy drives the pending strip.
+        clip = project.data.get("clips", [None])[idx] if idx < len(project.data.get("clips", [])) else None
+        if clip and clip.get("overlay"):
+            for field in ("bake_status", "bake_started_at", "bake_error"):
+                if field in clip["overlay"]:
+                    clip["overlay"].pop(field, None)
+            project.save()
+    except Exception as exc:
+        # Persist the error onto the clip's overlay so the cockpit shows the
+        # red strip + Retry pill across reloads. Re-raise so the JSON-RPC
+        # path still returns an error to the client (toast pipeline + the
+        # ReactionControls error display use it).
+        try:
+            clips = project.data.get("clips", [])
+            if idx < len(clips) and clips[idx]:
+                overlay = clips[idx].get("overlay") or {}
+                # Preserve existing fields, add bake_status + bake_error.
+                # If we never even started the overlay (overlay_spec was None
+                # for a strip and that failed somehow), synthesise a minimal
+                # marker so the UI still has something to read.
+                overlay["bake_status"] = "error"
+                overlay["bake_error"] = humanize_error(exc)[:240]
+                overlay["bake_started_at"] = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+                clips[idx]["overlay"] = overlay
+                project.save()
+        except Exception:
+            # If even the marker write fails, swallow — the real exception
+            # is what the user needs to see, not a meta-failure.
+            pass
+        raise
     return {"project": project.to_dict()}
 
 
@@ -2794,6 +2917,412 @@ def _run_stage(project: Project, stage: str) -> None:
             log(f"[calibration] record_run failed (non-fatal): {type(exc).__name__}: {exc}")
 
 
+# ── Thumbnail Studio (v0.7.31) ───────────────────────────────────────────
+# AI-generated YouTube-style thumbnails via thumbnail_engine.py (the ported
+# gennext.js formula: EMO expression rotation + PAT stop-power layouts).
+# Brand preset + identity (face crops) are user-scoped, persisted under
+# CLIPS_HOME. Generated PNGs land under projects/<slug>/thumbnails/.
+_BRAND_PRESET_PATH = CLIPS_HOME / "brand_preset.json"
+_IDENTITY_DIR = CLIPS_HOME / "identity"
+_LEDGER_PATH = CLIPS_HOME / "thumbgen_ledger.jsonl"
+
+
+def _thumbs_dir(slug: str) -> Path:
+    p = CLIPS_HOME / "projects" / slug / "thumbnails"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _read_brand_preset() -> dict[str, Any]:
+    if not _BRAND_PRESET_PATH.exists():
+        return {}
+    try:
+        return json.loads(_BRAND_PRESET_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def method_thumbnail_preview_prompt(params: dict[str, Any]) -> dict[str, Any]:
+    """Compose the full image prompt without spending money. Pure function.
+
+    Lets the UI show the user EXACTLY what's about to be sent before they
+    pay $0.07. Calls thumbnail_engine.build_prompt() — zero I/O, zero cost.
+    """
+    from thumbnail_engine import build_prompt
+    item = params.get("item") or {}
+    cfg_override = params.get("config") or {}
+    prop = params.get("prop")
+    config = {**_read_brand_preset(), **cfg_override}
+    return {"prompt": build_prompt(config, item, prop)}
+
+
+def method_thumbnail_get_brand(_params: dict[str, Any]) -> dict[str, Any]:
+    """Returns the saved brand preset, or {} if first run."""
+    return {"preset": _read_brand_preset()}
+
+
+def method_thumbnail_save_brand(params: dict[str, Any]) -> dict[str, Any]:
+    """Persist the brand preset to ~/LiquidClips/brand_preset.json.
+
+    Whitelist the engine's known config keys so the UI can't inject garbage
+    that drifts the prompt or escalates to api_key persistence.
+    """
+    incoming = params.get("preset") or {}
+    if not isinstance(incoming, dict):
+        raise ValueError("preset must be a dict")
+    allowed = {
+        "brand", "identity", "wardrobe", "model", "size", "quality",
+        "style_mood", "props", "font_directive",
+    }
+    cleaned = {k: v for k, v in incoming.items() if k in allowed}
+    _BRAND_PRESET_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _BRAND_PRESET_PATH.write_text(json.dumps(cleaned, indent=2), encoding="utf-8")
+    return {"preset": cleaned, "path": str(_BRAND_PRESET_PATH)}
+
+
+def method_thumbnail_get_identity(_params: dict[str, Any]) -> dict[str, Any]:
+    """Lists the face crops currently locked in as identity references."""
+    if not _IDENTITY_DIR.exists():
+        return {"files": [], "count": 0, "dir": str(_IDENTITY_DIR)}
+    files = sorted(
+        str(p) for p in _IDENTITY_DIR.iterdir()
+        if p.suffix.lower() in (".png", ".jpg", ".jpeg")
+    )
+    return {"files": files, "count": len(files), "dir": str(_IDENTITY_DIR)}
+
+
+def method_thumbnail_save_identity(params: dict[str, Any]) -> dict[str, Any]:
+    """Copy face crops from source paths into ~/LiquidClips/identity/face_N.ext.
+
+    The UI passes the user-selected file paths. We copy (not move) so the
+    user's originals stay put. Existing identity files are CLEARED first so
+    a fresh upload replaces an old one cleanly.
+    """
+    import shutil
+    sources = params.get("sources") or []
+    if not isinstance(sources, list) or len(sources) < 3:
+        raise ValueError("need at least 3 face crops for identity lock")
+    valid_ext = (".png", ".jpg", ".jpeg")
+    src_paths = [Path(os.path.expanduser(str(p))) for p in sources]
+    for p in src_paths:
+        if not p.exists():
+            raise FileNotFoundError(f"source not found: {p}")
+        if p.suffix.lower() not in valid_ext:
+            raise ValueError(f"unsupported format (PNG/JPG/JPEG only): {p.name}")
+    _IDENTITY_DIR.mkdir(parents=True, exist_ok=True)
+    # v0.7.31 P1-8 — atomic identity replacement. Old behavior (delete-all,
+    # then copy-each) left a partial-state hole on mid-copy failures (disk
+    # full on file 2 of 5 → original identity gone, only 1 new file exists →
+    # next session the SetupGate appears with no clear cause). New behavior:
+    # copy every new file under a .tmp suffix first, only then atomically
+    # rename + delete the previous set. Failure during copy leaves the old
+    # identity intact.
+    tmp_paths: list[Path] = []
+    try:
+        for i, src in enumerate(src_paths, start=1):
+            tmp_dest = _IDENTITY_DIR / f".face_{i}{src.suffix.lower()}.new"
+            shutil.copy2(src, tmp_dest)
+            tmp_paths.append(tmp_dest)
+    except Exception:
+        # Clean up partial tmp files so the dir doesn't accumulate junk.
+        for tmp in tmp_paths:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+
+    # All tmp files written. Delete the previous identity set + promote.
+    for old in _IDENTITY_DIR.iterdir():
+        if old.suffix.lower() in valid_ext and not old.name.startswith(".face_"):
+            try:
+                old.unlink()
+            except OSError:
+                pass
+    saved: list[str] = []
+    for i, (src, tmp) in enumerate(zip(src_paths, tmp_paths), start=1):
+        dest = _IDENTITY_DIR / f"face_{i}{src.suffix.lower()}"
+        tmp.rename(dest)
+        saved.append(str(dest))
+    return {"files": saved, "count": len(saved), "dir": str(_IDENTITY_DIR)}
+
+
+def method_thumbnail_list(params: dict[str, Any]) -> dict[str, Any]:
+    """Lists generated thumbnails for a project slug (newest first).
+
+    v0.7.31 P2-24 — each row carries cost_usd + model when the file appears in
+    the lifetime ledger, so the UI can show per-thumb spend without a second
+    round-trip. Falls back to nulls when there's no matching ledger entry
+    (e.g. ledger was deleted, or the file pre-dates the ledger).
+    """
+    slug = (params.get("slug") or "").strip()
+    if not slug:
+        raise ValueError("slug is required")
+    d = _thumbs_dir(slug)
+    files = sorted(
+        (p for p in d.iterdir() if p.suffix.lower() == ".png"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    # Build path → (cost, model) lookup from the ledger. Cheap — one read,
+    # in-memory dict; ledgers stay small (one row per generation).
+    cost_lookup: dict[str, tuple[float, str | None]] = {}
+    if _LEDGER_PATH.exists():
+        try:
+            for line in _LEDGER_PATH.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                p = row.get("output_path")
+                if isinstance(p, str) and p:
+                    cost_lookup[p] = (
+                        float(row.get("cost_usd") or 0.0),
+                        row.get("model"),
+                    )
+        except OSError:
+            pass
+
+    rows: list[dict[str, Any]] = []
+    for p in files:
+        path_str = str(p)
+        cost, model = cost_lookup.get(path_str, (None, None))
+        rows.append({
+            "path": path_str,
+            "name": p.name,
+            "modified_at": datetime.fromtimestamp(
+                p.stat().st_mtime, tz=timezone.utc
+            ).isoformat(),
+            "cost_usd": cost,
+            "model": model,
+        })
+    return {"thumbnails": rows, "dir": str(d)}
+
+
+def method_thumbnail_use_as_cover(params: dict[str, Any]) -> dict[str, Any]:
+    """Promote a generated thumbnail to the project's chosen cover.
+
+    Single writer for the cover choice — equally applies to Cover Pack frames
+    and AI-generated thumbnails. Stored in projects/<slug>/cover_choice.json
+    to avoid mutating the Project serializer. Publish flow reads it later.
+    """
+    slug = (params.get("slug") or "").strip()
+    path = (params.get("path") or "").strip()
+    if not slug:
+        raise ValueError("slug is required")
+    if not path or not Path(path).exists():
+        raise FileNotFoundError(f"cover path not found: {path}")
+    project_root = CLIPS_HOME / "projects" / slug
+    if not project_root.exists():
+        raise FileNotFoundError(f"project not found: {slug}")
+    choice_path = project_root / "cover_choice.json"
+    choice_path.write_text(
+        json.dumps({
+            "path": path,
+            "set_at": datetime.now(timezone.utc).isoformat(),
+        }, indent=2),
+        encoding="utf-8",
+    )
+    return {"slug": slug, "cover_path": path, "choice_path": str(choice_path)}
+
+
+def method_thumbnail_get_cover(params: dict[str, Any]) -> dict[str, Any]:
+    """Returns the project's chosen cover path, or null if none picked."""
+    slug = (params.get("slug") or "").strip()
+    if not slug:
+        raise ValueError("slug is required")
+    choice_path = CLIPS_HOME / "projects" / slug / "cover_choice.json"
+    if not choice_path.exists():
+        return {"slug": slug, "cover_path": None, "set_at": None}
+    try:
+        data = json.loads(choice_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"slug": slug, "cover_path": None, "set_at": None}
+    chosen = data.get("path")
+    if chosen and not Path(chosen).exists():
+        return {"slug": slug, "cover_path": None, "set_at": None}
+    return {"slug": slug, "cover_path": chosen, "set_at": data.get("set_at")}
+
+
+def _thumb_cancel_marker(slug: str) -> Path:
+    """Per-slug cancel marker. Mirrors the .lift_cancel pattern (CLAUDE.md):
+    the host writes the marker, the engine checks for it twice (before start
+    and before write) and raises CancelledError. Cleared on every fresh
+    generate call so a stale marker can't block the next attempt.
+    """
+    safe = slug.replace("/", "_").replace("\\", "_")
+    return CLIPS_HOME / f".thumbgen_cancel.{safe}"
+
+
+def method_thumbnail_cancel(params: dict[str, Any]) -> dict[str, Any]:
+    """Request cancellation of an in-flight thumbnail_generate for `slug`.
+
+    Writes ~/LiquidClips/.thumbgen_cancel.<slug>. The engine polls this file
+    twice per call (start + before write) and raises CancelledError on hit.
+    The generate handler clears the marker on every completion/error so the
+    next call is unaffected.
+    """
+    slug = (params.get("slug") or "").strip()
+    if not slug:
+        raise ValueError("slug is required")
+    marker = _thumb_cancel_marker(slug)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("", encoding="utf-8")
+    return {"slug": slug, "marker_path": str(marker), "requested": True}
+
+
+def method_thumbnail_generate(params: dict[str, Any]) -> dict[str, Any]:
+    """Generate one thumbnail via thumbnail_engine.generate() and append a
+    cost-ledger row. Default model is gpt-image-2 (production-validated);
+    falls back to gpt-image-1 if the user's account 404s on -2.
+
+    Heavy lift (urllib POST to OpenAI) happens inside the engine. We just
+    resolve the API key + output path + brand preset + cancel marker, then
+    write the ledger.
+    """
+    from thumbnail_engine import (
+        generate as engine_generate,
+        BillingLimitError,
+        CancelledError,
+    )
+    from llm import resolve_openai_key
+
+    item = params.get("item") or {}
+    slug = (params.get("slug") or "").strip()
+    if not item.get("text"):
+        raise ValueError("item.text is required")
+    if not slug:
+        raise ValueError("slug is required")
+
+    api_key = resolve_openai_key()
+    if not api_key:
+        raise RuntimeError("no OPENAI_API_KEY — set it in Settings → API keys")
+
+    cfg_override = params.get("config") or {}
+    config = {**_read_brand_preset(), **cfg_override}
+    config["api_key"] = api_key
+    config["references_dir"] = str(_IDENTITY_DIR)
+
+    thumbs = _thumbs_dir(slug)
+    fname = f"{int(datetime.now(timezone.utc).timestamp() * 1000)}.png"
+    output_path = thumbs / fname
+
+    # v0.7.31 — clear any stale cancel marker BEFORE starting so the new run
+    # isn't pre-cancelled by a request from a previous attempt. Then pass the
+    # marker path to the engine; the engine polls it pre-call + pre-write.
+    cancel_marker = _thumb_cancel_marker(slug)
+    try:
+        cancel_marker.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    def _run(model: str) -> dict[str, Any]:
+        return engine_generate(
+            item=item,
+            output_path=output_path,
+            config={**config, "model": model},
+            cancel_marker=cancel_marker,
+            prop=params.get("prop"),
+        )
+
+    primary = config.get("model") or "gpt-image-2"
+    try:
+        result = _run(primary)
+    except BillingLimitError:
+        # Clear marker so a later retry isn't tripped by a stale request.
+        try:
+            cancel_marker.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+    except CancelledError:
+        try:
+            cancel_marker.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+    except RuntimeError as exc:
+        msg = str(exc).lower()
+        # v0.7.31 P2-22 — match both "OpenAI HTTP 404:" and any other "404"
+        # framing the engine might surface. Also keeps model_not_found /
+        # invalid_model / deprecated_model paths covered.
+        if primary == "gpt-image-2" and (
+            "model_not_found" in msg
+            or "invalid_model" in msg
+            or "deprecated_model" in msg
+            or "does not exist" in msg
+            or "404" in msg
+        ):
+            log(f"[thumbnail] gpt-image-2 unavailable, retrying with gpt-image-1: {exc}")
+            result = _run("gpt-image-1")
+        else:
+            try:
+                cancel_marker.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
+
+    # Success path — clear the marker so a subsequent generate isn't blocked.
+    try:
+        cancel_marker.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    # v0.7.31 P1-10 — surface ledger write failures to the UI as a soft warning
+    # instead of swallowing silently. The PNG already exists and the user paid,
+    # so the generation itself is a success — but they should know the lifetime
+    # spend total may be drifting.
+    ledger_warning: str | None = None
+    try:
+        _LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with _LEDGER_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "ts": result.get("completed_at"),
+                "slug": slug,
+                "model": result.get("model"),
+                "cost_usd": result.get("cost_usd"),
+                "output_path": result.get("output_path"),
+                "title": item.get("text"),
+            }) + "\n")
+    except OSError as exc:
+        log(f"[thumbnail] ledger write failed (non-fatal): {exc}")
+        ledger_warning = str(exc)
+
+    result["slug"] = slug
+    if ledger_warning:
+        result["ledger_warning"] = ledger_warning
+    return result
+
+
+def method_thumbnail_ledger(_params: dict[str, Any]) -> dict[str, Any]:
+    """Returns the lifetime cost-ledger rows + total spend in USD."""
+    if not _LEDGER_PATH.exists():
+        return {"rows": [], "total_usd": 0.0, "count": 0}
+    rows: list[dict[str, Any]] = []
+    total = 0.0
+    try:
+        for line in _LEDGER_PATH.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            rows.append(row)
+            total += float(row.get("cost_usd") or 0.0)
+    except OSError:
+        pass
+    return {"rows": rows, "total_usd": round(total, 4), "count": len(rows)}
+
+
+# ───── IRON GATE IG-002 (v0.7.13+) — see desktop/docs/IRON_GATES.md ─────
+# Sidecar RPC contract. Each entry pairs with a TS wrapper in src/lib/sidecar.ts
+# of the same snake_case name. Don't rename, don't mutate param shapes, don't
+# break lazy-import discipline. Add NEW methods at the bottom.
 METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "ping": method_ping,
     "check_deps": method_check_deps,
@@ -2828,6 +3357,7 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "get_captions": method_get_captions,
     "edit_captions": method_edit_captions,
     "add_clip": method_add_clip,
+    "duplicate_clip": method_duplicate_clip,
     "remove_clip": method_remove_clip,
     "update_clip_meta": method_update_clip_meta,
     "get_youtube_extras": method_get_youtube_extras,
@@ -2857,6 +3387,18 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "direct_publish_queue_read": method_direct_publish_queue_read,
     "direct_publish_queue_write": method_direct_publish_queue_write,
     "preload_whisper": method_preload_whisper,
+    # v0.7.31 — Thumbnail Studio (AI thumbnails via thumbnail_engine.py).
+    "thumbnail_preview_prompt": method_thumbnail_preview_prompt,
+    "thumbnail_get_brand": method_thumbnail_get_brand,
+    "thumbnail_save_brand": method_thumbnail_save_brand,
+    "thumbnail_get_identity": method_thumbnail_get_identity,
+    "thumbnail_save_identity": method_thumbnail_save_identity,
+    "thumbnail_list": method_thumbnail_list,
+    "thumbnail_use_as_cover": method_thumbnail_use_as_cover,
+    "thumbnail_get_cover": method_thumbnail_get_cover,
+    "thumbnail_generate": method_thumbnail_generate,
+    "thumbnail_cancel": method_thumbnail_cancel,
+    "thumbnail_ledger": method_thumbnail_ledger,
 }
 
 
@@ -2907,6 +3449,19 @@ def handle(line: str) -> None:
 def _classify_error(e: Exception, method: str) -> dict[str, str]:
     raw = f"{type(e).__name__}: {e}"
     s = str(e).lower()
+    cls_name = type(e).__name__
+    # v0.7.31 — Thumbnail Studio error envelopes. The engine raises typed
+    # exceptions (BillingLimitError, CancelledError) — classify by class name
+    # so we don't have to import the engine module here just to do isinstance.
+    if cls_name == "BillingLimitError":
+        return {
+            "code": "billing_hard_limit",
+            "human": "OpenAI billing cap reached. Top up your account or raise the cap to keep generating.",
+            "error": raw,
+            "technical": raw,
+        }
+    if cls_name == "CancelledError" or "cancelled before" in s:
+        return {"code": "canceled", "human": "Canceled.", "error": raw, "technical": raw}
     if isinstance(e, ModuleNotFoundError) or "no module named" in s:
         return {
             "code": "deps_missing",
@@ -2914,7 +3469,10 @@ def _classify_error(e: Exception, method: str) -> dict[str, str]:
             "error": raw,
             "technical": raw,
         }
-    if "canceled by user" in s:
+    # P1-6 — match both spellings ("canceled" American + "cancelled" British).
+    # Engine raises "cancelled before start/write"; legacy lift_cancel paths use
+    # "canceled by user". Either should fold to the canonical code: "canceled".
+    if "canceled by user" in s or "cancelled by user" in s:
         return {"code": "canceled", "human": "Canceled.", "error": raw, "technical": raw}
     if "private video" in s or "members-only" in s or "login required" in s or "sign in to confirm" in s:
         return {

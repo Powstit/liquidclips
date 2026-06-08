@@ -1,3 +1,9 @@
+// ───── IRON GATE IG-003 (v0.7.4) — see desktop/docs/IRON_GATES.md ─────
+// Cinematic intro mount. Pairs with src/lib/intro.ts (one-shot + persist)
+// and src/assets/intro/*.mp4. Don't remove the WebKit autoplay fallback,
+// don't add auto-dismiss-after-Ns (we tried; killed the kicker frame),
+// don't drop the localStorage dismiss. New intro variants go behind a flag.
+//
 // ship-lens v0.7.8: E8 — intro <video autoPlay> can be blocked by macOS WebKit autoplay rules; pre-fix the user saw 28.5s of black before the splash advanced. Now we detect the play() rejection, render a centered "Tap to play" overlay, and resume on click.
 import { useEffect, useRef, useState } from "react";
 import { relaunch } from "@tauri-apps/plugin-process";

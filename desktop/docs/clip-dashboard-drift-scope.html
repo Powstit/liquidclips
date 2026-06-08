@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Clip Dashboard — drift scope (mockup vs live app)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        --ink: #0B0B10;
+        --paper: #F4F0EA;
+        --fuchsia: #FF1A8C;
+        --line: rgba(255, 255, 255, 0.12);
+        --mono: ui-monospace, "SF Mono", Menlo, monospace;
+        --display: "Space Grotesk", "Inter", system-ui, sans-serif;
+      }
+      html, body {
+        margin: 0;
+        background: var(--ink);
+        color: var(--paper);
+        font-family: var(--display);
+        min-height: 100%;
+      }
+      header {
+        padding: 2rem 2rem 1rem;
+        border-bottom: 1px solid var(--line);
+      }
+      header h1 {
+        margin: 0 0 0.25rem;
+        font-size: 1.25rem;
+        letter-spacing: -0.01em;
+      }
+      header .sub {
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        color: rgba(244, 240, 234, 0.55);
+        letter-spacing: 0.05em;
+      }
+      header .tag {
+        display: inline-block;
+        margin-right: 0.5rem;
+        padding: 0.1rem 0.55rem;
+        background: rgba(255, 26, 140, 0.15);
+        color: var(--fuchsia);
+        border-radius: 999px;
+        font-size: 0.65rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .col {
+        padding: 2rem;
+      }
+      .col + .col {
+        border-left: 1px solid var(--line);
+      }
+      .col h2 {
+        margin: 0 0 0.5rem;
+        font-size: 0.7rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(244, 240, 234, 0.5);
+      }
+      .col h3 {
+        margin: 0 0 1.5rem;
+        font-size: 1.05rem;
+        font-weight: 600;
+      }
+      .col h3 .meta {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        color: rgba(244, 240, 234, 0.4);
+        font-weight: 400;
+      }
+
+      /* ─────── mockup badge styling — copied verbatim from
+                docs/clip-dashboard-demo.html L107-111 ─────── */
+      .social-pip {
+        height: 34px;
+        width: 34px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+        border: 1.5px solid rgba(255, 255, 255, 0.22);
+      }
+      .social-pip-ig { background: linear-gradient(135deg, #FED373, #F15245 50%, #D92E7F); }
+      .social-pip-tt,
+      .social-pip-x { background: #000; }
+      .social-pip-yt { background: #FF0000; }
+      .social-pip svg { fill: white; }
+
+      /* ─────── live app badge styling — pulled from
+                src/components/PlatformBadge.tsx L46-66 (size = "sm" → 28px) ─────── */
+      .app-pip {
+        height: 28px;
+        width: 28px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55),
+                    inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+      }
+      .app-pip-ig { background: linear-gradient(135deg, #FED373, #F15245 50%, #D92E7F); }
+      .app-pip-tt,
+      .app-pip-x { background: #000; }
+      .app-pip-yt { background: #FF0000; }
+      .app-pip svg {
+        stroke: white;
+        fill: none;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .app-pip .label {
+        font-family: var(--display);
+        font-weight: 700;
+        color: white;
+        font-size: 11px;
+      }
+
+      .row {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        padding: 18px 0;
+        border-top: 1px dashed var(--line);
+      }
+      .row:first-child { border-top: 0; padding-top: 0; }
+      .row .label-pair {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        color: rgba(244, 240, 234, 0.45);
+        min-width: 90px;
+      }
+      .row .label-pair strong {
+        color: var(--paper);
+        font-weight: 600;
+      }
+
+      .stack {
+        display: flex;
+        gap: 12px;
+      }
+
+      /* ─────── delta table ─────── */
+      .delta {
+        padding: 2rem;
+      }
+      .delta h2 {
+        margin: 0 0 1rem;
+        font-size: 0.75rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(244, 240, 234, 0.55);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+      th, td {
+        text-align: left;
+        padding: 0.75rem 0.75rem;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      th {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        color: rgba(244, 240, 234, 0.5);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-weight: 400;
+      }
+      td.tag-col { width: 7rem; }
+      td.where-col { width: 14rem; font-family: var(--mono); font-size: 0.75rem; color: rgba(244, 240, 234, 0.6); }
+      td.from-col, td.to-col { font-family: var(--mono); font-size: 0.75rem; }
+      td.from-col { color: rgba(244, 240, 234, 0.85); }
+      td.to-col { color: rgba(255, 26, 140, 0.95); }
+      td.severity-col { width: 5rem; }
+      .sev {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border-radius: 4px;
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        font-weight: 600;
+      }
+      .sev-high { background: rgba(255, 26, 140, 0.18); color: #FF1A8C; }
+      .sev-med { background: rgba(245, 158, 11, 0.18); color: #F59E0B; }
+      .sev-low { background: rgba(0, 229, 255, 0.12); color: #00E5FF; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Clip Dashboard — platform badge drift</h1>
+      <div class="sub">
+        <span class="tag">scope</span>
+        Mockup: <code>docs/clip-dashboard-demo.html L107-111, L850-854, L1124</code>
+        &nbsp;·&nbsp;
+        Live: <code>src/components/PlatformBadge.tsx L1-77</code>
+      </div>
+    </header>
+
+    <section class="grid">
+      <div class="col">
+        <h2>Mockup (designed)</h2>
+        <h3>SOCIAL_SVG <span class="meta">— solid brand glyphs, 34×34, fill="white"</span></h3>
+
+        <div class="row">
+          <div class="label-pair"><strong>Single</strong><br/>Instagram</div>
+          <div class="social-pip social-pip-ig">
+            <svg viewBox="0 0 24 24" width="17" height="17"><path d="M12 2c2.717 0 3.056.01 4.122.06 1.065.05 1.79.217 2.428.465.66.254 1.216.598 1.772 1.153a4.908 4.908 0 0 1 1.153 1.772c.247.637.415 1.363.465 2.428.047 1.066.06 1.405.06 4.122 0 2.717-.01 3.056-.06 4.122-.05 1.065-.218 1.79-.465 2.428a4.883 4.883 0 0 1-1.153 1.772 4.915 4.915 0 0 1-1.772 1.153c-.637.247-1.363.415-2.428.465-1.066.047-1.405.06-4.122.06-2.717 0-3.056-.01-4.122-.06-1.065-.05-1.79-.218-2.428-.465a4.89 4.89 0 0 1-1.772-1.153 4.904 4.904 0 0 1-1.153-1.772c-.248-.637-.415-1.363-.465-2.428C2.013 15.056 2 14.717 2 12c0-2.717.01-3.056.06-4.122.05-1.066.217-1.79.465-2.428a4.88 4.88 0 0 1 1.153-1.772A4.897 4.897 0 0 1 5.45 2.525c.638-.248 1.362-.415 2.428-.465C8.944 2.013 9.283 2 12 2zm0 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm6.5-.25a1.25 1.25 0 0 0-2.5 0 1.25 1.25 0 0 0 2.5 0zM12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label-pair"><strong>Stack</strong><br/>4 platforms</div>
+          <div class="stack">
+            <div class="social-pip social-pip-ig">
+              <svg viewBox="0 0 24 24" width="17" height="17"><path d="M12 2c2.717 0 3.056.01 4.122.06 1.065.05 1.79.217 2.428.465.66.254 1.216.598 1.772 1.153a4.908 4.908 0 0 1 1.153 1.772c.247.637.415 1.363.465 2.428.047 1.066.06 1.405.06 4.122 0 2.717-.01 3.056-.06 4.122-.05 1.065-.218 1.79-.465 2.428a4.883 4.883 0 0 1-1.153 1.772 4.915 4.915 0 0 1-1.772 1.153c-.637.247-1.363.415-2.428.465-1.066.047-1.405.06-4.122.06-2.717 0-3.056-.01-4.122-.06-1.065-.05-1.79-.218-2.428-.465a4.89 4.89 0 0 1-1.772-1.153 4.904 4.904 0 0 1-1.153-1.772c-.248-.637-.415-1.363-.465-2.428C2.013 15.056 2 14.717 2 12c0-2.717.01-3.056.06-4.122.05-1.066.217-1.79.465-2.428a4.88 4.88 0 0 1 1.153-1.772A4.897 4.897 0 0 1 5.45 2.525c.638-.248 1.362-.415 2.428-.465C8.944 2.013 9.283 2 12 2zm0 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm6.5-.25a1.25 1.25 0 0 0-2.5 0 1.25 1.25 0 0 0 2.5 0zM12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg>
+            </div>
+            <div class="social-pip social-pip-tt">
+              <svg viewBox="0 0 24 24" width="16" height="16"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1.84-.1z"/></svg>
+            </div>
+            <div class="social-pip social-pip-yt">
+              <svg viewBox="0 0 24 24" width="17" height="17"><path d="M23.5 6.2a3.02 3.02 0 0 0-2.12-2.13C19.5 3.55 12 3.55 12 3.55s-7.5 0-9.38.52A3.02 3.02 0 0 0 .5 6.2C0 8.07 0 12 0 12s0 3.93.5 5.8a3.02 3.02 0 0 0 2.12 2.13c1.88.52 9.38.52 9.38.52s7.5 0 9.38-.52a3.02 3.02 0 0 0 2.12-2.13c.5-1.87.5-5.8.5-5.8s0-3.93-.5-5.8zM9.6 15.6V8.4l6.4 3.6-6.4 3.6z"/></svg>
+            </div>
+            <div class="social-pip social-pip-x">
+              <svg viewBox="0 0 24 24" width="16" height="16"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label-pair"><strong>Detail</strong><br/>at 2× zoom</div>
+          <div class="social-pip social-pip-ig" style="transform: scale(2); transform-origin: left center; margin-left: 8px;">
+            <svg viewBox="0 0 24 24" width="17" height="17"><path d="M12 2c2.717 0 3.056.01 4.122.06 1.065.05 1.79.217 2.428.465.66.254 1.216.598 1.772 1.153a4.908 4.908 0 0 1 1.153 1.772c.247.637.415 1.363.465 2.428.047 1.066.06 1.405.06 4.122 0 2.717-.01 3.056-.06 4.122-.05 1.065-.218 1.79-.465 2.428a4.883 4.883 0 0 1-1.153 1.772 4.915 4.915 0 0 1-1.772 1.153c-.637.247-1.363.415-2.428.465-1.066.047-1.405.06-4.122.06-2.717 0-3.056-.01-4.122-.06-1.065-.05-1.79-.218-2.428-.465a4.89 4.89 0 0 1-1.772-1.153 4.904 4.904 0 0 1-1.153-1.772c-.248-.637-.415-1.363-.465-2.428C2.013 15.056 2 14.717 2 12c0-2.717.01-3.056.06-4.122.05-1.066.217-1.79.465-2.428a4.88 4.88 0 0 1 1.153-1.772A4.897 4.897 0 0 1 5.45 2.525c.638-.248 1.362-.415 2.428-.465C8.944 2.013 9.283 2 12 2zm0 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm6.5-.25a1.25 1.25 0 0 0-2.5 0 1.25 1.25 0 0 0 2.5 0zM12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="col">
+        <h2>Live app (built)</h2>
+        <h3>lucide-react <span class="meta">— outline/stroke icons, 28×28, stroke-width: 2</span></h3>
+
+        <div class="row">
+          <div class="label-pair"><strong>Single</strong><br/>Instagram</div>
+          <div class="app-pip app-pip-ig">
+            <!-- lucide-react Instagram source — outline only, no fill -->
+            <svg viewBox="0 0 24 24" width="15.4" height="15.4">
+              <rect width="20" height="20" x="2" y="2" rx="5" ry="5"></rect>
+              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+              <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"></line>
+            </svg>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label-pair"><strong>Stack</strong><br/>4 platforms</div>
+          <div class="stack">
+            <div class="app-pip app-pip-ig">
+              <svg viewBox="0 0 24 24" width="15.4" height="15.4">
+                <rect width="20" height="20" x="2" y="2" rx="5" ry="5"></rect>
+                <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+                <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"></line>
+              </svg>
+            </div>
+            <div class="app-pip app-pip-tt">
+              <!-- lucide has no TikTok icon; app renders "T" text per PlatformBadge.tsx L57-58 -->
+              <span class="label">T</span>
+            </div>
+            <div class="app-pip app-pip-yt">
+              <!-- lucide-react Youtube source — outline rounded rect + play triangle -->
+              <svg viewBox="0 0 24 24" width="15.4" height="15.4">
+                <path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17"></path>
+                <path d="m10 15 5-3-5-3z"></path>
+              </svg>
+            </div>
+            <div class="app-pip app-pip-x">
+              <!-- lucide-react Twitter (not X) — outline bird, kept by current app -->
+              <svg viewBox="0 0 24 24" width="15.4" height="15.4">
+                <path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label-pair"><strong>Detail</strong><br/>at 2× zoom</div>
+          <div class="app-pip app-pip-ig" style="transform: scale(2); transform-origin: left center; margin-left: 8px;">
+            <svg viewBox="0 0 24 24" width="15.4" height="15.4">
+              <rect width="20" height="20" x="2" y="2" rx="5" ry="5"></rect>
+              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+              <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"></line>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="delta">
+      <h2>Drift inventory</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th class="severity-col">Severity</th>
+            <th class="tag-col">What</th>
+            <th class="where-col">Where</th>
+            <th class="from-col">Mockup</th>
+            <th class="to-col">Live app</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td><span class="sev sev-high">P0</span></td>
+            <td>Icon glyph</td>
+            <td>PlatformBadge.tsx L5, L12-19</td>
+            <td>Solid brand-official SVG glyphs (Instagram camera, TikTok note, YouTube play box, X wordmark). `fill: white` solid silhouettes.</td>
+            <td>lucide-react outline icons (stroke-width: 2). Looks like a wireframe diagram, not a brand mark. Instagram = camera outline, YouTube = empty play box, X = old Twitter bird.</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td><span class="sev sev-high">P0</span></td>
+            <td>X glyph wrong brand</td>
+            <td>PlatformBadge.tsx L16</td>
+            <td>Real X wordmark glyph (the literal X shape post-rebrand).</td>
+            <td>lucide-react `Twitter` icon = old blue bird. Twitter rebranded to X in 2023 — this is a 2-year-old icon.</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td><span class="sev sev-med">P1</span></td>
+            <td>Pip size</td>
+            <td>PlatformBadge.tsx L32 sizeMap</td>
+            <td><code>34 × 34</code> px (mockup L107)</td>
+            <td><code>28 × 28</code> px ("sm") — 18% smaller. Wash-out on bordered card thumbnails per the L30-31 comment, but breaks visual rhythm vs mockup.</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td><span class="sev sev-med">P1</span></td>
+            <td>Corner radius</td>
+            <td>PlatformBadge.tsx L47</td>
+            <td><code>border-radius: 10px</code> (mockup L107)</td>
+            <td><code>rounded-[8px]</code> — corners 2px tighter, reads as harder-edge.</td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td><span class="sev sev-low">P2</span></td>
+            <td>Border vs ring</td>
+            <td>PlatformBadge.tsx L47</td>
+            <td><code>1.5px solid rgba(255,255,255,0.22)</code> — outer border (mockup L107)</td>
+            <td><code>ring-1 ring-white/20</code> — Tailwind outer ring at 1px (slightly thinner + slightly more transparent).</td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td><span class="sev sev-low">P2</span></td>
+            <td>Glyph scale</td>
+            <td>PlatformBadge.tsx L60-65</td>
+            <td>Glyph at 17px inside 34px container = 50% (mockup L851-854)</td>
+            <td>Glyph at <code>size * 0.55</code> = 15.4px inside 28px = 55%. Looks proportionally larger but objectively smaller.</td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td><span class="sev sev-low">P2</span></td>
+            <td>TikTok fallback</td>
+            <td>PlatformBadge.tsx L14, L57-58</td>
+            <td>Solid TikTok music-note glyph (mockup L852)</td>
+            <td>Text fallback "T" — the comment at L14 says "TikTok has no Lucide icon, we use text." But the mockup ships the SVG; we could too.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </body>
+</html>

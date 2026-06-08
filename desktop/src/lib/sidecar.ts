@@ -1,5 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 
+// ───── IRON GATE IG-002 (v0.7.13+) — see desktop/docs/IRON_GATES.md ─────
+// Sidecar RPC contract surface. Each method on the exported `sidecar` object
+// MUST pair with a `method_<same_snake_case_name>` in python-sidecar/sidecar.py.
+// Don't rename, don't mutate param shapes, don't drop methods that any UI
+// still calls (grep first). Add NEW methods at the bottom of the object.
+//
 // ──────────────────────────────────────────────────────────────────────
 // ERROR-DISPLAY POLICY (user-journey-lens, lib pass)
 // Every `catch (e) { setError(...) }` MUST run `e` through `humanError(e)`
@@ -50,6 +56,15 @@ export function humanError(e: unknown): string {
   // fetch errors, parse errors).
   if (/ModuleNotFoundError|No module named/i.test(raw)) {
     return "The sidecar is missing a required Python package. Open Settings → Diagnose, or reinstall the app.";
+  }
+  // v0.7.31 — Thumbnail Studio billing cap. Match the engine class name AND
+  // the OpenAI raw code so the user sees a clean line even if the SidecarError
+  // path didn't pick this up.
+  if (/BillingLimitError|billing[_ ]hard[_ ]limit/i.test(raw)) {
+    return "OpenAI billing cap reached. Top up your account or raise the cap to keep generating.";
+  }
+  if (/CancelledError|cancelled before/i.test(raw)) {
+    return "Canceled.";
   }
   // v0.7.16 — defence-in-depth for the Add-Clip transcript guard. If any
   // path surfaces the raw stage_reframe error, still show the actionable
@@ -379,6 +394,13 @@ export type Overlay = {
   cells?: Record<string, CellState>;
   /** Optional music bed — when set, supersedes all per-cell audio choices. */
   music_bed?: { source_path: string; volume?: number } | null;
+  // v0.7.29 — Bake state surfaced to the cockpit + card pending/error strips.
+  // Sidecar sets these in apply_overlay; UI reads them. Optional / undefined
+  // means "idle". Pairs with IG-006 (Cockpit handoff contract). The cockpit
+  // mirrors the import-pending pattern via these fields.
+  bake_status?: "idle" | "pending" | "error";
+  bake_started_at?: string; // ISO timestamp
+  bake_error?: string; // humanError(e) text
 };
 
 export type RemixState = {
@@ -818,6 +840,10 @@ export const sidecar = {
     }>("edit_captions", { slug, idx, lines, style, palette, position }),
   addClip: (slug: string, start: number, end: number, title: string) =>
     sidecarCall<{ project: Project }>("add_clip", { slug, start, end, title }),
+  // v0.7.18 — Cockpit "+" tile. Duplicates an existing rendered clip
+  // without re-cutting (reuses MP4 paths). New slug -v2/-v3, title "(copy)".
+  duplicateClip: (slug: string, sourceIdx: number) =>
+    sidecarCall<{ project: Project }>("duplicate_clip", { slug, source_idx: sourceIdx }),
   removeClip: (slug: string, idx: number) =>
     sidecarCall<{ project: Project }>("remove_clip", { slug, idx }),
   updateClipMeta: (
@@ -950,6 +976,103 @@ export const sidecar = {
       "direct_publish_queue_write",
       { items },
     ),
+
+  // ── Thumbnail Studio (v0.7.31) ────────────────────────────────────────
+  // AI-generated YouTube-style thumbnails via thumbnail_engine.py. Identity
+  // comes from face crops (~/LiquidClips/identity/), brand preset is per-
+  // user (~/LiquidClips/brand_preset.json), generations land under
+  // projects/<slug>/thumbnails/. See docs/thumbnail-journey.md.
+  thumbnailPreviewPrompt: (
+    item: ThumbnailItem,
+    config?: Partial<ThumbnailBrandPreset>,
+    prop?: string | null,
+  ) =>
+    sidecarCall<{ prompt: string }>("thumbnail_preview_prompt", {
+      item,
+      ...(config ? { config } : {}),
+      ...(prop !== undefined ? { prop } : {}),
+    }),
+  thumbnailGetBrand: () =>
+    sidecarCall<{ preset: ThumbnailBrandPreset }>("thumbnail_get_brand", {}),
+  thumbnailSaveBrand: (preset: ThumbnailBrandPreset) =>
+    sidecarCall<{ preset: ThumbnailBrandPreset; path: string }>(
+      "thumbnail_save_brand",
+      { preset },
+    ),
+  thumbnailGetIdentity: () =>
+    sidecarCall<{ files: string[]; count: number; dir: string }>(
+      "thumbnail_get_identity",
+      {},
+    ),
+  thumbnailSaveIdentity: (sources: string[]) =>
+    sidecarCall<{ files: string[]; count: number; dir: string }>(
+      "thumbnail_save_identity",
+      { sources },
+    ),
+  thumbnailList: (slug: string) =>
+    sidecarCall<{
+      thumbnails: {
+        path: string;
+        name: string;
+        modified_at: string;
+        // v0.7.31 P2-24 — populated when the file is found in the ledger.
+        // null when the ledger doesn't have a matching row.
+        cost_usd: number | null;
+        model: string | null;
+      }[];
+      dir: string;
+    }>("thumbnail_list", { slug }),
+  thumbnailUseAsCover: (slug: string, path: string) =>
+    sidecarCall<{ slug: string; cover_path: string; choice_path: string }>(
+      "thumbnail_use_as_cover",
+      { slug, path },
+    ),
+  thumbnailGetCover: (slug: string) =>
+    sidecarCall<{
+      slug: string;
+      cover_path: string | null;
+      set_at: string | null;
+    }>("thumbnail_get_cover", { slug }),
+  // The paid call. ~$0.07/medium image. The sidecar appends a row to
+  // ~/LiquidClips/thumbgen_ledger.jsonl + falls back gpt-image-2 → -1 if
+  // the user's account 404s on the production model.
+  thumbnailGenerate: (
+    slug: string,
+    item: ThumbnailItem,
+    config?: Partial<ThumbnailBrandPreset>,
+    prop?: string | null,
+  ) =>
+    withTimeout(
+      sidecarCall<ThumbnailGenerateResult>("thumbnail_generate", {
+        slug,
+        item,
+        ...(config ? { config } : {}),
+        ...(prop !== undefined ? { prop } : {}),
+      }),
+      // v0.7.31 — 180s ceiling. OpenAI image edits with 3+ identity refs
+      // regularly run 60-120s and can stretch past 120s at peak. Bumping
+      // the ceiling reduces the "you paid but UI shows error" orphan-spend
+      // window. ThumbnailStudio's catch site also calls refreshGallery so
+      // late-completing PNGs still surface in the gallery.
+      180_000,
+      "thumbnail_generate",
+    ),
+  // v0.7.31 — request cancel of an in-flight thumbnail_generate by writing
+  // ~/LiquidClips/.thumbgen_cancel.<slug>. The engine polls the marker twice
+  // (start + before write) and raises CancelledError, which the sidecar
+  // classifier folds to code: "canceled" and ThumbnailStudio treats as a
+  // silent close (no red strip).
+  thumbnailCancel: (slug: string) =>
+    sidecarCall<{ slug: string; marker_path: string; requested: boolean }>(
+      "thumbnail_cancel",
+      { slug },
+    ),
+  thumbnailLedger: () =>
+    sidecarCall<{
+      rows: ThumbnailLedgerRow[];
+      total_usd: number;
+      count: number;
+    }>("thumbnail_ledger", {}),
 };
 
 /** A clip that's already cut + ready to schedule/publish directly, without
@@ -975,6 +1098,73 @@ export type DirectPublishQueueItem = {
    *  default post title when scheduling. Falls back to filename stem in the
    *  UI when unset. Sidecar persists the field opaquely — no schema bump. */
   title?: string;
+};
+
+// ── Thumbnail Studio types ──────────────────────────────────────────────
+/** Brand preset persisted to ~/LiquidClips/brand_preset.json. Mirrors the
+ *  engine's `config` dict exactly so the UI can pass it through verbatim. */
+export type ThumbnailBrandPreset = {
+  /** The recurring character's name, substituted into the prompt as {BRAND}. */
+  brand?: string;
+  /** ONE line of physical identity — only physical-identity words allowed
+   *  here. Engine adds "their distinct, consistent facial features and build"
+   *  as fallback if unset. */
+  identity?: string;
+  /** What they're wearing — applies across all generations. "" = none. */
+  wardrobe?: string;
+  /** "low" | "medium" | "high" (cost tier). Defaults to medium ($0.07). */
+  quality?: "low" | "medium" | "high";
+  /** Override the engine's gpt-image-2 default. Falls back to gpt-image-1
+   *  if the user's account 404s on -2 (sidecar handles transparently). */
+  model?: string;
+  /** Image dimensions. Engine default is 1536x1024 (YT aspect). */
+  size?: string;
+  /** UI-only field (engine handles style mood via PAT rotation). Kept here
+   *  so the wizard can show a sticky selection. */
+  style_mood?: "cinematic" | "playful" | "luxury" | "editorial" | "brutalist";
+  /** Personality props, used ~1 in 7 generations via the prop_for() rotation. */
+  props?: string[];
+  /** Override the engine's bold-condensed font rule. Engine default is null. */
+  font_directive?: string | null;
+};
+
+/** One thumbnail's worth of input. Per-generation. */
+export type ThumbnailItem = {
+  /** Short bold display text, ≤30 chars. Substituted as the on-image caption. */
+  text: string;
+  /** Scene description. NEVER face. Re-describing the face causes drift. */
+  metaphor?: string;
+  /** Named accent key (e.g. "blue", "yellow_gold") OR custom colour word. */
+  accent?: string;
+  /** 1-based index — drives the EMO + PAT rotation for batch variety.
+   *  Pass 1, 2, 3... across a batch and the engine cycles 8×5=40 combos. */
+  order?: number;
+  /** Optional per-generation quality override. Defaults to brand preset. */
+  quality?: "low" | "medium" | "high";
+};
+
+/** Receipt returned by thumbnail_generate. */
+export type ThumbnailGenerateResult = {
+  output_path: string;
+  cost_usd: number;
+  model: string;
+  completed_at: string;
+  prompt_used: string;
+  slug: string;
+  /** v0.7.31 — set when the cost-ledger write failed (disk full, perms).
+   *  The generation itself succeeded — the PNG exists, the user paid — but
+   *  the lifetime spend total may drift. UI shows a soft warning strip. */
+  ledger_warning?: string;
+};
+
+/** One row in the append-only cost ledger. */
+export type ThumbnailLedgerRow = {
+  ts: string;
+  slug: string;
+  model: string;
+  cost_usd: number;
+  output_path: string;
+  title: string;
 };
 
 export type TimePrediction = {

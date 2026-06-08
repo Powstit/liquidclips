@@ -76,6 +76,7 @@ import { AchievementToast } from "./components/AchievementToast";
 import { AuthPanel } from "./components/auth/AuthPanel";
 import { useAuthPanel, closeAuthPanel } from "./components/auth/useAuthPanel";
 import { isAdminEmail } from "./lib/useTier";
+import { ThumbnailStudio } from "./components/ThumbnailStudio";
 import { recordAchievement } from "./lib/achievements";
 import { humanError, sidecar, subscribeSidecarDied, visibleStagesFor, pipelineStagesFor, backgroundStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type SecretName, type StageName } from "./lib/sidecar";
 import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
@@ -158,6 +159,16 @@ export default function App() {
   // this flips true — gives the user a guaranteed window to play.
   const [splashAcked, setSplashAcked] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // v0.7.31 — Thumbnail Studio surface (Cover Pack + AI Generate). Replaces
+  // the v0.7.1 placeholder toast at the WorkstationRoom onThumbnails handler.
+  // slug="" means no project context (Brand/Identity wizards still work,
+  // Cover Pack + Generate are gated until a project is open).
+  const [thumbnailStudio, setThumbnailStudio] = useState<{
+    open: boolean;
+    slug: string;
+    projectName: string;
+    clips: import("./lib/sidecar").Clip[];
+  }>({ open: false, slug: "", projectName: "", clips: [] });
   // Analytics Phase 1 — deep-link target for Schedule's sub-tab. Set by
   // callers (Settings → Connections "view analytics", ChannelCard
   // "analytics →") before flipping the view to "schedule" so SchedulePage
@@ -1406,15 +1417,17 @@ export default function App() {
               onCreate={() => setUploadPortal({ open: true, intent: "clips" })}
               onImport={() => void handleImportDirect()}
               onThumbnails={() => {
-                // v0.7.1 — placeholder until the thumbnail-pack feature
-                // ships. Toast keeps the surface informative without a
-                // dead end; the parent owns the cue so the tile component
-                // stays presentation-only.
-                window.dispatchEvent(
-                  new CustomEvent("lc:toast", {
-                    detail: { kind: "info", message: "Thumbnails are coming next — drop a clip and we'll generate a 6-pack." },
-                  }),
-                );
+                // v0.7.31 — Opens the ThumbnailStudio surface. No project
+                // context yet from the empty state, so we pass slug="" — the
+                // studio shows the Brand + Identity wizards (per-user setup
+                // that survives across projects) and gates the Cover Pack +
+                // Generate flows behind "open a project first."
+                setThumbnailStudio({
+                  open: true,
+                  slug: "",
+                  projectName: "Thumbnail setup",
+                  clips: [],
+                });
               }}
               onScript={() => {
                 // v0.7.7 ship-lens fix #5 — Script tile now opens the same
@@ -1850,6 +1863,25 @@ export default function App() {
         sprint 3 · onboarding · keychain · settings · auto-update
       </footer>
       </div>
+
+      <ThumbnailStudio
+        open={thumbnailStudio.open}
+        onClose={() => setThumbnailStudio((prev) => ({ ...prev, open: false }))}
+        slug={thumbnailStudio.slug}
+        projectName={thumbnailStudio.projectName}
+        clips={thumbnailStudio.clips}
+        userTier={userTier}
+        onOpenSettings={() => {
+          setThumbnailStudio((prev) => ({ ...prev, open: false }));
+          setSettingsOpen(true);
+        }}
+        onCoverChanged={() => {
+          // v0.7.31 — broadcast so LibraryTab re-fetches list_projects and the
+          // wall tile picks up the new cover (sidecar.py now prefers
+          // cover_choice.json over the auto rank-1 thumb).
+          window.dispatchEvent(new CustomEvent("lc:library-refresh"));
+        }}
+      />
 
       {settingsOpen && (
         <Settings
