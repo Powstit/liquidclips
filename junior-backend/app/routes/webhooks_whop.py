@@ -549,6 +549,24 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
         # only — too racey to gate state on).
         _bump_referrer_counter(db, user, delta=+1)
         _fire_affiliate_lifecycle_emails(db, buyer_affiliate_id=user.affiliate_id)
+        # Partner Engine unlock — try to flip the referrer to Partner if
+        # both conditions are now met (10 paid + verified TikTok). The
+        # service is idempotent and safe when conditions aren't met yet.
+        # Re-resolve the referrer (lifecycle helper has its own lookup, no
+        # shared object).
+        referrer = (
+            db.query(User).filter_by(whop_affiliate_id=user.affiliate_id).one_or_none()
+        )
+        if referrer:
+            from app.services.partner_unlock import try_unlock_partner
+            try:
+                try_unlock_partner(db, referrer)
+            except Exception:  # noqa: BLE001
+                import logging as _log
+                _log.getLogger("junior.webhooks").exception(
+                    "[partner_unlock] failed for referrer=%s — webhook continues",
+                    referrer.id,
+                )
 
 
 def _bump_referrer_counter(db: Session, buyer: User, *, delta: int) -> None:
