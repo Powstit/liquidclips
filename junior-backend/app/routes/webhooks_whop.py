@@ -431,6 +431,13 @@ def _handle_membership_invalid(db: Session, data: dict) -> None:
     user = _find_user_for_event(db, data)
     if not user:
         return
+    # Partner Engine — decrement BEFORE mutating subscription_status so the
+    # "was this user previously paid?" guard is honest. Only decrement on a
+    # true paid→non-paid transition (renewals that briefly toggle don't
+    # un-count). Floor at 0 inside _bump_referrer_counter.
+    was_paid_before = user.subscription_status == "active"
+    if was_paid_before:
+        _bump_referrer_counter(db, user, delta=-1)
     user.subscription_status = "expired"
     user.tier = "free"
 
@@ -535,7 +542,35 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
     # Notification dedup_key ensures each affiliate gets each email at most once
     # ever, so webhook retries / repeated triggers are safe.
     if not was_paid_before and user.affiliate_id:
+        # Partner Engine — bump the referrer's local paid-sub counter BEFORE
+        # the lifecycle email so the qualified-email check reads the fresh
+        # count. Counter is the transactional source of truth for the unlock
+        # state machine (Whop's live active_members_count is read for display
+        # only — too racey to gate state on).
+        _bump_referrer_counter(db, user, delta=+1)
         _fire_affiliate_lifecycle_emails(db, buyer_affiliate_id=user.affiliate_id)
+
+
+def _bump_referrer_counter(db: Session, buyer: User, *, delta: int) -> None:
+    """Increment / decrement the referrer's `referred_paid_subs` counter when
+    one of their referrals first converts to paid (delta=+1) or churns out
+    (delta=-1). Floors at 0. Best-effort — a missing referrer (cold cache or
+    no prior `/affiliate/me` view) just no-ops; lifecycle emails handle the
+    same edge separately and accept the same skip.
+
+    Resolves referrer by `buyer.affiliate_id → User.whop_affiliate_id`, the
+    same reverse-lookup used by `_fire_affiliate_lifecycle_emails`. Skip if
+    no referrer or no own-affiliate cached.
+    """
+    if not buyer.affiliate_id:
+        return
+    referrer = (
+        db.query(User).filter_by(whop_affiliate_id=buyer.affiliate_id).one_or_none()
+    )
+    if not referrer:
+        return
+    current = referrer.referred_paid_subs or 0
+    referrer.referred_paid_subs = max(0, current + delta)
 
 
 def _fire_affiliate_lifecycle_emails(db: Session, *, buyer_affiliate_id: str) -> None:
@@ -628,6 +663,12 @@ def _handle_payment_refunded(db: Session, data: dict) -> None:
     if not user:
         return
     _tier, founder = _tier_from_event(data)
+    # Partner Engine — decrement the referrer's counter BEFORE mutating, same
+    # rule as membership_invalid. Refund of a never-paid sub is a no-op
+    # because was_paid_before will be false.
+    was_paid_before = user.subscription_status == "active"
+    if was_paid_before:
+        _bump_referrer_counter(db, user, delta=-1)
     if founder:
         user.founder_flag = False
     user.tier = "free"
