@@ -61,6 +61,7 @@ export function LibraryQuickPreview({ project, onOpen, onClose }: LibraryQuickPr
               alt={project.source_filename}
               className="h-full w-full object-cover"
               draggable={false}
+              onError={() => setPosterUrl(null)}
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-text-tertiary">
