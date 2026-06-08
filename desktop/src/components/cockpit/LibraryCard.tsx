@@ -12,6 +12,7 @@
 // this component only declares the tile-local micro-motion (whileHover /
 // whileTap) and the hover-only overlay.
 
+import { useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
@@ -52,7 +53,13 @@ export function LibraryCard({
 }) {
   const reduced = useReducedMotion();
   const editedAt = formatDate(project.updated_at || project.created_at);
-  const thumbSrc = project.cover_thumb_path ? convertFileSrc(project.cover_thumb_path) : null;
+  // bug-hunt v0.7.18 — onError flips to true when the cover-thumb file is
+  // missing (project archived, file moved, iCloud not downloaded). Falls
+  // through to the existing bug-glyph fallback.
+  const [thumbError, setThumbError] = useState(false);
+  const thumbSrc = project.cover_thumb_path && !thumbError
+    ? convertFileSrc(project.cover_thumb_path)
+    : null;
   const cappedDelay = Math.min(index, 12) * 0.04;
 
   return (
@@ -101,6 +108,7 @@ export function LibraryCard({
             alt=""
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.05]"
             draggable={false}
+            onError={() => setThumbError(true)}
           />
         ) : (
           // v0.6.36 — Transparent fallback. The bug glyph floats fuchsia,

@@ -152,7 +152,12 @@ export function ResultsGrid({
             const poster = out?.poster_path;
             return poster ? (
               <div className="aspect-video h-[88px] shrink-0 overflow-hidden rounded-xl border border-line bg-paper-warm">
-                <img src={convertFileSrc(poster)} alt="" className="h-full w-full object-cover" />
+                <img
+                  src={convertFileSrc(poster)}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                />
               </div>
             ) : null;
           })()}

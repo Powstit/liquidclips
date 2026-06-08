@@ -22,6 +22,7 @@ import { CalendarClock, Flame, MessageCircle, Sparkles, Trophy, Zap } from "luci
 // pane that hosts Browse Rewards). Members get a fully-authed Whop session
 // inline; no system-browser redirect.
 import { openBrowsePanel, WHOP_COMMUNITY_URL } from "../lib/browse";
+import { humanError } from "../lib/sidecar";
 
 type Pinned = {
   id: string;
@@ -104,10 +105,10 @@ export function CommunityTab() {
     openExternal(url)
       .then(() => setOpenError(null))
       .catch((e) => {
-        const raw = e instanceof Error ? e.message : String(e);
+        const msg = humanError(e);
         setOpenError({
           url,
-          message: raw ? `Couldn't open link: ${raw}` : "Couldn't open link.",
+          message: msg ? `Couldn't open link: ${msg}` : "Couldn't open link.",
         });
       });
   }

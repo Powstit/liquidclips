@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { Button, Card, Input, IconButton, Pill } from "../primitives";
+import { humanError } from "../../lib/sidecar";
 import {
   createSubmission,
   updateSubmission,
@@ -149,7 +150,7 @@ export function SubmissionForm({
       if (saved) onSaved?.(saved);
       onClose();
     } catch (e) {
-      setErr(String(e));
+      setErr(humanError(e));
     } finally {
       setBusy(false);
     }
