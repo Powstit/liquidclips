@@ -199,6 +199,23 @@ def _handle_user_created(db: Session, data: dict, ip_address: str | None = None)
         external_dedup_key=f"junior-welcome-{user.id}",
     )
 
+    # Partner Engine — eagerly mint this user's Whop affiliate record so they
+    # have a ?a=<id> referral link the moment they sign up, not on first
+    # dashboard view. Idempotent: Whop returns the existing record on retry.
+    # Best-effort: a Whop outage or transient error must NOT block signup. The
+    # lazy path in build_affiliate_me_response still backfills on the next
+    # /affiliate/me read if this fails.
+    try:
+        from app.routes.affiliate import _fetch_whop_affiliate
+        aff = _fetch_whop_affiliate((user.email or "").strip().lower())
+        if aff and aff.get("id"):
+            user.whop_affiliate_id = str(aff["id"])
+    except Exception:  # noqa: BLE001
+        import logging as _log
+        _log.getLogger("junior.webhooks").exception(
+            "eager Whop affiliate create failed for user=%s — lazy /affiliate/me will retry", user.id
+        )
+
     # Branded onboarding email — non-blocking. Resend errors don't break
     # the webhook ack; failures are logged in app.mailer.
     from app.mailer import send_welcome
