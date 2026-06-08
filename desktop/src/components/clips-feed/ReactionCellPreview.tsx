@@ -255,6 +255,7 @@ function VideoTile({ path, muted }: { path: string | null; muted: boolean }) {
         className="h-full w-full object-cover"
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
+        onError={(e) => { (e.currentTarget as HTMLVideoElement).style.display = "none"; }}
       />
       <button
         onClick={toggle}

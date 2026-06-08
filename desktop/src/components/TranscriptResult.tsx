@@ -25,7 +25,9 @@ export function TranscriptResult({
   const meta = result.meta ?? ({} as Partial<LiftTranscriptResult["meta"]>);
   const segments = Array.isArray(result.segments) ? result.segments : [];
   const platform = result.platform === "link" ? "instagram" : (result.platform as PlatformId);
-  const posterSrc = meta.poster_path ? convertFileSrc(meta.poster_path) : null;
+  // bug-hunt v0.7.18 — onError flips to true when poster file is missing.
+  const [posterError, setPosterError] = useState(false);
+  const posterSrc = meta.poster_path && !posterError ? convertFileSrc(meta.poster_path) : null;
   const title = meta.title || "Untitled";
   const uploader = meta.uploader || "—";
 
@@ -73,6 +75,7 @@ export function TranscriptResult({
                 src={posterSrc}
                 alt={title}
                 className="aspect-[9/16] w-full object-cover"
+                onError={() => setPosterError(true)}
               />
             ) : (
               <div className="grid aspect-[9/16] w-full place-items-center font-mono text-[11px] text-paper/60">

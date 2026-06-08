@@ -34,7 +34,7 @@ import {
   Sparkles,
   Upload,
 } from "lucide-react";
-import { sidecar, type Project } from "../lib/sidecar";
+import { sidecar, humanError, type Project } from "../lib/sidecar";
 
 const URL_RE = /^https?:\/\//i;
 
@@ -98,7 +98,7 @@ export function UnifiedDropZone({
       const { project } = await sidecar.importReadyClips(paths);
       onImportReadyClips(project);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
     } finally {
       setImporting(false);
     }

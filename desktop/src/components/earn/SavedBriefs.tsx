@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { Pencil, Plus, Trash2, ExternalLink, X } from "lucide-react";
 import { Button, Card, IconButton, Pill } from "../primitives";
+import { humanError } from "../../lib/sidecar";
 import {
   deleteBrief,
   setActiveBriefId,
@@ -257,7 +258,7 @@ function BriefDetailModal({
     try {
       await setActiveBriefId(isActive ? null : brief.id);
     } catch (e) {
-      setErr(String(e));
+      setErr(humanError(e));
     }
   }
 
@@ -273,7 +274,7 @@ function BriefDetailModal({
       setConfirmDeleteOpen(false);
       onClose();
     } catch (e) {
-      setErr(String(e));
+      setErr(humanError(e));
       setDeleting(false);
     }
   }
@@ -283,7 +284,7 @@ function BriefDetailModal({
     try {
       await openBrowsePanel(brief.source_url);
     } catch (e) {
-      setErr(String(e));
+      setErr(humanError(e));
     }
   }
 

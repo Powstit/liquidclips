@@ -148,6 +148,7 @@ function VideoCard({
           playsInline
           className={`block h-auto w-full ${locked ? "opacity-50 grayscale" : ""}`}
           draggable={false}
+          onError={(e) => { (e.currentTarget as HTMLVideoElement).style.display = "none"; }}
         />
         {locked && (
           <div className="absolute inset-0 grid place-items-center bg-paper/50 backdrop-blur-sm">
@@ -315,6 +316,7 @@ function CarouselSlide({
             className={`h-full w-full object-cover ${locked ? "opacity-50 grayscale" : ""}`}
             loading="lazy"
             draggable={false}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
           />
           {locked && (
             <div className="absolute inset-0 grid place-items-center bg-paper/50 backdrop-blur-sm">

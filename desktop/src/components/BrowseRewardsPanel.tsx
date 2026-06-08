@@ -25,6 +25,7 @@ import {
   useBrowsePanel,
   WHOP_REWARDS_URL,
 } from "../lib/browse";
+import { humanError } from "../lib/sidecar";
 import { BriefForm } from "./earn/BriefForm";
 
 // Must match src-tauri/src/browse.rs constants.
@@ -77,7 +78,7 @@ export function BrowseRewardsPanel() {
       setDraft(next);
       await openBrowsePanel(next);
     } catch (e) {
-      setErr(String(e));
+      setErr(humanError(e));
     } finally {
       setBusy(false);
     }
@@ -89,7 +90,7 @@ export function BrowseRewardsPanel() {
     try {
       await closeBrowsePanel();
     } catch (e) {
-      setErr(String(e));
+      setErr(humanError(e));
     } finally {
       setBusy(false);
     }
