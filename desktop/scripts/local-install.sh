@@ -82,6 +82,17 @@ step "Clearing quarantine attribute"
 xattr -dr com.apple.quarantine "$DST" 2>/dev/null || true
 ok "cleared"
 
+# --- strip codesign-hostile xattrs the cp -R left on the bundle root.
+# v0.7.17 fix — `cp -R` from /tmp into /Applications kept picking up
+# com.apple.FinderInfo (added by Finder/iCloud-aware FS), which made
+# `codesign --verify --strict` fail with "Disallowed xattr ... found"
+# even though the inner Mach-O was still signed. The audit treats that
+# strict-fail as a red gate.
+step "Stripping codesign-hostile xattrs from installed bundle"
+xattr -c "$DST" 2>/dev/null || true
+xattr -dr com.apple.FinderInfo "$DST" 2>/dev/null || true
+ok "cleared"
+
 # --- verify the install reports the expected version --------------------
 step "Verifying installed version"
 INSTALLED_VER="$(plutil -p "$DST/Contents/Info.plist" | awk -F'"' '/CFBundleShortVersionString/{print $4}')"
