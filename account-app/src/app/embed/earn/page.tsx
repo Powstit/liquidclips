@@ -148,11 +148,51 @@ function ConnectionBadge({ status }: { status: WhopLinkStatus }) {
     );
   }
   if (status === "unlinked") {
+    // v0.7.41 — Was a dead pill that said "link whop on desktop" with no
+    // button or path forward. Beta users read it as "Whop not signed in"
+    // and had nowhere to go. Now: a real CTA panel with both affiliate
+    // paths (Whop sign-up + Stripe Connect via desktop). Architecture
+    // contract: Liquid Clips pays affiliates two ways — Whop runs payouts
+    // for Whop-signup users; Clerk users connect a bank via Stripe.
     return (
-      <span className="inline-flex w-fit items-center gap-2 rounded-full border border-fuchsia/40 bg-fuchsia-soft/30 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-fuchsia-deep">
-        <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-        link whop on desktop
-      </span>
+      <div className="flex flex-col gap-3 rounded-2xl border border-fuchsia/40 bg-fuchsia-soft/20 p-4">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-2 rounded-full border border-fuchsia/40 bg-fuchsia-soft/40 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-fuchsia-deep">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
+            connect to start earning
+          </span>
+        </div>
+        <p className="max-w-[420px] font-sans text-[13px] leading-relaxed text-text-secondary">
+          Liquid Clips pays affiliates two ways. Pick the route that fits — you
+          only need one.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href="https://whop.com/jnremployee"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-white transition-colors hover:bg-fuchsia-bright"
+          >
+            Sign up via Whop →
+          </a>
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                window.parent.postMessage(
+                  { type: "lc:nav", to: "settings/account" },
+                  "*",
+                );
+              } catch {
+                /* embed posts to parent; if parent isn't desktop, no-op */
+              }
+            }}
+            className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia/40 bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-fuchsia-deep transition-colors hover:bg-fuchsia-soft/40"
+          >
+            Connect bank (Stripe) →
+          </button>
+        </div>
+      </div>
     );
   }
   // "unknown" — backend was unreachable. Distinct copy + tone so the user
