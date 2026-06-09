@@ -325,29 +325,32 @@ export function ClipCard({
 
   return (
     <article
-      className={`library-card relative flex flex-col gap-3 rounded-2xl p-4${ringClass}`}
+      className={`library-card relative${ringClass}`}
       onClick={handleCardClick}
       aria-selected={selectable ? !!selected : undefined}
     >
-      {/* v0.7.32 — restructured per docs/clipcard-v0732-target.html mockup +
-          docs/clip-dashboard-demo.html canonical. Cut: above-thumbnail row
-          (checkbox+virality+theme+time was "the horizontal lines"); "01"
-          indicator inside thumbnail; "title" eyebrow above title. Moved:
-          selection checkbox into thumbnail TL; PlatformBadge from BL → TR.
-          Added: ratio pill BL (9:16, brand standard); HOT badge BR
-          (conditional, virality ≥ 78 per demo). Iron-gate IG-005 invariants
-          preserved (no per-card scheduler, no clip.overlay writer, no
-          parallel toolbar — card stays display + select target). */}
+      {/* v0.7.32 FINAL — literal copy of the LibraryCard structure (which
+          renders the clean Library wall per Daniel's image #11) + the
+          docs/clipcard-v0732-target.html mockup. Outer = `library-card
+          relative` (no extra padding, no rounded-2xl, no flex). HUD corners
+          use the TWO-class pattern (base `library-card-corner` + side-
+          specific class) so the dashed-fuchsia styles cascade properly.
+          Inner thumbnail = `aspect-[9/16] overflow-hidden rounded-2xl`.
+          Below = title + dur·score in plain wrapper. Removes the p-4 gap
+          between HUD corners and thumbnail where the workbench background
+          could bleed through. */}
 
-      {/* HUD bracket corners — fuchsia dashed, brand-locked. */}
-      <span className="library-card-corner-tl" aria-hidden />
-      <span className="library-card-corner-tr" aria-hidden />
-      <span className="library-card-corner-bl" aria-hidden />
-      <span className="library-card-corner-br" aria-hidden />
+      {/* HUD bracket corners — fuchsia dashed, two-class pattern (base
+          + side) matches LibraryCard exactly. */}
+      <span className="library-card-corner library-card-corner-tl" aria-hidden />
+      <span className="library-card-corner library-card-corner-tr" aria-hidden />
+      <span className="library-card-corner library-card-corner-bl" aria-hidden />
+      <span className="library-card-corner library-card-corner-br" aria-hidden />
 
-      {/* Video / poster — hover to preview */}
+      {/* Video / poster — hover to preview. rounded-2xl + no bg so the
+          thumbnail fills cleanly, matches demo's `.lc-thumb`. */}
       <div
-        className="relative aspect-[9/16] overflow-hidden rounded-xl bg-paper-warm"
+        className="relative aspect-[9/16] overflow-hidden rounded-2xl"
         onMouseEnter={onEnter}
         onMouseLeave={onLeave}
       >
@@ -473,9 +476,10 @@ export function ClipCard({
         )}
       </div>
 
-      {/* Below-thumb meta — title + dur · score. No "TITLE" eyebrow
-          (impeccable AI-grammar tell; the title is its own header). */}
-      <div className="pt-1">
+      {/* Below-thumb meta — title + dur · score. mt-3 matches the demo
+          mockup's `.lc-meta { padding: 12px 6px 0 }` spacing. No "TITLE"
+          eyebrow (impeccable AI-grammar tell; the title is its own header). */}
+      <div className="mt-3 px-1.5">
         <p className="line-clamp-2 font-display text-[14px] font-semibold leading-snug tracking-[-0.01em] text-ink">
           {clip.title}
         </p>
