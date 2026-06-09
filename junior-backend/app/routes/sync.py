@@ -52,6 +52,14 @@ def sync(
     db: Annotated[Session, Depends(get_db)],
 ) -> SyncResponse:
     from app.features import is_admin_email, tier_features
+    from app.routes.channels import reconcile_channels_against_ayrshare
+
+    # v0.7.32 trust fix: pull the channel table back in sync with Ayrshare's
+    # ground truth before returning. Catches the "Settings shows pending_link
+    # but Ayrshare publishing actually works" drift. Defensive: this helper
+    # NEVER raises — on any Ayrshare/HTTP failure it logs + returns silently
+    # so /sync keeps serving tier + license data.
+    reconcile_channels_against_ayrshare(user.id, db)
 
     # Compute the effective tier+founder ONCE — admin override applies to
     # both the JWT we rotate AND the response we return, so we don't end up
