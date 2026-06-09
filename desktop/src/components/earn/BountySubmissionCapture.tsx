@@ -149,7 +149,7 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
     );
   }
 
-  const readyClips = project.clips.filter((c) => c.vertical_path || c.cut_path);
+  const readyClips = project.clips.filter((c) => c.vertical_path);
   const bestFit = readyClips.reduce((best, c) => {
     const score = computeBountyFit(c, project)?.score ?? 0;
     return Math.max(best, score);
