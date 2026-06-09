@@ -19,7 +19,6 @@ import type { Channel } from "./types";
 export const STALE_OVERRIDABLE: ReadonlySet<Channel["status"]> = new Set([
   "pending_link",
   "unlinked",
-  "error",
 ]);
 
 /** True when the channel should be treated as routable, accounting for the
