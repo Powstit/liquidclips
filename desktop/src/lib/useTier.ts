@@ -2,9 +2,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { meStatusLegacy, syncStatus, type SyncStatus, type Tier } from "./backend";
 
-// Lightweight tier hook. Defaults to "free" when sync hasn't completed or the
-// user has no license JWT, so gating UX renders immediately on first paint
-// rather than flashing the paid view before downgrading.
+// Lightweight tier hook. Defaults to a loading state on cold boot so paid
+// users never flash "Free". Tier is only confirmed after /sync resolves.
 
 // Per-project clip-preview cap on Free: show the first 3 clips, then surface an
 // upgrade card for the rest. This is a display nudge, NOT the account quota —
@@ -52,6 +51,9 @@ export type TierState = {
   tier: Tier;
   status: SyncStatus | null;
   loading: boolean;
+  /** False until the first /sync call completes (success or failure).
+   *  Use this to show a spinner instead of defaulting to "free" on cold boot. */
+  resolved: boolean;
   /** True/false guard for a capability — used by upgrade walls. */
   can(cap: PublishCapability): boolean;
   /** The lowest tier that unlocks a capability — used in the upgrade copy. */
@@ -94,17 +96,18 @@ export function isAdminEmail(email: string | null | undefined): boolean {
   return ADMIN_EMAIL_FALLBACK.has(email.trim().toLowerCase());
 }
 
-function readCachedTier(): Tier {
+function readCachedTier(): Tier | null {
   // SSR / preview / corrupt-storage safety — anything that throws or returns
-  // an unknown tier degrades to "free", which is what we'd render anyway.
+  // an unknown tier degrades to null so the UI shows a spinner instead of
+  // flashing "Free" for paid users on cold boot.
   try {
-    if (typeof window === "undefined" || !window.localStorage) return "free";
+    if (typeof window === "undefined" || !window.localStorage) return null;
     const raw = window.localStorage.getItem(TIER_CACHE_KEY);
     if (raw && VALID_TIERS.has(raw as Tier)) return raw as Tier;
   } catch {
     /* swallow — storage can be blocked, full, or disabled */
   }
-  return "free";
+  return null;
 }
 
 function writeCachedTier(t: Tier): void {
@@ -118,13 +121,15 @@ function writeCachedTier(t: Tier): void {
 
 export function useTier(): TierState {
   // Synchronous cache read on first render — see TIER_CACHE_KEY comment.
-  const [cachedTier, setCachedTier] = useState<Tier>(() => readCachedTier());
+  // Defaults to null so paid users don't flash "Free" on cold boot.
+  const [cachedTier, setCachedTier] = useState<Tier | null>(() => readCachedTier());
   const [status, setStatus] = useState<SyncStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resolved, setResolved] = useState(false);
   // Latest in-memory tier — initially the cache, replaced by /sync success.
   // We never DOWNGRADE this on transient network failure (a flaky tether
   // should not strip features mid-session).
-  const inMemoryTier = useRef<Tier>(cachedTier);
+  const inMemoryTier = useRef<Tier | null>(cachedTier);
 
   const doRefresh = useCallback(async (signal: { cancelled: boolean }) => {
     try {
@@ -175,7 +180,10 @@ export function useTier(): TierState {
       // setStatus stays at whatever it was (null on cold boot is fine; the
       // cached tier still drives capability gating).
     } finally {
-      if (!signal.cancelled) setLoading(false);
+      if (!signal.cancelled) {
+        setLoading(false);
+        setResolved(true);
+      }
     }
   }, []);
 
@@ -208,14 +216,16 @@ export function useTier(): TierState {
   }, [doRefresh]);
 
   // Prefer the freshest backend tier, then the in-memory cached tier
-  // (which is also what was on disk on cold boot). Never flashes to "free"
-  // on transient failure.
-  const tier: Tier = status?.tier ?? inMemoryTier.current ?? cachedTier;
+  // (which is also what was on disk on cold boot). Only fall back to "free"
+  // after /sync has had a chance to resolve — prevents the "Free" flash for
+  // paid users on cold boot.
+  const tier: Tier = status?.tier ?? inMemoryTier.current ?? cachedTier ?? "free";
 
   return {
     tier,
     status,
     loading,
+    resolved,
     can: (cap) => PUBLISH_MATRIX[tier][cap],
     requiredTierFor: (cap) => {
       for (const t of ["solo", "pro", "agency"] as Tier[]) {

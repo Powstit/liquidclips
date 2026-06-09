@@ -4,7 +4,7 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { Camera, Trash2, User, Key, Plug, Info, Activity, ChevronLeft } from "lucide-react";
+import { Camera, Trash2, User, Key, Info, Activity, ChevronLeft } from "lucide-react";
 import { sidecar, humanError, type HardwareInfo, type SecretName } from "../lib/sidecar";
 import { useAvatar, avatarSrc, initialsOf } from "../lib/avatar";
 // v0.7.8 S1 — single source of truth for sign-out side-effects. Settings'
@@ -13,12 +13,7 @@ import { useAvatar, avatarSrc, initialsOf } from "../lib/avatar";
 // the keychain when a user signed out from Settings (same leak the AvatarPanel
 // path had). One helper, both call sites.
 import { performAtomicSignOutWipe } from "../App";
-import { Channel } from "../lib/backend";
-import AyrshareConnectionPanel from "./AyrshareConnectionPanel";
-// v0.7.32 Drift #14 — Settings → Connections renders the same ch-row primitive
-// as Schedule → Channels so the user reads one visual language across both
-// surfaces. ChannelStatusRow (the local read-only primitive) is retired.
-import { ChannelRow } from "./schedule/ChannelRow";
+import { useTier } from "../lib/useTier";
 
 // Single source of truth — pulled from package.json so a stale constant can't
 // land in the Settings → About row again after a ship.
@@ -62,12 +57,7 @@ const WHOP_MANAGE_URL = "https://whop.com/jnremployee";
 // v0.6.4 — Strict-utility (Whop-pattern) Settings.
 // Categories drive what the right pane shows; left rail switches between
 // them. No painted decoration inside chrome (the v0.6.3 cover hero retired).
-// v0.7.8 S2 — "connections" tab added. Mounts AyrshareConnectionPanel +
-// a per-channel link-state list + the Whop session source so the user
-// has ONE pane that answers "what's connected to publish from here?" — was
-// previously fragmented between Settings (Ayrshare hidden / unmounted),
-// Schedule → Channels (link state only), and WhoAmI (Whop session source).
-type SettingsCategory = "account" | "keys" | "connections" | "about" | "diagnostics";
+type SettingsCategory = "account" | "keys" | "about" | "diagnostics";
 type DepsInfo = {
   ok: boolean;
   missing: string[];
@@ -78,7 +68,6 @@ type DepsInfo = {
 const CATEGORY_LABELS: Record<SettingsCategory, string> = {
   account: "Account",
   keys: "API keys",
-  connections: "Connections",
   about: "About",
   diagnostics: "Diagnostics",
 };
@@ -86,17 +75,13 @@ const CATEGORY_LABELS: Record<SettingsCategory, string> = {
 const CATEGORY_ICONS: Record<SettingsCategory, React.ComponentType<{ className?: string }>> = {
   account: User,
   keys: Key,
-  connections: Plug,
   about: Info,
   diagnostics: Activity,
 };
 
 export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: { onClose: () => void; onSignOut?: () => void; onOpenSchedule?: (subtab?: "queue" | "channels" | "analytics") => void; tier?: Tier }) {
-  // v0.7.8 S2 — `onOpenSchedule` is now actively consumed by the Connections
-  // tab: the AyrshareConnectionPanel's "view analytics →" chip + the per-
-  // channel link list's "manage channels →" chip both jump into Schedule's
-  // sub-tabs without leaving Settings' left-rail context. Pre-fix the
-  // callback was accepted but unused; the chip silently no-op'd.
+  const { resolved } = useTier();
+  void onOpenSchedule; // prop retained for backward compat; Connections tab removed in v0.7.40
   const [secrets, setSecrets] = useState<Record<SecretName, boolean> | null>(null);
   // v0.7.8 S3 — openaiKeyStatus reports "is there ANY resolvable OpenAI key"
   // (env var → keychain → dev file). Pre-fix Settings only checked the
@@ -133,7 +118,7 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
     function onOpenTab(e: Event) {
       const ce = e as CustomEvent<{ tab?: SettingsCategory }>;
       const tab = ce.detail?.tab;
-      if (tab && (["account", "keys", "connections", "about", "diagnostics"] as SettingsCategory[]).includes(tab)) {
+      if (tab && (["account", "keys", "about", "diagnostics"] as SettingsCategory[]).includes(tab)) {
         setCategory(tab);
       }
     }
@@ -398,7 +383,7 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
         {/* v0.6.4 — Whop-pattern compact header. No painted cover, no glow,
             no animation. Single line: initials + name + tier + email +
             close. Stays calm — Settings is a utility surface, not theatre. */}
-        <SettingsCompactHeader me={me} sync={sync} tier={tier} onClose={onClose} />
+        <SettingsCompactHeader me={me} sync={sync} tier={tier} resolved={resolved} onClose={onClose} />
 
         {/* Two-column body: left rail of categories, right pane shows the
             active category's content. Single page, no subpages, no back
@@ -460,7 +445,13 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
               <Section eyebrow="class" title="Class + subscription">
                 <Row
                   label="Class"
-                  value={sync ? (sync.tier === "free" ? "Free · Try" : capitalise(sync.tier)) : (tier === "free" ? "Free · Try" : capitalise(tier))}
+                  value={
+                    !resolved
+                      ? "Checking…"
+                      : sync
+                      ? (sync.tier === "free" ? "Free · Try" : capitalise(sync.tier))
+                      : (tier === "free" ? "Free · Try" : capitalise(tier))
+                  }
                 />
                 {sync?.paid_until && (
                   <Row
@@ -539,14 +530,6 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
 
           {category === "account" && <AffiliatePayoutsSection />}
 
-          {category === "account" && (
-            <Section eyebrow="notifications" title="Coming soon.">
-              <p className="font-sans text-[13px] text-text-secondary">
-                Push + email notifications for payouts, new campaigns, and rank-ups land in v0.7. For now, everything surfaces on the Workspace dashboard.
-              </p>
-            </Section>
-          )}
-
           {category === "diagnostics" && (
             <DiagnosticsSection
               deps={deps}
@@ -556,20 +539,6 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
               clipboardError={clipboardError}
               onCopy={() => void copyDiagnostics()}
             />
-          )}
-
-          {/* v0.7.8 S2 — Connections pane. Three stacked surfaces that all
-              answer the same user question — "what's wired up to publish /
-              earn from this Mac?". Pre-fix this data lived in three places:
-              AyrshareConnectionPanel existed as a component but was never
-              mounted, WhoAmISection buried whopSessionStatus in the
-              Account tab, and ChannelsManager surfaced per-channel link
-              state on the Schedule page. Now one pane shows all three.
-              Forwarding onOpenSchedule lets the Ayrshare "view analytics →"
-              chip jump into Schedule → Analytics without leaving Settings'
-              left-rail context. */}
-          {category === "connections" && (
-            <ConnectionsSection onOpenSchedule={onOpenSchedule} />
           )}
 
           {category === "about" && (
@@ -668,18 +637,6 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
 
           {category === "about" && (
           <Section eyebrow="about" title='"Made with Liquid Clips" + privacy.'>
-            {/* (2) Watermark toggle was dead UI — `defaultOn={false}` with no
-                onChange persisted nothing. Until the burn-in pipeline wires
-                up, render it as a static "Coming soon" row so the user
-                doesn't think flipping it does anything. */}
-            <div className="flex items-center justify-between gap-3 border-t border-line/60 pt-2">
-              <span className="font-sans text-[13px] text-ink">
-                Show 'Made with Liquid Clips' watermark on clips
-              </span>
-              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-                coming soon
-              </span>
-            </div>
             <Toggle
               label="Send anonymous telemetry (no video content, no transcripts)"
               defaultOn={false}
@@ -1318,169 +1275,6 @@ function WhoAmISection() {
 }
 
 
-// v0.7.8 S2 — One-stop "what's connected to publish from this Mac?" pane.
-//
-// Three sources of truth, three surfaces, one user question:
-//   1. AyrshareConnectionPanel — Ayrshare profile-key presence + linked
-//      platforms (the publish backend). Pre-fix: existed as a component but
-//      was never mounted; users connected accounts on Schedule but had no
-//      way to verify the key/platform state from a Settings pane.
-//   2. ConnectionsChannelsList — per-channel link state (active / pending_link
-//      / paused / error) — same primitives ChannelsManager renders, but
-//      read-only. Click-through jumps to the Schedule → Channels sub-tab
-//      where the full rename / refresh / pause / delete chrome lives.
-//   3. WhopSessionRow — desktop's Whop OAuth token source (iframe / env_user
-//      / keychain / seller_key / none). Same row WhoAmI shows, lifted up
-//      so the user doesn't have to switch tabs to debug Earn-tab access.
-function ConnectionsSection({
-  onOpenSchedule,
-}: {
-  onOpenSchedule?: (subtab?: "queue" | "channels" | "analytics") => void;
-}) {
-  return (
-    <>
-      <Section eyebrow="publish backend" title="What can post on your behalf.">
-        <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-          Liquid Clips publishes through Ayrshare. Each social account OAuths directly with the platform; your credentials never sit on our servers. Link or rename channels from Schedule → Channels.
-        </p>
-        <AyrshareConnectionPanel onOpenSchedule={onOpenSchedule} />
-      </Section>
-      <ConnectionsChannelsList onOpenSchedule={onOpenSchedule} />
-      <WhopSessionRow />
-    </>
-  );
-}
-
-function ConnectionsChannelsList({
-  onOpenSchedule,
-}: {
-  onOpenSchedule?: (subtab?: "queue" | "channels" | "analytics") => void;
-}) {
-  const [channels, setChannels] = useState<Channel[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  // v0.7.32 — defensive UI fallback for stale per-channel status. Pull the
-  // Ayrshare profile-level snapshot so ChannelRow can override amber WARN
-  // rows that the backend says are pending but Ayrshare reports as actually
-  // linked. Failures are silent — worst case the row falls back to the raw
-  // DB status, which is what pre-v0.7.32 already shipped.
-  const [ayrshareLinkedPlatforms, setAyrshareLinkedPlatforms] = useState<readonly string[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void import("../lib/backend")
-      .then((m) => m.listChannels())
-      .then((list) => {
-        if (!cancelled) setChannels(list);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(humanError(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void import("../lib/backend")
-      .then((m) => m.socialGetConnectionStrict())
-      .then((state) => {
-        if (cancelled) return;
-        if (state !== "no-connection") setAyrshareLinkedPlatforms(state.platforms ?? []);
-      })
-      .catch(() => {
-        // Transport error — defensive fallback, not a required input. The
-        // row renders the raw DB status until the next mount retries.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return (
-    <Section eyebrow="channels" title="Per-channel link state.">
-      <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-        Read-only snapshot of every channel Schedule knows about. Rename,
-        refresh, pause, or delete from Schedule → Channels.
-      </p>
-      {channels === null && !error && (
-        <p className="font-mono text-[11px] text-text-tertiary">
-          Reading channels<span className="blink">_</span>
-        </p>
-      )}
-      {error && (
-        <p className="font-mono text-[11px] text-[var(--color-danger)]">
-          Couldn&apos;t reach the channels endpoint — {error}
-        </p>
-      )}
-      {channels && channels.length === 0 && !error && (
-        <p className="font-sans text-[13px] text-text-secondary">
-          No channels linked yet. Schedule → Channels → Add channel.
-        </p>
-      )}
-      {channels && channels.length > 0 && (
-        <BracketFrame>
-          {/* v0.7.32 Drift #14 — render the canonical ChannelRow used in
-              Schedule → Channels. Settings is read-only ("snapshot"), so
-              toggles + delete short-circuit and any "link" action routes
-              the user to Schedule → Channels where the real flow lives. */}
-          {channels.map((c) => (
-            <ChannelRow
-              key={c.id}
-              channel={c}
-              onTogglePause={() => Promise.resolve()}
-              onLinkNow={() => onOpenSchedule?.("channels")}
-              onDelete={() => Promise.resolve()}
-              ayrshareLinkedPlatforms={ayrshareLinkedPlatforms}
-            />
-          ))}
-        </BracketFrame>
-      )}
-      {onOpenSchedule && (
-        <div>
-          <HudChip active={false} onClick={() => onOpenSchedule("channels")}>
-            Manage channels →
-          </HudChip>
-        </div>
-      )}
-    </Section>
-  );
-}
-
-// v0.7.32 Drift #14 retired the local ChannelStatusRow primitive. The
-// Connections snapshot now renders ChannelRow from ./schedule/ChannelRow so
-// Settings and Schedule speak one visual language.
-
-function WhopSessionRow() {
-  const [source, setSource] = useState<string>("…");
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    void sidecar
-      .whopSessionStatus()
-      .then((s) => {
-        if (!cancelled) setSource(s.source ?? "none");
-      })
-      .catch((e) => {
-        if (!cancelled) setError(humanError(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return (
-    <Section eyebrow="whop session" title="Where the Earn tab reads from.">
-      <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-        Liquid Clips needs a Whop session to load bounties and pay you out.
-        This row reports the source of the current desktop token.
-      </p>
-      <BracketFrame>
-        <DebugRow label="Source" value={error ?? source} />
-      </BracketFrame>
-    </Section>
-  );
-}
-
 function DebugRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3 border-t border-line/60 pt-1 first:border-t-0 first:pt-0">
@@ -1786,11 +1580,13 @@ function SettingsCompactHeader({
   me,
   sync,
   tier,
+  resolved,
   onClose,
 }: {
   me: MeStatus | null;
   sync: SyncStatus | null;
   tier: Tier;
+  resolved: boolean;
   onClose: () => void;
 }) {
   const email = me?.email ?? null;
@@ -1807,7 +1603,7 @@ function SettingsCompactHeader({
         .join("") || "?"
     : "?";
   const effectiveTier = (sync?.tier ?? me?.effective_tier ?? tier) as string;
-  const tierLabel = effectiveTier === "free" ? "tier · free" : `tier · ${effectiveTier}`;
+  const tierLabel = !resolved ? "checking…" : (effectiveTier === "free" ? "tier · free" : `tier · ${effectiveTier}`);
 
   // (16) Read the uploaded avatar from the shared store so the header thumb
   // matches what shows in the cockpit orbit. Falls back to initials when no
@@ -1874,7 +1670,7 @@ function SettingsLeftRail({
   active: SettingsCategory;
   onSelect: (c: SettingsCategory) => void;
 }) {
-  const items: SettingsCategory[] = ["account", "keys", "connections", "about", "diagnostics"];
+  const items: SettingsCategory[] = ["account", "keys", "about", "diagnostics"];
   return (
     <nav
       // v0.7.32 — bg-transparent let the underlying cockpit sub-rail bleed
