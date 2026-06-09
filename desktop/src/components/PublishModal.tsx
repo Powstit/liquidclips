@@ -1,5 +1,6 @@
 // ship-lens v0.7.7: fix #4 — summarisePublish branches on `status` so failed platforms no longer render as "tiktok: null" claiming success.
 import { useEffect, useRef, useState } from "react";
+import { Globe } from "lucide-react";
 import { openAuthPanel } from "./auth/useAuthPanel";
 import {
   backend,
@@ -128,6 +129,10 @@ export function PublishModal({
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [publishResult, setPublishResult] = useState<{
+    results: PublishedResult[];
+    severity: "success" | "partial" | "failure";
+  } | null>(null);
   // Guards `initialPlatforms` pre-selection so it runs once on the initial
   // channel load and never clobbers a subsequent user toggle.
   const didApplyInitialPlatformsRef = useRef(false);
@@ -245,6 +250,7 @@ export function PublishModal({
     }
     setBusy(true);
     setError(null);
+    setPublishResult(null);
     try {
       const { value: jwt } = await sidecar.licenseJwtRead();
       if (!jwt) {
@@ -264,7 +270,9 @@ export function PublishModal({
             platforms: [],          // ignored when channelId set
             channelId: pickedChannelId,
           });
-          onDone(summarisePublish(results));
+          const failed = results.filter(isFailedStatus).length;
+          const severity = failed === 0 ? "success" : failed === results.length ? "failure" : "partial";
+          setPublishResult({ results, severity });
         } else {
           // Legacy path — single SocialConnection profile, comma-separated platforms.
           const results = await backend.publishNow(jwt, {
@@ -275,7 +283,9 @@ export function PublishModal({
               p === "youtube" || p === "tiktok" || p === "x" || p === "instagram",
             ),
           });
-          onDone(summarisePublish(results));
+          const failed = results.filter(isFailedStatus).length;
+          const severity = failed === 0 ? "success" : failed === results.length ? "failure" : "partial";
+          setPublishResult({ results, severity });
         }
       } else {
         if (pickedChannelId) {
@@ -288,13 +298,12 @@ export function PublishModal({
             channelId: pickedChannelId,
             scheduledAt: scheduledFor,
           });
-          onDone(`${summarisePublish(results)} · Scheduled for ${new Date(scheduleAt).toLocaleString()}.`);
+          const failed = results.filter(isFailedStatus).length;
+          const severity = failed === 0 ? "success" : failed === results.length ? "failure" : "partial";
+          setPublishResult({ results, severity });
           return;
         }
         const platform = Array.from(picked)[0];
-        if (platform === "instagram") {
-          throw new Error("Scheduling to Instagram is coming next sprint.");
-        }
         const scheduledFor = new Date(scheduleAt).toISOString();
         await backend.scheduleOne(jwt, {
           projectSlug,
@@ -304,7 +313,7 @@ export function PublishModal({
           platform: platform as "youtube" | "tiktok" | "x",
           scheduledFor,
         });
-        onDone(`Scheduled for ${new Date(scheduleAt).toLocaleString()} on ${platformLabel(platform)}.`);
+        onDone(`Scheduled for ${new Date(scheduleAt).toLocaleString()} (${getTimezoneAbbr()}) on ${platformLabel(platform)}.`);
       }
     } catch (e) {
       if (e instanceof QuotaExceededError) setError(e.message);
@@ -453,6 +462,8 @@ export function PublishModal({
                   platform={p}
                   picked={picked.has(p)}
                   onPick={() => togglePick(p)}
+                  disabled={mode === "schedule-one" && p === "instagram"}
+                  disabledReason="Scheduling coming in v0.8"
                 />
               ))}
             </div>
@@ -468,26 +479,98 @@ export function PublishModal({
               onChange={(e) => setScheduleAt(e.target.value)}
               className="w-full rounded-lg border border-line bg-paper-warm/40 px-4 py-2.5 font-mono text-[13px] text-ink focus:border-fuchsia focus:outline-none"
             />
+            <p className="mt-1.5 font-mono text-[10px] text-text-tertiary">
+              Your local time · {getTimezoneAbbr()}
+            </p>
           </div>
         )}
 
         {error && <p className="font-mono text-[12px] text-[var(--color-danger)]">{error}</p>}
 
+        {publishResult && (
+          <div className="rounded-xl border border-line bg-paper-warm/40 p-4">
+            <div className={`flex items-center gap-2 font-sans text-[14px] font-medium ${
+              publishResult.severity === "success"
+                ? "text-green-400"
+                : publishResult.severity === "partial"
+                  ? "text-amber-400"
+                  : "text-[var(--color-danger)]"
+            }`}>
+              {publishResult.severity === "success" && (
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 13l4 4L19 7"/></svg>
+              )}
+              {publishResult.severity === "partial" && (
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 9v2m0 4h.01M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/></svg>
+              )}
+              {publishResult.severity === "failure" && (
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 18L18 6M6 6l12 12"/></svg>
+              )}
+              {publishResult.severity === "success" && "All posted"}
+              {publishResult.severity === "partial" && `${publishResult.results.filter(isFailedStatus).length} of ${publishResult.results.length} failed`}
+              {publishResult.severity === "failure" && "All failed"}
+            </div>
+            <div className="mt-2 flex flex-col gap-1">
+              {publishResult.results.map((r) => {
+                const failed = isFailedStatus(r);
+                const pid = r.platform as ConnectionPlatform;
+                const isKnownIcon = pid === "x" || pid === "youtube" || pid === "tiktok" || pid === "instagram";
+                return (
+                  <div key={r.platform} className={`flex items-center gap-2 font-mono text-[11px] ${failed ? "text-[var(--color-danger)]" : "text-green-400"}`}>
+                    {isKnownIcon ? (
+                      <PlatformIcon id={pid} className="h-3.5 w-3.5" />
+                    ) : (
+                      <Globe className="h-3.5 w-3.5" />
+                    )}
+                    <span>{summariseOne(r)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="mt-2 flex items-center justify-end gap-3">
-          <button
-            onClick={onClose}
-            disabled={busy}
-            className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => void submit()}
-            disabled={busy || !hasTargetSelection || !videoPath}
-            className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50"
-          >
-            {busy ? (mode === "publish-now" ? "Publishing…" : "Scheduling…") : cta}
-          </button>
+          {publishResult ? (
+            <>
+              <button
+                onClick={() => {
+                  if (publishResult) {
+                    onDone(summarisePublish(publishResult.results));
+                  } else {
+                    onClose();
+                  }
+                }}
+                className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia"
+              >
+                Close
+              </button>
+              {publishResult.severity === "failure" && (
+                <button
+                  onClick={() => setPublishResult(null)}
+                  className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+                >
+                  Retry
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <button
+                onClick={onClose}
+                disabled={busy}
+                className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void submit()}
+                disabled={busy || !hasTargetSelection || !videoPath}
+                className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50"
+              >
+                {busy ? (mode === "publish-now" ? "Publishing…" : "Scheduling…") : cta}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -500,31 +583,42 @@ function PlatformTile({
   platform,
   picked,
   onPick,
+  disabled,
+  disabledReason,
 }: {
   platform: string;
   picked: boolean;
   onPick: () => void;
+  disabled?: boolean;
+  disabledReason?: string;
 }) {
   const known = platform as ConnectionPlatform;
   const label = ALL_PLATFORM_LABELS[known]?.label ?? platformLabel(platform);
   const oneLine = ALL_PLATFORM_LABELS[known]?.oneLine ?? "Connected via Ayrshare.";
-  const iconId = (platform === "x" || platform === "youtube" || platform === "tiktok" || platform === "instagram")
-    ? platform : "instagram"; // fallback icon for unknown platforms
+  const isKnown = platform === "x" || platform === "youtube" || platform === "tiktok" || platform === "instagram";
+  const iconId = isKnown ? platform : null;
   return (
     <button
-      onClick={onPick}
-      title={`Picked = ${picked ? "yes" : "no"}. ${oneLine}`}
+      onClick={disabled ? undefined : onPick}
+      title={disabled ? disabledReason : `Picked = ${picked ? "yes" : "no"}. ${oneLine}`}
       aria-pressed={picked}
+      disabled={disabled}
       className={`group flex flex-col items-center justify-center gap-1.5 rounded-xl border px-3 py-4 transition-all ${
-        picked
-          ? "border-fuchsia bg-fuchsia text-white shadow-[0_8px_24px_rgba(255,26,140,0.25)]"
-          : "border-line bg-paper text-ink hover:border-fuchsia"
+        disabled
+          ? "border-line/40 bg-paper/60 text-text-tertiary cursor-not-allowed"
+          : picked
+            ? "border-fuchsia bg-fuchsia text-white shadow-[0_8px_24px_rgba(255,26,140,0.25)]"
+            : "border-line bg-paper text-ink hover:border-fuchsia"
       }`}
     >
-      <PlatformIcon id={iconId as "youtube" | "tiktok" | "instagram" | "x"} className="h-7 w-7" />
+      {iconId ? (
+        <PlatformIcon id={iconId as "youtube" | "tiktok" | "instagram" | "x"} className="h-7 w-7" />
+      ) : (
+        <Globe className="h-7 w-7" />
+      )}
       <span className="font-sans text-[12px] font-medium leading-none">{label}</span>
-      <span className={`font-mono text-[10px] uppercase leading-none tracking-[0.08em] ${picked ? "text-white/80" : "text-text-secondary"}`}>
-        {picked ? "selected" : "tap to pick"}
+      <span className={`font-mono text-[10px] uppercase leading-none tracking-[0.08em] ${picked ? "text-white/80" : disabled ? "text-text-tertiary" : "text-text-secondary"}`}>
+        {disabled ? "unavailable" : picked ? "selected" : "tap to pick"}
       </span>
     </button>
   );
@@ -674,4 +768,14 @@ function summarisePublish(results: PublishedResult[]): string {
 function toLocalDatetimeInput(d: Date): string {
   const pad = (n: number) => n.toString().padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function getTimezoneAbbr(): string {
+  try {
+    return Intl.DateTimeFormat(undefined, { timeZoneName: "short" })
+      .formatToParts(new Date())
+      .find((p) => p.type === "timeZoneName")?.value ?? "";
+  } catch {
+    return "";
+  }
 }

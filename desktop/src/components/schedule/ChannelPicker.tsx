@@ -319,7 +319,11 @@ function ChannelPickRow({
           ? "border-fuchsia bg-fuchsia/[0.05]"
           : "border-line/60 bg-transparent hover:border-line"
       } ${disabled ? "opacity-60" : ""}`}
-      title={meta.microcopy ?? channel.handle ?? channel.label}
+      title={
+        channel.status === "error"
+          ? "Reconnect in Settings → Channels"
+          : meta.microcopy ?? channel.handle ?? channel.label
+      }
     >
       {/* status dot */}
       <span
