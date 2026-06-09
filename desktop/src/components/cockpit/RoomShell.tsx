@@ -29,7 +29,7 @@ export function RoomShell({
   return (
     <motion.div
       key={roomKey}
-      className={`cockpit-room-wrap flex w-full ${
+      className={`cockpit-room-wrap flex h-full w-full ${
         align === "top" ? "items-start" : "items-center"
       } justify-center`}
       initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.96, filter: "blur(8px)" }}

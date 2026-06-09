@@ -19,7 +19,7 @@
 // the div itself stays empty so the layout grid still has something to
 // flex against.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   closeEarnPanel,
   onEarnPanelMessage,
@@ -68,23 +68,35 @@ type Props = {
 
 export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [panelReady, setPanelReady] = useState(false);
 
   // Open + close the native webview alongside the React mount. Re-open
   // hits the same Rust singleton — calling openEarnPanel twice is a no-op
   // beyond surfacing the existing webview.
   useEffect(() => {
     let cancelled = false;
-    void openEarnPanel().catch((e) => {
-      console.error("[earn-panel] open failed:", e);
-    });
+    let resizeRetryId = 0;
+
+    async function boot() {
+      try {
+        await openEarnPanel();
+        if (cancelled) return;
+        setPanelReady(true);
+      } catch (e) {
+        console.error("[earn-panel] open failed:", e);
+        // Retry open on a short delay — the main window may still be
+        // initialising when the Earn tab mounts on cold boot.
+        resizeRetryId = window.setTimeout(boot, 500);
+      }
+    }
+    void boot();
+
     return () => {
       cancelled = true;
+      if (resizeRetryId !== 0) window.clearTimeout(resizeRetryId);
       void closeEarnPanel().catch((e) => {
         console.error("[earn-panel] close failed:", e);
       });
-      // Touch `cancelled` so TS doesn't complain if the destructor ever
-      // grows an async branch that needs to bail early.
-      void cancelled;
     };
   }, []);
 
@@ -98,6 +110,11 @@ export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
   // which is a JSON-serialised IPC roundtrip to Rust. Dropping that into
   // an rAF cap means at most one IPC per animation frame, and the user
   // never sees more than one paint-pair of misalignment during a drag.
+  //
+  // v0.7.40 hotfix — the resize effect now waits for `panelReady` before
+  // its first push. This stops the webview from being left at fallback
+  // bounds (or 0x0 if the container collapsed) when open_earn_panel is
+  // slower than the ResizeObserver's first fire.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -124,9 +141,6 @@ export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
           w: Math.round(r.width),
           h: Math.round(r.height),
         }).catch((e) => {
-          // Resize before the webview attaches is expected on first mount;
-          // Rust returns Ok with no-op in that case. Anything else means
-          // we mis-wired the bridge.
           console.warn("[earn-panel] resize failed:", e);
         });
       });
@@ -150,7 +164,7 @@ export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
       }
       scheduled = false;
     };
-  }, []);
+  }, [panelReady]);
 
   // Bridge messages — keep the latest callbacks in a ref so the listener
   // doesn't have to detach + re-attach when props change.
@@ -265,8 +279,18 @@ export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
   }, []);
 
   // The div is purely a layout reservation — the native webview floats
-  // on top of it in window coordinates. We leave it transparent so the
-  // cockpit room's background shows through during the brief window
-  // before the webview's first paint lands.
-  return <div ref={containerRef} className="h-full w-full" aria-hidden />;
+  // on top of it in window coordinates. A loading state renders underneath
+  // so the tab never looks blank while Rust is still attaching the webview
+  // or the hosted page is fetching its first paint.
+  return (
+    <div ref={containerRef} className="relative h-full w-full" aria-hidden>
+      {!panelReady && (
+        <div className="absolute inset-0 grid place-items-center bg-paper">
+          <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+            Loading Earn…
+          </p>
+        </div>
+      )}
+    </div>
+  );
 }
