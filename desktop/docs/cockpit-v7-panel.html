@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Liquid Clips, Cockpit v7</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --black:#000;
+    --line:rgba(255,255,255,.07);
+    --line-2:rgba(255,255,255,.13);
+    --paper:#f0f0f3;
+    --muted:#9095a8;
+    --dim:#5b6076;
+    --fuchsia:#ff2d95;
+    --fuchsia-2:#ff6bb4;
+    --fuchsia-deep:#c8126c;
+    --cyan:#2fe9d4;
+    --red:#ff5563;
+    --ok:#41e0a3;
+    --warn:#ffb02e;
+    --sans:'Familjen Grotesk',system-ui,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--black); color:var(--paper); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased; min-height:100vh; padding:32px 24px 60px;
+  }
+  h1{font-size:18px;font-weight:600;letter-spacing:-.01em}
+  .lede{color:var(--muted);font-size:12px;margin-top:6px;max-width:780px;line-height:1.55}
+  .sec{margin-top:48px;max-width:1280px;margin-left:auto;margin-right:auto}
+  .sec-label{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.22em;color:var(--fuchsia);margin-bottom:14px}
+  .sec-note{color:var(--muted);font-size:11.5px;line-height:1.55;margin-bottom:18px;max-width:820px}
+
+  /* ───── cards strip (clean, no brackets, just text + V badge) ───── */
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+  .card{position:relative;padding:14px 16px;border:1px solid var(--line);border-radius:10px;cursor:pointer;transition:.15s;background:rgba(255,255,255,.012)}
+  .card:hover{border-color:var(--line-2)}
+  .card.focused{border-color:var(--fuchsia);box-shadow:0 0 0 1px var(--fuchsia),0 14px 34px -20px rgba(255,45,149,.6)}
+  .card .row{display:flex;align-items:baseline;gap:10px}
+  .card .clip-no{font-family:var(--mono);font-size:10px;color:var(--fuchsia);letter-spacing:.18em;font-weight:600;flex:none}
+  .card .v{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.06em;flex:none;margin-left:auto}
+  .card .v.mid{color:var(--warn)}
+  .card .v.low{color:var(--dim)}
+  .card .ctitle{margin-top:6px;font-size:14px;font-weight:600;line-height:1.32;letter-spacing:-.01em;color:var(--paper);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:36px}
+  .card .meta{margin-top:6px;font-family:var(--mono);font-size:9.5px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
+
+  /* per-card pending / error */
+  .card .cstrip{margin-top:9px;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;padding:6px 8px;display:flex;align-items:center;gap:7px;border-radius:4px}
+  .card .cstrip.bake{color:var(--cyan);border:1px solid rgba(47,233,212,.32);background:rgba(47,233,212,.05)}
+  .card .cstrip.bake .dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);animation:blink 1.1s infinite}
+  .card .cstrip.err{color:#ffabb3;border:1px solid rgba(255,85,99,.36);background:rgba(255,85,99,.05);justify-content:space-between}
+  .card .cstrip.err a{color:#ffd0d4;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.25);text-decoration:none}
+
+  /* ───── cockpit shell (dashed corner brackets only here) ───── */
+  .cockpit{position:relative;background:var(--black);border:1px solid var(--line)}
+  .cockpit::before,.cockpit::after,
+  .cockpit > .corners::before,.cockpit > .corners::after{
+    content:""; position:absolute; width:22px; height:22px; pointer-events:none;
+    border:1.5px dashed var(--fuchsia);
+    filter:drop-shadow(0 0 8px rgba(255,45,149,.55));
+  }
+  .cockpit::before{top:-1px;left:-1px;border-right:0;border-bottom:0}
+  .cockpit::after{top:-1px;right:-1px;border-left:0;border-bottom:0}
+  .cockpit > .corners::before{bottom:-1px;left:-1px;border-right:0;border-top:0}
+  .cockpit > .corners::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+
+  /* status strip (slim, four widgets) */
+  .status{display:flex;align-items:center;gap:14px;padding:12px 22px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase}
+  .clip-now{color:var(--fuchsia);font-weight:600}
+  .clip-now b{color:var(--fuchsia-2);font-weight:700;letter-spacing:.04em;margin-left:5px}
+  .focusnav{display:flex;align-items:center;gap:8px;color:var(--paper)}
+  .focusnav button{background:none;border:0;color:var(--muted);cursor:pointer;font-family:var(--mono);font-size:11px;padding:0 2px}
+  .focusnav button:hover{color:var(--paper)}
+  .focusnav b{font-weight:500;letter-spacing:.06em;color:var(--paper);min-width:46px;text-align:center}
+  .health{color:var(--dim);cursor:default;letter-spacing:.06em}
+  .health:hover{color:var(--paper)}
+  .health.warn{color:var(--warn)}
+  .sched-pill{margin-left:auto;color:var(--fuchsia-2);background:transparent;border:1px solid rgba(255,45,149,.32);padding:5px 11px;border-radius:4px;cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;transition:.15s}
+  .sched-pill:hover{background:rgba(255,45,149,.06)}
+  .sched-pill.pub{color:#ffd790;border-color:rgba(255,176,46,.4)}
+  .sched-pill b{color:var(--paper);font-weight:700;letter-spacing:.04em}
+  .kebab{background:none;border:0;color:var(--muted);cursor:pointer;font-size:14px;padding:0 4px}
+  .kebab:hover{color:var(--paper)}
+
+  /* body grid */
+  .body{display:grid;grid-template-columns:1fr 234px;gap:0}
+  .main{padding:20px 22px;display:flex;flex-direction:column;gap:14px;min-width:0}
+  .side{padding:20px 22px 20px 0;display:flex;flex-direction:column;gap:8px}
+
+  /* caption inline */
+  .caption{display:flex;align-items:center;gap:10px;padding:8px 0}
+  .caption .q{font-family:var(--mono);color:var(--fuchsia);font-size:18px;line-height:1;font-weight:500}
+  .caption .txt{flex:1;font-size:16px;line-height:1.35;font-weight:500;letter-spacing:-.01em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--paper)}
+  .caption .style{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9.5px;color:var(--fuchsia-2);background:rgba(255,45,149,.08);border:1px solid rgba(255,45,149,.28);padding:3px 7px;border-radius:3px;letter-spacing:.12em;text-transform:uppercase;flex:none}
+  .caption .style .swatch{width:8px;height:8px;border-radius:2px;background:conic-gradient(from 210deg,var(--fuchsia),#ff8a3d,var(--cyan),var(--fuchsia))}
+  .caption .edit{font-family:var(--mono);font-size:9.5px;color:var(--muted);background:none;border:1px solid var(--line-2);border-radius:4px;padding:4px 9px;cursor:pointer;letter-spacing:.1em;text-transform:uppercase;flex:none}
+  .caption .edit:hover{color:var(--paper);border-color:rgba(255,255,255,.22)}
+
+  /* reaction tiles (the panel's main job) */
+  .tiles{display:grid;grid-template-columns:repeat(8,1fr);gap:7px;transition:.25s}
+  .tiles.dim{opacity:.4;pointer-events:none}
+  .tile{position:relative;border:1px solid var(--line-2);background:transparent;border-radius:7px;padding:8px 5px 7px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:.16s}
+  .tile:hover{border-color:rgba(255,45,149,.4);transform:translateY(-2px)}
+  .tile.sel{border-color:var(--fuchsia);background:rgba(255,45,149,.06);box-shadow:0 0 0 1px var(--fuchsia),0 8px 22px -12px rgba(255,45,149,.6)}
+  .tile .lab{font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--muted);text-align:center;line-height:1;text-transform:uppercase}
+  .tile.sel .lab{color:var(--fuchsia-2)}
+  .tile.more{justify-content:center;color:var(--muted)}
+  .tile.more .plus{font-size:16px;line-height:1}
+  /* mini diagrams */
+  .dg{width:30px;height:38px;border-radius:4px;border:1px solid rgba(255,255,255,.18);position:relative;overflow:hidden;background:rgba(255,255,255,.02)}
+  .dg .m{position:absolute;background:rgba(255,255,255,.15)}
+  .dg .rx{position:absolute;background:var(--fuchsia)}
+  .tile.sel .dg .rx{box-shadow:0 0 8px var(--fuchsia)}
+  .dg.full .rx{inset:0}
+  .dg.below .m{left:0;right:0;top:0;height:50%} .dg.below .rx{left:0;right:0;bottom:0;height:50%}
+  .dg.above .rx{left:0;right:0;top:0;height:50%} .dg.above .m{left:0;right:0;bottom:0;height:50%}
+  .dg.sleft .rx{left:0;top:0;bottom:0;width:50%} .dg.sleft .m{right:0;top:0;bottom:0;width:50%}
+  .dg.sright .m{left:0;top:0;bottom:0;width:50%} .dg.sright .rx{right:0;top:0;bottom:0;width:50%}
+  .dg.pipr .m{inset:0} .dg.pipr .rx{right:3px;bottom:3px;width:10px;height:13px;border-radius:2px}
+  .dg.pipl .m{inset:0} .dg.pipl .rx{left:3px;bottom:3px;width:10px;height:13px;border-radius:2px}
+
+  /* secondary row */
+  .srow{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase}
+  .srow.dim{opacity:.45;pointer-events:none}
+  .srow .label{color:var(--dim);flex:none}
+  .source{display:flex;align-items:center;gap:8px;color:var(--muted);flex:1;min-width:0;max-width:420px}
+  .source .ic{width:14px;height:14px;border-radius:3px;background:linear-gradient(135deg,var(--fuchsia),var(--fuchsia-deep));flex:none}
+  .source .fn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;letter-spacing:.04em;text-transform:none;flex:1;min-width:0}
+  .source .ch{color:var(--cyan);border:1px solid rgba(47,233,212,.32);padding:3px 8px;border-radius:3px;cursor:pointer;flex:none;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;background:none}
+  .source .ch:hover{background:rgba(47,233,212,.06)}
+  .adv-toggle{color:var(--muted);background:transparent;border:1px dashed rgba(255,255,255,.18);border-radius:4px;padding:5px 10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;margin-left:auto}
+  .adv-toggle:hover{color:var(--paper);border-color:rgba(255,255,255,.32)}
+  .adv-toggle .arrow{transition:.15s;font-size:9px}
+  .adv-toggle.open .arrow{transform:rotate(90deg)}
+  .adv-panel{display:none;align-items:center;gap:12px;width:100%;padding:6px 0 0;border-top:1px solid var(--line);margin-top:8px}
+  .adv-panel.open{display:flex}
+  .adv-wrap{display:flex;flex-direction:column;gap:0;width:100%}
+  .audio{display:flex;border:1px solid var(--line-2);border-radius:4px;overflow:hidden}
+  .audio button{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;padding:5px 11px;background:transparent;color:var(--muted);border:0;border-left:1px solid var(--line-2);cursor:pointer}
+  .audio button:first-child{border-left:0}
+  .audio button[aria-pressed="true"]{background:rgba(255,45,149,.10);color:var(--fuchsia-2)}
+  .offset{display:flex;align-items:center;gap:8px;color:var(--dim);flex:1;min-width:0}
+  .offset input[type=range]{flex:1;accent-color:var(--fuchsia);max-width:200px}
+  .offset b{color:var(--fuchsia-2);font-weight:600;letter-spacing:.06em;font-family:var(--mono)}
+
+  /* side column (primary action) */
+  .cta{font-family:var(--sans);font-weight:600;font-size:14px;letter-spacing:.005em;color:#190007;background:linear-gradient(180deg,var(--fuchsia-2),var(--fuchsia));border:0;border-radius:8px;padding:14px 16px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:.18s;box-shadow:0 12px 30px -12px rgba(255,45,149,.7),inset 0 1px 0 rgba(255,255,255,.34);width:100%}
+  .cta:hover{transform:translateY(-1px);box-shadow:0 18px 36px -12px rgba(255,45,149,.85),inset 0 1px 0 rgba(255,255,255,.4)}
+  .cta:disabled{background:rgba(255,255,255,.05);color:var(--dim);box-shadow:none;cursor:not-allowed;transform:none}
+  .cta.pub{background:linear-gradient(180deg,#ffd34d,#ffab2e);color:#241500;box-shadow:0 12px 30px -12px rgba(255,176,46,.7),inset 0 1px 0 rgba(255,255,255,.4)}
+  .cta-sub{font-family:var(--mono);font-size:9.5px;color:var(--dim);letter-spacing:.16em;text-transform:uppercase;text-align:center;margin-top:2px}
+  .cta-sub b{color:var(--fuchsia-2);font-weight:600}
+  .alt{font-family:var(--mono);font-size:10px;color:var(--muted);background:transparent;border:1px solid var(--line-2);border-radius:6px;padding:9px 12px;cursor:pointer;letter-spacing:.12em;text-transform:uppercase;width:100%;display:flex;align-items:center;justify-content:space-between;margin-top:6px}
+  .alt:hover{color:var(--paper);border-color:rgba(255,255,255,.22)}
+  .alt .count{color:var(--fuchsia-2);background:rgba(255,45,149,.10);border:1px solid rgba(255,45,149,.28);padding:1px 6px;border-radius:999px;font-size:9.5px;font-weight:600;letter-spacing:.02em}
+
+  /* bake / error strips replace the srow when active */
+  .strip{padding:10px 22px;display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;border-top:1px solid}
+  .strip.bake{position:relative;overflow:hidden;background:rgba(47,233,212,.06);border-color:rgba(47,233,212,.28);color:var(--cyan)}
+  .strip.bake::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent,rgba(47,233,212,.16),transparent);transform:translateX(-100%);animation:sweep 1.5s linear infinite}
+  .strip.bake .dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px var(--cyan);animation:blink 1.1s infinite;z-index:1}
+  .strip.bake .t{z-index:1}
+  .strip.bake .can{margin-left:auto;z-index:1;color:var(--cyan);cursor:pointer;border:1px solid rgba(47,233,212,.4);padding:4px 10px;border-radius:3px;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;background:none}
+  .strip.err{background:rgba(255,85,99,.06);border-color:rgba(255,85,99,.3);color:#ffabb3}
+  .strip.err .x{color:var(--red);font-weight:700}
+  .strip.err .rt{margin-left:auto;color:#ffd2d6;cursor:pointer;border:1px solid rgba(255,85,99,.4);padding:4px 10px;border-radius:3px;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;background:none}
+
+  /* budget */
+  .budget{margin-top:48px;padding:18px 22px;border:1px dashed rgba(255,45,149,.22);border-radius:6px;max-width:1280px;margin-left:auto;margin-right:auto}
+  .budget h2{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--fuchsia);margin-bottom:10px}
+  .budget ul{color:var(--muted);font-size:11.5px;line-height:1.75;padding-left:18px}
+  .budget ul strong{color:var(--paper)}
+  .budget ul code{font-family:var(--mono);font-size:10.5px;color:var(--fuchsia-2);background:rgba(255,45,149,.07);padding:1px 5px;border-radius:3px}
+
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+  @keyframes sweep{to{transform:translateX(100%)}}
+</style>
+</head>
+<body>
+
+<div style="max-width:1280px;margin:0 auto">
+  <h1>Cockpit v7, distilled</h1>
+  <p class="lede">Impeccable critique applied. Tile chrome cut on Caption, Schedule, Publish. Only Reaction earns the panel center; only Publish earns a hero button. Dashed corner brackets live on the outer panel shell, nowhere else. Font: Familjen Grotesk + JetBrains Mono. Five states: Resting, Advanced, No layout, Baking, Failed.</p>
+</div>
+
+<!-- ===================================================================== -->
+<section class="sec">
+  <div class="sec-label">RESTING · clip 01 · stack below · scheduled for +1h</div>
+
+  <div class="cards">
+    <div class="card focused">
+      <div class="row">
+        <span class="clip-no">CLIP 01</span>
+        <span class="v">V70</span>
+      </div>
+      <div class="ctitle">She finally found a non-sticky gloss</div>
+      <div class="meta">0:10 · IMPORTED</div>
+    </div>
+    <div class="card">
+      <div class="row">
+        <span class="clip-no" style="color:var(--warn)">CLIP 02</span>
+        <span class="v mid">V62</span>
+      </div>
+      <div class="ctitle">After two years, still my morning go-to</div>
+      <div class="meta">0:10 · IMPORTED</div>
+    </div>
+    <div class="card">
+      <div class="row">
+        <span class="clip-no" style="color:var(--dim)">CLIP 03</span>
+        <span class="v low">V55</span>
+      </div>
+      <div class="ctitle">Day 5 of testing, verdict in</div>
+      <div class="meta">0:10 · IMPORTED</div>
+    </div>
+  </div>
+
+  <div class="cockpit">
+    <span class="corners"></span>
+    <div class="status">
+      <span class="clip-now">CLIP <b>01</b></span>
+      <div class="focusnav"><button>◀</button><b>01 / 03</b><button>▶</button></div>
+      <span class="health">ⓘ all live</span>
+      <button class="sched-pill">↗ <b>+1h</b> · 14:30</button>
+      <button class="kebab">⋮</button>
+    </div>
+
+    <div class="body">
+      <div class="main">
+        <div class="caption">
+          <span class="q">"</span>
+          <div class="txt">she finally found a non-sticky gloss</div>
+          <span class="style"><span class="swatch"></span>BURN</span>
+          <button class="edit">Edit</button>
+        </div>
+
+        <div class="tiles">
+          <button class="tile"><div class="dg full"><div class="rx"></div></div><span class="lab">Full</span></button>
+          <button class="tile sel"><div class="dg below"><div class="m"></div><div class="rx"></div></div><span class="lab">Below</span></button>
+          <button class="tile"><div class="dg above"><div class="m"></div><div class="rx"></div></div><span class="lab">Above</span></button>
+          <button class="tile"><div class="dg sleft"><div class="m"></div><div class="rx"></div></div><span class="lab">S·left</span></button>
+          <button class="tile"><div class="dg sright"><div class="m"></div><div class="rx"></div></div><span class="lab">S·right</span></button>
+          <button class="tile"><div class="dg pipr"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·R</span></button>
+          <button class="tile"><div class="dg pipl"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·L</span></button>
+          <button class="tile more"><span class="plus">＋</span><span class="lab">More</span></button>
+        </div>
+
+        <div class="srow">
+          <span class="label">Source</span>
+          <div class="source">
+            <span class="ic"></span>
+            <span class="fn">giphy-6us0tg…looking-english.mp4</span>
+            <button class="ch">Change</button>
+          </div>
+          <button class="adv-toggle"><span class="arrow">▶</span>Advanced</button>
+        </div>
+      </div>
+
+      <div class="side">
+        <button class="cta"><span>↗</span>Schedule +1h</button>
+        <div class="cta-sub">deploy to <b>3 channels</b></div>
+        <button class="alt"><span>Routes</span><span class="count">3</span></button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section class="sec">
+  <div class="sec-label">ADVANCED OPEN · audio and offset surfaced</div>
+
+  <div class="cockpit">
+    <span class="corners"></span>
+    <div class="status">
+      <span class="clip-now">CLIP <b>01</b></span>
+      <div class="focusnav"><button>◀</button><b>01 / 03</b><button>▶</button></div>
+      <span class="health">ⓘ all live</span>
+      <button class="sched-pill">↗ <b>+1h</b> · 14:30</button>
+      <button class="kebab">⋮</button>
+    </div>
+
+    <div class="body">
+      <div class="main">
+        <div class="caption">
+          <span class="q">"</span>
+          <div class="txt">she finally found a non-sticky gloss</div>
+          <span class="style"><span class="swatch"></span>BURN</span>
+          <button class="edit">Edit</button>
+        </div>
+
+        <div class="tiles">
+          <button class="tile"><div class="dg full"><div class="rx"></div></div><span class="lab">Full</span></button>
+          <button class="tile sel"><div class="dg below"><div class="m"></div><div class="rx"></div></div><span class="lab">Below</span></button>
+          <button class="tile"><div class="dg above"><div class="m"></div><div class="rx"></div></div><span class="lab">Above</span></button>
+          <button class="tile"><div class="dg sleft"><div class="m"></div><div class="rx"></div></div><span class="lab">S·left</span></button>
+          <button class="tile"><div class="dg sright"><div class="m"></div><div class="rx"></div></div><span class="lab">S·right</span></button>
+          <button class="tile"><div class="dg pipr"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·R</span></button>
+          <button class="tile"><div class="dg pipl"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·L</span></button>
+          <button class="tile more"><span class="plus">＋</span><span class="lab">More</span></button>
+        </div>
+
+        <div class="adv-wrap">
+          <div class="srow">
+            <span class="label">Source</span>
+            <div class="source">
+              <span class="ic"></span>
+              <span class="fn">giphy-6us0tg…looking-english.mp4</span>
+              <button class="ch">Change</button>
+            </div>
+            <button class="adv-toggle open"><span class="arrow">▶</span>Advanced</button>
+          </div>
+          <div class="adv-panel open">
+            <div class="audio">
+              <button aria-pressed="true">Main</button>
+              <button aria-pressed="false">RX</button>
+              <button aria-pressed="false">Mute</button>
+            </div>
+            <div class="offset">
+              <span>Start</span>
+              <input type="range" min="0" max="60" step="0.5" value="0" />
+              <b>0.0s</b>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="side">
+        <button class="cta"><span>↗</span>Schedule +1h</button>
+        <div class="cta-sub">deploy to <b>3 channels</b></div>
+        <button class="alt"><span>Routes</span><span class="count">3</span></button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section class="sec">
+  <div class="sec-label">NO LAYOUT YET · publish-as-full available</div>
+
+  <div class="cockpit">
+    <span class="corners"></span>
+    <div class="status">
+      <span class="clip-now">CLIP <b>03</b></span>
+      <div class="focusnav"><button>◀</button><b>03 / 03</b><button>▶</button></div>
+      <span class="health">ⓘ all live</span>
+      <button class="sched-pill pub">⚡ <b>Now</b></button>
+      <button class="kebab">⋮</button>
+    </div>
+
+    <div class="body">
+      <div class="main">
+        <div class="caption">
+          <span class="q">"</span>
+          <div class="txt">day 5 of testing, verdict in</div>
+          <span class="style"><span class="swatch"></span>BURN</span>
+          <button class="edit">Edit</button>
+        </div>
+
+        <div class="tiles">
+          <button class="tile"><div class="dg full"><div class="rx"></div></div><span class="lab">Full</span></button>
+          <button class="tile"><div class="dg below"><div class="m"></div><div class="rx"></div></div><span class="lab">Below</span></button>
+          <button class="tile"><div class="dg above"><div class="m"></div><div class="rx"></div></div><span class="lab">Above</span></button>
+          <button class="tile"><div class="dg sleft"><div class="m"></div><div class="rx"></div></div><span class="lab">S·left</span></button>
+          <button class="tile"><div class="dg sright"><div class="m"></div><div class="rx"></div></div><span class="lab">S·right</span></button>
+          <button class="tile"><div class="dg pipr"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·R</span></button>
+          <button class="tile"><div class="dg pipl"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·L</span></button>
+          <button class="tile more"><span class="plus">＋</span><span class="lab">More</span></button>
+        </div>
+
+        <div class="srow">
+          <span class="label">Reaction</span>
+          <span style="color:var(--dim);font-size:10.5px;letter-spacing:.06em;text-transform:none">Pick a layout above, or publish as a full clip.</span>
+        </div>
+      </div>
+
+      <div class="side">
+        <button class="cta pub"><span>⚡</span>Publish now</button>
+        <div class="cta-sub">deploy to <b>3 channels</b></div>
+        <button class="alt"><span>Routes</span><span class="count">3</span></button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section class="sec">
+  <div class="sec-label">BAKING · pending strip, primary controls dim</div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="row"><span class="clip-no">CLIP 01</span><span class="v">V70</span></div>
+      <div class="ctitle">She finally found a non-sticky gloss</div>
+      <div class="meta">0:10 · IMPORTED</div>
+    </div>
+    <div class="card focused">
+      <div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 02</span><span class="v mid">V62</span></div>
+      <div class="ctitle">After two years, still my morning go-to</div>
+      <div class="meta">0:10 · IMPORTED</div>
+      <div class="cstrip bake"><span class="dot"></span>Baking stack below</div>
+    </div>
+    <div class="card">
+      <div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 03</span><span class="v low">V55</span></div>
+      <div class="ctitle">Day 5 of testing, verdict in</div>
+      <div class="meta">0:10 · IMPORTED</div>
+    </div>
+  </div>
+
+  <div class="cockpit">
+    <span class="corners"></span>
+    <div class="status">
+      <span class="clip-now">CLIP <b>02</b></span>
+      <div class="focusnav"><button>◀</button><b>02 / 03</b><button>▶</button></div>
+      <span class="health">ⓘ all live</span>
+      <button class="sched-pill" style="opacity:.5">↗ <b>+1h</b> · 14:30</button>
+      <button class="kebab">⋮</button>
+    </div>
+
+    <div class="body">
+      <div class="main">
+        <div class="caption" style="opacity:.45;pointer-events:none">
+          <span class="q">"</span>
+          <div class="txt">after two years, still my morning go-to</div>
+          <span class="style"><span class="swatch"></span>BURN</span>
+          <button class="edit">Edit</button>
+        </div>
+
+        <div class="tiles dim">
+          <button class="tile"><div class="dg full"><div class="rx"></div></div><span class="lab">Full</span></button>
+          <button class="tile sel"><div class="dg below"><div class="m"></div><div class="rx"></div></div><span class="lab">Below</span></button>
+          <button class="tile"><div class="dg above"><div class="m"></div><div class="rx"></div></div><span class="lab">Above</span></button>
+          <button class="tile"><div class="dg sleft"><div class="m"></div><div class="rx"></div></div><span class="lab">S·left</span></button>
+          <button class="tile"><div class="dg sright"><div class="m"></div><div class="rx"></div></div><span class="lab">S·right</span></button>
+          <button class="tile"><div class="dg pipr"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·R</span></button>
+          <button class="tile"><div class="dg pipl"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·L</span></button>
+          <button class="tile more"><span class="plus">＋</span><span class="lab">More</span></button>
+        </div>
+      </div>
+
+      <div class="side">
+        <button class="cta" disabled><span>↗</span>Schedule +1h</button>
+        <div class="cta-sub" style="opacity:.5">deploy to <b>3 channels</b></div>
+        <button class="alt" disabled><span>Routes</span><span class="count">3</span></button>
+      </div>
+    </div>
+
+    <div class="strip bake">
+      <span class="dot"></span>
+      <span class="t">Baking reaction · <b>0:08 elapsed</b></span>
+      <button class="can">Cancel ↑</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section class="sec">
+  <div class="sec-label">FAILED · error strip, tiles re-enabled</div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="row"><span class="clip-no">CLIP 01</span><span class="v">V70</span></div>
+      <div class="ctitle">She finally found a non-sticky gloss</div>
+      <div class="meta">0:10 · IMPORTED</div>
+    </div>
+    <div class="card">
+      <div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 02</span><span class="v mid">V62</span></div>
+      <div class="ctitle">After two years, still my morning go-to</div>
+      <div class="meta">0:10 · IMPORTED</div>
+    </div>
+    <div class="card focused">
+      <div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 03</span><span class="v low">V55</span></div>
+      <div class="ctitle">Day 5 of testing, verdict in</div>
+      <div class="meta">0:10 · IMPORTED</div>
+      <div class="cstrip err"><span>✕ Bake failed</span><a>Retry</a></div>
+    </div>
+  </div>
+
+  <div class="cockpit">
+    <span class="corners"></span>
+    <div class="status">
+      <span class="clip-now">CLIP <b>03</b></span>
+      <div class="focusnav"><button>◀</button><b>03 / 03</b><button>▶</button></div>
+      <span class="health warn">ⓘ ayrshare paused</span>
+      <button class="sched-pill pub">⚡ <b>Now</b></button>
+      <button class="kebab">⋮</button>
+    </div>
+
+    <div class="body">
+      <div class="main">
+        <div class="caption">
+          <span class="q">"</span>
+          <div class="txt">day 5 of testing, verdict in</div>
+          <span class="style"><span class="swatch"></span>BURN</span>
+          <button class="edit">Edit</button>
+        </div>
+
+        <div class="tiles">
+          <button class="tile"><div class="dg full"><div class="rx"></div></div><span class="lab">Full</span></button>
+          <button class="tile"><div class="dg below"><div class="m"></div><div class="rx"></div></div><span class="lab">Below</span></button>
+          <button class="tile"><div class="dg above"><div class="m"></div><div class="rx"></div></div><span class="lab">Above</span></button>
+          <button class="tile"><div class="dg sleft"><div class="m"></div><div class="rx"></div></div><span class="lab">S·left</span></button>
+          <button class="tile"><div class="dg sright"><div class="m"></div><div class="rx"></div></div><span class="lab">S·right</span></button>
+          <button class="tile"><div class="dg pipr"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·R</span></button>
+          <button class="tile"><div class="dg pipl"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·L</span></button>
+          <button class="tile more"><span class="plus">＋</span><span class="lab">More</span></button>
+        </div>
+      </div>
+
+      <div class="side">
+        <button class="cta pub"><span>⚡</span>Publish now</button>
+        <div class="cta-sub">deploy to <b>3 channels</b></div>
+        <button class="alt"><span>Routes</span><span class="count">3</span></button>
+      </div>
+    </div>
+
+    <div class="strip err">
+      <span class="x">✕</span>
+      <span>Bake failed, ffmpeg: invalid source frame at t=4.2s</span>
+      <button class="rt">Retry</button>
+    </div>
+  </div>
+</section>
+
+<div class="budget">
+  <h2>What got cut from v6</h2>
+  <ul>
+    <li>Tile chrome (dashed corners, halo icons, lowercase headlines, mono sublabels) on Caption, Schedule, Publish. Only Reaction tiles and the Publish CTA earn weight.</li>
+    <li><code>caption</code> · <code>reaction</code> · <code>schedule</code> · <code>publish</code> tile headlines removed. Content speaks for itself.</li>
+    <li>V70 vanity pill removed from the status strip. V score lives on the card only.</li>
+    <li>Counter group (<code>RDY 3 · QUE 0 · PUB —</code>) hidden in the ⋮ menu.</li>
+    <li>Inter font dropped, Familjen Grotesk takes over headlines.</li>
+    <li>12 em-dashes in prose replaced with commas / colons / periods.</li>
+    <li>Numbered VARIANT 01-05 labels replaced with state names.</li>
+    <li>Card bracket-corners dropped. Cards are quiet text rows; the panel owns the brackets.</li>
+  </ul>
+
+  <h2 style="margin-top:18px">Scan-units at rest</h2>
+  <ul>
+    <li>Status strip: 4 (clip · focusnav · ⓘ · schedule pill, plus ⋮)</li>
+    <li>Caption row: 1 (the line with edit button)</li>
+    <li>Reaction tile grid: 1 (the 8 tiles read as one cluster)</li>
+    <li>Secondary row: 1 (source pill, Advanced toggle)</li>
+    <li>Side column: 1 (CTA + Routes)</li>
+    <li><strong>Total: 8 scan groups.</strong> Within the budget for a working control surface, down from v6's 12.</li>
+  </ul>
+
+  <h2 style="margin-top:18px">What stayed</h2>
+  <ul>
+    <li>Dashed corner brackets on the outer panel shell (still the identity)</li>
+    <li>Mini-diagram reaction tiles (recognition-over-recall)</li>
+    <li>Pending sweep + cancel pattern, error + retry pattern</li>
+    <li>Card-level bake / fail strips mirror the panel's vocabulary</li>
+    <li>Focused-card glow ring</li>
+  </ul>
+</div>
+
+</body>
+</html>

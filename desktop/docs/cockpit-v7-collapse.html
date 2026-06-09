@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Cockpit v7, collapse + clip window</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --black:#000;
+    --line:rgba(255,255,255,.07);
+    --line-2:rgba(255,255,255,.13);
+    --paper:#f0f0f3;
+    --muted:#9095a8;
+    --dim:#5b6076;
+    --fuchsia:#ff2d95;
+    --fuchsia-2:#ff6bb4;
+    --fuchsia-deep:#c8126c;
+    --cyan:#2fe9d4;
+    --red:#ff5563;
+    --ok:#41e0a3;
+    --warn:#ffb02e;
+    --sans:'Familjen Grotesk',system-ui,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0a0a0c;color:var(--paper);font-family:var(--sans);min-height:100vh;padding:24px;-webkit-font-smoothing:antialiased}
+  .page-h{max-width:1280px;margin:0 auto 24px}
+  .page-h h1{font-size:18px;font-weight:600;letter-spacing:-.01em}
+  .page-h p{color:var(--muted);font-size:12px;margin-top:6px;line-height:1.55;max-width:780px}
+  .sec-label{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.22em;color:var(--fuchsia);margin:32px auto 8px;max-width:1280px}
+  .sec-note{color:var(--muted);font-size:11.5px;line-height:1.55;max-width:820px;margin:0 auto 12px;display:block}
+
+  .viewport{position:relative;margin:0 auto;background:var(--black);border:1px solid #2a2a36;border-radius:12px;overflow:hidden;box-shadow:0 30px 60px -20px rgba(0,0,0,.7);width:1280px;height:820px}
+  .viewport-label{position:absolute;top:6px;right:12px;font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.18em;text-transform:uppercase;z-index:5}
+
+  .title-bar{height:28px;background:linear-gradient(180deg,#0e0f15,#0a0a0c);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 12px;gap:6px}
+  .traffic-light{width:11px;height:11px;border-radius:50%;background:#5b6076}
+  .traffic-light.r{background:#ff5f57} .traffic-light.y{background:#febc2e} .traffic-light.g{background:#28c940}
+  .title-bar .title{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.18em}
+
+  .app{height:calc(100% - 28px);display:flex}
+  .nav-rail{width:64px;border-right:1px solid var(--line);padding:14px 8px;display:flex;flex-direction:column;align-items:center;gap:18px;background:rgba(255,255,255,.012)}
+  .nav-rail .invader{width:32px;height:32px;background:linear-gradient(135deg,var(--fuchsia),var(--fuchsia-deep));border-radius:5px;box-shadow:0 0 14px rgba(255,45,149,.45);clip-path:polygon(20% 0,80% 0,80% 20%,100% 20%,100% 80%,80% 80%,80% 100%,20% 100%,20% 80%,0 80%,0 20%,20% 20%)}
+  .nav-rail .ico{width:28px;height:28px;border:1.5px dashed rgba(255,45,149,.5);border-radius:5px;filter:drop-shadow(0 0 4px rgba(255,45,149,.45));position:relative}
+  .nav-rail .ico::before{content:"";position:absolute;inset:6px;background:var(--fuchsia);opacity:.7;border-radius:2px}
+  .nav-rail .ico.muted{opacity:.45;filter:none;border-color:rgba(255,45,149,.2)}
+  .nav-rail .ico.muted::before{opacity:.4}
+
+  .content{flex:1;padding:20px 22px 0;display:flex;flex-direction:column;gap:14px;min-width:0;position:relative}
+  .proj-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  .proj-head .title{font-size:20px;font-weight:600;letter-spacing:-.015em}
+  .proj-head .meta{font-family:var(--mono);font-size:10.5px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase}
+  .proj-head .meta b{color:var(--fuchsia-2);font-weight:600}
+
+  .cards{flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-content:start;overflow:hidden;min-height:0}
+  .cards.dense{grid-template-columns:repeat(6,1fr)}
+  .card{position:relative;padding:12px 14px;border:1px solid var(--line);border-radius:9px;cursor:pointer;background:rgba(255,255,255,.012);display:flex;flex-direction:column;min-height:0}
+  .card.dense{padding:10px 12px}
+  .card.focused{border-color:var(--fuchsia);box-shadow:0 0 0 1px var(--fuchsia),0 12px 28px -18px rgba(255,45,149,.55)}
+  .card .row{display:flex;align-items:baseline;gap:9px}
+  .card .clip-no{font-family:var(--mono);font-size:9.5px;color:var(--fuchsia);letter-spacing:.18em;font-weight:600}
+  .card.dense .clip-no{font-size:9px}
+  .card .v{font-family:var(--mono);font-size:9.5px;color:var(--muted);letter-spacing:.06em;margin-left:auto}
+  .card .v.mid{color:var(--warn)} .card .v.low{color:var(--dim)}
+  .card .ctitle{margin-top:6px;font-size:13.5px;font-weight:600;line-height:1.3;letter-spacing:-.01em;color:var(--paper);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;flex:1}
+  .card.dense .ctitle{font-size:12px;-webkit-line-clamp:2}
+  .card .meta{margin-top:6px;font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
+  .card.dense .meta{font-size:8.5px;margin-top:4px}
+
+  /* cockpit shell */
+  .cockpit{position:relative;background:var(--black);border:1px solid var(--line);margin:0 -22px;transition:max-height .25s cubic-bezier(.4,.2,.3,1)}
+  .cockpit::before,.cockpit::after,
+  .cockpit > .corners::before,.cockpit > .corners::after{
+    content:""; position:absolute; width:18px; height:18px; pointer-events:none;
+    border:1.5px dashed var(--fuchsia);
+    filter:drop-shadow(0 0 6px rgba(255,45,149,.5));
+  }
+  .cockpit::before{top:-1px;left:-1px;border-right:0;border-bottom:0}
+  .cockpit::after{top:-1px;right:-1px;border-left:0;border-bottom:0}
+  .cockpit > .corners::before{bottom:-1px;left:-1px;border-right:0;border-top:0}
+  .cockpit > .corners::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+
+  /* status strip */
+  .status{display:flex;align-items:center;gap:13px;padding:9px 22px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;min-height:38px}
+  .clip-now{color:var(--fuchsia);font-weight:600}
+  .clip-now b{color:var(--fuchsia-2);font-weight:700;letter-spacing:.04em;margin-left:5px}
+  .focusnav{display:flex;align-items:center;gap:7px;color:var(--paper)}
+  .focusnav button{background:none;border:0;color:var(--muted);cursor:pointer;font-family:var(--mono);font-size:11px;padding:0 2px}
+  .focusnav b{font-weight:500;letter-spacing:.06em;color:var(--paper);min-width:42px;text-align:center;font-size:10px}
+  .health{color:var(--dim)}
+  .sched-pill{color:var(--fuchsia-2);background:transparent;border:1px solid rgba(255,45,149,.32);padding:4px 10px;border-radius:4px;cursor:pointer;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase}
+  .sched-pill b{color:var(--paper);font-weight:700;letter-spacing:.04em}
+  .kebab{background:none;border:0;color:var(--muted);cursor:pointer;font-size:13px;padding:0 4px}
+  .collapse-btn{background:none;border:1px solid var(--line-2);color:var(--muted);cursor:pointer;border-radius:4px;padding:3px 7px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;display:inline-flex;align-items:center;gap:4px;transition:.15s}
+  .collapse-btn:hover{color:var(--paper);border-color:rgba(255,255,255,.22)}
+
+  /* expanded body */
+  .body{display:grid;grid-template-columns:1fr 218px;gap:0;min-height:0}
+  .main{padding:14px 22px;display:flex;flex-direction:column;gap:10px;min-width:0}
+  .side{padding:14px 22px 14px 0;display:flex;flex-direction:column;gap:5px}
+
+  .caption{display:flex;align-items:center;gap:9px;padding:4px 0}
+  .caption .q{font-family:var(--mono);color:var(--fuchsia);font-size:16px;font-weight:500}
+  .caption .txt{flex:1;font-size:14.5px;font-weight:500;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--paper)}
+  .caption .style{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;color:var(--fuchsia-2);background:rgba(255,45,149,.08);border:1px solid rgba(255,45,149,.28);padding:2px 6px;border-radius:3px;letter-spacing:.12em;text-transform:uppercase}
+  .caption .style .swatch{width:7px;height:7px;border-radius:2px;background:conic-gradient(from 210deg,var(--fuchsia),#ff8a3d,var(--cyan),var(--fuchsia))}
+  .caption .edit{font-family:var(--mono);font-size:9px;color:var(--muted);background:none;border:1px solid var(--line-2);border-radius:4px;padding:3px 7px;cursor:pointer;letter-spacing:.1em;text-transform:uppercase}
+
+  .tiles{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+  .tile{position:relative;border:1px solid var(--line-2);background:transparent;border-radius:6px;padding:6px 4px 5px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px}
+  .tile.sel{border-color:var(--fuchsia);background:rgba(255,45,149,.06);box-shadow:0 0 0 1px var(--fuchsia)}
+  .tile .lab{font-family:var(--mono);font-size:8px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+  .tile.sel .lab{color:var(--fuchsia-2)}
+  .tile.more{justify-content:center;color:var(--muted)}
+  .tile.more .plus{font-size:13px}
+  .dg{width:24px;height:30px;border-radius:3px;border:1px solid rgba(255,255,255,.18);position:relative;overflow:hidden;background:rgba(255,255,255,.02)}
+  .dg .m{position:absolute;background:rgba(255,255,255,.15)}
+  .dg .rx{position:absolute;background:var(--fuchsia)}
+  .dg.full .rx{inset:0}
+  .dg.below .m{left:0;right:0;top:0;height:50%} .dg.below .rx{left:0;right:0;bottom:0;height:50%}
+  .dg.above .rx{left:0;right:0;top:0;height:50%} .dg.above .m{left:0;right:0;bottom:0;height:50%}
+  .dg.sleft .rx{left:0;top:0;bottom:0;width:50%} .dg.sleft .m{right:0;top:0;bottom:0;width:50%}
+  .dg.sright .m{left:0;top:0;bottom:0;width:50%} .dg.sright .rx{right:0;top:0;bottom:0;width:50%}
+  .dg.pipr .m{inset:0} .dg.pipr .rx{right:2px;bottom:2px;width:8px;height:10px;border-radius:2px}
+  .dg.pipl .m{inset:0} .dg.pipl .rx{left:2px;bottom:2px;width:8px;height:10px;border-radius:2px}
+
+  .srow{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase}
+  .srow .label{color:var(--dim)}
+  .source{display:flex;align-items:center;gap:7px;color:var(--muted);flex:1;min-width:0;max-width:380px}
+  .source .ic{width:13px;height:13px;border-radius:3px;background:linear-gradient(135deg,var(--fuchsia),var(--fuchsia-deep))}
+  .source .fn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;letter-spacing:.04em;text-transform:none;flex:1}
+  .source .ch{color:var(--cyan);border:1px solid rgba(47,233,212,.32);padding:2px 7px;border-radius:3px;cursor:pointer;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;background:none}
+  .adv-toggle{color:var(--muted);background:transparent;border:1px dashed rgba(255,255,255,.18);border-radius:4px;padding:4px 9px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;margin-left:auto}
+
+  .cta{font-family:var(--sans);font-weight:600;font-size:13px;color:#190007;background:linear-gradient(180deg,var(--fuchsia-2),var(--fuchsia));border:0;border-radius:7px;padding:11px 14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 12px 24px -12px rgba(255,45,149,.7),inset 0 1px 0 rgba(255,255,255,.32);width:100%}
+  .cta:disabled{background:rgba(255,255,255,.05);color:var(--dim);box-shadow:none}
+  .cta-sub{font-family:var(--mono);font-size:8.5px;color:var(--dim);letter-spacing:.16em;text-transform:uppercase;text-align:center}
+  .cta-sub b{color:var(--fuchsia-2);font-weight:600}
+  .alt{font-family:var(--mono);font-size:9.5px;color:var(--muted);background:transparent;border:1px solid var(--line-2);border-radius:5px;padding:7px 10px;cursor:pointer;letter-spacing:.12em;text-transform:uppercase;width:100%;display:flex;align-items:center;justify-content:space-between}
+  .alt .count{color:var(--fuchsia-2);background:rgba(255,45,149,.10);border:1px solid rgba(255,45,149,.28);padding:1px 5px;border-radius:999px;font-size:9px;font-weight:600}
+
+  /* ───── COLLAPSED variant ───── */
+  .cockpit.collapsed{height:54px}
+  .cockpit.collapsed .body{display:none}
+  .cockpit.collapsed .status{display:flex;align-items:center;gap:11px;padding:0 16px;height:54px;min-height:54px;border-bottom:0}
+  .cockpit.collapsed .quickcap{flex:1;font-family:var(--sans);font-weight:500;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:-.005em;text-transform:none}
+  .cockpit.collapsed .quickcap b{color:var(--paper);font-weight:600}
+  .cockpit.collapsed .quickreact{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;color:var(--fuchsia-2);background:rgba(255,45,149,.08);border:1px solid rgba(255,45,149,.28);padding:3px 7px;border-radius:3px;letter-spacing:.12em;text-transform:uppercase}
+  .cockpit.collapsed .quickreact .dot{width:6px;height:6px;border-radius:50%;background:var(--fuchsia);box-shadow:0 0 6px var(--fuchsia)}
+  .cockpit.collapsed .quickcta{font-family:var(--sans);font-weight:600;font-size:12px;color:#190007;background:linear-gradient(180deg,var(--fuchsia-2),var(--fuchsia));border:0;border-radius:5px;padding:7px 13px;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 10px 20px -10px rgba(255,45,149,.6),inset 0 1px 0 rgba(255,255,255,.32);letter-spacing:.005em}
+  .cockpit.collapsed .quickcta.pub{background:linear-gradient(180deg,#ffd34d,#ffab2e);color:#241500}
+
+  /* ───── CLIP WINDOW (modal) ───── */
+  .modal-scrim{position:absolute;inset:0;background:rgba(10,10,12,.78);backdrop-filter:blur(3px);z-index:10;display:flex;align-items:center;justify-content:center;padding:24px}
+  .clip-window{width:100%;max-width:1080px;height:100%;max-height:600px;background:var(--black);border:1px solid var(--line-2);border-radius:12px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 60px -20px rgba(0,0,0,.85)}
+  .cw-head{display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.012)}
+  .cw-head .lbl{font-family:var(--mono);font-size:10px;color:var(--fuchsia);letter-spacing:.22em;text-transform:uppercase}
+  .cw-head .nav-mini{margin-left:auto;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .cw-head .nav-mini button{background:none;border:0;color:var(--muted);cursor:pointer;font-size:11px}
+  .cw-head .close-btn{font-family:var(--mono);font-size:10px;color:var(--muted);background:none;border:1px solid var(--line-2);padding:5px 10px;border-radius:4px;cursor:pointer;letter-spacing:.12em;text-transform:uppercase}
+  .cw-body{flex:1;display:grid;grid-template-columns:58% 42%;gap:0;min-height:0}
+  .cw-player{background:var(--black);padding:18px;display:flex;flex-direction:column;gap:10px;min-height:0}
+  .cw-player .ratios{display:flex;gap:6px;font-family:var(--mono);font-size:9.5px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase}
+  .cw-player .ratios .r{padding:3px 8px;border:1px solid var(--line-2);border-radius:3px;cursor:pointer}
+  .cw-player .ratios .r.on{background:var(--paper);color:#0a0a0c;border-color:var(--paper)}
+  .cw-player .frame{flex:1;background:linear-gradient(180deg,#1a1424,#0a0510);border-radius:8px;display:grid;place-items:center;color:var(--muted);font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--line);min-height:0}
+  .cw-meta{padding:18px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;border-left:1px solid var(--line);background:rgba(255,255,255,.008)}
+  .cw-section{display:flex;flex-direction:column;gap:7px}
+  .cw-section h4{font-family:var(--mono);font-size:9.5px;font-weight:600;color:var(--muted);letter-spacing:.18em;text-transform:uppercase}
+  .cw-input{background:rgba(255,255,255,.03);border:1px solid var(--line-2);border-radius:5px;padding:7px 10px;color:var(--paper);font-family:var(--sans);font-size:13px;letter-spacing:-.005em}
+  .cw-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .cw-tile{border:1px solid var(--line-2);background:transparent;border-radius:6px;padding:6px 4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px}
+  .cw-tile.sel{border-color:var(--fuchsia);background:rgba(255,45,149,.07);box-shadow:0 0 0 1px var(--fuchsia)}
+  .cw-tile .lab{font-family:var(--mono);font-size:8px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+  .cw-tile.sel .lab{color:var(--fuchsia-2)}
+  .cw-tile .dg{width:22px;height:28px}
+  .cw-row{display:flex;align-items:center;gap:8px}
+  .cw-row .ic{width:13px;height:13px;border-radius:3px;background:linear-gradient(135deg,var(--fuchsia),var(--fuchsia-deep))}
+  .cw-row .fn{font-family:var(--mono);font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .cw-row .ch{color:var(--cyan);border:1px solid rgba(47,233,212,.32);padding:2px 7px;border-radius:3px;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;background:none}
+  .cw-footer{padding:12px 18px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .cw-footer .cta{padding:9px 16px;font-size:12px;width:auto;margin-left:auto}
+
+  /* tombstone (in collapsed-with-modal-open state, Reaction module is fully hidden anyway, but in expanded-with-modal-open we show this) */
+  .tombstone{padding:22px;text-align:center;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--fuchsia-2);border:1px dashed rgba(255,45,149,.4);border-radius:8px;background:rgba(255,45,149,.04);display:flex;flex-direction:column;gap:6px;margin:14px 0}
+  .tombstone span{color:var(--muted);font-size:9.5px;text-transform:none;letter-spacing:.02em}
+
+  /* dimensions readout */
+  .dims{margin:36px auto 0;max-width:1280px;padding:14px 22px;border:1px dashed rgba(255,45,149,.22);border-radius:6px}
+  .dims h2{font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--fuchsia);margin-bottom:10px}
+  .dims table{width:100%;border-collapse:collapse;font-size:11.5px;color:var(--muted)}
+  .dims td{padding:6px 10px;border-bottom:1px solid var(--line)}
+  .dims td:first-child{color:var(--paper);width:38%}
+  .dims td:nth-child(2){color:var(--cyan);font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;width:22%}
+  .dims td:nth-child(3){font-size:11px}
+
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+</head>
+<body>
+
+<div class="page-h">
+  <h1>Cockpit v7, collapse + clip window</h1>
+  <p>Four states stacked in 1280×820 viewports. The cockpit toggles between <strong>expanded</strong> (246px tall) and <strong>collapsed</strong> (54px tall) via a button on the status strip or keyboard chord. The <strong>Clip Window</strong> (ClipPreview modal) opens via Enter or ⋮ → Open full editor and tombstones the cockpit Reaction module.</p>
+</div>
+
+<!-- ============================================================ -->
+<div class="sec-label">STATE 01 · EXPANDED · default landing</div>
+<p class="sec-note">Cockpit at full height (246px). 4 cards visible above. The collapse chevron sits next to the ⋮ menu.</p>
+<div class="viewport">
+  <div class="viewport-label">EXPANDED · 1280 × 820</div>
+  <div class="title-bar">
+    <span class="traffic-light r"></span><span class="traffic-light y"></span><span class="traffic-light g"></span>
+    <span class="title">liquid/clips</span>
+  </div>
+  <div class="app">
+    <aside class="nav-rail">
+      <div class="invader"></div><div class="ico"></div><div class="ico muted"></div><div class="ico muted"></div><div class="ico muted"></div><div class="ico muted"></div>
+    </aside>
+    <main class="content">
+      <div class="proj-head">
+        <span class="title">She finally found a non-sticky gloss</span>
+        <span class="meta">9 CLIPS · AVG <b>V64</b> · 1M 32S</span>
+      </div>
+      <div class="cards">
+        <div class="card focused"><div class="row"><span class="clip-no">CLIP 01</span><span class="v">V70</span></div><div class="ctitle">She finally found a non-sticky gloss</div><div class="meta">0:10 · IMPORTED</div></div>
+        <div class="card"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 02</span><span class="v mid">V62</span></div><div class="ctitle">After two years, still my morning go-to</div><div class="meta">0:10 · IMPORTED</div></div>
+        <div class="card"><div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 03</span><span class="v low">V55</span></div><div class="ctitle">Day 5 of testing, verdict in</div><div class="meta">0:10 · IMPORTED</div></div>
+        <div class="card"><div class="row"><span class="clip-no">CLIP 04</span><span class="v">V68</span></div><div class="ctitle">The pigment payoff is unreal</div><div class="meta">0:10 · IMPORTED</div></div>
+        <div class="card"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 05</span><span class="v mid">V61</span></div><div class="ctitle">Application in real time, no edit</div><div class="meta">0:10 · IMPORTED</div></div>
+        <div class="card"><div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 06</span><span class="v low">V52</span></div><div class="ctitle">The before and after had me speechless</div><div class="meta">0:10 · IMPORTED</div></div>
+        <div class="card"><div class="row"><span class="clip-no">CLIP 07</span><span class="v">V73</span></div><div class="ctitle">If you only buy one this month, make it this</div><div class="meta">0:10 · IMPORTED</div></div>
+        <div class="card"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 08</span><span class="v mid">V64</span></div><div class="ctitle">The shade range deserves a moment</div><div class="meta">0:10 · IMPORTED</div></div>
+      </div>
+      <div class="cockpit">
+        <span class="corners"></span>
+        <div class="status">
+          <span class="clip-now">CLIP <b>01</b></span>
+          <div class="focusnav"><button>◀</button><b>01 / 09</b><button>▶</button></div>
+          <span class="health">ⓘ all live</span>
+          <button class="sched-pill" style="margin-left:auto">↗ <b>+1h</b> · 14:30</button>
+          <button class="kebab">⋮</button>
+          <button class="collapse-btn" title="Collapse cockpit · \\">⌃ Min</button>
+        </div>
+        <div class="body">
+          <div class="main">
+            <div class="caption">
+              <span class="q">"</span>
+              <div class="txt">she finally found a non-sticky gloss</div>
+              <span class="style"><span class="swatch"></span>BURN</span>
+              <button class="edit">Edit</button>
+            </div>
+            <div class="tiles">
+              <button class="tile"><div class="dg full"><div class="rx"></div></div><span class="lab">Full</span></button>
+              <button class="tile sel"><div class="dg below"><div class="m"></div><div class="rx"></div></div><span class="lab">Below</span></button>
+              <button class="tile"><div class="dg above"><div class="m"></div><div class="rx"></div></div><span class="lab">Above</span></button>
+              <button class="tile"><div class="dg sleft"><div class="m"></div><div class="rx"></div></div><span class="lab">S·left</span></button>
+              <button class="tile"><div class="dg sright"><div class="m"></div><div class="rx"></div></div><span class="lab">S·right</span></button>
+              <button class="tile"><div class="dg pipr"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·R</span></button>
+              <button class="tile"><div class="dg pipl"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·L</span></button>
+              <button class="tile more"><span class="plus">＋</span><span class="lab">More</span></button>
+            </div>
+            <div class="srow">
+              <span class="label">Source</span>
+              <div class="source"><span class="ic"></span><span class="fn">giphy-6us0tg…looking-english.mp4</span><button class="ch">Change</button></div>
+              <button class="adv-toggle">▶ Advanced</button>
+            </div>
+          </div>
+          <div class="side">
+            <button class="cta"><span>↗</span>Schedule +1h</button>
+            <div class="cta-sub">deploy to <b>3 channels</b></div>
+            <button class="alt"><span>Routes</span><span class="count">3</span></button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="sec-label">STATE 02 · COLLAPSED · cockpit shrinks to 54px, cards get a denser grid</div>
+<p class="sec-note">Click the <code>⌃ Min</code> button (or press <code>\</code>). Cockpit collapses to a single row showing current caption preview + reaction badge + primary CTA. Cards area gains ~190px and switches to a 6-column dense grid showing 18 clips at once.</p>
+<div class="viewport">
+  <div class="viewport-label">COLLAPSED · 1280 × 820</div>
+  <div class="title-bar">
+    <span class="traffic-light r"></span><span class="traffic-light y"></span><span class="traffic-light g"></span>
+    <span class="title">liquid/clips</span>
+  </div>
+  <div class="app">
+    <aside class="nav-rail">
+      <div class="invader"></div><div class="ico"></div><div class="ico muted"></div><div class="ico muted"></div><div class="ico muted"></div><div class="ico muted"></div>
+    </aside>
+    <main class="content">
+      <div class="proj-head">
+        <span class="title">She finally found a non-sticky gloss</span>
+        <span class="meta">9 CLIPS · AVG <b>V64</b> · 1M 32S</span>
+      </div>
+      <div class="cards dense">
+        <div class="card dense focused"><div class="row"><span class="clip-no">CLIP 01</span><span class="v">V70</span></div><div class="ctitle">She finally found a non-sticky gloss</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 02</span><span class="v mid">V62</span></div><div class="ctitle">After two years, still my morning go-to</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 03</span><span class="v low">V55</span></div><div class="ctitle">Day 5 of testing, verdict in</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no">CLIP 04</span><span class="v">V68</span></div><div class="ctitle">The pigment payoff is unreal</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 05</span><span class="v mid">V61</span></div><div class="ctitle">Application in real time, no edit</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 06</span><span class="v low">V52</span></div><div class="ctitle">Before and after had me speechless</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no">CLIP 07</span><span class="v">V73</span></div><div class="ctitle">If you only buy one this month, make it this</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 08</span><span class="v mid">V64</span></div><div class="ctitle">The shade range deserves a moment</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 09</span><span class="v low">V58</span></div><div class="ctitle">Wear test, day vs night</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no">CLIP 10</span><span class="v">V71</span></div><div class="ctitle">Layered over matte, the result</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 11</span><span class="v mid">V60</span></div><div class="ctitle">Comparing to last year's hero</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 12</span><span class="v low">V54</span></div><div class="ctitle">Outdoor test under hot sun</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no">CLIP 13</span><span class="v">V69</span></div><div class="ctitle">Tone, finish, staying power</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 14</span><span class="v mid">V63</span></div><div class="ctitle">Side-by-side with the other</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 15</span><span class="v low">V51</span></div><div class="ctitle">Plain skin, plain lighting, plain truth</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no">CLIP 16</span><span class="v">V72</span></div><div class="ctitle">Reaction at first swipe</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 17</span><span class="v mid">V65</span></div><div class="ctitle">Why this won my routine</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 18</span><span class="v low">V57</span></div><div class="ctitle">Honest verdict, no fluff</div><div class="meta">0:10</div></div>
+      </div>
+      <div class="cockpit collapsed">
+        <span class="corners"></span>
+        <div class="status">
+          <span class="clip-now">CLIP <b>01</b></span>
+          <div class="focusnav"><button>◀</button><b>01 / 09</b><button>▶</button></div>
+          <span class="quickcap"><b>"</b>she finally found a non-sticky gloss<b>"</b></span>
+          <span class="quickreact"><span class="dot"></span>STACK BELOW</span>
+          <button class="quickcta"><span>↗</span>Schedule +1h</button>
+          <button class="kebab">⋮</button>
+          <button class="collapse-btn">⌄ More</button>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="sec-label">STATE 03 · CLIP WINDOW OPEN · ClipPreview modal mounted over cards, cockpit Reaction tombstoned</div>
+<p class="sec-note">User pressed Enter or ⋮ → Open full editor. The Clip Window modal sits over the cards. Cockpit's Reaction module becomes a tombstone (the load-bearing <code>modalOpen</code> prop). The cockpit stays expanded so caption + status are still readable through the scrim shadow, but Reaction writes are blocked at the cockpit while the modal owns them.</p>
+<div class="viewport">
+  <div class="viewport-label">EXPANDED + CLIP WINDOW · 1280 × 820</div>
+  <div class="title-bar">
+    <span class="traffic-light r"></span><span class="traffic-light y"></span><span class="traffic-light g"></span>
+    <span class="title">liquid/clips</span>
+  </div>
+  <div class="app">
+    <aside class="nav-rail">
+      <div class="invader"></div><div class="ico"></div><div class="ico muted"></div><div class="ico muted"></div><div class="ico muted"></div><div class="ico muted"></div>
+    </aside>
+    <main class="content" style="overflow:hidden">
+      <div class="proj-head">
+        <span class="title">She finally found a non-sticky gloss</span>
+        <span class="meta">9 CLIPS · AVG <b>V64</b> · 1M 32S</span>
+      </div>
+      <div class="cards" style="opacity:.5">
+        <div class="card focused"><div class="row"><span class="clip-no">CLIP 01</span><span class="v">V70</span></div><div class="ctitle">She finally found a non-sticky gloss</div><div class="meta">0:10 · IMPORTED</div></div>
+        <div class="card"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 02</span><span class="v mid">V62</span></div><div class="ctitle">After two years, still my morning go-to</div><div class="meta">0:10 · IMPORTED</div></div>
+        <div class="card"><div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 03</span><span class="v low">V55</span></div><div class="ctitle">Day 5 of testing, verdict in</div><div class="meta">0:10 · IMPORTED</div></div>
+        <div class="card"><div class="row"><span class="clip-no">CLIP 04</span><span class="v">V68</span></div><div class="ctitle">The pigment payoff is unreal</div><div class="meta">0:10 · IMPORTED</div></div>
+        <div class="card"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 05</span><span class="v mid">V61</span></div><div class="ctitle">Application in real time, no edit</div><div class="meta">0:10 · IMPORTED</div></div>
+        <div class="card"><div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 06</span><span class="v low">V52</span></div><div class="ctitle">The before and after had me speechless</div><div class="meta">0:10 · IMPORTED</div></div>
+      </div>
+
+      <!-- cockpit with Reaction tombstoned -->
+      <div class="cockpit" style="opacity:.5">
+        <span class="corners"></span>
+        <div class="status">
+          <span class="clip-now">CLIP <b>01</b></span>
+          <div class="focusnav"><button>◀</button><b>01 / 09</b><button>▶</button></div>
+          <span class="health">ⓘ all live</span>
+          <button class="sched-pill" style="margin-left:auto">↗ <b>+1h</b> · 14:30</button>
+          <button class="kebab">⋮</button>
+          <button class="collapse-btn">⌃ Min</button>
+        </div>
+        <div class="body">
+          <div class="main">
+            <div class="caption" style="opacity:.7">
+              <span class="q">"</span>
+              <div class="txt">she finally found a non-sticky gloss</div>
+              <span class="style"><span class="swatch"></span>BURN</span>
+            </div>
+            <div class="tombstone">
+              ⤢ CLIP WINDOW OPEN
+              <span>Reaction controls live in the modal. Close it to resume here.</span>
+            </div>
+          </div>
+          <div class="side">
+            <button class="cta" disabled><span>↗</span>Schedule +1h</button>
+            <div class="cta-sub" style="opacity:.5">deploy to <b>3 channels</b></div>
+            <button class="alt" disabled><span>Routes</span><span class="count">3</span></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- clip window modal -->
+      <div class="modal-scrim">
+        <div class="clip-window">
+          <div class="cw-head">
+            <span class="lbl">CLIP WINDOW · 01</span>
+            <div class="nav-mini">
+              <button>◀</button>
+              <span>01 / 09</span>
+              <button>▶</button>
+            </div>
+            <button class="close-btn">CLOSE · esc</button>
+          </div>
+          <div class="cw-body">
+            <div class="cw-player">
+              <div class="ratios">
+                <span class="r on">9 : 16</span>
+                <span class="r">1 : 1</span>
+                <span class="r">4 : 5</span>
+              </div>
+              <div class="frame">▶ player preview · 0:10</div>
+            </div>
+            <div class="cw-meta">
+              <div class="cw-section">
+                <h4>Title</h4>
+                <div class="cw-input">She finally found a non-sticky gloss</div>
+              </div>
+              <div class="cw-section">
+                <h4>Description</h4>
+                <div class="cw-input" style="min-height:54px;display:block">After years of stickiness, finally a gloss that wears like a balm.</div>
+              </div>
+              <div class="cw-section">
+                <h4>Reaction Studio (shared ReactionControls)</h4>
+                <div class="cw-tiles">
+                  <button class="cw-tile"><div class="dg full"><div class="rx"></div></div><span class="lab">Full</span></button>
+                  <button class="cw-tile sel"><div class="dg below"><div class="m"></div><div class="rx"></div></div><span class="lab">Below</span></button>
+                  <button class="cw-tile"><div class="dg above"><div class="m"></div><div class="rx"></div></div><span class="lab">Above</span></button>
+                  <button class="cw-tile"><div class="dg sleft"><div class="m"></div><div class="rx"></div></div><span class="lab">S·left</span></button>
+                  <button class="cw-tile"><div class="dg sright"><div class="m"></div><div class="rx"></div></div><span class="lab">S·right</span></button>
+                  <button class="cw-tile"><div class="dg pipr"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·R</span></button>
+                  <button class="cw-tile"><div class="dg pipl"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·L</span></button>
+                  <button class="cw-tile" style="justify-content:center;color:var(--muted)"><span style="font-size:13px">＋</span><span class="lab">More</span></button>
+                </div>
+                <div class="cw-row" style="margin-top:6px">
+                  <span class="ic"></span>
+                  <span class="fn">giphy-6us0tg…looking-english.mp4</span>
+                  <button class="ch">Change</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="cw-footer">
+            <span style="font-family:var(--mono);font-size:9.5px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase">Modal owns clip.overlay writes</span>
+            <button class="cta"><span>↗</span>Schedule +1h</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="sec-label">STATE 04 · COLLAPSED + CLIP WINDOW · the deepest combo</div>
+<p class="sec-note">If the user collapsed the cockpit BEFORE opening Clip Window, the modal still mounts the same way. Cockpit collapsed bar peeks under the modal scrim. Re-expanding while modal is open is allowed; tombstone replaces the Reaction module the moment the cockpit expands.</p>
+<div class="viewport">
+  <div class="viewport-label">COLLAPSED + CLIP WINDOW · 1280 × 820</div>
+  <div class="title-bar">
+    <span class="traffic-light r"></span><span class="traffic-light y"></span><span class="traffic-light g"></span>
+    <span class="title">liquid/clips</span>
+  </div>
+  <div class="app">
+    <aside class="nav-rail">
+      <div class="invader"></div><div class="ico"></div><div class="ico muted"></div><div class="ico muted"></div><div class="ico muted"></div><div class="ico muted"></div>
+    </aside>
+    <main class="content" style="overflow:hidden">
+      <div class="proj-head">
+        <span class="title">She finally found a non-sticky gloss</span>
+        <span class="meta">9 CLIPS · AVG <b>V64</b> · 1M 32S</span>
+      </div>
+      <div class="cards dense" style="opacity:.5">
+        <div class="card dense focused"><div class="row"><span class="clip-no">CLIP 01</span><span class="v">V70</span></div><div class="ctitle">She finally found a non-sticky gloss</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 02</span><span class="v mid">V62</span></div><div class="ctitle">After two years, still my morning go-to</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 03</span><span class="v low">V55</span></div><div class="ctitle">Day 5 of testing, verdict in</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no">CLIP 04</span><span class="v">V68</span></div><div class="ctitle">The pigment payoff is unreal</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 05</span><span class="v mid">V61</span></div><div class="ctitle">Application in real time, no edit</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 06</span><span class="v low">V52</span></div><div class="ctitle">Before and after had me speechless</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no">CLIP 07</span><span class="v">V73</span></div><div class="ctitle">If you only buy one this month</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 08</span><span class="v mid">V64</span></div><div class="ctitle">The shade range deserves a moment</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 09</span><span class="v low">V58</span></div><div class="ctitle">Wear test, day vs night</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no">CLIP 10</span><span class="v">V71</span></div><div class="ctitle">Layered over matte, the result</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 11</span><span class="v mid">V60</span></div><div class="ctitle">Comparing to last year's hero</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 12</span><span class="v low">V54</span></div><div class="ctitle">Outdoor test under hot sun</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no">CLIP 13</span><span class="v">V69</span></div><div class="ctitle">Tone, finish, staying power</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 14</span><span class="v mid">V63</span></div><div class="ctitle">Side-by-side with the other</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 15</span><span class="v low">V51</span></div><div class="ctitle">Plain skin, plain truth</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no">CLIP 16</span><span class="v">V72</span></div><div class="ctitle">Reaction at first swipe</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--warn)">CLIP 17</span><span class="v mid">V65</span></div><div class="ctitle">Why this won my routine</div><div class="meta">0:10</div></div>
+        <div class="card dense"><div class="row"><span class="clip-no" style="color:var(--dim)">CLIP 18</span><span class="v low">V57</span></div><div class="ctitle">Honest verdict, no fluff</div><div class="meta">0:10</div></div>
+      </div>
+      <div class="cockpit collapsed" style="opacity:.5">
+        <span class="corners"></span>
+        <div class="status">
+          <span class="clip-now">CLIP <b>01</b></span>
+          <div class="focusnav"><button>◀</button><b>01 / 09</b><button>▶</button></div>
+          <span class="quickcap"><b>"</b>she finally found a non-sticky gloss<b>"</b></span>
+          <span class="quickreact"><span class="dot"></span>STACK BELOW</span>
+          <button class="quickcta" disabled><span>↗</span>Schedule +1h</button>
+          <button class="kebab">⋮</button>
+          <button class="collapse-btn">⌄ More</button>
+        </div>
+      </div>
+
+      <div class="modal-scrim">
+        <div class="clip-window">
+          <div class="cw-head">
+            <span class="lbl">CLIP WINDOW · 01</span>
+            <div class="nav-mini"><button>◀</button><span>01 / 09</span><button>▶</button></div>
+            <button class="close-btn">CLOSE · esc</button>
+          </div>
+          <div class="cw-body">
+            <div class="cw-player">
+              <div class="ratios">
+                <span class="r on">9 : 16</span>
+                <span class="r">1 : 1</span>
+                <span class="r">4 : 5</span>
+              </div>
+              <div class="frame">▶ player preview · 0:10</div>
+            </div>
+            <div class="cw-meta">
+              <div class="cw-section">
+                <h4>Title</h4>
+                <div class="cw-input">She finally found a non-sticky gloss</div>
+              </div>
+              <div class="cw-section">
+                <h4>Reaction Studio</h4>
+                <div class="cw-tiles">
+                  <button class="cw-tile"><div class="dg full"><div class="rx"></div></div><span class="lab">Full</span></button>
+                  <button class="cw-tile sel"><div class="dg below"><div class="m"></div><div class="rx"></div></div><span class="lab">Below</span></button>
+                  <button class="cw-tile"><div class="dg above"><div class="m"></div><div class="rx"></div></div><span class="lab">Above</span></button>
+                  <button class="cw-tile"><div class="dg sleft"><div class="m"></div><div class="rx"></div></div><span class="lab">S·left</span></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="cw-footer">
+            <button class="cta"><span>↗</span>Schedule +1h</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<div class="dims">
+  <h2>Heights at a glance</h2>
+  <table>
+    <tr><td>Title bar</td><td>28px</td><td>Tauri chrome</td></tr>
+    <tr><td>Project header</td><td>~46px</td><td>Title + meta row</td></tr>
+    <tr><td><strong style="color:var(--paper)">Cockpit, expanded (resting)</strong></td><td>246px</td><td>Status 38 + body 192 + borders</td></tr>
+    <tr><td><strong style="color:var(--paper)">Cockpit, expanded (baking)</strong></td><td>282px</td><td>+ bake strip 36px</td></tr>
+    <tr><td><strong style="color:var(--paper)">Cockpit, collapsed</strong></td><td>54px</td><td>Single status row only</td></tr>
+    <tr><td><strong style="color:var(--paper)">Cards (expanded cockpit)</strong></td><td>456px</td><td>4-col grid, ~6-8 clips visible</td></tr>
+    <tr><td><strong style="color:var(--paper)">Cards (collapsed cockpit)</strong></td><td>648px</td><td>6-col dense grid, ~18 clips visible</td></tr>
+    <tr><td>Clip Window modal</td><td>600px (max)</td><td>Centered, 1080px wide, scrollable internally</td></tr>
+  </table>
+</div>
+
+</body>
+</html>

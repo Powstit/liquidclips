@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Liquid Clips — Cockpit v6 (home visual language)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --black:#000; --ink:#0a0a0c; --ink-soft:#15151a;
+    --line:rgba(255,255,255,.06);
+    --paper:#f0f0f3; --muted:#9095a8; --dim:#5b6076;
+    --fuchsia:#ff2d95; --fuchsia-2:#ff6bb4; --fuchsia-deep:#c8126c;
+    --cyan:#2fe9d4; --red:#ff5563; --ok:#41e0a3;
+    --sans:'Inter',system-ui,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--black); color:var(--paper); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased; min-height:100vh; padding:32px 24px 60px;
+  }
+  h1{font-size:18px;font-weight:600;letter-spacing:-.01em}
+  .lede{color:var(--muted);font-size:12px;margin-top:6px;max-width:780px;line-height:1.55}
+  .sec{margin-top:48px;max-width:1280px;margin-left:auto;margin-right:auto}
+  .sec-label{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.22em;color:var(--fuchsia);margin-bottom:14px}
+
+  /* ───── reusable: dashed corner brackets ───── */
+  .corners{position:relative}
+  .corners::before, .corners::after,
+  .corners > .br::before, .corners > .br::after{
+    content:""; position:absolute; width:18px; height:18px; pointer-events:none;
+    border:1.5px dashed var(--fuchsia);
+    filter:drop-shadow(0 0 6px rgba(255,45,149,.55));
+  }
+  /* top-left */
+  .corners::before{top:0;left:0;border-right:0;border-bottom:0}
+  /* top-right */
+  .corners::after{top:0;right:0;border-left:0;border-bottom:0}
+  /* bottom-left */
+  .corners > .br::before{bottom:0;left:0;border-right:0;border-top:0}
+  /* bottom-right */
+  .corners > .br::after{bottom:0;right:0;border-left:0;border-top:0}
+  .corners.dim::before, .corners.dim::after,
+  .corners.dim > .br::before, .corners.dim > .br::after{
+    border-color:rgba(255,45,149,.3); filter:none;
+  }
+
+  /* ───── cards strip (matches home: bracket-framed tiles) ───── */
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-bottom:24px}
+  .card{position:relative;padding:18px 14px 14px;cursor:pointer}
+  .card .br{position:absolute;inset:0;pointer-events:none}
+  .card:hover .ctitle{color:var(--fuchsia-2)}
+  .card .clip-no{font-family:var(--mono);font-size:10px;color:var(--fuchsia);letter-spacing:.2em;margin-bottom:6px}
+  .card .ctitle{font-size:15px;font-weight:600;line-height:1.3;letter-spacing:-.01em;color:var(--paper);transition:.15s;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:8px;min-height:38px}
+  .card .meta{font-family:var(--mono);font-size:9.5px;color:var(--dim);letter-spacing:.14em;text-transform:uppercase;display:flex;align-items:center;gap:7px}
+  .card .meta b{color:var(--fuchsia);font-weight:700;letter-spacing:.04em}
+  .card.focused .clip-no{color:var(--fuchsia-2)}
+  .card.focused .ctitle{color:var(--fuchsia-2)}
+
+  /* per-card state strips */
+  .card .cstrip{margin-top:10px;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+    padding:6px 8px;display:flex;align-items:center;gap:7px;border:1px solid;border-radius:4px}
+  .card .cstrip.bake{color:var(--cyan);border-color:rgba(47,233,212,.35);background:rgba(47,233,212,.06)}
+  .card .cstrip.bake .dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);animation:blink 1.1s infinite}
+  .card .cstrip.err{color:var(--red);border-color:rgba(255,85,99,.4);background:rgba(255,85,99,.06);justify-content:space-between}
+  .card .cstrip.err a{color:#ffd0d4;border-bottom:1px solid rgba(255,255,255,.25);cursor:pointer;text-decoration:none}
+
+  /* ───── cockpit panel (matches home aesthetic) ───── */
+  .cockpit{position:relative;background:var(--black);border-top:1px solid rgba(255,45,149,.2)}
+
+  /* status strip (skinny, mono labels) */
+  .status{display:flex;align-items:center;gap:14px;padding:12px 24px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase}
+  .clip-pill{display:inline-flex;align-items:center;gap:7px;color:var(--fuchsia)}
+  .clip-pill b{color:var(--fuchsia-2);font-weight:700;letter-spacing:.04em}
+  .v-pill{display:inline-flex;align-items:center;gap:4px;color:var(--paper);background:rgba(255,45,149,.10);border:1px solid rgba(255,45,149,.30);padding:2px 8px;border-radius:3px;font-weight:700}
+  .v-pill i{width:5px;height:5px;border-radius:50%;background:var(--fuchsia);box-shadow:0 0 6px var(--fuchsia)}
+  .v-pill.mid i{background:#ffb02e;box-shadow:0 0 6px #ffb02e}
+  .v-pill.low i{background:var(--dim);box-shadow:none}
+  .focusnav{display:flex;align-items:center;gap:8px;color:var(--paper)}
+  .focusnav button{background:none;border:0;color:var(--muted);cursor:pointer;font-family:var(--mono);font-size:11px}
+  .focusnav button:hover{color:var(--paper)}
+  .health{color:var(--dim);position:relative}
+  .health:hover{color:var(--paper)}
+  .counters{display:flex;gap:14px;color:var(--dim)}
+  .counters span b{color:var(--paper);font-weight:700;letter-spacing:.06em;margin-left:4px}
+  .counters .rdy b{color:var(--ok)}
+  .counters .que b{color:var(--cyan)}
+  .sched-pill{margin-left:auto;color:var(--fuchsia-2);background:transparent;border:1px solid rgba(255,45,149,.35);padding:4px 10px;border-radius:4px;cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:.14em}
+  .sched-pill:hover{background:rgba(255,45,149,.08)}
+  .sched-pill.pub{color:#ffd34d;border-color:rgba(255,171,46,.4)}
+  .sched-pill b{color:var(--paper);font-weight:700;letter-spacing:.04em}
+  .kebab{background:none;border:0;color:var(--muted);cursor:pointer;font-size:14px;padding:0 4px}
+
+  /* ───── primary row: 4 cockpit-tiles in home style ───── */
+  .prow{display:grid;grid-template-columns:1fr 1.6fr 1fr 1.1fr;gap:32px;padding:38px 32px}
+
+  .tile{position:relative;padding:24px 18px;text-align:center;cursor:pointer;transition:.18s}
+  .tile .br{position:absolute;inset:0;pointer-events:none}
+  .tile:hover{transform:translateY(-2px)}
+  .tile .ico{display:flex;justify-content:center;margin-bottom:14px;color:var(--fuchsia);filter:drop-shadow(0 0 18px rgba(255,45,149,.55))}
+  .tile .ico svg{width:52px;height:52px;stroke:var(--fuchsia);stroke-width:1.6;fill:none}
+  .tile .nm{font-size:22px;font-weight:600;letter-spacing:-.02em;color:var(--paper);line-height:1.1;margin-bottom:8px}
+  .tile .sub{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.18em;text-transform:uppercase;line-height:1.4}
+  .tile .sub b{color:var(--fuchsia-2);font-weight:600}
+  .tile.muted{opacity:.45;pointer-events:none}
+
+  /* Reaction tile is the larger one — content visible inside */
+  .reaction-tile{padding:18px 16px}
+  .reaction-tile .ico{margin-bottom:10px}
+  .reaction-tile .ico svg{width:34px;height:34px}
+  .reaction-tile .nm{font-size:16px;margin-bottom:8px}
+  .reaction-tile .sub{margin-bottom:14px}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .tiles.dim{opacity:.4;pointer-events:none}
+  .layout{position:relative;border:1px solid rgba(255,255,255,.10);background:transparent;border-radius:5px;padding:5px 3px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:.16s}
+  .layout:hover{border-color:rgba(255,45,149,.4)}
+  .layout.sel{border-color:var(--fuchsia);background:rgba(255,45,149,.06);box-shadow:0 0 12px -4px rgba(255,45,149,.5)}
+  .layout .lab{font-family:var(--mono);font-size:7.5px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;line-height:1}
+  .layout.sel .lab{color:var(--fuchsia-2)}
+  .dg{width:22px;height:28px;border-radius:3px;border:1px solid rgba(255,255,255,.18);position:relative;overflow:hidden;background:rgba(255,255,255,.02)}
+  .dg .m{position:absolute;background:rgba(255,255,255,.15)}
+  .dg .rx{position:absolute;background:var(--fuchsia)}
+  .layout.sel .dg .rx{box-shadow:0 0 6px var(--fuchsia)}
+  .dg.full .rx{inset:0}
+  .dg.below .m{left:0;right:0;top:0;height:50%} .dg.below .rx{left:0;right:0;bottom:0;height:50%}
+  .dg.above .rx{left:0;right:0;top:0;height:50%} .dg.above .m{left:0;right:0;bottom:0;height:50%}
+  .dg.sleft .rx{left:0;top:0;bottom:0;width:50%} .dg.sleft .m{right:0;top:0;bottom:0;width:50%}
+  .dg.sright .m{left:0;top:0;bottom:0;width:50%} .dg.sright .rx{right:0;top:0;bottom:0;width:50%}
+  .dg.pipr .m{inset:0} .dg.pipr .rx{right:2px;bottom:2px;width:7px;height:10px;border-radius:2px}
+  .dg.pipl .m{inset:0} .dg.pipl .rx{left:2px;bottom:2px;width:7px;height:10px;border-radius:2px}
+  .layout.more{justify-content:center}
+  .layout.more .plus{font-size:14px;color:var(--muted)}
+
+  /* Deploy tile (primary CTA) */
+  .deploy-tile .ico svg{stroke:var(--fuchsia)}
+  .deploy-tile.live .ico{color:var(--fuchsia);filter:drop-shadow(0 0 24px rgba(255,45,149,.85))}
+  .deploy-tile.live .ico svg{stroke:var(--fuchsia)}
+  .deploy-tile.now .ico{color:#ffb02e;filter:drop-shadow(0 0 24px rgba(255,176,46,.85))}
+  .deploy-tile.now .ico svg{stroke:#ffb02e}
+  .deploy-tile.now .nm{color:#ffd790}
+  .deploy-tile.now .sub b{color:#ffd34d}
+
+  /* ───── secondary row (conditional) ───── */
+  .srow{border-top:1px solid var(--line);padding:14px 24px;display:flex;align-items:center;gap:14px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase}
+  .srow.dim{opacity:.5;pointer-events:none}
+  .srow .label{color:var(--dim);flex:none}
+  .source{display:flex;align-items:center;gap:8px;color:var(--muted);flex:1;min-width:0;max-width:380px}
+  .source .ic{width:14px;height:14px;border-radius:3px;background:linear-gradient(135deg,var(--fuchsia),var(--fuchsia-deep));flex:none}
+  .source .fn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;letter-spacing:.06em;text-transform:none;flex:1;min-width:0}
+  .source .ch{color:var(--cyan);border:1px solid rgba(47,233,212,.3);padding:2px 8px;border-radius:3px;cursor:pointer;flex:none}
+  .adv-toggle{color:var(--muted);background:transparent;border:1px dashed rgba(255,255,255,.18);border-radius:4px;padding:4px 10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase}
+  .adv-toggle:hover{color:var(--paper);border-color:rgba(255,255,255,.32)}
+  .adv-toggle .arrow{transition:.15s;font-size:9px}
+  .adv-toggle.open .arrow{transform:rotate(90deg)}
+  .adv-panel{display:none;align-items:center;gap:14px;flex:1;min-width:0;margin-left:auto}
+  .adv-panel.open{display:flex}
+  .audio{display:flex;gap:0;border:1px solid rgba(255,255,255,.10);border-radius:4px;overflow:hidden}
+  .audio button{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;padding:5px 10px;background:transparent;color:var(--muted);border:0;border-left:1px solid rgba(255,255,255,.10);cursor:pointer}
+  .audio button:first-child{border-left:0}
+  .audio button[aria-pressed="true"]{background:rgba(255,45,149,.10);color:var(--fuchsia-2)}
+  .offset{display:flex;align-items:center;gap:8px;color:var(--dim);flex:1;min-width:0}
+  .offset input[type=range]{flex:1;accent-color:var(--fuchsia);max-width:160px}
+  .offset b{color:var(--fuchsia-2);font-weight:700;letter-spacing:.06em}
+
+  /* bake / error strips */
+  .strip{padding:11px 24px;display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;border-top:1px solid}
+  .strip.bake{position:relative;overflow:hidden;background:rgba(47,233,212,.06);border-color:rgba(47,233,212,.3);color:var(--cyan)}
+  .strip.bake::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent,rgba(47,233,212,.16),transparent);transform:translateX(-100%);animation:sweep 1.5s linear infinite}
+  .strip.bake .dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px var(--cyan);animation:blink 1.1s infinite;z-index:1}
+  .strip.bake .t{z-index:1}
+  .strip.bake .can{margin-left:auto;z-index:1;color:var(--cyan);cursor:pointer;border:1px solid rgba(47,233,212,.4);padding:3px 10px;border-radius:3px}
+  .strip.err{background:rgba(255,85,99,.06);border-color:rgba(255,85,99,.3);color:#ff97a0}
+  .strip.err .x{color:var(--red);font-weight:700}
+  .strip.err .rt{margin-left:auto;color:#ffd2d6;cursor:pointer;border:1px solid rgba(255,85,99,.4);padding:3px 10px;border-radius:3px}
+
+  /* budget */
+  .budget{margin-top:48px;padding:18px 24px;border:1px dashed rgba(255,45,149,.25);border-radius:6px;max-width:1280px;margin-left:auto;margin-right:auto}
+  .budget h2{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--fuchsia);margin-bottom:10px}
+  .budget ul{color:var(--muted);font-size:11.5px;line-height:1.75;padding-left:18px}
+  .budget ul strong{color:var(--paper)}
+  .budget ul code{font-family:var(--mono);font-size:10.5px;color:var(--fuchsia-2);background:rgba(255,45,149,.07);padding:1px 5px;border-radius:3px}
+
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+  @keyframes sweep{to{transform:translateX(100%)}}
+</style>
+</head>
+<body>
+
+<div style="max-width:1280px;margin:0 auto">
+  <h1>Cockpit v6 — home visual language, panel scope</h1>
+  <p class="lede">Same panel structure as v5 (status strip + primary row + conditional secondary row), but the visual vocabulary is the home's: black background, fuchsia line icons with halo glow, dashed corner-bracket framing on every tile, lowercase sans-serif headlines, spaced mono uppercase sublabels. Four cockpit-tiles in the primary row: <strong>Caption · Reaction · Schedule · Publish</strong> — matching the home's <em>Create · Import · Thumbnails · Script</em> rhythm.</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- V1 — RESTING -->
+<!-- ============================================================ -->
+<section class="sec">
+  <div class="sec-label">VARIANT 01 · RESTING · clip 01 · stack below · +1h</div>
+
+  <div class="cards">
+    <div class="card corners focused">
+      <span class="br"></span>
+      <div class="clip-no">CLIP 01</div>
+      <div class="ctitle">She finally found a non-sticky gloss</div>
+      <div class="meta"><b>V70</b> · 0:10 · IMPORTED</div>
+    </div>
+    <div class="card corners dim">
+      <span class="br"></span>
+      <div class="clip-no" style="color:#ffb02e">CLIP 02</div>
+      <div class="ctitle">After two years, still my morning go-to</div>
+      <div class="meta" style="color:var(--dim)"><b style="color:#ffb02e">V62</b> · 0:10 · IMPORTED</div>
+    </div>
+    <div class="card corners dim">
+      <span class="br"></span>
+      <div class="clip-no" style="color:var(--dim)">CLIP 03</div>
+      <div class="ctitle">Day 5 of testing — verdict in</div>
+      <div class="meta" style="color:var(--dim)"><b style="color:var(--dim)">V55</b> · 0:10 · IMPORTED</div>
+    </div>
+  </div>
+
+  <div class="cockpit">
+    <div class="status">
+      <span class="clip-pill">CLIP <b>01</b></span>
+      <span class="v-pill"><i></i>V70</span>
+      <div class="focusnav"><button>◀</button><span>01 / 03</span><button>▶</button></div>
+      <span class="health">ⓘ sidecar · render · ayrshare</span>
+      <div class="counters">
+        <span class="rdy">RDY<b>3</b></span>
+        <span class="que">QUE<b>0</b></span>
+        <span>PUB<b>—</b></span>
+      </div>
+      <button class="sched-pill">↗ <b>+1h</b> · 14:30</button>
+      <button class="kebab">⋮</button>
+    </div>
+
+    <div class="prow">
+      <!-- Caption tile -->
+      <div class="tile corners">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><path d="M8 16 L8 48 L20 48 L24 56 L28 48 L56 48 L56 16 Z"/><path d="M18 28 L46 28 M18 36 L38 36"/></svg>
+        </div>
+        <div class="nm">caption</div>
+        <div class="sub">"she finally found…" · <b>BURN</b></div>
+      </div>
+
+      <!-- Reaction tile (larger, with tiles inside) -->
+      <div class="tile corners reaction-tile">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><path d="M32 8 L56 22 L32 36 L8 22 Z"/><path d="M8 32 L32 46 L56 32"/><path d="M8 42 L32 56 L56 42"/></svg>
+        </div>
+        <div class="nm">reaction</div>
+        <div class="sub">layout · <b>stack below</b></div>
+        <div class="tiles">
+          <button class="layout"><div class="dg full"><div class="rx"></div></div><span class="lab">Full</span></button>
+          <button class="layout sel"><div class="dg below"><div class="m"></div><div class="rx"></div></div><span class="lab">Below</span></button>
+          <button class="layout"><div class="dg above"><div class="m"></div><div class="rx"></div></div><span class="lab">Above</span></button>
+          <button class="layout"><div class="dg sleft"><div class="m"></div><div class="rx"></div></div><span class="lab">S·left</span></button>
+          <button class="layout"><div class="dg sright"><div class="m"></div><div class="rx"></div></div><span class="lab">S·right</span></button>
+          <button class="layout"><div class="dg pipr"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·R</span></button>
+          <button class="layout"><div class="dg pipl"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·L</span></button>
+          <button class="layout more"><span class="plus">＋</span><span class="lab">More</span></button>
+        </div>
+      </div>
+
+      <!-- Schedule tile -->
+      <div class="tile corners">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><rect x="10" y="14" width="44" height="42" rx="2"/><path d="M10 24 L54 24 M22 8 L22 18 M42 8 L42 18"/><circle cx="32" cy="38" r="8"/><path d="M32 34 L32 38 L36 40"/></svg>
+        </div>
+        <div class="nm">schedule</div>
+        <div class="sub">+1h · <b>14:30 TODAY</b></div>
+      </div>
+
+      <!-- Publish tile (primary) -->
+      <div class="tile corners deploy-tile live">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><path d="M32 4 L48 24 L40 24 L40 44 L24 44 L24 24 L16 24 Z"/><path d="M14 52 L50 52" stroke-dasharray="3 2"/></svg>
+        </div>
+        <div class="nm">publish</div>
+        <div class="sub">deploy to <b>3 channels</b></div>
+      </div>
+    </div>
+
+    <div class="srow">
+      <span class="label">SOURCE</span>
+      <div class="source">
+        <span class="ic"></span>
+        <span class="fn">giphy-6us0tg…looking-english.mp4</span>
+        <span class="ch">CHANGE</span>
+      </div>
+      <button class="adv-toggle"><span class="arrow">▶</span>Advanced</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- V2 — ADVANCED OPEN -->
+<!-- ============================================================ -->
+<section class="sec">
+  <div class="sec-label">VARIANT 02 · ADVANCED OPEN · audio + offset surfaced</div>
+
+  <div class="cockpit">
+    <div class="status">
+      <span class="clip-pill">CLIP <b>01</b></span>
+      <span class="v-pill"><i></i>V70</span>
+      <div class="focusnav"><button>◀</button><span>01 / 03</span><button>▶</button></div>
+      <span class="health">ⓘ sidecar · render · ayrshare</span>
+      <div class="counters">
+        <span class="rdy">RDY<b>3</b></span>
+        <span class="que">QUE<b>0</b></span>
+        <span>PUB<b>—</b></span>
+      </div>
+      <button class="sched-pill">↗ <b>+1h</b> · 14:30</button>
+      <button class="kebab">⋮</button>
+    </div>
+
+    <div class="prow">
+      <div class="tile corners">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><path d="M8 16 L8 48 L20 48 L24 56 L28 48 L56 48 L56 16 Z"/><path d="M18 28 L46 28 M18 36 L38 36"/></svg>
+        </div>
+        <div class="nm">caption</div>
+        <div class="sub">"she finally found…" · <b>BURN</b></div>
+      </div>
+      <div class="tile corners reaction-tile">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><path d="M32 8 L56 22 L32 36 L8 22 Z"/><path d="M8 32 L32 46 L56 32"/><path d="M8 42 L32 56 L56 42"/></svg>
+        </div>
+        <div class="nm">reaction</div>
+        <div class="sub">layout · <b>stack below</b></div>
+        <div class="tiles">
+          <button class="layout"><div class="dg full"><div class="rx"></div></div><span class="lab">Full</span></button>
+          <button class="layout sel"><div class="dg below"><div class="m"></div><div class="rx"></div></div><span class="lab">Below</span></button>
+          <button class="layout"><div class="dg above"><div class="m"></div><div class="rx"></div></div><span class="lab">Above</span></button>
+          <button class="layout"><div class="dg sleft"><div class="m"></div><div class="rx"></div></div><span class="lab">S·left</span></button>
+          <button class="layout"><div class="dg sright"><div class="m"></div><div class="rx"></div></div><span class="lab">S·right</span></button>
+          <button class="layout"><div class="dg pipr"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·R</span></button>
+          <button class="layout"><div class="dg pipl"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·L</span></button>
+          <button class="layout more"><span class="plus">＋</span><span class="lab">More</span></button>
+        </div>
+      </div>
+      <div class="tile corners">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><rect x="10" y="14" width="44" height="42" rx="2"/><path d="M10 24 L54 24 M22 8 L22 18 M42 8 L42 18"/><circle cx="32" cy="38" r="8"/><path d="M32 34 L32 38 L36 40"/></svg>
+        </div>
+        <div class="nm">schedule</div>
+        <div class="sub">+1h · <b>14:30 TODAY</b></div>
+      </div>
+      <div class="tile corners deploy-tile live">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><path d="M32 4 L48 24 L40 24 L40 44 L24 44 L24 24 L16 24 Z"/><path d="M14 52 L50 52" stroke-dasharray="3 2"/></svg>
+        </div>
+        <div class="nm">publish</div>
+        <div class="sub">deploy to <b>3 channels</b></div>
+      </div>
+    </div>
+
+    <div class="srow">
+      <span class="label">SOURCE</span>
+      <div class="source">
+        <span class="ic"></span>
+        <span class="fn">giphy-6us0tg…looking-english.mp4</span>
+        <span class="ch">CHANGE</span>
+      </div>
+      <button class="adv-toggle open"><span class="arrow">▶</span>Advanced</button>
+      <div class="adv-panel open">
+        <div class="audio">
+          <button aria-pressed="true">♪ MAIN</button>
+          <button aria-pressed="false">♬ RX</button>
+          <button aria-pressed="false">✕ MUTE</button>
+        </div>
+        <div class="offset">
+          <span>START</span>
+          <input type="range" min="0" max="60" step="0.5" value="0" />
+          <b>0.0s</b>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- V3 — NO LAYOUT YET -->
+<!-- ============================================================ -->
+<section class="sec">
+  <div class="sec-label">VARIANT 03 · NO LAYOUT YET · publish-as-full option visible</div>
+
+  <div class="cockpit">
+    <div class="status">
+      <span class="clip-pill">CLIP <b>03</b></span>
+      <span class="v-pill low"><i></i>V55</span>
+      <div class="focusnav"><button>◀</button><span>03 / 03</span><button>▶</button></div>
+      <span class="health">ⓘ sidecar · render · ayrshare</span>
+      <div class="counters">
+        <span class="rdy">RDY<b>3</b></span>
+        <span class="que">QUE<b>0</b></span>
+        <span>PUB<b>—</b></span>
+      </div>
+      <button class="sched-pill pub">⚡ <b>NOW</b></button>
+      <button class="kebab">⋮</button>
+    </div>
+
+    <div class="prow">
+      <div class="tile corners">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><path d="M8 16 L8 48 L20 48 L24 56 L28 48 L56 48 L56 16 Z"/><path d="M18 28 L46 28 M18 36 L38 36"/></svg>
+        </div>
+        <div class="nm">caption</div>
+        <div class="sub">"day 5 of testing…" · <b>BURN</b></div>
+      </div>
+      <div class="tile corners reaction-tile">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><path d="M32 8 L56 22 L32 36 L8 22 Z"/><path d="M8 32 L32 46 L56 32"/><path d="M8 42 L32 56 L56 42"/></svg>
+        </div>
+        <div class="nm">reaction</div>
+        <div class="sub">layout · <b style="color:var(--dim)">NONE</b></div>
+        <div class="tiles">
+          <button class="layout"><div class="dg full"><div class="rx"></div></div><span class="lab">Full</span></button>
+          <button class="layout"><div class="dg below"><div class="m"></div><div class="rx"></div></div><span class="lab">Below</span></button>
+          <button class="layout"><div class="dg above"><div class="m"></div><div class="rx"></div></div><span class="lab">Above</span></button>
+          <button class="layout"><div class="dg sleft"><div class="m"></div><div class="rx"></div></div><span class="lab">S·left</span></button>
+          <button class="layout"><div class="dg sright"><div class="m"></div><div class="rx"></div></div><span class="lab">S·right</span></button>
+          <button class="layout"><div class="dg pipr"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·R</span></button>
+          <button class="layout"><div class="dg pipl"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·L</span></button>
+          <button class="layout more"><span class="plus">＋</span><span class="lab">More</span></button>
+        </div>
+      </div>
+      <div class="tile corners">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><rect x="10" y="14" width="44" height="42" rx="2"/><path d="M10 24 L54 24 M22 8 L22 18 M42 8 L42 18"/><circle cx="32" cy="38" r="8"/><path d="M32 34 L32 38 L36 40"/></svg>
+        </div>
+        <div class="nm">schedule</div>
+        <div class="sub">now · <b>IMMEDIATE</b></div>
+      </div>
+      <div class="tile corners deploy-tile now">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><path d="M32 4 L48 24 L40 24 L40 44 L24 44 L24 24 L16 24 Z"/><path d="M14 52 L50 52" stroke-dasharray="3 2"/></svg>
+        </div>
+        <div class="nm">publish now</div>
+        <div class="sub">deploy to <b>3 channels</b></div>
+      </div>
+    </div>
+
+    <div class="srow">
+      <span class="label">REACTION</span>
+      <span style="color:var(--dim);font-size:10.5px;letter-spacing:.08em">PICK A LAYOUT ABOVE · OR PUBLISH AS FULL CLIP</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- V4 — BAKING -->
+<!-- ============================================================ -->
+<section class="sec">
+  <div class="sec-label">VARIANT 04 · BAKING · pending strip replaces secondary row</div>
+
+  <div class="cockpit">
+    <div class="status">
+      <span class="clip-pill">CLIP <b>02</b></span>
+      <span class="v-pill mid"><i></i>V62</span>
+      <div class="focusnav"><button>◀</button><span>02 / 03</span><button>▶</button></div>
+      <span class="health">ⓘ sidecar · render · ayrshare</span>
+      <div class="counters">
+        <span class="rdy">RDY<b>3</b></span>
+        <span class="que">QUE<b>0</b></span>
+        <span>PUB<b>—</b></span>
+      </div>
+      <button class="sched-pill" style="opacity:.5">↗ <b>+1h</b> · 14:30</button>
+      <button class="kebab">⋮</button>
+    </div>
+
+    <div class="prow">
+      <div class="tile corners dim muted">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><path d="M8 16 L8 48 L20 48 L24 56 L28 48 L56 48 L56 16 Z"/><path d="M18 28 L46 28 M18 36 L38 36"/></svg>
+        </div>
+        <div class="nm">caption</div>
+        <div class="sub">"after two years…" · <b>BURN</b></div>
+      </div>
+      <div class="tile corners reaction-tile">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><path d="M32 8 L56 22 L32 36 L8 22 Z"/><path d="M8 32 L32 46 L56 32"/><path d="M8 42 L32 56 L56 42"/></svg>
+        </div>
+        <div class="nm">reaction</div>
+        <div class="sub">layout · <b>stack below</b></div>
+        <div class="tiles dim">
+          <button class="layout"><div class="dg full"><div class="rx"></div></div><span class="lab">Full</span></button>
+          <button class="layout sel"><div class="dg below"><div class="m"></div><div class="rx"></div></div><span class="lab">Below</span></button>
+          <button class="layout"><div class="dg above"><div class="m"></div><div class="rx"></div></div><span class="lab">Above</span></button>
+          <button class="layout"><div class="dg sleft"><div class="m"></div><div class="rx"></div></div><span class="lab">S·left</span></button>
+          <button class="layout"><div class="dg sright"><div class="m"></div><div class="rx"></div></div><span class="lab">S·right</span></button>
+          <button class="layout"><div class="dg pipr"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·R</span></button>
+          <button class="layout"><div class="dg pipl"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·L</span></button>
+          <button class="layout more"><span class="plus">＋</span><span class="lab">More</span></button>
+        </div>
+      </div>
+      <div class="tile corners dim muted">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><rect x="10" y="14" width="44" height="42" rx="2"/><path d="M10 24 L54 24 M22 8 L22 18 M42 8 L42 18"/><circle cx="32" cy="38" r="8"/><path d="M32 34 L32 38 L36 40"/></svg>
+        </div>
+        <div class="nm">schedule</div>
+        <div class="sub">+1h · <b>14:30 TODAY</b></div>
+      </div>
+      <div class="tile corners deploy-tile live dim muted">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><path d="M32 4 L48 24 L40 24 L40 44 L24 44 L24 24 L16 24 Z"/><path d="M14 52 L50 52" stroke-dasharray="3 2"/></svg>
+        </div>
+        <div class="nm">publish</div>
+        <div class="sub">deploy to <b>3 channels</b></div>
+      </div>
+    </div>
+
+    <div class="strip bake">
+      <span class="dot"></span>
+      <span class="t">Baking reaction · <b>0:08 elapsed</b></span>
+      <span class="can">Cancel ↑</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- V5 — FAILED -->
+<!-- ============================================================ -->
+<section class="sec">
+  <div class="sec-label">VARIANT 05 · FAILED · tiles re-enabled, retry visible</div>
+
+  <div class="cockpit">
+    <div class="status">
+      <span class="clip-pill">CLIP <b>03</b></span>
+      <span class="v-pill low"><i></i>V55</span>
+      <div class="focusnav"><button>◀</button><span>03 / 03</span><button>▶</button></div>
+      <span class="health" style="color:#ffb02e">ⓘ ayrshare PAUSED</span>
+      <div class="counters">
+        <span class="rdy">RDY<b>3</b></span>
+        <span class="que">QUE<b>0</b></span>
+        <span>PUB<b>—</b></span>
+      </div>
+      <button class="sched-pill pub">⚡ <b>NOW</b></button>
+      <button class="kebab">⋮</button>
+    </div>
+
+    <div class="prow">
+      <div class="tile corners">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><path d="M8 16 L8 48 L20 48 L24 56 L28 48 L56 48 L56 16 Z"/><path d="M18 28 L46 28 M18 36 L38 36"/></svg>
+        </div>
+        <div class="nm">caption</div>
+        <div class="sub">"day 5 of testing…" · <b>BURN</b></div>
+      </div>
+      <div class="tile corners reaction-tile">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><path d="M32 8 L56 22 L32 36 L8 22 Z"/><path d="M8 32 L32 46 L56 32"/><path d="M8 42 L32 56 L56 42"/></svg>
+        </div>
+        <div class="nm">reaction</div>
+        <div class="sub">layout · <b style="color:var(--red)">NONE</b></div>
+        <div class="tiles">
+          <button class="layout"><div class="dg full"><div class="rx"></div></div><span class="lab">Full</span></button>
+          <button class="layout"><div class="dg below"><div class="m"></div><div class="rx"></div></div><span class="lab">Below</span></button>
+          <button class="layout"><div class="dg above"><div class="m"></div><div class="rx"></div></div><span class="lab">Above</span></button>
+          <button class="layout"><div class="dg sleft"><div class="m"></div><div class="rx"></div></div><span class="lab">S·left</span></button>
+          <button class="layout"><div class="dg sright"><div class="m"></div><div class="rx"></div></div><span class="lab">S·right</span></button>
+          <button class="layout"><div class="dg pipr"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·R</span></button>
+          <button class="layout"><div class="dg pipl"><div class="m"></div><div class="rx"></div></div><span class="lab">PiP·L</span></button>
+          <button class="layout more"><span class="plus">＋</span><span class="lab">More</span></button>
+        </div>
+      </div>
+      <div class="tile corners">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><rect x="10" y="14" width="44" height="42" rx="2"/><path d="M10 24 L54 24 M22 8 L22 18 M42 8 L42 18"/><circle cx="32" cy="38" r="8"/><path d="M32 34 L32 38 L36 40"/></svg>
+        </div>
+        <div class="nm">schedule</div>
+        <div class="sub">now · <b>IMMEDIATE</b></div>
+      </div>
+      <div class="tile corners deploy-tile now">
+        <span class="br"></span>
+        <div class="ico">
+          <svg viewBox="0 0 64 64"><path d="M32 4 L48 24 L40 24 L40 44 L24 44 L24 24 L16 24 Z"/><path d="M14 52 L50 52" stroke-dasharray="3 2"/></svg>
+        </div>
+        <div class="nm">publish now</div>
+        <div class="sub">deploy to <b>3 channels</b></div>
+      </div>
+    </div>
+
+    <div class="strip err">
+      <span class="x">✕</span>
+      <span>Bake failed · ffmpeg: invalid source frame at t=4.2s</span>
+      <span class="rt">Retry</span>
+    </div>
+  </div>
+</section>
+
+<div class="budget">
+  <h2>v6 vs home language</h2>
+  <ul>
+    <li><strong>Black background</strong> (matches home — no gradients, no ink-2/ink-3 layering)</li>
+    <li><strong>Dashed fuchsia corner brackets</strong> frame every cockpit-tile + every card (matches home's Create/Import/Thumbnails/Script tiles + the studio HUD framing)</li>
+    <li><strong>Large fuchsia line icons</strong> at top of each tile (matches home: sparkles, layers, image, scroll → ours: speech, layers, calendar, rocket)</li>
+    <li><strong>Lowercase sans-serif headlines</strong> per tile (<code>caption</code>, <code>reaction</code>, <code>schedule</code>, <code>publish</code>)</li>
+    <li><strong>Spaced mono uppercase sublabels</strong> with optional fuchsia <b>bold</b> highlight (matches home's <code>PASTE A LINK · DROP A VIDEO</code>)</li>
+    <li><strong>4 tiles in primary row</strong> — same rhythm as home (Create · Import · Thumbnails · Script → Caption · Reaction · Schedule · Publish)</li>
+    <li><strong>Reaction tile is wider</strong> to host the 8 mini-diagram layouts directly inside</li>
+    <li><strong>Publish tile = primary CTA</strong> in the home's primary-tile style (live = fuchsia halo, now = amber halo)</li>
+  </ul>
+
+  <h2 style="margin-top:18px">Scan-unit count</h2>
+  <ul>
+    <li>Status strip: <strong>6</strong> (clip-pill · v-pill · focusnav · health · counters · sched-pill · ⋮ = 7 widgets but all monoline so reads as one band)</li>
+    <li>Primary row: <strong>4 cockpit-tiles</strong> as scan groups (Caption · Reaction · Schedule · Publish)</li>
+    <li>Secondary row at rest: <strong>2</strong> (source · Advanced toggle)</li>
+    <li><strong>Total: 12</strong> — within working budget for a real cockpit. The 4-tile primary row matches the home's exact rhythm so the user's eye knows where to land.</li>
+  </ul>
+
+  <h2 style="margin-top:18px">Three things to confirm</h2>
+  <ul>
+    <li>Do the dashed brackets need to be on every state (resting + baking + failed), or only at rest?</li>
+    <li>Should the Caption tile open a popover on click (to edit), or stay display-only with the ⋮ menu providing edit?</li>
+    <li>Should the Schedule tile open the 4-chip picker on click, or stay tied to the status-strip schedule pill?</li>
+  </ul>
+</div>
+
+</body>
+</html>
