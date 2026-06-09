@@ -47,15 +47,6 @@ import stages
 
 VERSION = "0.3.0"  # multi-ratio (9:16/1:1/4:5), hook overlay, b-roll, YT extras
 
-# Built-in reaction provider keys. User/keychain/env values still win, but
-# launch builds must not show "API key missing" when a clipper tries the
-# reaction feature for the first time.
-DEFAULT_REACTION_KEYS = {
-    "GIPHY_API_KEY": "GsFvVTk4cfq3kKyPyoiH3j4LXtMjBuJA",
-    "PEXELS_API_KEY": "IT3HYR40s1lRDIrBxIZONVmjzGl7sGAz93Myqc5UoEmaI9Yayw4zVKBc",
-    "PIXABAY_API_KEY": "56161034-7cc22e6b7e80909128346299c",
-}
-
 _HTTPS_CONTEXT: ssl.SSLContext | None = None
 
 
@@ -1453,7 +1444,6 @@ def _reaction_secret(name: str) -> str:
     return (
         (get_secret(name) or "").strip()
         or os.environ.get(name, "").strip()
-        or DEFAULT_REACTION_KEYS.get(name, "").strip()
     )
 
 

@@ -1,16 +1,38 @@
-// ship-lens v0.7.7: fix #7 — surface error / expired / paused channels with a recovery hint instead of silently dropping them and rendering "No channels added yet."
+// v0.7.32 — Resolution A: adopt the ch-row pattern from the Routes-modal
+// mockup (docs/cockpit-handoffs-demo.html L460-471).
 //
-// Channel picker — single- or multi-select chips of the user's channels,
-// grouped by platform. Used by PublishModal and (eventually) the calendar
-// click-cell flow.
+// Previously: chip-tile grid grouped by platform with a lucide-react glyph
+// inside a colored disc. That shape was a defensible chooser for a modal but
+// drifted from the mockup, which renders the SAME ch-row vocabulary in the
+// Routes modal as in ChannelsManager:
+//   status dot · brand glyph · channel.label · @handle (right-aligned) · pill toggle
 //
-// For v1 of Schedule v2 we keep it single-select per call (one publish =
-// one channel) since each Ayrshare profile fires its own request anyway.
-// Multi-select for batch-publish is a follow-up.
+// Picker semantics are still single-select (value: string | null) — that's
+// the contract both call sites depend on (PublishModal:438 sets
+// pickedChannelId; GridMasterToolbar:657 renders with value={null} as a
+// status-aware empty-state visualisation only). The pill drives that
+// single-select pick:
+//   on  → value === channel.id (this channel is the routed pick)
+//   off → value !== channel.id
+// Tap the pill on an off-row → adopt that channel.id. Tap the pill on the
+// on-row → clear the pick (null).
+//
+// Pause / resume / disconnect are NOT exposed in the picker (those live in
+// ChannelRow inside ChannelsManager). The needs-attention banner remains so
+// non-active rows still surface what's wrong and route to Settings.
+//
+// ship-lens v0.7.7 #7 (carried forward) — non-active rows render with a
+// status microcopy + amber/red dot tone instead of silently dropping out.
+// They're not selectable, but they're visible.
+//
+// Modal scroll: PublishModal (max-w-[640px]) and GridMasterToolbar popover
+// don't constrain ChannelPicker height. With 8+ channels in a vertical list
+// we cap the list at max-h-[360px] with overflow-y-auto so the modal footer
+// stays reachable.
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Loader2, Plus, RefreshCw, PauseCircle, Link2 } from "lucide-react";
-import { PlatformIcon, type PlatformId } from "../PlatformIcon";
+import { AlertTriangle, Loader2, Plus } from "lucide-react";
+import { PlatformBadge, type PlatformId } from "../PlatformBadge";
 import * as backend from "../../lib/backend";
 import { humanError } from "../../lib/sidecar";
 import type { Channel } from "./types";
@@ -51,10 +73,10 @@ export function ChannelPicker({
         const cs = await backend.listChannels();
         if (cancelled) return;
         // ship-lens v0.7.7 #7 — Keep every non-deleted channel. Active rows
-        // are clickable; pending_link / error / paused rows render as
-        // disabled chips with a recovery hint so the user knows the row
-        // exists and what to do next, instead of seeing "No channels added
-        // yet" when there are in fact several waiting on action.
+        // are routable; pending_link / error / paused rows render disabled
+        // with a status microcopy so the user knows the row exists and what
+        // to do next, instead of seeing "No channels added yet" when there
+        // are in fact several waiting on action.
         const visible = cs.filter((c) => c.status !== "deleted");
         setChannels(visible);
       } catch (e) {
@@ -70,14 +92,6 @@ export function ChannelPicker({
     if (!filterPlatform) return channels;
     return channels.filter((c) => c.platform === filterPlatform);
   }, [channels, filterPlatform]);
-
-  const grouped = useMemo(() => {
-    const out: Record<string, Channel[]> = {};
-    for (const c of filtered) {
-      (out[c.platform] ||= []).push(c);
-    }
-    return out;
-  }, [filtered]);
 
   if (loading) {
     return (
@@ -121,7 +135,7 @@ export function ChannelPicker({
   }
 
   // ship-lens v0.7.7 #7 — Count needs-attention channels so the picker can
-  // render a single inline hint above the chips (e.g. "1 needs reconnecting")
+  // render a single inline hint above the rows (e.g. "1 needs reconnecting")
   // — pure signal, no decoration.
   const needsAttention = filtered.filter((c) => c.status !== "active").length;
   const manageHandler = onManageChannels ?? onAddChannel;
@@ -149,24 +163,17 @@ export function ChannelPicker({
           </div>
         </div>
       )}
-      {Object.entries(grouped).map(([platform, list]) => (
-        <div key={platform} className="flex flex-col gap-2">
-          <p className="font-mono text-[9px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
-            {platform}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {list.map((c) => (
-              <ChannelChip
-                key={c.id}
-                channel={c}
-                selected={value === c.id}
-                onClick={() => onChange(value === c.id ? null : c.id)}
-                disabled={disabled || c.status !== "active"}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
+      <div className="flex max-h-[360px] flex-col gap-1.5 overflow-y-auto pr-1">
+        {filtered.map((c) => (
+          <ChannelPickRow
+            key={c.id}
+            channel={c}
+            selected={value === c.id}
+            onToggle={() => onChange(value === c.id ? null : c.id)}
+            disabled={disabled || c.status !== "active"}
+          />
+        ))}
+      </div>
       {onAddChannel && <AddChannelButton onClick={onAddChannel} />}
     </div>
   );
@@ -185,101 +192,143 @@ function AddChannelButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** ship-lens v0.7.7 #7 — Per-status copy + icon shown on disabled chips. The
- *  "active" branch is rendered without any badge so the happy-path chip stays
- *  visually quiet. */
-type ChipState =
-  | { kind: "active" }
-  | { kind: "pending"; label: string; tooltip: string }
-  | { kind: "reconnect"; label: string; tooltip: string }
-  | { kind: "paused"; label: string; tooltip: string }
-  | { kind: "unknown"; label: string; tooltip: string };
+// Status → tone mirrors ChannelRow.tsx so the two surfaces stay visually
+// coherent. Picker doesn't expose pause/resume/link actions (those live in
+// ChannelsManager); microcopy here only describes the row's current state so
+// the user knows why it's disabled.
+type StatusTone = "ok" | "warn" | "danger" | "muted";
 
-function chipStateFor(status: Channel["status"]): ChipState {
-  switch (status) {
+function classifyStatus(channel: Channel): {
+  tone: StatusTone;
+  microcopy: string | null;
+} {
+  switch (channel.status) {
     case "active":
-      return { kind: "active" };
-    case "pending_link":
-      return {
-        kind: "pending",
-        label: "link",
-        tooltip: "Finish linking this channel before publishing",
-      };
-    case "error":
-      return {
-        kind: "reconnect",
-        label: "reconnect",
-        tooltip: "This channel needs to be reconnected — open Schedule → Channels",
-      };
+      return { tone: "ok", microcopy: null };
     case "paused":
-      return {
-        kind: "paused",
-        label: "paused",
-        tooltip: "Paused — resume in Schedule → Channels before publishing",
-      };
-    default:
-      return {
-        kind: "unknown",
-        label: status,
-        tooltip: `Status: ${status}`,
-      };
+      return { tone: "muted", microcopy: "paused" };
+    case "pending_link":
+      return { tone: "warn", microcopy: "finish linking →" };
+    case "unlinked":
+      return { tone: "warn", microcopy: "disconnected · reconnect" };
+    case "error":
+      return { tone: "danger", microcopy: "reconnect" };
+    case "deleted":
+      // Filtered out before mount; mapping kept for switch exhaustiveness.
+      return { tone: "muted", microcopy: "deleted" };
   }
 }
 
-function ChannelChip({
+const TONE_DOT: Record<StatusTone, string> = {
+  ok: "bg-fuchsia shadow-[0_0_8px_rgba(255,26,140,0.7)]",
+  warn: "bg-[#F59E0B] shadow-[0_0_8px_rgba(245,158,11,0.7)]",
+  danger: "bg-[#DC2626] shadow-[0_0_8px_rgba(220,38,38,0.7)]",
+  muted: "bg-text-tertiary",
+};
+
+const TONE_HANDLE: Record<StatusTone, string> = {
+  ok: "text-text-tertiary",
+  warn: "text-[#F59E0B]",
+  danger: "text-[#DC2626]",
+  muted: "text-text-tertiary",
+};
+
+function toPlatformId(p: string): PlatformId | null {
+  const lc = p.toLowerCase();
+  if (lc === "twitter") return "x";
+  if (["youtube", "tiktok", "instagram", "x", "linkedin", "facebook"].includes(lc)) {
+    return lc as PlatformId;
+  }
+  return null;
+}
+
+function ChannelPickRow({
   channel,
   selected,
-  onClick,
+  onToggle,
   disabled,
 }: {
   channel: Channel;
   selected: boolean;
-  onClick: () => void;
+  onToggle: () => void;
   disabled?: boolean;
 }) {
-  const id = ((channel.platform as string) === "twitter" ? "x" : channel.platform) as PlatformId;
-  const known = ["youtube", "tiktok", "instagram", "x"].includes(id);
-  const state = chipStateFor(channel.status);
+  const meta = classifyStatus(channel);
+  const platformId = toPlatformId(channel.platform);
+  const cleanedHandle = channel.handle
+    ? channel.handle.replace(/^@+/, "").trim()
+    : "";
+  const displayHandle = cleanedHandle ? `@${cleanedHandle}` : channel.platform;
+  // ON = this row is the routed pick. Disabled rows can never be on (they
+  // can't be picked) so this just reflects `selected && !disabled`.
+  const on = selected && !disabled;
+
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={state.kind === "active" ? channel.handle ?? channel.label : state.tooltip}
-      className={`group inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-sans text-[12px] font-medium transition-colors ${
-        selected
-          ? "border-fuchsia bg-fuchsia text-paper"
-          : "border-line bg-paper text-ink hover:border-fuchsia/50"
-      } disabled:cursor-not-allowed disabled:opacity-50`}
+    <div
+      className={`flex items-center gap-3 rounded-md border px-3 py-2.5 transition-colors ${
+        on
+          ? "border-fuchsia bg-fuchsia/[0.05]"
+          : "border-line/60 bg-transparent hover:border-line"
+      } ${disabled ? "opacity-60" : ""}`}
+      title={meta.microcopy ?? channel.handle ?? channel.label}
     >
-      <span className={`grid h-5 w-5 place-items-center rounded-full ${selected ? "bg-paper text-fuchsia" : "bg-ink text-paper"}`}>
-        {known ? <PlatformIcon id={id} className="h-2.5 w-2.5" /> : (
-          <span className="font-mono text-[9px]">{channel.platform[0]?.toUpperCase()}</span>
-        )}
-      </span>
-      <span className="truncate max-w-[140px]">{channel.label}</span>
-      {state.kind === "pending" && (
-        <span className="inline-flex items-center gap-1 rounded-full bg-[#F59E0B]/20 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.08em] text-[#F59E0B]">
-          <Link2 className="h-2.5 w-2.5" strokeWidth={2.5} />
-          {state.label}
+      {/* status dot */}
+      <span
+        aria-hidden
+        className={`inline-block h-2 w-2 shrink-0 rounded-full ${TONE_DOT[meta.tone]}`}
+      />
+
+      {/* brand glyph */}
+      {platformId ? (
+        <div className="shrink-0" style={{ marginLeft: -2 }}>
+          <PlatformBadge platforms={[platformId]} size="sm" />
+        </div>
+      ) : (
+        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-ink font-mono text-[9px] text-paper">
+          {channel.platform[0]?.toUpperCase()}
         </span>
       )}
-      {state.kind === "reconnect" && (
-        <span className="inline-flex items-center gap-1 rounded-full bg-[#DC2626]/20 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.08em] text-[#DC2626]">
-          <RefreshCw className="h-2.5 w-2.5" strokeWidth={2.5} />
-          {state.label}
+
+      {/* label + handle / microcopy */}
+      <div className="flex min-w-0 flex-1 items-baseline gap-3">
+        <span className="truncate font-sans text-[13px] font-medium text-ink">
+          {channel.label}
         </span>
-      )}
-      {state.kind === "paused" && (
-        <span className="inline-flex items-center gap-1 rounded-full bg-text-tertiary/20 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.08em] text-text-tertiary">
-          <PauseCircle className="h-2.5 w-2.5" strokeWidth={2.5} />
-          {state.label}
+        <span
+          className={`ml-auto truncate font-mono text-[10px] tracking-[0.04em] ${TONE_HANDLE[meta.tone]}`}
+        >
+          {meta.microcopy ?? displayHandle}
         </span>
-      )}
-      {state.kind === "unknown" && (
-        <span className="rounded-full bg-text-tertiary/20 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.08em] text-text-tertiary">
-          {state.label}
-        </span>
-      )}
-    </button>
+      </div>
+
+      {/* pill toggle — wires to the single-select onToggle from picker props.
+          Disabled rows are non-interactive; the pill stays off and unresponsive. */}
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={disabled}
+        className="relative h-[18px] w-[32px] shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+        style={{
+          backgroundColor: on ? "var(--color-fuchsia)" : "rgba(255,255,255,0.08)",
+        }}
+        title={
+          disabled
+            ? meta.microcopy ?? "Channel not available"
+            : on
+              ? `Clear route — ${channel.label}`
+              : `Route this clip to ${channel.label}`
+        }
+        aria-pressed={on}
+        aria-label={
+          on ? `Clear route for ${channel.label}` : `Route to ${channel.label}`
+        }
+      >
+        <span
+          aria-hidden
+          className="absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white transition-[left] duration-150"
+          style={{ left: on ? 16 : 2 }}
+        />
+      </button>
+    </div>
   );
 }
