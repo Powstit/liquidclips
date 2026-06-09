@@ -76,7 +76,20 @@ export async function fanOut(
   const failed: MasterActionResult["failed"] = [];
   let current = project;
 
-  for (const id of selectedIds) {
+  // Removes shift all later indices down by one. Iterating in selection
+  // order means the second remove targets the wrong clip (the one that
+  // shifted into the now-vacant slot). For remove only, iterate by
+  // clipIdx descending so each removal leaves earlier indices intact.
+  const orderedIds: WindowId[] =
+    action.kind === "remove"
+      ? [...selectedIds].sort((a, b) => {
+          const aIdx = windows.get(a)?.clipIdx ?? -1;
+          const bIdx = windows.get(b)?.clipIdx ?? -1;
+          return bIdx - aIdx;
+        })
+      : [...selectedIds];
+
+  for (const id of orderedIds) {
     const win = windows.get(id);
     if (!win) {
       failed.push({ id, clipIdx: -1, reason: "window not found" });

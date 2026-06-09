@@ -48,10 +48,14 @@ export function useDirectPublishQueue(): UseDirectPublishQueue {
   // Track the latest items in a ref so write callbacks don't capture a
   // stale snapshot when the caller batches multiple ops in quick succession.
   const itemsRef = useRef<DirectPublishQueueItem[]>([]);
+  // Mutators await this before reading itemsRef. Without the gate, a drop
+  // that lands before the first read resolves would write to the empty
+  // default and clobber persisted items when the read eventually completes.
+  const hydratedRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    hydratedRef.current = (async () => {
       try {
         const { items: read } = await sidecar.directPublishQueueRead();
         if (cancelled) return;
@@ -86,6 +90,7 @@ export function useDirectPublishQueue(): UseDirectPublishQueue {
   const addPaths = useCallback(
     async (paths: string[]) => {
       if (paths.length === 0) return;
+      await hydratedRef.current;
       const current = itemsRef.current;
       const known = new Set(current.map((it) => it.file_path));
       const additions: DirectPublishQueueItem[] = [];
@@ -112,6 +117,7 @@ export function useDirectPublishQueue(): UseDirectPublishQueue {
 
   const remove = useCallback(
     async (id: string) => {
+      await hydratedRef.current;
       const next = itemsRef.current.filter((it) => it.id !== id);
       if (next.length === itemsRef.current.length) return;
       await persist(next);
@@ -120,12 +126,14 @@ export function useDirectPublishQueue(): UseDirectPublishQueue {
   );
 
   const clear = useCallback(async () => {
+    await hydratedRef.current;
     if (itemsRef.current.length === 0) return;
     await persist([]);
   }, [persist]);
 
   const updateTitle = useCallback(
     async (id: string, title: string) => {
+      await hydratedRef.current;
       const next = itemsRef.current.map((it) =>
         it.id === id ? { ...it, title } : it,
       );
