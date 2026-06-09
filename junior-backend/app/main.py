@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.cron import start_cron, stop_cron
 from app.db import Base, engine
-from app.routes import admin, affiliate, analytics, campaigns, channels, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, affiliate, analytics, auth_whop, campaigns, channels, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -218,6 +218,7 @@ app.include_router(webhooks_stripe.router)
 app.include_router(webhooks_ayrshare.router)
 app.include_router(stripe_connect.router)
 app.include_router(desktop.router)
+app.include_router(auth_whop.router)
 app.include_router(sync.router)
 app.include_router(schedules.router)
 app.include_router(usage.router)

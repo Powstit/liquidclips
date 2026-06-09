@@ -24,6 +24,19 @@ type Phase =
 
 const CHALLENGE_KEY = "jnr_connect_challenge";
 
+// Whop True Login (desktop/docs/WHOP_TRUE_LOGIN_SCOPE.md). When the flag is
+// off the button hides and the page behaves exactly like the Clerk-only
+// flow. Toggle on Vercel without redeploy via NEXT_PUBLIC_WHOP_SIGNIN_ENABLED.
+const WHOP_SIGNIN_ENABLED = process.env.NEXT_PUBLIC_WHOP_SIGNIN_ENABLED === "true";
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "https://api.jnremployee.com";
+const WHOP_AFFILIATE_URL = process.env.NEXT_PUBLIC_WHOP_PRODUCT_AFFILIATE_URL ?? "";
+
+// Set by the /auth/whop/callback when the OAuth path can't complete cleanly.
+// Drives the inline banner so the user sees a specific reason, not the
+// generic Clerk sign-in screen.
+type WhopUrlState = "none" | "nomembership" | "cancelled" | "disabled" | "error";
+
 function readChallenge(): string {
   if (typeof window === "undefined") return "";
   const fromUrl = new URLSearchParams(window.location.search).get("challenge");
@@ -42,14 +55,26 @@ function readChallenge(): string {
   }
 }
 
+function readWhopUrlState(): WhopUrlState {
+  if (typeof window === "undefined") return "none";
+  const q = new URLSearchParams(window.location.search);
+  if (q.get("whop_nomembership") === "1") return "nomembership";
+  if (q.get("whop_cancelled") === "1") return "cancelled";
+  if (q.get("whop_disabled") === "1") return "disabled";
+  if (q.get("whop_error")) return "error";
+  return "none";
+}
+
 export default function ConnectDesktopPage() {
   const { isLoaded, isSignedIn } = useUser();
   const [challenge, setChallenge] = useState("");
+  const [whopUrlState, setWhopUrlState] = useState<WhopUrlState>("none");
   const [phase, setPhase] = useState<Phase>({ k: "loading" });
   const minted = useRef(false);
 
   useEffect(() => {
     setChallenge(readChallenge());
+    setWhopUrlState(readWhopUrlState());
   }, []);
 
   useEffect(() => {
@@ -121,14 +146,33 @@ export default function ConnectDesktopPage() {
 
   if (phase.k === "need_signin") {
     const back = `/connect-desktop?challenge=${encodeURIComponent(challenge)}`;
+    const whopStartHref = challenge
+      ? `${BACKEND_URL}/auth/whop/start?challenge=${encodeURIComponent(challenge)}`
+      : "";
     return (
       <Shell eyebrow="connect desktop" title="Sign in to activate Liquid Clips.">
+        <WhopBanner state={whopUrlState} />
         <SignIn
           routing="hash"
           signUpUrl="/sign-up"
           forceRedirectUrl={back}
           signUpForceRedirectUrl={back}
         />
+        {WHOP_SIGNIN_ENABLED && whopStartHref && whopUrlState !== "disabled" && (
+          <div className="flex w-full max-w-[440px] flex-col items-center gap-3">
+            {/* Quiet category break — Clerk owns the "OR" vocabulary inside its widget. */}
+            <span className="h-px w-full bg-line" />
+            <a
+              href={whopStartHref}
+              className="w-full rounded-full border border-line bg-paper px-5 py-2.5 text-center font-sans text-[14px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia"
+            >
+              Continue with Whop
+            </a>
+            <p className="text-center font-sans text-[11px] text-text-tertiary">
+              For members who bought via a creator link.
+            </p>
+          </div>
+        )}
       </Shell>
     );
   }
@@ -183,6 +227,47 @@ export default function ConnectDesktopPage() {
 
       <style>{`@keyframes connect-bar{0%{transform:translateX(-100%)}50%{transform:translateX(120%)}100%{transform:translateX(280%)}}`}</style>
     </Shell>
+  );
+}
+
+function WhopBanner({ state }: { state: WhopUrlState }) {
+  if (state === "none") return null;
+
+  if (state === "nomembership") {
+    return (
+      <div className="flex w-full max-w-[440px] flex-col items-center gap-3 rounded-2xl border border-line bg-paper px-5 py-4 text-center">
+        <p className="font-sans text-[14px] font-medium text-ink">
+          No Liquid Clips membership found on that Whop account.
+        </p>
+        <p className="font-sans text-[12px] text-text-secondary">
+          You can pick one up below, or sign in with Google to use an existing
+          direct account.
+        </p>
+        {WHOP_AFFILIATE_URL && (
+          <a
+            href={WHOP_AFFILIATE_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-full bg-ink px-5 py-2 font-sans text-[13px] font-medium text-paper transition-colors hover:bg-fuchsia"
+          >
+            Get a membership →
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  // cancelled / disabled / error — single compact strip; the user can retry
+  // Whop or fall through to the Clerk widget below.
+  const msg: Record<Exclude<WhopUrlState, "none" | "nomembership">, string> = {
+    cancelled: "Whop sign-in was cancelled. Try again or use Google below.",
+    disabled: "Whop sign-in is temporarily unavailable. Use Google below.",
+    error: "Whop sign-in hit an error. Try again or use Google below.",
+  };
+  return (
+    <div className="w-full max-w-[440px] rounded-2xl border border-line bg-paper px-4 py-3 text-center font-sans text-[12px] text-text-secondary">
+      {msg[state]}
+    </div>
   );
 }
 
