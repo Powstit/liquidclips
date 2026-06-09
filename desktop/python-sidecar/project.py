@@ -212,10 +212,29 @@ def _probe_duration_seconds(path: Path) -> float:
 
 
 def _generate_cover_thumbnail(src: Path, dest: Path, *, at_seconds: float = 1.0) -> bool:
-    """Extract a single JPEG frame from `src` at `at_seconds` and write it to
-    `dest`. Returns True on success, False on any failure — the caller is
-    expected to fall back to a per-clip empty thumbnails list so one bad import
-    doesn't blow up the whole pack.
+    """Extract a representative JPEG frame from `src` and write it to `dest`.
+    Returns True on success, False on any failure — the caller is expected to
+    fall back to a per-clip empty thumbnails list so one bad import doesn't
+    blow up the whole pack.
+
+    v0.7.32 — uses ffmpeg's `thumbnail` filter to pick the MOST VISUALLY
+    INTERESTING frame from the first ~3 seconds of the seek window. The old
+    pure-`-ss 1.0` extract was hitting title cards / intro chrome / lower-third
+    banners ("the lines" Daniel called out 2026-06-09); the `thumbnail` filter
+    samples N frames (default 100) and selects the one with the highest
+    variance from the running average, which reliably skips static intro
+    slates and picks a real-content frame.
+
+    Seek strategy:
+      * Skip the first 0.5s (intro fades / black frames) via fast `-ss` before
+        `-i`. For clips shorter than 1.5s we don't apply the skip — pulling
+        anything is better than nothing.
+      * Apply `-vf thumbnail` which analyzes 100 frames (~3.3s at 30fps) and
+        emits the best one.
+
+    Fallback path (when `thumbnail` filter unavailable or fails): falls back to
+    the legacy `-ss at_seconds` single-frame extract so we never regress
+    behind the v0.7.7 ship-lens fix #2b "no black square on imports."
 
     The ffmpeg binary path is resolved via `stages.ffmpeg_bin()` (matches the
     bundled / env / PATH chain every other pipeline call uses), with a hard
@@ -242,33 +261,55 @@ def _generate_cover_thumbnail(src: Path, dest: Path, *, at_seconds: float = 1.0)
         dest.parent.mkdir(parents=True, exist_ok=True)
     except OSError:
         return False
-    # Clamp the seek so a 0.4s clip doesn't seek past EOF and produce an empty
-    # output file. ffmpeg silently writes a 0-byte JPEG in that case.
     duration = _probe_duration_seconds(src)
-    seek = min(at_seconds, max(duration - 0.05, 0.0)) if duration > 0 else 0.0
+    # Skip the first 0.5s on clips longer than 1.5s — gives the `thumbnail`
+    # filter clean material past most intro fades / black frames. Shorter
+    # clips: no skip (we'd hit EOF). Fall back to the legacy seek as a hint
+    # for the single-frame path below.
+    intro_skip = 0.5 if duration > 1.5 else 0.0
+    legacy_seek = (
+        min(at_seconds, max(duration - 0.05, 0.0)) if duration > 0 else 0.0
+    )
     for bin_path in candidates:
-        try:
-            subprocess.check_call(
-                [bin_path,
-                 "-y",
-                 "-ss", f"{seek:.3f}",
-                 "-i", str(src),
-                 "-frames:v", "1",
-                 "-q:v", "2",
-                 str(dest)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=20,
-            )
-        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-            continue
-        # Validate the output actually exists + is non-empty. Some ffmpeg
-        # builds exit 0 but write a 0-byte file on a malformed seek.
-        try:
-            if dest.is_file() and dest.stat().st_size > 0:
-                return True
-        except OSError:
-            pass
+        # PRIMARY path: thumbnail filter (best representative frame). The
+        # `-ss` BEFORE `-i` is fast seek; `thumbnail` then samples from there.
+        primary_cmd = [
+            bin_path,
+            "-y",
+            "-ss", f"{intro_skip:.3f}",
+            "-i", str(src),
+            "-vf", "thumbnail",
+            "-frames:v", "1",
+            "-q:v", "2",
+            str(dest),
+        ]
+        # FALLBACK path: legacy single-frame extract at the requested seek.
+        fallback_cmd = [
+            bin_path,
+            "-y",
+            "-ss", f"{legacy_seek:.3f}",
+            "-i", str(src),
+            "-frames:v", "1",
+            "-q:v", "2",
+            str(dest),
+        ]
+        for cmd in (primary_cmd, fallback_cmd):
+            try:
+                subprocess.check_call(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=20,
+                )
+            except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                continue
+            # Validate the output actually exists + is non-empty. Some ffmpeg
+            # builds exit 0 but write a 0-byte file on a malformed seek / filter.
+            try:
+                if dest.is_file() and dest.stat().st_size > 0:
+                    return True
+            except OSError:
+                pass
     return False
 
 
