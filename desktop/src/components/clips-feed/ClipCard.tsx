@@ -13,25 +13,20 @@ import { type LayoutKey } from "./LayoutIcon";
 import { pickOverlaySource } from "../OverlaySourcePicker";
 import { BountyFitPill } from "../earn/bounty-fit";
 import { PlatformBadge } from "../PlatformBadge";
-import { useCountUp } from "../../lib/useCountUp";
+// v0.7.32 — useCountUp removed alongside the virality count-up pill that
+// lived in the above-thumb header row (cut per the mockup).
+// import { useCountUp } from "../../lib/useCountUp";
 import { ConfirmDialog } from "../ConfirmDialog";
 
 // Self-contained card. Tap = play preview. Layout icons swap composition in
 // place. Copy buttons inline. "..." opens the side-door full editor for the
 // rare power case. No modals required for the 90% review-and-ship flow.
 
-function formatHms(s: number): string {
-  const m = Math.floor(s / 60);
-  const r = Math.floor(s % 60);
-  return `${m}:${r.toString().padStart(2, "0")}`;
-}
-
-function viralityClass(v: number): string {
-  if (v >= 90) return "bg-fuchsia text-white shadow-[var(--glow-sm)]";
-  if (v >= 75) return "bg-fuchsia-bright text-white";
-  if (v >= 50) return "bg-fuchsia-glow text-ink";
-  return "bg-paper-warm text-text-tertiary";
-}
+// v0.7.32 — formatHms() + viralityClass() removed. They were used by the
+// pre-mockup above-thumbnail header row (time-range + virality pill) that
+// was cut per docs/clipcard-v0732-target.html. Time + score now render in
+// the below-thumb meta line via formatCardDur(); virality intensity is
+// implied by the HOT badge (≥78) and the literal "score N" text.
 
 function pathForRatio(clip: Clip, ratio: RatioKey): string | undefined {
   const overlayPath = clip.overlay?.applied_paths?.[ratio];
@@ -115,7 +110,6 @@ export function ClipCard({
   const videoRef = useRef<HTMLVideoElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLDivElement>(null);
-  const viralityDisplay = useCountUp(clip.virality, { durationMs: 700 });
 
   const videoPath = useMemo(
     () => pathForRatio(clip, ratio) ?? clip.cut_path,
@@ -324,48 +318,21 @@ export function ClipCard({
       onClick={handleCardClick}
       aria-selected={selectable ? !!selected : undefined}
     >
-      {/* Cockpit corner brackets — fuchsia HUD frame in lieu of full outline. */}
+      {/* v0.7.32 — restructured per docs/clipcard-v0732-target.html mockup +
+          docs/clip-dashboard-demo.html canonical. Cut: above-thumbnail row
+          (checkbox+virality+theme+time was "the horizontal lines"); "01"
+          indicator inside thumbnail; "title" eyebrow above title. Moved:
+          selection checkbox into thumbnail TL; PlatformBadge from BL → TR.
+          Added: ratio pill BL (9:16, brand standard); HOT badge BR
+          (conditional, virality ≥ 78 per demo). Iron-gate IG-005 invariants
+          preserved (no per-card scheduler, no clip.overlay writer, no
+          parallel toolbar — card stays display + select target). */}
+
+      {/* HUD bracket corners — fuchsia dashed, brand-locked. */}
       <span className="library-card-corner-tl" aria-hidden />
       <span className="library-card-corner-tr" aria-hidden />
       <span className="library-card-corner-bl" aria-hidden />
       <span className="library-card-corner-br" aria-hidden />
-      {/* Header: virality + theme + duration */}
-      <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-[0.08em]">
-        <div className="flex items-center gap-2">
-          {/* Selection checkbox — only rendered when the parent grid
-              passed `onSelectClick`. Stops propagation so it's the SOLE
-              path that fires the handler when clicked (doesn't double-
-              fire via the article background). */}
-          {selectable && (
-            <button
-              type="button"
-              role="checkbox"
-              aria-checked={!!selected}
-              aria-label={selected ? "Deselect clip" : "Select clip"}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelectClick?.({ meta: e.metaKey, shift: e.shiftKey });
-              }}
-              className={`grid h-4 w-4 place-items-center rounded-[3px] border transition-colors ${
-                selected
-                  ? "border-fuchsia bg-fuchsia text-white"
-                  : "border-line bg-paper text-transparent hover:border-fuchsia"
-              }`}
-            >
-              <Check className="h-3 w-3" strokeWidth={3} />
-            </button>
-          )}
-          <span className={`rounded-full px-2 py-0.5 ${viralityClass(clip.virality)}`}>
-            {viralityDisplay}
-          </span>
-          {clip.theme && (
-            <span className="text-text-tertiary">{clip.theme}</span>
-          )}
-        </div>
-        <span className="text-text-tertiary">
-          {formatHms(clip.start)} → {formatHms(clip.end)}
-        </span>
-      </div>
 
       {/* Video / poster — hover to preview */}
       <div
@@ -398,8 +365,7 @@ export function ClipCard({
           </div>
         ) : null}
         {/* onError fallback plate — replaces the silent black square for
-            corrupt / 0-byte / iCloud-placeholder files. Surfaces the cause +
-            a Reveal-in-Finder button so the clipper can act. */}
+            corrupt / 0-byte / iCloud-placeholder files. */}
         {videoError !== null && (
           <div
             role="alert"
@@ -408,12 +374,12 @@ export function ClipCard({
           >
             <div className="flex max-w-[220px] flex-col items-center gap-2 text-center">
               <AlertTriangle
-                className="h-6 w-6 text-[#DC2626]"
+                className="h-6 w-6 text-[var(--color-danger)]"
                 strokeWidth={2.25}
                 aria-hidden
               />
               <p className="font-sans text-[12px] leading-snug text-paper">
-                This clip can't play — {videoError}
+                This clip can't play, {videoError}
               </p>
               <button
                 type="button"
@@ -429,44 +395,62 @@ export function ClipCard({
             </div>
           </div>
         )}
-        <span className="pointer-events-none absolute left-2 top-2 font-display text-[20px] font-bold italic text-fuchsia drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
-          {index.toString().padStart(2, "0")}
-        </span>
-        {project.whop_bounty_id && (
-          <span className="absolute right-2 top-2">
-            <BountyFitPill clip={clip} project={project} />
-          </span>
+
+        {/* TL — selection checkbox INSIDE thumbnail (was above-thumb row). */}
+        {selectable && (
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={!!selected}
+            aria-label={selected ? "Deselect clip" : "Select clip"}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectClick?.({ meta: e.metaKey, shift: e.shiftKey });
+            }}
+            className={`absolute left-2.5 top-2.5 grid h-[22px] w-[22px] place-items-center rounded-md border backdrop-blur-sm transition-all ${
+              selected
+                ? "border-fuchsia bg-fuchsia text-white shadow-[0_0_12px_rgba(255,26,140,0.5)]"
+                : "border-line-strong bg-paper/70 text-transparent hover:border-fuchsia"
+            }`}
+          >
+            <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+          </button>
         )}
-        {/* v0.7.14 — Kimi's PlatformBadge bottom-left. Hidden when there
-            are no platforms picked yet (default for fresh cuts + imports). */}
-        {clip.platforms && clip.platforms.length > 0 && (
-          <span className="pointer-events-none absolute bottom-2 left-2">
+
+        {/* TR — PlatformBadge (routed-to social pips) wins over BountyFit when
+            both could render. Bounty pill falls back to TR if no platforms. */}
+        {clip.platforms && clip.platforms.length > 0 ? (
+          <span className="pointer-events-none absolute right-2.5 top-2.5">
             <PlatformBadge platforms={clip.platforms} size="sm" />
           </span>
+        ) : project.whop_bounty_id ? (
+          <span className="absolute right-2.5 top-2.5">
+            <BountyFitPill clip={clip} project={project} />
+          </span>
+        ) : null}
+
+        {/* BL — ratio pill. Liquid Clips outputs 9:16 vertical by default
+            (per CLAUDE.md "reframe to 9:16"); this is a brand-standard
+            indicator, not a per-clip variable until non-9:16 ratios ship. */}
+        <span className="pointer-events-none absolute bottom-2.5 left-2.5 rounded-full bg-paper/72 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-ink backdrop-blur-sm">
+          9:16
+        </span>
+
+        {/* BR — HOT badge, conditional on virality ≥ 78 per the demo. */}
+        {clip.virality >= 78 && (
+          <span className="pointer-events-none absolute bottom-2.5 right-2.5 rounded-full border border-fuchsia/50 bg-fuchsia/18 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-fuchsia backdrop-blur-sm">
+            hot
+          </span>
         )}
-        {/* v0.7.20 — CAP pill, layout picker row, and render-status HUD all
-            removed. Per the integration-lens, captions live in the cockpit
-            Caption module, layout selection lives in the cockpit Frame
-            module (bulk) + ClipPreview Reaction Studio (per-clip), and the
-            render-status was decorative HUD with no actionable signal. The
-            card now matches the demo's display-only pattern. */}
       </div>
 
-      {/* v0.7.19 — Per the integration-lens audit + Daniel's locked demo
-          (docs/clip-dashboard-demo.html), the card is now PURE display +
-          select target. Every action — Caption, Reaction, Layout, Copy,
-          Editor →, Remove, Schedule, Publish — moved to either the bottom
-          Cockpit (bulk) or the ClipPreview modal (per-clip deep edit).
-          The under-card cockpit row was duplicating affordances that
-          already live in those canonical surfaces. */}
+      {/* Below-thumb meta — title + dur · score. No "TITLE" eyebrow
+          (impeccable AI-grammar tell; the title is its own header). */}
       <div className="pt-1">
-        <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-text-tertiary opacity-55">
-          title
-        </div>
-        <p className="mt-1 line-clamp-2 font-display text-[15px] font-semibold leading-snug tracking-[-0.01em] text-ink">
+        <p className="line-clamp-2 font-display text-[14px] font-semibold leading-snug tracking-[-0.01em] text-ink">
           {clip.title}
         </p>
-        <div className="mt-2 flex items-center gap-2 font-mono text-[10px] text-text-secondary opacity-75">
+        <div className="mt-2 flex items-center gap-2 font-mono text-[11px] text-text-secondary opacity-80">
           <span>{formatCardDur(clip.end - clip.start)}</span>
           <span className="opacity-40">·</span>
           <span>score {clip.virality ?? 0}</span>
@@ -592,7 +576,7 @@ export function ClipCard({
         {cockpitError && (
           <p
             role="alert"
-            className="rounded-md border border-[#DC2626]/30 bg-[#DC2626]/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-[#DC2626]"
+            className="rounded-md border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--color-danger)]"
           >
             {cockpitError}
           </p>
@@ -665,7 +649,7 @@ function MenuItem({
       onClick={onClick}
       className={`flex w-full items-center gap-2 px-3 py-2 text-left font-sans text-[12px] transition-colors ${
         destructive
-          ? "text-[#DC2626] hover:bg-[#DC2626]/10"
+          ? "text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
           : "text-ink hover:bg-paper-warm"
       }`}
     >
