@@ -667,8 +667,22 @@ export default function App() {
 
   useEffect(() => {
     const unlistenPromise = listen<{ paths: string[] }>("tauri://drag-drop", async (event) => {
-      const path = event.payload?.paths?.[0];
+      const paths = event.payload?.paths ?? [];
+      const path = paths[0];
       if (!path) return;
+      // v0.7.34 — Was silently truncating to paths[0]. Beta users dropping
+      // 3 videos saw 2 vanish with no signal. We still only PROCESS the
+      // first (the clip pipeline is single-project at a time), but we now
+      // surface a toast so the user knows the rest were ignored and can
+      // drop them one at a time.
+      if (paths.length > 1) {
+        const message = `${paths.length} files dropped — importing the first one. Drop the rest after this finishes.`;
+        try {
+          window.dispatchEvent(new CustomEvent("lc:toast", { detail: { kind: "info", message } }));
+        } catch {
+          /* ignore */
+        }
+      }
       // P0 — if the UploadPortal modal is open, dismiss it BEFORE we route.
       // Otherwise the IntentPicker mounts behind a half-faded portal overlay
       // and the user gets a ghost-portal-over-IntentPicker visual bug. We
@@ -861,7 +875,23 @@ export default function App() {
         ? { kind: "running", project: current, currentStage: stage }
         : v));
       try {
-        const { project: updated } = await sidecar.runStage(current.slug, stage);
+        // v0.7.34 — 10-minute frontend timeout on each stage. A hung Python
+        // process used to strand the user indefinitely (no progress, no
+        // recovery). We still let the sidecar own cancellation (.cancel
+        // marker), but the race here guarantees the UI surfaces a failure
+        // and re-arms within 10 minutes regardless. Real stages on M-series
+        // Macs finish in seconds; 10 minutes is for the "something is very
+        // wrong" path, not the slow path.
+        const STAGE_TIMEOUT_MS = 10 * 60 * 1000;
+        const { project: updated } = await Promise.race([
+          sidecar.runStage(current.slug, stage),
+          new Promise<never>((_, reject) =>
+            window.setTimeout(
+              () => reject(new Error(`Stage "${stage}" timed out after 10 minutes. Cancel and try again, or check your source.`)),
+              STAGE_TIMEOUT_MS,
+            ),
+          ),
+        ]);
         current = updated;
         setRunningProject(current);
       } catch (e) {
@@ -953,6 +983,22 @@ export default function App() {
         })
         .catch((e) => {
           console.warn(`[background-stage] ${stage} failed (non-blocking):`, e);
+          // v0.7.34 — Surface thumbnail failures. Other background stages
+          // (transcript polish, caption refine) can fail silently because
+          // the clip still plays. Thumbnails are the one users will hunt
+          // for if they're missing, so push a toast they can act on.
+          if (stage === "thumbs") {
+            try {
+              window.dispatchEvent(new CustomEvent("lc:toast", {
+                detail: {
+                  kind: "warn",
+                  message: "Thumbnails didn't generate — clips are ready. Retry from the clip editor.",
+                },
+              }));
+            } catch {
+              /* ignore */
+            }
+          }
         });
     }
   }
@@ -1522,7 +1568,13 @@ export default function App() {
             url={view.url}
             error={view.error}
             note="Private posts and login-walled videos can't be lifted. Public reels / shorts / posts work."
-            onRetry={() => void onPasteUrl(view.url, "")}
+            // v0.7.34 — Retry preserves script-mode intent. The lift-failed
+            // view is only entered from _onLiftTranscript (transcript pipeline),
+            // so retry must re-enter the SAME pipeline. Previously routed
+            // through onPasteUrl which silently re-ran the clips pipeline —
+            // users got clips out of a Script-mode retry, which is the wrong
+            // pipeline for what they originally asked for.
+            onRetry={() => void _onLiftTranscript(view.url)}
             onDismiss={() => setView({ kind: "empty" })}
             subject={`Liquid Clips — lift failed for ${view.url}`}
           />

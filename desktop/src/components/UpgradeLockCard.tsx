@@ -32,11 +32,14 @@ export function UpgradeLockCard({
           <TierIcon tier="solo" className="h-8 w-8" />
         </div>
         <h3 className="font-display text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink">
-          See the other {hiddenCount}.
+          View all {totalClips} clips.
         </h3>
         <p className="mt-2 font-sans text-[14px] leading-relaxed text-text-secondary">
-          Liquid Clips found {totalClips} clips in this video. Free shows the first 3 —
-          continue clipping with Solo to unlock the rest.
+          {/* v0.7.34 — Honest framing. The prior copy said "continue clipping"
+              to VIEW clips that already exist, which read as bait. The clips
+              are already on disk; Solo unlocks visibility, not generation. */}
+          Liquid Clips already produced {totalClips} clips from your video. Free shows the first 3 —
+          Solo unlocks the other {hiddenCount}.
         </p>
       </div>
 
