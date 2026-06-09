@@ -75,3 +75,41 @@ junior-backend/.junior-keys/
 
 # Cache from the desktop's user-data area in case anyone symlinks it in.
 desktop/.cache/
+
+# v0.7.32 — macOS Finder / Dropbox duplicate artifacts (" 2.<ext>" suffix).
+# Don't track these — they're sync conflicts, not source.
+* 2.png
+* 2.jpg
+* 2.mp4
+* 2.md
+* 2.txt
+* 2.tsx
+* 2.ts
+* 2.py
+* 2.css
+* 2.html
+* 2.json
+* 2.sh
+
+# Local impeccable skill installation (not source code)
+desktop/.agents/
+
+# Build / sign-clean working dir
+desktop/dist/
+desktop/src-tauri/target/
+desktop/skills-lock.json
+
+# v0.7.32 — wider gitignore expansion to unblock ship.sh
+desktop/src/_backups/
+assets-wip/
+desktop/src/assets/decks/*[0-9].png
+desktop/src/assets/decks/minecraft-submission*.png
+desktop/src/assets/intro/oasis-anchor*.png
+desktop/src/assets/invaders/_backup/
+desktop/src/assets/nav-badges/
+desktop/src/assets/nav-icons/
+LAUNCH 2.md
+* 3.py
+* 3.md
+* 3.txt
+* 3.tsx
