@@ -53,7 +53,7 @@ const tiers = [
   {
     name: "RUNNER",
     badge: "/icons/tier-runner-badge.png",
-    price: "$79",
+    price: "$79.99",
     kicker: "hosted AI · scaled hustle",
     body: "Hosted AI for no-key setup. Built for clippers running 200+ clips/week.",
     features: ["10 social accounts", "Hosted AI proxy", "Multi-platform publishing", "Scheduling + drip", "Priority briefs"],

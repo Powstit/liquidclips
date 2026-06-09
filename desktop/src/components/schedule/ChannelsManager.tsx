@@ -158,6 +158,17 @@ export function ChannelsManager({
   // OAuth completes). Refresh the affected row server-side, then re-fetch
   // listChannels so the UI catches anything Ayrshare patched server-side,
   // then emit the global success / failure toast per the contract.
+  //
+  // bug-hunt P2 fix (v0.7.32): the listener used to capture `finishConnecting`
+  // through closure with `[finishConnecting]` as the only dep. That works while
+  // finishConnecting's `useCallback` deps stay empty — but if a future edit
+  // ever adds a dep (or someone forgets to memoise), the listener would
+  // silently re-register on every render and orphan stale entries in the
+  // `connecting` Map. The ref pattern below makes the listener identity
+  // independent of any future memoisation drift.
+  const finishConnectingRef = useRef(finishConnecting);
+  useEffect(() => { finishConnectingRef.current = finishConnecting; }, [finishConnecting]);
+
   useEffect(() => {
     async function onLinked(ev: Event) {
       const detail = (ev as CustomEvent<{ channelId: string | null }>).detail ?? { channelId: null };
@@ -191,7 +202,7 @@ export function ChannelsManager({
             );
           }
         }
-        if (cid) finishConnecting(cid);
+        if (cid) finishConnectingRef.current(cid);
       } catch {
         /* silent — surfacing a phantom toast on a refresh failure would
            lie about the OAuth's actual outcome. */
@@ -201,7 +212,7 @@ export function ChannelsManager({
     return () => {
       window.removeEventListener("junior:channel-linked", onLinked as EventListener);
     };
-  }, [finishConnecting]);
+  }, []);
 
   // v0.7.32 — rename + refresh handlers removed in the ch-row swap. The
   // ch-row pattern exposes toggle / link / delete only. If a channel detail
@@ -357,10 +368,23 @@ export function ChannelsManager({
                     onLinkNow={() => void handleLinkNow(c)}
                   />
                   {conn && (
+                    // bug-hunt P2 alignment fix (v0.7.32):
+                    //   was `ml-7` (28px) — landed in the dead zone between the
+                    //   row's status-dot end (20px from outer) and the brand
+                    //   glyph's left edge (~30px), so the strip looked floating
+                    //   under nothing.
+                    //   ChannelRow geometry: px-3 (12) → dot (8) → gap-3 (12)
+                    //   → glyph @ marginLeft -2 → glyph left edge ≈ 30px.
+                    //   Choosing ml-0: strip's outer left aligns flush with the
+                    //   row's outer left, reading as a sibling "sub-row" of the
+                    //   channel. The strip's own px-3 then aligns the spinner
+                    //   at 12px — flush under the row's status dot. Semantically
+                    //   correct (status under status), Tailwind-native, no magic
+                    //   pixel value.
                     <div
                       role="status"
                       aria-live="polite"
-                      className="ml-7 flex items-center justify-between gap-2 rounded-md border border-fuchsia/40 bg-fuchsia/8 px-3 py-1.5"
+                      className="flex items-center justify-between gap-2 rounded-md border border-fuchsia/40 bg-fuchsia/8 px-3 py-1.5"
                     >
                       <div className="flex min-w-0 items-center gap-2">
                         {!conn.timedOut && (

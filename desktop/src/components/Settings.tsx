@@ -15,6 +15,10 @@ import { useAvatar, avatarSrc, initialsOf } from "../lib/avatar";
 import { performAtomicSignOutWipe } from "../App";
 import { Channel } from "../lib/backend";
 import AyrshareConnectionPanel from "./AyrshareConnectionPanel";
+// v0.7.32 Drift #14 — Settings → Connections renders the same ch-row primitive
+// as Schedule → Channels so the user reads one visual language across both
+// surfaces. ChannelStatusRow (the local read-only primitive) is retired.
+import { ChannelRow } from "./schedule/ChannelRow";
 
 // Single source of truth — pulled from package.json so a stale constant can't
 // land in the Settings → About row again after a ship.
@@ -1393,8 +1397,18 @@ function ConnectionsChannelsList({
       )}
       {channels && channels.length > 0 && (
         <BracketFrame>
+          {/* v0.7.32 Drift #14 — render the canonical ChannelRow used in
+              Schedule → Channels. Settings is read-only ("snapshot"), so
+              toggles + delete short-circuit and any "link" action routes
+              the user to Schedule → Channels where the real flow lives. */}
           {channels.map((c) => (
-            <ChannelStatusRow key={c.id} channel={c} />
+            <ChannelRow
+              key={c.id}
+              channel={c}
+              onTogglePause={() => Promise.resolve()}
+              onLinkNow={() => onOpenSchedule?.("channels")}
+              onDelete={() => Promise.resolve()}
+            />
           ))}
         </BracketFrame>
       )}
@@ -1409,38 +1423,9 @@ function ConnectionsChannelsList({
   );
 }
 
-function ChannelStatusRow({ channel }: { channel: Channel }) {
-  // Status palette mirrors ChannelCard.tsx so a user comparing the two
-  // surfaces reads the same colour language. Unknown statuses fall back to
-  // text-tertiary instead of throwing or rendering blank — exhaustive types
-  // can drift if the backend adds a new ChannelStatus before the desktop
-  // does, and a silent render would lie about the connection's real state.
-  const statusInfo: { label: string; tone: string } = (() => {
-    switch (channel.status) {
-      case "active":
-        return { label: "linked", tone: "text-fuchsia" };
-      case "pending_link":
-        return { label: "pending link", tone: "text-[#F59E0B]" };
-      case "paused":
-        return { label: "paused", tone: "text-text-secondary" };
-      case "error":
-        return { label: "error", tone: "text-[#DC2626]" };
-      default:
-        return { label: String(channel.status), tone: "text-text-tertiary" };
-    }
-  })();
-  const handle = channel.handle ? `@${channel.handle}` : channel.platform;
-  return (
-    <div className="flex items-center justify-between gap-3 border-t border-line/60 pt-1 first:border-t-0 first:pt-0">
-      <span className="truncate font-sans text-[12px] text-ink" title={`${channel.label} · ${handle}`}>
-        {channel.label} · <span className="text-text-tertiary">{handle}</span>
-      </span>
-      <span className={`font-mono text-[10px] uppercase tracking-[0.12em] ${statusInfo.tone}`}>
-        {statusInfo.label}
-      </span>
-    </div>
-  );
-}
+// v0.7.32 Drift #14 retired the local ChannelStatusRow primitive. The
+// Connections snapshot now renders ChannelRow from ./schedule/ChannelRow so
+// Settings and Schedule speak one visual language.
 
 function WhopSessionRow() {
   const [source, setSource] = useState<string>("…");
