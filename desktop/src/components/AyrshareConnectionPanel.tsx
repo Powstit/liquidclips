@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { BarChart3, Link, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 
 import * as backend from "../lib/backend";
-import { PlatformIcon, type PlatformId } from "./PlatformIcon";
+import { PlatformBadge, type PlatformId } from "./PlatformBadge";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 type ScheduleSubtab = "queue" | "channels" | "analytics";
@@ -157,7 +157,13 @@ export default function AyrshareConnectionPanel({
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-fuchsia" />
+            {/* v0.7.32 Drift #13 — fuchsia status dot replaces the lucide
+                ShieldCheck outline icon. Matches the ch-row visual language
+                used everywhere else in the brand. */}
+            <span
+              aria-hidden
+              className="inline-block h-2 w-2 shrink-0 rounded-full bg-fuchsia shadow-[0_0_8px_rgba(255,26,140,0.7)]"
+            />
             <h4 className="font-sans text-[14px] font-medium text-ink">Publishing — Ayrshare</h4>
             {connected && (
               <span className="rounded-full bg-fuchsia/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-fuchsia">
@@ -190,7 +196,7 @@ export default function AyrshareConnectionPanel({
             {linking ? (
               <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Opening linking window…</>
             ) : (
-              <><Link className="h-3.5 w-3.5" /> Connect social accounts</>
+              <>Connect social accounts</>
             )}
           </button>
           <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
@@ -255,39 +261,59 @@ export default function AyrshareConnectionPanel({
         </div>
       ) : (
         <div className="mt-3 space-y-2">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {platforms.length === 0 ? (
-              <span className="font-mono text-[11px] text-text-tertiary">
-                Key saved, but Ayrshare reports no linked platforms — link one on their dashboard then refresh.
-              </span>
-            ) : (
-              platforms.map((p) => {
+          {/* v0.7.32 Drift #13 — chip-list retired. Each platform now renders
+              as a ch-row matching the Schedule → Channels visual language:
+              status dot · brand glyph (PlatformBadge) · platform label · ×.
+              We can't reuse <ChannelRow> here because Ayrshare hands us
+              `string[]` not Channel[]; a compact inline row keeps the look
+              consistent without inventing a fake Channel shape. */}
+          {platforms.length === 0 ? (
+            <p className="font-mono text-[11px] text-text-tertiary">
+              Key saved, but Ayrshare reports no linked platforms — link one on their dashboard then refresh.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {platforms.map((p) => {
                 const pid = (p.toLowerCase() === "twitter" ? "x" : p.toLowerCase()) as PlatformId;
-                const hasIcon = ["youtube", "tiktok", "instagram", "x"].includes(pid);
+                const hasBadge = ["youtube", "tiktok", "instagram", "x", "linkedin", "facebook"].includes(pid);
                 return (
-                  <span
+                  <div
                     key={p}
-                    className="group inline-flex items-center gap-2 rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-[12px] font-medium text-ink"
+                    className="group flex items-center gap-2.5 rounded-md border border-fuchsia bg-fuchsia/[0.05] px-3 py-2 transition-colors"
                   >
-                    {hasIcon && (
-                      <span className="grid h-5 w-5 place-items-center rounded-full bg-ink text-paper">
-                        <PlatformIcon id={pid} className="h-3 w-3" />
-                      </span>
+                    {/* status dot (always live in the connected branch) */}
+                    <span
+                      aria-hidden
+                      className="inline-block h-2 w-2 shrink-0 rounded-full bg-fuchsia shadow-[0_0_8px_rgba(255,26,140,0.7)]"
+                    />
+                    {/* brand glyph — PlatformBadge at sm (34px) is too big for
+                        this compact overview list, so scale to ~70% to land
+                        around 24px without forking a new size token. */}
+                    {hasBadge && (
+                      <div
+                        className="shrink-0"
+                        style={{ transform: "scale(0.7)", transformOrigin: "left center", marginRight: -10 }}
+                      >
+                        <PlatformBadge platforms={[pid]} size="sm" />
+                      </div>
                     )}
-                    <span>{prettyPlatform(p)}</span>
+                    <span className="flex-1 truncate font-sans text-[13px] font-medium text-ink">
+                      {prettyPlatform(p)}
+                    </span>
                     <button
                       onClick={() => void disconnect(p)}
                       disabled={busy}
                       title={`Hide ${prettyPlatform(p)} locally`}
-                      className="ml-1 text-text-tertiary hover:text-[#DC2626] disabled:opacity-30"
+                      aria-label={`Hide ${prettyPlatform(p)}`}
+                      className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-tertiary opacity-0 transition-opacity hover:bg-[#DC2626]/10 hover:text-[#DC2626] group-hover:flex group-hover:opacity-100 disabled:opacity-30"
                     >
                       ×
                     </button>
-                  </span>
+                  </div>
                 );
-              })
-            )}
-          </div>
+              })}
+            </div>
+          )}
           <div className="flex items-center gap-3 pt-1">
             <button
               onClick={() => void refresh()}
@@ -302,8 +328,7 @@ export default function AyrshareConnectionPanel({
               disabled={linking}
               className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:text-ink disabled:opacity-40"
             >
-              <Link className="h-3 w-3" />
-              link more
+              link more →
             </button>
             {/* Analytics Phase 1 — only shows once a real connection exists
                 AND the parent wired the onOpenSchedule prop. Falls back to
@@ -314,7 +339,6 @@ export default function AyrshareConnectionPanel({
                 onClick={() => onOpenSchedule("analytics")}
                 className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:text-ink"
               >
-                <BarChart3 className="h-3 w-3" />
                 view analytics →
               </button>
             )}

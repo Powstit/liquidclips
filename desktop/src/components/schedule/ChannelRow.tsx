@@ -15,7 +15,7 @@
 //   unlinked     → toggle OFF, amber dot,  handle = "disconnected · reconnect"
 //   error        → toggle OFF, red dot,    handle = "reconnect"
 //   deleted      → row hidden (manager filters before mount)
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Channel } from "../../lib/backend";
 import { PlatformBadge, type PlatformId } from "../PlatformBadge";
 
@@ -84,14 +84,29 @@ export function ChannelRow({
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
+  // v0.7.32 — unmount-race guard. The toggle / delete RPCs can race the
+  // parent re-render (ChannelsManager filters deleted/reordered channels
+  // out of state). If the row unmounts mid-await, the trailing setBusy /
+  // setConfirmingDelete would land on an unmounted component → React warn.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   const meta = classifyStatus(channel);
   const platformId = toPlatformId(channel.platform);
   // v0.7.32 — guard double-prefix in case the backend ever returns the handle
   // with a leading "@" (TikTok occasionally does this in their handle field).
-  // Strip first, then re-prefix exactly once.
-  const displayHandle = channel.handle
-    ? `@${channel.handle.replace(/^@+/, "")}`
-    : channel.platform;
+  // Strip every leading "@" + trim whitespace; if the result is empty (e.g.
+  // raw "@" or "   "), fall back to the platform label instead of rendering
+  // a naked "@".
+  const cleanedHandle = channel.handle
+    ? channel.handle.replace(/^@+/, "").trim()
+    : "";
+  const displayHandle = cleanedHandle ? `@${cleanedHandle}` : channel.platform;
 
   async function handlePrimary() {
     if (busy) return;
@@ -105,7 +120,7 @@ export function ChannelRow({
     } catch {
       /* parent surfaces error */
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
 
@@ -116,8 +131,10 @@ export function ChannelRow({
     } catch {
       /* parent surfaces error */
     } finally {
-      setBusy(false);
-      setConfirmingDelete(false);
+      if (mounted.current) {
+        setBusy(false);
+        setConfirmingDelete(false);
+      }
     }
   }
 

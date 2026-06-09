@@ -1,21 +1,21 @@
 {
-  "audit_at": "2026-06-08T10:04:35.641280+00:00",
+  "audit_at": "2026-06-08T20:16:46.834744+00:00",
   "installed_app": {
-    "version": "0.7.20",
+    "version": "0.7.31",
     "codesign": "valid",
-    "mtime": "2026-06-08T11:03:56"
+    "mtime": "2026-06-08T19:46:44"
   },
   "git": {
     "branch": "main",
-    "head": "73c88b7",
-    "uncommitted_files": 11,
-    "untracked_files": 9,
+    "head": "ee825fa",
+    "uncommitted_files": 8,
+    "untracked_files": 59,
     "recent_commits": [
-      "73c88b7 fix(bug-hunt): humanError wrap + media onError fallbacks \u2014 v0.7.17",
-      "fddca51 chore(audit): refresh system-audit.json post-codesign-strip + bug-fix install",
-      "cfef1ec fix(install): strip FinderInfo xattr so codesign --strict stays green",
-      "627e9a4 fix(scheduler+addclip): two live-walk bugs from v0.7.15 \u2014 v0.7.16",
-      "b227fea chore(version): bump to v0.7.15 \u2014 6 mount + sidecar restart batch"
+      "ee825fa wip(v0.7.32): thumbnail studio + ch-row pattern + brand glyphs",
+      "7ab9eef assets: 4 Whop banners \u2014 Space Invaders arcade x cinematic",
+      "db1f3c9 assets: 4 Whop banners with Kade mascot (gpt-image-1 edits)",
+      "6f86638 assets: 4 Whop banners \u2014 Liquid Clips brand (gpt-image-1 v2)",
+      "d1cd4ac scripts: gen-whop-banners.py \u2014 4 banners via gpt-image-1"
     ]
   },
   "mechanical_gates": {
@@ -33,7 +33,7 @@
     "banner_affiliate_mp4": "200"
   },
   "sidecar_rpcs": {
-    "registered_count": 62,
+    "registered_count": 73,
     "missing_expected": ""
   },
   "kimi_mount_state": {

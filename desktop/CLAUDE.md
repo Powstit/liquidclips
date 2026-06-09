@@ -35,6 +35,7 @@ React 18 + Vite + Tailwind 4   ⇄   Tauri 2 (Rust)   ⇄   Python sidecar (stdi
 
 - **v0.4.43** installed locally (2026-05-31). First properly Apple-signed build (`Developer ID Application: KT68NGT4LX → Apple Root CA`).
 - **Release CI is unblocked** — `.github/workflows/release.yml` builds signed artifacts, verifies the updater signing key, notarizes + staples the DMG, and opens a draft GitHub release.
+- **Ship path = CI only** — local builds are unsigned-for-review-only. Never ship a locally-built DMG to users. Tag `vX.Y.Z` → push → CI builds + signs + notarizes + staples + publishes to draft GH release.
 - **Auto-updater still needs one live rehearsal** — run the v0.4.99 test below from Daniel's chosen clean release commit before cutting v0.5.0.
 
 ## Major surfaces
