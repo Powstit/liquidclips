@@ -27,7 +27,7 @@ function durationSecondsOf(project: Project): number {
 // Rough ETA factor — how much faster each stage runs than real-time on
 // Intel CPU (Tiny whisper, single-pass ffmpeg). Numbers tuned from real runs;
 // undershoot is better than overshoot so we round up the estimate.
-const STAGE_SPEED: Record<StageName, number> = {
+const STAGE_SPEED_INTEL: Record<StageName, number> = {
   ingest: 80,
   audio: 60,
   transcribe: 5,     // tiny whisper ~5× real-time on Intel
@@ -36,6 +36,39 @@ const STAGE_SPEED: Record<StageName, number> = {
   reframe: 4,
   thumbs: 6,
 };
+
+// v0.7.34 — Apple Silicon runs the transcribe + ffmpeg paths roughly
+// 8x faster than Intel for the same model. The transcribe stage in
+// particular landed wildly wrong ETAs ("2m" for a 15s job because the
+// real run finished in 2 seconds). Detect M-series via the
+// hardwareConcurrency floor (M1+ ships with 8+ cores; mid-2010 Intel
+// MBPs maxed at 4-6) and scale the factors up. Conservative scaling
+// (not the full ~30-60x some stages observe) keeps the bar visibly
+// moving rather than skipping straight from 0 to done.
+const STAGE_SPEED_APPLE_SILICON: Record<StageName, number> = {
+  ingest: 200,
+  audio: 200,
+  transcribe: 40,    // tiny whisper ~30-60× real-time on M-series CPU
+  llm: 30,           // network-bound, unchanged
+  cut: 50,
+  reframe: 25,
+  thumbs: 30,
+};
+
+function isAppleSilicon(): boolean {
+  try {
+    if (typeof navigator === "undefined") return false;
+    const ua = navigator.userAgent || "";
+    if (!/Mac/i.test(ua)) return false;
+    return (navigator.hardwareConcurrency ?? 0) >= 8;
+  } catch {
+    return false;
+  }
+}
+
+const STAGE_SPEED: Record<StageName, number> = isAppleSilicon()
+  ? STAGE_SPEED_APPLE_SILICON
+  : STAGE_SPEED_INTEL;
 
 function etaSeconds(stage: StageName, duration: number): number {
   if (duration <= 0) return 0;

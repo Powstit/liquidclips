@@ -86,21 +86,83 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
           cuts them vertical with captions, and writes everything your video needs to publish.
         </p>
 
+        {/* v0.7.34 — Card order swapped per FLAWLESS 1.2.1+1.2.2 audit.
+            Sign-in (Liquid Clips account) is now Card 01 because it
+            unblocks every paid-plan capability (hosted AI, Earn, the
+            license JWT). The OpenAI key card is Card 02 — required only
+            for Free users and only when hosted AI is unavailable. Prior
+            order asked Free users for an OpenAI key BEFORE they'd even
+            signed in, which is a backward dependency. */}
         <div className="library-card relative mt-10 rounded-3xl bg-transparent p-7">
           <span className="library-card-corner-tl" aria-hidden="true" />
           <span className="library-card-corner-tr" aria-hidden="true" />
           <span className="library-card-corner-bl" aria-hidden="true" />
           <span className="library-card-corner-br" aria-hidden="true" />
-          {/* v0.7.8 fix E7 — badge + headline reflect the cached tier. Pro+
-              users get "optional · hosted AI active"; the key is a fallback
-              for when hosted AI is rate-limited or temporarily down. Free
-              users still see "required" — hosted AI isn't on their plan. */}
+          <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
+            01 — sign in to Liquid Clips
+          </div>
+          <h2 className="mt-2 font-display text-[22px] font-semibold tracking-[-0.015em] text-ink">
+            Sign in with your Liquid Clips account.
+          </h2>
+          <p className="mt-1 max-w-[440px] font-sans text-[13px] text-text-secondary">
+            Sign in to activate your plan and unlock the Earn tab. Until hosted AI leaves private
+            beta, every plan uses an OpenAI key (Card 02) for clip selection.
+          </p>
+          <button
+            onClick={() => {
+              startedActivation.current = true;
+              void activate();
+            }}
+            disabled={act.kind === "opening" || act.kind === "waiting" || act.kind === "activating"}
+            className="mt-4 rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-60"
+          >
+            {act.kind === "opening"
+              ? "Opening sign-in…"
+              : act.kind === "waiting"
+              ? "Waiting for sign-in…"
+              : act.kind === "activating"
+              ? "Activating…"
+              : act.kind === "error"
+              ? "Try again →"
+              : "Sign in →"}
+          </button>
+          {act.kind === "waiting" && (
+            <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+              finish sign-in in the panel — Liquid Clips activates automatically
+            </p>
+          )}
+          {act.kind === "error" && (
+            <button
+              onClick={() => {
+                startedActivation.current = true;
+                void activate({ via: "browser" });
+              }}
+              className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary underline-offset-2 hover:text-fuchsia hover:underline"
+            >
+              sign in via browser instead
+            </button>
+          )}
+          {act.kind === "activating" && (
+            <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
+              activated — syncing your account…
+            </p>
+          )}
+          {act.kind === "error" && (
+            <p className="mt-2 font-mono text-[12px] text-[var(--color-danger)]">{act.message}</p>
+          )}
+        </div>
+
+        <div className="library-card relative mt-4 rounded-3xl bg-transparent p-7">
+          <span className="library-card-corner-tl" aria-hidden="true" />
+          <span className="library-card-corner-tr" aria-hidden="true" />
+          <span className="library-card-corner-bl" aria-hidden="true" />
+          <span className="library-card-corner-br" aria-hidden="true" />
           <div
             className={`font-mono text-[11px] uppercase tracking-[0.12em] ${
               hostedAIActive ? "text-text-tertiary" : "text-fuchsia-deep"
             }`}
           >
-            01 — add your OpenAI key ·{" "}
+            02 — add your OpenAI key ·{" "}
             {hostedAIActive ? "optional · hosted AI active" : "required"}
           </div>
           <h2 className="mt-2 font-display text-[22px] font-semibold tracking-[-0.015em] text-ink">
@@ -168,67 +230,6 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
               </button>
             )}
           </div>
-        </div>
-
-        <div className="library-card relative mt-4 rounded-3xl bg-transparent p-7">
-          <span className="library-card-corner-tl" aria-hidden="true" />
-          <span className="library-card-corner-tr" aria-hidden="true" />
-          <span className="library-card-corner-bl" aria-hidden="true" />
-          <span className="library-card-corner-br" aria-hidden="true" />
-          <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-            02 — sign in to Liquid Clips
-          </div>
-          <h2 className="mt-2 font-display text-[22px] font-semibold tracking-[-0.015em] text-ink">
-            Sign in with your Liquid Clips account.
-          </h2>
-          <p className="mt-1 max-w-[440px] font-sans text-[13px] text-text-secondary">
-            Sign in to activate your plan and unlock the Earn tab. Until hosted AI leaves private
-            beta, every plan uses the OpenAI key above for clip selection.
-          </p>
-          <button
-            onClick={() => {
-              startedActivation.current = true;
-              void activate();
-            }}
-            disabled={act.kind === "opening" || act.kind === "waiting" || act.kind === "activating"}
-            className="mt-4 rounded-full border border-line bg-transparent px-5 py-2.5 font-sans text-[14px] font-medium text-ink transition-colors hover:border-fuchsia disabled:opacity-60"
-          >
-            {act.kind === "opening"
-              ? "Opening sign-in…"
-              : act.kind === "waiting"
-              ? "Waiting for sign-in…"
-              : act.kind === "activating"
-              ? "Activating…"
-              : act.kind === "error"
-              ? "Try again →"
-              : "Sign in →"}
-          </button>
-          {act.kind === "waiting" && (
-            <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-              finish sign-in in the panel — Liquid Clips activates automatically
-            </p>
-          )}
-          {act.kind === "error" && (
-            // Rescue path — if the in-app panel ever fails to bounce the deep
-            // link back, the user can fall back to the system browser flow.
-            <button
-              onClick={() => {
-                startedActivation.current = true;
-                void activate({ via: "browser" });
-              }}
-              className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary underline-offset-2 hover:text-fuchsia hover:underline"
-            >
-              sign in via browser instead
-            </button>
-          )}
-          {act.kind === "activating" && (
-            <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
-              activated — syncing your account…
-            </p>
-          )}
-          {act.kind === "error" && (
-            <p className="mt-2 font-mono text-[12px] text-[var(--color-danger)]">{act.message}</p>
-          )}
         </div>
 
         {hw && hw.warnings.length > 0 && (

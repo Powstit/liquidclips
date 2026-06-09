@@ -145,6 +145,22 @@ export function ClipPreview({
     descDraft !== clip.description ||
     pinDraft !== (clip.pinned_comment ?? "");
 
+  // v0.7.34 — Beta users typed a title, pressed Esc, lost it silently.
+  // Guard every "soft" close (Esc + X button) with a native confirm when
+  // there are unsaved metadata drafts. The hard closes (post-remove,
+  // explicit save-then-close) bypass this on purpose because there is
+  // nothing left to lose. Native confirm is intentional: it's ugly but
+  // it blocks the close synchronously, which a toast bus can't.
+  function tryClose() {
+    if (isDirty) {
+      const proceed = window.confirm(
+        "You have unsaved title / description / pinned-comment changes. Discard them?",
+      );
+      if (!proceed) return;
+    }
+    onClose();
+  }
+
   async function saveMeta() {
     if (!isDirty || busy) return;
     const gen = rpcGenRef.current;
@@ -273,6 +289,15 @@ export function ClipPreview({
         // Drawer's own keydown handler will run its tryClose (which respects
         // the dirty-state confirm). Bail here so the modal doesn't also close.
         if (captionsOpen) return;
+        // v0.7.34 — Inline the dirty guard rather than calling tryClose()
+        // so the keydown effect's deps stay closure-stable (tryClose is a
+        // fresh function each render and would churn the listener).
+        if (isDirty) {
+          const proceed = window.confirm(
+            "You have unsaved title / description / pinned-comment changes. Discard them?",
+          );
+          if (!proceed) return;
+        }
         onClose();
         return;
       }
@@ -286,7 +311,7 @@ export function ClipPreview({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, onNavigate, index, totalClips, captionsOpen]);
+  }, [onClose, onNavigate, index, totalClips, captionsOpen, isDirty]);
 
   // v0.7.25 — applyLayout owned by ReactionControls (the shared per-clip
   // writer for clip.overlay). ClipPreview no longer needs its own copy.
@@ -608,7 +633,7 @@ export function ClipPreview({
               </span>
             )}
           </div>
-          <button onClick={onClose}
+          <button onClick={tryClose}
             className="shrink-0 rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] text-text-secondary hover:border-fuchsia hover:text-ink">
             Close · esc
           </button>

@@ -805,8 +805,17 @@ class Project:
             "stages": {s: self.stages[s].to_dict() for s in STAGES},
             "clips": self.clips,
         }
-        with (self.root / "project.json").open("w", encoding="utf-8") as f:
+        # v0.7.34 — Atomic write. A crash between open("w") truncating
+        # the existing file and the json.dump completing left users with
+        # a zero-byte project.json and no recovery path. Write to a sibling
+        # .tmp, fsync, then os.replace which is atomic on POSIX.
+        target = self.root / "project.json"
+        tmp = self.root / "project.json.tmp"
+        with tmp.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        tmp.replace(target)
 
     def to_dict(self) -> dict[str, Any]:
         return {

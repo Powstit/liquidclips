@@ -183,7 +183,28 @@ export function ResultsGrid({
             </h2>
             <p className="mt-1.5 inline-flex items-center gap-1.5 font-mono text-[12px] text-text-tertiary">
               <Film className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="text-ink tabular-nums">{project.clips.length}</span> {project.clips.length === 1 ? "clip" : "clips"} ready to ship
+              {/* v0.7.34 — Free tier sees the first N clips; the header used
+                  to say "10 clips ready" while the grid only rendered 3,
+                  which read as deceptive. Now: "3 of 10 clips visible" for
+                  free, full count for paid tiers. */}
+              {(() => {
+                const total = project.clips.length;
+                const visibleForFree = Math.min(FREE_TIER_VISIBLE_CLIPS, total);
+                if (tier.tier === "free" && total > visibleForFree) {
+                  return (
+                    <>
+                      <span className="text-ink tabular-nums">{visibleForFree}</span>{" "}
+                      of <span className="text-ink tabular-nums">{total}</span> clips visible
+                    </>
+                  );
+                }
+                return (
+                  <>
+                    <span className="text-ink tabular-nums">{total}</span>{" "}
+                    {total === 1 ? "clip" : "clips"} ready to ship
+                  </>
+                );
+              })()}
             </p>
           </div>
         </div>
@@ -202,7 +223,23 @@ export function ResultsGrid({
             Open folder
           </button>
           <button
-            onClick={onDropAnother}
+            // v0.7.34 — Guard against silent project loss. If any clip has
+            // platforms routed (= user has staged publish intent), confirm
+            // before discarding for a new pipeline. The project itself
+            // stays on disk; this just prevents the rage of clicking
+            // "drop another" by mistake mid-routing.
+            onClick={() => {
+              const hasStagedRouting = project.clips.some(
+                (c) => Array.isArray(c.platforms) && c.platforms.length > 0,
+              );
+              if (hasStagedRouting) {
+                const proceed = window.confirm(
+                  "Some clips have platforms routed but haven't been published yet. Drop another video anyway?",
+                );
+                if (!proceed) return;
+              }
+              onDropAnother();
+            }}
             className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
           >
             <Plus className="h-4 w-4" strokeWidth={2.5} />
@@ -283,6 +320,45 @@ export function ResultsGrid({
             {/* Keep the legacy mount referenced so tsc doesn't flag the
                 import as unused while we transition. */}
             {false && <GridMasterToolbar selectedIdxs={[]} project={project} onProjectChange={onProjectChange} onClear={clear} />}
+            {/* v0.7.34 — Explicit zero-clip empty state. Before, a project
+                that finished with 0 clips rendered a blank pb-44 grid with
+                no signal — users thought the app froze. Now we surface the
+                most-likely causes and a one-click path forward. */}
+            {project.clips.length === 0 && (
+              <div className="mx-auto flex max-w-[460px] flex-col items-center gap-4 pb-44 pt-12 text-center">
+                <div className="grid h-14 w-14 place-items-center rounded-2xl border border-line bg-paper">
+                  <Film className="h-8 w-8 text-text-tertiary" strokeWidth={1.5} />
+                </div>
+                <h3 className="font-display text-[24px] font-semibold tracking-[-0.02em] text-ink">
+                  No clips found.
+                </h3>
+                <p className="max-w-[360px] font-sans text-[14px] leading-relaxed text-text-secondary">
+                  Your video may be too short, mostly silent, or the AI didn't find moments that
+                  hit the highlight bar. Try a different video or rerun on the source.
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    onClick={() => onDropAnother?.()}
+                    className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright"
+                  >
+                    Try a different video
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await openExternal(project.root);
+                      } catch (e) {
+                        console.warn("open folder failed:", e);
+                      }
+                    }}
+                    className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia"
+                  >
+                    Open project folder
+                  </button>
+                </div>
+              </div>
+            )}
+            {project.clips.length > 0 && (
             <div className="grid grid-cols-1 gap-4 pb-44 sm:grid-cols-2 lg:grid-cols-3">
               {(() => {
                 const visibleCount =
@@ -337,6 +413,7 @@ export function ResultsGrid({
                 );
               })()}
             </div>
+            )}
             <ClipsBottomBar project={project} />
           </>
         )}
