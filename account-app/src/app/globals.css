@@ -38,7 +38,9 @@
   --color-line: var(--line);
   --color-text-secondary: var(--text-secondary);
   --color-text-tertiary: var(--text-tertiary);
-  --font-display: var(--font-fraunces);
+  /* Brand kit (dark Whop direction): Inter end-to-end, never Fraunces.
+     Geist is the Inter-equivalent the account-app loads via next/font. */
+  --font-display: var(--font-geist);
   --font-sans: var(--font-geist);
   --font-mono: var(--font-geist-mono);
 }
