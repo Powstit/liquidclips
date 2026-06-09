@@ -43,6 +43,18 @@ class Settings(BaseSettings):
     whop_campaign_a_id: str = ""
     whop_campaign_b_id: str = ""
 
+    # Whop OAuth — "Continue with Whop" in-app sign-in door
+    # (desktop/docs/WHOP_TRUE_LOGIN_SCOPE.md). Empty client_id disables the
+    # /auth/whop/start route cleanly (302s back to connect-desktop with
+    # ?whop_disabled=1). Populate on Railway after registering the OAuth app.
+    whop_oauth_client_id: str = ""
+    whop_oauth_client_secret: str = ""
+    # Default targets the rebrand domain api.liquidclips.app. The legacy
+    # api.jnremployee.com still serves junior-backend today, so override on
+    # Railway via WHOP_OAUTH_REDIRECT_URI=https://api.jnremployee.com/auth/whop/callback
+    # until api.liquidclips.app is pointed at this Railway service + has TLS.
+    whop_oauth_redirect_uri: str = "https://api.liquidclips.app/auth/whop/callback"
+
     # License JWT signing — Ed25519. Generated on first boot if absent and
     # written to JUNIOR_JWT_PRIVATE_PEM (env) for Railway persistence.
     jwt_private_pem: str = ""  # PEM-encoded private key; auto-generated locally
