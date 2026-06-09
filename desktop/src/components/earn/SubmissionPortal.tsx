@@ -345,7 +345,7 @@ function FormBody({
       </label>
 
       {error && (
-        <p className="rounded-xl border border-[#DC2626]/40 bg-[#DC2626]/5 px-4 py-3 font-mono text-[11px] text-[#F87171]">
+        <p className="rounded-xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 px-4 py-3 font-mono text-[11px] text-[var(--color-danger-bright)]">
           {error}
         </p>
       )}

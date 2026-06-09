@@ -164,7 +164,7 @@ export function WorkstationRoom({
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.18 }}
             role="alert"
-            className="rounded-full border border-[#DC2626]/30 bg-[#DC2626]/10 px-4 py-2 font-mono text-[11px] text-[#DC2626]"
+            className="rounded-full border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-2 font-mono text-[11px] text-[var(--color-danger)]"
           >
             {dropError}
           </motion.div>

@@ -239,7 +239,7 @@ function Shell({
 }) {
   const border =
     tone === "warn"
-      ? "border-[#DC2626]/40"
+      ? "border-[var(--color-danger)]/40"
       : tone === "fuchsia"
       ? "border-fuchsia/40 shadow-[var(--glow-sm)]"
       : "border-line";
@@ -375,7 +375,7 @@ function TrialCard({ customer }: { customer: AffiliateCustomer }) {
         </button>
       </div>
       {openError && (
-        <p className="mt-2 font-sans text-[12px] text-[#F87171]" role="alert">
+        <p className="mt-2 font-sans text-[12px] text-[var(--color-danger-bright)]" role="alert">
           Couldn&apos;t open browser — {openError}
         </p>
       )}
@@ -413,7 +413,7 @@ function LapsedCard({ customer: _customer }: { customer: AffiliateCustomer }) {
         </button>
       </div>
       {openError && (
-        <p className="mt-2 font-sans text-[12px] text-[#F87171]" role="alert">
+        <p className="mt-2 font-sans text-[12px] text-[var(--color-danger-bright)]" role="alert">
           Couldn&apos;t open browser — {openError}
         </p>
       )}
@@ -472,7 +472,7 @@ function WhopFetchFailedCard({
           : "Whop&apos;s API didn&apos;t respond, or your affiliate hasn&apos;t been created yet. Both fix themselves quickly — retry, or open your partner dashboard directly."}
       </p>
       {locked && (
-        <p className="mt-2 font-sans text-[12px] text-[#F87171]">
+        <p className="mt-2 font-sans text-[12px] text-[var(--color-danger-bright)]">
           Server still down — try again in a few minutes
           {lockSecondsLeft > 0 ? ` (${lockSecondsLeft}s).` : "."}
         </p>
@@ -497,7 +497,7 @@ function WhopFetchFailedCard({
         </button>
       </div>
       {openError && (
-        <p className="mt-2 font-sans text-[12px] text-[#F87171]" role="alert">
+        <p className="mt-2 font-sans text-[12px] text-[var(--color-danger-bright)]" role="alert">
           Couldn&apos;t open browser — {openError}
         </p>
       )}
@@ -600,8 +600,8 @@ function Dashboard({
       </div>
 
       {pastDue && (
-        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-[#DC2626]/40 bg-[#DC2626]/10 px-4 py-3">
-          <TriangleAlert className="h-4 w-4 shrink-0 text-[#DC2626]" strokeWidth={2.25} />
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-4 py-3">
+          <TriangleAlert className="h-4 w-4 shrink-0 text-[var(--color-danger)]" strokeWidth={2.25} />
           <p className="flex-1 font-sans text-[12px] leading-snug text-text-secondary">
             <span className="text-ink">Payment past due</span> &mdash; earnings paused until your card is fixed.
           </p>
@@ -707,7 +707,7 @@ function Dashboard({
         )}
 
       {openError && (
-        <p className="mt-3 font-sans text-[12px] text-[#F87171]" role="alert">
+        <p className="mt-3 font-sans text-[12px] text-[var(--color-danger-bright)]" role="alert">
           Couldn&apos;t open browser — {openError}
         </p>
       )}
@@ -971,7 +971,7 @@ function CopyLinkButton({ url, disabled }: { url: string; disabled?: boolean }) 
       {copyError && (
         <span
           role="alert"
-          className="absolute right-0 top-full mt-1 whitespace-nowrap font-sans text-[11px] text-[#F87171]"
+          className="absolute right-0 top-full mt-1 whitespace-nowrap font-sans text-[11px] text-[var(--color-danger-bright)]"
         >
           {copyError}
         </span>

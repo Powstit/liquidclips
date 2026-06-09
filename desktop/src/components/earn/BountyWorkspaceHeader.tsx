@@ -87,7 +87,7 @@ export function BountyWorkspaceHeader({ project }: { project: Project }) {
               Open reward on Whop ↗
             </button>
             {openError && (
-              <p className="font-mono text-[11px] text-[#DC2626]">{openError}</p>
+              <p className="font-mono text-[11px] text-[var(--color-danger)]">{openError}</p>
             )}
           </div>
         )}

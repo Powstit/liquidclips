@@ -599,7 +599,7 @@ function MenuItem({
         disabled
           ? "cursor-not-allowed text-text-tertiary opacity-50"
           : destructive
-          ? "text-[#DC2626] hover:bg-[#DC2626]/10"
+          ? "text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
           : subtle
           ? "text-text-tertiary hover:text-ink"
           : "text-ink hover:bg-fuchsia-soft/30 hover:text-fuchsia-deep",

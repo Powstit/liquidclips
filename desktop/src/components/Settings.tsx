@@ -412,7 +412,7 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
               the sticky footer on short windows. */}
           <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto px-7 py-7 pb-24">
           {bootErrors.length > 0 && (
-            <div className="rounded-lg border border-[#DC2626]/40 bg-[#DC2626]/5 px-3 py-2 font-mono text-[11px] text-[#DC2626]">
+            <div className="rounded-lg border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 px-3 py-2 font-mono text-[11px] text-[var(--color-danger)]">
               Some Settings data couldn't load — Liquid Clips helper may be restarting.
               <span className="block text-text-tertiary normal-case">
                 {bootErrors.join(" · ")}
@@ -647,7 +647,7 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
                 </span>
               )}
               {updateState.kind === "error" && (
-                <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-[#DC2626]">
+                <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--color-danger)]">
                   {updateState.message}
                 </span>
               )}
@@ -916,7 +916,7 @@ function SecretRow({
         </div>
         {/* (5) Surface keychain write errors inline so the user sees them. */}
         {errorMessage && (
-          <p className="mt-2 font-mono text-[11px] text-[#DC2626]">{errorMessage}</p>
+          <p className="mt-2 font-mono text-[11px] text-[var(--color-danger)]">{errorMessage}</p>
         )}
       </div>
     );
@@ -946,7 +946,7 @@ function SecretRow({
         </div>
       </div>
       {errorMessage && (
-        <p className="font-mono text-[11px] text-[#DC2626]">{errorMessage}</p>
+        <p className="font-mono text-[11px] text-[var(--color-danger)]">{errorMessage}</p>
       )}
     </div>
   );
@@ -1409,7 +1409,7 @@ function ConnectionsChannelsList({
         </p>
       )}
       {error && (
-        <p className="font-mono text-[11px] text-[#DC2626]">
+        <p className="font-mono text-[11px] text-[var(--color-danger)]">
           Couldn&apos;t reach the channels endpoint — {error}
         </p>
       )}
@@ -1549,7 +1549,7 @@ function DiagnosticsSection({
         </BracketFrame>
         {sidecarStarting && !deps && !depsError && (
           <BracketFrame>
-            <p className="font-mono text-[11px] text-[#DC2626]">
+            <p className="font-mono text-[11px] text-[var(--color-danger)]">
               Couldn't reach sidecar — try restarting Liquid Clips.
             </p>
             <div className="mt-2">
@@ -1566,14 +1566,14 @@ function DiagnosticsSection({
         )}
         {(missing.length > 0 || errors.length > 0 || depsError) && (
           <BracketFrame>
-            <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#DC2626]">
+            <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-danger)]">
               missing python modules
             </p>
-            {depsError && <p className="font-mono text-[11px] text-[#DC2626]">{depsError}</p>}
+            {depsError && <p className="font-mono text-[11px] text-[var(--color-danger)]">{depsError}</p>}
             {missing.length > 0 ? (
               <ul className="flex flex-col gap-1">
                 {missing.map((name) => (
-                  <li key={name} className="font-mono text-[11px] text-[#DC2626]">
+                  <li key={name} className="font-mono text-[11px] text-[var(--color-danger)]">
                     {name}{deps?.errors[name] ? `: ${deps.errors[name]}` : ""}
                   </li>
                 ))}
@@ -1584,7 +1584,7 @@ function DiagnosticsSection({
             {errors
               .filter(([name]) => !missing.includes(name))
               .map(([name, message]) => (
-                <p key={name} className="font-mono text-[11px] text-[#DC2626]">
+                <p key={name} className="font-mono text-[11px] text-[var(--color-danger)]">
                   {name}: {message}
                 </p>
               ))}
@@ -1595,7 +1595,7 @@ function DiagnosticsSection({
         </HudChip>
         {/* (6) Clipboard write failures surface here instead of being eaten. */}
         {clipboardError && (
-          <p className="font-mono text-[11px] text-[#DC2626]">
+          <p className="font-mono text-[11px] text-[var(--color-danger)]">
             Couldn't copy — try selecting the dump manually. ({clipboardError})
           </p>
         )}
@@ -1765,7 +1765,7 @@ function SupportSection() {
         </a>
       </div>
       {copyError && (
-        <p className="font-mono text-[11px] text-[#DC2626]">
+        <p className="font-mono text-[11px] text-[var(--color-danger)]">
           Couldn't copy — try selecting the dump manually. ({copyError})
         </p>
       )}
@@ -1924,7 +1924,7 @@ function SettingsBottomBar({ onSignOut }: { onSignOut: () => void | Promise<void
       </span>
       <button
         onClick={() => void onSignOut()}
-        className="lc-settings-logout rounded-full bg-[#DC2626] px-5 py-2 font-sans text-[13px] font-semibold text-white shadow-[0_0_18px_rgba(220,38,38,0.4)] transition-all hover:bg-[#B91C1C] hover:shadow-[0_0_28px_rgba(220,38,38,0.65)]"
+        className="lc-settings-logout rounded-full bg-[var(--color-danger)] px-5 py-2 font-sans text-[13px] font-semibold text-white shadow-[0_0_18px_rgba(220,38,38,0.4)] transition-all hover:bg-[#B91C1C] hover:shadow-[0_0_28px_rgba(220,38,38,0.65)]"
       >
         Log out
       </button>
@@ -1993,7 +1993,7 @@ function ProfileAvatarRow({ email }: { email: string | null }) {
               type="button"
               onClick={() => void clearAvatar()}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-transparent px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary transition-colors hover:border-[#DC2626] hover:text-[#DC2626] disabled:cursor-wait disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-transparent px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary transition-colors hover:border-[var(--color-danger)] hover:text-[var(--color-danger)] disabled:cursor-wait disabled:opacity-50"
             >
               <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
               Remove
@@ -2001,7 +2001,7 @@ function ProfileAvatarRow({ email }: { email: string | null }) {
           )}
         </div>
         {error && (
-          <p className="font-mono text-[11px] text-[#DC2626]">{error}</p>
+          <p className="font-mono text-[11px] text-[var(--color-danger)]">{error}</p>
         )}
       </div>
     </div>

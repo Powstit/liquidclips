@@ -70,7 +70,7 @@ export function SavedBriefsRow({
       </header>
 
       {error && (
-        <div className="rounded-md border border-[#DC2626]/40 bg-[#DC2626]/10 px-3 py-2 font-mono text-[11px] text-[#F87171]">
+        <div className="rounded-md border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-3 py-2 font-mono text-[11px] text-[var(--color-danger-bright)]">
           Couldn't load campaigns · {error}
         </div>
       )}
@@ -400,7 +400,7 @@ function BriefDetailModal({
           )}
 
           {err && (
-            <div className="rounded-md border border-[#DC2626]/40 bg-[#DC2626]/10 px-3 py-2 font-mono text-[11px] text-[#F87171]">
+            <div className="rounded-md border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-3 py-2 font-mono text-[11px] text-[var(--color-danger-bright)]">
               {err}
             </div>
           )}

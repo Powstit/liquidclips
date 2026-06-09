@@ -113,8 +113,8 @@ export function AnalyticsView() {
       </div>
 
       {loadError ? (
-        <div className="flex flex-col items-center gap-3 rounded-3xl border border-[#DC2626]/40 bg-[#DC2626]/5 px-8 py-12 text-center">
-          <span className="grid h-12 w-12 place-items-center rounded-full bg-[#DC2626]/10 text-[#DC2626]">
+        <div className="flex flex-col items-center gap-3 rounded-3xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 px-8 py-12 text-center">
+          <span className="grid h-12 w-12 place-items-center rounded-full bg-[var(--color-danger)]/10 text-[var(--color-danger)]">
             <AlertTriangle size={20} strokeWidth={2.5} />
           </span>
           <h3 className="font-display text-[18px] font-semibold tracking-[-0.02em] text-ink">

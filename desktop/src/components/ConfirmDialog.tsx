@@ -115,7 +115,7 @@ export function ConfirmDialog({
               <div
                 className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${
                   isDestructive
-                    ? "bg-[#DC2626]/15 text-[#DC2626]"
+                    ? "bg-[var(--color-danger)]/15 text-[var(--color-danger)]"
                     : "bg-fuchsia/15 text-fuchsia"
                 }`}
               >
@@ -161,7 +161,7 @@ export function ConfirmDialog({
                 disabled={busy}
                 className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 font-sans text-[13px] font-medium text-white transition-colors disabled:opacity-60 ${
                   isDestructive
-                    ? "bg-[#DC2626] hover:bg-[#B91C1C]"
+                    ? "bg-[var(--color-danger)] hover:bg-[#B91C1C]"
                     : "bg-fuchsia hover:bg-fuchsia-bright"
                 }`}
               >

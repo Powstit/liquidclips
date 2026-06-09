@@ -76,7 +76,7 @@ export function AvatarOrbit({
       ? "var(--color-fuchsia)"
       : sidecarStatus === "failed"
       ? "#DC2626"
-      : "#F59E0B";
+      : "#ff66b8";
 
   // Paid tier gets the crown nested inside the ring. Free stays clean —
   // upgrading is a status symbol, not a default.

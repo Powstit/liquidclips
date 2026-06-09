@@ -395,7 +395,7 @@ export function PublishModal({
             {clip.title}
           </h3>
           {!videoPath && (
-            <p className="mt-1 font-mono text-[11px] text-[#DC2626]">
+            <p className="mt-1 font-mono text-[11px] text-[var(--color-danger)]">
               No 9:16 render yet. Open the clip → Re-cut to produce a vertical file.
             </p>
           )}
@@ -471,7 +471,7 @@ export function PublishModal({
           </div>
         )}
 
-        {error && <p className="font-mono text-[12px] text-[#DC2626]">{error}</p>}
+        {error && <p className="font-mono text-[12px] text-[var(--color-danger)]">{error}</p>}
 
         <div className="mt-2 flex items-center justify-end gap-3">
           <button

@@ -73,7 +73,7 @@ export function FailureCard({
       <span className="library-card-corner-tr" aria-hidden="true" />
       <span className="library-card-corner-bl" aria-hidden="true" />
       <span className="library-card-corner-br" aria-hidden="true" />
-      <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-[#DC2626]">
+      <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--color-danger)]">
         {eyebrow}
       </div>
       <h2 className="mt-2 font-display text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink">

@@ -281,7 +281,7 @@ export function ReactionSourcePicker({
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {missingKey && <MissingKeyBanner tab={missingKey} />}
           {providerError && !missingKey && (
-            <p className="mb-3 rounded-lg border border-[#DC2626]/40 bg-[#DC2626]/10 px-3 py-2 font-sans text-[12px] text-[#FCA5A5]">
+            <p className="mb-3 rounded-lg border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-3 py-2 font-sans text-[12px] text-[#FCA5A5]">
               {providerError}
             </p>
           )}

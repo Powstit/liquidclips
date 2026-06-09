@@ -214,7 +214,7 @@ export function UnifiedDropZone({
               {remainingExports} free export{remainingExports === 1 ? "" : "s"} left
             </p>
           )}
-          {error && <p className="font-mono text-[11px] text-[#DC2626]">{error}</p>}
+          {error && <p className="font-mono text-[11px] text-[var(--color-danger)]">{error}</p>}
 
           {dragOver && (
             <div className="pointer-events-none absolute inset-0 grid place-items-center rounded-3xl bg-fuchsia/15">
@@ -257,7 +257,7 @@ export function UnifiedDropZone({
             <span>Remix</span><span>·</span>
             <span>Schedule</span>
           </div>
-          {error && <p className="font-mono text-[11px] text-[#DC2626]">{error}</p>}
+          {error && <p className="font-mono text-[11px] text-[var(--color-danger)]">{error}</p>}
         </section>
       )}
 

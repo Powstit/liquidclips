@@ -290,7 +290,7 @@ export function LibraryTab({
         // the user is stranded on a dead "Something went wrong" line.
         <div
           role="alert"
-          className="mx-auto mb-4 flex w-full max-w-[1180px] items-center justify-between gap-3 rounded-2xl border border-[#DC2626]/30 bg-[#DC2626]/10 px-4 py-3 font-sans text-[13px] text-[#DC2626]"
+          className="mx-auto mb-4 flex w-full max-w-[1180px] items-center justify-between gap-3 rounded-2xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-3 font-sans text-[13px] text-[var(--color-danger)]"
         >
           <span className="min-w-0 flex-1 truncate">{error}</span>
           <div className="flex items-center gap-2">
@@ -298,7 +298,7 @@ export function LibraryTab({
               type="button"
               onClick={() => void loadProjects()}
               disabled={loading}
-              className="rounded-full border border-[#DC2626]/50 bg-transparent px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#DC2626] transition-colors hover:bg-[#DC2626]/15 disabled:opacity-50"
+              className="rounded-full border border-[var(--color-danger)]/50 bg-transparent px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-danger)] transition-colors hover:bg-[var(--color-danger)]/15 disabled:opacity-50"
             >
               {loading ? "Retrying…" : "Retry"}
             </button>
@@ -482,7 +482,7 @@ function ConfirmDelete({
         <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
 
         <div className="flex items-start gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#DC2626]/15 text-[#DC2626]">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--color-danger)]/15 text-[var(--color-danger)]">
             <Trash2 className="h-4 w-4" strokeWidth={2.2} />
           </div>
           <div className="min-w-0">
@@ -510,7 +510,7 @@ function ConfirmDelete({
             type="button"
             onClick={onConfirm}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[#DC2626] px-4 py-2 font-sans text-[13px] font-medium text-white transition-colors hover:bg-[#B91C1C] disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-danger)] px-4 py-2 font-sans text-[13px] font-medium text-white transition-colors hover:bg-[#B91C1C] disabled:opacity-60"
           >
             <Trash2 className="h-3.5 w-3.5" strokeWidth={2.2} />
             {busy ? "Deleting…" : "Delete project"}

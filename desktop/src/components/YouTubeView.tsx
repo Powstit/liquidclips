@@ -90,7 +90,7 @@ export function YouTubeView({ project }: { project: Project }) {
     }
   }
 
-  if (error) return <p className="font-mono text-[12px] text-[#DC2626]">{error}</p>;
+  if (error) return <p className="font-mono text-[12px] text-[var(--color-danger)]">{error}</p>;
   if (!data) {
     return (
       <p className="font-mono text-[12px] text-text-tertiary">
@@ -416,7 +416,7 @@ function ChaptersCard({
             />
             <button
               onClick={() => remove(i)}
-              className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary hover:text-[#DC2626]"
+              className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary hover:text-[var(--color-danger)]"
             >
               remove
             </button>
@@ -572,7 +572,7 @@ function EndScreenCard({
               <span>cue · payoff</span>
               <button
                 onClick={() => remove(i)}
-                className="hover:text-[#DC2626]"
+                className="hover:text-[var(--color-danger)]"
               >
                 remove
               </button>

@@ -109,7 +109,7 @@ export function DropZone({
           </button>
         </div>
         {error && (
-          <p className="mt-2 font-mono text-[11px] text-[#DC2626]">{error}</p>
+          <p className="mt-2 font-mono text-[11px] text-[var(--color-danger)]">{error}</p>
         )}
       </div>
     </div>

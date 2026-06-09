@@ -144,10 +144,13 @@ export function computeBountyFit(clip: Clip, project: Project): BountyFit | null
   return { items, score };
 }
 
+// v0.7.32 — score-band tones: brand-pure. Mid-tier (55-79) is NEUTRAL
+// (not a warning — it's just a decent score), low-tier (<55) uses danger
+// for the actually-low semantic. Removes yellow palette.
 function scoreTone(score: number): string {
   if (score >= 80) return "text-fuchsia-deep border-fuchsia-soft bg-fuchsia-soft/40";
-  if (score >= 55) return "text-[#7A5400] border-[#EAB308]/40 bg-[#EAB308]/10";
-  return "text-[#9B1C1C] border-[#DC2626]/30 bg-[#DC2626]/5";
+  if (score >= 55) return "text-text-secondary border-line bg-paper-elev";
+  return "text-[var(--color-danger-bright)] border-[var(--color-danger)]/30 bg-[var(--color-danger)]/8";
 }
 
 // Compact pill for the clip grid.
@@ -214,7 +217,7 @@ export function BountyFitChecklist({ clip, project }: { clip: Clip; project: Pro
           <li key={it.key} className="flex items-start gap-2">
             <span
               className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] font-bold ${
-                it.ok ? "bg-fuchsia text-white" : "border border-[#DC2626]/50 text-[#DC2626]"
+                it.ok ? "bg-fuchsia text-white" : "border border-[var(--color-danger)]/50 text-[var(--color-danger)]"
               }`}
               aria-hidden
             >

@@ -508,7 +508,11 @@ def refresh_channel(
             row.status = status_str
     now = datetime.now(timezone.utc)
     row.last_refreshed_at = now
-    row.last_probe_at = now
+    # v0.7.33 — stamp `last_probe_at` only on Ayrshare success. The column
+    # represents "last successful probe", not "last attempt"; stamping on
+    # failure would mask repeated failed probes against an unreachable
+    # Ayrshare and defer the next reconcile window. `last_refreshed_at`
+    # still stamps on every call so the UI can show "we tried at HH:MM".
     # status_str == "error" means the Ayrshare probe itself failed; record a
     # short marker so the observability table can show drift. On success clear.
     if status_str == "error":
@@ -518,6 +522,7 @@ def refresh_channel(
             channel_id,
         )
     else:
+        row.last_probe_at = now
         row.last_probe_error = None
     db.commit()
     db.refresh(row)
@@ -658,6 +663,13 @@ def reconcile_channels_against_ayrshare(user_id: str, db: Session) -> None:
     Idempotent.
     """
     try:
+        # v0.7.33 — the `.in_(...)` set is the explicit allow-list of *stale*
+        # states the reconcile is allowed to flip to `active`. By construction
+        # this excludes `deleted` (soft-deleted rows must never resurrect via
+        # an Ayrshare probe), `active` (no work to do), and `paused` (user
+        # intent — flipping back to active would silently re-enable
+        # publishing). Anyone widening this set must verify those three
+        # invariants still hold.
         rows = (
             db.query(SocialChannel)
             .filter(SocialChannel.user_id == user_id)

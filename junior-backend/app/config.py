@@ -122,6 +122,14 @@ class Settings(BaseSettings):
     posthog_key: str = ""
     posthog_host: str = "https://us.i.posthog.com"
 
+    # Sentry — structured error tracking (Layer 12, v0.7.34). Empty DSN
+    # disables init so local dev doesn't ping Sentry. Production sets the
+    # DSN as a Railway env var. The FastAPI integration auto-captures
+    # unhandled exceptions in route handlers + lifespan + background tasks.
+    sentry_dsn: str = ""
+    sentry_environment: str = "production"
+    sentry_traces_sample_rate: float = 0.05  # 5% of transactions sampled for perf
+
     # Server-to-server shared secret for the account-app dashboard → backend
     # reads (e.g. /affiliate/me). The account-app server component sends it as
     # x-internal-secret; never exposed to the browser. Empty = allow (local dev).

@@ -250,7 +250,7 @@ function CopyShortLink({ url }: { url: string }) {
       {copyError && (
         <span
           role="alert"
-          className="absolute right-0 top-full mt-1 whitespace-nowrap font-sans text-[11px] text-[#F87171]"
+          className="absolute right-0 top-full mt-1 whitespace-nowrap font-sans text-[11px] text-[var(--color-danger-bright)]"
         >
           {copyError}
         </span>

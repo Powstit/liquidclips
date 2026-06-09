@@ -93,6 +93,11 @@ export function UploadPortal({
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  // v0.7.32 — derived "is this paste ready to fire" signal. When true, the
+  // Go button picks up a fuchsia ring so the user sees they can press Enter
+  // / click Go. No auto-submit (would surprise on accidental paste).
+  const urlIsReady = url.trim().length > 0 && isSupportedPortalUrl(url.trim());
+
   // Auto-focus the URL field on every open so the very next keystroke is
   // useful — no "click into the field then paste" detour. The flag resets
   // on close so a reopen re-focuses.
@@ -259,36 +264,49 @@ export function UploadPortal({
                     autoCorrect="off"
                     spellCheck={false}
                   />
+                  {/* v0.7.32 — browse promoted INTO the input row (was a
+                      separate sub-affordance below). Icon-only with title
+                      tooltip; the dashed outer border still signals drop. */}
+                  {!isScript && (
+                    <button
+                      type="button"
+                      onClick={() => void browseForFile()}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full text-text-tertiary transition-colors hover:bg-fuchsia/10 hover:text-fuchsia"
+                      aria-label="Browse for a file"
+                      title="Browse for a video file"
+                    >
+                      <FolderOpen className="h-4 w-4" strokeWidth={2} />
+                    </button>
+                  )}
+                  {/* v0.7.32 — pre-light Go button with fuchsia ring when the
+                      pasted URL is valid + on an allowed host. No
+                      auto-submit (would surprise on accidental paste). */}
                   <button
                     type="button"
                     onClick={submitUrl}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-fuchsia text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.5)]"
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full bg-fuchsia text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.5)] ${
+                      urlIsReady
+                        ? "ring-2 ring-fuchsia/40 ring-offset-2 ring-offset-paper"
+                        : ""
+                    }`}
                     aria-label="Go"
                   >
                     <ArrowRight className="h-4 w-4" strokeWidth={2.25} />
                   </button>
                 </label>
 
-                <button
-                  type="button"
-                  onClick={() => void browseForFile()}
-                  disabled={isScript}
-                  className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 font-mono text-[11px] uppercase tracking-[0.16em] transition-colors ${
-                    isScript
-                      ? "cursor-not-allowed text-text-tertiary/45"
-                      : "text-text-tertiary hover:bg-fuchsia/10 hover:text-fuchsia"
-                  }`}
-                  title={isScript ? "Script mode is URL only — paste a link above." : undefined}
-                >
-                  <FolderOpen className="h-3.5 w-3.5" strokeWidth={2} />
-                  {/* v0.7.7 ship-lens fix #5 — file pick disabled in script
-                      mode (lift_transcript is URL-only on the sidecar). */}
-                  {isScript ? "file drop · URL only in transcript mode" : "or drop a file · browse"}
-                </button>
+                {/* v0.7.32 — script-mode helper text only (file drop replaced
+                    by the in-row icon for clips mode). Tiny eyebrow so the
+                    mode boundary stays visible. */}
+                {isScript && (
+                  <p className="text-center font-mono text-[11px] uppercase tracking-[0.16em] text-text-tertiary/60">
+                    transcript mode · URL only
+                  </p>
+                )}
               </div>
 
               {error && (
-                <p className="rounded-xl border border-[#DC2626]/30 bg-[#DC2626]/10 px-3 py-2 font-mono text-[11px] text-[#DC2626]">
+                <p className="rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-3 py-2 font-mono text-[11px] text-[var(--color-danger)]">
                   {error}
                 </p>
               )}

@@ -28,7 +28,7 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
   const padRight = trailingIcon ? "pr-9" : "pr-3";
   const base =
     "w-full rounded-md border bg-paper text-ink outline-none transition-colors placeholder:text-text-tertiary focus:border-fuchsia focus:shadow-[var(--glow-sm)]";
-  const border = invalid ? "border-[#DC2626]" : "border-line";
+  const border = invalid ? "border-[var(--color-danger)]" : "border-line";
   return (
     <div className="relative flex items-center">
       {leadingIcon && (

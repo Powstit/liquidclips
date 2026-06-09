@@ -128,13 +128,13 @@ export function MasterActionToast({
       <div
         className={
           hasFailures
-            ? "pointer-events-auto flex max-w-2xl items-start gap-3 rounded-2xl border border-[#DC2626]/40 bg-paper-warm/95 px-4 py-3 shadow-[0_18px_44px_rgba(11,11,16,0.35)] backdrop-blur"
+            ? "pointer-events-auto flex max-w-2xl items-start gap-3 rounded-2xl border border-[var(--color-danger)]/40 bg-paper-warm/95 px-4 py-3 shadow-[0_18px_44px_rgba(11,11,16,0.35)] backdrop-blur"
             : "pointer-events-auto flex max-w-2xl items-start gap-3 rounded-2xl border border-fuchsia/40 bg-paper-warm/95 px-4 py-3 shadow-[0_18px_44px_rgba(11,11,16,0.35)] backdrop-blur"
         }
       >
         <div className="mt-0.5 shrink-0">
           {hasFailures ? (
-            <AlertCircle className="h-4 w-4 text-[#DC2626]" />
+            <AlertCircle className="h-4 w-4 text-[var(--color-danger)]" />
           ) : (
             <CheckCircle2 className="h-4 w-4 text-fuchsia" />
           )}
@@ -160,7 +160,7 @@ export function MasterActionToast({
             {hasFailures ? (
               <>
                 {" "}
-                <span className="text-[#DC2626]">
+                <span className="text-[var(--color-danger)]">
                   {failedCount} failed
                   {extraFailures > 0
                     ? ` — ${firstReason} (+${extraFailures} more)`

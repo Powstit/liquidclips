@@ -248,7 +248,7 @@ export function LocalQueue() {
         <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
         <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
         <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
-        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[#F59E0B]">
+        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
           <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2.25} />
           helper not running
         </div>
@@ -274,7 +274,7 @@ export function LocalQueue() {
         {toast && (
           <p
             className={`mt-1 font-mono text-[11px] ${
-              toast.kind === "error" ? "text-[#DC2626]" : "text-text-secondary"
+              toast.kind === "error" ? "text-[var(--color-danger)]" : "text-text-secondary"
             }`}
           >
             {toast.message}
@@ -360,7 +360,7 @@ export function LocalQueue() {
           role="status"
           className={`relative rounded-xl border px-3 py-2 font-sans text-[12px] ${
             toast.kind === "error"
-              ? "border-[#DC2626]/40 bg-[#DC2626]/10 text-ink"
+              ? "border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 text-ink"
               : "border-line bg-paper text-ink"
           }`}
         >
@@ -497,7 +497,7 @@ function Group({
       : tone === "neutral"
       ? "text-text-secondary"
       : tone === "warn"
-      ? "text-[#F59E0B]"
+      ? "text-fuchsia-deep"
       : "text-text-tertiary";
   return (
     <section>
@@ -586,7 +586,7 @@ function Row({
           {missed && (
             <>
               <span className="text-text-tertiary">·</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-[#F59E0B]/15 px-2 py-0.5 text-[#F59E0B]">
+              <span className="inline-flex items-center gap-1 rounded-full bg-fuchsia-deep/15 px-2 py-0.5 text-fuchsia-deep">
                 <AlertTriangle className="h-3 w-3" strokeWidth={2.25} /> missed
               </span>
             </>
@@ -628,8 +628,8 @@ function Row({
         // Clipboard write failed — surface the text so the user can copy
         // it manually. Selectable, no truncation, mono so the user can
         // tell where line breaks land.
-        <div className="mt-2 rounded-lg border border-[#F59E0B]/40 bg-[#F59E0B]/10 p-2">
-          <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#F59E0B]">
+        <div className="mt-2 rounded-lg border border-fuchsia-deep/40 bg-fuchsia-deep/10 p-2">
+          <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
             select and copy manually
           </p>
           <p className="select-text whitespace-pre-wrap break-words font-mono text-[12px] text-ink">
@@ -693,7 +693,7 @@ function Row({
           <button
             onClick={() => onRequestCancel(item)}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 font-sans text-[12px] font-medium text-text-tertiary hover:text-[#DC2626] disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 font-sans text-[12px] font-medium text-text-tertiary hover:text-[var(--color-danger)] disabled:opacity-50"
           >
             <X className="h-3.5 w-3.5" strokeWidth={2} />
             Cancel
@@ -702,14 +702,14 @@ function Row({
         {confirmCancelOpen && (
           // Inline confirm — replaces window.confirm(), which is a non-
           // styleable modal trap on Tauri and surfaces no context.
-          <div className="flex flex-wrap items-center gap-2 rounded-full border border-[#DC2626]/40 bg-[#DC2626]/10 px-3 py-1.5">
+          <div className="flex flex-wrap items-center gap-2 rounded-full border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-3 py-1.5">
             <span className="font-sans text-[12px] text-ink">
               {missed ? "Dismiss this missed reminder?" : `Cancel this ${platformLabel} reminder?`}
             </span>
             <button
               onClick={() => void onConfirmCancel(item)}
               disabled={busy}
-              className="rounded-full bg-[#DC2626] px-3 py-1 font-sans text-[12px] font-medium text-paper hover:bg-[#DC2626]/90 disabled:opacity-50"
+              className="rounded-full bg-[var(--color-danger)] px-3 py-1 font-sans text-[12px] font-medium text-paper hover:bg-[var(--color-danger)]/90 disabled:opacity-50"
             >
               {busy ? "canceling…" : missed ? "Yes, dismiss" : "Yes, cancel"}
             </button>
@@ -750,7 +750,7 @@ function Row({
           // toasted above the list.
           <button
             onClick={() => onRetry(item)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[#DC2626] bg-transparent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-[#DC2626] hover:bg-[#DC2626]/10"
+            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-danger)] bg-transparent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
           >
             <RefreshCw className="h-3 w-3" strokeWidth={2.25} />
             retry

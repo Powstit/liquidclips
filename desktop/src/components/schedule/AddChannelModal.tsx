@@ -353,7 +353,7 @@ export function AddChannelModal({
           {state.kind === "still-pending" && (
             <div className="flex flex-col gap-3">
               <div className="flex flex-col items-center gap-3 py-2">
-                <span className="grid h-14 w-14 place-items-center rounded-full bg-[#F59E0B]/15 text-[#F59E0B]">
+                <span className="grid h-14 w-14 place-items-center rounded-full bg-fuchsia-deep/15 text-fuchsia-deep">
                   <AlertTriangle size={22} strokeWidth={2.5} />
                 </span>
                 <h2 className="font-display text-[20px] font-semibold leading-tight tracking-[-0.02em] text-ink text-center">

@@ -9,7 +9,7 @@ const BADGE_COLORS: Record<string, string> = {
   "publish-success": "#a3e635",
   "publish-failed": "#ef4444",
   payout: "#ff1a8c",
-  "bounty-match": "#f59e0b",
+  "bounty-match": "#ff66b8",
 };
 
 interface ActivityEvent {

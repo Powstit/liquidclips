@@ -52,7 +52,7 @@ export function ReactionCellPreview({
             onClick={onRemove}
             disabled={busy}
             title="Remove reaction"
-            className="inline-flex items-center gap-1 rounded-full border border-line bg-paper px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary hover:border-[#DC2626] hover:text-[#DC2626] disabled:opacity-40"
+            className="inline-flex items-center gap-1 rounded-full border border-line bg-paper px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary hover:border-[var(--color-danger)] hover:text-[var(--color-danger)] disabled:opacity-40"
           >
             <X size={11} strokeWidth={2.5} />
             remove

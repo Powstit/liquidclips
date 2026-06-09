@@ -91,7 +91,7 @@ export function JuniorLoader({
         {onCancel && (
           <button
             onClick={onCancel}
-            className="rounded-full border border-line bg-transparent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:border-[#DC2626] hover:text-[#DC2626]"
+            className="rounded-full border border-line bg-transparent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]"
           >
             cancel
           </button>

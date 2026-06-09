@@ -104,7 +104,7 @@ export function CampaignContextStrip({
           )}
         </div>
         {saveError && (
-          <p role="alert" className="basis-full font-sans text-[11px] text-[#F87171]">
+          <p role="alert" className="basis-full font-sans text-[11px] text-[var(--color-danger-bright)]">
             {saveError}
           </p>
         )}
@@ -169,14 +169,14 @@ export function CampaignContextStrip({
         <button
           type="button"
           onClick={clearActive}
-          className="inline-flex items-center gap-1 rounded-full border border-line bg-paper px-2.5 py-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-secondary hover:border-[#DC2626] hover:text-[#F87171]"
+          className="inline-flex items-center gap-1 rounded-full border border-line bg-paper px-2.5 py-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-secondary hover:border-[var(--color-danger)] hover:text-[var(--color-danger-bright)]"
           title="Clear active campaign"
         >
           <X size={11} /> Clear
         </button>
       </div>
       {saveError && (
-        <p role="alert" className="basis-full font-sans text-[11px] text-[#F87171]">
+        <p role="alert" className="basis-full font-sans text-[11px] text-[var(--color-danger-bright)]">
           {saveError}
         </p>
       )}

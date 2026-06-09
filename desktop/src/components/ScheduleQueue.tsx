@@ -38,7 +38,7 @@ const STATUS_TEXT_CLASS: Record<ScheduleDto["status"], string> = {
   uploading: "text-fuchsia",
   scheduled: "text-fuchsia",
   published: "text-fuchsia",
-  failed: "text-[#DC2626]",
+  failed: "text-[var(--color-danger)]",
   canceled: "text-text-tertiary line-through opacity-60",
 };
 
@@ -325,7 +325,7 @@ export function ScheduleQueue() {
               )}
 
               {row.error && (
-                <p className="mt-2 font-mono text-[11px] text-[#DC2626]">{row.error}</p>
+                <p className="mt-2 font-mono text-[11px] text-[var(--color-danger)]">{row.error}</p>
               )}
 
               <div className="mt-3 flex items-center gap-3">
@@ -333,7 +333,7 @@ export function ScheduleQueue() {
                   <button
                     onClick={() => void retry(row)}
                     disabled={retrying === row.id}
-                    className="rounded-full border border-[#DC2626] bg-transparent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-[#DC2626] hover:bg-[#DC2626]/10 disabled:opacity-50"
+                    className="rounded-full border border-[var(--color-danger)] bg-transparent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 disabled:opacity-50"
                   >
                     {retrying === row.id ? "retrying…" : "retry"}
                   </button>
@@ -352,7 +352,7 @@ export function ScheduleQueue() {
                   // hunting for the action elsewhere.
                   <button
                     onClick={() => void cancel(row)}
-                    className="font-mono text-[11px] uppercase tracking-[0.12em] text-[#DC2626] underline decoration-dashed underline-offset-4 hover:text-fuchsia-deep"
+                    className="font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--color-danger)] underline decoration-dashed underline-offset-4 hover:text-fuchsia-deep"
                     title={cancelError[row.id]}
                   >
                     Cancel failed &mdash; retry

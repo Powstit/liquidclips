@@ -305,7 +305,7 @@ export default function AyrshareConnectionPanel({
                       disabled={busy}
                       title={`Hide ${prettyPlatform(p)} locally`}
                       aria-label={`Hide ${prettyPlatform(p)}`}
-                      className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-tertiary opacity-0 transition-opacity hover:bg-[#DC2626]/10 hover:text-[#DC2626] group-hover:flex group-hover:opacity-100 disabled:opacity-30"
+                      className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-tertiary opacity-0 transition-opacity hover:bg-[var(--color-danger)]/10 hover:text-[var(--color-danger)] group-hover:flex group-hover:opacity-100 disabled:opacity-30"
                     >
                       ×
                     </button>
@@ -347,7 +347,7 @@ export default function AyrshareConnectionPanel({
       )}
 
       {error && (
-        <p className="mt-3 font-mono text-[11px] text-[#DC2626]">{error}</p>
+        <p className="mt-3 font-mono text-[11px] text-[var(--color-danger)]">{error}</p>
       )}
       <ConfirmDialog
         open={confirmDisconnect !== null}

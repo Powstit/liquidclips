@@ -431,7 +431,7 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
             </p>
           ) : loadState === "error" ? (
             <div className="flex flex-col gap-2">
-              <p className="font-sans text-[12px] text-[#DC2626]">
+              <p className="font-sans text-[12px] text-[var(--color-danger)]">
                 {errorMsg ?? "Couldn't read your channels."}
               </p>
               <button
@@ -546,10 +546,10 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
                           ? "flex items-center gap-2 rounded-lg border border-fuchsia bg-fuchsia/15 px-2 py-1.5 text-left font-sans text-[12px] text-fuchsia"
                           : "flex items-center gap-2 rounded-lg border border-line bg-paper-elev px-2 py-1.5 text-left font-sans text-[12px] text-text-secondary hover:border-fuchsia hover:text-fuchsia"
                         : row.kind === "unlinked" || row.kind === "error"
-                        ? "flex cursor-not-allowed items-center gap-2 rounded-lg border border-[#DC2626]/40 bg-[#DC2626]/5 px-2 py-1.5 text-left font-sans text-[12px] text-[#DC2626] opacity-80"
+                        ? "flex cursor-not-allowed items-center gap-2 rounded-lg border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 px-2 py-1.5 text-left font-sans text-[12px] text-[var(--color-danger)] opacity-80"
                         : row.kind === "paused"
                         ? "flex cursor-not-allowed items-center gap-2 rounded-lg border border-text-tertiary/40 bg-text-tertiary/5 px-2 py-1.5 text-left font-sans text-[12px] text-text-tertiary opacity-80"
-                        : "flex cursor-not-allowed items-center gap-2 rounded-lg border border-[#F59E0B]/40 bg-[#F59E0B]/5 px-2 py-1.5 text-left font-sans text-[12px] text-[#F59E0B] opacity-90"
+                        : "flex cursor-not-allowed items-center gap-2 rounded-lg border border-fuchsia-deep/40 bg-fuchsia-deep/5 px-2 py-1.5 text-left font-sans text-[12px] text-fuchsia-deep opacity-90"
                     }
                   >
                     <ChannelAvatar channel={channel} />
@@ -562,10 +562,10 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
                             ? "font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia"
                             : "font-mono text-[10px] uppercase tracking-[0.16em] text-text-tertiary"
                           : row.kind === "unlinked" || row.kind === "error"
-                          ? "font-mono text-[10px] uppercase tracking-[0.16em] text-[#DC2626]"
+                          ? "font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--color-danger)]"
                           : row.kind === "paused"
                           ? "font-mono text-[10px] uppercase tracking-[0.16em] text-text-tertiary"
-                          : "font-mono text-[10px] uppercase tracking-[0.16em] text-[#F59E0B]"
+                          : "font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia-deep"
                       }
                     >
                       {isActive ? (selected ? "on" : "off") : row.badge}

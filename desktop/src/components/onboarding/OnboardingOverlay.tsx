@@ -138,7 +138,7 @@ export function OnboardingOverlay({ onComplete, onOpenSettings, onTrySample }: O
           </p>
 
           {activation.kind === "error" && index === 1 && (
-            <p className="mt-4 rounded-2xl border border-[#DC2626]/20 bg-[#DC2626]/5 px-4 py-3 font-mono text-[12px] text-[#B91C1C]">
+            <p className="mt-4 rounded-2xl border border-[var(--color-danger)]/20 bg-[var(--color-danger)]/5 px-4 py-3 font-mono text-[12px] text-[#B91C1C]">
               {activation.message}
             </p>
           )}

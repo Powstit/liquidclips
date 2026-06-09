@@ -236,7 +236,7 @@ export function WorkingStage({
           }
           if (status === "failed") {
             return (
-              <li key={stage.key} className="flex items-center gap-3 text-[#DC2626]">
+              <li key={stage.key} className="flex items-center gap-3 text-[var(--color-danger)]">
                 <span>×</span>
                 <span>{stage.label} — failed</span>
               </li>
@@ -327,7 +327,7 @@ export function WorkingStage({
           <button
             onClick={requestCancel}
             disabled={cancelRequested}
-            className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors hover:border-[#DC2626] hover:text-[#DC2626] disabled:opacity-50"
+            className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors hover:border-[var(--color-danger)] hover:text-[var(--color-danger)] disabled:opacity-50"
           >
             {cancelRequested ? "Cancelling…" : "Cancel"}
           </button>
