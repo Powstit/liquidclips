@@ -1295,7 +1295,7 @@ def method_apply_overlay(params: dict[str, Any]) -> dict[str, Any]:
         # On success, clear any prior error fields the cockpit may still be
         # rendering. Pending state isn't written here because the RPC is
         # synchronous; client-side busy drives the pending strip.
-        clip = project.data.get("clips", [None])[idx] if idx < len(project.data.get("clips", [])) else None
+        clip = project.clips[idx] if 0 <= idx < len(project.clips) else None
         if clip and clip.get("overlay"):
             for field in ("bake_status", "bake_started_at", "bake_error"):
                 if field in clip["overlay"]:
@@ -1307,8 +1307,8 @@ def method_apply_overlay(params: dict[str, Any]) -> dict[str, Any]:
         # path still returns an error to the client (toast pipeline + the
         # ReactionControls error display use it).
         try:
-            clips = project.data.get("clips", [])
-            if idx < len(clips) and clips[idx]:
+            clips = project.clips
+            if 0 <= idx < len(clips) and clips[idx]:
                 overlay = clips[idx].get("overlay") or {}
                 # Preserve existing fields, add bake_status + bake_error.
                 # If we never even started the overlay (overlay_spec was None

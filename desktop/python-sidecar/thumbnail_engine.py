@@ -205,7 +205,7 @@ def _post_multipart(url: str, token: str, fields: dict, files: list) -> dict:
     req = urllib.request.Request(url, data=bytes(body), method="POST")
     req.add_header("Authorization", "Bearer " + token)
     req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
-    with urllib.request.urlopen(req) as resp:
+    with urllib.request.urlopen(req, timeout=60) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -213,7 +213,7 @@ def _post_json(url: str, token: str, payload: dict) -> dict:
     req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), method="POST")
     req.add_header("Authorization", "Bearer " + token)
     req.add_header("Content-Type", "application/json")
-    with urllib.request.urlopen(req) as resp:
+    with urllib.request.urlopen(req, timeout=60) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 

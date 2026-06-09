@@ -117,7 +117,16 @@ export function ClipPreview({
   const [overlayTplOpen, setOverlayTplOpen] = useState(false);
   const [overlayTplBusy, setOverlayTplBusy] = useState(false);
 
+  // Cancellation token. Every async sidecar handler captures this generation
+  // before await and bails on the resolution if the clip context has rolled
+  // forward. Without this, a slow save on clip A can resolve after the user
+  // has moved to clip B and overwrite B's project snapshot (or pollute B's
+  // error/busy UI). The effect below bumps it whenever the rendered clip
+  // identity or position changes.
+  const rpcGenRef = useRef(0);
+
   useEffect(() => {
+    rpcGenRef.current += 1;
     setTrimStart(clip.start);
     setTrimEnd(clip.end);
     setActionError(null);
@@ -138,6 +147,7 @@ export function ClipPreview({
 
   async function saveMeta() {
     if (!isDirty || busy) return;
+    const gen = rpcGenRef.current;
     setBusy(true);
     setActionError(null);
     setSaveState("saving");
@@ -147,14 +157,16 @@ export function ClipPreview({
         description: descDraft,
         pinned_comment: pinDraft,
       });
+      if (gen !== rpcGenRef.current) return;
       onProjectChange(r.project);
       setSaveState("saved");
       window.setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 1800);
     } catch (e) {
+      if (gen !== rpcGenRef.current) return;
       setActionError(humanError(e));
       setSaveState("idle");
     } finally {
-      setBusy(false);
+      if (gen === rpcGenRef.current) setBusy(false);
     }
   }
 
@@ -286,16 +298,19 @@ export function ClipPreview({
   // immediately and the gallery's "selected" highlight updates.
   async function applyOverlayTemplateKey(key: import("../lib/sidecar").OverlayTemplateKey) {
     if (overlayTplBusy) return;
+    const gen = rpcGenRef.current;
     setOverlayTplBusy(true);
     setActionError(null);
     try {
       const r = await sidecar.applyOverlayTemplate(slug, index - 1, key);
+      if (gen !== rpcGenRef.current) return;
       onProjectChange(r.project);
       setOverlayTplOpen(false);
     } catch (e) {
+      if (gen !== rpcGenRef.current) return;
       setActionError(humanError(e));
     } finally {
-      setOverlayTplBusy(false);
+      if (gen === rpcGenRef.current) setOverlayTplBusy(false);
     }
   }
 
@@ -304,16 +319,19 @@ export function ClipPreview({
       setActionError("Clip must be 30–75 seconds.");
       return;
     }
+    const gen = rpcGenRef.current;
     setBusy(true);
     setActionError(null);
     try {
       const r = await sidecar.regenerateClip(slug, index - 1, trimStart, trimEnd);
+      if (gen !== rpcGenRef.current) return;
       onProjectChange(r.project);
       setTrimOpen(false);
     } catch (e) {
+      if (gen !== rpcGenRef.current) return;
       setActionError(humanError(e));
     } finally {
-      setBusy(false);
+      if (gen === rpcGenRef.current) setBusy(false);
     }
   }
 
@@ -322,13 +340,16 @@ export function ClipPreview({
   }
 
   async function performRemove() {
+    const gen = rpcGenRef.current;
     setBusy(true);
     try {
       const r = await sidecar.removeClip(slug, index - 1);
+      if (gen !== rpcGenRef.current) return;
       onProjectChange(r.project);
       setConfirmRemove(false);
       onClose();
     } catch (e) {
+      if (gen !== rpcGenRef.current) return;
       setActionError(humanError(e));
       setBusy(false);
       // Keep the modal open so the user can retry without re-opening it.
@@ -357,6 +378,7 @@ export function ClipPreview({
       setBottomToast({ kind: "err", msg: "No 9:16 render yet — wait for reframe to finish." });
       return;
     }
+    const gen = rpcGenRef.current;
     setScheduleOpen(false);
     try {
       await sidecar.localScheduleAdd([
@@ -373,8 +395,10 @@ export function ClipPreview({
           caption: clip.title,
         },
       ]);
+      if (gen !== rpcGenRef.current) return;
       setBottomToast({ kind: "ok", msg: "Scheduled — see it in the Upload tab." });
     } catch (e) {
+      if (gen !== rpcGenRef.current) return;
       setBottomToast({ kind: "err", msg: `Schedule failed — ${humanError(e)}` });
     }
   }
@@ -814,10 +838,13 @@ export function ClipPreview({
                   onToggle={async (p) => {
                     const cur = clip.platforms ?? [];
                     const next = cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p];
+                    const gen = rpcGenRef.current;
                     try {
-                      const r = await sidecar.setClipPlatforms(slug, index, next);
+                      const r = await sidecar.setClipPlatforms(slug, index - 1, next);
+                      if (gen !== rpcGenRef.current) return;
                       onProjectChange(r.project);
                     } catch (e) {
+                      if (gen !== rpcGenRef.current) return;
                       setActionError(humanError(e));
                     }
                   }}
