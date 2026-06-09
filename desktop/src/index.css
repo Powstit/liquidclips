@@ -43,6 +43,19 @@
   --color-text-secondary: #c8c4be;
   --color-text-tertiary: #8a857e;
 
+  /* v0.7.32 — Semantic state tokens. Formalises de-facto usage that had
+     been hardcoded across Pill, LibraryCard danger chip, FirstRun warning
+     notice. Brand lock: warning = fuchsia-deep (NOT yellow) so the one-
+     fuchsia accent rule holds; danger keeps its red (#DC2626) because it
+     mirrors the destructive Delete button and the "Pipeline failed" chip
+     is the only place red appears (per brand kit anti-reference: no
+     amber/lime/blue accents elsewhere). Success → fuchsia-deep + check
+     icon (no green). Info → cyan-cool (decoration role from brand kit). */
+  --color-danger: #dc2626;
+  --color-danger-bright: #f87171;
+  --color-warn: #ff66b8;        /* aliased to fuchsia-deep — restraint pattern */
+  --color-warn-soft: rgba(255, 102, 184, 0.12);
+
   /* Type — one font, weight-driven hierarchy. Display was Fraunces in the
      light era; the dark Whop direction wants Inter end-to-end for the
      editorial-but-tight feel (font clash was called out 2026-05-25). */
@@ -93,6 +106,18 @@ body {
   -moz-osx-font-smoothing: grayscale;
   user-select: none;
   cursor: default;
+}
+
+/* v0.7.32 — impeccable typography polish. `balance` keeps headings on even
+   line lengths (no orphan words); `pretty` reduces orphans in long prose.
+   Free perf, native CSS, supported by all modern browsers.
+   See impeccable rules: "Use `text-wrap: balance` on h1-h3 for even line
+   lengths; `text-wrap: pretty` on long prose to reduce orphans." */
+h1, h2, h3 {
+  text-wrap: balance;
+}
+p {
+  text-wrap: pretty;
 }
 
 /* Re-enable selection inside text inputs / code blocks */
@@ -520,29 +545,18 @@ pre {
     radial-gradient(ellipse 70% 45% at 90% 90%, rgba(255, 90, 80, 0.18), transparent 60%);
   animation: lc-aurora-pulse 14s ease-in-out infinite alternate;
 }
-.lc-aurora-stripes {
-  position: absolute;
-  inset: 0;
-  background-image: repeating-linear-gradient(
-    115deg,
-    rgba(255, 255, 255, 0.025) 0 1px,
-    transparent 1px 14px
-  );
-  mix-blend-mode: overlay;
-  animation: lc-aurora-drift 18s linear infinite;
-}
+/* v0.7.32 — aurora-stripes removed. impeccable bans repeating-linear-
+   gradient as section decoration; the diagonal-stripe overlay had no
+   semantic load (purely decorative). The aurora-blobs layer (radial
+   gradient atmosphere, brand-fuchsia-aligned) survives as the brand-
+   purposeful OASIS chrome. */
 @keyframes lc-aurora-pulse {
   0%   { transform: translate3d(-2%, -1%, 0) scale(1);    opacity: 1; }
   50%  { transform: translate3d(2%,   1%, 0) scale(1.05); opacity: 0.9; }
   100% { transform: translate3d(0%,  -2%, 0) scale(1.02); opacity: 1; }
 }
-@keyframes lc-aurora-drift {
-  0%   { transform: translate3d(0, 0, 0); }
-  100% { transform: translate3d(-160px, 0, 0); }
-}
 @media (prefers-reduced-motion: reduce) {
-  .lc-aurora-blobs,
-  .lc-aurora-stripes {
+  .lc-aurora-blobs {
     animation: none !important;
   }
 }
@@ -1142,17 +1156,20 @@ pre {
   transition: transform 500ms ease-out;
 }
 
+/* v0.7.32 — static brand window. The 3D parallax tilt (perspective +
+   rotateX/Y driven by cockpit-px/-py) was removed per Daniel's directive
+   "remove window motion or tilt make static on brand window". The cards
+   now hold still at rest; the only motion is the hover drop-shadow lift
+   (.library-card:hover) and the HUD-corner pulse-grow (already restrained).
+   Keeps perspective-style for any inner child that needs it; sets a
+   no-op transform so children inheriting transform-style still render. */
 .library-card {
   position: relative;
   border-radius: 14px;
   background: transparent;
-  transform-style: preserve-3d;
-  transform: perspective(900px)
-             rotateX(calc(var(--cockpit-py, 0) * -3deg))
-             rotateY(calc(var(--cockpit-px, 0) * 4deg));
+  transform: none;
   transition: filter 240ms ease;
   cursor: pointer;
-  will-change: transform;
 }
 .library-card:hover {
   filter: drop-shadow(0 18px 50px rgba(255, 26, 140, 0.4));

@@ -1,5 +1,18 @@
 "use client";
 
+// ───── IRON GATE IG-007 (v0.7.32) — see desktop/docs/IRON_GATES.md ─────
+// ClipCard structure is a literal copy of the LibraryCard pattern (per
+// Daniel's directive after the "lines" regression took an entire day to
+// diagnose). The outer <article> uses ONLY `library-card relative` —
+// adding `p-4`, `gap-3`, `rounded-2xl`, `flex flex-col` to it reintroduces
+// the workbench-background-bleed-through gap where horizontal "lines" appear.
+// HUD corner spans use TWO classes (base `library-card-corner` + side-
+// specific). The thumbnail uses `aspect-[9/16] overflow-hidden rounded-2xl`
+// with no bg-paper-warm fallback. Below-thumb meta uses `mt-3 px-1.5`.
+// No tilt transform on the library-card class (removed in same turn).
+// Don't restructure without explicit Daniel sign-off — the regression cost
+// hours of debugging.
+//
 // ship-lens v0.7.13: select + onError. Selection state lifted to parent via onSelectClick — the grid manages a Set<number>. onError plate replaces the silent-black-square strand for corrupt / iCloud-placeholder / 0-byte files.
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -449,8 +462,13 @@ export function ClipCard({
           </button>
         )}
 
-        {/* TR — PlatformBadge (routed-to social pips) wins over BountyFit when
-            both could render. Bounty pill falls back to TR if no platforms. */}
+        {/* TR — social pips. Three states:
+            1. Clip routed → bright PlatformBadge of the routed platforms.
+            2. Bounty attached + no platforms → BountyFit pill.
+            3. Neither → low-opacity placeholder of the 4 default platforms
+               as a routing affordance hint (per Daniel: "add the social
+               media icons"). Hint state mirrors the demo mockup's visible
+               pips for cards that haven't been routed yet. */}
         {clip.platforms && clip.platforms.length > 0 ? (
           <span className="pointer-events-none absolute right-2.5 top-2.5">
             <PlatformBadge platforms={clip.platforms} size="sm" />
@@ -459,7 +477,17 @@ export function ClipCard({
           <span className="absolute right-2.5 top-2.5">
             <BountyFitPill clip={clip} project={project} />
           </span>
-        ) : null}
+        ) : (
+          <span
+            className="pointer-events-none absolute right-2.5 top-2.5 opacity-45"
+            title="Route this clip via the cockpit's Channels module to publish to these platforms"
+          >
+            <PlatformBadge
+              platforms={["tiktok", "instagram", "youtube", "x"]}
+              size="sm"
+            />
+          </span>
+        )}
 
         {/* BL — ratio pill. Liquid Clips outputs 9:16 vertical by default
             (per CLAUDE.md "reframe to 9:16"); this is a brand-standard

@@ -880,9 +880,14 @@ function MasterCta({
       disabled={disabled}
       className={cn(
         "w-full inline-flex items-center justify-center gap-2 rounded-md px-4 py-3 font-sans text-[13px] font-semibold tracking-[0.005em] transition-transform",
-        isPublish
-          ? "bg-gradient-to-b from-amber-300 to-amber-500 text-[#241500] shadow-[0_12px_24px_-12px_rgba(255,176,46,0.7),inset_0_1px_0_rgba(255,255,255,0.4)] hover:-translate-y-0.5"
-          : "bg-gradient-to-b from-fuchsia-bright to-fuchsia text-[#190007] shadow-[0_12px_24px_-12px_rgba(255,45,149,0.7),inset_0_1px_0_rgba(255,255,255,0.34)] hover:-translate-y-0.5",
+        // v0.7.32 — Brand purity. Was amber-when-scheduled / fuchsia-when-
+        // publish; the amber broke the brand-kit "one fuchsia" lock. Now
+        // ALWAYS fuchsia regardless of isPublish state. Semantic distinction
+        // moves to the leading icon (Zap = publish-now lightning, Send =
+        // scheduled paper-plane) + the label morph ("Publish now" vs
+        // "Schedule +1h" etc.). Icon + label carry the semantic; color
+        // carries the brand.
+        "bg-gradient-to-b from-fuchsia-bright to-fuchsia text-[#190007] shadow-[0_12px_24px_-12px_rgba(255,45,149,0.7),inset_0_1px_0_rgba(255,255,255,0.34)] hover:-translate-y-0.5",
         "disabled:bg-line/20 disabled:text-text-tertiary disabled:shadow-none disabled:cursor-not-allowed disabled:translate-y-0",
       )}
     >

@@ -14,7 +14,7 @@
 >
 > The pre-commit hook will refuse a diff that removes a sentinel line unless `IRON_GATE_OVERRIDE=1` is set with a reason. Do not bypass.
 >
-> Currently active gates: IG-001 (import pipeline), IG-002 (sidecar RPC), IG-003 (cinematic intro), IG-004 (auth + activation), IG-005 (workspace UI design). Full registry: `docs/IRON_GATES.md`.
+> Currently active gates: IG-001 (import pipeline), IG-002 (sidecar RPC), IG-003 (cinematic intro), IG-004 (auth + activation), IG-005 (workspace UI design), IG-006 (cockpit handoff contracts), IG-007 (ClipCard structure). Full registry: `docs/IRON_GATES.md`.
 
 Tauri 2 macOS app. Public brand **Liquid Clips**, bundle id `app.liquidclips.desktop`, source-tree name still `junior-desktop`. The user-facing surface that turns long-form video into ready-to-post short clips with animated captions, social publishing, and an affiliate flywheel.
 
