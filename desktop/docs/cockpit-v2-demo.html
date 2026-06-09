@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Liquid Clips — Cockpit v2 (panel-design-lens output)</title>
+<style>
+  :root {
+    --fuchsia: #FF1A8C;
+    --fuchsia-bright: #FF3FA0;
+    --fuchsia-deep: #C8126C;
+    --fuchsia-soft: rgba(255, 26, 140, 0.12);
+    --cyan: #14D9D9;
+    --ink: #0B0B10;
+    --ink-soft: #2A2A33;
+    --paper: #FFFCF7;
+    --paper-warm: #F4F1EA;
+    --line: rgba(255, 255, 255, 0.10);
+    --line-ink: rgba(11, 11, 16, 0.10);
+    --text-secondary: rgba(244, 241, 234, 0.72);
+    --text-tertiary: rgba(244, 241, 234, 0.50);
+    --glow-sm: 0 0 12px rgba(255, 26, 140, 0.45);
+    --glow-md: 0 0 28px rgba(255, 26, 140, 0.55);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--ink); color: var(--paper); font-family: "Inter", -apple-system, system-ui, sans-serif; min-height: 100vh; }
+  body { padding: 40px 28px 60px; }
+
+  h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+  h2 { font-size: 14px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 12px; }
+
+  .stack > * + * { margin-top: 56px; }
+  .section-label {
+    font-family: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.18em;
+    color: var(--fuchsia);
+    margin-bottom: 14px;
+  }
+  .section-note {
+    color: var(--text-tertiary);
+    font-size: 12px;
+    margin-bottom: 18px;
+    max-width: 720px;
+    line-height: 1.55;
+  }
+
+  /* ───── cockpit shell ───── */
+  .cockpit {
+    position: relative;
+    margin: 0 auto;
+    max-width: 1280px;
+    background: linear-gradient(180deg, rgba(20, 20, 28, 0.96), rgba(11, 11, 16, 1));
+    border-top: 1px solid rgba(255, 26, 140, 0.40);
+    border-radius: 18px 18px 0 0;
+    padding: 14px 20px 18px;
+    box-shadow:
+      0 -18px 60px -12px rgba(255, 26, 140, 0.18),
+      inset 0 1px 0 rgba(255, 26, 140, 0.10);
+  }
+  /* the v0.7.28 bracket-corner reticles + mood-band fade are CUT.
+     A single fuchsia hairline at the top is enough to ground the shell. */
+
+  /* ───── status strip ───── */
+  .strip {
+    display: flex; align-items: center; gap: 14px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 12px; margin-bottom: 14px;
+    font-family: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;
+  }
+  .target-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--fuchsia-soft);
+    border: 1px solid rgba(255, 26, 140, 0.40);
+    color: var(--fuchsia-bright);
+    padding: 5px 10px; border-radius: 999px;
+    letter-spacing: 0.14em;
+  }
+  .target-chip strong { font-weight: 700; }
+  .focus-nav {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 6px; border: 1px solid var(--line);
+    border-radius: 999px; color: var(--paper);
+  }
+  .focus-nav button {
+    background: none; border: 0; color: var(--text-tertiary); cursor: pointer;
+    font: inherit; padding: 0 4px; line-height: 1;
+  }
+  .focus-nav button:hover { color: var(--fuchsia); }
+  .focus-nav .count { color: var(--paper); }
+  .info-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 1px solid var(--line); color: var(--text-tertiary);
+    cursor: help;
+  }
+  .info-icon[data-state="ok"] { color: var(--cyan); border-color: rgba(20, 217, 217, 0.40); }
+  .info-icon[data-state="warn"] { color: #F59E0B; border-color: rgba(245, 158, 11, 0.40); }
+  .counters { margin-left: auto; display: inline-flex; gap: 10px; color: var(--text-secondary); }
+  .counters strong { color: var(--paper); font-weight: 700; }
+  .counters .sep { color: var(--text-tertiary); opacity: 0.5; }
+  .more-menu {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 1px solid var(--line); color: var(--text-tertiary);
+    cursor: pointer;
+    font-size: 14px; line-height: 1;
+  }
+  .more-menu:hover { color: var(--fuchsia); border-color: var(--fuchsia); }
+
+  /* ───── module row ───── */
+  .modules {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr 1.7fr 1fr auto;
+    gap: 14px;
+  }
+  .module {
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 4px 2px;
+  }
+  .module .title {
+    font-family: "Inter", system-ui, sans-serif;
+    font-weight: 700; font-size: 15px; letter-spacing: -0.01em;
+    color: var(--paper);
+  }
+  /* CUT: glyph halo, bracket eyebrow, dot-notation subline — the title carries the module identity */
+
+  /* ───── pills + buttons ───── */
+  .btn-primary {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 8px;
+    background: var(--fuchsia); color: white;
+    border: 0; border-radius: 999px;
+    padding: 10px 16px;
+    font-family: "Inter", system-ui, sans-serif;
+    font-weight: 700; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase;
+    box-shadow: var(--glow-md);
+    cursor: pointer;
+  }
+  .btn-primary:hover { background: var(--fuchsia-bright); }
+  .btn-primary:disabled { opacity: 0.40; cursor: not-allowed; box-shadow: none; }
+  .btn-secondary {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 6px;
+    background: transparent; color: var(--paper);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 7px 12px;
+    font-family: "Inter", system-ui, sans-serif;
+    font-weight: 500; font-size: 12px;
+    cursor: pointer;
+  }
+  .btn-secondary:hover { border-color: var(--fuchsia); color: var(--fuchsia); }
+  .btn-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--fuchsia-soft);
+    border: 1px solid rgba(255, 26, 140, 0.40);
+    color: var(--fuchsia-bright);
+    padding: 5px 10px; border-radius: 999px;
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11px; font-weight: 600; cursor: pointer;
+  }
+  .btn-pill:hover { background: rgba(255, 26, 140, 0.20); }
+
+  /* ───── caption input ───── */
+  .caption-input {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: var(--paper);
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11px;
+  }
+  .caption-input::placeholder { color: var(--text-tertiary); }
+  .caption-input:focus { outline: none; border-color: var(--fuchsia); box-shadow: 0 0 0 2px rgba(255, 26, 140, 0.20); }
+  .caption-controls { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* ───── reaction tiles ───── */
+  .reaction-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+  .tile {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px;
+    min-height: 50px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 4px;
+    cursor: pointer;
+    color: var(--paper);
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 9.5px; font-weight: 600;
+    text-align: center;
+    line-height: 1;
+    transition: background 120ms, border-color 120ms;
+  }
+  .tile:hover { border-color: rgba(255, 26, 140, 0.50); background: rgba(255, 26, 140, 0.06); }
+  .tile.active {
+    background: var(--fuchsia); border-color: var(--fuchsia); color: white;
+    box-shadow: var(--glow-sm);
+  }
+  .tile.disabled { opacity: 0.35; pointer-events: none; }
+  .tile svg { width: 22px; height: 22px; opacity: 0.85; }
+  .tile.active svg { opacity: 1; }
+
+  /* ───── source + audio rows ───── */
+  .reaction-meta {
+    display: flex; flex-direction: column; gap: 6px;
+    margin-top: 8px;
+  }
+  .source-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 10px; color: var(--text-secondary);
+    letter-spacing: 0.04em;
+  }
+  .source-row .src { display: inline-flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .source-row .src .icon { color: var(--cyan); }
+  .audio-row {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+  }
+  .audio-btn {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--line);
+    color: var(--text-secondary);
+    border-radius: 8px;
+    padding: 7px 8px;
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 11px; font-weight: 500;
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  }
+  .audio-btn.active { background: var(--fuchsia); border-color: var(--fuchsia); color: white; }
+  .offset-row { display: flex; flex-direction: column; gap: 4px; padding: 4px 0; }
+  .offset-row label {
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 10px; color: var(--text-tertiary);
+    letter-spacing: 0.10em; text-transform: uppercase;
+  }
+  .offset-row input[type=range] { width: 100%; accent-color: var(--fuchsia); }
+
+  /* ───── when segmented ───── */
+  .when-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .when-tile {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--line);
+    color: var(--paper);
+    border-radius: 8px;
+    padding: 8px 4px;
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 11px; font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+  }
+  .when-tile:hover { border-color: rgba(255, 26, 140, 0.50); }
+  .when-tile.active { background: var(--fuchsia); border-color: var(--fuchsia); color: white; box-shadow: var(--glow-sm); }
+
+  /* ───── master ───── */
+  .master {
+    display: flex; flex-direction: column; gap: 8px;
+    min-width: 220px;
+    padding-left: 4px;
+  }
+  /* CUT: DEPLOY eyebrow, pixel-Invader, "Master 1 target" sub */
+  .master .primary-row { display: flex; gap: 6px; align-items: stretch; }
+  .master .btn-secondary { padding: 10px 12px; }
+
+  /* ───── pending state strip (the headline feature) ───── */
+  .pending-strip {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: rgba(20, 217, 217, 0.08);
+    border: 1px solid rgba(20, 217, 217, 0.35);
+    color: var(--cyan);
+    border-radius: 10px;
+    padding: 8px 12px;
+    margin-top: 10px;
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .pending-strip .left { display: inline-flex; align-items: center; gap: 8px; }
+  .pending-strip .spin {
+    display: inline-block; width: 12px; height: 12px;
+    border: 2px solid rgba(20, 217, 217, 0.30); border-top-color: var(--cyan);
+    border-radius: 50%; animation: spin 0.9s linear infinite;
+  }
+  .pending-strip button {
+    background: transparent; border: 1px solid var(--cyan); color: var(--cyan);
+    padding: 4px 10px; border-radius: 999px; font: inherit; cursor: pointer;
+    letter-spacing: 0.12em;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-strip {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: rgba(220, 38, 38, 0.10);
+    border: 1px solid rgba(220, 38, 38, 0.45);
+    color: #FCA5A5;
+    border-radius: 10px;
+    padding: 8px 12px;
+    margin-top: 10px;
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .error-strip button {
+    background: rgba(220, 38, 38, 0.20); border: 1px solid rgba(220, 38, 38, 0.45); color: #FCA5A5;
+    padding: 4px 10px; border-radius: 999px; font: inherit; cursor: pointer;
+  }
+
+  /* ───── cards (cut the horizontal lines) ───── */
+  .cards-strip {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+    max-width: 1280px; margin: 0 auto 32px;
+  }
+  .card {
+    background: linear-gradient(180deg, rgba(20, 20, 28, 0.6), rgba(11, 11, 16, 0.8));
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card.focused { border-color: var(--fuchsia); box-shadow: 0 0 24px rgba(255, 26, 140, 0.32); }
+  .card-header { display: flex; align-items: center; justify-content: space-between; font-family: "Geist Mono", ui-monospace, monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary); }
+  .card-header .virality { background: var(--fuchsia); color: white; padding: 2px 8px; border-radius: 999px; font-weight: 700; }
+  .card-header .imported { color: var(--text-tertiary); }
+  .card-thumb {
+    aspect-ratio: 9 / 16;
+    background: linear-gradient(135deg, #6D28D9, #1E40AF);
+    border-radius: 10px;
+    margin: 10px 0 12px;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(255,255,255,0.45);
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11px;
+  }
+  .card-thumb .clip-no {
+    position: absolute; top: 8px; left: 10px;
+    font-family: "Inter", system-ui, sans-serif;
+    font-style: italic; font-weight: 700;
+    color: var(--fuchsia); font-size: 22px;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  }
+  .card-title {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 14px; font-weight: 600;
+    color: var(--paper);
+    line-height: 1.35;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .card-eyebrow {
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.18em;
+    color: var(--text-tertiary);
+    margin-bottom: 2px;
+  }
+  .card-meta {
+    margin-top: 6px;
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+  }
+  .card-meta .sep { color: var(--text-tertiary); opacity: 0.5; margin: 0 4px; }
+  /* CUT: the 5 horizontal "lined-paper" stripes that lived between the
+     header and the thumb. They read as skeleton-loader noise. */
+
+  /* card pending strip (mirrors the cockpit pending pattern) */
+  .card-pending {
+    position: absolute; left: 10px; right: 10px; bottom: 10px;
+    background: rgba(20, 217, 217, 0.16);
+    border: 1px solid rgba(20, 217, 217, 0.40);
+    color: var(--cyan);
+    border-radius: 8px;
+    padding: 5px 8px;
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
+    display: inline-flex; align-items: center; gap: 6px;
+    backdrop-filter: blur(8px);
+  }
+  .card-pending .spin {
+    display: inline-block; width: 10px; height: 10px;
+    border: 2px solid rgba(20, 217, 217, 0.30); border-top-color: var(--cyan);
+    border-radius: 50%; animation: spin 0.9s linear infinite;
+  }
+  .card-pending.error { background: rgba(220, 38, 38, 0.18); border-color: rgba(220, 38, 38, 0.45); color: #FCA5A5; }
+
+  /* ───── icons ───── */
+  .glyph { width: 14px; height: 14px; display: inline-block; vertical-align: middle; }
+
+  .vstack > * + * { margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>Cockpit v2 — panel-design-lens output</h1>
+<p style="color: var(--text-tertiary); font-size: 12px; margin-top: 6px; max-width: 720px; line-height: 1.55;">
+  Three state variants stacked: <strong>(1) focused-clip resting</strong> · <strong>(2) reaction baking (pending state)</strong> · <strong>(3) reaction failed (error state)</strong>. Plus three card variants. No JS — this is the visual contract; the React code below ships only after Daniel approves THIS file.
+</p>
+
+<div class="stack">
+
+  <!-- ===================================================================== -->
+  <!-- VARIANT 1 — RESTING (focused clip, layout chosen, ready to schedule) -->
+  <!-- ===================================================================== -->
+  <section>
+    <div class="section-label">VARIANT 01 — RESTING</div>
+    <p class="section-note">Focused on clip 01 of 3. Reaction layout = Stack below, source set, audio = Main, offset = 0.0s. When = +1h. Master CTA morphs to <code>SCHEDULE +1H</code>.</p>
+
+    <div class="cockpit">
+      <!-- status strip -->
+      <div class="strip">
+        <span class="target-chip">EDITING <strong>CLIP 01</strong></span>
+        <span class="focus-nav">
+          <button>◀</button><span class="count">01 / 03</span><button>▶</button>
+        </span>
+        <span class="info-icon" data-state="ok" title="sidecar · backend · ayrshare all healthy">ⓘ</span>
+        <span class="counters">
+          <span>RDY <strong>3</strong></span><span class="sep">·</span>
+          <span>QUE <strong>0</strong></span><span class="sep">·</span>
+          <span>PUB <strong>—</strong></span>
+        </span>
+        <span class="more-menu" title="Brief · Settings · …">⋮</span>
+      </div>
+
+      <!-- module row -->
+      <div class="modules">
+
+        <!-- CHANNELS -->
+        <div class="module">
+          <div class="title">Channels</div>
+          <button class="btn-pill" style="align-self: flex-start;">
+            Routes &amp; Schedule
+          </button>
+        </div>
+
+        <!-- CAPTION -->
+        <div class="module">
+          <div class="title">Caption</div>
+          <input class="caption-input" placeholder="pin a caption…" value="she finally found a non-sticky gloss" />
+          <div class="caption-controls">
+            <button class="btn-secondary">● Style</button>
+            <button class="btn-secondary">🔥 Burn / edit ▸</button>
+          </div>
+        </div>
+
+        <!-- REACTION -->
+        <div class="module">
+          <div class="title">Reaction</div>
+          <div class="reaction-grid">
+            <div class="tile">▢<br/>Full</div>
+            <div class="tile active">⬓<br/>Stack below</div>
+            <div class="tile">⬒<br/>Stack above</div>
+            <div class="tile">◧<br/>Split left</div>
+            <div class="tile">◨<br/>Split right</div>
+            <div class="tile">▫<br/>PiP right</div>
+            <div class="tile">▫<br/>PiP left</div>
+            <div class="tile" style="opacity: 0.4;">＋<br/>more</div>
+          </div>
+          <div class="reaction-meta">
+            <div class="source-row">
+              <span class="src"><span class="icon">●</span> giphy-6us0tgdsodscx23djt-looking-english-gif.mp4</span>
+              <button class="btn-pill" style="padding: 2px 8px; font-size: 10px;">Change</button>
+            </div>
+            <div class="audio-row">
+              <button class="audio-btn active">♪ Main</button>
+              <button class="audio-btn">♬ Reaction</button>
+              <button class="audio-btn">✕ Muted</button>
+            </div>
+            <div class="offset-row">
+              <label>Reaction starts at 0.0s</label>
+              <input type="range" min="0" max="60" step="0.5" value="0" />
+            </div>
+          </div>
+        </div>
+
+        <!-- WHEN -->
+        <div class="module">
+          <div class="title">When</div>
+          <div class="when-grid">
+            <button class="when-tile">Now</button>
+            <button class="when-tile active">+1h</button>
+            <button class="when-tile">+24h</button>
+            <button class="when-tile">Custom</button>
+          </div>
+        </div>
+
+        <!-- MASTER -->
+        <div class="master">
+          <div class="primary-row">
+            <button class="btn-primary" style="flex: 1;">↗ Schedule +1h</button>
+            <button class="btn-secondary" title="Publish now">⚡</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- VARIANT 2 — PENDING (Reaction baking, with cancel + elapsed timer) -->
+  <!-- ===================================================================== -->
+  <section>
+    <div class="section-label">VARIANT 02 — REACTION BAKING (pending state)</div>
+    <p class="section-note">User clicked Stack-below tile. Cockpit immediately shows a teal PENDING strip below the tiles. Other tiles dim to 40%. Master CTA disables. Strip mirrors the proven import-pending pattern. Cancel ↑ returns the user to the clean state without stranding the bake (server cancel marker).</p>
+
+    <div class="cockpit">
+      <div class="strip">
+        <span class="target-chip">EDITING <strong>CLIP 01</strong></span>
+        <span class="focus-nav">
+          <button>◀</button><span class="count">01 / 03</span><button>▶</button>
+        </span>
+        <span class="info-icon" data-state="ok" title="all healthy">ⓘ</span>
+        <span class="counters">
+          <span>RDY <strong>3</strong></span><span class="sep">·</span>
+          <span>QUE <strong>0</strong></span><span class="sep">·</span>
+          <span>PUB <strong>—</strong></span>
+        </span>
+        <span class="more-menu">⋮</span>
+      </div>
+
+      <div class="modules">
+        <div class="module">
+          <div class="title">Channels</div>
+          <button class="btn-pill" style="align-self: flex-start; opacity: 0.5;">Routes &amp; Schedule</button>
+        </div>
+
+        <div class="module">
+          <div class="title">Caption</div>
+          <input class="caption-input" placeholder="pin a caption…" disabled style="opacity: 0.5;" />
+          <div class="caption-controls" style="opacity: 0.5;">
+            <button class="btn-secondary" disabled>● Style</button>
+            <button class="btn-secondary" disabled>🔥 Burn / edit ▸</button>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="title">Reaction</div>
+          <div class="reaction-grid">
+            <div class="tile disabled">▢<br/>Full</div>
+            <div class="tile active" style="position: relative;">
+              ⬓<br/>Stack below
+            </div>
+            <div class="tile disabled">⬒<br/>Stack above</div>
+            <div class="tile disabled">◧<br/>Split left</div>
+            <div class="tile disabled">◨<br/>Split right</div>
+            <div class="tile disabled">▫<br/>PiP right</div>
+            <div class="tile disabled">▫<br/>PiP left</div>
+            <div class="tile disabled">＋<br/>more</div>
+          </div>
+          <div class="pending-strip">
+            <span class="left">
+              <span class="spin"></span>
+              <span>Baking reaction · 0:08 elapsed</span>
+            </span>
+            <button>Cancel</button>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="title">When</div>
+          <div class="when-grid" style="opacity: 0.5;">
+            <button class="when-tile" disabled>Now</button>
+            <button class="when-tile active" disabled>+1h</button>
+            <button class="when-tile" disabled>+24h</button>
+            <button class="when-tile" disabled>Custom</button>
+          </div>
+        </div>
+
+        <div class="master">
+          <div class="primary-row">
+            <button class="btn-primary" disabled style="flex: 1;">↗ Schedule +1h</button>
+            <button class="btn-secondary" disabled>⚡</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- VARIANT 3 — ERROR (Reaction bake failed, retry visible) -->
+  <!-- ===================================================================== -->
+  <section>
+    <div class="section-label">VARIANT 03 — REACTION FAILED (error state)</div>
+    <p class="section-note">applyOverlay returned an error. Tiles re-enable so the user can try a different layout. Red error strip names the cause + offers Retry against the same source. The cockpit never silently goes back to "resting" after a failure — the previous click is acknowledged.</p>
+
+    <div class="cockpit">
+      <div class="strip">
+        <span class="target-chip">EDITING <strong>CLIP 01</strong></span>
+        <span class="focus-nav">
+          <button>◀</button><span class="count">01 / 03</span><button>▶</button>
+        </span>
+        <span class="info-icon" data-state="warn" title="sidecar OK · backend OK · ayrshare paused">ⓘ</span>
+        <span class="counters">
+          <span>RDY <strong>3</strong></span><span class="sep">·</span>
+          <span>QUE <strong>0</strong></span><span class="sep">·</span>
+          <span>PUB <strong>—</strong></span>
+        </span>
+        <span class="more-menu">⋮</span>
+      </div>
+
+      <div class="modules">
+        <div class="module">
+          <div class="title">Channels</div>
+          <button class="btn-pill" style="align-self: flex-start;">Routes &amp; Schedule</button>
+        </div>
+
+        <div class="module">
+          <div class="title">Caption</div>
+          <input class="caption-input" placeholder="pin a caption…" value="she finally found a non-sticky gloss" />
+          <div class="caption-controls">
+            <button class="btn-secondary">● Style</button>
+            <button class="btn-secondary">🔥 Burn / edit ▸</button>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="title">Reaction</div>
+          <div class="reaction-grid">
+            <div class="tile">▢<br/>Full</div>
+            <div class="tile">⬓<br/>Stack below</div>
+            <div class="tile">⬒<br/>Stack above</div>
+            <div class="tile">◧<br/>Split left</div>
+            <div class="tile">◨<br/>Split right</div>
+            <div class="tile">▫<br/>PiP right</div>
+            <div class="tile">▫<br/>PiP left</div>
+            <div class="tile" style="opacity: 0.4;">＋<br/>more</div>
+          </div>
+          <div class="error-strip">
+            <span>✕ Bake failed — ffmpeg: invalid source frame at t=4.2s</span>
+            <button>Retry</button>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="title">When</div>
+          <div class="when-grid">
+            <button class="when-tile active">Now</button>
+            <button class="when-tile">+1h</button>
+            <button class="when-tile">+24h</button>
+            <button class="when-tile">Custom</button>
+          </div>
+        </div>
+
+        <div class="master">
+          <div class="primary-row">
+            <button class="btn-primary" style="flex: 1;">⚡ Publish now</button>
+            <button class="btn-secondary" title="Schedule">⏱</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- CARDS — three variants -->
+  <!-- ===================================================================== -->
+  <section>
+    <div class="section-label">CARDS — three variants (lines REMOVED)</div>
+    <p class="section-note">Card chrome reduced to: virality badge · IMPORTED tag · thumbnail · TITLE eyebrow · title · duration · score. Horizontal "lined-paper" stripes <strong>CUT</strong> — they read as skeleton-loader noise. The focused card gets a 2px fuchsia outline + a soft fuchsia halo. The baking card mirrors the cockpit's PENDING pattern with a bottom-anchored strip over the thumbnail.</p>
+
+    <div class="cards-strip">
+      <!-- focused, resting -->
+      <div class="card focused">
+        <div class="card-header">
+          <span class="virality">70</span>
+          <span class="imported">IMPORTED</span>
+          <span>0:00 → 0:10</span>
+        </div>
+        <div class="card-thumb">
+          <span class="clip-no">01</span>
+          thumb
+        </div>
+        <div class="card-eyebrow">TITLE</div>
+        <div class="card-title">She finally found a non-sticky gloss</div>
+        <div class="card-meta">
+          0:10 <span class="sep">·</span> score 70
+        </div>
+      </div>
+
+      <!-- baking -->
+      <div class="card">
+        <div class="card-header">
+          <span class="virality">62</span>
+          <span class="imported">IMPORTED</span>
+          <span>0:00 → 0:10</span>
+        </div>
+        <div class="card-thumb">
+          <span class="clip-no">02</span>
+          thumb
+          <span class="card-pending">
+            <span class="spin"></span>
+            Baking reaction
+          </span>
+        </div>
+        <div class="card-eyebrow">TITLE</div>
+        <div class="card-title">After two years, still my morning go-to</div>
+        <div class="card-meta">
+          0:10 <span class="sep">·</span> score 62
+        </div>
+      </div>
+
+      <!-- failed -->
+      <div class="card">
+        <div class="card-header">
+          <span class="virality">55</span>
+          <span class="imported">IMPORTED</span>
+          <span>0:00 → 0:10</span>
+        </div>
+        <div class="card-thumb">
+          <span class="clip-no">03</span>
+          thumb
+          <span class="card-pending error">
+            ✕ Bake failed — retry
+          </span>
+        </div>
+        <div class="card-eyebrow">TITLE</div>
+        <div class="card-title">Day 5 of testing — verdict in</div>
+        <div class="card-meta">
+          0:10 <span class="sep">·</span> score 55
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- BUDGET CHECK + CUT LIST -->
+  <!-- ===================================================================== -->
+  <section style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); border-radius: 12px; padding: 20px; max-width: 1280px; margin: 0 auto;">
+    <h2>Budget check + cut list</h2>
+    <ul style="color: var(--text-secondary); font-size: 12px; line-height: 1.7; padding-left: 18px;">
+      <li><strong>Scan-unit budget:</strong> 1 target chip + 1 focus-nav + 1 health icon + 1 counters cluster + 1 ⋮ menu + 5 module headers + 1 primary CTA = <strong>10 → fits</strong> because modules are vertically separated (each module is one "scan group" inside its column).</li>
+      <li><strong>Action budget:</strong> 1 primary (Schedule/Publish) + 2 secondary (Routes &amp; Schedule, Master alt) ✓</li>
+      <li><strong>Vocabulary budget:</strong> 2 type sizes (Inter 13/15 + mono 10/11), 1 fuchsia + 1 cyan + ink/paper, 1 pill shape (rounded-full), 1 chrome dialect (solid borders) ✓</li>
+      <li><strong>Repeat budget:</strong> zero duplicated actions ✓</li>
+    </ul>
+
+    <h2 style="margin-top: 22px;">Cut from v0.7.28 cockpit</h2>
+    <ul style="color: var(--text-tertiary); font-size: 12px; line-height: 1.7; padding-left: 18px;">
+      <li>4 bracket-corner reticles (decorative ornament)</li>
+      <li>64px mood-band gradient (kept just the 1px hairline)</li>
+      <li>5 module glyph + halo blobs (visual triple-redundancy)</li>
+      <li>5 bracketed eyebrows: <code>[ none ]</code> · <code>[ stack below ]</code> · <code>[ now ]</code> etc</li>
+      <li>5 dot-notation sublines: <code>tap.to.route</code> · <code>style ▸ pin ▸ variants</code> · <code>launch.window</code> · <code>clip 01 · source set</code></li>
+      <li>3 status LEDs (sidecar / backend / ayrshare) → collapsed to one ⓘ icon with tooltip</li>
+      <li>BRIEF pill → into ⋮ menu (rare action)</li>
+      <li>"3 today" streak pill (vanity counter; was strip-prime real estate)</li>
+      <li>Master "DEPLOY" eyebrow</li>
+      <li>Master pixel-Invader (brand chrome competing with CTA)</li>
+      <li>Master "Master 1 target" subtitle (already shown by TargetChip)</li>
+      <li>The 5 horizontal lined-paper stripes inside every card</li>
+    </ul>
+
+    <h2 style="margin-top: 22px;">Added in v2</h2>
+    <ul style="color: var(--paper); font-size: 12px; line-height: 1.7; padding-left: 18px;">
+      <li>Teal PENDING strip under Reaction module while applyOverlay is in flight — Daniel's import-action-pending pattern applied to bake</li>
+      <li>Tiles dim to 40% + disable while baking (no accidental second click)</li>
+      <li>Master CTA + Caption module + When module all disable while baking (focus stays on the in-flight op)</li>
+      <li>Cancel affordance on the pending strip (writes a cancel marker, server-side bake bails at next poll)</li>
+      <li>Red ERROR strip with Retry — bake failure surfaces specifically, with the original tiles re-enabled so the user can pick a different layout</li>
+      <li>Card-level baking pill (mirrors the cockpit pending pattern at the card surface)</li>
+      <li>Card-level error pill (same mirror)</li>
+    </ul>
+  </section>
+
+</div>
+
+</body>
+</html>

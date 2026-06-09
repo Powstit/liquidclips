@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>v0.7.32 — ClipCard + Deploy mockup</title>
+<style>
+:root {
+  --color-fuchsia:        #ff1a8c;
+  --color-fuchsia-bright: #ff3da5;
+  --color-fuchsia-deep:   #ff66b8;
+  --color-fuchsia-soft:   rgba(255, 26, 140, 0.16);
+  --color-paper:          #0b0b10;
+  --color-paper-warm:     #15151c;
+  --color-paper-elev:     #1c1c25;
+  --color-ink:            #f4f1ea;
+  --color-ink-soft:       #c8c4be;
+  --color-text-tertiary:  #8a857e;
+  --color-line:           rgba(255, 255, 255, 0.07);
+  --color-line-strong:    rgba(255, 255, 255, 0.12);
+  --color-cyan-cool:      #00e5ff;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  padding: 40px 60px 80px;
+}
+h1 {
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  font-size: 28px;
+  margin: 0 0 4px;
+}
+.session-eyebrow {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--color-fuchsia-deep);
+}
+section { margin-top: 56px; }
+section h2 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-size: 20px;
+  margin: 0 0 6px;
+}
+.section-note {
+  color: var(--color-ink-soft);
+  font-size: 13px;
+  max-width: 720px;
+  line-height: 1.55;
+  margin: 0 0 24px;
+}
+
+/* ──────────── ClipCard demo grid ──────────── */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 28px;
+  max-width: 1200px;
+}
+.lc-card { position: relative; cursor: pointer; transition: transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.lc-card:hover { transform: translateY(-4px); }
+.lc-card .corner {
+  position: absolute; width: 20px; height: 20px;
+  border: 0;
+  border-style: dashed;
+  border-color: var(--color-fuchsia);
+  filter: drop-shadow(0 0 4px rgba(255, 26, 140, 0.5));
+  pointer-events: none;
+  z-index: 2;
+}
+.lc-card .corner-tl { top: 0; left: 0; border-top-width: 1.5px; border-left-width: 1.5px; }
+.lc-card .corner-tr { top: 0; right: 0; border-top-width: 1.5px; border-right-width: 1.5px; }
+.lc-card .corner-bl { bottom: 0; left: 0; border-bottom-width: 1.5px; border-left-width: 1.5px; }
+.lc-card .corner-br { bottom: 0; right: 0; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+
+.lc-thumb {
+  position: relative;
+  aspect-ratio: 9 / 16;
+  border-radius: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 30% 40%, rgba(255,26,140,0.22), transparent 45%),
+    radial-gradient(circle at 70% 60%, rgba(140,80,200,0.22), transparent 50%),
+    linear-gradient(135deg, #3a2233, #1a1a22 50%, #2a1a2a);
+}
+.lc-thumb-b {
+  background:
+    radial-gradient(circle at 40% 50%, rgba(0,229,255,0.18), transparent 50%),
+    radial-gradient(circle at 70% 30%, rgba(255,26,140,0.16), transparent 50%),
+    linear-gradient(135deg, #1a2a35, #1a1a22 70%);
+}
+.lc-thumb-c {
+  background:
+    radial-gradient(circle at 20% 60%, rgba(245,158,11,0.16), transparent 50%),
+    radial-gradient(circle at 80% 40%, rgba(255,26,140,0.14), transparent 50%),
+    linear-gradient(135deg, #2a2233, #14141c 70%);
+}
+
+/* TL — selection checkbox */
+.lc-select {
+  position: absolute; top: 10px; left: 10px;
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  display: grid; place-items: center;
+  border: 1.5px solid var(--color-line-strong);
+  background: rgba(11,11,16,0.7);
+  backdrop-filter: blur(6px);
+  transition: all 220ms ease;
+}
+.lc-select.on {
+  background: var(--color-fuchsia);
+  border-color: var(--color-fuchsia);
+  box-shadow: 0 0 12px rgba(255,26,140,0.5);
+}
+.lc-select.on svg { stroke: white; }
+.lc-select svg { stroke: transparent; }
+
+/* TR — social pips */
+.lc-pips {
+  position: absolute; top: 10px; right: 10px;
+  display: flex; gap: 4px;
+}
+.lc-pip {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  background: rgba(11,11,16,0.7);
+  backdrop-filter: blur(6px);
+}
+.lc-pip svg { width: 10px; height: 10px; }
+.lc-pip.tt { background: #000; }
+.lc-pip.ig { background: linear-gradient(135deg, #fed373, #f15245 50%, #d92e7f); }
+.lc-pip.yt { background: #ff0000; }
+.lc-pip.x  { background: #000; }
+
+/* BL — ratio pill */
+.lc-ratio {
+  position: absolute; bottom: 10px; left: 10px;
+  padding: 4px 10px;
+  font-family: "Geist Mono", monospace;
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  background: rgba(11,11,16,0.72);
+  backdrop-filter: blur(8px);
+  color: var(--color-ink);
+  border-radius: 9999px;
+}
+
+/* BR — HOT badge (conditional) */
+.lc-hot {
+  position: absolute; bottom: 10px; right: 10px;
+  padding: 4px 10px;
+  font-family: "Geist Mono", monospace;
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  background: rgba(255,26,140,0.18);
+  border: 1.5px solid rgba(255,26,140,0.5);
+  color: var(--color-fuchsia);
+  border-radius: 9999px;
+  backdrop-filter: blur(8px);
+}
+
+/* Below the thumbnail */
+.lc-meta { padding: 12px 6px 0; }
+/* v0.7.32 impeccable pass: dropped .lc-meta-eyebrow ("TITLE" above each
+   card title). Banned as "tiny uppercase tracked eyebrow above every
+   section" — AI-grammar tell. The title is its own header. */
+.lc-meta-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.lc-meta-line {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 8px;
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  opacity: 0.8;
+}
+.lc-meta-line .dot { opacity: 0.4; }
+
+/* ──────────── Deploy module mockup ──────────── */
+.cockpit-wrap {
+  max-width: 980px;
+  margin-top: 24px;
+}
+.cockpit-frame-box {
+  position: relative;
+  background: var(--color-paper-warm);
+  border-radius: 18px;
+  padding: 24px;
+  border: 1px solid var(--color-line);
+}
+.cockpit-frame-box .corner {
+  position: absolute; width: 26px; height: 26px;
+  border: 0;
+  border-style: dashed;
+  border-color: var(--color-fuchsia);
+  filter: drop-shadow(0 0 4px rgba(255, 26, 140, 0.45));
+  pointer-events: none;
+}
+.cockpit-frame-box .corner-tl { top: -1px; left: -1px; border-top-width: 2px; border-left-width: 2px; }
+.cockpit-frame-box .corner-tr { top: -1px; right: -1px; border-top-width: 2px; border-right-width: 2px; }
+.cockpit-frame-box .corner-bl { bottom: -1px; left: -1px; border-bottom-width: 2px; border-left-width: 2px; }
+.cockpit-frame-box .corner-br { bottom: -1px; right: -1px; border-bottom-width: 2px; border-right-width: 2px; }
+
+.deploy-eyebrow {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--color-fuchsia-deep);
+  opacity: 0.9;
+}
+.deploy-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 4px 0 4px;
+  color: var(--color-ink);
+}
+.deploy-title .summary {
+  font-family: "Geist Mono", monospace;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--color-text-tertiary);
+  text-transform: lowercase;
+  margin-left: 10px;
+}
+
+/* CURRENT pattern (from demo line 750-757): one big CTA + a small flex row */
+.deploy-current .master-btn-current {
+  display: block; width: 100%;
+  padding: 16px 20px;
+  border-radius: 12px;
+  background: var(--color-fuchsia);
+  color: white;
+  font-weight: 600;
+  font-size: 15px;
+  border: 0;
+  cursor: pointer;
+  margin-top: 14px;
+  transition: all 200ms ease;
+}
+.deploy-current .master-btn-current:hover {
+  background: var(--color-fuchsia-bright);
+  box-shadow: 0 12px 32px rgba(255, 26, 140, 0.35);
+}
+.deploy-current .below-row-current {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 14px; gap: 10px;
+}
+.deploy-current .hint-current {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--color-text-tertiary);
+  opacity: 0.8;
+}
+.deploy-current .autopilot-current {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  background: rgba(11,11,16,0.4);
+  border: 1px solid var(--color-line);
+  color: var(--color-ink-soft);
+  border-radius: 9999px;
+  cursor: pointer;
+}
+
+/* PROPOSED (simpler): Master CTA full-width + ONE secondary button stacked
+   underneath at the same width + a conditional hint line. No fake buttons. */
+.deploy-proposed .master-btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%;
+  padding: 18px 24px;
+  border-radius: 14px;
+  background: var(--color-fuchsia);
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+  border: 0;
+  cursor: pointer;
+  margin-top: 14px;
+  transition: all 200ms ease;
+  box-shadow: 0 0 0 1px rgba(255,26,140,0.4), 0 8px 24px rgba(255,26,140,0.22);
+}
+.deploy-proposed .master-btn:hover {
+  background: var(--color-fuchsia-bright);
+  box-shadow: 0 0 0 1px rgba(255,26,140,0.55), 0 14px 40px rgba(255,26,140,0.4);
+  transform: translateY(-1px);
+}
+.deploy-proposed .master-btn .shortcut {
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.12);
+}
+.deploy-proposed .autopilot-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  margin-top: 10px;
+  font-family: "Inter", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--color-paper-elev);
+  border: 1px solid var(--color-line);
+  color: var(--color-ink-soft);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+.deploy-proposed .autopilot-btn:hover {
+  border-color: var(--color-fuchsia);
+  color: var(--color-ink);
+  background: var(--color-paper-elev);
+}
+.deploy-proposed .autopilot-btn .icon { width: 14px; height: 14px; }
+.deploy-proposed .hint-line {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 14px;
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--color-text-tertiary);
+  opacity: 0.7;
+}
+.deploy-proposed .hint-line .pulse {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--color-cyan-cool);
+  box-shadow: 0 0 6px var(--color-cyan-cool);
+}
+.deploy-proposed .hint-line.suppressed { display: none; }
+
+.split-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  align-items: start;
+}
+.split-grid > div h3 {
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  margin: 0 0 12px;
+}
+</style>
+</head>
+<body>
+
+<div class="session-eyebrow">v0.7.32 · target mockup</div>
+<h1>ClipCard restructure + Deploy module rework</h1>
+<p class="section-note" style="color: var(--color-ink-soft); margin-top: 8px;">
+  Compare side-by-side against the canonical
+  <code style="background: var(--color-paper-elev); padding: 2px 6px; border-radius: 4px;">docs/clip-dashboard-demo.html</code>.
+  Approve or correct each section. Code edits start only after sign-off.
+</p>
+
+<!-- ──────────── Section A — ClipCard ──────────── -->
+<section>
+  <h2>Section A · Proposed ClipCard</h2>
+  <p class="section-note">
+    Matches the canonical demo (lines 1115-1175): selection checkbox TL inside thumbnail · social-pips TR · ratio pill BL · HOT badge BR (conditional, score≥78). Below the thumbnail: title · dur · score. <strong>Cut from current code:</strong> the above-thumbnail row (checkbox+virality+theme+time), which is the horizontal "lines" you see; the "01" indicator inside the thumbnail; the "TITLE" eyebrow above each card (impeccable AI-grammar tell, the title is its own header).
+  </p>
+  <div class="cards-grid">
+
+    <!-- Card 1 — typical ready clip, selected, on 3 platforms, score 92 (HOT) -->
+    <div class="lc-card">
+      <span class="corner corner-tl"></span>
+      <span class="corner corner-tr"></span>
+      <span class="corner corner-bl"></span>
+      <span class="corner corner-br"></span>
+      <div class="lc-thumb">
+        <div class="lc-select on">
+          <svg width="14" height="14" stroke-width="2.5" fill="none" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div class="lc-pips">
+          <div class="lc-pip tt"><svg viewBox="0 0 24 24" fill="white"><path d="M19.6 6.3a4.8 4.8 0 0 1-3.5-1.6V15a5.7 5.7 0 1 1-5.7-5.7v3a2.7 2.7 0 1 0 2.7 2.7V0h3a4.8 4.8 0 0 0 3.5 4.8z"/></svg></div>
+          <div class="lc-pip ig"></div>
+          <div class="lc-pip yt"><svg viewBox="0 0 24 24" fill="white"><polygon points="10 8 16 12 10 16"/></svg></div>
+        </div>
+        <div class="lc-ratio">9:16</div>
+        <div class="lc-hot">hot</div>
+      </div>
+      <div class="lc-meta">
+        <div class="lc-meta-title">She finally found a non-sticky gloss that lasts</div>
+        <div class="lc-meta-line">
+          <span>0:34</span><span class="dot">·</span><span>score 92</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 2 — unselected, single platform, score 71 (no HOT) -->
+    <div class="lc-card">
+      <span class="corner corner-tl"></span>
+      <span class="corner corner-tr"></span>
+      <span class="corner corner-bl"></span>
+      <span class="corner corner-br"></span>
+      <div class="lc-thumb lc-thumb-b">
+        <div class="lc-select"></div>
+        <div class="lc-pips">
+          <div class="lc-pip tt"><svg viewBox="0 0 24 24" fill="white"><path d="M19.6 6.3a4.8 4.8 0 0 1-3.5-1.6V15a5.7 5.7 0 1 1-5.7-5.7v3a2.7 2.7 0 1 0 2.7 2.7V0h3a4.8 4.8 0 0 0 3.5 4.8z"/></svg></div>
+        </div>
+        <div class="lc-ratio">9:16</div>
+      </div>
+      <div class="lc-meta">
+        <div class="lc-meta-title">Why ULTRA-MATTE is dead</div>
+        <div class="lc-meta-line">
+          <span>0:18</span><span class="dot">·</span><span>score 71</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 3 — high score 88 (HOT), 2 platforms -->
+    <div class="lc-card">
+      <span class="corner corner-tl"></span>
+      <span class="corner corner-tr"></span>
+      <span class="corner corner-bl"></span>
+      <span class="corner corner-br"></span>
+      <div class="lc-thumb lc-thumb-c">
+        <div class="lc-select"></div>
+        <div class="lc-pips">
+          <div class="lc-pip ig"></div>
+          <div class="lc-pip x"><svg viewBox="0 0 24 24" fill="white"><path d="M18.2 2H21l-6.4 7.3L22 22h-6.6l-5.2-6.8L4.5 22H1.8l6.9-7.9L1 2h6.7l4.7 6.2z"/></svg></div>
+        </div>
+        <div class="lc-ratio">9:16</div>
+        <div class="lc-hot">hot</div>
+      </div>
+      <div class="lc-meta">
+        <div class="lc-meta-title">Don't tell anyone — this is the secret</div>
+        <div class="lc-meta-line">
+          <span>0:22</span><span class="dot">·</span><span>score 88</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ──────────── Section B — Deploy module ──────────── -->
+<section>
+  <h2>Section B · Deploy module · current vs proposed</h2>
+  <p class="section-note">
+    Left: the canonical demo's current arrangement (lines 750-757). One big Master CTA, then a hint line + a small Auto-pilot pill in a flex row. Right: simpler proposal. Master CTA stays primary; Auto-pilot becomes a full-width secondary button stacked underneath; cyan-pulse hint line below auto-suppresses when nothing's incomplete. The "deploy" eyebrow + Master title + pixel-invader silhouette stay identical.
+  </p>
+
+  <div class="split-grid">
+
+    <!-- CURRENT -->
+    <div>
+      <h3>current (demo lines 750-757)</h3>
+      <div class="cockpit-frame-box deploy-current">
+        <span class="corner corner-tl"></span>
+        <span class="corner corner-tr"></span>
+        <span class="corner corner-bl"></span>
+        <span class="corner corner-br"></span>
+        <div class="deploy-eyebrow">deploy</div>
+        <div class="deploy-title">Master <span class="summary">· 3 of 5 routed</span></div>
+        <button class="master-btn-current">Schedule 3 clips · now</button>
+        <div class="below-row-current">
+          <div class="hint-current">see Schedule view</div>
+          <button class="autopilot-current">
+            <svg width="11" height="11" stroke-width="2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            Auto-pilot
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PROPOSED (simpler) -->
+    <div>
+      <h3>proposed (simpler · no fake buttons)</h3>
+      <div class="cockpit-frame-box deploy-proposed">
+        <span class="corner corner-tl"></span>
+        <span class="corner corner-tr"></span>
+        <span class="corner corner-bl"></span>
+        <span class="corner corner-br"></span>
+        <div class="deploy-eyebrow">deploy</div>
+        <div class="deploy-title">Master <span class="summary">· 3 of 5 routed</span></div>
+        <button class="master-btn">
+          <span>Schedule 3 clips · now</span>
+          <span class="shortcut">⏎</span>
+        </button>
+        <button class="autopilot-btn">
+          <svg class="icon" stroke-width="2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          Auto-pilot
+        </button>
+        <div class="hint-line">
+          <span class="pulse"></span>
+          <span>2 channels still need routing</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="section-note" style="margin-top: 16px;">
+    <strong>What changes:</strong> Master CTA stays full-width as the primary fuchsia button (with a subtle <code style="background: var(--color-paper-elev); padding: 1px 4px; border-radius: 3px;">⏎</code> keyboard hint). Auto-pilot is promoted from a small pill to a full-width secondary button stacked beneath the Master, equal column, paper-elev background, line border, hover-fuchsia border. The cyan-pulse hint line only renders when something's incomplete (e.g. unrouted channels); it self-suppresses when everything's ready. <strong>Dropped from my earlier proposal:</strong> "Drip 24h" (When module already owns timing) and "Save draft" (not a real product state). Refusing the fake-button-balance trap.
+  </p>
+</section>
+
+<!-- ──────────── Section C — Rest-state thumbnail choice ──────────── -->
+<section>
+  <h2>Section C · Rest-state thumbnail (the "lines" fix)</h2>
+  <p class="section-note">
+    The lines you see at the top of the workbench clip preview are the imported video's <strong>actual first frame</strong> (title card / intro graphic / lower-third bar from the source clip). Imported clips lack <code style="background: var(--color-paper-elev); padding: 1px 4px; border-radius: 3px;">clip.thumbnails[0].path</code>, so the <code style="background: var(--color-paper-elev); padding: 1px 4px; border-radius: 3px;">&lt;video&gt;</code> element falls through to showing the first decoded frame as the poster. Three variants for the rest state:
+  </p>
+
+  <div class="cards-grid" style="grid-template-columns: repeat(3, minmax(220px, 1fr)); max-width: 900px;">
+
+    <!-- Variant A — gradient at rest, video on hover -->
+    <div>
+      <h3 style="font-family: 'Geist Mono', monospace; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--color-text-tertiary); margin: 0 0 12px;">A · gradient at rest</h3>
+      <div class="lc-card">
+        <span class="corner corner-tl"></span>
+        <span class="corner corner-tr"></span>
+        <span class="corner corner-bl"></span>
+        <span class="corner corner-br"></span>
+        <div class="lc-thumb">
+          <div class="lc-select on">
+            <svg width="14" height="14" stroke-width="2.5" fill="none" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="lc-ratio">9:16</div>
+        </div>
+        <div class="lc-meta">
+          <div class="lc-meta-title">Imported clip · no thumbnail yet</div>
+          <div class="lc-meta-line">
+            <span>0:34</span><span class="dot">·</span><span>score 71</span>
+          </div>
+        </div>
+      </div>
+      <p class="section-note" style="margin-top: 12px;">Every card shows the brand fuchsia/purple gradient at rest. No video element mounted until you hover. <strong>Trade-off:</strong> you can't tell clips apart at rest until you hover each one.</p>
+    </div>
+
+    <!-- Variant B — thumbnail when exists, gradient when not, video on hover -->
+    <div>
+      <h3 style="font-family: 'Geist Mono', monospace; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--color-text-tertiary); margin: 0 0 12px;">B · thumb img · gradient fallback</h3>
+      <div class="lc-card">
+        <span class="corner corner-tl"></span>
+        <span class="corner corner-tr"></span>
+        <span class="corner corner-bl"></span>
+        <span class="corner corner-br"></span>
+        <div class="lc-thumb" style="background: linear-gradient(180deg, #2a1a2a 0%, #4a2a3a 30%, #6a4a5a 60%, #3a2030 100%);">
+          <div class="lc-select on">
+            <svg width="14" height="14" stroke-width="2.5" fill="none" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="lc-ratio">9:16</div>
+          <!-- Simulated thumb: warm skin-tone gradient as if the clip's poster frame is the model's portrait -->
+          <div style="position: absolute; inset: 30% 15% 5% 15%; border-radius: 50% 50% 40% 40%; background: radial-gradient(ellipse at 50% 30%, #c9a08a 0%, #a87858 50%, #6a4838 100%); opacity: 0.65;"></div>
+        </div>
+        <div class="lc-meta">
+          <div class="lc-meta-title">Clipped from source · has thumbnail</div>
+          <div class="lc-meta-line">
+            <span>0:42</span><span class="dot">·</span><span>score 88</span>
+          </div>
+        </div>
+      </div>
+      <p class="section-note" style="margin-top: 12px;">Normal clips show their static poster image (like the Library wall). Imported clips with no thumbnail fall back to the brand gradient (Variant A). Hover plays the video for all. <strong>Trade-off:</strong> imported clips still look "empty" at rest until thumbnails are generated.</p>
+    </div>
+
+    <!-- Variant C — current behavior, video first frame visible (with lines) -->
+    <div>
+      <h3 style="font-family: 'Geist Mono', monospace; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--color-text-tertiary); margin: 0 0 12px;">C · current (lines visible)</h3>
+      <div class="lc-card">
+        <span class="corner corner-tl"></span>
+        <span class="corner corner-tr"></span>
+        <span class="corner corner-bl"></span>
+        <span class="corner corner-br"></span>
+        <div class="lc-thumb" style="background: linear-gradient(180deg, #2a1a2a 0%, #4a2a3a 30%, #6a4a5a 60%, #3a2030 100%);">
+          <div class="lc-select on">
+            <svg width="14" height="14" stroke-width="2.5" fill="none" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="lc-ratio">9:16</div>
+          <!-- Simulated "lines" — what imported clips with intro/title-card first frames render today -->
+          <div style="position: absolute; inset: 0; pointer-events: none;">
+            <div style="position: absolute; left: 8%; right: 8%; top: 12%; height: 3px; background: rgba(240,232,220,0.55); border-radius: 2px;"></div>
+            <div style="position: absolute; left: 8%; right: 12%; top: 18%; height: 3px; background: rgba(240,232,220,0.5); border-radius: 2px;"></div>
+            <div style="position: absolute; left: 8%; right: 6%; top: 24%; height: 3px; background: rgba(240,232,220,0.55); border-radius: 2px;"></div>
+            <div style="position: absolute; left: 8%; right: 14%; top: 30%; height: 3px; background: rgba(240,232,220,0.45); border-radius: 2px;"></div>
+            <div style="position: absolute; left: 8%; right: 10%; top: 36%; height: 3px; background: rgba(240,232,220,0.5); border-radius: 2px;"></div>
+          </div>
+          <!-- And the model's face below the lines, where the actual content peeks through -->
+          <div style="position: absolute; inset: 50% 15% 5% 15%; border-radius: 50% 50% 40% 40%; background: radial-gradient(ellipse at 50% 30%, #c9a08a 0%, #a87858 50%, #6a4838 100%); opacity: 0.65;"></div>
+        </div>
+        <div class="lc-meta">
+          <div class="lc-meta-title">Imported clip · raw first frame</div>
+          <div class="lc-meta-line">
+            <span>0:34</span><span class="dot">·</span><span>score 71</span>
+          </div>
+        </div>
+      </div>
+      <p class="section-note" style="margin-top: 12px;">Current behavior. The <code style="background: var(--color-paper-elev); padding: 1px 4px; border-radius: 3px;">&lt;video preload="metadata"&gt;</code> mounts and shows the source video's first frame, including any intro chrome / title card lines. <strong>Trade-off:</strong> looks "broken" on imported clips. No code change needed if you accept this.</p>
+    </div>
+
+  </div>
+</section>
+
+<section>
+  <h2>What I need from you</h2>
+  <p class="section-note">
+    Look at sections A and B above. For each, tell me:
+  </p>
+  <ul class="section-note" style="line-height: 1.8;">
+    <li><strong>A. ClipCard</strong>: proceed as shown, OR which elements to adjust before I touch code.</li>
+    <li><strong>B. Deploy</strong>: simpler 2-button stack works (Master + Auto-pilot), OR you want a different arrangement.</li>
+  </ul>
+  <p class="section-note">
+    Once you sign off, I edit <code style="background: var(--color-paper-elev); padding: 2px 6px; border-radius: 4px;">desktop/src/components/clips-feed/ClipCard.tsx</code> + <code style="background: var(--color-paper-elev); padding: 2px 6px; border-radius: 4px;">desktop/src/components/cockpit/BottomCockpit.tsx</code>, run the impeccable audit, and hand to Stream A for rebuild with explicit wiring instructions.
+  </p>
+</section>
+
+</body>
+</html>
