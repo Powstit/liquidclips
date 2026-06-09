@@ -636,6 +636,117 @@ def _ayrshare_platforms_linked(raw: dict | None, expected_platform: str) -> list
     return out
 
 
+def reconcile_channels_against_ayrshare(user_id: str, db: Session) -> None:
+    """Walk every non-paused/non-deleted channel for a user, pull the ground
+    truth from Ayrshare /user per profile_key, and flip stale DB statuses to
+    `active` when Ayrshare reports the platform is linked.
+
+    Fixes the v0.7.32 trust bug where Settings → Connections showed
+    "finish linking" in amber for an Instagram account that was actually
+    publishing successfully. Two systems of truth (our DB vs Ayrshare) had
+    drifted because we relied on the user to hit `/channels/{id}/refresh`
+    after every OAuth.
+
+    DEFENSIVE: This function MUST NOT raise. Daniel's words —
+    "if it fails the app gets deleted this cannot happen under any
+    conditions." On any error from Ayrshare or the DB, we log + return
+    silently so /sync (and any future webhook caller) keeps running.
+
+    Designed to be called from:
+      * /sync handler (every 60s while the desktop is running)
+      * future Ayrshare webhook handler (channel.linked event)
+    Idempotent.
+    """
+    try:
+        rows = (
+            db.query(SocialChannel)
+            .filter(SocialChannel.user_id == user_id)
+            .filter(SocialChannel.status.in_(("pending_link", "unlinked", "error")))
+            .all()
+        )
+        if not rows:
+            return
+
+        # Group rows by profile_key so we only hit Ayrshare /user ONCE per
+        # profile even if the user has multiple channels off the same key
+        # (legacy backfill case). Each profile probe is wrapped so one
+        # bad key never blocks reconciliation of the others.
+        by_profile: dict[str, list[SocialChannel]] = {}
+        for row in rows:
+            if not row.ayrshare_profile_key:
+                # Defensive: a stale row with no profile_key can't be
+                # reconciled (we have nothing to probe Ayrshare with).
+                # Logged so a debugger can see why a stuck row stays stuck.
+                log.info(
+                    "[channels] reconcile skip row=%s reason=no_profile_key status=%s",
+                    row.id, row.status,
+                )
+                continue
+            by_profile.setdefault(row.ayrshare_profile_key, []).append(row)
+
+        for profile_key, channels in by_profile.items():
+            try:
+                with httpx.Client(timeout=ayrshare.DEFAULT_TIMEOUT) as client:
+                    r = client.get(
+                        f"{ayrshare.AYRSHARE_BASE}/user",
+                        headers=ayrshare._headers(profile_key),
+                    )
+                if r.status_code != 200:
+                    log.info(
+                        "[channels] reconcile skip profile_key_prefix=%s status=%s",
+                        (profile_key or "")[:8], r.status_code,
+                    )
+                    continue
+                body = r.json() if r.content else {}
+            except (OSError, httpx.HTTPError) as exc:
+                log.info(
+                    "[channels] reconcile network error profile_key_prefix=%s err=%s",
+                    (profile_key or "")[:8], exc,
+                )
+                continue
+            except Exception as exc:  # noqa: BLE001 — never raise
+                log.info(
+                    "[channels] reconcile unexpected error profile_key_prefix=%s err=%s",
+                    (profile_key or "")[:8], exc,
+                )
+                continue
+
+            linked = _ayrshare_platforms_linked(body, channels[0].platform)
+            linked_set = {str(p.get("platform") or "").lower() for p in linked}
+            if not linked_set:
+                continue
+
+            for row in channels:
+                # NEVER flip a user-intended paused or deleted state.
+                if row.status in ("paused", "deleted", "active"):
+                    continue
+                if row.platform.lower() in linked_set:
+                    prev = row.status
+                    row.status = "active"
+                    row.last_refreshed_at = datetime.now(timezone.utc)
+                    row.last_probe_at = row.last_refreshed_at
+                    row.last_probe_error = None
+                    log.info(
+                        "channel reconcile: %s flipped %s -> active via Ayrshare ground truth",
+                        row.id, prev,
+                    )
+
+        try:
+            db.commit()
+        except Exception as exc:  # noqa: BLE001
+            log.info("[channels] reconcile commit failed err=%s", exc)
+            try:
+                db.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+    except (OSError, httpx.HTTPError) as exc:
+        log.info("[channels] reconcile outer network error err=%s", exc)
+        return
+    except Exception as exc:  # noqa: BLE001 — Daniel's hard rule: never raise
+        log.info("[channels] reconcile outer unexpected error err=%s", exc)
+        return
+
+
 def _recommend_action(channel_status: str, ayrshare_platforms: list[dict[str, str | None]], expected_platform: str, profile_found: bool) -> str:
     """One-line, human-readable recommendation. The diagnose endpoint exists
     so a human (Daniel) or an automated probe can decide what to do next; this
