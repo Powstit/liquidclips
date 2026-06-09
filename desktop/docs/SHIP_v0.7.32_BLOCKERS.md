@@ -85,6 +85,19 @@ Read-only work, lens audits, memory hygiene, doc writes, scope notes, replying t
 
 ---
 
+## 📅 What comes AFTER v0.7.32
+
+See **`desktop/docs/ROADMAP_LOCK.md`** — the locked multi-version forward schedule.
+
+Highlights to NOT forget:
+- **v0.7.33** = Whop OAuth live (depends on Kimi's chain completing)
+- **v0.7.34** = Rate limiting + caching + observability (the Layer 9/10/12 production-stack gap the lens flagged on v0.7.32 reconcile — fix BEFORE we hit ~500 active users)
+- **v0.7.35+** = Polish gate per [[feedback_ship_gate]] memory — sprites + intro + loading skip + icons + page transitions
+
+Same discipline applies: read ROADMAP_LOCK.md before any commit/build/sign/install/tag/push/deploy. No drift onto new scope.
+
+---
+
 ## Resolution log
 
 _(append as blockers resolve)_

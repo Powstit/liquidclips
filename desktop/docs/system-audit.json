@@ -1,25 +1,25 @@
 {
-  "audit_at": "2026-06-08T20:16:46.834744+00:00",
+  "audit_at": "2026-06-09T12:24:28.020846+00:00",
   "installed_app": {
-    "version": "0.7.31",
+    "version": "0.7.32",
     "codesign": "valid",
-    "mtime": "2026-06-08T19:46:44"
+    "mtime": "2026-06-09T12:46:48"
   },
   "git": {
     "branch": "main",
-    "head": "ee825fa",
-    "uncommitted_files": 8,
-    "untracked_files": 59,
+    "head": "df6525f",
+    "uncommitted_files": 11,
+    "untracked_files": 57,
     "recent_commits": [
-      "ee825fa wip(v0.7.32): thumbnail studio + ch-row pattern + brand glyphs",
-      "7ab9eef assets: 4 Whop banners \u2014 Space Invaders arcade x cinematic",
-      "db1f3c9 assets: 4 Whop banners with Kade mascot (gpt-image-1 edits)",
-      "6f86638 assets: 4 Whop banners \u2014 Liquid Clips brand (gpt-image-1 v2)",
-      "d1cd4ac scripts: gen-whop-banners.py \u2014 4 banners via gpt-image-1"
+      "df6525f fix(account-app): proxy.ts use static clerkMiddleware (Clerk v7 API)",
+      "f90280c fix(account-app): add clerkMiddleware for satellite-domain handshake",
+      "01d0e51 fix(account-app): align font-display with brand kit (Inter/Geist, not Fraunces)",
+      "48367e2 feat(auth): Whop True Login \u2014 \"Continue with Whop\" in-app sign-in door",
+      "151c179 feat(v0.7.32): ch-row pattern + brand glyphs + Kimi P0-1 security"
     ]
   },
   "mechanical_gates": {
-    "tsc": "PASS",
+    "tsc": "FAIL(exit=2)",
     "py_compile": "PASS",
     "check_humanError": "PASS",
     "smoke_embed": "PASS",
