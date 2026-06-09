@@ -36,6 +36,7 @@ import { PlatformBadge, type PlatformId } from "../PlatformBadge";
 import * as backend from "../../lib/backend";
 import { humanError } from "../../lib/sidecar";
 import type { Channel } from "./types";
+import { isEffectivelyActive } from "./channelStatus";
 
 export function ChannelPicker({
   value,
@@ -65,6 +66,18 @@ export function ChannelPicker({
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // v0.7.32 B2 — same defensive stale-status override as ChannelRow + the
+  // Settings ConnectionsChannelsList. Routes modal previously gated the
+  // toggle on the raw DB `status === "active"`, so a channel that publishes
+  // fine via Ayrshare could appear un-routable here when the DB row hadn't
+  // been refreshed yet. Pull the Ayrshare profile snapshot so the gate
+  // matches what the user can actually do.
+  //
+  // `snapshotLoaded` gates the `needsAttention` count below — without it the
+  // amber count flashes high on first render (snapshot=[]) then drops to the
+  // override-adjusted count once the fetch resolves, reading as a glitch.
+  const [ayrshareLinkedPlatforms, setAyrshareLinkedPlatforms] = useState<readonly string[]>([]);
+  const [snapshotLoaded, setSnapshotLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,6 +99,26 @@ export function ChannelPicker({
         if (!cancelled) setLoading(false);
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void backend
+      .socialGetConnectionStrict()
+      .then((state) => {
+        if (cancelled) return;
+        if (state !== "no-connection") setAyrshareLinkedPlatforms(state.platforms ?? []);
+        setSnapshotLoaded(true);
+      })
+      .catch(() => {
+        // Transport error — leave the platforms empty so the picker falls
+        // back to the raw DB status. Still mark loaded so the needsAttention
+        // hint doesn't sit suppressed forever.
+        if (!cancelled) setSnapshotLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const filtered = useMemo(() => {
@@ -137,7 +170,14 @@ export function ChannelPicker({
   // ship-lens v0.7.7 #7 — Count needs-attention channels so the picker can
   // render a single inline hint above the rows (e.g. "1 needs reconnecting")
   // — pure signal, no decoration.
-  const needsAttention = filtered.filter((c) => c.status !== "active").length;
+  // v0.7.32 B2 — exclude rows the defensive Ayrshare override would treat
+  // as effectively active, so the picker doesn't tell the user a channel
+  // "needs attention" when the very next row renders it routable. Gated on
+  // `snapshotLoaded` so we don't flash a high count on first render before
+  // the snapshot resolves.
+  const needsAttention = snapshotLoaded
+    ? filtered.filter((c) => !isEffectivelyActive(c, ayrshareLinkedPlatforms)).length
+    : 0;
   const manageHandler = onManageChannels ?? onAddChannel;
 
   return (
@@ -170,7 +210,8 @@ export function ChannelPicker({
             channel={c}
             selected={value === c.id}
             onToggle={() => onChange(value === c.id ? null : c.id)}
-            disabled={disabled || c.status !== "active"}
+            disabled={disabled || !isEffectivelyActive(c, ayrshareLinkedPlatforms)}
+            ayrshareLinkedPlatforms={ayrshareLinkedPlatforms}
           />
         ))}
       </div>
@@ -247,13 +288,21 @@ function ChannelPickRow({
   selected,
   onToggle,
   disabled,
+  ayrshareLinkedPlatforms,
 }: {
   channel: Channel;
   selected: boolean;
   onToggle: () => void;
   disabled?: boolean;
+  /** v0.7.32 B2 — when Ayrshare reports the platform as linked, render
+   *  this row as ok-tone with no microcopy regardless of the stale DB
+   *  status, matching the upstream override in ChannelRow.tsx. */
+  ayrshareLinkedPlatforms?: readonly string[];
 }) {
-  const meta = classifyStatus(channel);
+  const effectivelyActive = isEffectivelyActive(channel, ayrshareLinkedPlatforms ?? []);
+  const meta = effectivelyActive
+    ? { tone: "ok" as StatusTone, microcopy: null }
+    : classifyStatus(channel);
   const platformId = toPlatformId(channel.platform);
   const cleanedHandle = channel.handle
     ? channel.handle.replace(/^@+/, "").trim()

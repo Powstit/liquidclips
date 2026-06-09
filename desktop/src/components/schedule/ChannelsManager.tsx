@@ -72,6 +72,12 @@ export function ChannelsManager({
 } = {}) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
+  // v0.7.32 B2 — same defensive UI override as ConnectionsChannelsList. Pull
+  // Ayrshare's profile-level link snapshot so ChannelRow can flip a stale
+  // pending_link / unlinked / error row to ACTIVE when Ayrshare actually
+  // reports the platform as linked. Silent on failure — the row falls back
+  // to the raw DB status, which is what pre-v0.7.32 already shipped.
+  const [ayrshareLinkedPlatforms, setAyrshareLinkedPlatforms] = useState<readonly string[]>([]);
   // Action-level surface error (rename/refresh/pause/delete/relink).
   const [error, setError] = useState<string | null>(null);
   // Top-level load error — kept separate from action errors so we can render
@@ -142,6 +148,28 @@ export function ChannelsManager({
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  // v0.7.32 B2 — fetch Ayrshare profile snapshot for the stale-status
+  // override. Mirrors Settings.tsx ConnectionsChannelsList so the two
+  // surfaces render the same source of truth. socialGetConnectionStrict
+  // distinguishes "no row" from "backend down" so a transport blip doesn't
+  // silently disable the override — but for ChannelRow's purposes both
+  // map to "no platforms known", which is the safe fallback.
+  useEffect(() => {
+    let cancelled = false;
+    void backend
+      .socialGetConnectionStrict()
+      .then((state) => {
+        if (cancelled) return;
+        if (state !== "no-connection") setAyrshareLinkedPlatforms(state.platforms ?? []);
+      })
+      .catch(() => {
+        // Transport error — defensive fallback, not a required input.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Subscribe to the legacy social_link_closed event AND schedule a 2s
   // re-load after kicking off any OAuth, so the channels list reflects the
@@ -366,6 +394,7 @@ export function ChannelsManager({
                     onTogglePause={() => handleTogglePause(c)}
                     onDelete={() => handleDelete(c.id)}
                     onLinkNow={() => void handleLinkNow(c)}
+                    ayrshareLinkedPlatforms={ayrshareLinkedPlatforms}
                   />
                   {conn && (
                     // bug-hunt P2 alignment fix (v0.7.32):
