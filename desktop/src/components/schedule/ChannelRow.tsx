@@ -18,15 +18,18 @@
 import { useEffect, useRef, useState } from "react";
 import type { Channel } from "../../lib/backend";
 import { PlatformBadge, type PlatformId } from "../PlatformBadge";
+import { isEffectivelyActive } from "./channelStatus";
 
 type StatusTone = "ok" | "warn" | "danger" | "muted";
 
-function classifyStatus(channel: Channel): {
+type StatusMeta = {
   tone: StatusTone;
   microcopy: string | null;
   on: boolean;
   primaryAction: "toggle" | "link";
-} {
+};
+
+function classifyStatus(channel: Channel): StatusMeta {
   switch (channel.status) {
     case "active":
       return { tone: "ok", microcopy: null, on: true, primaryAction: "toggle" };
@@ -45,6 +48,20 @@ function classifyStatus(channel: Channel): {
       // exhaustive against the Channel.status enum union.
       return { tone: "muted", microcopy: "deleted", on: false, primaryAction: "toggle" };
   }
+}
+
+// v0.7.32 — defensive stale-status override. Backend reconcile_channels_against_ayrshare
+// is the real self-heal (runs on every /sync). The UI keeps a belt-and-suspenders
+// override so the user never sees a publishable channel as un-routable while
+// the backend catches up. Shared with ChannelPicker via ./channelStatus.ts.
+function classifyStatusWithAyrshareOverride(
+  channel: Channel,
+  ayrshareLinkedPlatforms: readonly string[],
+): StatusMeta {
+  const base = classifyStatus(channel);
+  if (base.tone === "ok") return base;
+  if (!isEffectivelyActive(channel, ayrshareLinkedPlatforms)) return base;
+  return { tone: "ok", microcopy: null, on: true, primaryAction: "toggle" };
 }
 
 function toPlatformId(p: string): PlatformId | null {
@@ -75,11 +92,21 @@ export function ChannelRow({
   onTogglePause,
   onLinkNow,
   onDelete,
+  ayrshareLinkedPlatforms,
 }: {
   channel: Channel;
   onTogglePause: () => Promise<void>;
   onLinkNow: () => void;
   onDelete: () => Promise<void>;
+  /** v0.7.32 — defensive UI fallback. List of platforms the Ayrshare
+   *  profile-level connection reports as linked. When the per-channel
+   *  `status` is stale (pending_link / unlinked / error) but Ayrshare
+   *  says the platform is linked, the row renders as ACTIVE. The real
+   *  self-heal lives in backend reconcile_channels_against_ayrshare on
+   *  every /sync; this override is the UI's belt-and-suspenders so the
+   *  user never sees a publishable channel as un-routable. Optional —
+   *  call sites without the snapshot just render the raw DB state. */
+  ayrshareLinkedPlatforms?: readonly string[];
 }) {
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -96,7 +123,7 @@ export function ChannelRow({
     };
   }, []);
 
-  const meta = classifyStatus(channel);
+  const meta = classifyStatusWithAyrshareOverride(channel, ayrshareLinkedPlatforms ?? []);
   const platformId = toPlatformId(channel.platform);
   // v0.7.32 — guard double-prefix in case the backend ever returns the handle
   // with a leading "@" (TikTok occasionally does this in their handle field).
