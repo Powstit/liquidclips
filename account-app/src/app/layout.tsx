@@ -69,7 +69,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         },
         elements: {
           card: "border border-line shadow-[0_10px_40px_rgba(10,10,15,0.04)]",
-          headerTitle: "font-[var(--font-fraunces)] tracking-[-0.025em]",
+          headerTitle: "font-[var(--font-geist)] font-bold tracking-[-0.025em]",
           formButtonPrimary: "bg-ink hover:bg-fuchsia transition-colors",
           socialButtonsBlockButton: "border border-line hover:border-fuchsia",
         },
