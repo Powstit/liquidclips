@@ -27,9 +27,14 @@ interface StudioTourProps {
   onSkip: () => void;
 }
 
+// v0.7.34 — dropped the "clips" step from the tour. The clips-grid step
+// spotlighted an empty Library and asked first-run users to imagine clips
+// they hadn't generated yet — confusing for the very surface the tour was
+// meant to onboard. The Workstation step (step 0) already covers "drop a
+// video to create clips", so the grid step was redundant once you'd done
+// that. Users discover the grid naturally on their first clip render.
 const STEP_SEQUENCE: TourStep[] = [
   "workstation",
-  "clips",
   "schedule",
   "earn",
 ];

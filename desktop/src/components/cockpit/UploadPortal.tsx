@@ -23,7 +23,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowRight, FolderOpen, X } from "lucide-react";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 
 /** v0.7.8 fix E9 — host allowlist mirrors `desktop/src/lib/sourceHosts.ts`
  *  + the two extras the spec called out (facebook, reddit). Anything not on
@@ -163,7 +162,7 @@ export function UploadPortal({
     onClose();
   }
 
-  async function browseForFile() {
+  function browseForFile() {
     // v0.7.7 ship-lens fix #5 — Script mode is URL-only. Guard the click
     // even though the button is disabled, so a programmatic invocation
     // never silently routes a file into the wrong pipeline.
@@ -171,17 +170,14 @@ export function UploadPortal({
       setError("Script mode is URL only — paste a link above.");
       return;
     }
-    const picked = await openFileDialog({
-      multiple: false,
-      filters: [
-        { name: "Videos", extensions: ["mp4", "MP4", "mov", "MOV", "mkv", "MKV", "webm", "m4v", "M4V", "avi", "AVI", "hevc"] },
-        { name: "All files", extensions: ["*"] },
-      ],
-    });
-    if (typeof picked === "string") {
-      onPickFile("");
-      onClose();
-    }
+    // v0.7.34 — Parent (App.pickFile) owns the file dialog. We used to
+    // open one here first and then call onPickFile("") which triggered a
+    // second dialog upstream — beta users saw two pickers back-to-back
+    // and most quit. Delegate end-to-end: close the portal, let the
+    // parent show its single dialog and route the picked path into the
+    // intent picker.
+    onPickFile("");
+    onClose();
   }
 
   return (
