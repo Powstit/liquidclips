@@ -53,7 +53,8 @@ type State =
   | { kind: "error"; message: string };
 
 export function SubmissionPortal({ onClose }: { onClose: () => void }) {
-  const [campaign, setCampaign] = useState<CampaignDescriptor | null>(null);
+  const [campaigns, setCampaigns] = useState<CampaignDescriptor[]>([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [loadingCampaign, setLoadingCampaign] = useState(true);
   const [state, setState] = useState<State>({ kind: "form" });
 
@@ -66,13 +67,18 @@ export function SubmissionPortal({ onClose }: { onClose: () => void }) {
   const [permissionType, setPermissionType] = useState<PermissionType>("my_own_footage");
   const [disclosureConfirmed, setDisclosureConfirmed] = useState(false);
 
+  const campaign = campaigns.find((c) => c.id === selectedCampaignId) ?? campaigns[0] ?? null;
+
   useEffect(() => {
     track("mc_submission_portal_opened");
     let cancelled = false;
     void (async () => {
-      const campaigns = await listActiveCampaigns();
+      const list = await listActiveCampaigns();
       if (!cancelled) {
-        setCampaign(campaigns[0] ?? null);
+        setCampaigns(list);
+        if (list.length > 0) {
+          setSelectedCampaignId(list[0].id);
+        }
         setLoadingCampaign(false);
       }
     })();
@@ -159,7 +165,20 @@ export function SubmissionPortal({ onClose }: { onClose: () => void }) {
           ) : !campaign ? (
             <NoCampaign onClose={onClose} />
           ) : state.kind === "success" ? (
-            <SuccessState submissionId={state.submissionId} onClose={onClose} />
+            <SuccessState
+              submissionId={state.submissionId}
+              onClose={onClose}
+              onSubmitAnother={() => {
+                setClipUrl("");
+                setSourceUrl("");
+                setMomentType("betrayal");
+                setHookTimestamp("");
+                setWhyThisMoment("");
+                setPermissionType("my_own_footage");
+                setDisclosureConfirmed(false);
+                setState({ kind: "form" });
+              }}
+            />
           ) : state.kind === "watermarked" ? (
             <WatermarkedState
               reason={state.reason}
@@ -169,6 +188,9 @@ export function SubmissionPortal({ onClose }: { onClose: () => void }) {
           ) : (
             <FormBody
               campaign={campaign}
+              campaigns={campaigns}
+              selectedCampaignId={selectedCampaignId}
+              onSelectCampaign={setSelectedCampaignId}
               clipUrl={clipUrl}
               setClipUrl={setClipUrl}
               sourceUrl={sourceUrl}
@@ -225,6 +247,9 @@ function NoCampaign({ onClose }: { onClose: () => void }) {
 
 function FormBody({
   campaign,
+  campaigns,
+  selectedCampaignId,
+  onSelectCampaign,
   clipUrl, setClipUrl,
   sourceUrl, setSourceUrl,
   momentType, setMomentType,
@@ -235,6 +260,9 @@ function FormBody({
   onSubmit, submitting, error, canSubmit,
 }: {
   campaign: CampaignDescriptor;
+  campaigns: CampaignDescriptor[];
+  selectedCampaignId: string | null;
+  onSelectCampaign: (id: string) => void;
   clipUrl: string; setClipUrl: (v: string) => void;
   sourceUrl: string; setSourceUrl: (v: string) => void;
   momentType: MomentType; setMomentType: (v: MomentType) => void;
@@ -257,6 +285,20 @@ function FormBody({
           Earned per 1,000 verified views. Daily best: ${campaign.daily_bonus_usd}. Weekly winner: ${campaign.weekly_bonus_usd}.
         </p>
       </header>
+
+      {campaigns.length > 1 && (
+        <Field label="Campaign" required>
+          <select
+            value={selectedCampaignId ?? ""}
+            onChange={(e) => onSelectCampaign(e.target.value)}
+            className="w-full rounded-xl border border-line bg-paper-elev px-4 py-2.5 font-sans text-[13px] text-ink focus:border-fuchsia focus:outline-none"
+          >
+            {campaigns.map((c) => (
+              <option key={c.id} value={c.id}>{c.title}</option>
+            ))}
+          </select>
+        </Field>
+      )}
 
       <Field label="Clip URL (the public post on TikTok/Reels/YouTube Shorts)" required>
         <input
@@ -420,9 +462,11 @@ function WatermarkedState({
 function SuccessState({
   submissionId,
   onClose,
+  onSubmitAnother,
 }: {
   submissionId: string;
   onClose: () => void;
+  onSubmitAnother: () => void;
 }) {
   return (
     <div className="flex flex-col items-center gap-4 py-8 text-center">
@@ -438,12 +482,20 @@ function SuccessState({
       <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
         submission id · {submissionId.slice(0, 12)}…
       </p>
-      <button
-        onClick={onClose}
-        className="mt-2 rounded-full bg-ink px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia"
-      >
-        Done
-      </button>
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
+        <button
+          onClick={onClose}
+          className="rounded-full border border-line bg-paper px-5 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia"
+        >
+          Close
+        </button>
+        <button
+          onClick={onSubmitAnother}
+          className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright"
+        >
+          Submit another clip
+        </button>
+      </div>
     </div>
   );
 }

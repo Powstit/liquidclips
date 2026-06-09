@@ -10,7 +10,15 @@ const KNOWN: PlatformId[] = ["youtube", "tiktok", "instagram", "x"];
 // The bounty's "home base" on the results screen. Replaces the old one-line
 // banner — gives the clipper everything they need to finish and submit without
 // leaving: payout, allowed platforms, source, the brief, and the Whop link.
-export function BountyWorkspaceHeader({ project }: { project: Project }) {
+export function BountyWorkspaceHeader({
+  project,
+  onGenerateClips,
+  onOpenEditor,
+}: {
+  project: Project;
+  onGenerateClips?: () => void;
+  onOpenEditor?: () => void;
+}) {
   const [briefOpen, setBriefOpen] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
   if (!project.whop_bounty_id) return null;
@@ -139,7 +147,12 @@ export function BountyWorkspaceHeader({ project }: { project: Project }) {
         <ProgressTile label="clips ready" value={`${readyClips}/${project.clips.length || 0}`} />
         <ProgressTile label="avg fit" value={avgFit == null ? "—" : `${avgFit}/100`} />
         <ProgressTile label="best clip" value={bestFit == null ? "—" : `${bestFit}/100`} />
-        <ProgressTile label="next step" value={nextStep} />
+        <NextStepTile
+          step={nextStep}
+          onGenerateClips={onGenerateClips}
+          onOpenEditor={onOpenEditor}
+          whopUrl={whopUrl}
+        />
       </div>
 
       {project.whop_bounty_description && (
@@ -167,6 +180,81 @@ function ProgressTile({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border border-line bg-paper/60 px-3 py-2.5">
       <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">{label}</div>
       <div className="mt-1 truncate font-display text-[16px] font-semibold tracking-[-0.01em] text-ink">{value}</div>
+    </div>
+  );
+}
+
+function NextStepTile({
+  step,
+  onGenerateClips,
+  onOpenEditor,
+  whopUrl,
+}: {
+  step: string;
+  onGenerateClips?: () => void;
+  onOpenEditor?: () => void;
+  whopUrl?: string | null;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function copySubmissionLink() {
+    if (!whopUrl) return;
+    try {
+      await navigator.clipboard.writeText(whopUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (step === "generate" && onGenerateClips) {
+    return (
+      <div className="rounded-xl border border-line bg-paper/60 px-3 py-2.5">
+        <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">next step</div>
+        <button
+          onClick={onGenerateClips}
+          className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-3 py-1 font-sans text-[11px] font-medium text-white hover:bg-fuchsia-bright"
+        >
+          Generate clips
+        </button>
+      </div>
+    );
+  }
+
+  if (step === "polish a clip first" && onOpenEditor) {
+    return (
+      <div className="rounded-xl border border-line bg-paper/60 px-3 py-2.5">
+        <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">next step</div>
+        <button
+          onClick={onOpenEditor}
+          className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-fuchsia px-3 py-1 font-sans text-[11px] font-medium text-fuchsia hover:bg-fuchsia/10"
+        >
+          Open editor
+        </button>
+      </div>
+    );
+  }
+
+  if (step === "submit" && whopUrl) {
+    return (
+      <div className="rounded-xl border border-line bg-paper/60 px-3 py-2.5">
+        <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">next step</div>
+        <button
+          onClick={copySubmissionLink}
+          className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-3 py-1 font-sans text-[11px] font-medium text-white hover:bg-fuchsia-bright"
+        >
+          {copied ? "Copied!" : "Copy submission link"}
+        </button>
+      </div>
+    );
+  }
+
+  // Fallback: render as plain text when no action is wired
+  return (
+    <div className="rounded-xl border border-line bg-paper/60 px-3 py-2.5">
+      <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">next step</div>
+      <div className="mt-1 truncate font-display text-[16px] font-semibold tracking-[-0.01em] text-ink">{step}</div>
     </div>
   );
 }
