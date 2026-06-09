@@ -153,8 +153,18 @@ export function ClipCard({
   // K2 enhancement — 200ms hover delay prevents thrash on rapid cursor drift;
   // skip autoplay when the card is selected (avoids drawing attention away
   // from selection state).
+  // v0.7.32 — Variant B rest-state. At rest, the card shows the static
+  // thumbnail image when available, else a brand fuchsia/purple gradient
+  // placeholder. The <video> element only mounts on hover (after a 200ms
+  // delay) AND only when previewMotionOn is on. This removes the "lines"
+  // issue where imported clips render the source video's raw first frame
+  // (intro chrome / title-card bars) as their poster — imported packs
+  // never write `clip.thumbnails` so the prior <video preload="metadata">
+  // fell through to show whatever the first decoded frame happened to be.
+  const [isHovered, setIsHovered] = useState(false);
   const hoverTimerRef = useRef<number | null>(null);
   const onEnter = () => {
+    setIsHovered(true);
     if (!previewMotionOn || selected) return;
     if (hoverTimerRef.current) {
       window.clearTimeout(hoverTimerRef.current);
@@ -167,6 +177,7 @@ export function ClipCard({
     }, 200);
   };
   const onLeave = () => {
+    setIsHovered(false);
     if (hoverTimerRef.current) {
       window.clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
@@ -340,15 +351,23 @@ export function ClipCard({
         onMouseEnter={onEnter}
         onMouseLeave={onLeave}
       >
-        {videoSrc && videoError === null ? (
+        {/* v0.7.32 — Variant B rest-state. Render priority:
+            1. Hover + previewMotionOn + videoSrc + no error → mount <video>
+               (autoplay muted to avoid the first-frame-as-poster issue).
+            2. thumbSrc available → static <img> poster.
+            3. Else → brand fuchsia/purple gradient placeholder.
+            The <video> NEVER mounts at rest, so imported clips' first-frame
+            chrome (title cards, intro bars, lower-thirds) never shows. */}
+        {isHovered && previewMotionOn && videoSrc && videoError === null ? (
           <video
             key={videoSrc}
             ref={videoRef}
             src={videoSrc}
+            autoPlay
             muted
             playsInline
             loop
-            preload="metadata"
+            preload="auto"
             poster={thumbSrc ?? undefined}
             className="h-full w-full object-cover"
             onError={(e) =>
@@ -360,9 +379,19 @@ export function ClipCard({
         ) : thumbSrc && videoError === null ? (
           <img src={thumbSrc} alt={clip.title} className="h-full w-full object-cover" />
         ) : videoError === null ? (
-          <div className="grid h-full place-items-center font-mono text-[11px] text-text-tertiary">
-            no preview
-          </div>
+          // Brand-aligned gradient fallback for clips with no thumbnail
+          // (typically imported packs). Mirrors the docs/clipcard-v0732-
+          // target.html mockup's Variant B placeholder + brand-kit OASIS
+          // chrome aesthetic. Matches the Library wall's bug-sprite slot
+          // semantically — "this clip exists but has no static poster yet".
+          <div
+            className="h-full w-full"
+            style={{
+              background:
+                "radial-gradient(circle at 30% 40%, rgba(255,26,140,0.18), transparent 45%), radial-gradient(circle at 70% 60%, rgba(140,80,200,0.22), transparent 50%), linear-gradient(135deg, #3a2233, #1a1a22 50%, #2a1a2a)",
+            }}
+            aria-hidden
+          />
         ) : null}
         {/* onError fallback plate — replaces the silent black square for
             corrupt / 0-byte / iCloud-placeholder files. */}
