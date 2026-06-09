@@ -4,7 +4,7 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { Camera, Trash2, User, Key, Plug, Info, Activity } from "lucide-react";
+import { Camera, Trash2, User, Key, Plug, Info, Activity, ChevronLeft } from "lucide-react";
 import { sidecar, humanError, type HardwareInfo, type SecretName } from "../lib/sidecar";
 import { useAvatar, avatarSrc, initialsOf } from "../lib/avatar";
 // v0.7.8 S1 — single source of truth for sign-out side-effects. Settings'
@@ -1358,6 +1358,12 @@ function ConnectionsChannelsList({
 }) {
   const [channels, setChannels] = useState<Channel[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // v0.7.32 — defensive UI fallback for stale per-channel status. Pull the
+  // Ayrshare profile-level snapshot so ChannelRow can override amber WARN
+  // rows that the backend says are pending but Ayrshare reports as actually
+  // linked. Failures are silent — worst case the row falls back to the raw
+  // DB status, which is what pre-v0.7.32 already shipped.
+  const [ayrshareLinkedPlatforms, setAyrshareLinkedPlatforms] = useState<readonly string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1368,6 +1374,23 @@ function ConnectionsChannelsList({
       })
       .catch((e) => {
         if (!cancelled) setError(humanError(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void import("../lib/backend")
+      .then((m) => m.socialGetConnectionStrict())
+      .then((state) => {
+        if (cancelled) return;
+        if (state !== "no-connection") setAyrshareLinkedPlatforms(state.platforms ?? []);
+      })
+      .catch(() => {
+        // Transport error — defensive fallback, not a required input. The
+        // row renders the raw DB status until the next mount retries.
       });
     return () => {
       cancelled = true;
@@ -1408,6 +1431,7 @@ function ConnectionsChannelsList({
               onTogglePause={() => Promise.resolve()}
               onLinkNow={() => onOpenSchedule?.("channels")}
               onDelete={() => Promise.resolve()}
+              ayrshareLinkedPlatforms={ayrshareLinkedPlatforms}
             />
           ))}
         </BracketFrame>
@@ -1794,6 +1818,19 @@ function SettingsCompactHeader({
 
   return (
     <header className="flex shrink-0 items-center gap-3 border-b border-line bg-paper px-6 py-4">
+      {/* v0.7.32 — Left back chevron. Daniel's image #14 feedback: the
+          existing right-side "Close" wasn't discoverable as a way out.
+          Left-aligned back affordance catches the LTR scan pattern AND
+          mirrors macOS conventions for drawer escape. Both routes still
+          fire the same onClose. */}
+      <button
+        onClick={onClose}
+        aria-label="Back to Workspace"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-line bg-paper text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
+        title="Back to Workspace"
+      >
+        <ChevronLeft className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
+      </button>
       <div
         aria-hidden="true"
         className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-gradient-to-br from-fuchsia to-fuchsia-deep font-display text-[14px] font-bold text-white"
@@ -1840,7 +1877,10 @@ function SettingsLeftRail({
   const items: SettingsCategory[] = ["account", "keys", "connections", "about", "diagnostics"];
   return (
     <nav
-      className="flex w-[200px] shrink-0 flex-col gap-1 border-r border-line bg-transparent px-3 py-5"
+      // v0.7.32 — bg-transparent let the underlying cockpit sub-rail bleed
+      // through (Daniel's image #14 squashed-left-rail report). Solid bg-paper
+      // makes the Settings rail its own opaque surface.
+      className="flex w-[200px] shrink-0 flex-col gap-1 border-r border-line bg-paper px-3 py-5"
       aria-label="Settings categories"
     >
       {items.map((c) => {

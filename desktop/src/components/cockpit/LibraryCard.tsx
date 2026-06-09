@@ -280,8 +280,8 @@ function StatusChip({
           : glow
           ? "bg-fuchsia/85 text-white shadow-[0_0_18px_rgba(255,26,140,0.6)]"
           : dim
-          ? "bg-ink/70 text-white/60"
-          : "bg-ink/80 text-white/85"
+          ? "bg-paper/85 text-ink/60 shadow-[0_2px_8px_rgba(0,0,0,0.25)]"
+          : "bg-paper/95 text-ink shadow-[0_3px_12px_rgba(0,0,0,0.4)]"
       }`}
     >
       {children}
