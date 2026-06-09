@@ -193,8 +193,8 @@ export function MasterToolbar({ project, onProjectChange }: Props) {
       "relative inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5",
       "font-mono text-[10px] uppercase tracking-[0.14em]",
       active
-        ? "border-[#DC2626]/60 bg-[#DC2626]/10 text-[#DC2626] hover:bg-[#DC2626]/15"
-        : "border-[#DC2626]/15 bg-paper/30 text-text-tertiary cursor-not-allowed",
+        ? "border-[var(--color-danger)]/60 bg-[var(--color-danger)]/10 text-[var(--color-danger)] hover:bg-[var(--color-danger)]/15"
+        : "border-[var(--color-danger)]/15 bg-paper/30 text-text-tertiary cursor-not-allowed",
     ].join(" ");
 
   return (
@@ -680,7 +680,7 @@ function RemoveConfirmPopover({
 }) {
   return (
     <PopoverShell onClose={onClose}>
-      <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[#DC2626]">
+      <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--color-danger)]">
         confirm remove
       </p>
       <p className="mb-3 font-sans text-[13px] text-ink">
@@ -692,7 +692,7 @@ function RemoveConfirmPopover({
           type="button"
           disabled={disabled}
           onClick={onConfirm}
-          className="inline-flex items-center gap-1.5 rounded-full border border-[#DC2626]/60 bg-[#DC2626]/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-[#DC2626] hover:bg-[#DC2626]/15 disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-danger)]/60 bg-[var(--color-danger)]/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/15 disabled:opacity-40"
         >
           <Trash2 className="h-3 w-3" /> Remove {count}
         </button>

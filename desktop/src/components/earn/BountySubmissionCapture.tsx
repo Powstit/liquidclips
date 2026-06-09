@@ -140,7 +140,7 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
           </button>
           <button
             onClick={clearCapturedState}
-            className="rounded-full border border-line bg-transparent px-3 py-1 font-sans text-[11px] font-medium text-text-secondary hover:border-[#DC2626]/40 hover:text-[#DC2626]"
+            className="rounded-full border border-line bg-transparent px-3 py-1 font-sans text-[11px] font-medium text-text-secondary hover:border-[var(--color-danger)]/40 hover:text-[var(--color-danger)]"
           >
             Clear submission
           </button>
@@ -218,7 +218,7 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
       </div>
 
       {openError && (
-        <p className="mt-2 font-mono text-[11px] text-[#DC2626]">{openError}</p>
+        <p className="mt-2 font-mono text-[11px] text-[var(--color-danger)]">{openError}</p>
       )}
 
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -227,7 +227,7 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
             <div className="flex items-center gap-2 font-sans text-[13px] font-medium text-ink">
               <span
                 className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] font-bold ${
-                  c.ok ? "bg-fuchsia text-white" : "border border-[#DC2626]/40 text-[#DC2626]"
+                  c.ok ? "bg-fuchsia text-white" : "border border-[var(--color-danger)]/40 text-[var(--color-danger)]"
                 }`}
                 aria-hidden
               >
@@ -263,7 +263,7 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
             className="w-full rounded-lg border border-line bg-paper px-3 py-2 font-mono text-[12px] text-ink focus:border-fuchsia focus:outline-none focus:ring-2 focus:ring-fuchsia/20"
           />
           {error && (
-            <p className="font-mono text-[11px] text-[#DC2626]">{error}</p>
+            <p className="font-mono text-[11px] text-[var(--color-danger)]">{error}</p>
           )}
           <div className="flex items-center gap-2">
             <button

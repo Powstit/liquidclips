@@ -308,18 +308,18 @@ export function ChannelsManager({
   return (
     <div className="flex flex-col gap-6">
       {loadError && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-[#DC2626]/40 bg-[#DC2626]/5 px-4 py-3">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 px-4 py-3">
           <div className="flex flex-col gap-1 min-w-0">
-            <p className="font-display text-[14px] font-semibold text-[#DC2626]">
+            <p className="font-display text-[14px] font-semibold text-[var(--color-danger)]">
               Couldn't load channels
             </p>
-            <p className="truncate font-mono text-[11px] text-[#DC2626]/80">
+            <p className="truncate font-mono text-[11px] text-[var(--color-danger)]/80">
               {loadError}
             </p>
           </div>
           <button
             onClick={() => void load()}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[#DC2626]/50 bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-[#DC2626] hover:bg-[#DC2626]/10"
+            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-danger)]/50 bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
           >
             <RefreshCw className="h-3 w-3" /> Retry
           </button>
@@ -327,13 +327,13 @@ export function ChannelsManager({
       )}
 
       {error && !loadError && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-[#DC2626]/40 bg-[#DC2626]/5 px-4 py-3">
-          <p className="min-w-0 truncate font-mono text-[12px] text-[#DC2626]">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 px-4 py-3">
+          <p className="min-w-0 truncate font-mono text-[12px] text-[var(--color-danger)]">
             {error}
           </p>
           <button
             onClick={() => setError(null)}
-            className="rounded-full border border-[#DC2626]/40 bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-[#DC2626] hover:bg-[#DC2626]/10"
+            className="rounded-full border border-[var(--color-danger)]/40 bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
           >
             Dismiss
           </button>

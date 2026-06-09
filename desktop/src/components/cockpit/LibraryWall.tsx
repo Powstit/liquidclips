@@ -152,7 +152,7 @@ export function LibraryWall({
       </section>
 
       {error && (
-        <div className="rounded-2xl border border-[#DC2626]/30 bg-[#DC2626]/10 px-4 py-3 font-sans text-[13px] text-[#DC2626]">
+        <div className="rounded-2xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-3 font-sans text-[13px] text-[var(--color-danger)]">
           {error}
         </div>
       )}

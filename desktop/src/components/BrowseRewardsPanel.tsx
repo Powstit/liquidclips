@@ -198,12 +198,12 @@ export function BrowseRewardsPanel() {
           </span>
         )}
         {err && (
-          <span className="ml-auto inline-flex items-center gap-2 truncate text-[#DC2626]">
+          <span className="ml-auto inline-flex items-center gap-2 truncate text-[var(--color-danger)]">
             <span className="truncate">{err}</span>
             <button
               type="button"
               onClick={() => void reload()}
-              className="shrink-0 rounded-full border border-[#DC2626]/40 px-2 py-0.5 text-[#DC2626] transition-colors hover:bg-[#DC2626]/10"
+              className="shrink-0 rounded-full border border-[var(--color-danger)]/40 px-2 py-0.5 text-[var(--color-danger)] transition-colors hover:bg-[var(--color-danger)]/10"
             >
               Reload
             </button>

@@ -232,7 +232,7 @@ export function BountySourceSetup({
           <InfoHint text="Already downloaded the source? Pick a file from your Mac and Liquid Clips clips it directly — nothing leaves your machine to fetch it." />
         </button>
 
-        {error && <p className="font-mono text-[11px] text-[#DC2626]">{error}</p>}
+        {error && <p className="font-mono text-[11px] text-[var(--color-danger)]">{error}</p>}
       </section>
     </div>
   );

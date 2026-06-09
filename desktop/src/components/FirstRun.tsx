@@ -147,7 +147,7 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
             </button>
           </div>
           {error && (
-            <p className="mt-3 font-mono text-[12px] text-[#DC2626]">{error}</p>
+            <p className="mt-3 font-mono text-[12px] text-[var(--color-danger)]">{error}</p>
           )}
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
@@ -227,12 +227,12 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
             </p>
           )}
           {act.kind === "error" && (
-            <p className="mt-2 font-mono text-[12px] text-[#DC2626]">{act.message}</p>
+            <p className="mt-2 font-mono text-[12px] text-[var(--color-danger)]">{act.message}</p>
           )}
         </div>
 
         {hw && hw.warnings.length > 0 && (
-          <div className="mt-6 rounded-xl border border-[#EAB308]/40 bg-[#EAB308]/10 px-4 py-3 font-mono text-[12px] text-[#7A5400]">
+          <div className="mt-6 rounded-xl border border-fuchsia-deep/30 bg-fuchsia-soft px-4 py-3 font-mono text-[12px] text-fuchsia-deep">
             {hw.warnings.join(" · ")}
           </div>
         )}

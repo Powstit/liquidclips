@@ -75,15 +75,15 @@ function toPlatformId(p: string): PlatformId | null {
 
 const TONE_DOT: Record<StatusTone, string> = {
   ok: "bg-fuchsia shadow-[0_0_8px_rgba(255,26,140,0.7)]",
-  warn: "bg-[#F59E0B] shadow-[0_0_8px_rgba(245,158,11,0.7)]",
-  danger: "bg-[#DC2626] shadow-[0_0_8px_rgba(220,38,38,0.7)]",
+  warn: "bg-fuchsia-deep shadow-[0_0_8px_rgba(255,102,184,0.7)]",
+  danger: "bg-[var(--color-danger)] shadow-[0_0_8px_rgba(220,38,38,0.7)]",
   muted: "bg-text-tertiary",
 };
 
 const TONE_HANDLE: Record<StatusTone, string> = {
   ok: "text-text-tertiary",
-  warn: "text-[#F59E0B]",
-  danger: "text-[#DC2626]",
+  warn: "text-fuchsia-deep",
+  danger: "text-[var(--color-danger)]",
   muted: "text-text-tertiary",
 };
 
@@ -167,8 +167,8 @@ export function ChannelRow({
 
   if (confirmingDelete) {
     return (
-      <div className="flex items-center justify-between gap-3 rounded-md border border-[#DC2626]/40 bg-[#DC2626]/8 px-3 py-2.5">
-        <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-[#DC2626]">
+      <div className="flex items-center justify-between gap-3 rounded-md border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/8 px-3 py-2.5">
+        <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--color-danger)]">
           Delete {channel.label}?
         </p>
         <div className="flex items-center gap-2">
@@ -182,7 +182,7 @@ export function ChannelRow({
           <button
             onClick={() => void handleConfirmDelete()}
             disabled={busy}
-            className="rounded-full border border-[#DC2626]/40 bg-[#DC2626]/12 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#DC2626] hover:bg-[#DC2626]/20 disabled:opacity-40"
+            className="rounded-full border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/12 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/20 disabled:opacity-40"
           >
             {busy ? "deleting…" : "Confirm"}
           </button>
@@ -234,7 +234,7 @@ export function ChannelRow({
           setConfirmingDelete(true);
         }}
         disabled={busy}
-        className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-tertiary opacity-0 transition-opacity hover:bg-[#DC2626]/10 hover:text-[#DC2626] group-hover:flex group-hover:opacity-100"
+        className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-tertiary opacity-0 transition-opacity hover:bg-[var(--color-danger)]/10 hover:text-[var(--color-danger)] group-hover:flex group-hover:opacity-100"
         title={`Delete ${channel.label}`}
         aria-label={`Delete ${channel.label}`}
       >

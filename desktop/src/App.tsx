@@ -2121,8 +2121,8 @@ function GlobalToast({ message }: { message: string | null }) {
   const Icon = isSuccess ? CheckCircle2 : AlertTriangle;
   const containerClass = isSuccess
     ? "border-fuchsia bg-paper-elev/95 text-ink shadow-[0_0_28px_rgba(255,26,140,0.45)]"
-    : "border-[#DC2626] bg-paper-elev/95 text-[#DC2626] shadow-[0_0_28px_rgba(220,38,38,0.4)]";
-  const iconClass = isSuccess ? "text-fuchsia" : "text-[#DC2626]";
+    : "border-[var(--color-danger)] bg-paper-elev/95 text-[var(--color-danger)] shadow-[0_0_28px_rgba(220,38,38,0.4)]";
+  const iconClass = isSuccess ? "text-fuchsia" : "text-[var(--color-danger)]";
   return (
     <div
       role="status"

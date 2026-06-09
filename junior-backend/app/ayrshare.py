@@ -28,6 +28,50 @@ AYRSHARE_BASE = "https://app.ayrshare.com/api"
 DEFAULT_TIMEOUT = 30.0
 
 
+class AyrshareRateLimited(httpx.HTTPStatusError):
+    """Raised when Ayrshare returns HTTP 429 (Layer 9, v0.7.34).
+
+    Inherits from `httpx.HTTPStatusError` so existing callers (`publish.py`,
+    `cron.py`) that already catch HTTPStatusError continue to work and
+    surface as 502 to the desktop. Callers that want per-user backoff
+    behaviour (`channels.reconcile`) catch `AyrshareRateLimited` first,
+    read `retry_after`, then fall through.
+
+    `retry_after` is the value of Ayrshare's `Retry-After` response header
+    (seconds) or None if the header wasn't present — in which case the
+    caller picks a conservative default (60s).
+    """
+
+    def __init__(self, retry_after: int | None, *, request: httpx.Request, response: httpx.Response) -> None:
+        self.retry_after = retry_after
+        msg = (
+            f"Ayrshare rate-limited; retry after {retry_after}s"
+            if retry_after is not None
+            else "Ayrshare rate-limited"
+        )
+        super().__init__(msg, request=request, response=response)
+
+
+def _raise_for_status(r: httpx.Response) -> None:
+    """Like `r.raise_for_status()` but converts HTTP 429 to AyrshareRateLimited
+    so callers can apply per-user backoff without parsing httpx exception text.
+    All other status errors propagate as `httpx.HTTPStatusError` (existing
+    semantic — `publish.py` + `cron.py` already catch + surface as 502)."""
+    if r.status_code == 429:
+        retry_after_hdr = r.headers.get("Retry-After")
+        retry_after: int | None = None
+        if retry_after_hdr:
+            try:
+                retry_after = int(retry_after_hdr)
+            except ValueError:
+                # RFC 7231 also allows HTTP-date; Ayrshare ships seconds in
+                # practice. If we hit a date string, fall through to None
+                # and let the caller default to 60s.
+                retry_after = None
+        raise AyrshareRateLimited(retry_after=retry_after, request=r.request, response=r)
+    r.raise_for_status()
+
+
 def _api_key() -> str:
     key = os.environ.get("AYRSHARE_API_KEY", "").strip()
     if not key:
@@ -76,7 +120,7 @@ def check_key() -> dict[str, Any]:
         headers=_headers(),
         timeout=DEFAULT_TIMEOUT,
     )
-    r.raise_for_status()
+    _raise_for_status(r)
     return r.json()
 
 
@@ -101,7 +145,7 @@ def create_profile(title: str, email: str | None = None) -> dict[str, Any]:
         json=body,
         timeout=DEFAULT_TIMEOUT,
     )
-    r.raise_for_status()
+    _raise_for_status(r)
     return r.json()
 
 
@@ -183,7 +227,7 @@ def generate_jwt(
         json=body,
         timeout=DEFAULT_TIMEOUT,
     )
-    r.raise_for_status()
+    _raise_for_status(r)
     payload = r.json()
     # Ayrshare returns HTTP 200 with `code:<int>` JSON body on validation
     # errors — httpx.raise_for_status() doesn't catch this. Without this
@@ -236,7 +280,7 @@ def post(
         json=payload,
         timeout=DEFAULT_TIMEOUT,
     )
-    r.raise_for_status()
+    _raise_for_status(r)
     return r.json()
 
 
@@ -248,7 +292,7 @@ def history(profile_key: str, *, last_records: int = 25) -> dict[str, Any]:
         params={"lastRecords": last_records},
         timeout=DEFAULT_TIMEOUT,
     )
-    r.raise_for_status()
+    _raise_for_status(r)
     return r.json()
 
 
@@ -260,7 +304,7 @@ def analytics(profile_key: str, post_id: str) -> dict[str, Any]:
         json={"id": post_id},
         timeout=DEFAULT_TIMEOUT,
     )
-    r.raise_for_status()
+    _raise_for_status(r)
     return r.json()
 
 
@@ -285,7 +329,7 @@ def media_upload(file_path: str, profile_key: str | None = None) -> str:
         json={"fileName": fname, "contentType": content_type},
         timeout=DEFAULT_TIMEOUT,
     )
-    sign.raise_for_status()
+    _raise_for_status(sign)
     body = sign.json()
     upload_url = body.get("uploadUrl") or body.get("url")
     public_url = body.get("accessUrl") or body.get("publicUrl") or body.get("url")
@@ -317,5 +361,5 @@ def cancel_scheduled(profile_key: str, post_id: str) -> dict[str, Any]:
         json={"id": post_id},
         timeout=DEFAULT_TIMEOUT,
     )
-    r.raise_for_status()
+    _raise_for_status(r)
     return r.json()

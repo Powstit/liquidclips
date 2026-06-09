@@ -35,7 +35,7 @@ export function MetadataTab({ slug, tab }: { slug: string; tab: string }) {
   const content = metadata?.[fileKey];
 
   if (error) {
-    return <p className="font-mono text-[12px] text-[#DC2626]">{error}</p>;
+    return <p className="font-mono text-[12px] text-[var(--color-danger)]">{error}</p>;
   }
   if (!metadata) {
     return (

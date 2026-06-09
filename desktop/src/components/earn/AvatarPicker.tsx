@@ -163,7 +163,7 @@ export function AvatarPicker({
         {saveError && (
           <div
             role="alert"
-            className="border-t border-[#DC2626]/40 bg-[#DC2626]/10 px-5 py-2 font-sans text-[12px] text-[#F87171]"
+            className="border-t border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-5 py-2 font-sans text-[12px] text-[var(--color-danger-bright)]"
           >
             {saveError}
           </div>

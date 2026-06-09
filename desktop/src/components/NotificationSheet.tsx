@@ -159,14 +159,14 @@ export function NotificationSheet({ onClose }: { onClose: () => void }) {
         {actionError && (
           <div
             role="alert"
-            className="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t border-[#DC2626]/40 bg-paper/95 px-6 py-3 font-mono text-[11px] text-[#DC2626] backdrop-blur-md"
+            className="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t border-[var(--color-danger)]/40 bg-paper/95 px-6 py-3 font-mono text-[11px] text-[var(--color-danger)] backdrop-blur-md"
           >
             <span className="min-w-0 flex-1 truncate">{actionError.message}</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={actionError.retry}
-                className="rounded-full border border-[#DC2626]/50 bg-transparent px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#DC2626] transition-colors hover:bg-[#DC2626]/10"
+                className="rounded-full border border-[var(--color-danger)]/50 bg-transparent px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-danger)] transition-colors hover:bg-[var(--color-danger)]/10"
               >
                 Retry
               </button>
@@ -248,7 +248,7 @@ function NotificationRow({
               e.stopPropagation();
               onDismiss();
             }}
-            className="rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary hover:text-[#DC2626]"
+            className="rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary hover:text-[var(--color-danger)]"
           >
             dismiss
           </button>

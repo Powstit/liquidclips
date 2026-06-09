@@ -160,7 +160,7 @@ function ToastCard({
       ? "error"
       : "note";
   const eyebrowColor =
-    toast.kind === "error" ? "text-[#DC2626]" : "text-fuchsia-deep";
+    toast.kind === "error" ? "text-[var(--color-danger)]" : "text-fuchsia-deep";
 
   return (
     <div

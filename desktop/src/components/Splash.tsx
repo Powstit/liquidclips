@@ -205,7 +205,7 @@ export function Splash({
         <div className="flex w-[280px] flex-col items-center gap-4">
           <div className="h-[3px] w-full overflow-hidden rounded-full bg-line">
             <div
-              className="splash-bar-anim h-full bg-[#DC2626] animate-[splash-bar_1.4s_ease-in-out_infinite]"
+              className="splash-bar-anim h-full bg-[var(--color-danger)] animate-[splash-bar_1.4s_ease-in-out_infinite]"
               style={{ width: "100%" }}
             />
           </div>

@@ -397,13 +397,13 @@ export function DirectPublishQueue({
       </p>
 
       {pickError && (
-        <p className="mt-2 font-mono text-[11px] text-[#DC2626]">{pickError}</p>
+        <p className="mt-2 font-mono text-[11px] text-[var(--color-danger)]">{pickError}</p>
       )}
       {queueError && (
         // Persist-to-disk failure surfaced as a visible banner — the queue
         // is still usable in memory, but a restart will lose it. Don't lie.
-        <div className="mt-3 flex items-start gap-2 rounded-xl border border-[#DC2626]/40 bg-[#DC2626]/10 px-3 py-2.5 font-sans text-[12px] text-ink">
-          <AlertTriangle className="mt-[2px] h-3.5 w-3.5 shrink-0 text-[#DC2626]" strokeWidth={2.25} />
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-3 py-2.5 font-sans text-[12px] text-ink">
+          <AlertTriangle className="mt-[2px] h-3.5 w-3.5 shrink-0 text-[var(--color-danger)]" strokeWidth={2.25} />
           <span>
             Couldn&rsquo;t save queue to disk &mdash; your clips may not survive a restart. ({queueError})
           </span>
@@ -413,8 +413,8 @@ export function DirectPublishQueue({
         // A connection-state fetch failure used to render as "no platforms
         // connected" in each card — a lie. Surface it explicitly so the
         // user knows to check Settings rather than re-link.
-        <div className="mt-3 flex items-start gap-2 rounded-xl border border-[#F59E0B]/40 bg-[#F59E0B]/10 px-3 py-2.5 font-sans text-[12px] text-ink">
-          <AlertTriangle className="mt-[2px] h-3.5 w-3.5 shrink-0 text-[#F59E0B]" strokeWidth={2.25} />
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-fuchsia-deep/40 bg-fuchsia-deep/10 px-3 py-2.5 font-sans text-[12px] text-ink">
+          <AlertTriangle className="mt-[2px] h-3.5 w-3.5 shrink-0 text-fuchsia-deep" strokeWidth={2.25} />
           <span>
             Couldn&rsquo;t reach social-platform status &mdash; check{" "}
             <button

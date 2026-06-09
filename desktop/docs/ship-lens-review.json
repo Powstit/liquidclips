@@ -1,22 +1,137 @@
 {
-  "review_meta": {
-    "reviewed_at": "2026-06-07T23:00:00Z",
-    "version_under_review": "0.7.14",
-    "head_commit": "2f8760f (v0.7.13 — Claude F1-F7 + Kimi K1-K7)",
-    "working_tree_state": "v0.7.14 changes uncommitted in working tree (package.json + tauri.conf.json + 8 src/sidecar files modified)",
-    "installed_app_version": "0.7.14 (CFBundleShortVersionString verified at /Applications/Liquid Clips.app/Contents/Info.plist)",
-    "reviewer": "ship-lens-reviewer agent",
-    "scope": "Verify Claude's v0.7.14 response to the prior BLOCK review — sidecar producers + UI mounts for PlatformBadge + OverlayTemplateKey + CANVAS_GRID_ROWS raise."
+  "reviewed_at": "2026-06-09T13:14:00Z",
+  "commit_sha": "09520e513718eb0e0df27b868811c8c8fb12562b",
+  "version_under_review": "0.7.32 (uncommitted)",
+  "files_in_diff": [
+    "desktop/src/index.css",
+    "desktop/src/components/effects/AuroraBackground.tsx",
+    "desktop/src/components/primitives/Pill.tsx",
+    "desktop/src/components/FirstRun.tsx",
+    "desktop/src/components/earn/bounty-fit.tsx",
+    "desktop/src/components/cockpit/LibraryCard.tsx"
+  ],
+  "iron_gate_audit": {
+    "sentinels_in_diff": "NONE — no `IRON GATE` lines in any of the 6 changed files",
+    "adjacency_check": {
+      "FirstRun.tsx:235": "IG-004 covers src/lib/activation.ts, src/lib/backend.ts, src-tauri/src/lib.rs (deep-link). FirstRun.tsx is NOT in the IG-004 file list. The activation handler + deep-link path elsewhere in this file were not touched; only the hardware-warning notice at line 235 was retoned. CLEAN.",
+      "LibraryCard.tsx": "IG-005 lists clips-feed/ClipCard.tsx (workbench display-only card). cockpit/LibraryCard.tsx is a SEPARATE file (the Library wall tile). NOT gated. CLEAN.",
+      "Pill.tsx": "Not referenced by any active gate. CLEAN.",
+      "bounty-fit.tsx": "Not referenced by any active gate (IG-005 is workspace/cockpit cards). CLEAN.",
+      "AuroraBackground.tsx + index.css": "Not gated. CLEAN."
+    },
+    "verdict": "No iron-gate sentinels removed or altered. No adjacent locked contracts violated."
   },
-  "mechanical_gates": {
-    "tsc_noEmit": "PASS (exit 0, zero output)",
-    "py_compile_sidecar": "PASS (sidecar.py + project.py compile clean)",
-    "smoke_embed": "PASS (both /embed/earn surfaces — anchor visible, no SSR error digest)",
-    "humanError_gate": "PASS (no staged TS/TSX; uncommitted diff inspected manually — no raw String(e) / e.message in new code)",
-    "video_onError_regression_grep": "PASS (zero new <video> tags in v0.7.14 diff)",
-    "direct_invoke_regression_grep": "PASS (zero direct invoke() calls bypassing sidecar wrapper in v0.7.14 diff)"
+  "brand_kit_audit": {
+    "rule": "One fuchsia / one ink / one paper / cyan-cool (decoration only)",
+    "diff_summary": {
+      "warning_tone": "EAB308 yellow → fuchsia-deep (aligns with brand lock)",
+      "success_tone": "10B981 emerald → fuchsia-deep (aligns)",
+      "danger_tone": "DC2626 inline → token-aliased (refactor, same hex)",
+      "info_tone": "3B82F6 sky → cyan-cool (#00E5FF)",
+      "aurora_stripes": "removed (decoration-only repeating-linear-gradient, no semantic load)",
+      "FirstRun warning": "EAB308 → fuchsia-deep on fuchsia-soft (aligns)",
+      "bounty-fit mid-tier": "EAB308 → neutral text-text-secondary (correct: mid score isn't a warning)",
+      "bounty-fit low-tier": "DC2626 inline → token-aliased"
+    },
+    "verdict": "Brand lock holds for the diff itself. See F-005 / F-006 for follow-up grep findings outside the diff."
   },
-  "prior_block_findings_resolved": [
+  "smoke_tests_run": [
+    {
+      "name": "tsc --noEmit -p tsconfig.json",
+      "exit_code": 0,
+      "output": "(no output — clean) — confirms FileWarning + Layers removal in LibraryCard did not leave dangling refs, and the new var(--color-...) classes resolve as Tailwind 4 arbitrary values."
+    },
+    {
+      "name": "vite build --mode development --logLevel error",
+      "exit_code": 0,
+      "output": "(no errors — only pre-existing dynamic-import warnings unrelated to diff)"
+    },
+    {
+      "name": "grep IRON GATE in the 6 changed files",
+      "exit_code": 1,
+      "output": "no matches — no sentinels in diff"
+    }
+  ],
+  "findings": [
+    {
+      "id": "P1-001",
+      "severity": "P1",
+      "phase": "STATE",
+      "file": "desktop/src/components/earn/TrackedSubmissions.tsx:25-39 + :210 + :285",
+      "summary": "Pill retone collapses TrackedSubmissions's 6-tone status ladder to 4 visible tones — submitted, approved, paid all render identically (fuchsia-deep), breaking the lifecycle disambiguation the comment claims is locked.",
+      "evidence": "STATUS_TONE maps draft→neutral, posted→info, submitted→fuchsia, approved→success, rejected→danger, paid→success. After v0.7.32 Pill retone: success=fuchsia (same Tailwind classes as the 'fuchsia' tone — bg-fuchsia-soft text-fuchsia-deep border-fuchsia/30). So 'submitted', 'approved', and 'paid' all paint the same chip. The header comment at line 25 still asserts '6-tone status ladder (locked 2026-05-29): paid+approved=success green, submitted=fuchsia'. The comment is now a lie, and clipper UX walking the table cannot distinguish 'in flight with Whop' from 'approved-but-unpaid' from 'paid' without reading the literal status text.",
+      "reproduce": "cd ~/Desktop/jnr/desktop && grep -n 'STATUS_TONE\\|success:\\|fuchsia:' src/components/primitives/Pill.tsx src/components/earn/TrackedSubmissions.tsx",
+      "suggested_fix": "Either (a) collapse the STATUS_TONE comment + map to the new 3-visible-tone reality and add a leading lucide icon (Clock for submitted, Check for approved, DollarSign for paid) so the icon does the work the colour used to, OR (b) introduce a brand-pure 'positive' tone that visually differs from base fuchsia (e.g. fuchsia-soft FILL with white CHECK icon at higher contrast vs. fuchsia-outline pending) and re-map approved/paid to it. Either way, the comment block at lines 25-31 must stop claiming a 6-tone ladder that no longer renders.",
+      "addressed": false
+    },
+    {
+      "id": "P1-002",
+      "severity": "P1",
+      "phase": "STATE",
+      "file": "desktop/src/components/cockpit/LibraryCard.tsx:132-141",
+      "summary": "Silent at-rest state for `source_exists === false` when the project is `done` — the user loses the v0.7.8 'Source missing' eyebrow with no compensating signal anywhere on the resting card.",
+      "evidence": "The retoned chip rules render ONLY: (a) `pipeline_failed` → danger chip, (b) `!project.done` → dim 'In progress' chip, (c) otherwise → no TL chip. There is no branch for `done && source_exists === false`. A completed project whose source file the user later moved/trashed now renders identical to a healthy ready project — no chip, no hover-overlay flag (the overlay shows filename + clips_count + editedAt only). Per the previous gate comment at the old line 138: 'clips on disk still play, but a re-run won't work' — Daniel ENABLES the re-run from this state and the failure is silent until the run actually fires. The brief says 'Source missing folded into the dim In progress semantics', but that fold is incorrect: a `done` project with missing source never enters the `!done` branch.",
+      "reproduce": "cd ~/Desktop/jnr/desktop && grep -n 'source_exists\\|pipeline_failed\\|project.done' src/components/cockpit/LibraryCard.tsx — observe the absence of any source_exists branch in the new chip rules.",
+      "suggested_fix": "Either (a) restore the muted source-missing chip as a SECOND TL row gated on `project.source_exists === false`, OR (b) surface 'source missing' in the hover-overlay subtitle so the calm wall stays silent but the hover discloses it. Option (b) keeps the calm-wall mandate intact. The current state is a silent-success regression — the user only finds out the source moved AFTER they try to re-run.",
+      "addressed": false
+    },
+    {
+      "id": "P2-003",
+      "severity": "P2",
+      "phase": "STATE",
+      "file": "desktop/src/components/cockpit/LibraryCard.tsx:163-173",
+      "summary": "Brief claims 'imported' provenance is 'surfaced in the hover meta line' — but the hover overlay code never references project.imported. Imported packs are now indistinguishable from cut-from-source packs at ANY zoom level.",
+      "evidence": "Hover overlay renders `{project.source_filename}` + `{project.clips_count} clip(s) · {editedAt}` only. No 'Imported' eyebrow, no Layers icon, nothing. The brief's mitigation ('surfaced in the hover meta line') was not implemented. Stale top-of-file comments at lines 1-2 still describe the old 'Imported · N clips' chip + pip behaviour, which is misleading future readers.",
+      "reproduce": "cd ~/Desktop/jnr/desktop && grep -n 'imported\\|Imported' src/components/cockpit/LibraryCard.tsx — only the stale header comments and the chip-rule rationale reference imported; nothing reaches the DOM.",
+      "suggested_fix": "Add a single 'Imported' eyebrow word to the hover overlay subtitle when `project.imported`, e.g. `{project.imported && 'Imported · '}{project.clips_count} clip(s) · {editedAt}`. Also delete or rewrite the lines 1-2 file-header comments to reflect the v0.7.32 reality.",
+      "addressed": false
+    },
+    {
+      "id": "P2-004",
+      "severity": "P2",
+      "phase": "DESIGN",
+      "file": "desktop/src/components/effects/AuroraBackground.tsx:5-7",
+      "summary": "Stale comment claims a 'faint diagonal stripe pattern (18s linear) for living world depth' — the stripes were deleted in this same diff. Future readers will look for a missing layer.",
+      "evidence": "AuroraBackground.tsx:1-15 header comment still describes 'two layered radial gradient blobs drift in counter-direction (14s alternate) under a faint diagonal stripe pattern (18s linear)'. The render at line 17-23 only has lc-aurora-blobs. Brief acknowledged: 'Comments still mention the stripes — that's stale but not functional.' Confirmed.",
+      "reproduce": "cd ~/Desktop/jnr/desktop && sed -n '1,15p' src/components/effects/AuroraBackground.tsx | grep -i stripe",
+      "suggested_fix": "Trim the comment to: 'Two layered radial gradient blobs drift in counter-direction (14s alternate) — living-world depth without paid runtime. The diagonal-stripe overlay was removed in v0.7.32 as impeccable bans repeating-linear-gradient decoration.' Two-line surgical edit.",
+      "addressed": false
+    },
+    {
+      "id": "P1-005",
+      "severity": "P1",
+      "phase": "GREP",
+      "file": "multiple (see evidence)",
+      "summary": "Pattern-grep follow-up: the diff fixes 4 surfaces' yellow/green/blue palette, but the SAME #F59E0B amber pattern survives in 9+ other active surfaces. Calling this an 'impeccable audit pass' while these stand is half-done.",
+      "evidence": "grep -rEn '#(EAB308|FACC15|10B981|34D399|F59E0B|f59e0b|3B82F6|60A5FA)' desktop/src --include='*.tsx' --include='*.css' (excl. _backups) — 30+ matches in: src/components/schedule/ChannelPicker.tsx:186-198+265-272, src/components/schedule/ChannelRow.tsx:78+85, src/components/schedule/AddChannelModal.tsx:356, src/components/clips-feed/GridMasterToolbar.tsx:706+754, src/components/clips-feed/InlineScheduler.tsx:650+668, src/components/cockpit/AvatarOrbit.tsx:79, src/components/cockpit/ActivityOrbitParticles.tsx:12, src/components/cockpit/BottomCockpit.tsx:240, src/components/upload/DirectPublishQueue.tsx:416-417, src/components/upload/LocalQueue.tsx:251+500+589+631-632, src/components/workbench/AccountBindingChip.tsx:552+568, src/components/upload/ClipReadyCard.tsx:261, src/index.css:255+298-300 (earn deck amber tail). The brand-kit skill DOES sanction #F59E0B for warn states (\"Amber #f59e0b is allowed for warn/pending\"), so the diff's choice to retone Pill warning → fuchsia is actually TIGHTER than brand-kit policy — which is fine ONLY if it's done consistently. Today: Pill.tsx says warn=fuchsia, but 9+ schedule/cockpit/upload surfaces still paint warn=amber. The brand voice is now self-contradicting.",
+      "reproduce": "cd ~/Desktop/jnr/desktop && grep -rEn '#(EAB308|FACC15|10B981|34D399|F59E0B|f59e0b|3B82F6|60A5FA)' src --include='*.tsx' --include='*.ts' --include='*.css' | grep -v '_backups' | wc -l",
+      "suggested_fix": "Pick a policy and apply it everywhere in the same ship: EITHER (A) follow brand-kit literally — amber stays for warn/pending states, and Pill.tsx warning tone goes back to amber (#F59E0B), OR (B) follow the diff's stricter line — every #F59E0B in active src migrates to var(--color-warn) / var(--color-warn-soft) tokens with fuchsia-deep semantics. Option B is consistent with the diff's stated 'fuchsia-only restraint pattern'; option A is what the brand-kit skill currently says. Either way, the schedule/cockpit/upload surfaces must move in lockstep with Pill — otherwise the warn palette splits across the app.",
+      "addressed": false
+    },
+    {
+      "id": "P2-006",
+      "severity": "P2",
+      "phase": "DESIGN",
+      "file": "desktop/src/components/cockpit/LibraryCard.tsx:225",
+      "summary": "Internal StatusChip danger variant uses hardcoded #DC2626 hex — same color the diff just promoted to a CSS token. Consistency miss.",
+      "evidence": "Line 225: `bg-[#DC2626]/85 text-white shadow-[0_0_18px_rgba(220,38,38,0.5)]` — hardcoded. The diff added `--color-danger: #dc2626` precisely to centralise this hue (per Pill.tsx and bounty-fit.tsx). LibraryCard's StatusChip was not touched in the same pass. Same hardcoded #DC2626 also at LibraryCard.tsx:275 (RingButton destructive border/hover), FirstRun.tsx:230 (`text-[#DC2626]` for activation error), and ClipPreview-style error paths elsewhere.",
+      "reproduce": "cd ~/Desktop/jnr/desktop && grep -rn '#DC2626\\|#dc2626\\|220,38,38' src --include='*.tsx' --include='*.ts' --include='*.css' | grep -v '_backups'",
+      "suggested_fix": "Migrate the 4-5 hardcoded #DC2626 sites in active src to `var(--color-danger)` / `var(--color-danger-bright)` in the same commit. Otherwise the token addition is half-applied and a future colour change requires hunting all the inline hexes again.",
+      "addressed": false
+    },
+    {
+      "id": "P2-007",
+      "severity": "P2",
+      "phase": "STATE",
+      "file": "desktop/src/components/cockpit/LibraryCard.tsx:142-161",
+      "summary": "TR chip rule drops the previously-persistent 'Archived' chip and relies on `opacity-70` alone to signal archived state — but the archived card's wall reading is now `opacity-70 hover:opacity-100`, meaning archived cards look identical to ready cards on hover.",
+      "evidence": "Line 84: `${project.archived ? 'opacity-70 hover:opacity-100' : ''}`. On hover the archived card pops to opacity-100, indistinguishable from a normal card. Comment at line 144 claims 'card opacity already signals archived' — true at rest, false on hover. A user pointer-scanning the wall WILL hover-disambiguate, and the archived-ness vanishes precisely when they're paying most attention.",
+      "reproduce": "cd ~/Desktop/jnr/desktop && grep -n 'archived\\|opacity-70' src/components/cockpit/LibraryCard.tsx",
+      "suggested_fix": "Either (a) drop the hover:opacity-100 modifier so archived stays muted at all states, OR (b) add a small 'archived' eyebrow word into the hover overlay subtitle (similar to the P2-003 imported fix) so the hover-disambiguation surfaces the state instead of erasing it. Option (a) is the minimal change.",
+      "addressed": false
+    }
+  ],
+  "_legacy_v0_7_14_block_below_kept_for_audit_history": [
     {
       "id": "P0-A (prior cycle)",
       "title": "PlatformBadge orphan — no parent surface mounts it",
@@ -106,8 +221,8 @@
     "new_video_without_onError": "NONE — zero new <video> tags in diff",
     "new_direct_invoke_calls": "NONE — all sidecar calls route through sidecar.* wrappers"
   },
-  "verdict": "PASS",
-  "verdict_rationale": "All 5 prior P0/P1 BLOCK findings are RESOLVED with honest data-producer + UI-mount fixes that match the brief verbatim. method_apply_overlay_template + method_set_clip_platforms register, validate strictly, and handle the clear/None paths. ClipCard + ClipWindow render PlatformBadge with correct truthy gates. ClipPreview wires PlatformBadgePicker through sidecar.setClipPlatforms with proper humanError catch + onProjectChange threading. CANVAS_GRID_ROWS raise propagates symbolically through findFreeSlot + clampPos + WindowManager grid template. All mechanical gates (tsc/py_compile/smoke-embed/humanError) green. The two new findings (P2-1 cut-path silent-strand, P2-2 TikTok glyph) are soft — UI defends correctly with ?? [] coalescing and truthy-length gates, and the deferred K4-K7 + OverlayTemplateGallery items are pre-approved as the v0.7.15 punch-list. Installed app at /Applications/Liquid Clips.app reports 0.7.14 — ship signal aligned with working tree.",
+  "verdict": "BLOCK",
+  "verdict_rationale": "v0.7.32 impeccable audit pass — 2 P1 findings block ship: (P1-001) TrackedSubmissions's 6-tone status ladder is collapsed to 4 visible tones by the Pill retone with no compensating icon — submitted/approved/paid all paint identical fuchsia chips, breaking lifecycle disambiguation. (P1-002) `source_exists === false` on a `done` project is now silent at rest — the v0.7.8 'Source missing' eyebrow was dropped and the brief's claimed 'folded into In progress' is incorrect because the `!done` branch never fires for completed-but-source-moved projects. (P1-005) Pattern-grep shows 9+ schedule/cockpit/upload surfaces still paint #F59E0B amber for warn states — calling this 'impeccable' while half the warn palette stays amber and the other half is fuchsia means the brand voice contradicts itself. The 4 P2 findings (stale aurora comments, missing imported eyebrow, archived-on-hover indistinguishable, #DC2626 not migrated to token) are soft but should land in the same commit since they're identical-cost surgical edits. No iron-gate sentinels removed. No type errors. Vite build clean.",
   "v0_7_15_punch_list": [
     "P2-1 — Add `platforms: []` + `overlay_template: None` to llm.py:503 out_clips.append() so cut-from-source path matches import-pack record shape",
     "P2-2 — Replace 'T' Latin letter fallback for TikTok in PlatformBadge.tsx:49 + :103 with inline SVG monogram",
@@ -118,5 +233,6 @@
     "OverlayTemplateGallery — UI mount + wire onSelect → sidecar.applyOverlayTemplate (data layer already ready)",
     "F5 — sidecar auto-restart (60-90min Rust + TS, 1-retry cap)"
   ],
-  "ship_recommendation": "Ready to commit v0.7.14 and push pending Daniel's explicit approval per the No-push-until-confirmed rule. The Daniel-review build at /Applications/Liquid Clips.app is already at 0.7.14 ready for the live walk."
+  "ship_recommendation_legacy_v0_7_14": "Ready to commit v0.7.14 and push pending Daniel's explicit approval per the No-push-until-confirmed rule. The Daniel-review build at /Applications/Liquid Clips.app is already at 0.7.14 ready for the live walk.",
+  "ship_recommendation_v0_7_32": "Resolve P1-001 (Pill tone collapse breaking TrackedSubmissions ladder), P1-002 (silent source-missing on done projects), and P1-005 (warn-palette schism between Pill and 9+ schedule/cockpit/upload surfaces) BEFORE shipping. P2-003 + P2-004 + P2-006 + P2-007 are identical-cost surgical edits that should ride the same commit. None of the findings touch iron-gate sentinels or break the type-check / vite build."
 }

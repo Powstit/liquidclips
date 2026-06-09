@@ -632,7 +632,7 @@ function SchedulePopover({
         </div>
       ) : loadError ? (
         <div className="flex flex-col gap-2">
-          <p className="font-sans text-[12px] text-[#DC2626]">{loadError}</p>
+          <p className="font-sans text-[12px] text-[var(--color-danger)]">{loadError}</p>
           {onOpenSettings ? (
             <button
               type="button"
@@ -703,7 +703,7 @@ function SchedulePopover({
                   </span>
                   <span className="max-w-[140px] truncate">{c.label}</span>
                   {c.status !== "active" ? (
-                    <span className="ml-1 rounded-full bg-[#F59E0B]/20 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.08em] text-[#F59E0B]">
+                    <span className="ml-1 rounded-full bg-fuchsia-deep/20 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.08em] text-fuchsia-deep">
                       {c.status}
                     </span>
                   ) : null}
@@ -751,8 +751,8 @@ function SummaryToast({
     toast.variant === "ok"
       ? "border-fuchsia/40 bg-paper-warm/95"
       : toast.variant === "partial"
-        ? "border-[#F59E0B]/50 bg-[#F59E0B]/5"
-        : "border-[#DC2626]/50 bg-[#DC2626]/5";
+        ? "border-fuchsia-deep/50 bg-fuchsia-deep/5"
+        : "border-[var(--color-danger)]/50 bg-[var(--color-danger)]/5";
 
   const extra =
     toast.failed.length > toast.failureCap

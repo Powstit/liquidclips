@@ -1,5 +1,5 @@
-// ship-lens v0.7.8 L3 + L5: LibraryCard stops pretending half-broken projects are healthy "In progress" tiles — `pipeline_failed` flips the chip to red "Pipeline failed" (failed wins over in-progress), `source_exists === false` raises a muted "Source missing" eyebrow, and `whop_bounty_id` adds a fuchsia "Whop Bounty" chip (truncated, full-title tooltip).
-// ship-lens v0.7.7: fix #2a — imported packs render the same bug-glyph fallback as broken projects; add an "Imported · N clips" eyebrow + a distinct corner pip so the wall distinguishes the two states at a glance.
+// v0.7.32 — restored to the 11:00 screenshot reference (Daniel's "perfect example") after calm-wall drift. TL chip stack: pipeline_failed/Ready/In progress (first match) + Source missing eyebrow (if source_exists === false) + Imported · N (if imported). TR chip stack: Bounty + Archived + Reacted count (all stackable). Bottom meta overlay persistent at opacity-65, lifts to 100 on hover. Action row persistent at opacity-55, lifts to 100 on hover. Archived card opacity-70 at rest, full opacity on hover.
+// Prior history: v0.7.8 L3+L5 (pipeline_failed/source_exists/whop_bounty), v0.7.7 #2a (imported pip), v0.6.38 (persistent overlay + action row), v0.6.36 (transparent fallback).
 // v0.6.36 — LibraryCard.
 //
 // A single project tile on the Library wall. Transparent background, fuchsia
@@ -124,16 +124,13 @@ export function LibraryCard({
           </div>
         )}
 
-        {/* Status chips — float at the corners, only visible when relevant. */}
+        {/* TL chip stack — 11:00 screenshot reference: stacked vertically.
+            Row 1: terminal status — pipeline_failed (red) wins over Ready
+            wins over In progress. Row 2: Source missing eyebrow when the
+            cover file no longer exists on disk. Row 3: Imported · N clips
+            when the project was created via the import pipeline (so a user
+            can tell imported packs from cut-from-source packs at a glance). */}
         <div className="pointer-events-none absolute left-2 top-2 flex flex-col gap-1">
-          {/* v0.7.8 L3 — `pipeline_failed` is the strongest of the three
-              terminal states. Failed wins over "Ready" (a half-finished
-              run that errored on reframe still has clips on disk but is
-              not actually ready) and over "In progress" (a failure isn't
-              a "waiting" state — the user needs to know it stopped). The
-              chip's red accent matches the destructive Delete button so
-              the visual language is consistent across "something is
-              broken with this project." */}
           {project.pipeline_failed ? (
             <StatusChip danger>
               <AlertTriangle className="h-2.5 w-2.5" strokeWidth={2.4} />
@@ -144,30 +141,12 @@ export function LibraryCard({
           ) : (
             <StatusChip dim>In progress</StatusChip>
           )}
-          {/* v0.7.8 L3 — `source_exists === false` is a muted eyebrow, not
-              a chip in the bright row, because it's an "FYI" state, not a
-              "this is broken" state. The user moved the source file —
-              clips on disk still play, but a re-run won't work. We render
-              this BELOW the status chip so the priority ordering is:
-              what's broken first, then what's missing on disk, then
-              imported/archived metadata. `=== false` (not just falsy) so a
-              v0.7.7 cached summary missing the field stays silent. */}
           {project.source_exists === false && (
             <StatusChip dim>
               <FileWarning className="h-2.5 w-2.5" strokeWidth={2.4} />
               Source missing
             </StatusChip>
           )}
-          {/* v0.7.7 ship-lens fix #2a — imported packs land here without a
-              `cover_thumb_path` (Project.create_imported_pack at
-              python-sidecar/project.py:381 never writes one). Before this
-              fix, the wall rendered the same bug-glyph fallback for
-              imported-but-fine projects AND truly-broken projects, so
-              Daniel couldn't tell them apart at a glance. The pip chip is
-              persistent (not hover-only) so the distinction lands on the
-              calm wall reading, not just under cursor. Agent B is
-              generating real covers for imports in parallel; this badge
-              stays even after covers ship — provenance is useful signal. */}
           {project.imported && (
             <StatusChip>
               <Layers className="h-2.5 w-2.5" strokeWidth={2.4} />
@@ -175,15 +154,12 @@ export function LibraryCard({
             </StatusChip>
           )}
         </div>
+        {/* TR chip stack — 11:00 screenshot reference: stacked vertically.
+            Whop bounty earns the bright glow slot (Earn flywheel is the
+            highest-value signal). Archived chip carries the "this is in
+            storage" semantic separately from card opacity. Reacted count
+            shows the WandSparkles + count when the user has run reactions. */}
         <div className="pointer-events-none absolute right-2 top-2 flex flex-col items-end gap-1">
-          {/* v0.7.8 L5 — Whop bounty chip. ProjectLibrarySummary already
-              carries `whop_bounty_id` + `whop_bounty_title` from the
-              sidecar (no extra hydration). Fuchsia accent (Liquid Clips
-              brand) over the Whop trophy — bounty work is the Earn
-              flywheel, so it earns the bright slot. Title is truncated to
-              ~16 chars to keep the chip within the card width; the full
-              title sits in the hover tooltip via `title` attribute on the
-              wrapper span (StatusChip is presentational so we wrap it). */}
           {project.whop_bounty_id && (
             <span
               title={project.whop_bounty_title ?? "Whop Bounty"}
@@ -209,12 +185,10 @@ export function LibraryCard({
           )}
         </div>
 
-        {/* v0.6.38 — Persistent meta overlay (was hover-only). Always shows
-            the filename + clip count + edited date at the bottom — better
-            customer journey (you scan the wall without hovering) — but at
-            a calm 65% opacity at rest so the wall still reads as cinema
-            until you reach for one. Hover brings the overlay to full
-            opacity + lifts the gradient. */}
+        {/* Persistent meta overlay — 11:00 screenshot reference: filename +
+            clip count + edited date visible at rest (opacity-65), full on
+            hover. The calm-wall version hid this until hover; users prefer
+            scanning the wall without hovering. */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink/95 via-ink/55 to-transparent p-3 opacity-65 transition-opacity duration-300 group-hover:opacity-100">
           <h3 className="line-clamp-2 font-display text-[13px] font-semibold leading-tight tracking-[-0.01em] text-white">
             {project.source_filename}
@@ -225,9 +199,9 @@ export function LibraryCard({
         </div>
       </button>
 
-      {/* v0.6.38 — Persistent action row at low opacity (was hover-only).
-          Discoverable on the calm wall without hovering — Daniel's "simplicity
-          + customer journey" call. Full opacity on hover. */}
+      {/* Persistent action row — 11:00 screenshot reference: folder /
+          archive / delete icons visible at rest (opacity-55), full on
+          hover. Discoverable without hovering. */}
       <div className="library-card-actions absolute inset-x-1 bottom-1 flex items-center justify-end gap-1 opacity-55 transition-opacity duration-300 group-hover:opacity-100">
         <RingButton onClick={onOpenFolder} title={project.root} ariaLabel="Open folder">
           <FolderOpen className="h-3.5 w-3.5" strokeWidth={2} />
@@ -276,7 +250,7 @@ function StatusChip({
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] backdrop-blur-sm ${
         danger
-          ? "bg-[#DC2626]/85 text-white shadow-[0_0_18px_rgba(220,38,38,0.5)]"
+          ? "bg-[var(--color-danger)]/85 text-white shadow-[0_0_18px_rgba(220,38,38,0.5)]"
           : glow
           ? "bg-fuchsia/85 text-white shadow-[0_0_18px_rgba(255,26,140,0.6)]"
           : dim
@@ -326,7 +300,7 @@ function RingButton({
       aria-label={ariaLabel}
       className={`inline-flex h-7 w-7 items-center justify-center rounded-full border bg-paper/70 backdrop-blur-md transition-colors ${
         destructive
-          ? "border-line text-text-secondary hover:border-[#DC2626] hover:text-[#DC2626]"
+          ? "border-line text-text-secondary hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]"
           : "border-line text-text-secondary hover:border-fuchsia hover:text-fuchsia"
       } disabled:opacity-40`}
     >

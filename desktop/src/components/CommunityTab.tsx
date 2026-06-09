@@ -133,14 +133,14 @@ export function CommunityTab() {
         {openError && (
           <div
             role="alert"
-            className="mt-1 flex items-center justify-between gap-3 rounded-2xl border border-[#DC2626]/30 bg-[#DC2626]/10 px-3 py-2 font-mono text-[11px] text-[#DC2626]"
+            className="mt-1 flex items-center justify-between gap-3 rounded-2xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-3 py-2 font-mono text-[11px] text-[var(--color-danger)]"
           >
             <span className="min-w-0 flex-1 truncate">{openError.message}</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => go(openError.url)}
-                className="rounded-full border border-[#DC2626]/50 bg-transparent px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[#DC2626] transition-colors hover:bg-[#DC2626]/15"
+                className="rounded-full border border-[var(--color-danger)]/50 bg-transparent px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-danger)] transition-colors hover:bg-[var(--color-danger)]/15"
               >
                 Retry
               </button>

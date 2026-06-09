@@ -163,7 +163,7 @@ export function ManualBountyPrompt({
         </div>
       </div>
 
-      {error && <p className="mt-2 font-mono text-[11px] text-[#DC2626]">{error}</p>}
+      {error && <p className="mt-2 font-mono text-[11px] text-[var(--color-danger)]">{error}</p>}
 
       <div className="mt-3 flex items-center gap-2">
         <button

@@ -547,15 +547,15 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
           // instead of a permanent spinner.
           <div
             role="alert"
-            className="flex flex-col gap-2 rounded-xl border border-[#DC2626]/30 bg-[#DC2626]/10 px-3 py-2"
+            className="flex flex-col gap-2 rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-3 py-2"
           >
-            <p className="font-sans text-[12px] text-[#DC2626]">
+            <p className="font-sans text-[12px] text-[var(--color-danger)]">
               {connLoadState.message || "Couldn't read your connections — try again."}
             </p>
             <button
               type="button"
               onClick={() => void refreshConnections()}
-              className="inline-flex w-fit items-center gap-1 rounded-full border border-[#DC2626]/40 bg-paper px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-[#DC2626] hover:bg-[#DC2626]/10"
+              className="inline-flex w-fit items-center gap-1 rounded-full border border-[var(--color-danger)]/40 bg-paper px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
             >
               <RefreshCw className="h-3 w-3" />
               Refresh
@@ -645,9 +645,9 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
                       : view.kind === "paused"
                       ? "inline-flex items-center gap-2 rounded-full border border-text-tertiary/40 bg-text-tertiary/5 px-3 py-1.5 font-sans text-[12px] font-medium text-text-tertiary opacity-80"
                       : view.kind === "unlinked" || view.kind === "error"
-                      ? "inline-flex items-center gap-2 rounded-full border border-[#DC2626]/40 bg-[#DC2626]/10 px-3 py-1.5 font-sans text-[12px] font-medium text-[#DC2626] hover:bg-[#DC2626]/15"
+                      ? "inline-flex items-center gap-2 rounded-full border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-3 py-1.5 font-sans text-[12px] font-medium text-[var(--color-danger)] hover:bg-[var(--color-danger)]/15"
                       : // pending_link
-                        "inline-flex items-center gap-2 rounded-full border border-[#F59E0B]/40 bg-[#F59E0B]/10 px-3 py-1.5 font-sans text-[12px] font-medium text-[#F59E0B] hover:bg-[#F59E0B]/15"
+                        "inline-flex items-center gap-2 rounded-full border border-fuchsia-deep/40 bg-fuchsia-deep/10 px-3 py-1.5 font-sans text-[12px] font-medium text-fuchsia-deep hover:bg-fuchsia-deep/15"
                   }
                   title={
                     isActive
@@ -664,8 +664,8 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
                         : view.kind === "paused"
                         ? "grid h-5 w-5 place-items-center rounded-full bg-text-tertiary text-paper"
                         : view.kind === "unlinked" || view.kind === "error"
-                        ? "grid h-5 w-5 place-items-center rounded-full bg-[#DC2626] text-paper"
-                        : "grid h-5 w-5 place-items-center rounded-full bg-[#F59E0B] text-paper"
+                        ? "grid h-5 w-5 place-items-center rounded-full bg-[var(--color-danger)] text-paper"
+                        : "grid h-5 w-5 place-items-center rounded-full bg-fuchsia-deep text-paper"
                     }
                   >
                     {known ? (
@@ -732,7 +732,7 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
               return (
                 <span
                   key={typeof item === "string" ? item : item.id}
-                  className={over ? "text-[#DC2626]" : "text-text-tertiary"}
+                  className={over ? "text-[var(--color-danger)]" : "text-text-tertiary"}
                 >
                   {prettyPlatform(p).toUpperCase()} {caption.length}/{limit}
                 </span>
@@ -795,11 +795,11 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
       </button>
 
       {status.kind === "error" ? (
-        <p className="font-mono text-[11px] text-[#DC2626]">{status.message}</p>
+        <p className="font-mono text-[11px] text-[var(--color-danger)]">{status.message}</p>
       ) : null}
 
       {status.kind === "scheduled" && status.total > status.count ? (
-        <p className="font-mono text-[11px] text-[#DC2626]">
+        <p className="font-mono text-[11px] text-[var(--color-danger)]">
           Scheduled {status.count} of {status.total} {status.targetKind}
           {status.total === 1 ? "" : "s"} — the rest failed. Try again to retry the failures.
         </p>
@@ -848,7 +848,7 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
               {(diagnosis !== null || diagnoseError !== null) ? (
                 <div className="mt-2 rounded-lg border border-fuchsia/20 bg-paper px-2.5 py-2">
                   {diagnoseError ? (
-                    <p className="font-sans text-[11px] text-[#DC2626]">{diagnoseError}</p>
+                    <p className="font-sans text-[11px] text-[var(--color-danger)]">{diagnoseError}</p>
                   ) : (
                     <p className="font-sans text-[11px] text-ink">{diagnosis}</p>
                   )}

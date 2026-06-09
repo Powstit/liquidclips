@@ -218,7 +218,7 @@ export function LiftingProgress({
           {onCancel && (
             <button
               onClick={onCancel}
-              className="rounded-full border border-line bg-transparent px-3 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors hover:border-[#DC2626] hover:text-[#DC2626]"
+              className="rounded-full border border-line bg-transparent px-3 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]"
             >
               Cancel
             </button>

@@ -140,13 +140,13 @@ export function ChannelPicker({
     // channels.
     return (
       <div className="flex flex-col items-start gap-3">
-        <div className="flex items-start gap-2 rounded-xl border border-[#DC2626]/40 bg-[#DC2626]/5 px-4 py-3">
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#DC2626] mt-0.5" />
+        <div className="flex items-start gap-2 rounded-xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 px-4 py-3">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[var(--color-danger)] mt-0.5" />
           <div className="flex flex-col gap-0.5">
-            <p className="font-sans text-[12px] font-medium text-[#DC2626]">
+            <p className="font-sans text-[12px] font-medium text-[var(--color-danger)]">
               Couldn't load channels — open <strong>Schedule → Loadout</strong> to add one
             </p>
-            <p className="font-mono text-[10px] text-[#DC2626]/80">
+            <p className="font-mono text-[10px] text-[var(--color-danger)]/80">
               {loadError}
             </p>
           </div>
@@ -183,10 +183,10 @@ export function ChannelPicker({
   return (
     <div className="flex flex-col gap-3">
       {needsAttention > 0 && (
-        <div className="flex items-start gap-2 rounded-xl border border-[#F59E0B]/40 bg-[#F59E0B]/5 px-3 py-2">
-          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-[#F59E0B]" />
+        <div className="flex items-start gap-2 rounded-xl border border-fuchsia-deep/40 bg-fuchsia-deep/5 px-3 py-2">
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-fuchsia-deep" />
           <div className="flex flex-col gap-0.5">
-            <p className="font-sans text-[11px] font-medium text-[#F59E0B]">
+            <p className="font-sans text-[11px] font-medium text-fuchsia-deep">
               {needsAttention === 1
                 ? "1 channel needs attention before it can publish"
                 : `${needsAttention} channels need attention before they can publish`}
@@ -195,7 +195,7 @@ export function ChannelPicker({
               <button
                 type="button"
                 onClick={manageHandler}
-                className="self-start font-mono text-[10px] uppercase tracking-[0.12em] text-[#F59E0B]/90 underline-offset-2 hover:underline"
+                className="self-start font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep/90 underline-offset-2 hover:underline"
               >
                 Open Schedule → Channels
               </button>
@@ -262,15 +262,15 @@ function classifyStatus(channel: Channel): {
 
 const TONE_DOT: Record<StatusTone, string> = {
   ok: "bg-fuchsia shadow-[0_0_8px_rgba(255,26,140,0.7)]",
-  warn: "bg-[#F59E0B] shadow-[0_0_8px_rgba(245,158,11,0.7)]",
-  danger: "bg-[#DC2626] shadow-[0_0_8px_rgba(220,38,38,0.7)]",
+  warn: "bg-fuchsia-deep shadow-[0_0_8px_rgba(255,102,184,0.7)]",
+  danger: "bg-[var(--color-danger)] shadow-[0_0_8px_rgba(220,38,38,0.7)]",
   muted: "bg-text-tertiary",
 };
 
 const TONE_HANDLE: Record<StatusTone, string> = {
   ok: "text-text-tertiary",
-  warn: "text-[#F59E0B]",
-  danger: "text-[#DC2626]",
+  warn: "text-fuchsia-deep",
+  danger: "text-[var(--color-danger)]",
   muted: "text-text-tertiary",
 };
 

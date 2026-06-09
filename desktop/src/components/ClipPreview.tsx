@@ -577,7 +577,7 @@ export function ClipPreview({
                 already a focal point. */}
             {captionsFetchFailed && captionStyle && overlayLines.length === 0 && (
               <span
-                className="font-mono text-[10px] tracking-[0.08em] text-[#DC2626]"
+                className="font-mono text-[10px] tracking-[0.08em] text-[var(--color-danger)]"
                 title="getCaptions RPC failed. The MP4 still plays; only the live overlay preview is missing."
               >
                 captions overlay unavailable — try Apply again
@@ -912,7 +912,7 @@ export function ClipPreview({
               </div>
             </details>
 
-            {actionError && <p className="font-mono text-[12px] text-[#DC2626]">{actionError}</p>}
+            {actionError && <p className="font-mono text-[12px] text-[var(--color-danger)]">{actionError}</p>}
 
             {/* Primary action row — schedule + publish on the left (the
                 "ship it" beat), reveal + save copy on the right (utility).
@@ -1057,7 +1057,7 @@ export function ClipPreview({
                   role="status"
                   aria-live="polite"
                   className={`font-mono text-[11px] tracking-[0.04em] ${
-                    bottomToast.kind === "err" ? "text-[#DC2626]" : "text-fuchsia"
+                    bottomToast.kind === "err" ? "text-[var(--color-danger)]" : "text-fuchsia"
                   }`}
                 >
                   {bottomToast.msg}
@@ -1071,7 +1071,7 @@ export function ClipPreview({
                   Play in default app
                 </button>
                 <button onClick={remove} disabled={busy}
-                  className="ml-auto rounded-full border border-line bg-paper px-4 py-2 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary hover:border-[#DC2626] hover:text-[#DC2626] disabled:opacity-40">
+                  className="ml-auto rounded-full border border-line bg-paper px-4 py-2 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary hover:border-[var(--color-danger)] hover:text-[var(--color-danger)] disabled:opacity-40">
                   Remove
                 </button>
               </div>

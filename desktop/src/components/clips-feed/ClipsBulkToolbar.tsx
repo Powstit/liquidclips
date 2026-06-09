@@ -258,7 +258,7 @@ export function ClipsBulkToolbar({
       {layoutError && (
         <p
           role="alert"
-          className="basis-full rounded-md border border-[#DC2626]/30 bg-[#DC2626]/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[#DC2626]"
+          className="basis-full rounded-md border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--color-danger)]"
         >
           {layoutError}
         </p>

@@ -102,7 +102,7 @@ export function BountyDetail({
                 : <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />}
             </button>
             {briefOpenError && (
-              <div className="flex items-center gap-2 font-mono text-[11px] text-[#DC2626]">
+              <div className="flex items-center gap-2 font-mono text-[11px] text-[var(--color-danger)]">
                 <span>{briefOpenError}</span>
                 <button
                   onClick={async () => {

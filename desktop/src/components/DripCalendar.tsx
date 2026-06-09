@@ -122,7 +122,7 @@ export function DripCalendar({
 
         <div className="flex-1 overflow-auto p-6">
           {error && (
-            <p className="mb-4 font-mono text-[12px] text-[#DC2626]">{error}</p>
+            <p className="mb-4 font-mono text-[12px] text-[var(--color-danger)]">{error}</p>
           )}
           {!slots && !error && (
             <p className="font-mono text-[12px] text-text-tertiary">

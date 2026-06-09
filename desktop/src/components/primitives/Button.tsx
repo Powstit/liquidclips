@@ -34,7 +34,7 @@ const variants: Record<Variant, string> = {
   ghost:
     "border border-transparent text-text-secondary hover:text-ink hover:bg-paper-elev",
   danger:
-    "border border-[#DC2626]/50 bg-paper-elev text-[#F87171] hover:border-[#DC2626] hover:text-[#F87171]",
+    "border border-[var(--color-danger)]/50 bg-paper-elev text-[var(--color-danger-bright)] hover:border-[var(--color-danger)] hover:text-[var(--color-danger-bright)]",
 };
 
 export const Button = forwardRef<HTMLButtonElement, Props>(function Button(

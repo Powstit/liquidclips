@@ -22,6 +22,26 @@ from app.routes import admin, affiliate, analytics, auth_whop, campaigns, channe
 
 settings = get_settings()
 
+# Sentry — Layer 12 observability (v0.7.34). Init BEFORE FastAPI instantiation
+# so the FastAPI integration hooks the ASGI middleware. Empty DSN = no-op.
+if settings.sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.sentry_environment,
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        integrations=[
+            StarletteIntegration(transaction_style="endpoint"),
+            FastApiIntegration(transaction_style="endpoint"),
+        ],
+        # Don't ship PII to Sentry — user IDs are OK (they're opaque), but we
+        # never want request bodies or headers (which may contain JWTs).
+        send_default_pii=False,
+    )
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -56,6 +76,11 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_connect_status varchar NOT NULL DEFAULT 'none'",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_connect_payouts_enabled boolean NOT NULL DEFAULT false",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_connect_charges_enabled boolean NOT NULL DEFAULT false",
+        # v0.7.34 — Ayrshare 429 backoff. Set to a future timestamp when
+        # Ayrshare rate-limits us; reconcile/publish callers skip the API
+        # call while now() < this value. Cleared (set NULL) on the next
+        # successful Ayrshare response from that user.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS ayrshare_backoff_until timestamptz",
         # schedules — retry policy + postiz result columns added after it shipped
         "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS status varchar NOT NULL DEFAULT 'pending'",
         "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS postiz_post_id varchar",

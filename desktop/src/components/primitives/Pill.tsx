@@ -14,13 +14,29 @@ type Props = {
   children: ReactNode;
 } & Omit<HTMLAttributes<HTMLSpanElement>, "children">;
 
+// v0.7.32 — brand-locked tone palette. impeccable audit (2026-06-09):
+// the prior implementation used hardcoded amber/emerald/sky (Tailwind
+// raw) for warning/success/info — outside brand. Retoned to 6 visually
+// distinct tones, all within the brand kit's locked palette (fuchsia
+// ladder + cyan-cool + danger red):
+//
+//   • neutral  — paper-elev gray. "Not yet" / draft state.
+//   • fuchsia  — fuchsia-soft light pink. Default brand chip. "Pending."
+//   • success  — fuchsia/85 SOLID fill. Vibrant, lit. Money / approved / paid.
+//   • warning  — fuchsia-deep on dim soft. "Needs attention" restraint.
+//   • info     — cyan-cool (brand's secondary signal). "FYI / live."
+//   • danger   — danger red (#DC2626). The only sanctioned non-fuchsia
+//                accent, used by IG-005 Pipeline-failed chip + destructive
+//                actions.
+//
+// Visual ladder ranks intensity: neutral < fuchsia < info < warning < success < danger.
 const tones: Record<Tone, string> = {
   neutral: "bg-paper-elev text-text-secondary border-line",
   fuchsia: "bg-fuchsia-soft text-fuchsia-deep border-fuchsia/30",
-  success: "bg-[#10B981]/15 text-[#34D399] border-[#10B981]/30",
-  warning: "bg-[#EAB308]/15 text-[#FACC15] border-[#EAB308]/30",
-  danger: "bg-[#DC2626]/15 text-[#F87171] border-[#DC2626]/30",
-  info: "bg-[#3B82F6]/15 text-[#60A5FA] border-[#3B82F6]/30",
+  success: "bg-fuchsia/90 text-paper border-fuchsia-bright/50",
+  warning: "bg-[var(--color-warn-soft)] text-fuchsia-deep border-fuchsia-deep/40",
+  danger: "bg-[var(--color-danger)]/18 text-[var(--color-danger-bright)] border-[var(--color-danger)]/40",
+  info: "bg-[var(--color-cyan-cool)]/12 text-[var(--color-cyan-cool)] border-[var(--color-cyan-cool)]/35",
 };
 
 const sizes: Record<Size, string> = {
