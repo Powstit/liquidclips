@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
-import { onStageProgress, type Project, type StageName, type StageProgress } from "../lib/sidecar";
+import { onStageProgress, sidecar, type Project, type StageName, type StageProgress } from "../lib/sidecar";
 import { InvadersTrigger } from "./invaders/InvadersTrigger";
 
 type ProgressBlob = StageProgress;
@@ -94,13 +94,27 @@ function isAppleSilicon(): boolean {
   }
 }
 
-const STAGE_SPEED: Record<StageName, number> = isAppleSilicon()
-  ? STAGE_SPEED_APPLE_SILICON
-  : STAGE_SPEED_INTEL;
+// v0.7.45 P0-2 — sidecar-backed authoritative arch. Module-scope cache that
+// the component populates on mount via `sidecar.systemInfo()`. The heuristic
+// `isAppleSilicon()` above stays as the bootstrap value (used for the very
+// first paint before the RPC returns) and as the fallback if the RPC fails.
+// Net effect: a base-M1 Mac that the heuristic misclassified as Intel (8
+// cores, "Intel" in Tauri WebKit UA) corrects to the right factor within
+// ~50ms of the WorkingStage mount.
+let _archCached: "apple-silicon" | "intel" | null = null;
+
+function currentArch(): "apple-silicon" | "intel" {
+  if (_archCached) return _archCached;
+  return isAppleSilicon() ? "apple-silicon" : "intel";
+}
+
+function stageSpeed(): Record<StageName, number> {
+  return currentArch() === "apple-silicon" ? STAGE_SPEED_APPLE_SILICON : STAGE_SPEED_INTEL;
+}
 
 function etaSeconds(stage: StageName, duration: number): number {
   if (duration <= 0) return 0;
-  const factor = STAGE_SPEED[stage] ?? 5;
+  const factor = stageSpeed()[stage] ?? 5;
   return Math.max(2, Math.ceil(duration / factor));
 }
 
@@ -187,6 +201,31 @@ export function WorkingStage({
       void unlistenPromise.then((un) => un());
     };
   }, [currentStage, project.slug]);
+
+  // v0.7.45 P0-2 — prime the arch cache from the sidecar's authoritative
+  // platform.machine() once per component lifetime. The heuristic above
+  // stays as the bootstrap value (first ~50ms before this resolves) and as
+  // the fallback if the RPC fails. Triggers a re-render so the ETA refreshes
+  // with the correct speed multiplier.
+  const [_archTick, setArchTick] = useState(0);
+  useEffect(() => {
+    if (_archCached) return;
+    let cancelled = false;
+    void sidecar
+      .systemInfo()
+      .then((info) => {
+        if (cancelled) return;
+        _archCached = info.is_apple_silicon ? "apple-silicon" : "intel";
+        setArchTick((t) => t + 1);
+      })
+      .catch(() => {
+        // Leave _archCached unset → currentArch() keeps falling back to the
+        // heuristic. Don't toast — this is silent best-effort.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // P1 #9 — stall watchdog. Resets every time we get a progress event OR
   // the stage changes; if 90s pass without either, surface the message.

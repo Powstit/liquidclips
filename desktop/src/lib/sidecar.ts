@@ -178,14 +178,25 @@ export async function withTimeout<T>(p: Promise<T>, ms: number, method: string):
  *  `apply_overlay_to_clip` / cancel marker pattern in python-sidecar).
  *  The marker is shared across long-bake RPCs; cooperating sidecar methods
  *  clear it on the next start. Non-timeout failures rethrow unchanged. */
-export async function withCancelOnTimeout<T>(p: Promise<T>, ms: number, method: string): Promise<T> {
+/** v0.7.45 P0-1 fix — caller MUST pass `slug` so the cancel marker lands
+ *  at `<project.root>/.cancel` (the per-project marker `_check_canceled`
+ *  polls). Earlier version dropped `.lift_cancel` (global) which was
+ *  invisible to apply_overlay_to_clip + killed concurrent transcribes as
+ *  collateral. */
+export async function withCancelOnTimeout<T>(
+  p: Promise<T>,
+  ms: number,
+  method: string,
+  slug: string,
+): Promise<T> {
   try {
     return await withTimeout(p, ms, method);
   } catch (e) {
     if (e instanceof SidecarTimeoutError) {
-      // Best-effort: drop cancel marker so the still-running child aborts.
-      // Swallow failures — the timeout is already the user-visible error.
-      sidecarCall("lift_cancel", {}).catch(() => {});
+      // Best-effort: drop the PER-PROJECT cancel marker so the stuck ffmpeg
+      // aborts at its next poll. Swallow failures — the timeout is already
+      // the user-visible error.
+      sidecarCall("project_cancel", { slug }).catch(() => {});
     }
     throw e;
   }
@@ -806,6 +817,24 @@ export const sidecar = {
   reactionDownload: (item: ReactionSearchResult, query?: string) =>
     sidecarCall<{ path: string; item: Record<string, unknown> }>("reaction_download", { item, query }),
   hardwareInfo: () => sidecarCall<HardwareInfo>("hardware_info"),
+  // v0.7.45 P0-2 — authoritative arch detection. WorkingStage queries this
+  // once on mount and trusts it over the navigator UA + hardwareConcurrency
+  // heuristic, which lied on Tauri's WebKit (always "Intel Mac OS X") AND on
+  // base M1/M2 (8 cores → previously misclassified as Intel by the >=10 floor).
+  systemInfo: () =>
+    sidecarCall<{
+      machine: string;
+      system: string;
+      release: string;
+      is_apple_silicon: boolean;
+    }>("system_info"),
+  // v0.7.45 P0-1 — per-project cancel marker. Called by `withCancelOnTimeout`
+  // on apply_overlay / regenerate_clip timeout. Writes `<project.root>/.cancel`
+  // (the marker `_check_canceled(project)` polls). Replaces the wrong-marker
+  // `.lift_cancel` drop that was invisible to overlay bakes AND killed
+  // concurrent transcribes.
+  projectCancel: (slug: string) =>
+    sidecarCall<{ ok: boolean; marker?: string; error?: string }>("project_cancel", { slug }),
   preloadWhisper: () => sidecarCall<{ model: string; warmup_seconds: number }>("preload_whisper"),
   // v0.7.46 — matrix P0 #4 — `regenerate_clip` runs `stage_cut + stage_reframe
   // + stage_thumbs` end-to-end (subprocess ffmpeg + face-detect work). Without
@@ -819,6 +848,7 @@ export const sidecar = {
       sidecarCall<{ project: Project }>("regenerate_clip", { slug, idx, start, end }),
       180_000,
       "regenerate_clip",
+      slug,
     ),
   getCaptions: (slug: string, idx: number) =>
     sidecarCall<{
@@ -965,6 +995,7 @@ export const sidecar = {
       sidecarCall<{ project: Project }>("apply_overlay", { slug, idx, overlay }),
       180_000,
       "apply_overlay",
+      slug,
     ),
   // v0.7.14 — Kimi's OverlayTemplateGallery: 8 pre-made reaction layouts.
   // sourcePath optional: when omitted we persist the template choice on the
