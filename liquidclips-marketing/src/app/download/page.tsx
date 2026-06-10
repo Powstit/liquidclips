@@ -3,6 +3,7 @@ import Link from "next/link";
 import { PageShell } from "@/components/Chrome";
 import { DownloadCTA, DownloadMeta } from "@/components/DownloadCTA";
 import { supportEmail } from "@/lib/site";
+import { getLatestRelease } from "@/lib/latest-release";
 
 export const metadata: Metadata = {
   title: "Download Liquid Clips",
@@ -35,7 +36,17 @@ const requirements = [
   { label: "Disk", value: "~2 GB after install (models + ffmpeg bundled)" },
 ];
 
-export default function DownloadPage() {
+export default async function DownloadPage() {
+  // Fetch the latest GH release server-side. ISR-cached for 10 min.
+  // If fetch fails, latest is null and DownloadCTA falls back to env vars.
+  const latest = await getLatestRelease();
+  const artifacts = latest
+    ? {
+        macArm: latest.macArm ?? undefined,
+        macIntel: latest.macIntel ?? undefined,
+        macUniversal: latest.macUniversal ?? undefined,
+      }
+    : undefined;
   return (
     <PageShell>
       <main>
@@ -52,7 +63,7 @@ export default function DownloadPage() {
                 to be an app.
               </p>
               <div className="hero-actions">
-                <DownloadCTA variant="primary" />
+                <DownloadCTA variant="primary" artifacts={artifacts} />
                 <Link className="button-secondary" href="/#pricing">
                   See pricing
                 </Link>
@@ -167,7 +178,7 @@ export default function DownloadPage() {
                   Free includes 100 clip exports. No card, no trial timer.
                 </p>
               </div>
-              <DownloadCTA variant="primary" />
+              <DownloadCTA variant="primary" artifacts={artifacts} />
             </div>
           </div>
         </section>
