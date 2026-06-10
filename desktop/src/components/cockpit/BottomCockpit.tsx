@@ -27,7 +27,7 @@
 // Schedule one" header above the cards (integration-lens violation: that
 // duplicated cockpit Publish/Schedule).
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronDown,
@@ -113,6 +113,9 @@ export function BottomCockpit({
   const [reactionBakingAt, setReactionBakingAt] = useState<string | null>(null);
   const [whenKey, setWhenKey] = useState<WhenKey>("now");
   const [captionDrafts, setCaptionDrafts] = useState<Record<number, string>>({});
+  // v0.7.45 — Guard against concurrent caption saves and give the user
+  // feedback while the multi-clip blur loop is in flight.
+  const [savingCaption, setSavingCaption] = useState(false);
   // v0.7.29 — collapsed cockpit state, persisted so the user's preference
   // survives reloads. Toggle via the `\` chord or the chevron in the status
   // strip. Auto-collapse on bake start is intentional; auto-expand on bake
@@ -162,6 +165,14 @@ export function BottomCockpit({
   useEffect(() => {
     if (bakeState.phase === "error" && collapsed) setCollapsed(false);
   }, [bakeState.phase, collapsed, setCollapsed]);
+
+  // v0.7.45 — If ReactionControls unmounts mid-bake (modal opens, clip
+  // changes), the busy callback may never fire false. Reset the flag so the
+  // pending strip doesn't leak indefinitely.
+  useEffect(() => {
+    if (reactionBakingAt) setReactionBakingAt(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modalOpen, safeFocusedIdx]);
 
   // `\` chord toggles collapse. Bail when focus is in an input.
   useEffect(() => {
@@ -331,38 +342,40 @@ export function BottomCockpit({
                     isBulkMode={isBulkMode}
                     isMixedCaption={isMixedCaption}
                     hasClips={hasClips}
-                    busy={busy}
+                    busy={busy || savingCaption}
                     stylePrimary={activeCaptionStylePrimary}
                     styleLabel={activeCaptionStyleLabel}
                     onChange={(v) =>
                       setCaptionDrafts((p) => ({ ...p, [safeFocusedIdx]: v }))
                     }
                     onBlur={async (next) => {
-                      if (!hasClips) return;
+                      if (!hasClips || savingCaption) return;
                       // v0.7.45 — In "Mixed" bulk mode, an empty input means
                       // the user didn't type anything. Don't clear every
                       // selected clip's caption.
                       if (isMixedCaption && next === "") return;
+                      setSavingCaption(true);
                       let latest = project;
-                      for (const idx of effectiveIdxs) {
-                        const target = latest.clips[idx];
-                        if (!target) continue;
-                        if (next === (target.pinned_comment ?? "")) continue;
-                        try {
+                      try {
+                        for (const idx of effectiveIdxs) {
+                          const target = latest.clips[idx];
+                          if (!target) continue;
+                          if (next === (target.pinned_comment ?? "")) continue;
                           const r = await sidecar.updateClipMeta(project.slug, idx, { pinned_comment: next });
                           latest = r.project;
-                        } catch (err) {
-                          pushToast(`Pin save failed on clip ${idx + 1} — ${humanError(err).slice(0, 120)}`, "error");
-                          onProjectChange(latest);
-                          return;
                         }
+                        onProjectChange(latest);
+                        setCaptionDrafts((prev) => {
+                          const out = { ...prev };
+                          for (const idx of effectiveIdxs) delete out[idx];
+                          return out;
+                        });
+                      } catch (err) {
+                        pushToast(`Pin save failed — ${humanError(err).slice(0, 120)}`, "error");
+                        onProjectChange(latest);
+                      } finally {
+                        setSavingCaption(false);
                       }
-                      onProjectChange(latest);
-                      setCaptionDrafts((prev) => {
-                        const out = { ...prev };
-                        for (const idx of effectiveIdxs) delete out[idx];
-                        return out;
-                      });
                     }}
                     onOpenStyle={() => setPopover({ kind: "caption-style" })}
                     onOpenEdit={
@@ -382,9 +395,12 @@ export function BottomCockpit({
                         project={project}
                         onProjectChange={onProjectChange}
                         compact
-                        onBusyChange={(b) => {
-                          setReactionBakingAt(b ? new Date().toISOString() : null);
-                        }}
+                        onBusyChange={useCallback(
+                          (b: boolean) => {
+                            setReactionBakingAt(b ? new Date().toISOString() : null);
+                          },
+                          [],
+                        )}
                       />
                     )
                   ) : (
@@ -599,14 +615,17 @@ function StatusStrip({
     ? `${selectionSize} selected`
     : `CLIP ${(clipIdx + 1).toString().padStart(2, "0")}`;
 
-  const schedLabel =
-    whenKey === "now"
-      ? "Now"
-      : whenKey === "custom"
-      ? "Custom"
-      : whenKey === "+1h"
-      ? "+1h · 14:30"
-      : "+24h · tomorrow";
+  // v0.7.45 — Compute actual target times instead of hard-coding 14:30.
+  const schedLabel = useMemo(() => {
+    if (whenKey === "now") return "Now";
+    if (whenKey === "custom") return "Custom";
+    if (whenKey === "+1h") {
+      const t = new Date(Date.now() + 3600_000);
+      return `+1h · ${t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    }
+    const t = new Date(Date.now() + 86400_000);
+    return `+24h · ${t.toLocaleDateString([], { weekday: "short" })}`;
+  }, [whenKey]);
 
   return (
     <div className="flex flex-wrap items-center gap-3 px-5 py-2.5 border-b border-line/40 font-mono text-[10px] uppercase tracking-[0.16em]">
@@ -1069,11 +1088,31 @@ function SchedulePopoverInline({
    *  Connections in one click. */
   onConnectChannels?: () => void;
 }) {
+  const popoverRef = useRef<HTMLDivElement | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [when, setWhen] = useState<ScheduleWhen>(initialWhen ?? { kind: "now" });
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+
+  // v0.7.45 — Escape and outside-click teardown so the popover doesn't
+  // visually trap the user when they click elsewhere in the app.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    function onPointerDown(e: PointerEvent) {
+      const node = popoverRef.current;
+      if (!node) return;
+      if (!node.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [onClose]);
 
   useEffect(() => {
     if (initialWhen) setWhen(initialWhen);
@@ -1100,7 +1139,7 @@ function SchedulePopoverInline({
   }, []);
 
   return (
-    <div className="m-3 rounded-md border border-fuchsia/30 bg-paper-warm/95 p-3 shadow-[0_18px_44px_rgba(11,11,16,0.45)]">
+    <div ref={popoverRef} className="m-3 rounded-md border border-fuchsia/30 bg-paper-warm/95 p-3 shadow-[0_18px_44px_rgba(11,11,16,0.45)]">
       <div className="mb-2 flex items-baseline justify-between">
         <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia-deep">
           {forcedNow ? "Publish now — pick channels" : "Schedule — channels + when"}
