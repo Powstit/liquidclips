@@ -5,6 +5,7 @@ import { PlayCircle, PauseCircle, Volume2, VolumeX } from "lucide-react";
 import { sidecar, RATIOS, type OverlayType, type Project, type RatioKey } from "../../lib/sidecar";
 import { LayoutIcon, LAYOUTS, type LayoutKey } from "./LayoutIcon";
 import { pickOverlaySource } from "../OverlaySourcePicker";
+import { useReactionBakeProgress } from "../../lib/useReactionBakeProgress";
 
 // Bulk actions that apply across every clip in the project. Lives directly
 // above the grid. Stays simple — three actions, no nested submenus.
@@ -73,33 +74,15 @@ export function ClipsBulkToolbar({
       : Math.round(project.clips.reduce((a, c) => a + (c.virality ?? 0), 0) / project.clips.length);
   const totalSec = project.clips.reduce((a, c) => a + (c.end - c.start), 0);
 
-  // ⌘W-style keyboard trap fix for the layout menu — was onMouseLeave-only.
-  // Mirrors ClipCard's ⋮ menu fix: Esc closes + click-outside closes +
-  // aria-expanded on the trigger. Keyboard-only users could otherwise
-  // open the menu and have no escape.
-  useEffect(() => {
-    if (!layoutMenu) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setLayoutMenu(false);
-        menuButtonRef.current?.focus();
-      }
-    }
-    function onPointer(e: PointerEvent) {
-      const t = e.target as Node | null;
-      if (!t) return;
-      if (menuPanelRef.current?.contains(t)) return;
-      if (menuButtonRef.current?.contains(t)) return;
-      setLayoutMenu(false);
-    }
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("pointerdown", onPointer);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("pointerdown", onPointer);
-    };
-  }, [layoutMenu]);
+  // P1 #11 — per-clip bake progress for the multi-clip applyLayoutToAll loop.
+  // N clips × ~10s ffmpeg per clip could spin silently for minutes; this hook
+  // surfaces the sidecar's overlay_progress event so the toolbar can render a
+  // mono "Baking N of M…" + bar. Also track the N-of-M index ourselves since
+  // the sidecar's pct is per-bake, not per-batch.
+  const { progress: bakeProgress, start: startBakeProgress, stop: stopBakeProgress } =
+    useReactionBakeProgress();
+  const [batchCurrent, setBatchCurrent] = useState(0);
+  const [batchTotal, setBatchTotal] = useState(0);
 
   async function applyLayoutToAll(kind: LayoutKey) {
     setLayoutMenu(false);
@@ -122,8 +105,16 @@ export function ClipsBulkToolbar({
         if (pick.kind === "cancel") return;
         pickedPath = pick.path;
       }
+      // P1 #11 — start listening for sidecar overlay_progress events so the
+      // mono progress row below the menu can show per-bake pct alongside the
+      // batch counter ("Baking 3 of 12 · 47%"). Stops in finally.
       let current = project;
-      for (let i = 0; i < current.clips.length; i++) {
+      const total = current.clips.length;
+      setBatchTotal(total);
+      setBatchCurrent(0);
+      await startBakeProgress();
+      for (let i = 0; i < total; i++) {
+        setBatchCurrent(i + 1);
         const spec =
           kind === "none"
             ? null
@@ -143,6 +134,9 @@ export function ClipsBulkToolbar({
         window.setTimeout(() => setLayoutError(null), 6000);
       }
     } finally {
+      stopBakeProgress();
+      setBatchCurrent(0);
+      setBatchTotal(0);
       setBusy(false);
     }
   }
@@ -254,6 +248,31 @@ export function ClipsBulkToolbar({
           )}
         </div>
       </div>
+
+      {/* P1 #11 — bulk-bake progress strip. Shows N-of-M index + per-bake pct
+          from the sidecar's overlay_progress event so a minutes-long batch
+          isn't silent. Hides when no batch in flight. */}
+      {batchTotal > 0 && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="basis-full space-y-1 rounded-md border border-fuchsia/30 bg-fuchsia-soft/15 px-3 py-1.5"
+        >
+          <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
+            <span>
+              Baking {batchCurrent} of {batchTotal}
+              {bakeProgress?.ratio ? ` · ${bakeProgress.ratio}` : ""}…
+            </span>
+            <span>{bakeProgress?.pct ?? 0}%</span>
+          </div>
+          <div className="h-1 w-full overflow-hidden rounded-full bg-paper">
+            <div
+              className="h-full rounded-full bg-fuchsia transition-all duration-300"
+              style={{ width: `${bakeProgress?.pct ?? 0}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {layoutError && (
         <p

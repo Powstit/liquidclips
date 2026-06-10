@@ -28,6 +28,7 @@ import { openSmart as openExternal } from "../../lib/openSmart";
 import { AlertTriangle, Check, Copy, MessageSquare, MoreVertical, Sparkles, Trash2 } from "lucide-react";
 import type { Clip, OverlayType, Project, RatioKey } from "../../lib/sidecar";
 import { sidecar } from "../../lib/sidecar";
+import { useReactionBakeProgress } from "../../lib/useReactionBakeProgress";
 import { type LayoutKey } from "./LayoutIcon";
 import { pickOverlaySource } from "../OverlaySourcePicker";
 import { BountyFitPill } from "../earn/bounty-fit";
@@ -126,6 +127,12 @@ export function ClipCard({
   // Now we surface the message + a Reveal-in-Finder button so the clipper
   // can act. Null while the video is healthy.
   const [videoError, setVideoError] = useState<string | null>(null);
+  // P1 #12 — sidecar overlay_progress wired into the card so the fast-path
+  // applyLayout (which kicks off a ~5-30s ffmpeg bake) is no longer silent.
+  // Mirrors ReactionControls' pattern: start before applyOverlay, stop in
+  // finally. The inline strip renders below the existing cockpitError slot.
+  const { progress: bakeProgress, start: startBakeProgress, stop: stopBakeProgress } =
+    useReactionBakeProgress();
   const videoRef = useRef<HTMLVideoElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLDivElement>(null);
@@ -212,6 +219,10 @@ export function ClipCard({
     if (busy) return;
     setBusy(true);
     setCockpitError(null);
+    // P1 #12 — start the overlay_progress listener so the inline strip can
+    // render per-bake pct + ratio while ffmpeg runs. Pickers run BEFORE the
+    // bake starts so it's safe to attach now and stop in finally.
+    await startBakeProgress();
     try {
       if (kind === "none") {
         const r = await sidecar.applyOverlay(slug, index - 1, null);
@@ -234,6 +245,7 @@ export function ClipCard({
       setCockpitError(`Layout swap failed — ${msg.slice(0, 90)}`);
       window.setTimeout(() => setCockpitError(null), 4500);
     } finally {
+      stopBakeProgress();
       setBusy(false);
     }
   }
@@ -655,6 +667,35 @@ export function ClipCard({
           >
             {cockpitError}
           </p>
+        )}
+
+        {/* P1 #12 — fast-path applyLayout bake progress. Inline tiny strip so
+            the user sees the ffmpeg pass instead of a spinning Reaction
+            button. Hides when no bake in flight or after the sidecar emits
+            stage "done". */}
+        {bakeProgress && bakeProgress.stage !== "done" && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mt-1 space-y-1 rounded-md border border-fuchsia/30 bg-fuchsia-soft/15 px-2.5 py-1"
+          >
+            <div className="flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.12em] text-fuchsia-deep">
+              <span>
+                {bakeProgress.stage === "starting"
+                  ? "Starting bake…"
+                  : bakeProgress.ratio
+                  ? `Baking ${bakeProgress.ratio}…`
+                  : "Baking…"}
+              </span>
+              <span>{bakeProgress.pct}%</span>
+            </div>
+            <div className="h-1 w-full overflow-hidden rounded-full bg-paper">
+              <div
+                className="h-full rounded-full bg-fuchsia transition-all duration-300"
+                style={{ width: `${bakeProgress.pct}%` }}
+              />
+            </div>
+          </div>
         )}
       </div>
 
