@@ -338,7 +338,7 @@ export function ClipCard({
 
   return (
     <article
-      className={`library-card relative${ringClass}`}
+      className={`group/clipcard library-card relative${ringClass}`}
       onClick={handleCardClick}
       aria-selected={selectable ? !!selected : undefined}
     >
@@ -522,7 +522,7 @@ export function ClipCard({
           inside a propagation-stop div under selectable mode. The display
           chrome above is the only visible surface. */}
       <div
-        className="hidden"
+        className="opacity-0 group-hover/clipcard:opacity-100 transition-opacity"
         onClick={selectable ? (e) => e.stopPropagation() : undefined}
       >
         <div className="flex flex-wrap items-center gap-2">
