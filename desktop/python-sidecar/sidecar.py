@@ -582,6 +582,41 @@ def method_finalize_delete_project(params: dict[str, Any]) -> dict[str, Any]:
     return {"slug": slug, "finalized": True, "removed": removed}
 
 
+def method_library_bulk_delete(params: dict[str, Any]) -> dict[str, Any]:
+    """Permanently delete multiple projects by slug.
+
+    Skips the tombstone trio — this is for bulk purge where a per-project
+    5s undo window would be unmanageable. The UI confirms once before calling.
+    Reuses the same path-safety validator as the legacy delete_project.
+    Returns per-slug results so the UI can report partial failures."""
+    import shutil
+    raw_slugs = params.get("slugs")
+    if not isinstance(raw_slugs, list) or not raw_slugs:
+        raise ValueError("library_bulk_delete requires `slugs` (non-empty list of strings)")
+    results: list[dict[str, Any]] = []
+    deleted = 0
+    failed = 0
+    for raw in raw_slugs:
+        slug = raw if isinstance(raw, str) else ""
+        if not slug:
+            results.append({"slug": str(raw), "deleted": False, "error": "invalid slug"})
+            failed += 1
+            continue
+        try:
+            _projects_root, proj_dir = _resolve_project_slug(slug)
+            if not proj_dir.is_dir():
+                results.append({"slug": slug, "deleted": False, "error": "project not found"})
+                failed += 1
+                continue
+            shutil.rmtree(proj_dir)
+            results.append({"slug": slug, "deleted": True, "error": None})
+            deleted += 1
+        except Exception as e:
+            results.append({"slug": slug, "deleted": False, "error": f"{type(e).__name__}: {e}"})
+            failed += 1
+    return {"deleted": deleted, "failed": failed, "results": results}
+
+
 def method_list_bounty_projects(_params: dict[str, Any]) -> dict[str, Any]:
     """List local projects linked to a Whop bounty, newest first. Powers the
     Earn → In progress tab so a clipper can resume bounty work. Reads each
@@ -3334,6 +3369,7 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "request_delete_project": method_request_delete_project,
     "undo_delete_project": method_undo_delete_project,
     "finalize_delete_project": method_finalize_delete_project,
+    "library_bulk_delete": method_library_bulk_delete,
     "list_bounty_projects": method_list_bounty_projects,
     "get_metadata": method_get_metadata,
     "secrets_status": method_secrets_status,

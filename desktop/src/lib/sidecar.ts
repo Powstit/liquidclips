@@ -1073,6 +1073,13 @@ export const sidecar = {
       total_usd: number;
       count: number;
     }>("thumbnail_ledger", {}),
+  // v0.7.32 — Bulk library delete. No tombstone; the UI confirms once.
+  libraryBulkDelete: (slugs: string[]) =>
+    sidecarCall<{
+      deleted: number;
+      failed: number;
+      results: { slug: string; deleted: boolean; error: string | null }[];
+    }>("library_bulk_delete", { slugs }),
 };
 
 /** A clip that's already cut + ready to schedule/publish directly, without
@@ -1274,6 +1281,18 @@ export type LiftProgress = {
 
 export function onLiftProgress(cb: (p: LiftProgress) => void): Promise<UnlistenFn> {
   return listen<LiftProgress>("sidecar:lift_progress", (ev) => cb(ev.payload));
+}
+
+// v0.7.32 — Reaction / overlay bake progress.
+export type OverlayProgress = {
+  stage: "starting" | "baking" | "done";
+  ratio?: string;
+  pct: number;
+  total?: number;
+};
+
+export function onOverlayProgress(cb: (p: OverlayProgress) => void): Promise<UnlistenFn> {
+  return listen<OverlayProgress>("sidecar:overlay_progress", (ev) => cb(ev.payload));
 }
 
 export type DripSlot = {
