@@ -76,6 +76,15 @@ pub fn run() {
     install_native_panic_hook();
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        // tauri-plugin-opener is the correct plugin for opening filesystem
+        // paths (project folders, files in Finder, etc). shell.open enforces
+        // a strict URL regex (`^((mailto:\w+)|(tel:\w+)|(https?://\w+)).+`),
+        // so feeding it a `/Users/...` path raised a red "scoped command
+        // argument failed regex validation" banner the moment the user
+        // clicked the Library card's folder icon. The capability file already
+        // grants `opener:default` + `opener:allow-open-url`; the plugin just
+        // wasn't being mounted on the Rust builder. Fix in v0.7.45.
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_clipboard_manager::init())

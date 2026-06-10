@@ -1,6 +1,10 @@
 // ship-lens v0.7.8: S1 — performSignOut now atomic-wipes every sensitive secret via performAtomicSignOutWipe (centralised in App.tsx) so handing the Mac to someone else doesn't leak OpenAI / Anthropic / Whop / Pexels / Pixabay / Giphy / onboarded keys; the Log-out confirm copy names the API-key clear explicitly. S2 — 5th left-rail tab "Connections" mounts AyrshareConnectionPanel + a per-channel status list (linked / pending_link / unlinked / error) sourced from listChannels() + whopSessionStatus(); Whop session source and Ayrshare profile-key presence both surface in the same pane. S3 — API-keys pane reads sidecar.openaiKeyStatus() on mount so the OPENAI_API_KEY green dot ALSO lights when the key is resolved via env-var (keychain empty was a silent UI lie). v0.7.7 carry-over: fix #9 meStatus discriminated union for expired sessions.
 import { useEffect, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
+// v0.7.45 — `openSmart` is used for filesystem-path opens (the "Open in
+// Finder" chip below). Plain `shell.open` rejects `/Users/...` paths
+// against its built-in mailto/tel/https regex and surfaces a red banner.
+import { openSmart } from "../lib/openSmart";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -563,7 +567,11 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
               active={false}
               onClick={() => {
                 if (!home) return;
-                void openExternal(`${home}/LiquidClips`);
+                // v0.7.45 — Was `openExternal` (shell plugin); the
+                // `/Users/.../LiquidClips` path failed shell's URL regex and
+                // raised a red banner. `openSmart` routes paths through
+                // the opener plugin instead.
+                void openSmart(`${home}/LiquidClips`);
               }}
               disabled={!home}
             >

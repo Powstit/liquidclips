@@ -35,7 +35,10 @@
 //   Cmd+`          → cycle focus (macOS muscle memory)
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+// v0.7.45 — `openSmart` replaces shell.open for "Reveal in Finder" + "Play
+// in default app" context-menu actions below. Both feed `/Users/...`
+// paths; shell.open's URL regex was rejecting them with a scope error.
+import { openSmart as openExternal } from "../../lib/openSmart";
 import { useWorkbenchStore } from "./useWorkbenchStore";
 import { ClipWindow } from "./ClipWindow";
 import { ClipEditDrawer } from "./ClipEditDrawer";
