@@ -36,7 +36,7 @@ const SIDECAR_CALL_TIMEOUT_SECS: u64 = 3600;
 // bug that would otherwise restart-loop forever. After the cap is hit we
 // stop trying and reject every pending + future RPC with `sidecar_exhausted`
 // so the UI can surface a "needs app restart" surface.
-const SIDECAR_RESTART_CAP: u32 = 1;
+const SIDECAR_RESTART_CAP: u32 = 3;
 
 #[derive(Serialize)]
 struct Request<'a> {
@@ -331,7 +331,7 @@ fn spawn_child(
 
             // Decide restart vs. exhaustion BEFORE draining so we pick the
             // right error payload for in-flight callers.
-            let should_restart = {
+            let (should_restart, attempt) = {
                 let mut count = restart_count.lock().await;
                 if *count < SIDECAR_RESTART_CAP {
                     *count += 1;
@@ -339,13 +339,13 @@ fn spawn_child(
                         "[sidecar] respawning (attempt {}/{})",
                         *count, SIDECAR_RESTART_CAP
                     );
-                    true
+                    (true, *count)
                 } else {
                     eprintln!(
                         "[sidecar] restart cap reached ({}/{}); marking exhausted",
                         *count, SIDECAR_RESTART_CAP
                     );
-                    false
+                    (false, *count)
                 }
             };
 
@@ -373,6 +373,16 @@ fn spawn_child(
             }
 
             if should_restart {
+                // Backoff: 1s before attempt 2, 3s before attempt 3.
+                let delay_secs = match attempt {
+                    2 => 1,
+                    3 => 3,
+                    _ => 0,
+                };
+                if delay_secs > 0 {
+                    eprintln!("[sidecar] backing off {}s before respawn", delay_secs);
+                    tokio::time::sleep(Duration::from_secs(delay_secs)).await;
+                }
                 // Respawn. On success the new stdin replaces the old one
                 // inside SidecarState via the global STDIN_HOLDER (a
                 // OnceLock pointing at the same Arc<Mutex<ChildStdin>> the
