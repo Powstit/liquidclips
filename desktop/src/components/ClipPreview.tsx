@@ -61,6 +61,7 @@ export function ClipPreview({
   onNavigate,
   onPublish,
   initialCaptionsOpen = false,
+  initialScrollTo,
 }: {
   clip: Clip;
   index: number;
@@ -77,6 +78,10 @@ export function ClipPreview({
   /** Open the Captions drawer on mount. Set when the user clicks the
    * captions chip on a ResultsGrid card. */
   initialCaptionsOpen?: boolean;
+  /** v0.7.45 — Scroll to a specific section on mount. "reaction" scrolls
+   * the Reaction Studio into view; "captions" is handled via
+   * initialCaptionsOpen. */
+  initialScrollTo?: "reaction";
 }) {
   // v0.7.5: ClipPreview is MODAL-ONLY. The former "window" mode lived inside
   // every workbench tile and dumped a 1180-px-wide editor inside a 240-px
@@ -273,6 +278,18 @@ export function ClipPreview({
       });
     return () => { cancelled = true; };
   }, [slug, index, clip.vertical_path, videoCacheBuster]);
+
+  // v0.7.45 — Scroll to requested section on mount.
+  useEffect(() => {
+    if (initialScrollTo === "reaction") {
+      const el = document.getElementById("reaction-studio");
+      if (el) {
+        // Small delay so the modal layout has settled.
+        const t = setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [initialScrollTo]);
 
   // v0.7.25 — Auto-persist of audio + offset moved into ReactionControls.
   // The component owns the debounced applyOverlay write whether mounted in
