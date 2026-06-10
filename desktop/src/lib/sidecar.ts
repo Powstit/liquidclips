@@ -169,6 +169,28 @@ export async function withTimeout<T>(p: Promise<T>, ms: number, method: string):
   }
 }
 
+/** v0.7.46 — matrix P0 #6 — `withTimeout` rejects the JS promise on timeout
+ *  but the sidecar's ffmpeg / subprocess child keeps running. Every
+ *  subsequent call then queues behind the stuck job, silently swallowing
+ *  user retries. `withCancelOnTimeout` wraps `withTimeout` and, on
+ *  timeout-only, drops the shared `.lift_cancel` marker as best-effort so
+ *  the still-running sidecar work aborts at its next poll (see
+ *  `apply_overlay_to_clip` / cancel marker pattern in python-sidecar).
+ *  The marker is shared across long-bake RPCs; cooperating sidecar methods
+ *  clear it on the next start. Non-timeout failures rethrow unchanged. */
+export async function withCancelOnTimeout<T>(p: Promise<T>, ms: number, method: string): Promise<T> {
+  try {
+    return await withTimeout(p, ms, method);
+  } catch (e) {
+    if (e instanceof SidecarTimeoutError) {
+      // Best-effort: drop cancel marker so the still-running child aborts.
+      // Swallow failures — the timeout is already the user-visible error.
+      sidecarCall("lift_cancel", {}).catch(() => {});
+    }
+    throw e;
+  }
+}
+
 export class SidecarCrashedError extends Error {
   exit_code: number | null;
   constructor(exit_code: number | null) {
@@ -785,8 +807,19 @@ export const sidecar = {
     sidecarCall<{ path: string; item: Record<string, unknown> }>("reaction_download", { item, query }),
   hardwareInfo: () => sidecarCall<HardwareInfo>("hardware_info"),
   preloadWhisper: () => sidecarCall<{ model: string; warmup_seconds: number }>("preload_whisper"),
+  // v0.7.46 — matrix P0 #4 — `regenerate_clip` runs `stage_cut + stage_reframe
+  // + stage_thumbs` end-to-end (subprocess ffmpeg + face-detect work). Without
+  // a JS-side cap the Re-cut button could hang the UI forever on a stuck
+  // ffmpeg child. 180s mirrors `apply_overlay`'s ceiling — well within the 1h
+  // Rust safety net — and `withCancelOnTimeout` drops the shared cancel marker
+  // on timeout so the sidecar work aborts at its next poll and subsequent
+  // calls don't queue behind a stuck job.
   regenerateClip: (slug: string, idx: number, start: number, end: number) =>
-    sidecarCall<{ project: Project }>("regenerate_clip", { slug, idx, start, end }),
+    withCancelOnTimeout(
+      sidecarCall<{ project: Project }>("regenerate_clip", { slug, idx, start, end }),
+      180_000,
+      "regenerate_clip",
+    ),
   getCaptions: (slug: string, idx: number) =>
     sidecarCall<{
       idx: number;
@@ -923,7 +956,12 @@ export const sidecar = {
     // input. Mirror liftTranscript's withTimeout pattern so the UI surfaces
     // a typed SidecarTimeoutError + humanError() lands a real toast instead
     // of an infinite spinner.
-    withTimeout(
+    // v0.7.46 — matrix P0 #6 — switch from `withTimeout` to
+    // `withCancelOnTimeout`: on JS-side timeout we drop the shared cancel
+    // marker so the sidecar's `apply_overlay_to_clip` aborts its in-progress
+    // ffmpeg at the next poll, instead of leaving the child running and
+    // every subsequent applyOverlay queued behind it.
+    withCancelOnTimeout(
       sidecarCall<{ project: Project }>("apply_overlay", { slug, idx, overlay }),
       180_000,
       "apply_overlay",
