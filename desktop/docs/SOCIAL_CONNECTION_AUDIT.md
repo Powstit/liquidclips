@@ -9,7 +9,7 @@
 ✓ 4 of 6 surfaces propagate state changes correctly
 ✓ 5 of 6 surfaces honor worst-of broken state
 
-Drift bugs found: 1 — fixed in commits listed below.
+Drift bugs found: 1 — fixed in commit `f88a7c8`.
 Out of scope items flagged for Daniel: 2.
 
 ---

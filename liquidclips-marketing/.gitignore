@@ -3,3 +3,6 @@ node_modules
 out
 .env*
 !.env.example
+
+# Sentry — source map auth token (never commit)
+.env.sentry-build-plugin
