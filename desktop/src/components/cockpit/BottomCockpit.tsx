@@ -444,10 +444,10 @@ export function BottomCockpit({
                 busy={busy}
                 initialWhen={whenKeyAsScheduleWhen}
                 onConnectChannels={() => {
-                  // Route to Settings + auto-select Connections tab.
-                  // The window event is heard by Settings.tsx (Bug 1 fix).
+                  // Route to Schedule → Channels (canonical surface since v0.7.40).
+                  // Settings.tsx hears the event and calls onOpenSchedule("channels").
                   window.dispatchEvent(
-                    new CustomEvent("lc:settings-open-tab", { detail: { tab: "connections" } }),
+                    new CustomEvent("lc:settings-open-tab", { detail: { tab: "channels" } }),
                   );
                   if (onOpenSettings) onOpenSettings();
                 }}

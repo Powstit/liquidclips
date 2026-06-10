@@ -81,7 +81,9 @@ const CATEGORY_ICONS: Record<SettingsCategory, React.ComponentType<{ className?:
 
 export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: { onClose: () => void; onSignOut?: () => void; onOpenSchedule?: (subtab?: "queue" | "channels" | "analytics") => void; tier?: Tier }) {
   const { resolved } = useTier();
-  void onOpenSchedule; // prop retained for backward compat; Connections tab removed in v0.7.40
+  // onOpenSchedule is used by the lc:settings-open-tab listener for the
+  // "channels" route (Schedule → Channels), which replaced Settings → Connections
+  // in v0.7.40.
   const [secrets, setSecrets] = useState<Record<SecretName, boolean> | null>(null);
   // v0.7.8 S3 — openaiKeyStatus reports "is there ANY resolvable OpenAI key"
   // (env var → keychain → dev file). Pre-fix Settings only checked the
@@ -116,15 +118,22 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
   // Routes users straight to Connections without a manual tab hunt.
   useEffect(() => {
     function onOpenTab(e: Event) {
-      const ce = e as CustomEvent<{ tab?: SettingsCategory }>;
+      const ce = e as CustomEvent<{ tab?: string }>;
       const tab = ce.detail?.tab;
-      if (tab && (["account", "keys", "about", "diagnostics"] as SettingsCategory[]).includes(tab)) {
-        setCategory(tab);
+      // v0.7.42 social-audit fix — "channels" routes to Schedule → Channels
+      // (the canonical surface since Settings → Connections was removed).
+      if (tab === "channels") {
+        onOpenSchedule?.("channels");
+        onClose();
+        return;
+      }
+      if (tab && (["account", "keys", "about", "diagnostics"] as SettingsCategory[]).includes(tab as SettingsCategory)) {
+        setCategory(tab as SettingsCategory);
       }
     }
     window.addEventListener("lc:settings-open-tab", onOpenTab as EventListener);
     return () => window.removeEventListener("lc:settings-open-tab", onOpenTab as EventListener);
-  }, []);
+  }, [onClose, onOpenSchedule]);
   // Lens-pass additions —
   // (1) home dir resolved via Tauri path API rather than the broken
   //     hardcoded "/Users" string used by the "Open in Finder" button.
