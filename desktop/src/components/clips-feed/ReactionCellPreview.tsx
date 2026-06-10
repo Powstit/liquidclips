@@ -205,7 +205,7 @@ function CellChrome({
         </span>
       </div>
       {!compact && title && (
-        <div className="pointer-events-auto rounded-md bg-ink/70 px-2 py-1 backdrop-blur-sm">
+        <div className="pointer-events-auto rounded-md bg-paper/70 px-2 py-1 backdrop-blur-sm">
           <p className="truncate font-sans text-[11px] font-medium leading-tight text-white">{title}</p>
         </div>
       )}
