@@ -340,7 +340,10 @@ export function ClipPreview({
   }
 
   async function regenerate() {
-    if (trimEnd - trimStart < 30 || trimEnd - trimStart > 75) {
+    const maxStart = Math.max(0, videoDuration - 1);
+    const start = Math.min(Math.max(0, trimStart), maxStart);
+    const end = Math.min(Math.max(start + 1, trimEnd), videoDuration);
+    if (end - start < 30 || end - start > 75) {
       setActionError("Clip must be 30–75 seconds.");
       return;
     }
@@ -348,7 +351,7 @@ export function ClipPreview({
     setBusy(true);
     setActionError(null);
     try {
-      const r = await sidecar.regenerateClip(slug, index - 1, trimStart, trimEnd);
+      const r = await sidecar.regenerateClip(slug, index - 1, start, end);
       if (gen !== rpcGenRef.current) return;
       onProjectChange(r.project);
       setTrimOpen(false);
