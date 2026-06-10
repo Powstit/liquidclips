@@ -21,6 +21,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AudioLines, Volume2, VolumeX } from "lucide-react";
 import { sidecar, humanError, type Clip, type OverlayType, type Project } from "../../lib/sidecar";
+import { useReactionBakeProgress } from "../../lib/useReactionBakeProgress";
 import { pickOverlaySource } from "../OverlaySourcePicker";
 import { LAYOUTS, LayoutIcon, type LayoutKey } from "./LayoutIcon";
 import { ReactionCellPreview } from "./ReactionCellPreview";
@@ -74,6 +75,8 @@ export function ReactionControls({
   const [overlaySaveState, setOverlaySaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [overlaySaveError, setOverlaySaveError] = useState<string | null>(null);
   const [overlaySaveLabel, setOverlaySaveLabel] = useState<string>("");
+  const { progress: bakeProgress, start: startBakeProgress, stop: stopBakeProgress } =
+    useReactionBakeProgress();
 
   // Re-sync local controls when the focused clip switches under us — the
   // cockpit mount swaps clipIdx without unmounting; without this sync the
@@ -189,6 +192,7 @@ export function ReactionControls({
     if (busy) return;
     setBusy(true);
     setActionError(null);
+    await startBakeProgress();
     try {
       if (kind === "none") {
         const r = await sidecar.applyOverlay(slug, clipIdx, null);
@@ -198,7 +202,11 @@ export function ReactionControls({
         let source: string | undefined = existing;
         if (opts?.forcePick || !source) {
           const pick = await pickOverlaySource({ project, excludeIdx: clipIdx });
-          if (pick.kind === "cancel") return;
+          if (pick.kind === "cancel") {
+            stopBakeProgress();
+            setBusy(false);
+            return;
+          }
           source = pick.path;
         }
         const r = await sidecar.applyOverlay(slug, clipIdx, {
@@ -212,6 +220,7 @@ export function ReactionControls({
     } catch (e) {
       setActionError(humanError(e));
     } finally {
+      stopBakeProgress();
       setBusy(false);
     }
   }
@@ -278,6 +287,30 @@ export function ReactionControls({
             );
           })}
         </div>
+
+        {/* v0.7.32 — Reaction bake progress bar. Mirrors lift-transcript
+            pattern: the sidecar emits ratio-level pct via stdout → Tauri
+            event while ffmpeg runs. */}
+        {bakeProgress && bakeProgress.stage !== "done" && (
+          <div className="mt-2 space-y-1">
+            <div className="flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.12em] text-text-tertiary">
+              <span>
+                {bakeProgress.stage === "starting"
+                  ? "Starting bake…"
+                  : bakeProgress.ratio
+                  ? `Baking ${bakeProgress.ratio}…`
+                  : "Baking…"}
+              </span>
+              <span>{bakeProgress.pct}%</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-paper">
+              <div
+                className="h-full rounded-full bg-fuchsia transition-all duration-300"
+                style={{ width: `${bakeProgress.pct}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Playable preview — only in full mode (ClipPreview right rail). */}

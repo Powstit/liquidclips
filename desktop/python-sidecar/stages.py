@@ -2086,11 +2086,22 @@ def apply_overlay_to_clip(
         except OSError:
             pass
 
-    applied_paths: dict[str, str] = {}
-    for key, out_w, out_h, *_ in REFRAME_FORMATS:
+    # v0.7.32 — Determine which ratios will actually be baked so we can
+    # emit honest per-ratio progress events.
+    ratios_to_bake: list[tuple[str, str, int, int]] = []
+    for item in REFRAME_FORMATS:
+        key, out_w, out_h, *_ = item
         base_path = clip.get(f"{key}_path")
-        if not base_path or not os.path.isfile(base_path):
-            continue
+        if base_path and os.path.isfile(base_path):
+            ratios_to_bake.append((key, base_path, out_w, out_h))
+
+    total = len(ratios_to_bake)
+    emit_event("overlay_progress", {"stage": "starting", "pct": 0, "total": total})
+
+    applied_paths: dict[str, str] = {}
+    for i, (key, base_path, out_w, out_h) in enumerate(ratios_to_bake):
+        pct = int((i / max(total, 1)) * 100)
+        emit_event("overlay_progress", {"stage": "baking", "ratio": key, "pct": pct})
         if clip.get("imported"):
             overlay_dir = project.root / "clips"
             overlay_dir.mkdir(parents=True, exist_ok=True)
@@ -2127,10 +2138,13 @@ def apply_overlay_to_clip(
         ]
         run_ffmpeg(cmd)
         applied_paths[key] = str(out_path)
+        pct = int(((i + 1) / max(total, 1)) * 100)
+        emit_event("overlay_progress", {"stage": "baking", "ratio": key, "pct": pct})
 
     if not applied_paths:
         raise FileNotFoundError("clip has no rendered video variants — reframe before applying reaction")
 
+    emit_event("overlay_progress", {"stage": "done", "pct": 100})
     clip["overlay"] = {
         "type": overlay_type,
         "source_path": source_path,
