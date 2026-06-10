@@ -1,5 +1,5 @@
 // ship-lens v0.7.13: Grid + multi-select COMBINED. The Workbench WindowManager mount was a v0.7.5 regression that broke per-clip flow; selection on the grid IS the multi-clip surface.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 // v0.7.45 — `openSmart` replaces direct shell.open for the project-folder
 // "Open folder" / "Open project folder" buttons below. shell.open's scope
 // regex rejects `/Users/...` paths; the opener plugin handles them.
@@ -45,6 +45,7 @@ export function ResultsGrid({
   const [tab, setTab] = useState<Tab>(defaultTab);
   const [openCaptionsForIdx, setOpenCaptionsForIdx] = useState<number | null>(null);
   const [previewIdx, setPreviewIdx] = useState<number | null>(null);
+  const [previewScrollTo, setPreviewScrollTo] = useState<"reaction" | "captions" | null>(null);
   // v0.7.23 — ratio toggle moved into the cockpit Frame module (bulk) and
   // ClipPreview Reaction Studio (per-clip). The grid renders at vertical by
   // default; the setter is no longer wired locally.
@@ -77,15 +78,32 @@ export function ResultsGrid({
   // Defaults to 0 once any clip exists; a plain (non-meta/shift) card click
   // sets it; ESC clears it back to 0. Distinct from multi-select.
   const [focusedIdx, setFocusedIdx] = useState<number>(0);
+  // v0.7.45 — Derive safeFocusedIdx in ONE place so the grid and
+  // BottomCockpit never disagree. Memoized so stable reference flows down.
+  const safeFocusedIdx = useMemo(() => {
+    if (project.clips.length === 0) return 0;
+    return Math.max(0, Math.min(focusedIdx, project.clips.length - 1));
+  }, [focusedIdx, project.clips.length]);
+
   // Keep focusedIdx clamped if clips get removed beneath it.
-  // v0.7.x P1 #20 — On out-of-range, snap to the LAST clip, not 0. After
-  // deleting clip 7 of 10, the user expects focus to stay near where they
-  // were (now-last clip 6), not jump to the top of the grid.
+  // v0.7.x P1 #20 — On out-of-range, snap to the LAST clip, not 0.
   useEffect(() => {
     if (focusedIdx >= project.clips.length && project.clips.length > 0) {
       setFocusedIdx(Math.max(0, project.clips.length - 1));
     }
   }, [project.clips.length, focusedIdx]);
+
+  // v0.7.45 — Purge phantom selections when clips are deleted so
+  // selected.size doesn't over-count and BottomCockpit doesn't receive
+  // stale indices. We iterate the Set and toggle each out-of-bounds idx.
+  useEffect(() => {
+    for (const idx of Array.from(selected)) {
+      if (idx >= project.clips.length) {
+        toggle(idx, { meta: false, shift: false });
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.clips.length]);
 
   // Cmd-A → select-all, Esc → clear. Document-level so the chord works
   // anywhere on the page (the grid root is not always focused). Bails when
@@ -319,17 +337,21 @@ export function ResultsGrid({
                 pb-44 below keeps grid clear of the taller cockpit chrome. */}
             <BottomCockpit
               selectedIdxs={selectedIdxs}
-              focusedIdx={focusedIdx}
+              focusedIdx={safeFocusedIdx}
               project={project}
               onProjectChange={onProjectChange}
               onClear={clear}
               onChangeFocus={setFocusedIdx}
               modalOpen={previewIdx !== null}
               onOpenSettings={onOpenSettings}
-              onOpenEditor={(clipIdx) => setPreviewIdx(clipIdx)}
+              onOpenEditor={(clipIdx, scrollTo) => {
+                setPreviewIdx(clipIdx);
+                setPreviewScrollTo(scrollTo ?? null);
+              }}
               onOpenCaptions={(clipIdx) => {
                 setPreviewIdx(clipIdx);
                 setOpenCaptionsForIdx(clipIdx);
+                setPreviewScrollTo("captions");
               }}
             />
             {/* Keep the legacy mount referenced so tsc doesn't flag the
@@ -397,7 +419,7 @@ export function ResultsGrid({
                         previewSoundOn={previewSoundOn}
                         previewMotionOn={previewMotionOn}
                         selected={isSelected(idx)}
-                        focused={focusedIdx === idx}
+                        focused={safeFocusedIdx === idx}
                         onSelectClick={(e) => {
                           // v0.7.25 — Plain click = focus the cockpit on
                           // this clip. Meta/shift = multi-select.
@@ -462,12 +484,13 @@ export function ResultsGrid({
           slug={project.slug}
           project={project}
           totalClips={project.clips.length}
-          initialCaptionsOpen={openCaptionsForIdx === previewIdx}
-          onClose={() => { setPreviewIdx(null); setOpenCaptionsForIdx(null); }}
+          initialCaptionsOpen={openCaptionsForIdx === previewIdx || previewScrollTo === "captions"}
+          initialScrollTo={previewScrollTo === "reaction" ? "reaction" : undefined}
+          onClose={() => { setPreviewIdx(null); setOpenCaptionsForIdx(null); setPreviewScrollTo(null); }}
           onProjectChange={(p) => {
             onProjectChange(p);
             // If the removed clip was the previewed one, close.
-            if (previewIdx >= p.clips.length) { setPreviewIdx(null); setOpenCaptionsForIdx(null); }
+            if (previewIdx >= p.clips.length) { setPreviewIdx(null); setOpenCaptionsForIdx(null); setPreviewScrollTo(null); }
           }}
           onNavigate={(dir) => {
             const next = previewIdx + dir;
