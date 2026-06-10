@@ -2166,16 +2166,24 @@ def _build_overlay_filter(overlay_type: str, out_w: int, out_h: int) -> str:
     """
     if overlay_type == "stack-bottom":
         half_h = out_h // 2
+        # v0.7.45 — mirror the split-left/right pattern: scale + crop so each
+        # source FILLS its half-frame while preserving aspect ratio. Before
+        # this fix the bare `scale=W:H` stretched horizontal sources
+        # vertically (and vice versa), causing the "doesn't render smoothly"
+        # bug on every uploaded reaction with a non-9:8 aspect.
         return (
-            f"[0:v]scale={out_w}:{half_h},setsar=1[top];"
-            f"[1:v]scale={out_w}:{half_h},setsar=1[bot];"
+            f"[0:v]scale={out_w}:{half_h}:force_original_aspect_ratio=increase,crop={out_w}:{half_h},setsar=1[top];"
+            f"[1:v]scale={out_w}:{half_h}:force_original_aspect_ratio=increase,crop={out_w}:{half_h},setsar=1[bot];"
             f"[top][bot]vstack[v]"
         )
     if overlay_type == "stack-top":
         half_h = out_h // 2
+        # v0.7.45 — same fix as stack-bottom (see above). Without
+        # force_original_aspect_ratio + crop, vertical reactions get squashed
+        # horizontally and horizontal reactions get stretched vertically.
         return (
-            f"[0:v]scale={out_w}:{half_h},setsar=1[bot];"
-            f"[1:v]scale={out_w}:{half_h},setsar=1[top];"
+            f"[0:v]scale={out_w}:{half_h}:force_original_aspect_ratio=increase,crop={out_w}:{half_h},setsar=1[bot];"
+            f"[1:v]scale={out_w}:{half_h}:force_original_aspect_ratio=increase,crop={out_w}:{half_h},setsar=1[top];"
             f"[top][bot]vstack[v]"
         )
     if overlay_type == "split-left":
