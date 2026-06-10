@@ -36,17 +36,22 @@ export const LAYOUT_TOPOLOGY: Record<LayoutKey, LayoutTopology> = {
   "stack-bottom": {
     key: "stack-bottom",
     label: "Stack below",
+    // v0.7.46 — 30 / 70 split (reactor top, viral bottom). The viral source
+    // is the proven canvas and must dominate; the reactor is a 30% header.
+    // Keep the ffmpeg filter (_build_overlay_filter in stages.py) in sync.
     cells: [
-      { role: "main",  label: "Top — main clip",     rect: { x: 0, y: 0,   w: 1, h: 0.5 }, isMain: true },
-      { role: "broll", label: "Bottom — reaction",   rect: { x: 0, y: 0.5, w: 1, h: 0.5 } },
+      { role: "main",  label: "Top — reactor (30%)",       rect: { x: 0, y: 0,   w: 1, h: 0.3 }, isMain: true },
+      { role: "broll", label: "Bottom — viral source (70%)", rect: { x: 0, y: 0.3, w: 1, h: 0.7 } },
     ],
   },
   "stack-top": {
     key: "stack-top",
     label: "Stack above",
+    // v0.7.46 — 70 / 30 split: viral source on top (70%), reactor below
+    // (30%). Same editorial intent as stack-bottom, flipped vertical order.
     cells: [
-      { role: "broll", label: "Top — reaction",      rect: { x: 0, y: 0,   w: 1, h: 0.5 } },
-      { role: "main",  label: "Bottom — main",       rect: { x: 0, y: 0.5, w: 1, h: 0.5 }, isMain: true },
+      { role: "broll", label: "Top — viral source (70%)",  rect: { x: 0, y: 0,   w: 1, h: 0.7 } },
+      { role: "main",  label: "Bottom — reactor (30%)",    rect: { x: 0, y: 0.7, w: 1, h: 0.3 }, isMain: true },
     ],
   },
   "split-left": {
