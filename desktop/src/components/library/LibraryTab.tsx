@@ -426,6 +426,7 @@ export function LibraryTab({
           if (summary) setPreviewProject(summary);
           else void openProject(slug);
         }}
+        onEdit={(slug) => void openProject(slug)}
         onOpenFolder={(p) => void openPath(p.root).catch((e) => setError(humanError(e)))}
         onArchive={(p) => void toggleArchived(p)}
         onDelete={(p) => setConfirmDelete(p)}

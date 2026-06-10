@@ -63,6 +63,7 @@ export function LibraryWall({
   onQueryChange,
   onRefresh,
   onOpen,
+  onEdit,
   onOpenFolder,
   onArchive,
   onDelete,
@@ -87,6 +88,7 @@ export function LibraryWall({
   onQueryChange: (next: string) => void;
   onRefresh: () => void;
   onOpen: (slug: string) => void;
+  onEdit: (slug: string) => void;
   onOpenFolder: (p: ProjectLibrarySummary) => void;
   onArchive: (p: ProjectLibrarySummary) => void;
   onDelete: (p: ProjectLibrarySummary) => void;
@@ -236,6 +238,7 @@ export function LibraryWall({
                   selectMode={selectMode}
                   selected={selectedSlugs.has(project.slug)}
                   onOpen={() => onOpen(project.slug)}
+                  onEdit={() => onEdit(project.slug)}
                   onOpenFolder={() => onOpenFolder(project)}
                   onArchive={() => onArchive(project)}
                   onDelete={() => onDelete(project)}

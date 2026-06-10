@@ -166,6 +166,37 @@ export function BottomCockpit({
     if (bakeState.phase === "error" && collapsed) setCollapsed(false);
   }, [bakeState.phase, collapsed, setCollapsed]);
 
+  // Demo audit P1-DEMO-C: BakeErrorStrip Retry button previously fired a
+  // toast telling the user to "touch a layout tile to bake again" — i.e. it
+  // was a label, not an action. On camera that reads as "the retry button
+  // is broken." Re-fire applyOverlay with the focused clip's existing
+  // overlay metadata (the same payload ReactionControls.applyLayout uses,
+  // minus the layout-picker prompt). Sets reactionBakingAt to mount the
+  // pending strip during the await.
+  const retryReactionBake = useCallback(async () => {
+    if (!focusedClip) return;
+    const ov = focusedClip.overlay;
+    if (!ov || !ov.source_path) {
+      pushToast("No reaction layout to retry — pick one from the cockpit.");
+      return;
+    }
+    const startedAt = new Date().toISOString();
+    setReactionBakingAt(startedAt);
+    try {
+      const r = await sidecar.applyOverlay(project.slug, safeFocusedIdx, {
+        type: ov.type,
+        source_path: ov.source_path,
+        start_offset_s: ov.start_offset_s,
+        audio_source: ov.audio_source,
+      });
+      onProjectChange(r.project);
+    } catch (e) {
+      pushToast(`Retry failed — ${humanError(e)}`);
+    } finally {
+      setReactionBakingAt(null);
+    }
+  }, [focusedClip, project.slug, safeFocusedIdx, onProjectChange]);
+
   // v0.7.45 — If ReactionControls unmounts mid-bake (modal opens, clip
   // changes), the busy callback may never fire false. Reset the flag so the
   // pending strip doesn't leak indefinitely.
@@ -477,9 +508,7 @@ export function BottomCockpit({
               return (
                 <BakeErrorStrip
                   message={bakeErrorMessage}
-                  onRetry={() => {
-                    pushToast("Retry queued — touch a layout tile to bake again.");
-                  }}
+                  onRetry={() => void retryReactionBake()}
                 />
               );
             })()}
