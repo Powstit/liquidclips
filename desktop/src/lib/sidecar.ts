@@ -409,7 +409,18 @@ export const RATIOS: { key: RatioKey; label: string; aspectClass: string }[] = [
   { key: "portrait", label: "4:5", aspectClass: "aspect-[4/5]" },
 ];
 
-export type OverlayType = "stack-bottom" | "stack-top" | "split-left" | "split-right" | "pip-br" | "pip-bl";
+export type OverlayType =
+  | "stack-bottom"
+  | "stack-top"
+  | "split-left"
+  | "split-right"
+  | "pip-br"
+  | "pip-bl"
+  // v0.7.46 — circular reactor PiP at top-right with feathered (soft)
+  // alpha edge. Daniel's ask: viral source dominates, reactor as a small
+  // circle at the top so the content is the main focus. Top-center crop
+  // of the reactor (head typically at top of talking-head footage).
+  | "pip-tr-circle";
 
 // Per-cell state — each layout has N cells, each can hold an independent
 // source video + an audio role. Exactly one cell's audio plays (or the
