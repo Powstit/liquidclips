@@ -4,7 +4,7 @@
 // localStorage persistence in v0.7.13; backend sync moves to /whop/saved
 // in v0.7.14.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { sidecar, humanError, type WhopBounty } from "../lib/sidecar";
 
 const SAVED_KEY = "lc:bounty-swipe:saved-ids:v1";
@@ -48,11 +48,18 @@ export function useBountySwipe(): UseBountySwipeResult {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // P1 #26: guard against setState after unmount. `refresh` is called from
+  // both the mount-effect below AND from `resetSkipped` (a user callback),
+  // so a single `let cancelled` inside the effect isn't enough — we need a
+  // ref that survives across calls and is flipped on unmount.
+  const cancelledRef = useRef(false);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const r = await sidecar.whopListBounties(30);
+      if (cancelledRef.current) return;
       if (r.error) {
         setError(r.error);
         setBounties([]);
@@ -65,9 +72,10 @@ export function useBountySwipe(): UseBountySwipeResult {
       const skipped = new Set(readIds(SKIPPED_KEY));
       setBounties(r.bounties.filter((b) => !saved.has(b.id) && !skipped.has(b.id)));
     } catch (e) {
+      if (cancelledRef.current) return;
       setError(humanError(e));
     } finally {
-      setLoading(false);
+      if (!cancelledRef.current) setLoading(false);
     }
   }, []);
 
@@ -96,6 +104,13 @@ export function useBountySwipe(): UseBountySwipeResult {
     writeIds(SKIPPED_KEY, []);
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, []);
 
   useEffect(() => {
     void refresh();
