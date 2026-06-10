@@ -28,7 +28,7 @@ import {
   resizeEarnPanel,
   type EarnPanelMessage,
 } from "../../lib/earn_panel";
-import { sidecar, type WhopBounty } from "../../lib/sidecar";
+import { humanError, sidecar, type WhopBounty } from "../../lib/sidecar";
 import { openAuthPanel } from "../auth/useAuthPanel";
 
 /** Source of truth for "what submissions has THIS desktop captured?" lives
@@ -204,11 +204,40 @@ export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
           if (!id) return;
           // Fetch the full bounty server-side so App.tsx receives the
           // same WhopBounty shape it already routes today.
+          //
+          // Demo audit P1 — ship-lens-reviewer flagged that a failed RPC
+          // OR a {bounty: null} response was a silent no-op: user clicked
+          // a card in the embed, console logged, nothing on screen. On
+          // camera that reads as "the app is broken." Surface a real
+          // toast via the `lc:toast` bus App.tsx already listens for so
+          // the user gets explicit "couldn't open that reward" feedback
+          // they can act on (retry / pick another / contact support).
           try {
             const { bounty } = await sidecar.whopBounty(id);
-            if (bounty) cbRef.current.onStartBounty(bounty);
+            if (bounty) {
+              cbRef.current.onStartBounty(bounty);
+            } else {
+              console.warn("[earn-panel] whopBounty returned null for id:", id);
+              window.dispatchEvent(
+                new CustomEvent("lc:toast", {
+                  detail: {
+                    kind: "error",
+                    message:
+                      "Couldn't open that reward — it may have closed. Try another or refresh Earn.",
+                  },
+                }),
+              );
+            }
           } catch (e) {
             console.error("[earn-panel] whopBounty failed:", e);
+            window.dispatchEvent(
+              new CustomEvent("lc:toast", {
+                detail: {
+                  kind: "error",
+                  message: `Couldn't open that reward — ${humanError(e)}`,
+                },
+              }),
+            );
           }
           break;
         }
