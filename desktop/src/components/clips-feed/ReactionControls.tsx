@@ -138,6 +138,11 @@ export function ReactionControls({
       setOverlaySaveState("saving");
       setOverlaySaveError(null);
       setOverlaySaveLabel(label);
+      // v0.7.45 — debounced audio/offset edits also trigger a real ffmpeg
+      // bake. Without progress wrapping, the user drags the slider and
+      // sees "saving…" with no actual progress feedback for the 5-30s
+      // ffmpeg pass — looks like a hang. Mirror applyLayout's pattern.
+      await startBakeProgress();
       try {
         const r = await sidecar.applyOverlay(slug, clipIdx, {
           type: overlay.type,
@@ -156,6 +161,8 @@ export function ReactionControls({
         if (cancelled) return;
         setOverlaySaveError(humanError(e));
         setOverlaySaveState("idle");
+      } finally {
+        stopBakeProgress();
       }
     }, 400);
     return () => {
