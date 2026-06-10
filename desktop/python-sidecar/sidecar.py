@@ -143,7 +143,11 @@ def method_probe(params: dict[str, Any]) -> dict[str, Any]:
         "-show_format", "-show_streams",
         path,
     ]
-    completed = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    # P1 #29 — timeout guard. ffprobe normally returns in <1s but a corrupt
+    # file or hung mount can wedge it indefinitely, blocking the sidecar's
+    # single-threaded dispatch loop. 30s ceiling matches the rest of the
+    # short-form probe RPCs.
+    completed = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
     data = json.loads(completed.stdout)
     fmt = data.get("format", {})
     duration = float(fmt.get("duration", 0.0))
@@ -436,12 +440,11 @@ def method_set_project_archived(params: dict[str, Any]) -> dict[str, Any]:
     """Toggle a project's archived state. Implemented as a marker file
     (`.archived`) inside the project directory so we don't have to mutate
     project.json or risk breaking other reload paths."""
-    from project import CLIPS_HOME
     slug = params.get("slug")
     archived = bool(params.get("archived"))
-    if not isinstance(slug, str) or not slug:
-        raise ValueError("set_project_archived requires slug (str)")
-    proj_dir = CLIPS_HOME / "projects" / slug
+    # P0 #7 — route through _resolve_project_slug so `../../foo` can't escape
+    # the projects root and write `.archived` into arbitrary directories.
+    _projects_root, proj_dir = _resolve_project_slug(slug)
     if not proj_dir.is_dir():
         raise FileNotFoundError(f"project not found: {slug}")
     marker = proj_dir / ".archived"
@@ -773,8 +776,15 @@ def method_secret_set(params: dict[str, Any]) -> dict[str, Any]:
 
 def method_secret_delete(params: dict[str, Any]) -> dict[str, Any]:
     name = params.get("name")
-    if not isinstance(name, str):
-        raise ValueError("`name` (str) is required")
+    # P1 #28 — mirror method_secret_set's whitelist. Without this, an attacker
+    # who can reach the RPC could enumerate keychain entries or delete arbitrary
+    # secrets unrelated to Liquid Clips (e.g. another app's stored credentials
+    # sharing the same keychain service prefix).
+    if not isinstance(name, str) or name not in (
+        "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LICENSE_JWT", "LIQUIDCLIPS_ONBOARDED", "JUNIOR_WHOP_TOKEN",
+        "PEXELS_API_KEY", "PIXABAY_API_KEY", "GIPHY_API_KEY",
+    ):
+        raise ValueError(f"unknown or unsupported secret name: {name}")
     from secrets_store import delete_secret
     delete_secret(name)
     return {"ok": True, "name": name}
@@ -2953,7 +2963,11 @@ _LEDGER_PATH = CLIPS_HOME / "thumbgen_ledger.jsonl"
 
 
 def _thumbs_dir(slug: str) -> Path:
-    p = CLIPS_HOME / "projects" / slug / "thumbnails"
+    # P0 #7 — route every thumbnail path through the slug validator so a
+    # `../../foo` slug can't escape the projects root and mkdir an attacker-
+    # chosen directory.
+    _projects_root, proj_dir = _resolve_project_slug(slug)
+    p = proj_dir / "thumbnails"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -3140,9 +3154,27 @@ def method_thumbnail_use_as_cover(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("slug is required")
     if not path or not Path(path).exists():
         raise FileNotFoundError(f"cover path not found: {path}")
-    project_root = CLIPS_HOME / "projects" / slug
+    # P0 #7 — route slug through the validator so `../../foo` can't write
+    # cover_choice.json outside the projects root.
+    _projects_root, project_root = _resolve_project_slug(slug)
     if not project_root.exists():
         raise FileNotFoundError(f"project not found: {slug}")
+    # P0 #7 bonus — also verify the cover `path` lives INSIDE the project root.
+    # Without this, the UI (or a malicious caller) could store an arbitrary
+    # filesystem path in cover_choice.json, and a later publish flow that
+    # opens/reads cover_path would leak the file's contents.
+    try:
+        cover_resolved = Path(path).resolve()
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(f"could not resolve cover path: {exc}") from exc
+    project_root_resolved = project_root.resolve()
+    if not (
+        cover_resolved == project_root_resolved
+        or str(cover_resolved).startswith(str(project_root_resolved) + "/")
+    ):
+        raise ValueError(
+            f"cover path escapes project root: {path!r} not inside {project_root_resolved}"
+        )
     choice_path = project_root / "cover_choice.json"
     choice_path.write_text(
         json.dumps({
@@ -3159,7 +3191,10 @@ def method_thumbnail_get_cover(params: dict[str, Any]) -> dict[str, Any]:
     slug = (params.get("slug") or "").strip()
     if not slug:
         raise ValueError("slug is required")
-    choice_path = CLIPS_HOME / "projects" / slug / "cover_choice.json"
+    # P0 #7 — route through the slug validator so a `../../foo` slug can't
+    # read arbitrary cover_choice.json files outside the projects root.
+    _projects_root, project_root = _resolve_project_slug(slug)
+    choice_path = project_root / "cover_choice.json"
     if not choice_path.exists():
         return {"slug": slug, "cover_path": None, "set_at": None}
     try:
@@ -3178,6 +3213,12 @@ def _thumb_cancel_marker(slug: str) -> Path:
     and before write) and raises CancelledError. Cleared on every fresh
     generate call so a stale marker can't block the next attempt.
     """
+    # P0 #7 — validate the slug first; `_resolve_project_slug` raises on
+    # traversal attempts before we ever compose a filesystem path. The marker
+    # itself lives flat under CLIPS_HOME (not under projects/<slug>/) so the
+    # resolved proj_dir is intentionally discarded — we only need the
+    # validation to fire.
+    _resolve_project_slug(slug)
     safe = slug.replace("/", "_").replace("\\", "_")
     return CLIPS_HOME / f".thumbgen_cancel.{safe}"
 
@@ -3244,6 +3285,23 @@ def method_thumbnail_generate(params: dict[str, Any]) -> dict[str, Any]:
     except OSError:
         pass
 
+    # P1 #29 — timeout guard. The engine's heavy lift is a urllib POST to
+    # OpenAI that occasionally hangs (slow network, throttled account). The
+    # engine already polls `cancel_marker` twice (pre-call + pre-write), so
+    # the cleanest timeout is a threading.Timer that arms the same marker —
+    # matches the existing cancel pattern instead of inventing a parallel one.
+    # 180s is the same ceiling the UI uses for cancel timeouts.
+    import threading
+    def _timeout_arm_cancel() -> None:
+        try:
+            cancel_marker.parent.mkdir(parents=True, exist_ok=True)
+            cancel_marker.write_text("timeout", encoding="utf-8")
+        except OSError:
+            pass
+    timeout_timer = threading.Timer(180.0, _timeout_arm_cancel)
+    timeout_timer.daemon = True
+    timeout_timer.start()
+
     def _run(model: str) -> dict[str, Any]:
         return engine_generate(
             item=item,
@@ -3255,46 +3313,52 @@ def method_thumbnail_generate(params: dict[str, Any]) -> dict[str, Any]:
 
     primary = config.get("model") or "gpt-image-2"
     try:
-        result = _run(primary)
-    except BillingLimitError:
-        # Clear marker so a later retry isn't tripped by a stale request.
         try:
-            cancel_marker.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise
-    except CancelledError:
-        try:
-            cancel_marker.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise
-    except RuntimeError as exc:
-        msg = str(exc).lower()
-        # v0.7.31 P2-22 — match both "OpenAI HTTP 404:" and any other "404"
-        # framing the engine might surface. Also keeps model_not_found /
-        # invalid_model / deprecated_model paths covered.
-        if primary == "gpt-image-2" and (
-            "model_not_found" in msg
-            or "invalid_model" in msg
-            or "deprecated_model" in msg
-            or "does not exist" in msg
-            or "404" in msg
-        ):
-            log(f"[thumbnail] gpt-image-2 unavailable, retrying with gpt-image-1: {exc}")
-            result = _run("gpt-image-1")
-        else:
+            result = _run(primary)
+        except BillingLimitError:
+            # Clear marker so a later retry isn't tripped by a stale request.
             try:
                 cancel_marker.unlink(missing_ok=True)
             except OSError:
                 pass
             raise
+        except CancelledError:
+            try:
+                cancel_marker.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
+        except RuntimeError as exc:
+            msg = str(exc).lower()
+            # v0.7.31 P2-22 — match both "OpenAI HTTP 404:" and any other "404"
+            # framing the engine might surface. Also keeps model_not_found /
+            # invalid_model / deprecated_model paths covered.
+            if primary == "gpt-image-2" and (
+                "model_not_found" in msg
+                or "invalid_model" in msg
+                or "deprecated_model" in msg
+                or "does not exist" in msg
+                or "404" in msg
+            ):
+                log(f"[thumbnail] gpt-image-2 unavailable, retrying with gpt-image-1: {exc}")
+                result = _run("gpt-image-1")
+            else:
+                try:
+                    cancel_marker.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                raise
 
-    # Success path — clear the marker so a subsequent generate isn't blocked.
-    try:
-        cancel_marker.unlink(missing_ok=True)
-    except OSError:
-        pass
+        # Success path — clear the marker so a subsequent generate isn't blocked.
+        try:
+            cancel_marker.unlink(missing_ok=True)
+        except OSError:
+            pass
+    finally:
+        # P1 #29 — always cancel the timeout timer, so a successful run can't
+        # leave a pending Timer that fires after return + arms the cancel
+        # marker for the NEXT generate call. Idempotent on already-fired timers.
+        timeout_timer.cancel()
 
     # v0.7.31 P1-10 — surface ledger write failures to the UI as a soft warning
     # instead of swallowing silently. The PNG already exists and the user paid,
