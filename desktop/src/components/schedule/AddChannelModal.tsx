@@ -240,6 +240,15 @@ export function AddChannelModal({
         confirmLabel="Abandon channel"
         onCancel={() => setConfirmAbandonOpen(false)}
         onConfirm={() => {
+          // v0.7.45 P1 #34 — Best-effort server-side cleanup before unmount so
+          // the half-provisioned channel doesn't become an orphan row. The
+          // user is leaving anyway, so we swallow errors — no toast surface
+          // remains once we call onClose(). Only `linking` and `polling` carry
+          // a real provisioned channel id; `creating` is pre-provision so
+          // there's nothing to delete.
+          if (state.kind === "linking" || state.kind === "polling") {
+            void backend.deleteChannel(state.channel.id).catch(() => {});
+          }
           setConfirmAbandonOpen(false);
           onClose();
         }}
