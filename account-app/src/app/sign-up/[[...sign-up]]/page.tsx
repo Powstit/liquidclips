@@ -67,7 +67,7 @@ export default function SignUpPage() {
           {ready && (
             <SignUp
               unsafeMetadata={affiliateId ? { affiliate_id: affiliateId } : undefined}
-              forceRedirectUrl="/dashboard"
+              fallbackRedirectUrl="/dashboard"
               signInUrl="/sign-in"
             />
           )}
