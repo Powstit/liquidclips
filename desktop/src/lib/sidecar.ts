@@ -918,7 +918,16 @@ export const sidecar = {
       audio_source?: "main" | "broll" | "muted";
     } | null,
   ) =>
-    sidecarCall<{ project: Project }>("apply_overlay", { slug, idx, overlay }),
+    // v0.7.45 — 3-min timeout. A reasonable ffmpeg bake across all aspect
+    // ratios completes in 5-30s; >180s means stuck ffmpeg child / corrupt
+    // input. Mirror liftTranscript's withTimeout pattern so the UI surfaces
+    // a typed SidecarTimeoutError + humanError() lands a real toast instead
+    // of an infinite spinner.
+    withTimeout(
+      sidecarCall<{ project: Project }>("apply_overlay", { slug, idx, overlay }),
+      180_000,
+      "apply_overlay",
+    ),
   // v0.7.14 — Kimi's OverlayTemplateGallery: 8 pre-made reaction layouts.
   // sourcePath optional: when omitted we persist the template choice on the
   // clip but skip the bake, so the picker re-renders in its applied state
