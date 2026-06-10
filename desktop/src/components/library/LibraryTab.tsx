@@ -407,7 +407,7 @@ function UndoToast({
       exit={{ opacity: 0, y: 18 }}
       transition={{ type: "spring", stiffness: 320, damping: 26 }}
     >
-      <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-line bg-ink/95 px-4 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur-md">
+      <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-line bg-paper-elev/95 px-4 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur-md">
         <Trash2 className="h-3.5 w-3.5 shrink-0 text-text-tertiary" strokeWidth={2.2} />
         <span className="max-w-[280px] truncate font-sans text-[12px] text-white">
           Deleted{" "}
