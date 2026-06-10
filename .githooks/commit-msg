@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# user-journey-lens commit-msg gate
+#
+# Every fix(*)-prefixed commit MUST declare three lines in the body:
+#   Enables:  <action the user can now take>
+#   Prevents: <failure mode this fix now blocks>
+#   Repairs:  <bug ID / matrix entry / journey state>
+#
+# Catches the failure mode where a technical fix doesn't restore the user
+# journey — only hides the symptom. If you can't articulate the Prevents
+# line, your fix is symptomatic; investigate the root cause.
+#
+# Bypass (rare, must be justified inline): LENS_OVERRIDE=1 git commit
+#
+# Installed: 2026-06-10. See ~/.claude/skills/user-journey-lens/SKILL.md.
+
+set -euo pipefail
+
+MSG_FILE="${1:-}"
+[ -z "$MSG_FILE" ] && exit 0
+[ ! -f "$MSG_FILE" ] && exit 0
+
+SUBJECT=$(/usr/bin/head -1 "$MSG_FILE")
+
+# Only enforce on fix(...): subjects. Allow docs/chore/wip/feat/style/refactor/test/build through.
+if [[ ! "$SUBJECT" =~ ^fix\(.+\): ]]; then
+  exit 0
+fi
+
+# Explicit per-commit bypass.
+if [ -n "${LENS_OVERRIDE:-}" ]; then
+  exit 0
+fi
+
+# Drop the subject line; check the body.
+BODY=$(/usr/bin/tail -n +2 "$MSG_FILE")
+
+MISSING=()
+echo "$BODY" | /usr/bin/grep -qE '^Enables:'  || MISSING+=("Enables")
+echo "$BODY" | /usr/bin/grep -qE '^Prevents:' || MISSING+=("Prevents")
+echo "$BODY" | /usr/bin/grep -qE '^Repairs:'  || MISSING+=("Repairs")
+
+if [ ${#MISSING[@]} -ne 0 ]; then
+  printf '\n' >&2
+  printf '\033[31m✗ user-journey-lens gate — fix(*) commit missing required lines: %s\033[0m\n' "${MISSING[*]}" >&2
+  printf '\n' >&2
+  printf 'Add to the commit body, ONE line each:\n' >&2
+  printf '  \033[36mEnables:\033[0m   <action the user can now take>\n' >&2
+  printf '  \033[36mPrevents:\033[0m  <failure mode this fix now blocks>\n' >&2
+  printf '  \033[36mRepairs:\033[0m   <bug ID / matrix entry / journey state>\n' >&2
+  printf '\n' >&2
+  printf "If you can't articulate Prevents, your fix is symptomatic — investigate further.\n" >&2
+  printf 'Bypass (rare, justify): LENS_OVERRIDE=1 git commit\n' >&2
+  printf '\n' >&2
+  exit 1
+fi
+
+exit 0
