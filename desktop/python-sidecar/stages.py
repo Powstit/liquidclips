@@ -2033,7 +2033,7 @@ def _read_openai_key() -> str | None:
 
 # --- Overlay (b-roll) — on-demand per clip ----------------------------------
 
-OVERLAY_TYPES = {"stack-bottom", "stack-top", "split-left", "split-right", "pip-br", "pip-bl"}
+OVERLAY_TYPES = {"stack-bottom", "stack-top", "split-left", "split-right", "pip-br", "pip-bl", "pip-tr-circle"}
 
 
 def apply_overlay_to_clip(
@@ -2250,5 +2250,37 @@ def _build_overlay_filter(overlay_type: str, out_w: int, out_h: int) -> str:
         return (
             f"[1:v]scale={out_w // 3}:-1[b];"
             f"[0:v][b]overlay=30:H-h-30[v]"
+        )
+    if overlay_type == "pip-tr-circle":
+        # v0.7.46 — Daniel's circle-top-right PiP. The viral source
+        # ([0:v]) fills the frame; the reactor ([1:v]) sits as a small
+        # circle in the top-right with a feathered (soft) alpha edge so it
+        # doesn't read as a clinical cut-out box on camera.
+        #
+        # Geometry: diameter ≈ W/4 (≈25% of frame width = visible but
+        # leaves the content as the main focus per Daniel's brief).
+        # Position: 40px in from the top + right edges.
+        # Crop: TOP-CENTER square of the reactor so the head — which sits
+        # at the top of most talking-head 9:16 reactions — stays in the
+        # visible circle. Goes for "face perfectly visible" without
+        # bringing in junior-face-detect on the synchronous path (that's
+        # a v0.7.48 follow-up if center-crop misses anyone's face).
+        # Alpha: full opacity inside r ≤ 0.85·R, linear falloff to 0 at
+        # r = R. The feather band is the outer 15% of the radius — soft
+        # edge that doesn't read as sharp / clinical.
+        d = (out_w // 4) & ~1   # diameter, even pixels for crop alignment
+        pad = 40                # px inset from the top + right edges
+        r = d / 2
+        inner = r * 0.85        # radius up to which alpha = 255
+        edge = r * 0.15         # feather band width
+        return (
+            # Crop the top-center square of the reactor (head zone), then
+            # scale to inset diameter and apply circular feathered alpha.
+            f"[1:v]crop='min(iw,ih)':'min(iw,ih)':(iw-min(iw\\,ih))/2:0,"
+            f"scale={d}:{d},setsar=1,format=yuva420p,"
+            f"geq=lum='p(X,Y)':"
+            f"a='255*(1-clip((hypot(X-{r:g}\\,Y-{r:g})-{inner:g})/{edge:g}\\,0\\,1))'"
+            f"[circ];"
+            f"[0:v][circ]overlay=W-w-{pad}:{pad}[v]"
         )
     raise ValueError(f"unknown overlay type {overlay_type!r}")

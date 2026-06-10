@@ -598,6 +598,9 @@ export async function mockSidecarCall<T>(method: string, params: Record<string, 
             "pip-br": "/sample/clips/pip-br.mp4",
             "pip-bl": "/sample/clips/pip-br.mp4",
             "split-h": "/sample/clips/split-h.mp4",
+            // v0.7.46 — no dedicated sample mp4 yet; mock falls back to pip-br
+            // so the picker preview still shows a sensible silhouette.
+            "pip-tr-circle": "/sample/clips/pip-br.mp4",
           };
           const path = sampleByType[overlayType] ?? "/sample/clips/stack-bottom.mp4";
           nextClip = {

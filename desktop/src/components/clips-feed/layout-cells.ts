@@ -86,6 +86,17 @@ export const LAYOUT_TOPOLOGY: Record<LayoutKey, LayoutTopology> = {
       { role: "inset", label: "Inset — bottom left",   rect: { x: 0.04, y: 0.65, w: 0.36, h: 0.32 } },
     ],
   },
+  "pip-tr-circle": {
+    key: "pip-tr-circle",
+    label: "Circle top-right",
+    // v0.7.46 — viral source fills the frame; reactor sits as a soft-edged
+    // circle (~25% diameter) in the top-right so the content stays the
+    // primary read. ffmpeg filter at stages._build_overlay_filter.
+    cells: [
+      { role: "main",  label: "Full — viral source",   rect: { x: 0, y: 0, w: 1, h: 1 }, isMain: true },
+      { role: "inset", label: "Top-right — reactor (circle)", rect: { x: 0.71, y: 0.04, w: 0.25, h: 0.25 } },
+    ],
+  },
 };
 
 // What a cell's audio + source resolves to. Stored on the clip as a sibling of

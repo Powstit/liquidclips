@@ -81,6 +81,17 @@ export function LayoutIcon({ kind, className = "" }: { kind: LayoutKey; classNam
         </>
       );
       break;
+    case "pip-tr-circle":
+      // v0.7.46 — small CIRCLE top-right with soft alpha edge. Icon hints
+      // at the feathered crop via a second slightly larger faded circle.
+      inner = (
+        <>
+          <rect x="4.5" y="4.5" width="15" height="15" rx="1.5" fill={c} opacity={MAIN_OPACITY} />
+          <circle cx="16.5" cy="7.5" r="3.2" fill={c} opacity={REACT_OPACITY * 0.35} />
+          <circle cx="16.5" cy="7.5" r="2.4" fill={c} opacity={REACT_OPACITY} />
+        </>
+      );
+      break;
   }
   return <span className={`inline-flex shrink-0 ${className}`}>{<Frame>{inner}</Frame>}</span>;
 }
@@ -88,11 +99,12 @@ export function LayoutIcon({ kind, className = "" }: { kind: LayoutKey; classNam
 // The 7 layouts a clipper sees in the editor. Vocabulary: "reaction", never
 // "b-roll" or "overlay" (those words may still appear in backend/internal code).
 export const LAYOUTS: { key: LayoutKey; label: string; short: string }[] = [
-  { key: "none",         label: "Full",        short: "Full"         },
-  { key: "stack-bottom", label: "Stack below", short: "Stack below"  },
-  { key: "stack-top",    label: "Stack above", short: "Stack above"  },
-  { key: "split-left",   label: "Split left",  short: "Split left"   },
-  { key: "split-right",  label: "Split right", short: "Split right"  },
-  { key: "pip-br",       label: "PiP right",   short: "PiP right"    },
-  { key: "pip-bl",       label: "PiP left",    short: "PiP left"     },
+  { key: "none",          label: "Full",             short: "Full"        },
+  { key: "pip-tr-circle", label: "Circle top-right", short: "Circle TR"   },
+  { key: "stack-bottom",  label: "Stack below",      short: "Stack below" },
+  { key: "stack-top",     label: "Stack above",      short: "Stack above" },
+  { key: "split-left",    label: "Split left",       short: "Split left"  },
+  { key: "split-right",   label: "Split right",      short: "Split right" },
+  { key: "pip-br",        label: "PiP right",        short: "PiP right"   },
+  { key: "pip-bl",        label: "PiP left",         short: "PiP left"    },
 ];
