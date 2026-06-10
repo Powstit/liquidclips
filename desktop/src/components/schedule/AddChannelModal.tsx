@@ -171,6 +171,19 @@ export function AddChannelModal({
     try {
       const { channel, link_url } = await backend.createChannel({ platform, label: label.trim() });
       provisioned = channel;
+      // v0.7.45 — Defend against empty/malformed link_url before handing it
+      // to openExternal. Ayrshare has returned relative URLs in staging;
+      // treating them as valid strands the user on a silent spinner.
+      if (!link_url || !link_url.startsWith("http")) {
+        setState({
+          kind: "error",
+          message: link_url
+            ? `Invalid link URL from server (${link_url.slice(0, 40)}…). Try again or contact support.`
+            : "Server returned an empty link URL. Try again or contact support.",
+          channel,
+        });
+        return;
+      }
       setState({ kind: "linking", channel, linkUrl: link_url });
       // If we can't launch the browser, polling for OAuth completion is a
       // dead-end — surface the failure immediately instead of stranding the
