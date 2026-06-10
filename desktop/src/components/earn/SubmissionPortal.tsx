@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check, ExternalLink, Loader2, Lock, X } from "lucide-react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../../lib/openSmart";
 import {
   createSubmission,
   listActiveCampaigns,

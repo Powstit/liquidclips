@@ -11,7 +11,7 @@
 // you mix a 16:9 video into the 4:1 banner rhythm.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../../lib/openSmart";
 import { ChevronLeft, ChevronRight, Flame, Lock, PlayCircle } from "lucide-react";
 import { backend, type SponsoredCampaign } from "../../lib/backend";
 import { humanError } from "../../lib/sidecar";

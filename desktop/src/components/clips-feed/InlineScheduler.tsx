@@ -28,7 +28,7 @@
 // scheduler never throws unhandled.
 
 import { useEffect, useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../../lib/openSmart";
 import {
   backend,
   createChannel,

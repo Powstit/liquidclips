@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../../lib/openSmart";
 import { rememberSubmissionId } from "./EarnTab";
 import type { Project } from "../../lib/sidecar";
 import { computeBountyFit } from "./bounty-fit";

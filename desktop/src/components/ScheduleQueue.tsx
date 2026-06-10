@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../lib/openSmart";
 import { RefreshCw } from "lucide-react";
 import { backend, type ScheduleDto } from "../lib/backend";
 import { sidecar, humanError } from "../lib/sidecar";

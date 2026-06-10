@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../../lib/openSmart";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { ExternalLink, PanelRightOpen, Check, Copy } from "lucide-react";
 import type { WhopBounty } from "../../lib/sidecar";

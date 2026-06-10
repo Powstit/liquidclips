@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../lib/openSmart";
 import { sidecar, humanError, type HardwareInfo } from "../lib/sidecar";
 import { useActivation } from "../lib/activation";
 import { useTier } from "../lib/useTier";

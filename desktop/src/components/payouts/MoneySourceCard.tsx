@@ -12,7 +12,7 @@
 //     deprioritization — we deep-link to Express Dashboard instead
 //   - Empty / setup states nudge the next concrete action
 
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../../lib/openSmart";
 import { ExternalLink } from "lucide-react";
 import { Button, Card, Pill } from "../primitives";
 import { fmtUsd } from "../../lib/payoutsAggregations";

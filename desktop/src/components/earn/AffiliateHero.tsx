@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../../lib/openSmart";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   Banknote,

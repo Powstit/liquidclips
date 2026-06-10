@@ -22,7 +22,7 @@
 // the parent honestly.
 
 import { useEffect, useRef, useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../../lib/openSmart";
 import { AlertTriangle, Check, Link, Loader2, X } from "lucide-react";
 import * as backend from "../../lib/backend";
 import { humanError } from "../../lib/sidecar";
