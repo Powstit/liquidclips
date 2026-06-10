@@ -50,7 +50,7 @@ Daniel can pick the order (B1 → B2 → B3 → B4, or any order he prefers). Cl
 
 ---
 
-## B3 — Whop OAuth disposition
+## B3 — Whop OAuth disposition ✅ RESOLVED 2026-06-10
 
 **State:** 🟡 PENDING (Kimi mid-flight on the bring-up)
 
