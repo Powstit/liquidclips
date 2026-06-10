@@ -18,7 +18,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+// v0.7.45 — `openSmart` replaces shell.open in `revealBrokenFile` below.
+// The broken-file plate's Reveal-in-Finder button feeds the file's parent
+// directory (a `/Users/...` path) to the opener — shell.open's URL regex
+// rejected the path and the surrounding error UI swallowed the error,
+// so the user saw the plate but Finder never opened. IG-007 locks the
+// outer <article>; this swap is import-only.
+import { openSmart as openExternal } from "../../lib/openSmart";
 import { AlertTriangle, Check, Copy, MessageSquare, MoreVertical, Sparkles, Trash2 } from "lucide-react";
 import type { Clip, OverlayType, Project, RatioKey } from "../../lib/sidecar";
 import { sidecar } from "../../lib/sidecar";

@@ -7,7 +7,12 @@
 // Delete confirmation modal reskinned to match the cockpit modal voice.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { open as openPath } from "@tauri-apps/plugin-shell";
+// v0.7.45 — `openSmart` routes filesystem paths through the opener plugin
+// instead of shell.open. Previously a Library card's "Open folder" click
+// fed `/Users/.../LiquidClips/projects/<slug>` into shell.open and tripped
+// its `^(mailto:|tel:|https?://)` scope regex, painting a red error banner
+// across the Library tab.
+import { openSmart as openPath } from "../../lib/openSmart";
 import { motion, AnimatePresence } from "motion/react";
 import { RotateCcw, Trash2 } from "lucide-react";
 import { humanError, sidecar, type Project, type ProjectLibrarySummary } from "../../lib/sidecar";

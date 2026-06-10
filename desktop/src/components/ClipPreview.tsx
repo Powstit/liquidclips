@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+// v0.7.45 — `openSmart` replaces direct shell.open: the "Reveal in Finder"
+// + "Play in default app" buttons feed `/Users/...` paths that fail
+// shell.open's mailto/tel/https regex. The opener plugin handles them.
+import { openSmart as openExternal } from "../lib/openSmart";
 import {
   Captions as CaptionsIcon,
   Calendar,

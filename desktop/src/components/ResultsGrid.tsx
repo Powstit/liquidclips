@@ -1,6 +1,9 @@
 // ship-lens v0.7.13: Grid + multi-select COMBINED. The Workbench WindowManager mount was a v0.7.5 regression that broke per-clip flow; selection on the grid IS the multi-clip surface.
 import { useEffect, useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+// v0.7.45 — `openSmart` replaces direct shell.open for the project-folder
+// "Open folder" / "Open project folder" buttons below. shell.open's scope
+// regex rejects `/Users/...` paths; the opener plugin handles them.
+import { openSmart as openExternal } from "../lib/openSmart";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { CheckCircle2, FolderOpen, Plus, Film } from "lucide-react";
 import type { Project, RatioKey } from "../lib/sidecar";
