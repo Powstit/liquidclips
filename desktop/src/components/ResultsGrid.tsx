@@ -78,9 +78,12 @@ export function ResultsGrid({
   // sets it; ESC clears it back to 0. Distinct from multi-select.
   const [focusedIdx, setFocusedIdx] = useState<number>(0);
   // Keep focusedIdx clamped if clips get removed beneath it.
+  // v0.7.x P1 #20 — On out-of-range, snap to the LAST clip, not 0. After
+  // deleting clip 7 of 10, the user expects focus to stay near where they
+  // were (now-last clip 6), not jump to the top of the grid.
   useEffect(() => {
     if (focusedIdx >= project.clips.length && project.clips.length > 0) {
-      setFocusedIdx(0);
+      setFocusedIdx(Math.max(0, project.clips.length - 1));
     }
   }, [project.clips.length, focusedIdx]);
 
@@ -105,7 +108,16 @@ export function ResultsGrid({
       if ((e.metaKey || e.ctrlKey) && (e.key === "a" || e.key === "A")) {
         if (project.clips.length === 0) return;
         e.preventDefault();
-        selectAll(project.clips.length - 1);
+        // v0.7.x P1 #19 — Cmd-A must respect free-tier truncation. The grid
+        // only renders the first FREE_TIER_VISIBLE_CLIPS for free users, so
+        // selecting beyond that range produced a phantom selection the user
+        // couldn't see (cockpit thought 10, UI showed 3). Mirror the same
+        // visibleCount the render path uses below.
+        const visibleCount =
+          tier.tier === "free"
+            ? Math.min(FREE_TIER_VISIBLE_CLIPS, project.clips.length)
+            : project.clips.length;
+        selectAll(visibleCount - 1);
         return;
       }
       if (e.key === "Escape") {
@@ -120,7 +132,7 @@ export function ResultsGrid({
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [project.clips.length, selectAll, clear, selected.size, previewIdx]);
+  }, [project.clips.length, selectAll, clear, selected.size, previewIdx, tier.tier]);
 
   // v0.7.29 — openPublish helper retired alongside the legacy TAKE ACTION
   // action bar. The cockpit's SchedulePopoverInline owns the Schedule/Publish
