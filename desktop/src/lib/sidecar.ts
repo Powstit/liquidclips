@@ -194,9 +194,14 @@ export async function withCancelOnTimeout<T>(
   } catch (e) {
     if (e instanceof SidecarTimeoutError) {
       // Best-effort: drop the PER-PROJECT cancel marker so the stuck ffmpeg
-      // aborts at its next poll. Swallow failures — the timeout is already
-      // the user-visible error.
-      sidecarCall("project_cancel", { slug }).catch(() => {});
+      // aborts at its next poll. Console.warn (don't toast) on failure —
+      // the timeout is the user-visible error, but QA needs visibility into
+      // marker-write failures so silent swallowing doesn't hide the next
+      // tuple-unpack-style bug like the one this fix closed.
+      sidecarCall("project_cancel", { slug }).catch((err: unknown) => {
+        // eslint-disable-next-line no-console
+        console.warn("[withCancelOnTimeout] project_cancel failed", err);
+      });
     }
     throw e;
   }
