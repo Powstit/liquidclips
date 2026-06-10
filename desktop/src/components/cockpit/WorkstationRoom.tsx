@@ -86,7 +86,14 @@ export function WorkstationRoom({
   }, []);
 
   return (
-    <div className="workstation-room flex w-full flex-col items-center justify-center gap-12 pt-12">
+    // ───── IRON GATE IG-008 (v0.7.43) — see docs/IRON_GATES.md ─────
+    // pb-48 (192px) is the BottomCockpit clearance. BottomCockpit is fixed
+    // at bottom-0 (IG-005/006) and overlays anything below this padding.
+    // Without pb-48, the lower tiles (Thumbnails / Script) and the
+    // SponsoredBannerCarousel sit underneath the cockpit chrome and become
+    // unreachable. Do not reduce below pb-40 without measuring the live
+    // cockpit height on the smallest supported window.
+    <div className="workstation-room flex w-full flex-col items-center justify-center gap-12 pt-12 pb-48">
       <header className="flex flex-col items-center gap-2 text-center">
         <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia">
           workstation
