@@ -68,6 +68,11 @@ export function LibraryTab({
   // one is finalized immediately (consistent with Gmail's "newer toast
   // commits the older one").
   const [pendingTombstone, setPendingTombstone] = useState<PendingTombstone | null>(null);
+  // v0.7.32 — Bulk select + delete state.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Container ref — used to scope the Cmd-K shortcut so it focuses THIS
   // tab's search input rather than any other inbox/search field that might
@@ -123,10 +128,19 @@ export function LibraryTab({
           input.select();
         }
       }
+      if (e.key === "Escape" && selectMode) {
+        e.preventDefault();
+        setSelectMode(false);
+        setSelectedSlugs(new Set());
+      }
+      if (meta && e.key.toLowerCase() === "a" && selectMode) {
+        e.preventDefault();
+        setSelectedSlugs(new Set(filteredRef.current.map((p) => p.slug)));
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [selectMode]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -149,6 +163,9 @@ export function LibraryTab({
         .includes(needle);
     });
   }, [filter, projects, query]);
+
+  const filteredRef = useRef(filtered);
+  useEffect(() => { filteredRef.current = filtered; }, [filtered]);
 
   async function openProject(slug: string) {
     setOpeningSlug(slug);
@@ -261,6 +278,73 @@ export function LibraryTab({
     }
   }
 
+  // v0.7.32 — Bulk delete. No tombstone; confirm dialog is the safety.
+  function toggleSelection(slug: string) {
+    setSelectedSlugs((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      return next;
+    });
+  }
+
+  function selectAllVisible() {
+    if (!selectMode) {
+      setSelectMode(true);
+    }
+    setSelectedSlugs(new Set(filtered.map((p) => p.slug)));
+  }
+
+  function clearSelection() {
+    setSelectMode(false);
+    setSelectedSlugs(new Set());
+  }
+
+  async function bulkDeleteProjects() {
+    if (selectedSlugs.size === 0) return;
+    setBulkDeleting(true);
+    setError(null);
+    // Optimistic: remove selected slugs from local state immediately.
+    const slugsToDelete = Array.from(selectedSlugs);
+    const removedProjects = projects.filter((p) => selectedSlugs.has(p.slug));
+    setProjects((prev) => prev.filter((p) => !selectedSlugs.has(p.slug)));
+    try {
+      const { failed, results } = await sidecar.libraryBulkDelete(slugsToDelete);
+      // Restore any that failed on the sidecar side.
+      if (failed > 0) {
+        const failedSlugs = new Set(
+          results.filter((r) => !r.deleted).map((r) => r.slug)
+        );
+        const toRestore = removedProjects.filter((p) => failedSlugs.has(p.slug));
+        if (toRestore.length > 0) {
+          setProjects((prev) => {
+            const next = [...prev];
+            for (const p of toRestore) {
+              if (!next.some((x) => x.slug === p.slug)) next.push(p);
+            }
+            return next;
+          });
+          setError(`Failed to delete ${failed} project${failed === 1 ? "" : "s"}.`);
+        }
+      }
+      setSelectMode(false);
+      setSelectedSlugs(new Set());
+      setConfirmBulkDelete(false);
+    } catch (e) {
+      // RPC threw entirely — restore all selected projects.
+      setProjects((prev) => {
+        const next = [...prev];
+        for (const p of removedProjects) {
+          if (!next.some((x) => x.slug === p.slug)) next.push(p);
+        }
+        return next;
+      });
+      setError(humanError(e));
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
   // v0.7.8 L4 — Mirror `pendingTombstone` onto a ref so the unmount
   // cleanup below reads the latest value (a closure on state would be
   // stuck at null forever).
@@ -328,6 +412,8 @@ export function LibraryTab({
         openingSlug={openingSlug}
         busySlug={busySlug}
         archivedCount={archivedCount}
+        selectMode={selectMode}
+        selectedSlugs={selectedSlugs}
         onFilterChange={setFilter}
         onQueryChange={setQuery}
         onRefresh={() => void loadProjects()}
@@ -343,6 +429,10 @@ export function LibraryTab({
         onOpenFolder={(p) => void openPath(p.root).catch((e) => setError(humanError(e)))}
         onArchive={(p) => void toggleArchived(p)}
         onDelete={(p) => setConfirmDelete(p)}
+        onToggleSelect={toggleSelection}
+        onSelectAll={selectAllVisible}
+        onExitSelectMode={clearSelection}
+        onBulkDelete={() => setConfirmBulkDelete(true)}
         onGoToWorkstation={() => onGoToWorkstation?.()}
       />
 
@@ -353,6 +443,17 @@ export function LibraryTab({
             busy={busySlug === confirmDelete.slug}
             onCancel={() => setConfirmDelete(null)}
             onConfirm={() => void deleteProject(confirmDelete)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {confirmBulkDelete && (
+          <ConfirmBulkDelete
+            count={selectedSlugs.size}
+            busy={bulkDeleting}
+            onCancel={() => setConfirmBulkDelete(false)}
+            onConfirm={() => void bulkDeleteProjects()}
           />
         )}
       </AnimatePresence>
@@ -427,6 +528,95 @@ function UndoToast({
           Undo
         </button>
       </div>
+    </motion.div>
+  );
+}
+
+function ConfirmBulkDelete({
+  count,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  count: number;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const handleKey = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) {
+        e.preventDefault();
+        onCancel();
+      }
+    },
+    [busy, onCancel],
+  );
+  useEffect(() => {
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [handleKey]);
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/85 px-6 backdrop-blur-md"
+      onClick={onCancel}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Confirm bulk delete"
+    >
+      <motion.div
+        className="relative w-full max-w-[440px] p-7"
+        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.94 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        transition={{ type: "spring", stiffness: 320, damping: 26 }}
+      >
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
+
+        <div className="flex items-start gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--color-danger)]/15 text-[var(--color-danger)]">
+            <Trash2 className="h-4 w-4" strokeWidth={2.2} />
+          </div>
+          <div className="min-w-0">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia">bulk delete</span>
+            <h3 className="font-display text-[18px] font-semibold tracking-[-0.015em] text-ink">
+              Delete {count} project{count === 1 ? "" : "s"}?
+            </h3>
+            <p className="mt-1 break-words font-sans text-[13px] leading-snug text-text-secondary">
+              These projects and all their clips will be permanently removed from disk.
+              This cannot be undone.
+            </p>
+          </div>
+        </div>
+        <div className="mt-6 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded-full border border-line bg-transparent px-4 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-ink disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-danger)] px-4 py-2 font-sans text-[13px] font-medium text-white transition-colors hover:bg-[#B91C1C] disabled:opacity-60"
+          >
+            <Trash2 className="h-3.5 w-3.5" strokeWidth={2.2} />
+            {busy ? "Deleting…" : `Delete ${count}`}
+          </button>
+        </div>
+      </motion.div>
     </motion.div>
   );
 }

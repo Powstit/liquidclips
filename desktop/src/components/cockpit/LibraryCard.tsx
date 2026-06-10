@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   Archive as ArchiveIcon,
   ArchiveRestore,
+  Check,
   FileWarning,
   FolderOpen,
   Layers,
@@ -33,19 +34,25 @@ export function LibraryCard({
   project,
   opening,
   busy,
+  selectMode,
+  selected,
   onOpen,
   onOpenFolder,
   onArchive,
   onDelete,
+  onToggleSelect,
   index,
 }: {
   project: ProjectLibrarySummary;
   opening: boolean;
   busy: boolean;
+  selectMode: boolean;
+  selected: boolean;
   onOpen: () => void;
   onOpenFolder: () => void;
   onArchive: () => void;
   onDelete: () => void;
+  onToggleSelect: () => void;
   /** Staggers the entry animation so the wall doesn't all spring in at
    *  once — feels alive, not robotic. Capped at 12 so a 200-project wall
    *  doesn't take 2 seconds to settle. */
@@ -85,7 +92,7 @@ export function LibraryCard({
       }
       className={`library-card group relative bg-transparent ${
         project.archived ? "opacity-70 hover:opacity-100" : ""
-      }`}
+      } ${selected && selectMode ? "ring-2 ring-fuchsia rounded-xl" : ""}`}
       data-archived={project.archived ? "true" : "false"}
     >
       {/* Four HUD bracket corners — same dashed fuchsia language as the
@@ -95,12 +102,26 @@ export function LibraryCard({
       <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
       <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
 
+      {selectMode && (
+        <div className="absolute left-2 top-2 z-10 flex items-center gap-1.5">
+          <span
+            className={`inline-flex h-5 w-5 items-center justify-center rounded border ${
+              selected
+                ? "border-fuchsia bg-fuchsia text-white"
+                : "border-white/60 bg-black/40 text-white/70"
+            }`}
+          >
+            {selected && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+          </span>
+        </div>
+      )}
+
       <button
         type="button"
-        onClick={onOpen}
+        onClick={selectMode ? onToggleSelect : onOpen}
         disabled={opening || busy}
         className="relative block aspect-[9/16] w-full overflow-hidden rounded-xl bg-transparent text-left disabled:cursor-wait"
-        title={opening ? "Opening…" : `Open ${project.source_filename}`}
+        title={opening ? "Opening…" : selectMode ? "Select" : `Open ${project.source_filename}`}
       >
         {thumbSrc ? (
           <img
@@ -124,14 +145,10 @@ export function LibraryCard({
           </div>
         )}
 
-        {/* TL chip stack — 11:00 screenshot reference: stacked vertically.
-            Row 1: terminal status — pipeline_failed (red) wins over Ready
-            wins over In progress. Row 2: Source missing eyebrow when the
-            cover file no longer exists on disk. Row 3: Imported · N clips
-            when the project was created via the import pipeline (so a user
-            can tell imported packs from cut-from-source packs at a glance). */}
-        <div className="pointer-events-none absolute left-2 top-2 flex flex-col gap-1">
-          {project.pipeline_failed ? (
+        {/* TL chip stack — hidden in select mode so the checkbox is unobstructed. */}
+        {!selectMode && (
+          <div className="pointer-events-none absolute left-2 top-2 flex flex-col gap-1">
+            {project.pipeline_failed ? (
             <StatusChip danger>
               <AlertTriangle className="h-2.5 w-2.5" strokeWidth={2.4} />
               Pipeline failed
@@ -153,7 +170,8 @@ export function LibraryCard({
               Imported · {project.clips_count} clip{project.clips_count === 1 ? "" : "s"}
             </StatusChip>
           )}
-        </div>
+          </div>
+        )}
         {/* TR chip stack — 11:00 screenshot reference: stacked vertically.
             Whop bounty earns the bright glow slot (Earn flywheel is the
             highest-value signal). Archived chip carries the "this is in
@@ -199,35 +217,35 @@ export function LibraryCard({
         </div>
       </button>
 
-      {/* Persistent action row — 11:00 screenshot reference: folder /
-          archive / delete icons visible at rest (opacity-55), full on
-          hover. Discoverable without hovering. */}
-      <div className="library-card-actions absolute inset-x-1 bottom-1 flex items-center justify-end gap-1 opacity-55 transition-opacity duration-300 group-hover:opacity-100">
-        <RingButton onClick={onOpenFolder} title={project.root} ariaLabel="Open folder">
-          <FolderOpen className="h-3.5 w-3.5" strokeWidth={2} />
-        </RingButton>
-        <RingButton
-          onClick={onArchive}
-          disabled={busy}
-          title={project.archived ? "Restore" : "Archive"}
-          ariaLabel={project.archived ? "Restore" : "Archive"}
-        >
-          {project.archived ? (
-            <ArchiveRestore className="h-3.5 w-3.5" strokeWidth={2} />
-          ) : (
-            <ArchiveIcon className="h-3.5 w-3.5" strokeWidth={2} />
-          )}
-        </RingButton>
-        <RingButton
-          onClick={onDelete}
-          disabled={busy}
-          destructive
-          title="Delete project + files on disk"
-          ariaLabel="Delete"
-        >
-          <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
-        </RingButton>
-      </div>
+      {/* Persistent action row — hidden in select mode. */}
+      {!selectMode && (
+        <div className="library-card-actions absolute inset-x-1 bottom-1 flex items-center justify-end gap-1 opacity-55 transition-opacity duration-300 group-hover:opacity-100">
+          <RingButton onClick={onOpenFolder} title={project.root} ariaLabel="Open folder">
+            <FolderOpen className="h-3.5 w-3.5" strokeWidth={2} />
+          </RingButton>
+          <RingButton
+            onClick={onArchive}
+            disabled={busy}
+            title={project.archived ? "Restore" : "Archive"}
+            ariaLabel={project.archived ? "Restore" : "Archive"}
+          >
+            {project.archived ? (
+              <ArchiveRestore className="h-3.5 w-3.5" strokeWidth={2} />
+            ) : (
+              <ArchiveIcon className="h-3.5 w-3.5" strokeWidth={2} />
+            )}
+          </RingButton>
+          <RingButton
+            onClick={onDelete}
+            disabled={busy}
+            destructive
+            title="Delete project + files on disk"
+            ariaLabel="Delete"
+          >
+            <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
+          </RingButton>
+        </div>
+      )}
     </motion.article>
   );
 }
