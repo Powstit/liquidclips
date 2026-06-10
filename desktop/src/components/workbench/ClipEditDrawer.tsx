@@ -90,8 +90,11 @@ function DrawerShell({
     let retries = 0;
     const maxRetries = 3;
     const backoff = 50;
+    let cancelled = false;
+    let timer: number | null = null;
 
     function tryQuery() {
+      if (cancelled) return;
       const tile = document.querySelector(`[data-window-id="${focusedId}"]`);
       if (tile) {
         setTileRect(tile.getBoundingClientRect());
@@ -99,7 +102,7 @@ function DrawerShell({
       }
       if (retries < maxRetries) {
         retries++;
-        setTimeout(tryQuery, backoff * retries);
+        timer = window.setTimeout(tryQuery, backoff * retries);
       } else {
         // Fallback: centered drawer with warning
         console.warn(
@@ -123,6 +126,11 @@ function DrawerShell({
     }
 
     tryQuery();
+
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [focusedId]);
 
   // Recalculate on resize so the drawer stays glued to the tile.
