@@ -27,20 +27,23 @@ export function LayoutIcon({ kind, className = "" }: { kind: LayoutKey; classNam
       inner = <rect x="4.5" y="4.5" width="15" height="15" rx="1.5" fill={c} opacity={MAIN_OPACITY} />;
       break;
     case "stack-bottom":
-      // main top, reaction bottom
+      // v0.7.46 — 30 / 70 split. Reactor (main) on top at 30%, viral source
+      // (broll) on bottom at 70%. Icon proportions mirror the ffmpeg filter
+      // in stages._build_overlay_filter so the tile preview matches the bake.
       inner = (
         <>
-          <rect x="4.5" y="4.5"  width="15" height="6.75" rx="1.2" fill={c} opacity={MAIN_OPACITY} />
-          <rect x="4.5" y="12.75" width="15" height="6.75" rx="1.2" fill={c} opacity={REACT_OPACITY} />
+          <rect x="4.5" y="4.5"  width="15" height="4"   rx="1.2" fill={c} opacity={MAIN_OPACITY} />
+          <rect x="4.5" y="10"   width="15" height="9.5" rx="1.2" fill={c} opacity={REACT_OPACITY} />
         </>
       );
       break;
     case "stack-top":
-      // reaction top, main bottom
+      // v0.7.46 — 70 / 30 vertical flip: viral source (broll) on top at 70%,
+      // reactor (main) on bottom at 30%. Same intent as stack-bottom.
       inner = (
         <>
-          <rect x="4.5" y="4.5"  width="15" height="6.75" rx="1.2" fill={c} opacity={REACT_OPACITY} />
-          <rect x="4.5" y="12.75" width="15" height="6.75" rx="1.2" fill={c} opacity={MAIN_OPACITY} />
+          <rect x="4.5" y="4.5"  width="15" height="9.5" rx="1.2" fill={c} opacity={REACT_OPACITY} />
+          <rect x="4.5" y="15.5" width="15" height="4"   rx="1.2" fill={c} opacity={MAIN_OPACITY} />
         </>
       );
       break;
