@@ -476,8 +476,16 @@ export function ClipCard({
                media icons"). Hint state mirrors the demo mockup's visible
                pips for cards that haven't been routed yet. */}
         {clip.platforms && clip.platforms.length > 0 ? (
-          <span className="pointer-events-none absolute right-2.5 top-2.5">
-            <PlatformBadge platforms={clip.platforms} size="sm" />
+          <span className="absolute right-2.5 top-2.5">
+            <PlatformBadge
+              platforms={clip.platforms}
+              size="sm"
+              onClick={() => {
+                window.dispatchEvent(
+                  new CustomEvent("lc:settings-open-tab", { detail: { tab: "channels" } })
+                );
+              }}
+            />
           </span>
         ) : project.whop_bounty_id ? (
           <span className="absolute right-2.5 top-2.5">
