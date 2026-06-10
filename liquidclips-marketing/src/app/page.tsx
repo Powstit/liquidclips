@@ -4,6 +4,7 @@ import { DemoCabinet } from "@/components/DemoCabinet";
 import { DownloadCTA, DownloadMeta } from "@/components/DownloadCTA";
 import { FleetMarquee, Marquee } from "@/components/Marquee";
 import { accountUrl } from "@/lib/site";
+import { getLatestRelease } from "@/lib/latest-release";
 
 const steps = [
   {
@@ -76,7 +77,18 @@ const stories = [
   { name: "THEO", role: "SPORTS CLIPPER", photo: "/portraits/portrait-theo.png", quote: "47 F1 clips on Sunday, $400 retainer + bonuses." },
 ];
 
-export default function Home() {
+export default async function Home() {
+  // Always-latest DMG URLs from GH releases. ISR-cached for 10 min. Fails
+  // open: when the API call errors, DownloadCTA falls back to env vars so
+  // the page never goes dead.
+  const latest = await getLatestRelease();
+  const artifacts = latest
+    ? {
+        macArm: latest.macArm ?? undefined,
+        macIntel: latest.macIntel ?? undefined,
+        macUniversal: latest.macUniversal ?? undefined,
+      }
+    : undefined;
   return (
     <PageShell>
       <main>
@@ -104,7 +116,7 @@ export default function Home() {
           {/* BIG download CTA — directly below the cabinet */}
           <div className="container" style={{ marginTop: 56, textAlign: "center" }}>
             <div className="big-download">
-              <DownloadCTA variant="primary" className="button-primary--xl" />
+              <DownloadCTA variant="primary" className="button-primary--xl" artifacts={artifacts} />
               <div style={{ marginTop: 14 }}>
                 <DownloadMeta />
               </div>
@@ -278,7 +290,7 @@ export default function Home() {
                   the local sidecar — give it a few seconds. Sign in to unlock your tier.
                 </p>
               </div>
-              <DownloadCTA variant="primary" />
+              <DownloadCTA variant="primary" artifacts={artifacts} />
             </div>
           </div>
         </section>
