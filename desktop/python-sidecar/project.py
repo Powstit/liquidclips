@@ -579,12 +579,39 @@ class Project:
             for s in STAGES
         }
 
+        # v0.7.32 — Generate a source poster so ResultsGrid shows the imported
+        # video in the header (instead of a blank gap + generic title). Uses the
+        # same thumbnail engine as clip covers; failures are non-fatal.
+        source_poster_path: str | None = None
+        source_poster_file = candidate / "source-poster.jpg"
+        try:
+            if _generate_cover_thumbnail(first, source_poster_file, at_seconds=1.0):
+                source_poster_path = str(source_poster_file)
+        except Exception as exc:  # noqa: BLE001
+            import sys
+            sys.stderr.write(
+                f"[create_imported_pack] source poster for {first.name} failed: "
+                f"{type(exc).__name__}: {exc}\n"
+            )
+
+        if source_poster_path:
+            stages["ingest"] = StageState(
+                status="done",
+                started_at=now,
+                finished_at=now,
+                output={"imported": True, "poster_path": source_poster_path},
+            )
+
+        # Use the first file's actual name as the source filename so the
+        # ResultsGrid header reads meaningfully instead of "1 imported clip(s)".
+        source_filename = first.stem.replace("-", " ").replace("_", " ").strip() or first.name
+
         proj = cls(
             id=uuid.uuid4().hex,
             slug=candidate.name,
             root=candidate,
             source_path=str(first),
-            source_filename=f"{len(validated)} imported clip{'s' if len(validated) != 1 else ''}",
+            source_filename=source_filename,
             created_at=now,
             stages=stages,
             clips=clips,
