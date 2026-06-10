@@ -27,7 +27,7 @@ export default function SignInPage() {
             <em className="not-italic text-fuchsia">junior</em>.
           </h1>
 
-          <SignIn forceRedirectUrl="/dashboard" signUpUrl="/sign-up" />
+          <SignIn fallbackRedirectUrl="/dashboard" signUpUrl="/sign-up" />
         </div>
       </section>
 
