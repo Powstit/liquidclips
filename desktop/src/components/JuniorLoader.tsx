@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { InvadersTrigger } from "./invaders/InvadersTrigger";
 import { LiquidInvaderLoader } from "./LiquidInvaderLoader";
 
@@ -11,17 +11,28 @@ export function JuniorLoader({
   message,
   detail,
   percent,
+  downloadedBytes,
   onCancel,
+  onRetry,
 }: {
   message: string;
   detail?: string;
   percent?: number;
+  // R2 — stall detection. Raw bytes from the download progress event so we
+  // can tell "still making progress" from "stuck at the same byte count".
+  downloadedBytes?: number;
   // P1 #5 — surface a Cancel button on the download stage too (lift already
   // had one). When provided, renders a small Cancel pill next to the trigger
   // so a 4-hour throttled download is actually escapable from the UI.
   onCancel?: () => void;
+  // R2 — retry affordance when the download stalls. Wired to the same
+  // runPipelineFromUrl path that the ingest-failed retry uses.
+  onRetry?: () => void;
 }) {
   const [typed, setTyped] = useState("");
+  const [stalled, setStalled] = useState(false);
+  const bytesRef = useRef(downloadedBytes);
+  const changeTimeRef = useRef(Date.now());
 
   useEffect(() => {
     let cancelled = false;
@@ -40,6 +51,29 @@ export function JuniorLoader({
       cancelled = true;
     };
   }, [message]);
+
+  // R2 — stall detection. Track bytes over a rolling 60-second window.
+  // When bytes change, reset the stall timer. When they stay flat for 60s,
+  // flip stalled → true. The interval ticks every second; refs keep the
+  // closure fresh without re-triggering the effect on every byte update.
+  useEffect(() => {
+    if (downloadedBytes !== bytesRef.current) {
+      bytesRef.current = downloadedBytes;
+      changeTimeRef.current = Date.now();
+      setStalled(false);
+    }
+  }, [downloadedBytes]);
+
+  useEffect(() => {
+    if (downloadedBytes === undefined) return;
+    const id = window.setInterval(() => {
+      if (bytesRef.current === undefined) return;
+      if (Date.now() - changeTimeRef.current > 60000) {
+        setStalled(true);
+      }
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [downloadedBytes !== undefined]);
 
   return (
     <div className="flex w-full max-w-[680px] flex-col items-start gap-6">
@@ -63,7 +97,33 @@ export function JuniorLoader({
           {detail}
         </p>
       )}
-      {typeof percent === "number" ? (
+      {stalled ? (
+        // R2 — stall affordance. Replaces the progress bar when bytes haven't
+        // moved for 60 consecutive seconds.
+        <div className="flex w-full max-w-[520px] flex-col gap-3 rounded-xl border border-fuchsia-deep/40 bg-fuchsia-deep/5 px-4 py-3">
+          <p className="font-sans text-[13px] font-medium text-fuchsia-deep">
+            Download seems stuck — try again, or cancel.
+          </p>
+          <div className="flex items-center gap-2">
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
+              >
+                Retry
+              </button>
+            )}
+            {onCancel && (
+              <button
+                onClick={onCancel}
+                className="rounded-full border border-line bg-transparent px-4 py-1.5 font-sans text-[12px] font-medium text-text-secondary hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        </div>
+      ) : typeof percent === "number" ? (
         <div className="flex w-full max-w-[520px] flex-col gap-1.5">
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-paper-elev/60">
             <div
@@ -86,17 +146,19 @@ export function JuniorLoader({
           <div className="working-stage-shimmer h-full w-1/3 rounded-full" />
         </div>
       )}
-      <div className="flex items-center gap-3">
-        <InvadersTrigger />
-        {onCancel && (
-          <button
-            onClick={onCancel}
-            className="rounded-full border border-line bg-transparent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]"
-          >
-            cancel
-          </button>
-        )}
-      </div>
+      {!stalled && (
+        <div className="flex items-center gap-3">
+          <InvadersTrigger />
+          {onCancel && (
+            <button
+              onClick={onCancel}
+              className="rounded-full border border-line bg-transparent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-secondary hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]"
+            >
+              cancel
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
