@@ -2,8 +2,56 @@
 
 **Date scoped:** 2026-06-10
 **Owner:** Daniel decides, Claude executes within rails
-**Sprint size:** ~90 min if smooth; budget 2-3 hrs with debugging
-**Status:** Scoped, not started
+**Status:** Path B (satellite-only) chosen + in progress 2026-06-10. Path A (full cutover) kept here for reference.
+
+---
+
+## ✅ RECOMMENDED PATH: B — Satellite-only (chosen 2026-06-10)
+
+**Time:** 5 min in Clerk dashboard + 5 min smoke test
+**Risk:** Zero (no downtime, no session invalidation, no rebuild, no code change)
+**Why:** `account-app/src/app/layout.tsx:30-44` is already wired for dual-domain mode. The host header detects which domain serves the request; `account.liquidclips.app` automatically becomes the satellite, sign-in routes to primary, session syncs back. Nothing else has to move.
+
+### Execute
+
+1. **dashboard.clerk.com** → Liquid/clips production instance → **Configure → Domains → Satellites tab** → **Add satellite domain** → enter `account.liquidclips.app`.
+2. Clerk verifies the CNAME (`clerk.account.liquidclips.app` already resolves ✅) + provisions TLS cert (~5 min).
+3. **Smoke test in incognito:**
+   ```
+   https://account.liquidclips.app/connect-desktop?challenge=satellitesmoke12345
+   ```
+   - Clerk widget loads in satellite mode (no SSL error)
+   - Click sign-in → bounces to `account.jnremployee.com/sign-in` (the primary) for auth
+   - After sign-in → bounces back to `account.liquidclips.app` with session synced via `__clerk_synced`
+   - Desktop activation deep-link `liquidclips://activate?…` fires
+4. **Done.** Both domains live in parallel. Drop the old one whenever — no rush.
+
+### Verification commands
+
+```bash
+# Clerk TLS on new satellite
+curl -sI https://clerk.account.liquidclips.app/npm/@clerk/clerk-js@6/dist/clerk.browser.js | head -1
+# Must return: HTTP/2 307 (currently: ERR_SSL_VERSION_OR_CIPHER_MISMATCH — confirms cert not yet provisioned)
+```
+
+### What's NOT needed in Path B
+
+- ❌ No env var rotation (same `pk_live_…` / `sk_live_…` work for both domains)
+- ❌ No code changes (dual-domain wiring already shipped — see `layout.tsx:30-44` + `middleware.ts:3-8`)
+- ❌ No Vercel redeploy (`account.liquidclips.app` alias already present)
+- ❌ No desktop client rebuild (still uses `account.jnremployee.com` per `activation.ts:25` — works fine)
+- ❌ No existing sessions invalidated
+- ❌ No Danger Zone change
+
+### When Path A becomes relevant (later, optional)
+
+Months from now — when 100% of traffic naturally lives on `account.liquidclips.app` because the desktop ships a new `CONNECT_URL` — then the Danger Zone "Change primary domain" can happen with negligible downtime impact (zero active users on the old domain to disrupt).
+
+---
+
+## Path A (deferred) — Full primary-domain cutover
+
+The rest of this doc preserves the original full-cutover scope for the day Path A becomes necessary.
 
 ---
 
