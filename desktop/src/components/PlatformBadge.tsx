@@ -81,9 +81,13 @@ interface PlatformBadgeProps {
   platforms: PlatformId[];
   size?: "sm" | "md" | "lg";
   showLabel?: boolean;
+  /** v0.7.45 — When provided, each badge renders as a clickable button that
+   *  calls onClick with the platform id. Used by ClipCard to route to
+   *  Schedule → Channels. */
+  onClick?: (platform: PlatformId) => void;
 }
 
-export function PlatformBadge({ platforms, size = "sm", showLabel = false }: PlatformBadgeProps) {
+export function PlatformBadge({ platforms, size = "sm", showLabel = false, onClick }: PlatformBadgeProps) {
   if (!platforms || platforms.length === 0) return null;
 
   // sm = 34 matches the mockup's `.social-pip` (clip-dashboard-demo.html L107).
@@ -95,27 +99,53 @@ export function PlatformBadge({ platforms, size = "sm", showLabel = false }: Pla
 
   return (
     <div className="flex items-center gap-1.5">
-      {platforms.map((p) => (
-        <div
-          key={p}
-          className="grid place-items-center shadow-[0_4px_14px_rgba(0,0,0,0.55)]"
-          style={{
-            width: s,
-            height: s,
-            borderRadius: radius,
-            border: "1.5px solid rgba(255,255,255,0.22)",
-            color: "white",
-            ...(BRAND_BG[p].startsWith("linear-gradient")
-              ? { background: BRAND_BG[p] }
-              : { backgroundColor: BRAND_BG[p] }),
-          }}
-          title={BRAND_LABEL[p]}
-        >
-          <span style={{ width: glyph, height: glyph, display: "flex" }}>
-            <PlatformGlyph id={p} />
-          </span>
-        </div>
-      ))}
+      {platforms.map((p) => {
+        const badge = (
+          <div
+            key={p}
+            className="grid place-items-center shadow-[0_4px_14px_rgba(0,0,0,0.55)]"
+            style={{
+              width: s,
+              height: s,
+              borderRadius: radius,
+              border: "1.5px solid rgba(255,255,255,0.22)",
+              color: "white",
+              ...(BRAND_BG[p].startsWith("linear-gradient")
+                ? { background: BRAND_BG[p] }
+                : { backgroundColor: BRAND_BG[p] }),
+            }}
+            title={BRAND_LABEL[p]}
+          >
+            <span style={{ width: glyph, height: glyph, display: "flex" }}>
+              <PlatformGlyph id={p} />
+            </span>
+          </div>
+        );
+        if (!onClick) return badge;
+        return (
+          <button
+            key={p}
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onClick(p); }}
+            className="grid place-items-center rounded-[10px] shadow-[0_4px_14px_rgba(0,0,0,0.55)] transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-fuchsia"
+            style={{
+              width: s,
+              height: s,
+              border: "1.5px solid rgba(255,255,255,0.22)",
+              color: "white",
+              ...(BRAND_BG[p].startsWith("linear-gradient")
+                ? { background: BRAND_BG[p] }
+                : { backgroundColor: BRAND_BG[p] }),
+            }}
+            title={`Route to ${BRAND_LABEL[p]}`}
+            aria-label={`Route to ${BRAND_LABEL[p]}`}
+          >
+            <span style={{ width: glyph, height: glyph, display: "flex" }}>
+              <PlatformGlyph id={p} />
+            </span>
+          </button>
+        );
+      })}
       {showLabel && platforms.length > 0 && (
         <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-text-tertiary">
           {platforms.length > 1 ? `${platforms.length} platforms` : BRAND_LABEL[platforms[0]]}
