@@ -268,7 +268,13 @@ export function AvatarPanel({
                 <div className="relative h-12 w-12 shrink-0">
                   <div className="relative h-12 w-12 overflow-hidden rounded-full border border-fuchsia/40 bg-gradient-to-br from-fuchsia to-fuchsia-deep">
                     {renderedSrc ? (
-                      <img src={renderedSrc} alt="" className="h-full w-full object-cover" draggable={false} />
+                      <img
+                        src={renderedSrc}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        draggable={false}
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                      />
                     ) : (
                       <span className="flex h-full w-full items-center justify-center font-display text-[16px] font-bold text-white">
                         {initials}

@@ -1780,7 +1780,13 @@ function ProfileAvatarRow({ email }: { email: string | null }) {
     <div className="flex items-center gap-4 rounded-2xl border border-line bg-paper px-4 py-4">
       <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border-2 border-fuchsia/40 bg-gradient-to-br from-fuchsia to-fuchsia-deep">
         {renderedSrc ? (
-          <img src={renderedSrc} alt="" className="h-full w-full object-cover" draggable={false} />
+          <img
+            src={renderedSrc}
+            alt=""
+            className="h-full w-full object-cover"
+            draggable={false}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
         ) : (
           <span className="flex h-full w-full items-center justify-center font-display text-[20px] font-bold text-white">
             {initials}

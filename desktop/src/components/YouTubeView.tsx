@@ -111,7 +111,12 @@ export function YouTubeView({ project }: { project: Project }) {
       <div className="flex flex-wrap items-stretch gap-4 rounded-2xl border border-line bg-gradient-to-r from-paper-warm/60 via-paper to-paper-warm/40 p-4 shadow-[0_2px_12px_rgba(15,15,18,0.04)]">
         {posterSrc && (
           <div className="aspect-video h-[88px] shrink-0 overflow-hidden rounded-xl border border-line bg-paper-warm">
-            <img src={posterSrc} alt="" className="h-full w-full object-cover" />
+            <img
+              src={posterSrc}
+              alt=""
+              className="h-full w-full object-cover"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+            />
           </div>
         )}
         <div className="flex flex-1 flex-col justify-between gap-2">

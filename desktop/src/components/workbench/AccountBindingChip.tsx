@@ -42,6 +42,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { openSmart as openExternal } from "../../lib/openSmart";
+import { humanError } from "../../lib/sidecar";
 import { useWorkbenchStore } from "./useWorkbenchStore";
 import {
   createChannel,
@@ -192,7 +193,7 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
         setLoadState("loaded");
       } catch (e) {
         if (cancelled) return;
-        setErrorMsg(e instanceof Error ? e.message : "Couldn't load channels.");
+        setErrorMsg(humanError(e) || "Couldn't load channels.");
         setLoadState("error");
       }
     })();
@@ -322,9 +323,7 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
       setConnecting(null);
       emitToast(
         "error",
-        e instanceof Error && e.message
-          ? e.message
-          : `Couldn't start ${platformLabel(platform)} connect — try again.`,
+        humanError(e) || `Couldn't start ${platformLabel(platform)} connect — try again.`,
       );
     }
   }

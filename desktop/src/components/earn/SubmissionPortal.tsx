@@ -13,6 +13,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check, ExternalLink, Loader2, Lock, X } from "lucide-react";
 import { openSmart as openExternal } from "../../lib/openSmart";
+import { humanError } from "../../lib/sidecar";
 import {
   createSubmission,
   listActiveCampaigns,
@@ -120,7 +121,7 @@ export function SubmissionPortal({ onClose }: { onClose: () => void }) {
         return;
       }
       track("mc_submission_failed_network", { campaign_id: campaign.id });
-      setState({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+      setState({ kind: "error", message: humanError(e) });
     }
   }
 
