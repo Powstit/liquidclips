@@ -10,7 +10,7 @@ export default function GettingStartedPage() {
   return (
     <HelpArticle
       title="Getting started"
-      lede="Use this path for a first successful run: install, activate, add a key if your plan needs one, then generate a clip from a public video."
+      lede="Use this path for a first successful run: install, activate, add a key if your plan needs one, then generate a clip from a public video. New to Liquid Clips entirely? Start with the longer onboarding walkthrough at /start — this article is the concise checklist after install."
       sections={[
         {
           heading: "1. Install the Mac app",

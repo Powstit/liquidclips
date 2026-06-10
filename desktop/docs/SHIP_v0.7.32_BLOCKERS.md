@@ -52,15 +52,16 @@ Daniel can pick the order (B1 → B2 → B3 → B4, or any order he prefers). Cl
 
 ## B3 — Whop OAuth disposition ✅ RESOLVED 2026-06-10
 
-**State:** 🟡 PENDING (Kimi mid-flight on the bring-up)
+**State:** ✅ RESOLVED 2026-06-10 — path (a) Ship-with-Whop. Smoke test green via `account.liquidclips.app/connect-desktop?challenge=…` → Clerk widget loads on the new Clerk satellite, "Continue with Whop" button rendered + clicked through → Whop OAuth round-trip → `liquidclips://activate?token=…` deep-link → desktop activated.
 
-**Why this is a blocker:** Kimi's `account-app/connect-desktop/page.tsx` adds a "Continue with Whop" button gated behind `NEXT_PUBLIC_WHOP_SIGNIN_ENABLED === "true"`. Backend route `/auth/whop/start` + `/auth/whop/callback` are coded but the Whop dashboard side (client secret + redirect URI registration) isn't done, and Vercel env vars aren't set.
+**Resolution log:**
+- 2026-06-10 — Whop OAuth app `app_hLphExdFzjEQsM` confirmed in `public` OAuth client mode; per the Whop dashboard, the same `apik_BvoGD...0e0c9b142b` value is BOTH the API key AND the OAuth client_secret (Whop unifies them for public-mode apps). Railway env already correct as-is. Original "wrong secret" diagnosis reversed; persisted explicit `WHOP_OAUTH_CLIENT_SECRET=` line into `~/.claude-credentials/whop.env` so future agents don't re-diagnose.
+- 2026-06-10 — `NEXT_PUBLIC_WHOP_SIGNIN_ENABLED` on Vercel account-app production swapped from `sensitive` → `plain "true"`. Sensitive type prevented Next.js from inlining the constant at build time, so the button silently never rendered in prod. account-app redeployed.
+- 2026-06-10 — Clerk satellite `account.liquidclips.app` added in the Clerk dashboard. TLS cert provisioned (Google Trust Services). Smoke test confirmed sign-in panel renders both "Continue with Google" + "Continue with Whop".
 
-**Resolves when ONE of:**
-- **(a) Ship-with-Whop:** Whop dashboard registered + secret set on Railway + 3 Vercel env vars set on account-app + `NEXT_PUBLIC_WHOP_SIGNIN_ENABLED=true` + smoke test on staging passes → proceed.
-- **(b) Ship-without-Whop:** Confirm `NEXT_PUBLIC_WHOP_SIGNIN_ENABLED` is unset (or `=false`) in Vercel for account-app production → button stays hidden → proceed. v0.7.33 picks up Whop after Kimi finishes.
+**Backing context (preserved for future agents):** original two paths were (a) Ship-with-Whop (Whop dashboard + Railway secret + Vercel env vars + smoke test) and (b) Ship-without-Whop (flag the env var off so the button stays hidden). Path (a) ended up being the cheaper close because the dashboard secret was already aligned.
 
-**Verification:** `curl -sS https://account.liquidclips.app/connect-desktop | grep -i "Continue with Whop"` returns content (path a) OR empty (path b). The result decides which mode v0.7.32 ships in.
+**Verification (still passing):** `curl -sS "https://account.liquidclips.app/connect-desktop?challenge=postresolve12345"` returns Clerk widget HTML; bundled JS contains the `Continue with Whop` literal (post-hydration render).
 
 ---
 

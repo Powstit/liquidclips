@@ -346,6 +346,13 @@ export default async function StartPage() {
                   <a href={`mailto:${supportEmail}`}>{supportEmail}</a> with your macOS version, the
                   step you hit, and what the app showed. Real human reply within one business day.
                 </p>
+                <p style={{ marginTop: 14 }}>
+                  Already installed and just need a concise checklist? See the post-install{" "}
+                  <Link href="/help/getting-started" className="inline-link">
+                    Getting Started article
+                  </Link>{" "}
+                  in the help center.
+                </p>
               </div>
             </div>
           </div>
