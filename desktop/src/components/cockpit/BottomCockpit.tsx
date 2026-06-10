@@ -177,14 +177,20 @@ export function BottomCockpit({
   }, [setCollapsed]);
 
   // Project whenKey → ScheduleWhen for the popover prefill.
-  const whenKeyAsScheduleWhen: ScheduleWhen =
-    whenKey === "now"
-      ? { kind: "now" }
-      : whenKey === "+1h"
-      ? { kind: "preset", offsetHours: 1 }
-      : whenKey === "+24h"
-      ? { kind: "preset", offsetHours: 24 }
-      : { kind: "now" };
+  // v0.7.45 — Memoized so the object reference is stable between renders.
+  // Without this, SchedulePopoverInline's useEffect resets internal `when`
+  // state on every parent render, clobbering the user's channel/time picks.
+  const whenKeyAsScheduleWhen: ScheduleWhen = useMemo(
+    () =>
+      whenKey === "now"
+        ? { kind: "now" }
+        : whenKey === "+1h"
+        ? { kind: "preset", offsetHours: 1 }
+        : whenKey === "+24h"
+        ? { kind: "preset", offsetHours: 24 }
+        : { kind: "now" },
+    [whenKey],
+  );
 
   // Master CTA label morphs based on whenKey.
   const ctaLabel =
@@ -224,8 +230,27 @@ export function BottomCockpit({
     return [...all];
   }, [effectiveIdxs, project.clips]);
 
-  const captionDraftValue =
-    captionDrafts[safeFocusedIdx] ?? focusedClip?.pinned_comment ?? "";
+  // v0.7.45 — Bulk caption consensus: show the common pinned_comment if
+  // every selected clip shares it; show empty + "Mixed" placeholder if they
+  // differ. Prevents the old bug where the focused clip's caption was silently
+  // fanned out across all selected clips.
+  const captionConsensus = useMemo(() => {
+    if (!isBulkMode || selectionSize <= 1) return null;
+    const comments = effectiveIdxs
+      .map((i) => project.clips[i]?.pinned_comment)
+      .filter((c): c is string => typeof c === "string" && c.length > 0);
+    const unique = Array.from(new Set(comments));
+    if (unique.length === 1) return unique[0];
+    return "";
+  }, [isBulkMode, selectionSize, effectiveIdxs, project.clips]);
+
+  const captionDraftValue = useMemo(() => {
+    if (captionDrafts[safeFocusedIdx] !== undefined) return captionDrafts[safeFocusedIdx];
+    if (captionConsensus !== null) return captionConsensus;
+    return focusedClip?.pinned_comment ?? "";
+  }, [captionDrafts, safeFocusedIdx, captionConsensus, focusedClip]);
+
+  const isMixedCaption = isBulkMode && selectionSize > 1 && captionConsensus === "";
   const activeCaptionStyleLabel =
     activeCaptionStyle === "mixed"
       ? "MIXED"
@@ -304,6 +329,7 @@ export function BottomCockpit({
                   <CaptionRow
                     value={captionDraftValue}
                     isBulkMode={isBulkMode}
+                    isMixedCaption={isMixedCaption}
                     hasClips={hasClips}
                     busy={busy}
                     stylePrimary={activeCaptionStylePrimary}
@@ -313,6 +339,10 @@ export function BottomCockpit({
                     }
                     onBlur={async (next) => {
                       if (!hasClips) return;
+                      // v0.7.45 — In "Mixed" bulk mode, an empty input means
+                      // the user didn't type anything. Don't clear every
+                      // selected clip's caption.
+                      if (isMixedCaption && next === "") return;
                       let latest = project;
                       for (const idx of effectiveIdxs) {
                         const target = latest.clips[idx];
@@ -791,6 +821,7 @@ function CollapsedBody({
 function CaptionRow({
   value,
   isBulkMode,
+  isMixedCaption,
   hasClips,
   busy,
   stylePrimary,
@@ -802,6 +833,7 @@ function CaptionRow({
 }: {
   value: string;
   isBulkMode: boolean;
+  isMixedCaption?: boolean;
   hasClips: boolean;
   busy: boolean;
   stylePrimary?: string;
@@ -819,7 +851,13 @@ function CaptionRow({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onBlur={(e) => onBlur(e.target.value)}
-        placeholder={isBulkMode ? `Pin caption (applies to ${isBulkMode ? "all selected" : ""})` : "pin a caption…"}
+        placeholder={
+          isBulkMode
+            ? isMixedCaption
+              ? "Mixed — type to apply to all selected"
+              : "Pin caption (applies to all selected)"
+            : "pin a caption…"
+        }
         disabled={busy || !hasClips}
         className="flex-1 min-w-0 bg-transparent border-0 text-[14px] font-medium tracking-[-0.01em] text-paper placeholder:text-text-tertiary placeholder:italic focus:outline-none disabled:opacity-40"
       />
