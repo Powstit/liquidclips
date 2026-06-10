@@ -297,13 +297,17 @@ function truncateBountyTitle(title: string | null): string {
   return trimmed.length > 16 ? `${trimmed.slice(0, 15)}…` : trimmed;
 }
 
-function RingButton({
+// v0.7.46 — exported so ClipCard (and any other clip-tile variant) shares
+// the same fuchsia HUD button vocabulary instead of drifting into its own
+// pill/border style. Single source of truth for the round-button look.
+export function RingButton({
   children,
   onClick,
   disabled,
   title,
   ariaLabel,
   destructive = false,
+  active = false,
 }: {
   children: React.ReactNode;
   onClick: () => void;
@@ -311,6 +315,8 @@ function RingButton({
   title?: string;
   ariaLabel: string;
   destructive?: boolean;
+  /** Sticky "on" state — used by ClipCard's Copy → "Copied" flash. */
+  active?: boolean;
 }) {
   return (
     <button
@@ -323,7 +329,9 @@ function RingButton({
       title={title}
       aria-label={ariaLabel}
       className={`inline-flex h-7 w-7 items-center justify-center rounded-full border bg-paper/70 backdrop-blur-md transition-colors ${
-        destructive
+        active
+          ? "border-fuchsia bg-fuchsia text-white"
+          : destructive
           ? "border-line text-text-secondary hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]"
           : "border-line text-text-secondary hover:border-fuchsia hover:text-fuchsia"
       } disabled:opacity-40`}
