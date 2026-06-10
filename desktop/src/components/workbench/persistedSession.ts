@@ -28,6 +28,15 @@ function isPersistedSession(value: unknown): value is PersistedSession {
   return true;
 }
 
+// R3 — throttle quota toast to once per session so a full disk doesn't spam.
+let hasToastedQuota = false;
+
+function isQuotaError(e: unknown): boolean {
+  return (
+    e instanceof DOMException && e.name === "QuotaExceededError"
+  );
+}
+
 function safeLocalStorage(): Storage | null {
   try {
     if (typeof window === "undefined") return null;
@@ -57,14 +66,27 @@ export function read(): PersistedSession {
 }
 
 /** Best-effort persist. Quota / SecurityError / serialization errors are
- *  swallowed — we never want a persistence failure to crash the editor. */
+ *  swallowed — we never want a persistence failure to crash the editor.
+ *  R3: surfaces QuotaExceededError once per session via the lc:toast bus. */
 export function write(state: PersistedSession): void {
   const ls = safeLocalStorage();
   if (!ls) return;
   try {
     ls.setItem(LC_WORKBENCH_PREF_KEY, JSON.stringify(state));
-  } catch {
-    // Quota, private-mode, or serialization failure. Nothing we can do.
+  } catch (e) {
+    if (isQuotaError(e) && !hasToastedQuota) {
+      hasToastedQuota = true;
+      window.dispatchEvent(
+        new CustomEvent("lc:toast", {
+          detail: {
+            kind: "warn",
+            message:
+              "Storage full — workbench layout won't save. Free up disk space.",
+          },
+        }),
+      );
+    }
+    // All other errors (private-mode, serialization, etc.) stay swallowed.
   }
 }
 
