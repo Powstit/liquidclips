@@ -145,6 +145,17 @@ export default function App() {
   // touching view state, so an abandoned Promise can't yank the user back
   // onto a stale "lifted" / "lift-failed" screen.
   const liftGenRef = useRef(0);
+  // P1 #22 — guard against the OS file picker + a Tauri drag-drop firing in
+  // the same window. If the user opens Browse and then drags a file over the
+  // window, the dialog and the listener race; the drop hijacks the picker
+  // promise on macOS and leaves stranded UI state. While the picker is open,
+  // the drag-drop listener ignores the event.
+  const pickerOpenRef = useRef(false);
+  // P1 #24 — generation guard for runRemainingStages, same pattern as
+  // liftGenRef. Bumped at the start of every pipeline loop and on Cancel /
+  // drag-drop-replace; each stage await re-checks before mutating view state
+  // so a stale resolution from an abandoned run can't yank the user back.
+  const runGenRef = useRef(0);
   // P0 #3 / #4 — shared cancel signal threaded through every async pipeline
   // boundary (ingest, runRemainingStages loop, drag-drop replace flow). The
   // sidecar cancel marker is one mechanism; this ref is the second: the
@@ -397,6 +408,9 @@ export default function App() {
     // importReadyClips calls and race their setView landings.
     if (importing) return;
     setImporting(true);
+    // P1 #22 — mark picker open so the drag-drop listener ignores any drop
+    // that lands while the OS dialog is visible. Cleared in the finally block.
+    pickerOpenRef.current = true;
     try {
       const picked = await open({
         multiple: true,
@@ -436,6 +450,7 @@ export default function App() {
       }
     } finally {
       setImporting(false);
+      pickerOpenRef.current = false;
     }
   }
   // Hydrate avatar store from the sidecar once at app boot. The orbit + the
@@ -691,6 +706,19 @@ export default function App() {
 
   useEffect(() => {
     const unlistenPromise = listen<{ paths: string[] }>("tauri://drag-drop", async (event) => {
+      // P1 #22 — race guard. If the OS file picker is currently open, ignore
+      // the drop instead of racing the dialog's promise. Surface a toast so
+      // the user knows the drop was deliberately rejected (vs. silently lost).
+      if (pickerOpenRef.current) {
+        try {
+          window.dispatchEvent(new CustomEvent("lc:toast", {
+            detail: { kind: "info", message: "Close the file picker before dropping a file." },
+          }));
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
       const paths = event.payload?.paths ?? [];
       const path = paths[0];
       if (!path) return;
@@ -749,6 +777,11 @@ export default function App() {
           setConfirmReplacePipeline({ resolve });
         });
         if (!ok) return;
+        // P1 #23 — bump liftGenRef so any in-flight lift Promise from the
+        // run we're replacing can't land a stale "lifted" view between
+        // sidecar.liftCancel() resolving and the new ingest's view
+        // transition. Mirrors the WorkingStage Cancel handler.
+        liftGenRef.current += 1;
         cancelRequestedRef.current = true;
         await sidecar.liftCancel().catch(() => undefined);
       }
@@ -864,6 +897,12 @@ export default function App() {
   }
 
   async function runRemainingStages(initial: Project) {
+    // P1 #24 — generation guard, mirroring liftGenRef. Bumped + captured at
+    // entry; each `await sidecar.runStage(...)` re-checks runGenRef before
+    // mutating view state. A stale resolution from an abandoned run (e.g.
+    // drag-drop replace, Cancel) can no longer yank the user back onto a
+    // mid-pipeline view or land a phantom "failed"/"results" transition.
+    const myGen = ++runGenRef.current;
     let current = initial;
     const remaining: StageName[] = pipelineStagesFor(current.intent ?? "both");
     setRunningProject(current);
@@ -899,27 +938,46 @@ export default function App() {
         ? { kind: "running", project: current, currentStage: stage }
         : v));
       try {
-        // v0.7.34 — 10-minute frontend timeout on each stage. A hung Python
-        // process used to strand the user indefinitely (no progress, no
-        // recovery). We still let the sidecar own cancellation (.cancel
-        // marker), but the race here guarantees the UI surfaces a failure
-        // and re-arms within 10 minutes regardless. Real stages on M-series
-        // Macs finish in seconds; 10 minutes is for the "something is very
-        // wrong" path, not the slow path.
-        const STAGE_TIMEOUT_MS = 10 * 60 * 1000;
+        // P0 #5 — per-stage frontend timeout. Heavy stages (cut/reframe/thumbs)
+        // can legitimately take longer than the original 10-minute blanket
+        // budget on long sources or busy machines; the prior uniform timeout
+        // hard-failed healthy long jobs. Lighter stages (audio/transcribe and
+        // ingest/llm) keep the 10-minute ceiling so the timeout still catches
+        // genuine hangs instead of hiding bugs. The sidecar still owns real
+        // cancellation (.cancel marker); the race here is the UI's
+        // "something is very wrong" tripwire, not the slow-path budget.
+        const STAGE_TIMEOUT_MS_BY_STAGE: Record<StageName, number> = {
+          ingest: 10 * 60 * 1000,
+          audio: 10 * 60 * 1000,
+          transcribe: 10 * 60 * 1000,
+          llm: 10 * 60 * 1000,
+          cut: 20 * 60 * 1000,
+          reframe: 20 * 60 * 1000,
+          thumbs: 20 * 60 * 1000,
+        };
+        const STAGE_TIMEOUT_MS = STAGE_TIMEOUT_MS_BY_STAGE[stage] ?? 10 * 60 * 1000;
+        const STAGE_TIMEOUT_MIN = Math.round(STAGE_TIMEOUT_MS / 60000);
         const { project: updated } = await Promise.race([
           sidecar.runStage(current.slug, stage),
           new Promise<never>((_, reject) =>
             window.setTimeout(
-              () => reject(new Error(`Stage "${stage}" timed out after 10 minutes. Cancel and try again, or check your source.`)),
+              () => reject(new Error(`Stage "${stage}" timed out after ${STAGE_TIMEOUT_MIN} minutes. Cancel and try again, or check your source.`)),
               STAGE_TIMEOUT_MS,
             ),
           ),
         ]);
+        // P1 #24 — if the run was superseded while sidecar.runStage was in
+        // flight, drop the resolution on the floor so we don't write stale
+        // state into the new generation's view.
+        if (runGenRef.current !== myGen) return;
         current = updated;
         setRunningProject(current);
       } catch (e) {
+        // P1 #24 — same gen-check on the failure path. A timeout/error from
+        // an abandoned run must not surface a FailureCard for the new run.
+        if (runGenRef.current !== myGen) return;
         const { project: refreshed } = await sidecar.getProject(current.slug).catch(() => ({ project: current }));
+        if (runGenRef.current !== myGen) return;
         current = refreshed;
         const err = current.stages[stage]?.error ?? "";
         setRunningProject(null); setRunningStage(null);
@@ -927,7 +985,7 @@ export default function App() {
           setView((v) => (isOnPipelineView(v.kind) ? { kind: "canceled", project: current } : v));
           return;
         }
-        setView((v) => (isOnPipelineView(v.kind) ? { kind: "failed", project: current, error: err || String(e) } : v));
+        setView((v) => (isOnPipelineView(v.kind) ? { kind: "failed", project: current, error: err || humanError(e) } : v));
         return;
       }
       if (current.stages[stage].status === "failed") {
@@ -1079,10 +1137,13 @@ export default function App() {
       }
       await runRemainingStages(project);
     } catch (e) {
+      // P0 #9 — was raw String(e), leaking Python tracebacks / "[object Object]"
+      // into the FailureCard. humanError(e) surfaces SidecarError.human if the
+      // sidecar pre-classified it, else falls back to e.message / String(e).
       setView((prev) => {
         const base = prev.kind === "running" || prev.kind === "results" || prev.kind === "failed" ? prev.project : null;
         if (base) {
-          return { kind: "failed", project: base, error: String(e) };
+          return { kind: "failed", project: base, error: humanError(e) };
         }
         console.error("[pipeline] startRun failed:", e);
         return { kind: "empty" };
@@ -1092,13 +1153,21 @@ export default function App() {
 
   async function pickFile(briefFromUI: string) {
     setPendingBrief(briefFromUI);
-    const picked = await open({
-      multiple: false,
-      filters: [
-        { name: "Videos", extensions: ["mp4", "MP4", "mov", "MOV", "mkv", "MKV", "webm", "m4v", "M4V", "avi", "AVI", "hevc"] },
-        { name: "All files", extensions: ["*"] },
-      ],
-    });
+    // P1 #22 — same picker-vs-drop guard as handleImportDirect. The dialog
+    // is the only thing the user should be interacting with while it's open.
+    pickerOpenRef.current = true;
+    let picked: string | string[] | null = null;
+    try {
+      picked = await open({
+        multiple: false,
+        filters: [
+          { name: "Videos", extensions: ["mp4", "MP4", "mov", "MOV", "mkv", "MKV", "webm", "m4v", "M4V", "avi", "AVI", "hevc"] },
+          { name: "All files", extensions: ["*"] },
+        ],
+      });
+    } finally {
+      pickerOpenRef.current = false;
+    }
     if (typeof picked === "string") {
       // Route through the intent picker — the pipeline only starts after the
       // user picks what they're making.
