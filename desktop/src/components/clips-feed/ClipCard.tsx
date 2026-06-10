@@ -25,7 +25,8 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 // so the user saw the plate but Finder never opened. IG-007 locks the
 // outer <article>; this swap is import-only.
 import { openSmart as openExternal } from "../../lib/openSmart";
-import { AlertTriangle, Check, Copy, MessageSquare, MoreVertical, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, Copy, Edit3, MessageSquare, Sparkles, Trash2 } from "lucide-react";
+import { RingButton } from "../cockpit/LibraryCard";
 import type { Clip, OverlayType, Project, RatioKey } from "../../lib/sidecar";
 import { sidecar } from "../../lib/sidecar";
 import { useReactionBakeProgress } from "../../lib/useReactionBakeProgress";
@@ -109,7 +110,9 @@ export function ClipCard({
   onSelectClick?: (e: { meta: boolean; shift: boolean }) => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
+  // v0.7.46 — kebab menu retired in favour of the inline RingButton row
+  // (Caption / Reaction / Copy / Editor / Remove). Removing the showMenu
+  // state + refs and the dead MenuItem helper.
   // Cockpit error/feedback chip — live for ~3s on a transient failure
   // (applyLayout, copyAll, remove). Doesn't replace the global toast host
   // because the card-local error is contextual ("THIS clip's reaction
@@ -134,8 +137,6 @@ export function ClipCard({
   const { progress: bakeProgress, start: startBakeProgress, stop: stopBakeProgress } =
     useReactionBakeProgress();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const menuPanelRef = useRef<HTMLDivElement>(null);
 
   const videoPath = useMemo(
     () => pathForRatio(clip, ratio) ?? clip.cut_path,
@@ -292,7 +293,6 @@ export function ClipCard({
       const r = await sidecar.removeClip(slug, index - 1);
       onProjectChange(r.project);
       setConfirmRemove(false);
-      setShowMenu(false);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Remove failed";
       setCockpitError(msg.slice(0, 90));
@@ -302,34 +302,6 @@ export function ClipCard({
       setBusy(false);
     }
   }
-
-  // ⋮ menu — lens fix for the keyboard trap. The previous version closed
-  // only on `onMouseLeave`, stranding keyboard-only users + ignoring Esc.
-  // Now: Esc closes, click-outside closes, and the trigger carries
-  // aria-expanded so screen readers report state.
-  useEffect(() => {
-    if (!showMenu) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setShowMenu(false);
-        menuButtonRef.current?.focus();
-      }
-    }
-    function onPointer(e: PointerEvent) {
-      const t = e.target as Node | null;
-      if (!t) return;
-      if (menuPanelRef.current?.contains(t)) return;
-      if (menuButtonRef.current?.contains(t)) return;
-      setShowMenu(false);
-    }
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("pointerdown", onPointer);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("pointerdown", onPointer);
-    };
-  }, [showMenu]);
 
   // Multi-select wiring — only active when the parent grid passed
   // `onSelectClick`. The handler forwards meta/shift so the grid can
@@ -544,117 +516,61 @@ export function ClipCard({
         </div>
       </div>
 
-      {/* hidden wrapper kept so the ConfirmDialog below can still mount
-          inside a propagation-stop div under selectable mode. The display
-          chrome above is the only visible surface. */}
+      {/* v0.7.46 — Library-card visual parity: replace the old text-pill
+          row (Caption / Reaction / Copy / Editor / ⋮) with the same
+          RingButton icon row LibraryCard uses, so URL-created and imported
+          clips share one vocabulary. Hover-reveal opacity, fuchsia hover
+          state, destructive accent on Remove. 5 distinct actions, 1
+          consistent button shape. */}
       <div
-        className="opacity-0 group-hover/clipcard:opacity-100 transition-opacity"
+        className="opacity-55 group-hover/clipcard:opacity-100 transition-opacity"
         onClick={selectable ? (e) => e.stopPropagation() : undefined}
       >
-        <div className="flex flex-wrap items-center gap-2">
-          {/* v0.7.18 — Per-card InlineScheduler removed. Schedule + Publish
-              now live in the persistent bottom cockpit (GridMasterToolbar
-              promoted to fixed-bottom). Card stays focused on preview +
-              quick Caption / Editor entry points. */}
-
-          {/* Caption — pop the side drawer pre-opened. Visible affordance
-              for the most-common edit; mirrors the chip on the thumbnail
-              so keyboard users + touch users can both reach it. */}
-          <button
-            type="button"
+        <div className="flex items-center justify-end gap-1">
+          <RingButton
             onClick={() => (onOpenCaptions ?? onOpenEditor)()}
             title="Edit captions (C)"
-            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-[12px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia"
+            ariaLabel="Edit captions"
           >
             <MessageSquare className="h-3.5 w-3.5" strokeWidth={2} />
-            Caption
-          </button>
-
-          {/* Reaction — re-open the b-roll picker for the current layout.
-              If no layout is set, defaults to pip_corner_bl + picker so the
-              clipper sees the picker immediately (no two-step dance). */}
-          <button
-            type="button"
+          </RingButton>
+          <RingButton
             onClick={() => void changeReaction()}
             disabled={busy}
-            title={
-              currentLayout === "none"
-                ? "Add reaction b-roll (R)"
-                : "Change reaction source (R)"
-            }
-            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-[12px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia disabled:opacity-50"
+            title={currentLayout === "none" ? "Add reaction b-roll (R)" : "Change reaction source (R)"}
+            ariaLabel={currentLayout === "none" ? "Add reaction" : "Change reaction"}
           >
             <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
-            {currentLayout === "none" ? "Reaction" : "Change reaction"}
-          </button>
-
-          {/* Copy caption — moved into the cockpit row with a 1.5s
-              "Copied" label flip so the action lands without a system toast. */}
-          <button
-            type="button"
+          </RingButton>
+          <RingButton
             onClick={() => void copyAll()}
             disabled={busy}
+            active={copied}
             title="Copy title + description"
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-sans text-[12px] font-medium transition-colors disabled:opacity-50 ${
-              copied
-                ? "border-fuchsia bg-fuchsia text-white"
-                : "border-line bg-paper text-ink hover:border-fuchsia hover:text-fuchsia"
-            }`}
+            ariaLabel={copied ? "Copied" : "Copy title + description"}
           >
             {copied ? (
               <Check className="h-3.5 w-3.5" strokeWidth={2.25} />
             ) : (
               <Copy className="h-3.5 w-3.5" strokeWidth={2} />
             )}
-            {copied ? "Copied" : "Copy"}
-          </button>
-
-          {/* Spacer pushes ⋮ + Editor → to the right edge */}
-          <span className="flex-1" />
-
-          <button
-            type="button"
+          </RingButton>
+          <RingButton
             onClick={onOpenEditor}
-            className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
             title="Open full editor (Enter)"
+            ariaLabel="Open editor"
           >
-            Editor →
-          </button>
-
-          <div className="relative">
-            <button
-              ref={menuButtonRef}
-              type="button"
-              onClick={() => setShowMenu((s) => !s)}
-              className="rounded-full border border-line bg-paper px-2 py-1.5 font-mono text-[12px] text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
-              aria-label="More actions"
-              aria-haspopup="menu"
-              aria-expanded={showMenu}
-            >
-              <MoreVertical className="h-3.5 w-3.5" strokeWidth={2} />
-            </button>
-            {showMenu && (
-              <div
-                ref={menuPanelRef}
-                role="menu"
-                aria-label="Clip actions"
-                className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-line bg-paper shadow-lg"
-              >
-                <MenuItem
-                  onClick={() => {
-                    onOpenEditor();
-                    setShowMenu(false);
-                  }}
-                >
-                  Open editor
-                </MenuItem>
-                <MenuItem onClick={remove} destructive>
-                  <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
-                  Remove clip
-                </MenuItem>
-              </div>
-            )}
-          </div>
+            <Edit3 className="h-3.5 w-3.5" strokeWidth={2} />
+          </RingButton>
+          <RingButton
+            onClick={remove}
+            disabled={busy}
+            destructive
+            title="Remove clip"
+            ariaLabel="Remove clip"
+          >
+            <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
+          </RingButton>
         </div>
 
         {/* Card-local error / status chip — surfaces failed layout swaps,
@@ -750,26 +666,3 @@ function formatCardDur(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function MenuItem({
-  onClick,
-  children,
-  destructive = false,
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-  destructive?: boolean;
-}) {
-  return (
-    <button
-      role="menuitem"
-      onClick={onClick}
-      className={`flex w-full items-center gap-2 px-3 py-2 text-left font-sans text-[12px] transition-colors ${
-        destructive
-          ? "text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
-          : "text-ink hover:bg-paper-warm"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
