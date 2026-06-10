@@ -30,6 +30,10 @@ export function Cockpit({ children }: { children: ReactNode }) {
     function onMove(e: PointerEvent) {
       if (!el) return;
       const rect = el.getBoundingClientRect();
+      // v0.7.45 — Guard against zero dimensions (hidden / collapsed / not yet
+      // laid out). Without this, the lerp permanently poisons currentX/Y with
+      // NaN and all child transforms break until restart.
+      if (!rect.width || !rect.height) return;
       // Normalise cursor to [-1, 1] around the centre of the cockpit.
       targetX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       targetY = ((e.clientY - rect.top) / rect.height) * 2 - 1;
