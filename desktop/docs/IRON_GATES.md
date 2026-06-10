@@ -263,6 +263,34 @@ locked the structure after the literal demo-copy fix landed)
 
 ---
 
+## IG-008 — Cockpit room scrollability + BottomCockpit clearance
+
+**Locked at:** v0.7.43
+**Files:**
+- `src/components/cockpit/RoomShell.tsx` — the wrap class around every routed room (sentinel at top)
+- `src/components/cockpit/WorkstationRoom.tsx` — the workstation room's root padding (sentinel above the root `<div>`)
+
+**Why this is locked:** The fixed BottomCockpit (IG-005/006, rendered via `createPortal(document.body)` at `position: fixed; bottom: 0`) sits on top of every room's lower zone. RoomShell vertically centered content on `h-full` with no `overflow-y`, so the moment a room's content height exceeded the viewport (and the BottomCockpit further reduced the usable viewport), the lower tiles became physically unreachable — no scroll bar, and centered-flex content clipped above the scroll origin. Daniel hit this 2026-06-10 trying to click Thumbnails/Script from the Workstation home.
+
+**What survived the loop:**
+- RoomShell wrap MUST include `overflow-y-auto`. Without it, tall content is silently truncated.
+- Vertical centering uses `items-[safe_center]` (CSS `align-items: safe center`), NOT plain `items-center`. The `safe` keyword tells the browser to fall back to start-alignment when content overflows, so the scroll origin remains at the top instead of the centered midpoint where the top of the content is clipped.
+- Any cockpit room that sits on screens with BottomCockpit visible MUST add bottom padding ≥ BottomCockpit overlay height. Current convention: `pb-48` (192px). This pairs the room's content edge with the cockpit's top edge so nothing hides behind it.
+
+**Do NOT:**
+- Remove `overflow-y-auto` from RoomShell's wrap (reintroduces unreachable content).
+- Switch RoomShell back to `items-center` from `items-[safe_center]` (the centered-clip bug returns on tall content).
+- Drop `pb-48` from `WorkstationRoom`'s root, or any future cockpit room's root that the BottomCockpit overlays. Reduce below `pb-40` only after measuring the live cockpit height on the smallest supported window.
+- Move the bottom-padding contract into RoomShell itself. Different rooms wrap different parents (some embed inside a panel that already pads, some don't); each room owns its own clearance.
+
+**Do:**
+- When adding a new routed room that the BottomCockpit overlays, copy the `pb-48` + sentinel comment pattern from `WorkstationRoom.tsx`.
+- If BottomCockpit's height changes materially, update this gate's clearance value AND the affected rooms in the same commit.
+
+**Sign-off:** Daniel 2026-06-10 (v0.7.43 — Thumbnails/Script tiles trapped behind the cockpit; fix landed same day, gated immediately to prevent regression)
+
+---
+
 ## Adding a new gate
 
 1. Pick the next free `IG-NNN`.

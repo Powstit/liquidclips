@@ -11,6 +11,14 @@
 // The `roomKey` must change between routes for AnimatePresence to swap.
 // Wrap the route conditional once; nothing else needs to know.
 
+// ───── IRON GATE IG-008 (v0.7.43) — see docs/IRON_GATES.md ─────
+// Cockpit room scrollability. The wrap MUST have overflow-y-auto so content
+// taller than the viewport remains reachable. Vertical centering uses
+// `items-[safe_center]` (not plain `items-center`) so the browser falls back
+// to start-alignment when content overflows — without `safe`, centered flex
+// content clips above the scroll origin and is unreachable. Pairs with the
+// per-room bottom-padding contract that keeps content clear of BottomCockpit.
+
 import { motion, useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
 
@@ -29,8 +37,8 @@ export function RoomShell({
   return (
     <motion.div
       key={roomKey}
-      className={`cockpit-room-wrap flex h-full w-full ${
-        align === "top" ? "items-start" : "items-center"
+      className={`cockpit-room-wrap flex h-full w-full overflow-y-auto ${
+        align === "top" ? "items-start" : "items-[safe_center]"
       } justify-center`}
       initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.96, filter: "blur(8px)" }}
       animate={reduced ? { opacity: 1 } : { opacity: 1, scale: 1, filter: "blur(0px)" }}
