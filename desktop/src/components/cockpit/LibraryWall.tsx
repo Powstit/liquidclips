@@ -12,7 +12,7 @@
 // reuse for any future "wall of things" surface.
 
 import { LayoutGroup, AnimatePresence } from "motion/react";
-import { RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Search, Trash2, X } from "lucide-react";
 import type { ProjectLibrarySummary } from "../../lib/sidecar";
 import { HudChip } from "./HudChip";
 import { LibraryCard } from "./LibraryCard";
@@ -57,6 +57,8 @@ export function LibraryWall({
   openingSlug,
   busySlug,
   archivedCount,
+  selectMode,
+  selectedSlugs,
   onFilterChange,
   onQueryChange,
   onRefresh,
@@ -64,6 +66,10 @@ export function LibraryWall({
   onOpenFolder,
   onArchive,
   onDelete,
+  onToggleSelect,
+  onSelectAll,
+  onExitSelectMode,
+  onBulkDelete,
   onGoToWorkstation,
 }: {
   projects: ProjectLibrarySummary[];
@@ -75,6 +81,8 @@ export function LibraryWall({
   openingSlug: string | null;
   busySlug: string | null;
   archivedCount: number;
+  selectMode: boolean;
+  selectedSlugs: Set<string>;
   onFilterChange: (next: LibraryFilter) => void;
   onQueryChange: (next: string) => void;
   onRefresh: () => void;
@@ -82,6 +90,10 @@ export function LibraryWall({
   onOpenFolder: (p: ProjectLibrarySummary) => void;
   onArchive: (p: ProjectLibrarySummary) => void;
   onDelete: (p: ProjectLibrarySummary) => void;
+  onToggleSelect: (slug: string) => void;
+  onSelectAll: () => void;
+  onExitSelectMode: () => void;
+  onBulkDelete: () => void;
   onGoToWorkstation: () => void;
 }) {
   const visibleProjects = projects.filter((p) => !p.archived);
@@ -96,27 +108,72 @@ export function LibraryWall({
     <div className="library-wall flex w-full max-w-[1180px] flex-col gap-6 pt-2">
       {/* HUD strip — eyebrow + headline left, stats + refresh right. No card
           chrome. Everything sits directly on the cockpit. */}
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia">library</span>
-          <h1 className="font-display text-[28px] font-semibold leading-[1.05] tracking-[-0.025em] text-ink">
-            Previous edits.
-          </h1>
-        </div>
-        <div className="flex items-center gap-4">
-          <StatStrip stats={stats} />
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={loading}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-line bg-transparent text-text-secondary transition-colors hover:border-fuchsia hover:text-fuchsia disabled:opacity-50"
-            aria-label="Refresh library"
-            title="Refresh"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} strokeWidth={2} />
-          </button>
-        </div>
-      </header>
+      {selectMode ? (
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia">select</span>
+            <h1 className="font-display text-[28px] font-semibold leading-[1.05] tracking-[-0.025em] text-ink">
+              {selectedSlugs.size} selected
+            </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onSelectAll}
+              className="rounded-full border border-line bg-transparent px-3 py-2 font-sans text-[12px] font-medium text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
+            >
+              Select all
+            </button>
+            <button
+              type="button"
+              onClick={onExitSelectMode}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-line bg-transparent text-text-secondary transition-colors hover:border-fuchsia hover:text-fuchsia"
+              aria-label="Cancel selection"
+              title="Cancel"
+            >
+              <X className="h-4 w-4" strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              onClick={onBulkDelete}
+              disabled={selectedSlugs.size === 0}
+              className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-danger)] px-4 py-2 font-sans text-[13px] font-medium text-white transition-colors hover:bg-[#B91C1C] disabled:opacity-40"
+            >
+              <Trash2 className="h-3.5 w-3.5" strokeWidth={2.2} />
+              Delete {selectedSlugs.size > 0 ? selectedSlugs.size : ""}
+            </button>
+          </div>
+        </header>
+      ) : (
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia">library</span>
+            <h1 className="font-display text-[28px] font-semibold leading-[1.05] tracking-[-0.025em] text-ink">
+              Previous edits.
+            </h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <StatStrip stats={stats} />
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={loading}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-line bg-transparent text-text-secondary transition-colors hover:border-fuchsia hover:text-fuchsia disabled:opacity-50"
+              aria-label="Refresh library"
+              title="Refresh"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              onClick={onSelectAll}
+              className="rounded-full border border-line bg-transparent px-3 py-2 font-sans text-[12px] font-medium text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
+            >
+              Select
+            </button>
+          </div>
+        </header>
+      )}
 
       {/* Filter + search row. Filters on the left as HudChips, search on the
           right as an inline pill. No card frame around either. */}
@@ -176,10 +233,13 @@ export function LibraryWall({
                   project={project}
                   opening={openingSlug === project.slug}
                   busy={busySlug === project.slug}
+                  selectMode={selectMode}
+                  selected={selectedSlugs.has(project.slug)}
                   onOpen={() => onOpen(project.slug)}
                   onOpenFolder={() => onOpenFolder(project)}
                   onArchive={() => onArchive(project)}
                   onDelete={() => onDelete(project)}
+                  onToggleSelect={() => onToggleSelect(project.slug)}
                   index={idx}
                 />
               ))}
