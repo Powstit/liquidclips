@@ -747,7 +747,7 @@ export function ClipPreview({
             {/* Inline status row */}
             <div className="flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.08em] text-paper/60">
               <span>{LAYOUT_TOPOLOGY[layout].label}</span>
-              {clip.overlay?.source_path && <span className="text-fuchsia-bright">reaction applied</span>}
+              {clip.overlay?.source_path && <span className="text-fuchsia">reaction applied</span>}
             </div>
           </div>
 

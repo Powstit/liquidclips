@@ -258,7 +258,7 @@ export function ClipReadyCard({
           // dead row so they can re-add from the new location.
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-ink/80 px-4 text-center backdrop-blur-sm">
             <div className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-paper">
-              <AlertTriangle className="h-3.5 w-3.5 text-fuchsia-deep" strokeWidth={2.25} />
+              <AlertTriangle className="h-3.5 w-3.5 text-fuchsia" strokeWidth={2.25} />
               file not found
             </div>
             <p className="font-sans text-[12px] text-paper/80">
