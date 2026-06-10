@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Pre-commit gate — delegates to the existing humanError checker.
+# Keeps the .git/hooks/pre-commit symlink contract intact when
+# core.hooksPath is repointed to .githooks/.
+set -euo pipefail
+exec "$(/usr/bin/dirname "$0")/../desktop/scripts/check-humanError.sh" "$@"
