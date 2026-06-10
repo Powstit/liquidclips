@@ -58,6 +58,12 @@ import { SchedulePage } from "./components/schedule/SchedulePage";
 import { WorkingStage } from "./components/WorkingStage";
 import { ResultsGrid } from "./components/ResultsGrid";
 import { FirstRun } from "./components/FirstRun";
+// v0.7.47 — ship-lens-reviewer caught GlobalToastHost as orphan code. It
+// listens on the `lc:toast` window CustomEvent bus but was never mounted,
+// so every dispatch in the app (Earn whopBounty failure toast, drag-drop
+// unsupported file, multi-file drop notice, picker conflict) rendered
+// nothing. Mounting it once at the App root revives all four surfaces.
+import { GlobalToastHost } from "./components/GlobalToastHost";
 import { JuniorLoader } from "./components/JuniorLoader";
 import { Splash } from "./components/Splash";
 import { NotificationBell } from "./components/NotificationBell";
@@ -2208,6 +2214,11 @@ export default function App() {
           setSigningOut(false);
         }}
       />
+      {/* v0.7.47 — App-wide toast bus listener. Lives INSIDE MainShell so
+          the fixed-positioned toasts overlay the workspace correctly; the
+          host listens for `lc:toast` window events dispatched from anywhere
+          in the tree (EarnPanelMount, App drop handlers, future surfaces). */}
+      <GlobalToastHost />
     </MainShell>
   );
 }
