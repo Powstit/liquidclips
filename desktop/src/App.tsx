@@ -1585,6 +1585,7 @@ export default function App() {
             message="Fetching from the source"
             detail={formatDownloadDetail(view.url, view.progress)}
             percent={view.progress?.percent ?? undefined}
+            downloadedBytes={view.progress?.downloaded_bytes ?? undefined}
             onCancel={() => {
               // P0 #4 — same dual-marker dispatch as the lifting Cancel.
               // ingest_url polls ~/LiquidClips/.lift_cancel; the ref guards
@@ -1593,6 +1594,7 @@ export default function App() {
               void sidecar.liftCancel().catch(() => undefined);
               setView({ kind: "empty" });
             }}
+            onRetry={() => void runPipelineFromUrl(view.url, "", view.intent)}
           />
         )}
 
