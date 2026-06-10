@@ -20,6 +20,7 @@ import {
   Archive as ArchiveIcon,
   ArchiveRestore,
   Check,
+  Edit3,
   FileWarning,
   FolderOpen,
   Layers,
@@ -37,6 +38,7 @@ export function LibraryCard({
   selectMode,
   selected,
   onOpen,
+  onEdit,
   onOpenFolder,
   onArchive,
   onDelete,
@@ -49,6 +51,7 @@ export function LibraryCard({
   selectMode: boolean;
   selected: boolean;
   onOpen: () => void;
+  onEdit: () => void;
   onOpenFolder: () => void;
   onArchive: () => void;
   onDelete: () => void;
@@ -220,6 +223,9 @@ export function LibraryCard({
       {/* Persistent action row — hidden in select mode. */}
       {!selectMode && (
         <div className="library-card-actions absolute inset-x-1 bottom-1 flex items-center justify-end gap-1 opacity-55 transition-opacity duration-300 group-hover:opacity-100">
+          <RingButton onClick={onEdit} disabled={busy} title="Open in workstation" ariaLabel="Edit">
+            <Edit3 className="h-3.5 w-3.5" strokeWidth={2} />
+          </RingButton>
           <RingButton onClick={onOpenFolder} title={project.root} ariaLabel="Open folder">
             <FolderOpen className="h-3.5 w-3.5" strokeWidth={2} />
           </RingButton>

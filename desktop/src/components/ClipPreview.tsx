@@ -133,6 +133,34 @@ export function ClipPreview({
   // identity or position changes.
   const rpcGenRef = useRef(0);
 
+  // Demo audit P1-DEMO-B: schedule popover had no Esc / outside-click
+  // dismiss — once open, only the inner Cancel button or a preset selection
+  // could close it. Pressing Esc closed the whole modal (taking the popover
+  // with it but losing the editor too). Ref + global listeners match the
+  // BottomCockpit's SchedulePopoverInline behaviour the user already knows.
+  const schedulePopRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!scheduleOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setScheduleOpen(false);
+      }
+    }
+    function onPointer(e: MouseEvent) {
+      const t = e.target as Node | null;
+      if (schedulePopRef.current && t && !schedulePopRef.current.contains(t)) {
+        setScheduleOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKey, { capture: true });
+    window.addEventListener("mousedown", onPointer);
+    return () => {
+      window.removeEventListener("keydown", onKey, { capture: true } as AddEventListenerOptions);
+      window.removeEventListener("mousedown", onPointer);
+    };
+  }, [scheduleOpen]);
+
   useEffect(() => {
     rpcGenRef.current += 1;
     setTrimStart(clip.start);
@@ -996,7 +1024,7 @@ export function ClipPreview({
               <div className="flex flex-wrap items-center gap-2">
                 {/* Schedule ▾ with quick-pick popover. Disabled until a 9:16
                     render exists — same precondition as publish. */}
-                <div className="relative">
+                <div className="relative" ref={schedulePopRef}>
                   <button
                     type="button"
                     onClick={() => setScheduleOpen((o) => !o)}
@@ -1157,7 +1185,18 @@ export function ClipPreview({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 sm:p-6" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 sm:p-6"
+      // Demo audit P1-DEMO-A: backdrop close MUST honour the dirty-check that
+      // Esc + header X already use. Previous wiring fired bare onClose, so a
+      // user mid-edit who fat-fingered outside the card lost the draft
+      // silently. tryClose() prompts before discarding unsaved title /
+      // description / pinned-comment changes; on a clean modal it's a no-op
+      // wrapper around onClose.
+      onClick={(e) => {
+        if (e.target === e.currentTarget) tryClose();
+      }}
+    >
       {innerCard}
     </div>
   );
