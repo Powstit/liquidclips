@@ -149,6 +149,16 @@ export function ChannelsManager({
 
   useEffect(() => { void load(); }, [load]);
 
+  // v0.7.45 — Refetch channels when the window regains focus so status
+  // doesn't stay stale across long background sessions. The backend
+  // reconcile loop runs every ~60s, but the user may switch back after
+  // hours and deserve fresh data.
+  useEffect(() => {
+    function onFocus() { void load(); }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [load]);
+
   // v0.7.32 B2 — fetch Ayrshare profile snapshot for the stale-status
   // override. Mirrors Settings.tsx ConnectionsChannelsList so the two
   // surfaces render the same source of truth. socialGetConnectionStrict

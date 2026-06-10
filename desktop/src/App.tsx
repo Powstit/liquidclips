@@ -175,6 +175,30 @@ export default function App() {
   // mounts on the right tab. Cleared after each consume so subsequent
   // navigations honor the default.
   const [scheduleInitialSub, setScheduleInitialSub] = useState<"queue" | "channels" | "analytics" | undefined>(undefined);
+  // v0.7.45 P3.c — BottomCockpit dispatches lc:settings-open-tab BEFORE
+  // Settings mounts, so Settings.tsx never catches it. We add a root-level
+  // listener that routes directly to Schedule → Channels, and a transient
+  // ref so onOpenSettings can skip opening Settings when the event already
+  // handled navigation.
+  const channelConnectPendingRef = useRef(false);
+  const channelConnectTimeoutRef = useRef<number | null>(null);
+  useEffect(() => {
+    function onSettingsTab(e: Event) {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.tab === "channels") {
+        channelConnectPendingRef.current = true;
+        if (channelConnectTimeoutRef.current) window.clearTimeout(channelConnectTimeoutRef.current);
+        channelConnectTimeoutRef.current = window.setTimeout(() => {
+          channelConnectPendingRef.current = false;
+          channelConnectTimeoutRef.current = null;
+        }, 100);
+        setScheduleInitialSub("channels");
+        setView({ kind: "schedule" });
+      }
+    }
+    window.addEventListener("lc:settings-open-tab", onSettingsTab);
+    return () => window.removeEventListener("lc:settings-open-tab", onSettingsTab);
+  }, []);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [submissionPortalOpen, setSubmissionPortalOpen] = useState(false);
   const [refreshingApp, setRefreshingApp] = useState(false);
@@ -1748,7 +1772,12 @@ export default function App() {
             project={view.project}
             onDropAnother={() => setView({ kind: "empty" })}
             onProjectChange={(p) => setView({ kind: "results", project: p })}
-            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenSettings={() => {
+              // v0.7.45 P3.c — If the channel-connect event already routed
+              // us to Schedule → Channels, don't also open Settings.
+              if (channelConnectPendingRef.current === true) return;
+              setSettingsOpen(true);
+            }}
           />
         )}
         </Cockpit>
