@@ -559,7 +559,7 @@ function Dashboard({
                 any avatar art behind it. */}
             <span
               aria-hidden
-              className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-ink/60 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+              className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-paper/60 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
             >
               <Pencil size={11} className="text-white" strokeWidth={2.5} />
             </span>

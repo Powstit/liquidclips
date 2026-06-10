@@ -270,7 +270,7 @@ export function ThumbnailStudio({
                       }
                     })();
                   }}
-                  className="px-3 py-0.5 rounded text-xs bg-red-900 text-paper hover:bg-red-800"
+                  className="px-3 py-0.5 rounded text-xs bg-red-900 text-ink hover:bg-red-800"
                 >
                   Retry
                 </button>

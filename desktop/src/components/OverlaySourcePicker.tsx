@@ -201,7 +201,7 @@ export function ReactionSourcePicker({
               <Wand2 size={14} strokeWidth={2.4} />
             </span>
             <div>
-              <h2 className="font-display text-[15px] font-semibold tracking-[-0.01em] text-white">
+              <h2 className="font-display text-[15px] font-semibold tracking-[-0.01em] text-paper">
                 Pick a reaction clip
               </h2>
               <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-paper/55">
@@ -444,11 +444,11 @@ function ResultCard({
           />
         )}
         {/* provider badge */}
-        <span className="absolute left-2 top-2 inline-flex items-center rounded-full bg-ink/80 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-white/80 backdrop-blur-sm">
+        <span className="absolute left-2 top-2 inline-flex items-center rounded-full bg-paper/80 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-white/80 backdrop-blur-sm">
           {item.provider}
         </span>
         {/* play affordance */}
-        <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-white/90 text-ink opacity-0 transition-opacity group-hover:opacity-100">
+        <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-paper/90 text-white opacity-0 transition-opacity group-hover:opacity-100">
           {hover ? <Pause size={11} strokeWidth={2.4} /> : <Play size={11} strokeWidth={2.4} />}
         </span>
         {/* use-reaction action */}
@@ -567,10 +567,10 @@ function ProjectClipCard({
             }`}
           />
         )}
-        <span className="absolute left-2 top-2 inline-flex items-center rounded-full bg-ink/80 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-white/85 backdrop-blur-sm">
+        <span className="absolute left-2 top-2 inline-flex items-center rounded-full bg-paper/80 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-white/85 backdrop-blur-sm">
           {(idx + 1).toString().padStart(2, "0")}
         </span>
-        <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-white/90 text-ink opacity-0 transition-opacity group-hover:opacity-100">
+        <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-paper/90 text-white opacity-0 transition-opacity group-hover:opacity-100">
           {hover ? <Pause size={11} strokeWidth={2.4} /> : <Play size={11} strokeWidth={2.4} />}
         </span>
         <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-fuchsia px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-white opacity-0 transition-opacity group-hover:opacity-100">
