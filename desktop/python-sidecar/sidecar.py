@@ -24,6 +24,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import platform as _platform
 import subprocess
 import sys
 import traceback
@@ -2468,6 +2469,51 @@ def method_lift_cancel(_params: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True}
 
 
+def method_project_cancel(params: dict[str, Any]) -> dict[str, Any]:
+    """v0.7.45 P0-1 — write a PER-PROJECT cancel marker at <root>/.cancel so
+    the long-running RPCs that poll `_check_canceled(project)` abort cleanly.
+
+    This is the correct marker for `apply_overlay_to_clip`, `regenerate_clip`,
+    and the `stage_cut` / `stage_reframe` / `stage_thumbs` chain. The earlier
+    `withCancelOnTimeout` mistake wrote `.lift_cancel` (a GLOBAL marker) which
+    (a) was invisible to those methods and (b) killed any concurrent lift in
+    another project as collateral damage.
+
+    Called from the JS-side `withCancelOnTimeout` when an `applyOverlay` or
+    `regenerateClip` promise times out. Best-effort: missing project / OS
+    errors are swallowed because the JS-side timeout is already the user-
+    visible error."""
+    slug_raw = (params.get("slug") or "").strip()
+    if not slug_raw:
+        return {"ok": False, "error": "project_cancel requires `slug`"}
+    try:
+        project_dir = _resolve_project_slug(slug_raw)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    marker = project_dir / ".cancel"
+    try:
+        marker.touch()
+    except OSError as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+    return {"ok": True, "marker": str(marker)}
+
+
+def method_system_info(_params: dict[str, Any]) -> dict[str, Any]:
+    """v0.7.45 P0-2 — return authoritative platform info so the frontend
+    stops relying on the lying Tauri WebKit User-Agent string (which always
+    says "Intel Mac OS X" regardless of arch) and the `hardwareConcurrency`
+    heuristic (which misclassifies base M1/M2's 8 cores as Intel).
+
+    WorkingStage queries this once on mount + caches; if the call fails it
+    falls back to the existing heuristic (worse, but not catastrophic)."""
+    return {
+        "machine": _platform.machine(),
+        "system": _platform.system(),
+        "release": _platform.release(),
+        "is_apple_silicon": _platform.machine() == "arm64",
+    }
+
+
 def method_whop_list_bounties(params: dict[str, Any]) -> dict[str, Any]:
     """Browse live Whop Content Rewards campaigns. Reads now go through
     junior-backend's /whop/bounties proxy (uses the server-side App API Key),
@@ -3489,6 +3535,13 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "thumbnail_generate": method_thumbnail_generate,
     "thumbnail_cancel": method_thumbnail_cancel,
     "thumbnail_ledger": method_thumbnail_ledger,
+    # v0.7.45 P0-1: per-project cancel marker — used by withCancelOnTimeout for
+    # apply_overlay / regenerate_clip stuck-ffmpeg recovery. Replaces the
+    # wrong-marker (.lift_cancel) drop that killed concurrent transcribes.
+    "project_cancel": method_project_cancel,
+    # v0.7.45 P0-2: authoritative arch detection so WorkingStage ETA stops
+    # relying on the lying Tauri WebKit UA + `hardwareConcurrency` heuristic.
+    "system_info": method_system_info,
 }
 
 
