@@ -34,7 +34,17 @@ const SUPPORTED_URL_HOSTS: RegExp[] = [
   /^youtu\.be$/i,
   /(^|\.)tiktok\.com$/i,
   /^vm\.tiktok\.com$/i,
+  // P1 #30 — `vt.tiktok.com` is the share-sheet shortener TikTok hands you when
+  // you tap "Copy Link" in the native iOS/Android share menu. Without it on
+  // the allowlist every share-sheet paste failed at the input with "we don't
+  // support this URL yet" even though yt-dlp resolves it fine.
+  /^vt\.tiktok\.com$/i,
   /(^|\.)instagram\.com$/i,
+  // P1 #30 — Instagram's two legacy short domains. `instagr.am` is the
+  // pre-Facebook-acquisition share shortener still emitted by some clients;
+  // `ig.me` is the Messenger / DM share shortener. Both resolve via yt-dlp.
+  /^instagr\.am$/i,
+  /^ig\.me$/i,
   /(^|\.)twitter\.com$/i,
   /(^|\.)x\.com$/i,
   /(^|\.)facebook\.com$/i,
@@ -56,6 +66,15 @@ function isSupportedPortalUrl(raw: string): boolean {
     return false;
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+  // P1 #31 — Userinfo URL trick. `https://evil@youtube.com/...` parses with
+  // `url.hostname === "youtube.com"` (which the allowlist accepts), but the
+  // full `url.toString()` keeps the `evil@` userinfo segment and that's what
+  // gets handed to yt-dlp downstream. Reject outright when userinfo is
+  // present — there's no legitimate paste-from-the-share-sheet flow that
+  // ships credentials inline, so this is a pure attack-surface trim with
+  // no real-user cost. Safer than silently stripping (which would invisibly
+  // mutate the URL the user thinks they pasted).
+  if (url.username !== "" || url.password !== "") return false;
   return SUPPORTED_URL_HOSTS.some((rx) => rx.test(url.hostname));
 }
 
@@ -90,7 +109,18 @@ export function UploadPortal({
 }) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // P1 #21 — Submit-then-close race. Pressing Enter and clicking Go in the
+  // same frame used to fire the pipeline twice (two clip jobs queued, two
+  // navigations, occasionally a duplicate file pick) because `submitUrl`
+  // had no re-entry guard and the portal's exit animation outlives the
+  // synthetic click. The ref blocks the second call synchronously (state
+  // updates are batched and would race), the state mirror disables the Go
+  // button for visual feedback. Reset on a 500 ms timer because the
+  // parent's `onPasteUrl` is fire-and-forget — there's no completion
+  // signal to hang a `finally` on.
+  const submittingRef = useRef(false);
 
   // v0.7.32 — derived "is this paste ready to fire" signal. When true, the
   // Go button picks up a fuchsia ring so the user sees they can press Enter
@@ -104,6 +134,10 @@ export function UploadPortal({
     if (!open) return;
     setUrl("");
     setError(null);
+    // P1 #21 — clear the submit guard every fresh open so a previous
+    // submit's 500 ms tail can't lock out the next session's Go button.
+    submittingRef.current = false;
+    setSubmitting(false);
     // Two-frame defer — first frame mounts the input, second focuses it
     // after the portal's spring entry settles so the cursor doesn't jump
     // visibly mid-animation.
@@ -128,6 +162,10 @@ export function UploadPortal({
   const isScript = intent === "script" && typeof onPasteUrlScript === "function";
 
   function submitUrl() {
+    // P1 #21 — Re-entry guard. Synchronous check against the ref (state
+    // wouldn't have flushed yet inside the same tick) blocks the second
+    // call when Enter + click land in the same frame.
+    if (submittingRef.current) return;
     const trimmed = url.trim();
     if (!trimmed) {
       // Empty Enter used to fall through to the file picker, which read as a
@@ -154,12 +192,24 @@ export function UploadPortal({
       return;
     }
     setError(null);
+    // P1 #21 — Flip the guard BEFORE the parent call so any synchronous
+    // re-entry (the click that lands after the Enter handler returns) is
+    // a no-op. Reset on a 500 ms tail because the parent's onPasteUrl /
+    // onPasteUrlScript handlers don't return a completion signal we can
+    // await — by 500 ms the portal has unmounted and the pipeline has
+    // accepted the job, so a stale resubmit can't reach us anyway.
+    submittingRef.current = true;
+    setSubmitting(true);
     if (isScript && onPasteUrlScript) {
       onPasteUrlScript(trimmed);
     } else {
       onPasteUrl(trimmed, "");
     }
     onClose();
+    window.setTimeout(() => {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }, 500);
   }
 
   function browseForFile() {
@@ -280,8 +330,14 @@ export function UploadPortal({
                   <button
                     type="button"
                     onClick={submitUrl}
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full bg-fuchsia text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.5)] ${
-                      urlIsReady
+                    // P1 #21 — visually dim + actually-disabled during the
+                    // 500 ms submit tail so a user mashing Enter + click
+                    // sees the button go quiet and stops double-tapping.
+                    // The ref guard above is the safety net; this is the
+                    // honesty layer.
+                    disabled={submitting}
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full bg-fuchsia text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.5)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-fuchsia disabled:hover:shadow-none ${
+                      urlIsReady && !submitting
                         ? "ring-2 ring-fuchsia/40 ring-offset-2 ring-offset-paper"
                         : ""
                     }`}
