@@ -177,7 +177,7 @@ def _bundled_whisper_model_path() -> str | None:
     return None
 
 
-def run_ffmpeg(args: list[str]) -> None:
+def run_ffmpeg(args: list[str], *, timeout: float = 1800.0) -> None:
     cmd = [ffmpeg_bin(), "-nostdin", "-hide_banner", "-loglevel", "error", "-y", *args]
     # SECURITY (CRIT-003): explicit shell=False — argv form, no shell parsing,
     # no metacharacter expansion. Caller is responsible for validating any
@@ -186,7 +186,18 @@ def run_ffmpeg(args: list[str]) -> None:
     # strings are built from a whitelisted DSL (overlay type + ints) and from
     # paths under project.root — never raw user strings — so injecting an
     # extra `;`-separated filter is not reachable.
-    completed = subprocess.run(cmd, capture_output=True, text=True, shell=False)
+    #
+    # v0.7.45 — per-stage timeout (P0 #1 from 10-lens audit). A stuck ffmpeg
+    # child (frozen decoder, hung filter graph, dead network read on a remote
+    # url-style input) used to hang the worker thread indefinitely. Callers
+    # pass a stage-appropriate `timeout=` kwarg; default 1800s catches anything
+    # that escaped the explicit bound.
+    try:
+        completed = subprocess.run(
+            cmd, capture_output=True, text=True, shell=False, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"ffmpeg timed out after {timeout}s") from e
     if completed.returncode != 0:
         raise RuntimeError(f"ffmpeg failed ({' '.join(args[:4])}…): {completed.stderr.strip()[:400]}")
 
@@ -284,7 +295,7 @@ def stage_ingest(project: Project) -> dict[str, Any]:
                 "-vf", "scale=720:-2",  # cap width 720 — thumbnail use only
                 "-q:v", "3",
                 str(poster_path),
-            ])
+            ], timeout=60.0)
         except Exception as e:
             sys.stderr.write(f"[stage_ingest] poster extraction failed: {e}\n")
             poster_path = None  # type: ignore[assignment]
@@ -315,7 +326,7 @@ def stage_audio(project: Project) -> dict[str, Any]:
         "-ar", "16000",
         "-acodec", "pcm_s16le",
         str(out),
-    ])
+    ], timeout=600.0)
     return {"audio_path": str(out), "cached": False, "size_bytes": out.stat().st_size}
 
 
@@ -1106,7 +1117,7 @@ def stage_cut(project: Project) -> dict[str, Any]:
                 "-avoid_negative_ts", "make_zero",
                 "-movflags", "+faststart",
                 str(out),
-            ])
+            ], timeout=600.0)
         done_counter["n"] += 1
         _emit_stage_progress("cut", done_counter["n"], total, last_text=f"cut {done_counter['n']}/{total} — {title}"[:140])
         return {**clip, "cut_path": str(out)}
@@ -1356,7 +1367,7 @@ def stage_reframe(project: Project) -> dict[str, Any]:
                         "-movflags", "+faststart",
                         str(out_path),
                     ]
-                run_ffmpeg(cmd)
+                run_ffmpeg(cmd, timeout=1800.0)
             ratio_paths[f"{key}_path"] = str(out_path)
 
         done_counter["n"] += 1
@@ -1612,20 +1623,33 @@ def _build_crop_filter(
         face X (computed once per clip in stage_reframe). Falls back to centre
         crop if face_cx is None or detection failed.
     """
+    # v0.7.45 — P0 #3 from 10-lens audit. Same family as the f7eb909 stack-
+    # bottom fix: every scale must declare force_original_aspect_ratio so a
+    # mismatched aspect doesn't stretch or squash, and every branch ends with
+    # setsar=1 so downstream filters (overlay, vstack, hstack) don't reject the
+    # frame on anamorphic (non-square-pixel) sources.
     if cap_size is None:
-        return f"crop=ih*{aspect_w}/{aspect_h}:ih,scale={out_w}:{out_h}"
+        return (
+            f"crop=ih*{aspect_w}/{aspect_h}:ih,"
+            f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+            f"crop={out_w}:{out_h},setsar=1"
+        )
     w, h = cap_size
     src_aspect = w / h
     target_aspect = aspect_w / aspect_h
     if src_aspect <= target_aspect:
         return (
             f"scale={out_w}:{out_h}:force_original_aspect_ratio=decrease,"
-            f"pad={out_w}:{out_h}:(ow-iw)/2:(oh-ih)/2:color=black"
+            f"pad={out_w}:{out_h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1"
         )
     target_w_px = h * aspect_w / aspect_h
     cx = face_cx if face_cx is not None else w / 2
     x = max(0, min(w - target_w_px, cx - target_w_px / 2))
-    return f"crop={int(target_w_px)}:{h}:{int(x)}:0,scale={out_w}:{out_h}"
+    return (
+        f"crop={int(target_w_px)}:{h}:{int(x)}:0,"
+        f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+        f"crop={out_w}:{out_h},setsar=1"
+    )
 
 
 def _probe_dimensions(path: str) -> tuple[int, int] | None:
@@ -2078,6 +2102,12 @@ def apply_overlay_to_clip(
     if clip_duration <= 0:
         raise ValueError("clip has no duration — re-cut before applying overlay")
 
+    # v0.7.45 — P0 #2 from 10-lens audit. Mirror the cancel pattern used in
+    # _cut_one / _reframe_one / _thumb_one so the cancel button can land mid-
+    # overlay-bake instead of waiting for the (potentially 30-minute) encode
+    # to finish.
+    _check_canceled(project)
+
     # Wipe prior overlay outputs (overlay changed or re-applied).
     existing = clip.get("overlay") or {}
     for p in (existing.get("applied_paths") or {}).values():
@@ -2136,7 +2166,8 @@ def apply_overlay_to_clip(
             "-movflags", "+faststart",
             str(out_path),
         ]
-        run_ffmpeg(cmd)
+        _check_canceled(project)
+        run_ffmpeg(cmd, timeout=1800.0)
         applied_paths[key] = str(out_path)
         pct = int(((i + 1) / max(total, 1)) * 100)
         emit_event("overlay_progress", {"stage": "baking", "ratio": key, "pct": pct})
