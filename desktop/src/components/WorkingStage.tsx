@@ -55,12 +55,40 @@ const STAGE_SPEED_APPLE_SILICON: Record<StageName, number> = {
   thumbs: 30,
 };
 
+// P0 #8 — `hardwareConcurrency >= 8` was misclassifying late-model Intel
+// MacBook Pros (8-core i9) as Apple Silicon, then applying the M-series
+// speed multipliers and rendering ETAs that read "done in 2s" while the
+// real job took 4 minutes. Use the structured `userAgentData.platform`
+// hint first (Chromium populates "macOS" + arch in newer builds), fall
+// back to UA-string regex (Apple Silicon Safari/WKWebView omits "Intel"
+// in the UA — Intel Macs always carry it), and only as a last resort use
+// the hardwareConcurrency floor (raised to ≥10 because almost no Intel
+// Mac shipped with ≥10 logical cores; the i9 16" maxed at 8c/16t but its
+// hardwareConcurrency reports 16, so a strict ≥10 still catches it via
+// the UA branch above before falling here).
 function isAppleSilicon(): boolean {
   try {
     if (typeof navigator === "undefined") return false;
+    // 1) Structured platform hint — most reliable when available.
+    const uaData = (navigator as Navigator & {
+      userAgentData?: { platform?: string };
+    }).userAgentData;
+    const platform = uaData?.platform;
+    if (typeof platform === "string" && platform.length > 0) {
+      // userAgentData.platform on Apple Silicon reports "macOS"; we can't
+      // distinguish arch from this alone, so we fall through to UA regex
+      // for arch detection rather than trust this branch outright.
+      if (!/mac/i.test(platform)) return false;
+    }
     const ua = navigator.userAgent || "";
-    if (!/Mac/i.test(ua)) return false;
-    return (navigator.hardwareConcurrency ?? 0) >= 8;
+    if (!/Mac OS X/.test(ua) && !/Macintosh/.test(ua)) return false;
+    // 2) UA regex — Intel Macs always include "Intel" in the UA string.
+    // Absence of "Intel" on a Mac UA is a strong Apple Silicon signal.
+    if (/Mac OS X/.test(ua) && /(Intel)/.test(ua) === false) return true;
+    // 3) Last resort — core-count floor. Raised from 8 to 10 because the
+    // 16" i9 MBP reports 16 logical cores. Any Mac with ≥10 cores AND
+    // missing the "Intel" UA token is almost certainly M-series.
+    return (navigator.hardwareConcurrency ?? 0) >= 10;
   } catch {
     return false;
   }
@@ -75,6 +103,25 @@ function etaSeconds(stage: StageName, duration: number): number {
   const factor = STAGE_SPEED[stage] ?? 5;
   return Math.max(2, Math.ceil(duration / factor));
 }
+
+// P1 #18 — unit normalisation for the adaptive ETA. Most stages emit
+// `processed_seconds` / `total_seconds` literally as seconds (audio,
+// transcribe, ingest), but cut / reframe / thumbs emit *clip counts*
+// through the same field names because the sidecar reuses the progress
+// payload shape. Treating clips as seconds made the ETA finish in
+// "(total_clips - processed_clips) / rate" seconds — a 12-clip cut job
+// would read "12 seconds remaining" when in reality each clip takes
+// ~8s of ffmpeg encode and the real remaining is ~96s.
+//
+// Multiply both processed AND total by an average per-clip duration
+// before feeding the ETA so units land back in seconds. Numbers are
+// conservative averages tuned to observed runs; rate-based ETA will
+// correct itself within a clip or two even if the average is off.
+const STAGE_AVG_SECONDS_PER_CLIP: Partial<Record<StageName, number>> = {
+  cut: 8,
+  reframe: 15,
+  thumbs: 2,
+};
 
 // Live mm:ss countdown format — precise so it visibly decrements every second
 // rather than jumping between "~5 min" and "~4 min". `tabular-nums` on the
@@ -110,19 +157,36 @@ export function WorkingStage({
   // segments / clips. Previously we polled .progress.json on disk, but the
   // default fs scope can't read ~/LiquidClips/projects/* so every poll silently
   // failed and the bar never showed.
+  //
+  // P1 #17 — defensive slug filter. Stage-progress events are global Tauri
+  // events, so a previously-mounted WorkingStage for project A could see
+  // events from a freshly-started project B and overwrite its bar with
+  // someone else's clip count. We filter by stage today, but two back-to-back
+  // projects can hit the same stage (e.g. both transcribing) and bleed.
+  //
+  // SIDECAR-AGENT TODO (A1, python-sidecar/stages.py:100-107
+  // `_emit_stage_progress`): add `"slug": project.slug` to the payload so
+  // this filter actually fires. Until that lands, `p.slug` is undefined and
+  // the guard is a no-op — identical behaviour to today, zero regression.
+  // Once the slug is emitted, stale cross-project events drop on the floor.
+  // Matching TS-side type extension (`slug?: string` on `StageProgress`) is
+  // owned by the sidecar.ts agent; we read it through a structural cast so
+  // we don't have to wait on that PR.
   useEffect(() => {
     let cancelled = false;
     setProgress(null);
     const unlistenPromise = onStageProgress((p) => {
       if (cancelled) return;
       if (p.stage !== currentStage) return;
+      const slug = (p as StageProgress & { slug?: string }).slug;
+      if (slug && slug !== project.slug) return;
       setProgress(p);
     });
     return () => {
       cancelled = true;
       void unlistenPromise.then((un) => un());
     };
-  }, [currentStage]);
+  }, [currentStage, project.slug]);
 
   // P1 #9 — stall watchdog. Resets every time we get a progress event OR
   // the stage changes; if 90s pass without either, surface the message.
@@ -202,12 +266,16 @@ export function WorkingStage({
       progress.total_seconds > 0 &&
       progress.processed_seconds > 0
     ) {
-      const rate = progress.processed_seconds / elapsedInStage;
+      // P1 #18 — for cut/reframe/thumbs the processed/total fields are CLIP
+      // counts, not seconds. Convert to seconds via the per-clip average so
+      // the rate calculation lands in the right unit and the ETA stops
+      // claiming a 12-clip cut will finish in 12 seconds.
+      const perClip = STAGE_AVG_SECONDS_PER_CLIP[currentStage];
+      const processed = perClip ? progress.processed_seconds * perClip : progress.processed_seconds;
+      const total = perClip ? progress.total_seconds * perClip : progress.total_seconds;
+      const rate = processed / elapsedInStage;
       if (rate > 0) {
-        remainingSeconds = Math.max(
-          0,
-          (progress.total_seconds - progress.processed_seconds) / rate,
-        );
+        remainingSeconds = Math.max(0, (total - processed) / rate);
       }
     }
     if (remainingSeconds === null) {
