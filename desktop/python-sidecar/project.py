@@ -50,6 +50,101 @@ def _pid_alive(pid: int) -> bool:
         return False
 
 
+def _atomic_write_json(path: Path, data: Any) -> None:
+    """Write `data` as JSON to `path` atomically.
+
+    P0 #10 — A crash between `open("w")` truncating the existing file and
+    `json.dump` completing left users with a zero-byte file and no recovery
+    path. Write to a sibling `.tmp`, flush + fsync, then `os.replace` which is
+    atomic on POSIX. Used by `Project.save`, the `Project.load` stale-stage
+    recovery write, and the `stage_start` lock write.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    tmp.replace(path)
+
+
+def _probe_has_video_stream(path: Path) -> bool:
+    """Return True iff `path` has at least one decodable video stream.
+
+    P1 #15 — `create_imported_pack` previously accepted any regular file the
+    OS dialog returned, then downstream ffmpeg would explode with a confusing
+    "Invalid data found when processing input" once the user tried to play /
+    cut / publish the imported "clip". Catch the audio-only / corrupt-file
+    case at import time with a clear ValueError.
+    """
+    import subprocess
+    here = Path(__file__).resolve().parent
+    candidates = [here / "bin" / "ffprobe", Path("ffprobe")]
+    for bin_path in candidates:
+        try:
+            out = subprocess.check_output(
+                [str(bin_path), "-v", "error", "-select_streams", "v:0",
+                 "-show_entries", "stream=codec_type",
+                 "-of", "json", str(path)],
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+            )
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            continue
+        try:
+            parsed = json.loads(out.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            continue
+        streams = parsed.get("streams") or []
+        for s in streams:
+            if isinstance(s, dict) and s.get("codec_type") == "video":
+                return True
+        # ffprobe succeeded but reported no video streams — definitive answer.
+        return False
+    # Every candidate failed (no ffprobe on disk at all). Don't block the
+    # import on a missing binary; sidecar deps preflight surfaces that
+    # separately and a Pro user expects ffmpeg to be there.
+    return True
+
+
+def _copy_or_link_clip(src: Path, dest: Path) -> Path:
+    """Materialise `src` into `dest` for an imported clip.
+
+    P1 #14 — Imported clips previously stored the user's original file path
+    as `cut_path` / `vertical_path`. If the user moved or deleted the source
+    file, every downstream operation (preview, publish, re-cut) silently
+    broke. Copy the file into the project's `clips/` directory so the
+    project is self-contained. Fall back to an absolute symlink if the
+    destination is on a different filesystem (cross-volume copy would either
+    be slow or fail with EXDEV). Returns the resolved `dest`.
+    """
+    import shutil
+    import errno
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    # Already a regular file at dest — assume a prior import populated it.
+    if dest.is_file():
+        return dest
+    try:
+        shutil.copy2(src, dest)
+        return dest
+    except OSError as e:
+        # EXDEV / cross-device link / quota exceeded / read-only — fall back
+        # to an absolute symlink. The frontend still sees a file under the
+        # project root; macOS Finder follows it transparently.
+        if e.errno not in (errno.EXDEV, errno.ENOSPC, errno.EDQUOT, errno.EROFS):
+            # Genuine failure (permission denied on dest dir, etc.) — re-raise
+            # so create_imported_pack surfaces it instead of silently producing
+            # a broken project.
+            raise
+    try:
+        if dest.is_symlink() or dest.exists():
+            dest.unlink()
+    except OSError:
+        pass
+    os.symlink(str(src.resolve()), str(dest))
+    return dest
+
+
 # SECURITY (CRIT-002): A project slug is the only piece of user input that
 # becomes a filesystem path. Without validation, ".." / absolute paths / NUL
 # bytes / Windows-reserved names could make Project.load() read arbitrary
@@ -502,7 +597,15 @@ class Project:
             # v0.6.10 — Looser validation for finished-clip imports. The user
             # already picked the file through the OS dialog; we only need to
             # block URL schemes, FIFOs, and out-of-tree symlinks.
-            validated.append(_validate_imported_clip_path(p))
+            resolved = _validate_imported_clip_path(p)
+            # P1 #15 — Reject audio-only or corrupt files BEFORE we materialise
+            # a project folder. Without this, downstream ffmpeg / preview /
+            # publish fail later with a confusing "Invalid data" message.
+            if not _probe_has_video_stream(resolved):
+                raise ValueError(
+                    f"Imported file has no video stream: {resolved.name}"
+                )
+            validated.append(resolved)
 
         root_base = projects_root or (CLIPS_HOME / "projects")
         root_base.mkdir(parents=True, exist_ok=True)
@@ -522,10 +625,32 @@ class Project:
 
         clips: list[dict[str, Any]] = []
         thumbs_dir = candidate / "thumbnails"
+        clips_dir = candidate / "clips"
         for idx, vp in enumerate(validated, start=1):
             duration = _probe_duration_seconds(vp)
             title = vp.stem.replace("-", " ").replace("_", " ").strip() or f"Imported clip {idx}"
             clip_slug = _validate_slug(slugify(vp.stem) or f"imported-{idx}")
+            # P1 #14 — Copy the user's file into the project's `clips/` dir so
+            # the project is self-contained. Cross-volume → falls back to an
+            # absolute symlink. We preserve the original location on the clip
+            # record as `source_path` for the "Reveal source in Finder"
+            # affordance. The file extension is preserved so ffmpeg / the
+            # <video> tag still demux correctly.
+            ext = vp.suffix.lower() or ".mp4"
+            project_clip = clips_dir / f"{clip_slug}{ext}"
+            try:
+                materialised = _copy_or_link_clip(vp, project_clip)
+                clip_cut_path = str(materialised)
+            except OSError as exc:
+                # Hard fail per clip → fall back to the original path. Better
+                # than skipping the clip silently; the load-time stat sweep
+                # (P1 #16) will mark it unavailable if the source moves.
+                import sys
+                sys.stderr.write(
+                    f"[create_imported_pack] copy/link {vp.name} → {project_clip.name} "
+                    f"failed: {type(exc).__name__}: {exc}\n"
+                )
+                clip_cut_path = str(vp)
             # ship-lens v0.7.7 #2b — seed one cover frame so ResultsGrid /
             # ClipWindowPoster / LibraryCard render the real first frame
             # instead of the black-square fallback. ffmpeg failures are
@@ -557,8 +682,12 @@ class Project:
                 "slug": clip_slug,
                 "title_variants": [title[:120]],
                 "pinned_comment": "",
-                "cut_path": str(vp),
-                "vertical_path": str(vp),
+                # P1 #14 — point cut / vertical at the in-project copy so the
+                # project survives the user moving / deleting the original.
+                "cut_path": clip_cut_path,
+                "vertical_path": clip_cut_path,
+                # Original location preserved for "Reveal source in Finder".
+                "source_path": str(vp),
                 "thumbnails": thumbnails,
                 "imported": True,
                 # v0.7.14 — per-clip publish targeting + overlay template.
@@ -663,10 +792,22 @@ class Project:
                     # handle a missing source_path with FileNotFoundError.
                     data["source_path"] = ""
         stages = {s: StageState.from_dict(data.get("stages", {}).get(s)) for s in STAGES}
+        # P1 #16 — Re-stat every referenced clip / thumbnail / source poster.
+        # If the user (or a moved external drive) made a path unreachable,
+        # flag the clip as `unavailable=True` so the frontend can render an
+        # explicit "source missing" state instead of a broken <img>/<video>.
+        # Normalise the clips list in-place so the stamp persists into `cls(...)`.
+        raw_clips = data.get("clips")
+        if not isinstance(raw_clips, list):
+            raw_clips = []
+            data["clips"] = raw_clips
+        cls._mark_unavailable_clips(root, raw_clips, data)
         if cls._recover_stale_running_stages(root, stages):
             data["stages"] = {s: stages[s].to_dict() for s in STAGES}
+            # P0 #10 — atomic write so a crash mid-recovery can't strand the
+            # user with a zero-byte project.json.
             try:
-                project_json.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                _atomic_write_json(project_json, data)
             except OSError:
                 pass
         return cls(
@@ -691,6 +832,59 @@ class Project:
             whop_bounty_spots_remaining=data.get("whop_bounty_spots_remaining"),
             whop_bounty_url=data.get("whop_bounty_url"),
         )
+
+    @staticmethod
+    def _mark_unavailable_clips(
+        root: Path,
+        clips: list[dict[str, Any]],
+        data: dict[str, Any],
+    ) -> None:
+        """P1 #16 — Walk every clip's cut/vertical/thumbnail paths and the
+        imported source-poster.jpg. If any of cut_path / vertical_path is
+        missing, set `clip["unavailable"] = True` so the frontend can show a
+        "source missing" state instead of a broken media element. Thumbnails
+        that no longer exist are silently dropped from the per-clip thumbnail
+        list (the cover-frame fallback handles that gracefully).
+        """
+        def _file_exists(p: Any) -> bool:
+            if not isinstance(p, str) or not p:
+                return False
+            try:
+                return Path(p).is_file()
+            except OSError:
+                return False
+
+        for clip in clips:
+            if not isinstance(clip, dict):
+                continue
+            cut_path = clip.get("cut_path")
+            vertical_path = clip.get("vertical_path")
+            cut_missing = bool(cut_path) and not _file_exists(cut_path)
+            vert_missing = bool(vertical_path) and not _file_exists(vertical_path)
+            if cut_missing or vert_missing:
+                clip["unavailable"] = True
+            else:
+                # Don't clobber a previously-stamped unavailable flag if both
+                # paths were always empty (older imported records). Only mark
+                # available when we have at least one resolvable media path.
+                if cut_path or vertical_path:
+                    clip["unavailable"] = False
+            thumbs = clip.get("thumbnails")
+            if isinstance(thumbs, list):
+                clip["thumbnails"] = [
+                    t for t in thumbs
+                    if isinstance(t, dict) and _file_exists(t.get("path"))
+                ]
+
+        # Imported pack source poster — load-time stat so the ResultsGrid
+        # header doesn't render a broken <img> when the projects dir was
+        # rsync'd without the poster.
+        ingest = (data.get("stages") or {}).get("ingest") or {}
+        ingest_out = ingest.get("output") if isinstance(ingest, dict) else None
+        if isinstance(ingest_out, dict):
+            poster = ingest_out.get("poster_path")
+            if poster and not _file_exists(poster):
+                ingest_out["poster_path"] = None
 
     @staticmethod
     def _recover_stale_running_stages(root: Path, stages: dict[str, StageState]) -> bool:
@@ -756,12 +950,14 @@ class Project:
         s.status = "running"
         s.started_at = time.time()
         s.error = None
+        # P0 #10 — atomic write so a crash mid-lock can't strand a partially
+        # written lock file that the next load() reads as garbage.
         try:
-            (self.root / STAGE_LOCK).write_text(json.dumps({
+            _atomic_write_json(self.root / STAGE_LOCK, {
                 "stage": stage,
                 "pid": os.getpid(),
                 "started_at": s.started_at,
-            }), encoding="utf-8")
+            })
         except OSError:
             pass
         # Wipe stale progress from the previous stage so the UI doesn't show
@@ -832,17 +1028,11 @@ class Project:
             "stages": {s: self.stages[s].to_dict() for s in STAGES},
             "clips": self.clips,
         }
-        # v0.7.34 — Atomic write. A crash between open("w") truncating
-        # the existing file and the json.dump completing left users with
-        # a zero-byte project.json and no recovery path. Write to a sibling
-        # .tmp, fsync, then os.replace which is atomic on POSIX.
-        target = self.root / "project.json"
-        tmp = self.root / "project.json.tmp"
-        with tmp.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        tmp.replace(target)
+        # v0.7.34 / P0 #10 — Atomic write via shared `_atomic_write_json`
+        # helper (tmp + flush + fsync + os.replace). Single helper means
+        # `Project.save`, `Project.load`'s stale-stage recovery, and
+        # `stage_start`'s lock file all go through the same atomic pattern.
+        _atomic_write_json(self.root / "project.json", data)
 
     def to_dict(self) -> dict[str, Any]:
         return {
