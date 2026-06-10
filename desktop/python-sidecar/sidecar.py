@@ -2487,7 +2487,11 @@ def method_project_cancel(params: dict[str, Any]) -> dict[str, Any]:
     if not slug_raw:
         return {"ok": False, "error": "project_cancel requires `slug`"}
     try:
-        project_dir = _resolve_project_slug(slug_raw)
+        # _resolve_project_slug returns (projects_root, proj_dir); only the
+        # per-project dir is needed for the cancel marker. The previous
+        # version bound the whole tuple → `tuple / ".cancel"` TypeError
+        # silently swallowed by the JS .catch — the marker was never written.
+        _projects_root, project_dir = _resolve_project_slug(slug_raw)
     except Exception as e:
         return {"ok": False, "error": str(e)}
     marker = project_dir / ".cancel"
