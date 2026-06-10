@@ -136,7 +136,13 @@ export function BountyDetail({
           </h2>
           <div className="mt-3 aspect-video w-full overflow-hidden rounded-xl bg-transparent">
             {bounty.thumbnail ? (
-              <img src={bounty.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover" />
+              <img
+                src={bounty.thumbnail}
+                alt=""
+                loading="lazy"
+                className="h-full w-full object-cover"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+              />
             ) : (
               <div className="grid h-full place-items-center font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
                 no campaign image

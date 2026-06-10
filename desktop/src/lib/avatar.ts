@@ -8,7 +8,7 @@
 
 import { create } from "zustand";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { sidecar } from "./sidecar";
+import { sidecar, humanError } from "./sidecar";
 
 type AvatarState = {
   /** Tauri file URL for ~/LiquidClips/avatar.png, or null if no upload yet
@@ -55,7 +55,7 @@ export const useAvatar = create<AvatarState>((set) => ({
         set({ url: null, loading: false });
       }
     } catch (e) {
-      set({ loading: false, error: e instanceof Error ? e.message : String(e) });
+      set({ loading: false, error: humanError(e) });
     }
   },
 
@@ -71,7 +71,7 @@ export const useAvatar = create<AvatarState>((set) => ({
         loading: false,
       });
     } catch (e) {
-      set({ loading: false, error: e instanceof Error ? e.message : String(e) });
+      set({ loading: false, error: humanError(e) });
       throw e;
     }
   },
@@ -82,7 +82,7 @@ export const useAvatar = create<AvatarState>((set) => ({
       await sidecar.clearAvatar();
       set({ url: null, bustKey: Date.now(), loading: false });
     } catch (e) {
-      set({ loading: false, error: e instanceof Error ? e.message : String(e) });
+      set({ loading: false, error: humanError(e) });
       throw e;
     }
   },

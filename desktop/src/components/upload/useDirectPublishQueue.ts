@@ -9,7 +9,7 @@
 // brief "reading queue" state in the UI is fine.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { sidecar, type DirectPublishQueueItem } from "../../lib/sidecar";
+import { sidecar, humanError, type DirectPublishQueueItem } from "../../lib/sidecar";
 
 function shortId(): string {
   // 10-char base36 random — enough for thousands of items per user.
@@ -68,7 +68,7 @@ export function useDirectPublishQueue(): UseDirectPublishQueue {
         // user can still drop new files. The error is surfaced inline.
         itemsRef.current = [];
         setItems([]);
-        setError(e instanceof Error ? e.message : String(e));
+        setError(humanError(e));
       }
     })();
     return () => {
@@ -83,7 +83,7 @@ export function useDirectPublishQueue(): UseDirectPublishQueue {
       await sidecar.directPublishQueueWrite(next);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanError(e));
     }
   }, []);
 

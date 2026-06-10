@@ -427,7 +427,12 @@ function ResultCard({
     >
       <div className="relative aspect-video bg-ink">
         {item.preview_url && !hover && (
-          <img src={item.preview_url} alt="" className="h-full w-full object-cover" />
+          <img
+            src={item.preview_url}
+            alt=""
+            className="h-full w-full object-cover"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
         )}
         {canVideo && (
           <video

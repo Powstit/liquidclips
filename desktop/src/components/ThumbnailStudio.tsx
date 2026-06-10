@@ -1437,7 +1437,12 @@ function AIGenerateView({
                   }`}
                 >
                   <button onClick={() => onZoom(t.path)} className="block w-full h-full">
-                    <img src={convertFileSrc(t.path)} alt="" className="w-full h-full object-cover" />
+                    <img
+                      src={convertFileSrc(t.path)}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                    />
                   </button>
                   {isCover && (
                     <div className="absolute top-2 right-2 bg-fuchsia text-paper text-[10px] font-bold px-2 py-0.5 rounded-full">

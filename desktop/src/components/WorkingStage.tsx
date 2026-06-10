@@ -238,7 +238,12 @@ export function WorkingStage({
             <span className="cockpit-tile-corner-tr" aria-hidden="true" />
             <span className="cockpit-tile-corner-bl" aria-hidden="true" />
             <span className="cockpit-tile-corner-br" aria-hidden="true" />
-            <img src={convertFileSrc(poster)} alt="" className="h-full w-full object-cover" />
+            <img
+              src={convertFileSrc(poster)}
+              alt=""
+              className="h-full w-full object-cover"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+            />
           </div>
         )}
         <div className="flex-1 min-w-0">
