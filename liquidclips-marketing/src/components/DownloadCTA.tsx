@@ -13,11 +13,10 @@ type ArtifactMap = {
   linux?: string;
 };
 
-// Single source of truth for downloadable artifact URLs.
-// Set on Vercel; missing entries fall through to the waitlist mailto.
-// NEXT_PUBLIC_DOWNLOAD_DMG_URL is the legacy single-Mac-DMG var — if the
-// per-arch vars aren't set, fall back to it for every Mac path so the
-// existing v0.6.44 ARM DMG keeps serving.
+// Fallback artifact URLs from env vars. These are now only used when the
+// server hasn't passed `artifacts` props (e.g. the GH API call failed at
+// render time). Primary path is the `artifacts` prop on DownloadCTA, fed
+// by getLatestRelease() in src/lib/latest-release.ts.
 function loadArtifacts(): ArtifactMap {
   const legacyDmg = process.env.NEXT_PUBLIC_DOWNLOAD_DMG_URL;
   return {
@@ -98,11 +97,16 @@ export function DownloadCTA({
   size = "lg",
   className = "",
   showPicker = true,
+  artifacts: artifactsProp,
 }: {
   variant?: "primary" | "secondary";
   size?: "md" | "lg";
   className?: string;
   showPicker?: boolean;
+  /** Server-side artifact URLs from getLatestRelease(). When provided,
+   *  these win over env-var fallbacks. Lets parent pages drive the
+   *  download URL set without per-version Vercel env-var bumps. */
+  artifacts?: ArtifactMap;
 }) {
   // SSR fallback: assume Mac. Liquid Clips is a Mac-only desktop app — even
   // if a Windows/Linux visitor lands here, the eventual client-side override
@@ -111,7 +115,21 @@ export function DownloadCTA({
   // looks like the app is unreleased to anyone watching a demo recording.
   const [detected, setDetected] = useState<Platform>("mac-universal");
   const [override, setOverride] = useState<Platform | null>(null);
-  const artifacts = useMemo(loadArtifacts, []);
+  const artifacts = useMemo(() => {
+    // Server-provided artifacts win; merge any missing entries from env-var
+    // fallbacks so we never go dead even if the GH API call failed.
+    if (artifactsProp) {
+      const fallback = loadArtifacts();
+      return {
+        macUniversal: artifactsProp.macUniversal ?? fallback.macUniversal,
+        macArm: artifactsProp.macArm ?? fallback.macArm,
+        macIntel: artifactsProp.macIntel ?? fallback.macIntel,
+        windows: artifactsProp.windows ?? fallback.windows,
+        linux: artifactsProp.linux ?? fallback.linux,
+      };
+    }
+    return loadArtifacts();
+  }, [artifactsProp]);
 
   useEffect(() => {
     setDetected(detectPlatform());
