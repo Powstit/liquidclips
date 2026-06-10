@@ -165,7 +165,8 @@ export function CaptionDrawer({
   }, [state, open, onPreviewChange]);
 
   const mutate = useCallback((next: CaptionState) => {
-    history.current.push(state!);
+    if (!state) return;
+    history.current.push(state);
     setState(next);
   }, [state]);
 
