@@ -82,7 +82,7 @@ export function TranscriptResult({
                 no poster
               </div>
             )}
-            <div className="absolute left-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-black/70 text-paper backdrop-blur-md">
+            <div className="absolute left-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-black/70 text-ink backdrop-blur-md">
               <PlatformIcon id={platform} className="h-4 w-4" />
             </div>
           </div>

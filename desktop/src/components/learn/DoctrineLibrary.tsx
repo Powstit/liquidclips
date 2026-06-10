@@ -152,7 +152,7 @@ function EpisodeCard({ episode }: { episode: DoctrineEpisode }) {
           />
         ) : (
           <div className="grid h-full w-full place-items-center bg-gradient-to-br from-fuchsia-soft/30 via-paper-elev to-ink">
-            <span className="font-display text-[24px] font-bold tracking-[-0.02em] text-fuchsia-deep/70">
+            <span className="font-display text-[24px] font-bold tracking-[-0.02em] text-fuchsia">
               {episode.episode_number ? `Ep ${String(episode.episode_number).padStart(3, "0")}` : "Ep —"}
             </span>
           </div>
