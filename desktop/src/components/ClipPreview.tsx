@@ -412,10 +412,9 @@ export function ClipPreview({
           clip_idx: index - 1,
           clip_title: clip.title,
           vertical_path: clip.vertical_path,
-          // Default platform — the Upload tab's schedule view lets the user
-          // re-target before posting. Picking one keeps this popover fast;
-          // forcing a platform picker here would defeat the "quick schedule".
-          platform: "youtube",
+          // F4 — use the clip's first selected platform instead of hardcoding YouTube.
+          // Falls back to youtube for legacy compatibility when no platform is set.
+          platform: (clip.platforms?.[0] ?? "youtube") as "youtube" | "tiktok" | "instagram" | "x",
           scheduled_for: whenIso,
           caption: clip.title,
         },
