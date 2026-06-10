@@ -248,7 +248,7 @@ function NotificationRow({
               e.stopPropagation();
               onDismiss();
             }}
-            className="rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary hover:text-[var(--color-danger)]"
+            className="rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ink/70 hover:text-ink"
           >
             dismiss
           </button>
