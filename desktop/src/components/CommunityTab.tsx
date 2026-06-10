@@ -16,7 +16,7 @@
 // LibraryCard.tsx. One fuchsia. No red (no destructive surfaces here).
 
 import { useMemo, useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../lib/openSmart";
 import { CalendarClock, Flame, MessageCircle, Sparkles, Trophy, Zap } from "lucide-react";
 // v0.6.19 — Whop community chat opens in the in-app Tauri child webview (same
 // pane that hosts Browse Rewards). Members get a fully-authed Whop session

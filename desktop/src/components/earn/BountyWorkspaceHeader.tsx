@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../../lib/openSmart";
 import type { Project } from "../../lib/sidecar";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
 import { InfoHint } from "../InfoHint";

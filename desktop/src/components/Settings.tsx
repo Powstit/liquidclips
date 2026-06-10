@@ -1,6 +1,6 @@
 // ship-lens v0.7.8: S1 — performSignOut now atomic-wipes every sensitive secret via performAtomicSignOutWipe (centralised in App.tsx) so handing the Mac to someone else doesn't leak OpenAI / Anthropic / Whop / Pexels / Pixabay / Giphy / onboarded keys; the Log-out confirm copy names the API-key clear explicitly. S2 — 5th left-rail tab "Connections" mounts AyrshareConnectionPanel + a per-channel status list (linked / pending_link / unlinked / error) sourced from listChannels() + whopSessionStatus(); Whop session source and Ayrshare profile-key presence both surface in the same pane. S3 — API-keys pane reads sidecar.openaiKeyStatus() on mount so the OPENAI_API_KEY green dot ALSO lights when the key is resolved via env-var (keychain empty was a silent UI lie). v0.7.7 carry-over: fix #9 meStatus discriminated union for expired sessions.
 import { useEffect, useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../lib/openSmart";
 // v0.7.45 — `openSmart` is used for filesystem-path opens (the "Open in
 // Finder" chip below). Plain `shell.open` rejects `/Users/...` paths
 // against its built-in mailto/tel/https regex and surfaces a red banner.

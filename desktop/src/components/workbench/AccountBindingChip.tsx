@@ -41,7 +41,7 @@
 // existing persistedSession debounce (Agent 1) — bindings survive reboot.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../../lib/openSmart";
 import { useWorkbenchStore } from "./useWorkbenchStore";
 import {
   createChannel,

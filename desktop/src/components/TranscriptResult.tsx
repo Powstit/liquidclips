@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../lib/openSmart";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { LiftTranscriptResult } from "../lib/sidecar";
 import { PlatformIcon, type PlatformId } from "./PlatformIcon";

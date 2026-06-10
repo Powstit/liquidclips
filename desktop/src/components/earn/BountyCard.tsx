@@ -6,7 +6,7 @@
 // `Start` + secondary `Brief` inline at the bottom.
 
 import { useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../../lib/openSmart";
 import type { WhopBounty } from "../../lib/sidecar";
 import { PlatformIcon } from "../PlatformIcon";
 import { Sparkles, Users, Wallet, ArrowRight } from "lucide-react";

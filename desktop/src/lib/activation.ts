@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "./openSmart";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { sidecar } from "./sidecar";
 import { recordWhopAuthEvent } from "./whop-iframe";

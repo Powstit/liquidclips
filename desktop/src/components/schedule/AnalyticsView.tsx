@@ -9,7 +9,7 @@
 // "Updated X min ago" stamp so the user knows the data is mildly stale.
 
 import { useEffect, useMemo, useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../../lib/openSmart";
 import { AlertTriangle, BarChart3, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
 import * as backend from "../../lib/backend";

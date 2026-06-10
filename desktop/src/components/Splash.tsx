@@ -7,7 +7,7 @@
 // ship-lens v0.7.8: E8 — intro <video autoPlay> can be blocked by macOS WebKit autoplay rules; pre-fix the user saw 28.5s of black before the splash advanced. Now we detect the play() rejection, render a centered "Tap to play" overlay, and resume on click.
 import { useEffect, useRef, useState } from "react";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../lib/openSmart";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { Logo } from "./Logo";
 import { SplashGame } from "./invaders/SplashGame";

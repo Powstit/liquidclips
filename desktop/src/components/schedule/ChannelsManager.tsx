@@ -28,7 +28,7 @@
 //     of an infinite spinner.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../../lib/openSmart";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Plus, Loader2, RefreshCw } from "lucide-react";
 import * as backend from "../../lib/backend";

@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Clock, ExternalLink, Loader2, PlayCircle } from "lucide-react";
-import { open as openExternal } from "@tauri-apps/plugin-shell";
+import { openSmart as openExternal } from "../../lib/openSmart";
 import {
   listDoctrineEpisodes,
   listDoctrineCategories,
