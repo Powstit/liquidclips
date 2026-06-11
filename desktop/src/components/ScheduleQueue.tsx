@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useVisibilityInterval } from "../lib/useVisibilityInterval";
 import { openSmart as openExternal } from "../lib/openSmart";
 import { RefreshCw } from "lucide-react";
@@ -113,20 +113,28 @@ export function ScheduleQueue() {
   const [confirmCancelRow, setConfirmCancelRow] = useState<ScheduleDto | null>(null);
   const [cancelBusy, setCancelBusy] = useState(false);
 
+  const loadGen = useRef(0);
   const load = useCallback(async () => {
+    const myGen = ++loadGen.current;
     try {
       const { value: jwt } = await sidecar.licenseJwtRead();
       if (!jwt) {
+        if (loadGen.current !== myGen) return;
         setError(
           "Sign in to Liquid Clips to see your queue — use the Sign in button in the top bar.",
         );
         return;
       }
       const list = await backend.schedules.list(jwt, { limit: 100 });
+      if (loadGen.current !== myGen) return;
+      // Sort by scheduled time ascending so the queue reads chronologically.
+      list.sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime());
       setItems(list);
       setError(null);
+      setCancelError({}); // clear stale per-row cancel errors on fresh load
       setLastSuccessfulLoad(Date.now());
     } catch (e) {
+      if (loadGen.current !== myGen) return;
       setError(humanError(e));
     }
   }, []);
@@ -175,7 +183,10 @@ export function ScheduleQueue() {
 
   async function retry(row: ScheduleDto) {
     const { value: jwt } = await sidecar.licenseJwtRead();
-    if (!jwt) return;
+    if (!jwt) {
+      setCancelError((cur) => ({ ...cur, [row.id]: "Sign in to retry failed posts." }));
+      return;
+    }
     setRetrying(row.id);
     try {
       await backend.schedules.retry(jwt, row.id);

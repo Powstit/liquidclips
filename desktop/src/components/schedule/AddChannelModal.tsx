@@ -126,14 +126,23 @@ export function AddChannelModal({
   // slow TikTok age-gate completed for users coming in via the chip but
   // surfaced as "Linking didn't complete in time" for users coming in via
   // this modal — same OAuth, different verdict, depending on entry point.
+  //
+  // v0.7.48 — Use a ref for the channel id so the interval closure doesn't
+  // capture a stale reference if state changes mid-poll.
+  const pollingChannelIdRef = useRef<string>("");
+  useEffect(() => {
+    if (state.kind === "polling") pollingChannelIdRef.current = state.channel.id;
+  }, [state]);
   useEffect(() => {
     if (state.kind !== "polling") return;
     let cancelled = false;
     let attempts = 0;
     const interval = setInterval(async () => {
       attempts++;
+      const cid = pollingChannelIdRef.current;
+      if (!cid) return;
       try {
-        const refreshed = await backend.refreshChannel(state.channel.id);
+        const refreshed = await backend.refreshChannel(cid);
         if (cancelled) return;
         if (refreshed.status === "active") {
           clearInterval(interval);
@@ -156,7 +165,7 @@ export function AddChannelModal({
           setState({
             kind: "error",
             message: "Couldn't verify the link. Try refreshing the channel manually.",
-            channel: state.channel,
+            channel: state.kind === "polling" ? state.channel : undefined,
           });
         }
       }
@@ -386,22 +395,11 @@ export function AddChannelModal({
                 </p>
               </div>
               <div className="flex flex-col gap-2">
-                <button
-                  onClick={() => {
-                    // Mint a fresh OAuth URL (original may be stale), re-open
-                    // the browser, then hop back to polling. The polling
-                    // effect tears itself down on state change so a previous
-                    // poll loop can't double-fire here.
-                    const channel = state.channel;
-                    setState({ kind: "polling", channel });
-                    void backend.relinkChannel(channel.id)
-                      .then((r) => reopenBrowser(r.link_url))
-                      .catch(() => {});
-                  }}
-                  className="rounded-full bg-fuchsia px-6 py-3 font-sans text-[14px] font-medium text-paper hover:bg-fuchsia-bright"
-                >
-                  Open browser again
-                </button>
+                <StillPendingReopenButton
+                  channel={state.channel}
+                  onStateChange={setState}
+                  onReopen={reopenBrowser}
+                />
                 <button
                   onClick={continueWithoutVerification}
                   className="rounded-full border border-line bg-paper px-6 py-2.5 font-sans text-[13px] font-medium text-ink hover:border-fuchsia"
@@ -441,6 +439,39 @@ function CenteredLoader({ label }: { label: string }) {
       <Loader2 className="h-7 w-7 animate-spin text-fuchsia" />
       <p className="font-mono text-[11px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">{label}</p>
     </div>
+  );
+}
+
+function StillPendingReopenButton({
+  channel,
+  onStateChange,
+  onReopen,
+}: {
+  channel: Channel;
+  onStateChange: (s: { kind: "polling"; channel: Channel }) => void;
+  onReopen: (url: string) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        if (busy) return;
+        setBusy(true);
+        try {
+          const r = await backend.relinkChannel(channel.id);
+          if (r.link_url) {
+            onStateChange({ kind: "polling", channel });
+            await onReopen(r.link_url);
+          }
+        } finally {
+          setBusy(false);
+        }
+      }}
+      disabled={busy}
+      className="rounded-full bg-fuchsia px-6 py-3 font-sans text-[14px] font-medium text-paper hover:bg-fuchsia-bright disabled:opacity-50"
+    >
+      {busy ? "Opening browser…" : "Open browser again"}
+    </button>
   );
 }
 

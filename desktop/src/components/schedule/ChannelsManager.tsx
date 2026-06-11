@@ -35,6 +35,7 @@ import * as backend from "../../lib/backend";
 import { humanError } from "../../lib/sidecar";
 import type { Channel } from "./types";
 import { ChannelRow } from "./ChannelRow";
+import { ConfirmDialog } from "../ConfirmDialog";
 import { AddChannelModal } from "./AddChannelModal";
 
 // 90s matches the Connect-channel flow contract.
@@ -85,6 +86,8 @@ export function ChannelsManager({
   // (which would lie that the user has zero channels).
   const [loadError, setLoadError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   // Per-channel "Waiting for browser…" state. Keyed by channel id so a
   // multi-channel user can have several Connect flows queued without them
@@ -140,6 +143,13 @@ export function ChannelsManager({
     try {
       const list = await backend.listChannels();
       setChannels(list);
+      // v0.7.48 — Refresh Ayrshare snapshot so stale-status override stays
+      // current after connects/disconnects. Silent on failure.
+      backend.socialGetConnectionStrict()
+        .then((state) => {
+          if (state !== "no-connection") setAyrshareLinkedPlatforms(state.platforms ?? []);
+        })
+        .catch(() => {});
     } catch (e) {
       setLoadError(humanError(e));
     } finally {
@@ -272,11 +282,15 @@ export function ChannelsManager({
   }
 
   async function handleDelete(id: string) {
+    setDeleteBusy(true);
     try {
       await backend.deleteChannel(id);
       setChannels((cur) => cur.filter((c) => c.id !== id));
+      setConfirmDeleteId(null);
     } catch (e) {
       setError(humanError(e));
+    } finally {
+      setDeleteBusy(false);
     }
   }
 
@@ -293,6 +307,11 @@ export function ChannelsManager({
     startConnectingTimer(c.id);
     try {
       const { link_url } = await backend.relinkChannel(c.id);
+      if (!link_url || !link_url.startsWith("http")) {
+        finishConnecting(c.id);
+        setError(link_url ? `Invalid link URL (${link_url.slice(0, 40)}…)` : "Empty link URL from server.");
+        return;
+      }
       await openExternal(link_url);
       // Optimistic refresh after a short delay so the channel card flips to
       // active without the user re-opening the tab. We still surface errors
@@ -402,7 +421,7 @@ export function ChannelsManager({
                   <ChannelRow
                     channel={c}
                     onTogglePause={() => handleTogglePause(c)}
-                    onDelete={() => handleDelete(c.id)}
+                    onDelete={async () => setConfirmDeleteId(c.id)}
                     onLinkNow={() => void handleLinkNow(c)}
                     ayrshareLinkedPlatforms={ayrshareLinkedPlatforms}
                   />
@@ -458,6 +477,18 @@ export function ChannelsManager({
         </>
       )}
 
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        tone="destructive"
+        title="Delete channel?"
+        body={<>This removes the linked account from Liquid Clips. Published posts stay live on the platform.</>}
+        confirmLabel="Delete"
+        busy={deleteBusy}
+        onCancel={() => setConfirmDeleteId(null)}
+        onConfirm={() => {
+          if (confirmDeleteId) void handleDelete(confirmDeleteId);
+        }}
+      />
       {addOpen && (
         <AddChannelModal
           onClose={() => setAddOpen(false)}
