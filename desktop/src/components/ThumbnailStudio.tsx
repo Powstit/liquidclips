@@ -1476,7 +1476,7 @@ function useElapsedSeconds(startedAt: number | null): number {
   const [, force] = useState(0);
   useEffect(() => {
     if (startedAt === null) return;
-    const id = window.setInterval(() => force((n) => n + 1), 500);
+    const id = window.setInterval(() => force((n) => n + 1), 1000);
     return () => window.clearInterval(id);
   }, [startedAt]);
   return startedAt === null ? 0 : Math.floor((Date.now() - startedAt) / 1000);
