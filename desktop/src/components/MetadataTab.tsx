@@ -58,10 +58,10 @@ export function MetadataTab({ slug, tab }: { slug: string; tab: string }) {
     // library-card-corner bracket spans + warm paper bg for the same
     // visual hierarchy without the SaaS-card look.
     <div className="library-card relative rounded-2xl bg-paper-warm/40 p-5">
-      <span className="library-card-corner library-card-corner-tl" />
-      <span className="library-card-corner library-card-corner-tr" />
-      <span className="library-card-corner library-card-corner-bl" />
-      <span className="library-card-corner library-card-corner-br" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
       <div className="mb-3 flex items-center justify-between">
         <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
           {tab}

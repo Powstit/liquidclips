@@ -264,7 +264,7 @@ export function Splash({
           type="button"
           onClick={skipSplash}
           aria-label="Skip splash"
-          className="absolute right-6 top-6 z-20 grid h-11 w-11 place-items-center rounded-full border border-fuchsia bg-black/45 font-mono text-[14px] font-semibold text-paper shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
+          className="absolute right-6 top-6 z-20 grid h-11 w-11 place-items-center rounded-full border border-fuchsia bg-paper/45 font-mono text-[14px] font-semibold text-paper shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
         >
           →
         </button>
@@ -277,9 +277,9 @@ export function Splash({
             type="button"
             onClick={tapToPlay}
             aria-label="Tap to play intro"
-            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/55 backdrop-blur-sm transition-colors hover:bg-black/65 focus:outline-none focus:ring-2 focus:ring-fuchsia"
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-paper/55 backdrop-blur-sm transition-colors hover:bg-paper/65 focus:outline-none focus:ring-2 focus:ring-fuchsia"
           >
-            <span className="grid h-20 w-20 place-items-center rounded-full border border-fuchsia bg-black/60 text-fuchsia shadow-[var(--glow-sm)]">
+            <span className="grid h-20 w-20 place-items-center rounded-full border border-fuchsia bg-paper/60 text-fuchsia shadow-[var(--glow-sm)]">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <polygon points="6 4 20 12 6 20 6 4" />
               </svg>
@@ -316,7 +316,7 @@ export function Splash({
           backdrop; 90% reads as a near-solid dark game arena. */}
       <div
         className={`pointer-events-none absolute inset-0 ${
-          stage === "game" ? "bg-black/90" : "bg-black/25"
+          stage === "game" ? "bg-paper/90" : "bg-paper/25"
         }`}
       />
 
@@ -324,7 +324,7 @@ export function Splash({
         type="button"
         onClick={skipSplash}
         aria-label="Skip splash"
-        className="absolute right-6 top-6 z-20 grid h-11 w-11 place-items-center rounded-full border border-fuchsia bg-black/45 font-mono text-[14px] font-semibold text-ink shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
+        className="absolute right-6 top-6 z-20 grid h-11 w-11 place-items-center rounded-full border border-fuchsia bg-paper/45 font-mono text-[14px] font-semibold text-ink shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
       >
         →
       </button>
