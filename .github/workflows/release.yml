@@ -205,6 +205,11 @@ jobs:
         run: |
           set -euo pipefail
           APP=$(find desktop/src-tauri/target -path '*/bundle/macos/Liquid Clips.app' -type d | head -1)
+          # Delete the stale tauri-default DMG (with space, unsigned container) before
+          # rebuild so notarize.sh + upload glob only see the slugged + re-signed DMG.
+          # Without this, v0.7.50 shipped an unstapled DMG because `find | head -1`
+          # picked the unsigned tauri DMG and the upload glob uploaded a non-notarised file.
+          find desktop/src-tauri/target -path '*/bundle/dmg/*.dmg' -type f -delete || true
           desktop/scripts/package-signed-macos-artifacts.sh "$APP" ${{ matrix.target.slug }}
 
       - name: notarize and staple .dmg
@@ -214,18 +219,22 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          DMG=$(find desktop/src-tauri/target -path '*/bundle/dmg/*.dmg' -type f | head -1)
+          DMG=$(find desktop/src-tauri/target -path '*/bundle/dmg/Liquid.Clips_*.dmg' -type f | head -1)
           if [ -z "$DMG" ]; then
-            echo "✗ No .dmg found" >&2
+            echo "✗ No rebuilt .dmg found at bundle/dmg/Liquid.Clips_*.dmg" >&2
             exit 1
           fi
+          echo "→ notarising $DMG"
           desktop/scripts/notarize.sh "$DMG"
 
       - name: verify notarized installer
         run: |
           set -euo pipefail
-          DMG=$(find desktop/src-tauri/target -path '*/bundle/dmg/*.dmg' -type f | head -1)
+          DMG=$(find desktop/src-tauri/target -path '*/bundle/dmg/Liquid.Clips_*.dmg' -type f | head -1)
+          echo "→ verifying $DMG"
           spctl --assess -vv --type install "$DMG"
+          # Hard-require the staple ticket — without it, offline users hit Gatekeeper.
+          xcrun stapler validate "$DMG"
 
       - name: create draft GitHub release
         uses: softprops/action-gh-release@v2
@@ -242,6 +251,6 @@ jobs:
             2. Open the DMG, drag **Liquid Clips** to **Applications**
             3. Double-click from Applications — the app is signed and notarized by Apple.
           files: |
-            desktop/src-tauri/target/**/bundle/dmg/*.dmg
+            desktop/src-tauri/target/**/bundle/dmg/Liquid.Clips_*.dmg
             desktop/src-tauri/target/**/bundle/macos/*.app.tar.gz
             desktop/src-tauri/target/**/bundle/macos/*.app.tar.gz.sig
