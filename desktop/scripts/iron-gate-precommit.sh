@@ -12,7 +12,10 @@
 set -euo pipefail
 
 # Allow staged diff to be empty (e.g. amending a no-op).
-DIFF="$(git diff --staged --no-ext-diff --unified=0 -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.py' '*.rs' '*.md' || true)"
+# v0.7.49 — added '*.sh' so cloud-ship.sh + sign-clean-macos-app.sh sentinels
+# (IG-009 cloud release flow) get the same drop-protection as the TS/Python
+# gates. Without this the shell scripts were docs-only.
+DIFF="$(git diff --staged --no-ext-diff --unified=0 -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.py' '*.rs' '*.md' '*.sh' || true)"
 
 # Lines deleted from staged files (start with '-' but not '---').
 REMOVED_SENTINELS="$(printf '%s\n' "$DIFF" \
