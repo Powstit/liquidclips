@@ -387,6 +387,9 @@ export function ClipPreview({
     // could pick a template here and bypass the Solo+ moat that
     // ReactionControls enforces on the layout-tile grid.
     if (clipPreviewTier.tier === "free") {
+      import("../lib/paywallNotify").then(({ notifyPaywall }) =>
+        notifyPaywall("overlay_template", clipPreviewTier.tier),
+      );
       openAuthPanel("upgrade");
       return;
     }

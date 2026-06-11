@@ -290,6 +290,9 @@ export const ClipCard = React.memo(function ClipCard({
     // letting free users bake paid layouts from any card. Match the same
     // Solo+ guard that ReactionControls enforces.
     if (clipCardTier.tier === "free") {
+      import("../../lib/paywallNotify").then(({ notifyPaywall }) =>
+        notifyPaywall("reaction_layout", clipCardTier.tier),
+      );
       openAuthPanel("upgrade");
       return;
     }
