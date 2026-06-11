@@ -138,22 +138,25 @@ export function ChannelsManager({
   }, []);
 
   const load = useCallback(async () => {
+    let cancelled = false;
     setLoading(true);
     setLoadError(null);
     try {
       const list = await backend.listChannels();
+      if (cancelled) return;
       setChannels(list);
       // v0.7.48 — Refresh Ayrshare snapshot so stale-status override stays
       // current after connects/disconnects. Silent on failure.
       backend.socialGetConnectionStrict()
         .then((state) => {
+          if (cancelled) return;
           if (state !== "no-connection") setAyrshareLinkedPlatforms(state.platforms ?? []);
         })
         .catch(() => {});
     } catch (e) {
-      setLoadError(humanError(e));
+      if (!cancelled) setLoadError(humanError(e));
     } finally {
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
   }, []);
 

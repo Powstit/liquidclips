@@ -21,7 +21,7 @@ import { useCallback, useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import { ClipboardPaste, FolderOpen, Layers, Plus, PlayCircle, AlertTriangle } from "lucide-react";
-import { socialGetConnection, type SocialConnectionState } from "../../lib/backend";
+import { socialGetConnectionStrict, type SocialConnectionState } from "../../lib/backend";
 import {
   humanError,
   sidecar,
@@ -97,8 +97,8 @@ export function DirectPublishQueue({
   const refreshConnection = useCallback(async () => {
     setConnectionLoading(true);
     try {
-      const state = await socialGetConnection();
-      setConnection(state);
+      const state = await socialGetConnectionStrict();
+      setConnection(state === "no-connection" ? null : state);
       setConnectionError(null);
     } catch (e) {
       // Soft-fail for connection state itself, but track the error so we
