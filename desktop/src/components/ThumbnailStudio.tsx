@@ -752,19 +752,41 @@ function ThumbnailHero({
   onSkip: () => void;
 }) {
   void onStart;
+  // v0.7.50 — Page consistency pass. Visual language now matches the
+  // workstation cockpit: hud-frame chrome, library-card-corner brackets on
+  // each step card, fuchsia halo + lifted digit on the number badge, Geist
+  // Mono eyebrows + tight Inter display heading. The marquee carries real
+  // YouTube reference thumbnails (yt-references/*) instead of the bounty-
+  // themed factory placeholders. Kimi keeps wiring; this is the visual
+  // refresh that brings Thumbnail Setup into the same world as the cockpit.
   return (
-    <div className="border-b border-ink/8 bg-gradient-to-b from-paper to-ink/2 px-6 py-6">
-      <div className="max-w-3xl mx-auto text-center mb-4">
-        <div className="text-[10px] uppercase tracking-[0.2em] text-fuchsia mb-2">
+    <div className="relative px-6 py-7 border-b border-line">
+      {/* Atmosphere plate behind the hero — same fuchsia aurora vocabulary
+          the cockpit panel uses. Falls behind content via z-0. */}
+      <div
+        aria-hidden
+        className="absolute inset-0 pointer-events-none opacity-[0.10]"
+        style={{
+          background:
+            "radial-gradient(120% 80% at 80% 0%, rgba(255,26,140,0.35) 0%, transparent 55%), radial-gradient(80% 50% at 10% 100%, rgba(0,229,255,0.18) 0%, transparent 60%)",
+        }}
+      />
+
+      <div className="relative max-w-3xl mx-auto text-center mb-5">
+        <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia-deep mb-2" style={{ color: "#ff66b8" }}>
           Make this in 3 steps
         </div>
-        <h3 className="text-lg font-semibold text-ink">
+        <h3 className="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink leading-tight">
           Character-locked YouTube thumbnails — your face, every time.
         </h3>
       </div>
-      <div className="relative overflow-hidden rounded-xl mb-4 h-24">
+
+      {/* Marquee of REAL YouTube reference thumbnails — 16:9 cards with
+          hud-frame chrome so the row reads as one editorial strip rather
+          than a row of standalone tiles. */}
+      <div className="relative hud-frame rounded-2xl overflow-hidden mb-6 h-32">
         <div
-          className="flex gap-2 absolute inset-y-0 animate-[marquee_45s_linear_infinite] will-change-transform"
+          className="flex gap-3 absolute inset-y-0 animate-[marquee_55s_linear_infinite] will-change-transform py-3 pl-3"
           style={{ width: "max-content" }}
         >
           {HERO_FACTORY_SAMPLES.concat(HERO_FACTORY_SAMPLES).map((src, i) => (
@@ -772,23 +794,25 @@ function ThumbnailHero({
               key={`${src}-${i}`}
               src={src}
               alt=""
-              className="h-24 w-auto rounded-md object-cover flex-shrink-0"
+              className="h-full w-auto rounded-lg object-cover flex-shrink-0 shadow-[0_4px_16px_rgba(0,0,0,0.55)]"
               draggable={false}
             />
           ))}
         </div>
-        <div className="absolute inset-y-0 left-0 w-12 bg-gradient-to-r from-paper to-transparent pointer-events-none" />
-        <div className="absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-paper to-transparent pointer-events-none" />
+        <div className="absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-paper to-transparent pointer-events-none z-[1]" />
+        <div className="absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-paper to-transparent pointer-events-none z-[1]" />
       </div>
-      <div className="grid grid-cols-3 gap-3 max-w-2xl mx-auto mb-4">
+
+      <div className="relative grid grid-cols-3 gap-4 max-w-2xl mx-auto mb-5">
         <HeroStep n={1} label="Upload identity" hint="3 face crops · once" />
         <HeroStep n={2} label="Pick your style" hint="brand name + mood" />
         <HeroStep n={3} label="Generate" hint="$0.07 per image" />
       </div>
-      <div className="flex items-center justify-center gap-3">
+
+      <div className="relative flex items-center justify-center gap-3">
         <button
           onClick={onSkip}
-          className="text-xs text-ink/50 hover:text-ink"
+          className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary hover:text-ink transition-colors"
         >
           Skip and pick a cover frame instead
         </button>
@@ -797,36 +821,66 @@ function ThumbnailHero({
   );
 }
 
+// v0.7.50 — Cockpit-vocabulary step card. No solid border (the chrome is the
+// four dashed fuchsia bracket corners + a faint fuchsia halo behind the
+// number digit, both inherited from the cockpit-tile brand system at
+// src/index.css). The container uses .library-card so its hover state
+// lights the corners + halo per the brand kit.
 function HeroStep({ n, label, hint }: { n: number; label: string; hint: string }) {
   return (
-    <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-paper border border-ink/10">
-      <div className="w-7 h-7 rounded-full bg-fuchsia/10 text-fuchsia flex items-center justify-center text-sm font-bold">
-        {n}
+    <div className="library-card relative flex items-center gap-3 px-3.5 py-3 rounded-xl">
+      <span className="library-card-corner library-card-corner-tl" />
+      <span className="library-card-corner library-card-corner-tr" />
+      <span className="library-card-corner library-card-corner-bl" />
+      <span className="library-card-corner library-card-corner-br" />
+      <div className="relative w-9 h-9 grid place-items-center flex-shrink-0">
+        <span
+          aria-hidden
+          className="absolute inset-0 rounded-full"
+          style={{
+            background:
+              "radial-gradient(closest-side, rgba(255,26,140,0.45), rgba(255,26,140,0) 70%)",
+            filter: "blur(6px)",
+          }}
+        />
+        <span
+          className="relative font-display text-[18px] font-semibold leading-none text-fuchsia"
+          style={{
+            filter: "drop-shadow(0 2px 6px rgba(255,26,140,0.65))",
+          }}
+        >
+          {n}
+        </span>
       </div>
-      <div className="text-left">
-        <div className="text-xs font-semibold text-ink">{label}</div>
-        <div className="text-[10px] text-ink/50">{hint}</div>
+      <div className="text-left min-w-0">
+        <div className="text-[13px] font-semibold text-ink leading-tight">{label}</div>
+        <div className="font-mono text-[9px] uppercase tracking-[0.14em] text-text-tertiary mt-1">{hint}</div>
       </div>
     </div>
   );
 }
 
-// Sample thumbnails bundled in dist/ from the docs/factory pack. Six is enough
-// for the marquee — we double the array at render time so the loop is seamless.
-import factorySample01 from "../assets/factory/sample-01.png";
-import factorySample02 from "../assets/factory/sample-02.png";
-import factorySample03 from "../assets/factory/sample-03.png";
-import factorySample04 from "../assets/factory/sample-04.png";
-import factorySample05 from "../assets/factory/sample-05.png";
-import factorySample06 from "../assets/factory/sample-06.png";
+// v0.7.50 — Marquee thumbnails. The hero now ships Daniel's actual
+// confirmed-reference YouTube thumbnails (1672×941 PNG, ~2MB each).
+// Previously imported `factory/sample-01..06.png` which were bounty-card
+// mockups (GO VIRAL / CLIP TO EARN) that read as the wrong product on a
+// thumbnails page. Six is enough for the marquee — we double the array
+// at render time so the loop is seamless. The factory samples are kept
+// on disk but no longer referenced by this hero.
+import ytRef01 from "../assets/yt-references/yt-01.png";
+import ytRef02 from "../assets/yt-references/yt-02.png";
+import ytRef03 from "../assets/yt-references/yt-03.png";
+import ytRef04 from "../assets/yt-references/yt-04.png";
+import ytRef05 from "../assets/yt-references/yt-05.png";
+import ytRef06 from "../assets/yt-references/yt-06.png";
 
 const HERO_FACTORY_SAMPLES = [
-  factorySample01,
-  factorySample02,
-  factorySample03,
-  factorySample04,
-  factorySample05,
-  factorySample06,
+  ytRef01,
+  ytRef02,
+  ytRef03,
+  ytRef04,
+  ytRef05,
+  ytRef06,
 ];
 
 // ── Agency upsell ────────────────────────────────────────────────────────
