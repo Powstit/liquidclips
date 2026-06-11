@@ -187,7 +187,11 @@ export function ReactionSourcePicker({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 sm:p-6"
+      // v0.7.50 — Brand-kit pass. Backdrop bg-black/65 (outside brand
+      // palette) retired for bg-paper/85 backdrop-blur-md (canonical
+      // per ConfirmDialog). Inner light-mode panel is a deliberate
+      // inversion for this picker and stays.
+      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/85 backdrop-blur-md p-4 sm:p-6"
       onClick={() => onResolve({ kind: "cancel" })}
     >
       <div
