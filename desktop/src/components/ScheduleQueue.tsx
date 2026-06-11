@@ -98,7 +98,7 @@ export function ScheduleQueue() {
   const [items, setItems] = useState<ScheduleDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>("all");
-  const [retrying, setRetrying] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState<Set<string>>(new Set());
   /** Wall-clock ms of the last successful refresh. Drives the "showing
    *  cached data" caption when a refresh later fails — otherwise the user
    *  has no idea whether the rows below are live or stale. */
@@ -128,8 +128,8 @@ export function ScheduleQueue() {
       const list = await backend.schedules.list(jwt, { limit: 100 });
       if (loadGen.current !== myGen) return;
       // Sort by scheduled time ascending so the queue reads chronologically.
-      list.sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime());
-      setItems(list);
+      const sorted = [...list].sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime());
+      setItems(sorted);
       setError(null);
       setCancelError({}); // clear stale per-row cancel errors on fresh load
       setLastSuccessfulLoad(Date.now());
@@ -173,7 +173,6 @@ export function ScheduleQueue() {
       void load();
     } catch (e) {
       const msg = humanError(e);
-      setError(msg);
       setCancelError((cur) => ({ ...cur, [row.id]: msg }));
     } finally {
       setCancelBusy(false);
@@ -182,19 +181,19 @@ export function ScheduleQueue() {
   }
 
   async function retry(row: ScheduleDto) {
-    const { value: jwt } = await sidecar.licenseJwtRead();
-    if (!jwt) {
-      setCancelError((cur) => ({ ...cur, [row.id]: "Sign in to retry failed posts." }));
-      return;
-    }
-    setRetrying(row.id);
+    setRetrying((s) => new Set(s).add(row.id));
     try {
+      const { value: jwt } = await sidecar.licenseJwtRead();
+      if (!jwt) {
+        setCancelError((cur) => ({ ...cur, [row.id]: "Sign in to retry failed posts." }));
+        return;
+      }
       await backend.schedules.retry(jwt, row.id);
       void load();
     } catch (e) {
-      setError(humanError(e));
+      setCancelError((cur) => ({ ...cur, [row.id]: humanError(e) }));
     } finally {
-      setRetrying(null);
+      setRetrying((s) => { const n = new Set(s); n.delete(row.id); return n; });
     }
   }
 
@@ -286,9 +285,15 @@ export function ScheduleQueue() {
       )}
 
       {!error && items && items.length > 0 && visible?.length === 0 && (
-        <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-text-tertiary">
-          nothing in this slice
-        </p>
+        <div className="relative bg-transparent px-5 py-10">
+          <span aria-hidden className="library-card-corner library-card-corner-tl" />
+          <span aria-hidden className="library-card-corner library-card-corner-tr" />
+          <span aria-hidden className="library-card-corner library-card-corner-bl" />
+          <span aria-hidden className="library-card-corner library-card-corner-br" />
+          <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-text-tertiary">
+            nothing in this slice
+          </p>
+        </div>
       )}
 
       {visible?.map((row) => {
@@ -325,7 +330,7 @@ export function ScheduleQueue() {
 
               {row.status === "published" && url && (
                 <button
-                  onClick={() => void openExternal(url)}
+                  onClick={() => void openExternal(url).catch(() => {})}
                   className="mt-2 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.16em] text-fuchsia hover:text-fuchsia-bright"
                 >
                   <PlatformGlyph platform={row.platform} />
@@ -341,10 +346,10 @@ export function ScheduleQueue() {
                 {row.status === "failed" && (
                   <button
                     onClick={() => void retry(row)}
-                    disabled={retrying === row.id}
+                    disabled={retrying.has(row.id)}
                     className="rounded-full border border-[var(--color-danger)] bg-transparent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 disabled:opacity-50"
                   >
-                    {retrying === row.id ? "retrying…" : "retry"}
+                    {retrying.has(row.id) ? "retrying…" : "retry"}
                   </button>
                 )}
                 {(row.status === "pending" || row.status === "scheduled" || row.status === "failed") && (

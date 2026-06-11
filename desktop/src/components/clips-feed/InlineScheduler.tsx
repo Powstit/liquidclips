@@ -710,8 +710,10 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
         )}
       </div>
 
-      {/* Caption — single box for v0.6.4; per-platform editing in v0.6.5 */}
-      <div className="flex flex-col gap-1.5">
+      {authed !== false && connLoadState.kind !== "error" && (
+        <>
+          {/* Caption — single box for v0.6.4; per-platform editing in v0.6.5 */}
+          <div className="flex flex-col gap-1.5">
         <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-text-tertiary">
           caption
         </span>
@@ -774,7 +776,7 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
       <button
         type="button"
         onClick={() => void submit()}
-        disabled={status.kind === "busy" || selectedCount === 0 || authed === false}
+        disabled={status.kind === "busy" || selectedCount === 0}
         className="mt-1 inline-flex items-center justify-center gap-2 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-semibold text-white shadow-[0_0_22px_rgba(255,26,140,0.5)] transition-all hover:bg-fuchsia-bright disabled:opacity-40"
       >
         {status.kind === "busy" ? (
@@ -865,6 +867,8 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
           </div>
         </div>
       ) : null}
+        </>
+      )}
     </section>
   );
 }

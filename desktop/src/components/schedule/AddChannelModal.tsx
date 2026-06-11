@@ -160,6 +160,7 @@ export function AddChannelModal({
           });
         }
       } catch {
+        if (cancelled) return;
         if (attempts >= 60) {
           clearInterval(interval);
           setState({
@@ -463,6 +464,8 @@ function StillPendingReopenButton({
             onStateChange({ kind: "polling", channel });
             await onReopen(r.link_url);
           }
+        } catch (e) {
+          /* relink error silently ignored — parent polling will surface stale state */
         } finally {
           setBusy(false);
         }
