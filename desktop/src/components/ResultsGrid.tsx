@@ -341,7 +341,12 @@ export function ResultsGrid({
             tier.tier === "free" ? (
               <button
                 type="button"
-                onClick={() => openAuthPanel("upgrade")}
+                onClick={() => {
+                  import("../lib/paywallNotify").then(({ notifyPaywall }) =>
+                    notifyPaywall("generate_more_clips", tier.tier),
+                  );
+                  openAuthPanel("upgrade");
+                }}
                 title="Re-run the AI picker — unlocks at Solo"
                 className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-soft bg-fuchsia-soft/30 px-4 py-2.5 font-sans text-[13px] font-medium text-fuchsia-deep transition-colors hover:border-fuchsia hover:bg-fuchsia-soft/50"
               >

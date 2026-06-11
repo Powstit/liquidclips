@@ -287,7 +287,8 @@ export type NotificationDto = {
     | "affiliate"
     | "founder"
     | "junior_message"
-    | "pipeline_event";
+    | "pipeline_event"
+    | "paywall";
   title: string;
   body: string;
   priority: "low" | "medium" | "high";
@@ -614,7 +615,7 @@ export const backend = {
     create: async (
       jwt: string,
       payload: {
-        category: "pipeline_event" | "junior_message";
+        category: "pipeline_event" | "junior_message" | "paywall";
         title: string;
         body: string;
         priority?: "low" | "medium" | "high";
