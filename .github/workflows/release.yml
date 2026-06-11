@@ -1,3 +1,11 @@
+# ───── IRON GATE IG-013 (v0.7.50) — see desktop/docs/IRON_GATES.md ─────
+# Apple notarisation orchestrator. Paired with desktop/scripts/notarize.sh.
+# The 5 secrets (APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_ID,
+# APPLE_PASSWORD, APPLE_TEAM_ID) on Powstit/liquidclips are the source of
+# truth — set 2026-06-02. NEVER swap apple-actions/import-codesign-certs@v3
+# for an unversioned ref. NEVER drop `--options runtime --timestamp` from
+# the codesign pass. Hardened runtime is mandatory; Apple rejects without it.
+
 name: Release
 on:
   push:

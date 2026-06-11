@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# ───── IRON GATE IG-013 (v0.7.50) — see desktop/docs/IRON_GATES.md ─────
+# Apple notarisation chain. Paired with .github/workflows/release.yml at
+# the repo root. NEVER swap `xcrun notarytool submit --wait` for the
+# deprecated polling pattern, NEVER hard-code one auth mode (env-var vs
+# keychain profile), NEVER skip the stapler call after submit. The 5 GH
+# Actions secrets (APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
+# APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID) are set on Powstit/liquidclips
+# since 2026-06-02 — do not propose to "set them up again."
+#
 # notarize.sh — Submit a .dmg to Apple notarytool, poll for completion, staple.
 #
 # Usage:
