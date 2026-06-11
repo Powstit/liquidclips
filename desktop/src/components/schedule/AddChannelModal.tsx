@@ -334,7 +334,14 @@ export function AddChannelModal({
                   Your browser opened for {state.channel.platform} OAuth. Finish there, then return to Liquid Clips.
                 </p>
               </header>
-              <div className="rounded-xl border border-line bg-paper-warm/40 p-4 text-center">
+              {/* v0.7.50 — Brand-kit pass. Solid border retired in favour
+                  of library-card bracket spans so the waiting card reads
+                  as the same chrome family as other loading surfaces. */}
+              <div className="library-card relative rounded-xl bg-paper-warm/40 p-4 text-center">
+                <span className="library-card-corner library-card-corner-tl" />
+                <span className="library-card-corner library-card-corner-tr" />
+                <span className="library-card-corner library-card-corner-bl" />
+                <span className="library-card-corner library-card-corner-br" />
                 <Loader2 className="mx-auto h-6 w-6 animate-spin text-fuchsia" />
                 <p className="mt-3 font-mono text-[11px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
                   waiting for you…

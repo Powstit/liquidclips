@@ -71,7 +71,15 @@ export function DropZone({
         <span className="h-px flex-1 bg-line" /> or <span className="h-px flex-1 bg-line" />
       </div>
 
-      <div className="rounded-2xl border border-line bg-paper p-4">
+      {/* v0.7.50 — Brand-kit pass. Solid `border border-line` retired
+          (IG-012 ban); now uses library-card-corner brackets + warm
+          paper bg so the URL mode panel matches the rest of the brand
+          surface vocabulary. */}
+      <div className="library-card relative rounded-2xl bg-paper-warm/40 p-4">
+        <span className="library-card-corner library-card-corner-tl" />
+        <span className="library-card-corner library-card-corner-tr" />
+        <span className="library-card-corner library-card-corner-bl" />
+        <span className="library-card-corner library-card-corner-br" />
         {/* Mode toggle — picks WHAT you get (clips vs script). One primary
             CTA below dispatches by mode. Filled dot = selected; the row is
             keyboard-focusable so you can tab between them. */}

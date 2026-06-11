@@ -53,7 +53,15 @@ export function MetadataTab({ slug, tab }: { slug: string; tab: string }) {
   }
 
   return (
-    <div className="rounded-2xl border border-line bg-paper p-5">
+    // v0.7.50 — Brand-kit pass. Solid `border border-line` card chrome
+    // retired (banned by IG-012 brand kit's Don't list); now uses
+    // library-card-corner bracket spans + warm paper bg for the same
+    // visual hierarchy without the SaaS-card look.
+    <div className="library-card relative rounded-2xl bg-paper-warm/40 p-5">
+      <span className="library-card-corner library-card-corner-tl" />
+      <span className="library-card-corner library-card-corner-tr" />
+      <span className="library-card-corner library-card-corner-bl" />
+      <span className="library-card-corner library-card-corner-br" />
       <div className="mb-3 flex items-center justify-between">
         <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
           {tab}

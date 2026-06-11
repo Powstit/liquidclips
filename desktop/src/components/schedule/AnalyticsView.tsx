@@ -161,7 +161,15 @@ export function AnalyticsView() {
           </div>
 
           {/* Channels table */}
-          <div className="rounded-2xl border border-line bg-paper">
+          {/* v0.7.50 — Brand-kit pass. Outer `border border-line` retired
+              (IG-012 ban on solid card borders); replaced with library-
+              card bracket spans + warm paper bg. The inner row divider
+              stays (it's a table separator, not a card border). */}
+          <div className="library-card relative rounded-2xl bg-paper-warm/40">
+            <span className="library-card-corner library-card-corner-tl" />
+            <span className="library-card-corner library-card-corner-tr" />
+            <span className="library-card-corner library-card-corner-bl" />
+            <span className="library-card-corner library-card-corner-br" />
             <div className="flex items-center justify-between border-b border-line/60 px-4 py-3">
               <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
                 channels · {WINDOW_LABELS[window].toLowerCase()}
