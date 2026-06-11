@@ -19,9 +19,11 @@
 // the cockpit's vertical budget stays narrow.
 
 import { useEffect, useRef, useState } from "react";
-import { AudioLines, Volume2, VolumeX } from "lucide-react";
+import { AudioLines, Lock, Volume2, VolumeX } from "lucide-react";
 import { sidecar, humanError, type Clip, type OverlayType, type Project } from "../../lib/sidecar";
 import { useReactionBakeProgress } from "../../lib/useReactionBakeProgress";
+import { useTier } from "../../lib/useTier";
+import { openAuthPanel } from "../auth/useAuthPanel";
 import { pickOverlaySource } from "../OverlaySourcePicker";
 import { LAYOUTS, LayoutIcon, type LayoutKey } from "./LayoutIcon";
 import { ReactionCellPreview } from "./ReactionCellPreview";
@@ -54,6 +56,12 @@ export function ReactionControls({
 }: ReactionControlsProps): JSX.Element {
   const layout: LayoutKey = (clip.overlay?.type as LayoutKey) ?? "none";
   const hasSource = !!clip.overlay?.source_path;
+  // v0.7.49 — Reaction layouts (Stack / Split / PiP / Circle) are a Solo+
+  // moat for monetisation. Free tier sees every tile (concrete preview of
+  // what unlocks) but clicking a locked tile opens the upgrade panel
+  // instead of firing a bake. "Full" (none) stays free — base state.
+  const tier = useTier();
+  const isFreeTier = tier.tier === "free";
 
   // State owned by this component — reset whenever the focused clip changes
   // (clipIdx) or the underlying overlay shape mutates externally.
@@ -296,22 +304,41 @@ export function ReactionControls({
             // Falls back to the committed `layout` from clip.overlay once
             // the RPC resolves (and pendingLayout is cleared in finally).
             const active = (pendingLayout ?? layout) === item.key;
+            // v0.7.49 — Solo+ moat on every reaction layout. "Full" (none)
+            // stays free as the no-overlay base state. Free tier sees the
+            // tile + concrete preview but clicking opens the upgrade panel.
+            const isLocked = isFreeTier && item.key !== "none";
             return (
               <button
                 key={item.key}
                 type="button"
-                onClick={() => void applyLayout(item.key)}
-                disabled={busy}
-                title={item.label}
+                onClick={() => {
+                  if (isLocked) {
+                    openAuthPanel("upgrade");
+                    return;
+                  }
+                  void applyLayout(item.key);
+                }}
+                disabled={busy && !isLocked}
+                title={isLocked ? `${item.label} — unlocks at Solo` : item.label}
                 aria-pressed={active}
-                className={`flex ${
+                className={`relative flex ${
                   compact ? "min-h-[44px]" : "min-h-[58px]"
                 } flex-col items-center justify-center gap-1 rounded-lg border px-1.5 py-2 transition-all ${
-                  active
+                  isLocked
+                    ? "border-fuchsia-soft bg-fuchsia-soft/15 text-fuchsia-deep hover:border-fuchsia hover:bg-fuchsia-soft/30"
+                    : active
                     ? "border-fuchsia bg-fuchsia text-white shadow-[var(--glow-sm)]"
                     : "border-line bg-paper text-ink hover:border-fuchsia hover:bg-fuchsia-soft/20"
                 } disabled:opacity-50`}
               >
+                {isLocked && (
+                  <Lock
+                    className="absolute right-1 top-1 h-2.5 w-2.5 text-fuchsia"
+                    strokeWidth={2.4}
+                    aria-hidden
+                  />
+                )}
                 <LayoutIcon kind={item.key} />
                 <span
                   className={`text-center font-sans ${
