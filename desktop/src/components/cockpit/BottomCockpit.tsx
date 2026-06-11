@@ -398,25 +398,47 @@ export function BottomCockpit({
                       // the user didn't type anything. Don't clear every
                       // selected clip's caption.
                       if (isMixedCaption && next === "") return;
-                      setSavingCaption(true);
-                      let latest = project;
-                      try {
-                        for (const idx of effectiveIdxs) {
-                          const target = latest.clips[idx];
-                          if (!target) continue;
-                          if (next === (target.pinned_comment ?? "")) continue;
-                          const r = await sidecar.updateClipMeta(project.slug, idx, { pinned_comment: next });
-                          latest = r.project;
-                        }
-                        onProjectChange(latest);
+
+                      // v0.8.0 — Optimistic mutation: paint the new caption
+                      // immediately so bulk edits feel instant. Then fire all
+                      // RPCs in parallel (Python serialises them on stdin).
+                      const changedIdxs = effectiveIdxs.filter((idx) => {
+                        const target = project.clips[idx];
+                        return target && next !== (target.pinned_comment ?? "");
+                      });
+                      if (changedIdxs.length === 0) {
                         setCaptionDrafts((prev) => {
                           const out = { ...prev };
                           for (const idx of effectiveIdxs) delete out[idx];
                           return out;
                         });
+                        return;
+                      }
+
+                      const optimisticProject = {
+                        ...project,
+                        clips: project.clips.map((c, i) =>
+                          changedIdxs.includes(i) ? { ...c, pinned_comment: next } : c,
+                        ),
+                      };
+                      onProjectChange(optimisticProject);
+                      setCaptionDrafts((prev) => {
+                        const out = { ...prev };
+                        for (const idx of effectiveIdxs) delete out[idx];
+                        return out;
+                      });
+
+                      setSavingCaption(true);
+                      try {
+                        const promises = changedIdxs.map((idx) =>
+                          sidecar.updateClipMeta(project.slug, idx, { pinned_comment: next }),
+                        );
+                        const results = await Promise.all(promises);
+                        // Python processes sequentially; the last response has
+                        // the most up-to-date project state.
+                        onProjectChange(results[results.length - 1].project);
                       } catch (err) {
                         pushToast(`Pin save failed — ${humanError(err).slice(0, 120)}`, "error");
-                        onProjectChange(latest);
                       } finally {
                         setSavingCaption(false);
                       }
