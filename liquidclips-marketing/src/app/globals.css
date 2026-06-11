@@ -989,4 +989,14 @@ a { color: inherit; text-decoration: none; }
 }
 .download-pick:hover { color: var(--cyan); border-bottom-color: rgba(0, 229, 255, 0.5); }
 .download-pick.is-active { color: var(--fuchsia); border-bottom-color: var(--fuchsia); }
+.download-pick:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+  color: var(--text-tertiary);
+  border-bottom-color: transparent;
+}
+.download-pick:disabled:hover {
+  color: var(--text-tertiary);
+  border-bottom-color: transparent;
+}
 .download-pick-sep { color: var(--text-tertiary); opacity: 0.4; }
