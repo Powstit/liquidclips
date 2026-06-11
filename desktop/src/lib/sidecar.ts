@@ -1192,6 +1192,41 @@ export const sidecar = {
   ) => sidecarCall<{ started: boolean }>("start_overlay_bake", { slug, idx, overlay }),
   cancelOverlayBake: (slug: string, idx: number) =>
     sidecarCall<{ canceled: boolean; reason?: string }>("cancel_overlay_bake", { slug, idx }),
+  // ───── IRON GATE IG-010 (v0.8.0-pre) — see docs/IRON_GATES.md ─────
+  // v0.8.0 — Mirror the 10 standalone start_*/cancel_* exports onto the
+  // sidecar object so call sites use the consistent `sidecar.X(...)`
+  // pattern. Standalone exports stay for advanced direct imports.
+  startIngestUrl: (url: string, brief?: string, intent?: Intent, bounty?: BountyContext) =>
+    sidecarCall<{ started: boolean }>("start_ingest_url", {
+      url,
+      ...(brief ? { brief } : {}),
+      ...(intent ? { intent } : {}),
+      ...(bounty ? { bounty } : {}),
+    }),
+  cancelIngestUrl: (url: string) =>
+    sidecarCall<{ canceled: boolean; reason?: string }>("cancel_ingest_url", { url }),
+  startLiftTranscript: (url: string) =>
+    sidecarCall<{ started: boolean }>("start_lift_transcript", { url }),
+  cancelLiftTranscript: (url: string) =>
+    sidecarCall<{ canceled: boolean; reason?: string }>("cancel_lift_transcript", { url }),
+  startPickMoreClips: (slug: string) =>
+    sidecarCall<{ started: boolean }>("start_pick_more_clips", { slug }),
+  cancelPickMoreClips: (slug: string) =>
+    sidecarCall<{ canceled: boolean; reason?: string }>("cancel_pick_more_clips", { slug }),
+  startRegenerateClip: (slug: string, idx: number, start: number, end: number) =>
+    sidecarCall<{ started: boolean }>("start_regenerate_clip", { slug, idx, start, end }),
+  cancelRegenerateClip: (slug: string, idx: number) =>
+    sidecarCall<{ canceled: boolean; reason?: string }>("cancel_regenerate_clip", { slug, idx }),
+  startApplyOverlayTemplate: (slug: string, idx: number, template: string | null, sourcePath?: string) =>
+    sidecarCall<{ started: boolean } | { project: Project }>("start_apply_overlay_template", {
+      slug,
+      idx,
+      template,
+      ...(sourcePath ? { source_path: sourcePath } : {}),
+    }),
+  cancelApplyOverlayTemplate: (slug: string, idx: number) =>
+    sidecarCall<{ canceled: boolean; reason?: string }>("cancel_apply_overlay_template", { slug, idx }),
+  // ───── END IRON GATE IG-010 ─────
 };
 
 // v0.8.0 — Background bake event types and listeners.
@@ -1227,6 +1262,125 @@ export function onBakeComplete(cb: (p: BakeComplete) => void): Promise<UnlistenF
 export function onBakeError(cb: (p: BakeError) => void): Promise<UnlistenFn> {
   return listen<BakeError>("sidecar:bake_error", (ev) => cb(ev.payload));
 }
+
+// v0.8.0 — Background regenerate clip.
+export function startRegenerateClip(
+  slug: string,
+  idx: number,
+  start: number,
+  end: number,
+): Promise<{ started: boolean }> {
+  return sidecarCall<{ started: boolean }>("start_regenerate_clip", { slug, idx, start, end });
+}
+export function cancelRegenerateClip(slug: string, idx: number): Promise<{ canceled: boolean; reason?: string }> {
+  return sidecarCall<{ canceled: boolean; reason?: string }>("cancel_regenerate_clip", { slug, idx });
+}
+export type RegenerateProgress = { slug: string; idx: number; stage: string; pct: number };
+export type RegenerateComplete = { slug: string; idx: number; project: Project };
+export type RegenerateError = { slug: string; idx: number; message: string; canceled?: boolean };
+export function onRegenerateProgress(cb: (p: RegenerateProgress) => void): Promise<UnlistenFn> {
+  return listen<RegenerateProgress>("sidecar:regenerate_progress", (ev) => cb(ev.payload));
+}
+export function onRegenerateComplete(cb: (p: RegenerateComplete) => void): Promise<UnlistenFn> {
+  return listen<RegenerateComplete>("sidecar:regenerate_complete", (ev) => cb(ev.payload));
+}
+export function onRegenerateError(cb: (p: RegenerateError) => void): Promise<UnlistenFn> {
+  return listen<RegenerateError>("sidecar:regenerate_error", (ev) => cb(ev.payload));
+}
+
+// v0.8.0 — Background pick more clips.
+export function startPickMoreClips(slug: string): Promise<{ started: boolean }> {
+  return sidecarCall<{ started: boolean }>("start_pick_more_clips", { slug });
+}
+export function cancelPickMoreClips(slug: string): Promise<{ canceled: boolean; reason?: string }> {
+  return sidecarCall<{ canceled: boolean; reason?: string }>("cancel_pick_more_clips", { slug });
+}
+export type PickProgress = { slug: string; stage: string; added: number; skipped: number; pct: number };
+export type PickComplete = { slug: string; project: Project; added: number; skipped: number };
+export type PickError = { slug: string; message: string; canceled?: boolean };
+export function onPickProgress(cb: (p: PickProgress) => void): Promise<UnlistenFn> {
+  return listen<PickProgress>("sidecar:pick_progress", (ev) => cb(ev.payload));
+}
+export function onPickComplete(cb: (p: PickComplete) => void): Promise<UnlistenFn> {
+  return listen<PickComplete>("sidecar:pick_complete", (ev) => cb(ev.payload));
+}
+export function onPickError(cb: (p: PickError) => void): Promise<UnlistenFn> {
+  return listen<PickError>("sidecar:pick_error", (ev) => cb(ev.payload));
+}
+
+// v0.8.0 — Background apply overlay template (reuses bake_complete / bake_error).
+export function startApplyOverlayTemplate(
+  slug: string,
+  idx: number,
+  template: string | null,
+  sourcePath?: string,
+): Promise<{ started: boolean } | { project: Project }> {
+  return sidecarCall<{ started: boolean } | { project: Project }>("start_apply_overlay_template", {
+    slug,
+    idx,
+    template,
+    source_path: sourcePath,
+  });
+}
+export function cancelApplyOverlayTemplate(slug: string, idx: number): Promise<{ canceled: boolean; reason?: string }> {
+  return sidecarCall<{ canceled: boolean; reason?: string }>("cancel_apply_overlay_template", { slug, idx });
+}
+
+// ───── IRON GATE IG-010 (v0.8.0-pre) — see docs/IRON_GATES.md ─────
+// v0.8.0 non-blocking architecture: every start_* bridge MUST have its
+// cancel_* pair AND matching onXProgress/Complete/Error listener bridges
+// + types. Removing any without IRON_GATE_OVERRIDE=1 is refused by the
+// pre-commit hook. The three event families (progress/complete/error)
+// must stay in sync with the Python emit() calls in sidecar.py.
+
+// v0.8.0 — Background ingest URL. Audit fix: bounty param was missing on
+// the original signature; mirrors blocking ingestUrl so bounty flows keep
+// working when the call site migrates off the blocking RPC.
+export function startIngestUrl(
+  url: string,
+  brief?: string,
+  intent?: Intent,
+  bounty?: BountyContext,
+): Promise<{ started: boolean }> {
+  return sidecarCall<{ started: boolean }>("start_ingest_url", {
+    url,
+    ...(brief ? { brief } : {}),
+    ...(intent ? { intent } : {}),
+    ...(bounty ? { bounty } : {}),
+  });
+}
+export function cancelIngestUrl(url: string): Promise<{ canceled: boolean; reason?: string }> {
+  return sidecarCall<{ canceled: boolean; reason?: string }>("cancel_ingest_url", { url });
+}
+export type IngestComplete = { url: string; project: Project; downloaded_path: string };
+export type IngestError = { url: string; message: string };
+export function onIngestComplete(cb: (p: IngestComplete) => void): Promise<UnlistenFn> {
+  return listen<IngestComplete>("sidecar:ingest_complete", (ev) => cb(ev.payload));
+}
+export function onIngestError(cb: (p: IngestError) => void): Promise<UnlistenFn> {
+  return listen<IngestError>("sidecar:ingest_error", (ev) => cb(ev.payload));
+}
+
+// v0.8.0 — Background lift transcript.
+export function startLiftTranscript(url: string): Promise<{ started: boolean }> {
+  return sidecarCall<{ started: boolean }>("start_lift_transcript", { url });
+}
+export function cancelLiftTranscript(url: string): Promise<{ canceled: boolean; reason?: string }> {
+  return sidecarCall<{ canceled: boolean; reason?: string }>("cancel_lift_transcript", { url });
+}
+// Audit fix — LiftComplete payload is the same shape method_lift_transcript
+// returns (LiftTranscriptResult, defined later in this file at line ~1546)
+// with `url` guaranteed present. Using a forward type alias keeps the
+// canonical shape single-sourced.
+export type LiftComplete = LiftTranscriptResult;
+export type LiftError = { url: string; message: string };
+export function onLiftComplete(cb: (p: LiftComplete) => void): Promise<UnlistenFn> {
+  return listen<LiftComplete>("sidecar:lift_complete", (ev) => cb(ev.payload));
+}
+export function onLiftError(cb: (p: LiftError) => void): Promise<UnlistenFn> {
+  return listen<LiftError>("sidecar:lift_error", (ev) => cb(ev.payload));
+}
+// ───── END IRON GATE IG-010 ─────
 
 /** A clip that's already cut + ready to schedule/publish directly, without
  *  the long-form clip-pick pipeline. Persisted in

@@ -326,6 +326,49 @@ locked the structure after the literal demo-copy fix landed)
 
 ---
 
+## IG-010 — v0.8.0 non-blocking architecture (5 hangs → 5 background paths)
+
+**Locked at:** v0.8.0-pre
+**Files:**
+- `desktop/python-sidecar/sidecar.py` — the 5 `method_start_*` definitions, their `method_cancel_*` pairs, AND the dispatcher `METHODS` dict entries.
+- `desktop/src/lib/sidecar.ts` — the 10 background bridge functions + their progress/complete/error event listener bridges + matching types.
+- `desktop/src/lib/useGlobalBakeEvents.ts` — singleton-listener hook; listeners MUST attach on mount (`useEffect`), NOT lazily inside `waitForBake`.
+- `desktop/src/components/clips-feed/ClipCard.tsx` — the canonical non-blocking call-site pattern (`startOverlayBake` + `waitForBake` fire-and-forget).
+
+**Why it exists:**
+v0.8.0 Phase 1.4 shipped the backend infrastructure for non-blocking versions of the 5 operations that previously froze the sidecar's stdin dispatcher (ingest URL, lift transcript, pick more clips, regenerate clip, apply overlay template). The audit caught three latent bugs the day the work landed: (a) all 10 dispatcher entries were missing — every future caller would get `"unknown method"`; (b) `useGlobalBakeEvents` lazy-attached listeners after `startOverlayBake` had returned, leaving a race where fast bakes silently hung for the 5-min timeout; (c) the TS bridge had no `onIngestComplete/Error` or `onLiftComplete/Error` listeners, so the UI couldn't react to those lifecycles even when wired. All three fixed before any user-visible regression. This gate locks the architectural contract so future agents cannot regress it.
+
+**What survived the loop:**
+1. **Background-thread isolation.** Every long-running operation runs in `threading.Thread(daemon=True)`. The stdin dispatcher returns `{"started": true}` immediately. NEVER block the dispatcher on download / ffmpeg / OpenAI / filesystem IO.
+2. **Cancel pairing.** Every `start_X` has a matching `cancel_X` that flips a `threading.Event`. The worker polls the event + writes the existing `.lift_cancel` file marker so yt-dlp / ffmpeg pipelines pick it up via their hooks. NEVER add a `start_X` without its `cancel_X`.
+3. **Three event families pattern.** Background workers emit `<verb>_progress`, `<verb>_complete`, `<verb>_error` events. The TS side MUST have matching `on<Verb>Progress/Complete/Error` listener bridges + types. If one is missing, the UI can't react to that lifecycle.
+4. **Dispatcher registration is the only path to runtime.** The `METHODS` dict at the bottom of `sidecar.py` is the live contract. A method definition without a dispatcher entry is dead code that fails with `"unknown method"`.
+5. **Listener attach on mount, NOT on first call.** `useGlobalBakeEvents` (and siblings) MUST register Tauri listeners via `useEffect(() => { void ensureListeners(); }, [])` BEFORE any `start_*` RPC fires. Lazy attachment leaks fast events between RPC return and listener registration.
+6. **Singleton listener + per-key promise map.** One Tauri `listen<T>` per event family across the entire app. In-flight operations are keyed by `slug:idx` (bakes) or `url` (ingest/lift). Resolves on event match, rejects on duplicate-key, times out as last resort. No per-component listeners.
+7. **Old blocking methods stay registered (transitional).** `ingest_url`, `lift_transcript`, `pick_more_clips`, `regenerate_clip`, `apply_overlay`, `apply_overlay_template` remain in the dispatcher as compatibility paths for call sites not yet migrated. Don't delete them until every call site uses the `start_*` equivalent. Migration order owned in `docs/v0.8.0_INTERFACE_SPEC.md`.
+8. **Sentinels protect both the methods AND the dispatcher entries.** A diff that removes the dispatcher line for any of the 10 `start_*/cancel_*` methods, OR removes a TS bridge/listener, will be refused by the pre-commit hook unless `IRON_GATE_OVERRIDE=1` with justification.
+
+**What is gated vs. what is in-progress:**
+- **GATED:** the architectural pattern. Every new long-running operation MUST conform. Every existing one MUST keep its `start_*/cancel_*/three-events/dispatcher-entry/on-mount-listener` quintuple intact.
+- **IN-PROGRESS (not gate-violating):** the call-site migration. As of v0.8.0-pre, only ClipCard layout swap + existing reaction bake are wired through. App.tsx URL paste / lift transcript / file drop, ResultsGrid pickMoreClips, ClipPreview regenerateClip + applyOverlayTemplate, masterActions.ts still call blocking RPCs. Migrating each IS the rest of v0.8.0 Phase 1. The gate doesn't refuse those migrations — it requires they FOLLOW the pattern.
+
+**Do NOT:**
+- Add a `method_start_X` to `sidecar.py` without ALSO adding it to the `METHODS` dispatcher dict in the same commit (the original Kimi miss).
+- Add a `start_X` bridge to `sidecar.ts` without the matching `onXComplete`/`onXError` listener bridges + types (Kimi's miss for ingest + lift).
+- Use `void ensureListeners()` lazily inside a Promise constructor in any new `useXEvents` hook. Always `useEffect` on hook mount.
+- Migrate a call site to the blocking RPC under any "but it's simpler" pretext.
+- Delete the legacy blocking method definitions until EVERY call site uses the background path. Untracked call sites will crash with "unknown method."
+- Add a per-component Tauri event listener directly inside a component effect when a shared `useXEvents` hook exists.
+
+**Do:**
+- When introducing a new long-running operation, ship FOUR components in ONE commit: (1) `method_start_X` + `method_cancel_X` in `sidecar.py`, (2) dispatcher entries for both, (3) TS `startX/cancelX` bridges + `onXProgress/Complete/Error` listeners + types, (4) hook entry in the matching `useXEvents` (or new sibling hook).
+- When migrating a call site, swap `await sidecar.X(...)` for `await sidecar.startX(...); await waitForX(...)`. Preserve the surrounding error UI + state machine.
+- Bump the gate version when materially changing the contract (different event format, threading→asyncio, etc.).
+
+**Sign-off:** Daniel 2026-06-11 (v0.8.0-pre — non-blocking architecture locked here before further call-site migration. Quoted instruction: "ensure it never ever drifts.")
+
+---
+
 ## Adding a new gate
 
 1. Pick the next free `IG-NNN`.

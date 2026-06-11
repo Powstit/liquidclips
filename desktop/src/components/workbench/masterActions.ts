@@ -19,6 +19,7 @@
 
 import { sidecar, type Project, type Clip } from "../../lib/sidecar";
 import { backend, humanizeBackendError } from "../../lib/backend";
+import { globalWaitForBake } from "../../lib/useGlobalBakeEvents";
 import type { MasterAction, MasterActionResult, WindowId } from "./types";
 
 /** A minimal view of a window — masterActions doesn't need the full
@@ -123,17 +124,23 @@ export async function fanOut(
         }
 
         case "apply_layout": {
+          // IRON GATE IG-010 — non-blocking. The saga used to call the
+          // blocking sidecar.applyOverlay which froze the dispatcher for the
+          // whole ffmpeg pass per window. Now fires start_overlay_bake +
+          // awaits bake_complete via globalWaitForBake (the non-hook variant
+          // of useGlobalBakeEvents for non-React orchestrators).
           // "none" clears the overlay. Any other layout requires a source
           // path — without it the sidecar would 400, so we surface a clear
           // reason instead of letting the RPC fail with a generic schema msg.
           if (action.layout === "none") {
-            const r = await sidecar.applyOverlay(
-              current.slug,
-              win.clipIdx,
-              null,
-            );
-            current = r.project;
-            ok.push(id);
+            await sidecar.startOverlayBake(current.slug, win.clipIdx, null);
+            const r = await globalWaitForBake(current.slug, win.clipIdx);
+            if (r.status === "error") {
+              failed.push({ id, clipIdx: win.clipIdx, reason: r.message });
+            } else {
+              current = r.project;
+              ok.push(id);
+            }
           } else if (!action.sourcePath) {
             failed.push({
               id,
@@ -141,13 +148,18 @@ export async function fanOut(
               reason: "pick a reaction source first",
             });
           } else {
-            const r = await sidecar.applyOverlay(current.slug, win.clipIdx, {
+            await sidecar.startOverlayBake(current.slug, win.clipIdx, {
               type: action.layout,
               source_path: action.sourcePath,
               start_offset_s: 0,
             });
-            current = r.project;
-            ok.push(id);
+            const r = await globalWaitForBake(current.slug, win.clipIdx);
+            if (r.status === "error") {
+              failed.push({ id, clipIdx: win.clipIdx, reason: r.message });
+            } else {
+              current = r.project;
+              ok.push(id);
+            }
           }
           break;
         }

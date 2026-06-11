@@ -1,5 +1,6 @@
 // ship-lens v0.7.13: Grid + multi-select COMBINED. The Workbench WindowManager mount was a v0.7.5 regression that broke per-clip flow; selection on the grid IS the multi-clip surface.
 import { useEffect, useMemo, useState } from "react";
+import { usePickEvents } from "../lib/usePickEvents";
 // v0.7.45 — `openSmart` replaces direct shell.open for the project-folder
 // "Open folder" / "Open project folder" buttons below. shell.open's scope
 // regex rejects `/Users/...` paths; the opener plugin handles them.
@@ -48,6 +49,8 @@ export function ResultsGrid({
   onOpenSettings?: () => void;
 }) {
   const intent = project.intent ?? "both";
+  // IRON GATE IG-010 — v0.8.0 non-blocking pick-more.
+  const { waitForPick } = usePickEvents();
   const defaultTab: Tab = intent === "youtube" ? "youtube" : "clips";
   const [tab, setTab] = useState<Tab>(defaultTab);
   const [openCaptionsForIdx, setOpenCaptionsForIdx] = useState<number | null>(null);
@@ -208,13 +211,25 @@ export function ResultsGrid({
     if (generatingMore || isImported) return;
     setGeneratingMore(true);
     try {
-      const r = await sidecar.pickMoreClips(project.slug);
-      onProjectChange(r.project);
-      const msg = r.added > 0
-        ? `Added ${r.added} new clip${r.added === 1 ? "" : "s"}${r.skipped > 0 ? ` · skipped ${r.skipped} overlap` : ""}`
+      // IRON GATE IG-010 — non-blocking. start_pick_more_clips re-runs the
+      // clip-pick + cut + reframe pipeline on a daemon thread; the dispatcher
+      // returns immediately so other panels stay responsive while it works.
+      await sidecar.startPickMoreClips(project.slug);
+      const result = await waitForPick(project.slug);
+      if (result.status === "error") {
+        if (!result.canceled) {
+          window.dispatchEvent(
+            new CustomEvent("lc:toast", { detail: { kind: "error", message: result.message } }),
+          );
+        }
+        return;
+      }
+      onProjectChange(result.project);
+      const msg = result.added > 0
+        ? `Added ${result.added} new clip${result.added === 1 ? "" : "s"}${result.skipped > 0 ? ` · skipped ${result.skipped} overlap` : ""}`
         : `No new viral bits found — the AI couldn't find more outside what's already picked.`;
       window.dispatchEvent(
-        new CustomEvent("lc:toast", { detail: { kind: r.added > 0 ? "info" : "error", message: msg } }),
+        new CustomEvent("lc:toast", { detail: { kind: result.added > 0 ? "info" : "error", message: msg } }),
       );
     } catch (e) {
       const msg = humanError(e);
