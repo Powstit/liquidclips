@@ -28,7 +28,7 @@ mkdir -p "$DMG_DIR"
 
 case "$ARCH" in
   arm64|aarch64|aarch64-apple-darwin) ARTIFACT_ARCH="aarch64" ;;
-  x86_64|x64|x86_64-apple-darwin) ARTIFACT_ARCH="x64" ;;
+  x86_64|x64|x86_64-apple-darwin) ARTIFACT_ARCH="x86_64" ;;
   *) ARTIFACT_ARCH="$ARCH" ;;
 esac
 
