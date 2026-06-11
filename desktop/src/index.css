@@ -1251,6 +1251,23 @@ pre {
   background: transparent;
 }
 
+/* v0.7.50 — Off-screen render skip for library cards. content-visibility
+   tells the browser "don't paint or animate these until they're near the
+   viewport." Free perf win for power users with 100+ projects in their
+   archive; no impact on typical scale. contain-intrinsic-size reserves
+   the card slot so scroll position + scrollbar math stay correct without
+   painting the contents. The aspect ratio is 9:16 so width:height roughly
+   tracks at any column count — the explicit `auto` height lets the
+   browser layout still measure properly.
+   Note: content-visibility plays well with framer-motion's LayoutGroup
+   because the layout box is reserved; only the painted content is
+   skipped. AnimatePresence enter/exit still works for cards that DO
+   enter the viewport. */
+.library-wall-grid > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
+
 /* The fallback bug glyph used when a project has no thumbnail. Floats
    fuchsia on transparent — matches the Workstation tile glyph language. */
 .library-card-bug {
