@@ -220,7 +220,7 @@
           <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
           <div class="relative w-9 h-9 grid place-items-center flex-shrink-0">
             <span aria-hidden class="absolute inset-0 rounded-full" style="background: radial-gradient(closest-side, rgba(255,26,140,0.45), rgba(255,26,140,0) 70%); filter: blur(6px);"></span>
-            <span class="relative font-display text-[18px] font-semibold leading-none text-fuchsia" style="filter: drop-shadow(0 2px 6px rgba(255,26,140,0.65));">1</span>
+            <svg viewBox="0 0 24 24" class="relative w-5 h-5 text-fuchsia" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 2px 6px rgba(255,26,140,0.65));"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
           </div>
           <div class="text-left min-w-0">
             <div class="text-[13px] font-semibold text-ink leading-tight">Upload identity</div>
@@ -232,7 +232,7 @@
           <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
           <div class="relative w-9 h-9 grid place-items-center flex-shrink-0">
             <span aria-hidden class="absolute inset-0 rounded-full" style="background: radial-gradient(closest-side, rgba(255,26,140,0.45), rgba(255,26,140,0) 70%); filter: blur(6px);"></span>
-            <span class="relative font-display text-[18px] font-semibold leading-none text-fuchsia" style="filter: drop-shadow(0 2px 6px rgba(255,26,140,0.65));">2</span>
+            <svg viewBox="0 0 24 24" class="relative w-5 h-5 text-fuchsia" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 2px 6px rgba(255,26,140,0.65));"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor" stroke="none"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor" stroke="none"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor" stroke="none"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor" stroke="none"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
           </div>
           <div class="text-left min-w-0">
             <div class="text-[13px] font-semibold text-ink leading-tight">Pick your style</div>
@@ -244,7 +244,7 @@
           <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
           <div class="relative w-9 h-9 grid place-items-center flex-shrink-0">
             <span aria-hidden class="absolute inset-0 rounded-full" style="background: radial-gradient(closest-side, rgba(255,26,140,0.45), rgba(255,26,140,0) 70%); filter: blur(6px);"></span>
-            <span class="relative font-display text-[18px] font-semibold leading-none text-fuchsia" style="filter: drop-shadow(0 2px 6px rgba(255,26,140,0.65));">3</span>
+            <svg viewBox="0 0 24 24" class="relative w-5 h-5 text-fuchsia" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 2px 6px rgba(255,26,140,0.65));"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
           </div>
           <div class="text-left min-w-0">
             <div class="text-[13px] font-semibold text-ink leading-tight">Generate</div>
@@ -310,7 +310,59 @@
       </div>
     </div>
   </section>
-</main>
+
+  <!-- ─────────────────────────────────────────────────────────────────────
+       YOUTUBE FEED RENDER — proof of brand-locked thumbnails in context.
+       Mocks YouTube's home feed layout (3-col grid, thumbnail + duration
+       badge + title + channel + meta) using the same 6 brand-locked
+       thumbnails. Lets you see whether the fuchsia-only palette stands out
+       vs. YouTube's typical multi-coloured chaos, or fights it.
+  ─────────────────────────────────────────────────────────────────────── -->
+  <section class="mt-12 max-w-[1280px] mx-auto">
+    <div class="mb-5 flex items-baseline justify-between">
+      <div>
+        <div class="eyebrow" style="color:#8a857e">Feed render preview</div>
+        <h2 class="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink mt-1">How they read on YouTube</h2>
+      </div>
+      <div class="eyebrow">subscriptions · home</div>
+    </div>
+
+    <div id="yt-feed" class="grid grid-cols-3 gap-x-4 gap-y-8"></div>
+  </section>
+
+  <script>
+    // Mock YouTube cards using the same 6 brand-locked thumbnails. Titles
+    // map to the scene the thumbnail depicts; channel handle stays @ddbeauty
+    // because all 6 are Daniel's content rotation.
+    const ytCards = [
+      { src:'demo-assets/yt-references/yt-01.png', dur:'12:08', title:'I Tried The Brunette Era For 30 Days — Here’s What Happened',     channel:'Daniel Diyepriye Beauty', avatar:'#ff1a8c', views:'142K views', when:'2 hours ago' },
+      { src:'demo-assets/yt-references/yt-02.png', dur:'9:47',  title:'How I Shipped v0.7.50 In One Night (Build-In-Public Vlog)',           channel:'Daniel Diyepriye',         avatar:'#0b0b10', views:'87K views',  when:'5 hours ago' },
+      { src:'demo-assets/yt-references/yt-03.png', dur:'24:11', title:'What Nobody Tells You About Building A Software Company Solo',         channel:'Daniel Diyepriye',         avatar:'#0b0b10', views:'268K views', when:'1 day ago'   },
+      { src:'demo-assets/yt-references/yt-04.png', dur:'14:32', title:'How I Made $500 A Week (And Why I Almost Stopped)',                    channel:'Daniel Diyepriye',         avatar:'#0b0b10', views:'412K views', when:'3 days ago'  },
+      { src:'demo-assets/yt-references/yt-05.png', dur:'8:55',  title:'Day 14 Of 90 — The Discipline Era Is Working',                    channel:'Daniel Diyepriye',         avatar:'#0b0b10', views:'98K views',  when:'4 days ago'  },
+      { src:'demo-assets/yt-references/yt-06.png', dur:'18:24', title:'10 Weeks, Solo — Behind The Build Of Liquid Clips',               channel:'Daniel Diyepriye',         avatar:'#0b0b10', views:'215K views', when:'6 days ago'  },
+    ];
+
+    const feed = document.getElementById('yt-feed');
+    if (feed) {
+      feed.innerHTML = ytCards.map(c => `
+        <article class="group cursor-pointer">
+          <div class="relative aspect-video rounded-xl overflow-hidden bg-paper-warm shadow-[0_4px_18px_rgba(0,0,0,0.45)]">
+            <img src="${c.src}" alt="" class="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300" />
+            <span class="absolute bottom-2 right-2 mono text-[11px] font-semibold px-1.5 py-0.5 rounded bg-black/85 text-white">${c.dur}</span>
+          </div>
+          <div class="mt-3 flex gap-3">
+            <div class="w-9 h-9 rounded-full flex-shrink-0 grid place-items-center text-[11px] font-bold text-white" style="background:${c.avatar};">${c.channel.split(' ').map(w=>w[0]).slice(0,2).join('')}</div>
+            <div class="min-w-0">
+              <h3 class="text-[14px] font-semibold text-ink leading-snug line-clamp-2 mb-1" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${c.title}</h3>
+              <div class="text-[12px] text-ink-soft truncate">${c.channel}</div>
+              <div class="text-[12px] text-ink-soft">${c.views} · ${c.when}</div>
+            </div>
+          </div>
+        </article>
+      `).join('');
+    }
+  </script>
 
 </body>
 </html>

@@ -92,48 +92,98 @@
 
   @keyframes marquee { 0%{transform:translateX(0);} 100%{transform:translateX(-50%);} }
 
-  /* ── SIDE NAV (canonical LEFT RAIL — matches src/components/nav/SideNav.tsx) ── */
+  /* ───── SIDE NAV — canonical port from src/index.css .lc-sidenav-* ─────
+     v0.6.35 "rich" icons: 112px rail, 56px badges, 80px min-height per
+     item, hover lift + rotate + fuchsia glow, tooltip pill 8px right.
+     Brand-kit anchored — do not invent custom sizing, mirror canonical. */
   .lc-sidenav {
-    position: fixed; left:0; top:0; bottom:0; width:76px; z-index:40;
-    background: rgba(11,11,16,0.92); backdrop-filter: blur(14px);
-    border-right: 1px solid rgba(255,255,255,0.06);
-    display: flex; flex-direction: column; align-items: center; padding: 18px 0 14px;
-    overflow: hidden;
+    position: fixed; left:0; top:0; bottom:0;
+    width: 112px;
+    z-index: 30;
+    background: #0b0b10;
+    border-right: 1px solid rgba(255,255,255,0.07);
+    display: flex; flex-direction: column;
   }
-  .lc-sidenav-logo { margin-bottom: 12px; }
-  .lc-sidenav-logo img { width: 38px; height: 38px; filter: drop-shadow(0 0 14px rgba(255,26,140,0.55)); }
+  .lc-sidenav-logo {
+    padding: 8px; display: flex; justify-content: center; align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  .lc-sidenav-logo img { width: 52px; height: 52px; filter: drop-shadow(0 0 8px rgba(255,26,140,0.5)); animation: lc-brand-breathe 3.2s ease-in-out infinite; }
   .lc-sidenav-collapse {
     width: 22px; height: 22px; border-radius: 999px;
     background: rgba(255,255,255,0.04); color:#8a857e;
-    display:grid; place-items:center; margin: 2px 0 14px;
+    display:grid; place-items:center; margin: 8px auto;
     border: 1px solid rgba(255,255,255,0.08);
   }
   .lc-sidenav-collapse:hover { color:#f4f1ea; }
-  .lc-sidenav-list { display:flex; flex-direction:column; gap:14px; flex:1; }
-  .lc-sidenav-bottom { padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.05); }
+  .lc-sidenav-list { display:flex; flex-direction:column; flex:1 1 auto; padding-top: 6px; }
+  .lc-sidenav-bottom { display:flex; flex-direction:column; padding-bottom: 8px; }
 
-  /* Each nav item — cockpit-tile aesthetic */
-  .nav-tile {
-    position: relative; width: 56px; height: 56px;
-    border-radius: 12px; background: transparent;
-    display: grid; place-items: center; cursor: pointer;
-    animation: nav-bob 4.5s ease-in-out infinite;
+  /* ── Item — column flex, 80px min-height, indicator bar on left edge ── */
+  .lc-sidenav-item {
+    appearance:none; background:transparent; border:0; cursor:pointer; color:#f4f1ea;
+    min-height: 80px; padding: 12px 4px;
+    position: relative; outline: none;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    transition: opacity 160ms ease, color 160ms ease;
   }
-  .nav-tile:nth-of-type(2) { animation-delay: -0.8s; }
-  .nav-tile:nth-of-type(3) { animation-delay: -1.6s; }
-  .nav-tile:nth-of-type(4) { animation-delay: -2.4s; }
-  .nav-tile:nth-of-type(5) { animation-delay: -3.2s; }
-  .nav-tile img { width: 44px; height: 44px; image-rendering: pixelated; filter: drop-shadow(0 0 8px rgba(255,26,140,0.35)); transition: filter 240ms ease, transform 240ms ease; }
-  .nav-tile:hover img { filter: drop-shadow(0 0 16px rgba(255,26,140,0.85)); transform: scale(1.08); }
-  .nav-tile.is-active img { filter: drop-shadow(0 0 22px rgba(255,26,140,1)); }
-  .nav-tile-corner { position:absolute; width:14px; height:14px; border-style:dashed; border-color:var(--color-fuchsia); border-width:0; filter: drop-shadow(0 0 4px rgba(255,26,140,0.6)); pointer-events:none; opacity:0.55; transition: opacity 200ms ease, width 200ms ease, height 200ms ease; }
-  .nav-tile.is-active .nav-tile-corner { opacity: 1; width:18px; height:18px; }
-  .nav-tile-corner.tl { top:-2px; left:-2px; border-top-width:1.5px; border-left-width:1.5px; }
-  .nav-tile-corner.tr { top:-2px; right:-2px; border-top-width:1.5px; border-right-width:1.5px; }
-  .nav-tile-corner.bl { bottom:-2px; left:-2px; border-bottom-width:1.5px; border-left-width:1.5px; }
-  .nav-tile-corner.br { bottom:-2px; right:-2px; border-bottom-width:1.5px; border-right-width:1.5px; }
-  .nav-tile-chip { position:absolute; bottom:-4px; left:50%; transform:translateX(-50%); padding:1px 5px; border-radius:3px; background:rgba(11,11,16,0.85); border:1px solid rgba(255,255,255,0.08); font-family:"Geist Mono",monospace; font-size:8px; letter-spacing:0.10em; color:#8a857e; text-transform:uppercase; }
-  .nav-tile.is-active .nav-tile-chip { color:#ff66b8; border-color: rgba(255,26,140,0.45); }
+  .lc-sidenav-bar {
+    position:absolute; left:0; top:6px; bottom:6px; width:3px;
+    border-radius: 0 2px 2px 0; background: #ff1a8c;
+    opacity:0; transition: opacity 160ms ease; pointer-events:none;
+  }
+  .lc-sidenav-item.is-active .lc-sidenav-bar { opacity: 1; animation: lc-bar-pulse 1.8s ease-in-out infinite; }
+  .lc-sidenav-icon { opacity: 0.6; transform: scale(1); transition: transform 180ms ease, opacity 180ms ease, color 180ms ease; }
+  .lc-sidenav-item:hover .lc-sidenav-icon { opacity:1; transform: scale(1.1); color: #ff1a8c; }
+  .lc-sidenav-item.is-active .lc-sidenav-icon { opacity:1; }
+  .lc-sidenav-item-icon-img {
+    width: 56px !important; height: 56px !important;
+    object-fit: contain; opacity: 1 !important;
+    -webkit-user-drag:none; user-select:none;
+    animation: lc-badge-bob 3s ease-in-out infinite;
+    transition: transform 220ms cubic-bezier(.34,1.56,.64,1), filter 240ms ease;
+    will-change: transform, filter;
+  }
+  .lc-sidenav-list .lc-sidenav-item:nth-child(2) .lc-sidenav-item-icon-img { animation-delay: -0.3s; }
+  .lc-sidenav-list .lc-sidenav-item:nth-child(3) .lc-sidenav-item-icon-img { animation-delay: -0.6s; }
+  .lc-sidenav-list .lc-sidenav-item:nth-child(4) .lc-sidenav-item-icon-img { animation-delay: -1.0s; }
+  .lc-sidenav-list .lc-sidenav-item:nth-child(5) .lc-sidenav-item-icon-img { animation-delay: -1.4s; }
+  .lc-sidenav-list .lc-sidenav-item:nth-child(6) .lc-sidenav-item-icon-img { animation-delay: -1.8s; }
+  .lc-sidenav-list .lc-sidenav-item:nth-child(7) .lc-sidenav-item-icon-img { animation-delay: -2.2s; }
+  .lc-sidenav-item:hover .lc-sidenav-item-icon-img {
+    animation-play-state: paused;
+    transform: translateY(-4px) scale(1.15) rotate(2deg);
+    filter: drop-shadow(0 0 18px rgba(255,26,140,0.85));
+  }
+  .lc-sidenav-item.is-active .lc-sidenav-item-icon-img {
+    animation: lc-badge-active 2.8s ease-in-out infinite;
+    filter: drop-shadow(0 0 16px rgba(255,26,140,0.95));
+  }
+  .lc-sidenav-label {
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 11px; line-height: 1; text-transform: uppercase; letter-spacing: 0.10em;
+    color: #f4f1ea; max-width: 96px; text-align: center; white-space: nowrap; overflow: visible;
+    opacity: 0; transform: translateY(-2px);
+    transition: opacity 160ms ease, transform 160ms ease;
+    pointer-events: none;
+  }
+  .lc-sidenav-item.is-active .lc-sidenav-label { opacity: 1; transform: translateY(0); color: #ff66b8; }
+  /* Title on hover — tooltip pill 8px to the right of the rail */
+  .lc-sidenav-tooltip {
+    position:absolute; left: calc(100% + 8px); top:50%; transform: translateY(-50%);
+    font-family:"Geist Mono", ui-monospace, monospace;
+    font-size:10px; line-height:1; text-transform:uppercase; letter-spacing:0.12em;
+    color:#f4f1ea; background:#1c1c25; border:1px solid rgba(255,255,255,0.07);
+    border-radius:8px; padding: 6px 9px; white-space:nowrap;
+    opacity:0; pointer-events:none; box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 2px 8px rgba(0,0,0,0.45);
+    transition: opacity 140ms ease; z-index:40;
+  }
+  .lc-sidenav-item:hover .lc-sidenav-tooltip { opacity: 1; }
+  .lc-sidenav-item.is-active .lc-sidenav-tooltip { opacity: 0 !important; }
+  @keyframes lc-brand-breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+  @keyframes lc-badge-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+  @keyframes lc-bar-pulse { 0%,100% { opacity: 1; box-shadow: 0 0 8px rgba(255,26,140,0.55); } 50% { opacity: 1; box-shadow: 0 0 16px rgba(255,26,140,0.95); } }
+  @keyframes lc-badge-active { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-2px) scale(1.04); } }
 
   /* ── BROWSE side tab — right edge ── */
   .browse-tab {
@@ -157,7 +207,10 @@
 
   .halo-digit { position:relative; width:36px; height:36px; display:grid; place-items:center; flex-shrink:0; }
   .halo-digit::before { content:""; position:absolute; inset:0; border-radius:50%; background: radial-gradient(closest-side, rgba(255,26,140,0.45), rgba(255,26,140,0) 70%); filter: blur(6px); }
-  .halo-digit > span { position:relative; font-family:Inter; font-size:18px; font-weight:600; color:#ff1a8c; filter: drop-shadow(0 2px 6px rgba(255,26,140,0.65)); }
+  .halo-digit > span,
+  .halo-digit > svg { position:relative; color:#ff1a8c; filter: drop-shadow(0 2px 6px rgba(255,26,140,0.65)); }
+  .halo-digit > span { font-family:Inter; font-size:18px; font-weight:600; }
+  .halo-digit > svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; }
 
   .pill { padding:4px 10px; border-radius:9999px; font-family:"Geist Mono",monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.14em; color:#8a857e; border:1px solid transparent; }
   .pill:hover { color:#f4f1ea; }
@@ -168,66 +221,90 @@
   .surface.is-active { display: block; }
 
   /* Stage layout — leave room for left rail (76px) + right BROWSE tab (44px) */
-  .stage { margin-left: 76px; margin-right: 44px; min-height: 100dvh; }
+  .stage { margin-left: 112px; margin-right: 44px; min-height: 100dvh; }
 </style>
 </head>
 <body class="overflow-x-hidden" data-surface="earn">
 
-<!-- ── LEFT SIDENAV (matches src/components/nav/SideNav.tsx — pixel game-tier badges) ── -->
+<!-- ── LEFT SIDENAV (matches src/components/nav/SideNav.tsx canonical) ── -->
 <aside class="lc-sidenav">
   <div class="lc-sidenav-logo">
     <img src="demo-assets/glyph.png" alt="Liquid Clips" draggable="false" />
   </div>
-  <button class="lc-sidenav-collapse" title="Collapse">
-    <svg viewBox="0 0 24 24" class="w-3 h-3 fill-none stroke-current" stroke-width="2.25"><path d="M15 6l-6 6 6 6"/></svg>
-  </button>
   <nav class="lc-sidenav-list">
-    <button class="nav-tile" data-target="workspace" title="Workspace">
-      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
-      <img src="demo-assets/nav-badges/workspace.png" alt="" draggable="false" />
-      <span class="nav-tile-chip">Make</span>
+    <button class="lc-sidenav-item" data-target="workspace" title="Build" aria-label="Build">
+      <span class="lc-sidenav-bar"></span>
+      <img class="lc-sidenav-icon lc-sidenav-item-icon-img" src="demo-assets/nav-badges/workspace.png" alt="" draggable="false" />
+      <span class="lc-sidenav-label">Build</span>
+      <span class="lc-sidenav-tooltip">Build</span>
     </button>
-    <button class="nav-tile" data-target="library" title="Library">
-      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
-      <img src="demo-assets/nav-badges/library.png" alt="" draggable="false" />
-      <span class="nav-tile-chip">Vault</span>
+    <button class="lc-sidenav-item" data-target="import" title="Import" aria-label="Import">
+      <span class="lc-sidenav-bar"></span>
+      <img class="lc-sidenav-icon lc-sidenav-item-icon-img" src="demo-assets/nav-badges/upload.png" alt="" draggable="false" />
+      <span class="lc-sidenav-label">Import</span>
+      <span class="lc-sidenav-tooltip">Import — drop a video</span>
     </button>
-    <button class="nav-tile is-active" data-target="earn" title="Earn">
-      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
-      <img src="demo-assets/nav-badges/earn.png" alt="" draggable="false" />
-      <span class="nav-tile-chip">Earn</span>
+    <button class="lc-sidenav-item" data-target="create" title="Create" aria-label="Create">
+      <span class="lc-sidenav-bar"></span>
+      <img class="lc-sidenav-icon lc-sidenav-item-icon-img" src="demo-assets/nav-badges/workspace.png" alt="" draggable="false" style="filter:hue-rotate(50deg) saturate(1.2);"/>
+      <span class="lc-sidenav-label">Create</span>
+      <span class="lc-sidenav-tooltip">Create — paste a URL</span>
     </button>
-    <button class="nav-tile" data-target="schedule" title="Schedule">
-      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
-      <img src="demo-assets/nav-badges/schedule.png" alt="" draggable="false" />
-      <span class="nav-tile-chip">Ship</span>
+    <button class="lc-sidenav-item" data-target="youtube" title="YouTube" aria-label="YouTube">
+      <span class="lc-sidenav-bar"></span>
+      <img class="lc-sidenav-icon lc-sidenav-item-icon-img" src="demo-assets/nav-badges/library.png" alt="" draggable="false" style="filter:hue-rotate(-30deg) brightness(1.05);"/>
+      <span class="lc-sidenav-label">YouTube</span>
+      <span class="lc-sidenav-tooltip">YouTube — title, thumbnail, publish</span>
     </button>
-    <button class="nav-tile" data-target="learn" title="Learn">
-      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
-      <img src="demo-assets/nav-badges/learn.png" alt="" draggable="false" />
-      <span class="nav-tile-chip">Learn</span>
+    <button class="lc-sidenav-item" data-target="library" title="Library" aria-label="Library">
+      <span class="lc-sidenav-bar"></span>
+      <img class="lc-sidenav-icon lc-sidenav-item-icon-img" src="demo-assets/nav-badges/library.png" alt="" draggable="false" />
+      <span class="lc-sidenav-label">Library</span>
+      <span class="lc-sidenav-tooltip">Library</span>
     </button>
-    <button class="nav-tile" data-target="community" title="Community">
-      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
-      <img src="demo-assets/nav-badges/community.png" alt="" draggable="false" />
-      <span class="nav-tile-chip">Crew</span>
+    <button class="lc-sidenav-item is-active" data-target="earn" title="Earn" aria-label="Earn">
+      <span class="lc-sidenav-bar"></span>
+      <img class="lc-sidenav-icon lc-sidenav-item-icon-img" src="demo-assets/nav-badges/earn.png" alt="" draggable="false" />
+      <span class="lc-sidenav-label">Earn</span>
+      <span class="lc-sidenav-tooltip">Earn</span>
     </button>
-    <button class="nav-tile" data-target="thumbnail" title="Thumbnail Studio">
-      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
-      <img src="demo-assets/nav-badges/library.png" alt="" draggable="false" style="filter:hue-rotate(-20deg) drop-shadow(0 0 8px rgba(255,26,140,0.35));"/>
-      <span class="nav-tile-chip">Thumb</span>
+    <button class="lc-sidenav-item" data-target="schedule" title="Schedule" aria-label="Schedule">
+      <span class="lc-sidenav-bar"></span>
+      <img class="lc-sidenav-icon lc-sidenav-item-icon-img" src="demo-assets/nav-badges/schedule.png" alt="" draggable="false" />
+      <span class="lc-sidenav-label">Schedule</span>
+      <span class="lc-sidenav-tooltip">Schedule</span>
     </button>
-    <button class="nav-tile" data-target="signin" title="Sign-In · Activation">
-      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
-      <img src="demo-assets/glyph.png" alt="" draggable="false" />
-      <span class="nav-tile-chip">Doors</span>
+    <button class="lc-sidenav-item" data-target="learn" title="Learn" aria-label="Learn">
+      <span class="lc-sidenav-bar"></span>
+      <img class="lc-sidenav-icon lc-sidenav-item-icon-img" src="demo-assets/nav-badges/learn.png" alt="" draggable="false" />
+      <span class="lc-sidenav-label">Learn</span>
+      <span class="lc-sidenav-tooltip">Learn</span>
+    </button>
+    <button class="lc-sidenav-item" data-target="community" title="Community" aria-label="Community">
+      <span class="lc-sidenav-bar"></span>
+      <img class="lc-sidenav-icon lc-sidenav-item-icon-img" src="demo-assets/nav-badges/community.png" alt="" draggable="false" />
+      <span class="lc-sidenav-label">Community</span>
+      <span class="lc-sidenav-tooltip">Community</span>
+    </button>
+    <button class="lc-sidenav-item" data-target="thumbnail" title="Thumbnail Studio" aria-label="Thumbnail Studio">
+      <span class="lc-sidenav-bar"></span>
+      <img class="lc-sidenav-icon lc-sidenav-item-icon-img" src="demo-assets/nav-badges/library.png" alt="" draggable="false" style="filter:hue-rotate(-20deg);"/>
+      <span class="lc-sidenav-label">Thumb</span>
+      <span class="lc-sidenav-tooltip">Thumbnail Studio</span>
+    </button>
+    <button class="lc-sidenav-item" data-target="signin" title="Sign-In · Activation" aria-label="Sign-In Activation">
+      <span class="lc-sidenav-bar"></span>
+      <img class="lc-sidenav-icon lc-sidenav-item-icon-img" src="demo-assets/glyph.png" alt="" draggable="false" />
+      <span class="lc-sidenav-label">Doors</span>
+      <span class="lc-sidenav-tooltip">Sign-In · Activation</span>
     </button>
   </nav>
   <div class="lc-sidenav-bottom">
-    <button class="nav-tile" data-target="settings" title="Settings">
-      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
-      <img src="demo-assets/nav-badges/settings.png" alt="" draggable="false" />
-      <span class="nav-tile-chip">Setup</span>
+    <button class="lc-sidenav-item" data-target="settings" title="Settings" aria-label="Settings">
+      <span class="lc-sidenav-bar"></span>
+      <img class="lc-sidenav-icon lc-sidenav-item-icon-img" src="demo-assets/nav-badges/settings.png" alt="" draggable="false" />
+      <span class="lc-sidenav-label">Settings</span>
+      <span class="lc-sidenav-tooltip">Settings</span>
     </button>
   </div>
 </aside>
@@ -427,6 +504,204 @@
   </div>
 </section>
 
+<!-- ─────────────────────────── IMPORT ─────────────────────────── -->
+<section class="surface" data-surface="import">
+  <div class="relative">
+    <div class="atm-workspace absolute inset-0 pointer-events-none"></div>
+    <div class="relative px-8 pt-6 pb-10 max-w-6xl mx-auto">
+      <div class="mb-6">
+        <div class="eyebrow">import</div>
+        <h1 class="font-display text-[26px] font-semibold tracking-[-0.025em] text-ink mt-0.5">Drop a video to start</h1>
+        <p class="text-[13px] text-ink-soft leading-relaxed mt-2 max-w-xl">Drop one file, pick the clips intent, sit back. MP4, MOV, MKV, WEBM, M4V up to 2 GB. The sidecar transcribes locally — no upload, your file never leaves this Mac.</p>
+      </div>
+
+      <!-- HUD-framed mega drop zone -->
+      <div class="relative hud-frame rounded-3xl p-12 mb-8 flex flex-col items-center justify-center text-center min-h-[420px]" style="background:rgba(255,26,140,0.04);">
+        <!-- Pixel invader as drop landmark -->
+        <svg viewBox="0 0 24 16" class="h-20 w-28 fill-fuchsia drop-shadow-[0_0_36px_rgba(255,26,140,0.7)] breathing pixel mb-6">
+          <rect x="3" y="2" width="2" height="2"/><rect x="19" y="2" width="2" height="2"/>
+          <rect x="5" y="4" width="14" height="2"/>
+          <rect x="3" y="6" width="2" height="2"/><rect x="7" y="6" width="2" height="2"/><rect x="15" y="6" width="2" height="2"/><rect x="19" y="6" width="2" height="2"/>
+          <rect x="3" y="8" width="18" height="2"/>
+          <rect x="5" y="10" width="2" height="2"/><rect x="9" y="10" width="6" height="2"/><rect x="17" y="10" width="2" height="2"/>
+          <rect x="1" y="12" width="2" height="2"/><rect x="7" y="12" width="2" height="2"/><rect x="15" y="12" width="2" height="2"/><rect x="21" y="12" width="2" height="2"/>
+        </svg>
+        <h2 class="font-display text-[28px] font-semibold tracking-[-0.025em] text-ink mb-3">Drop your video here</h2>
+        <p class="font-mono text-[11px] uppercase tracking-[0.18em] text-fuchsia-deep mb-8" style="color:#ff66b8;">MP4 · MOV · MKV · WEBM · M4V · ≤ 2 GB</p>
+        <button class="h-11 px-6 rounded-full bg-fuchsia text-white text-sm font-semibold hover:bg-fuchsia-bright shadow-glow-md inline-flex items-center gap-2">
+          <svg viewBox="0 0 24 24" class="w-4 h-4 fill-none stroke-current" stroke-width="1.75"><path d="M12 4v12M6 10l6-6 6 6M4 20h16"/></svg>
+          Or pick a file
+        </button>
+        <div class="mt-4 eyebrow text-t3">drag-drop is faster · plus key works too</div>
+      </div>
+
+      <!-- Recent imports row -->
+      <div class="mb-3">
+        <div class="flex items-center justify-between">
+          <span class="eyebrow">recent imports · 4</span>
+          <button class="eyebrow text-fuchsia hover:text-fuchsia-bright" style="color:#ff66b8;">view all →</button>
+        </div>
+      </div>
+      <div class="grid grid-cols-4 gap-3" id="import-recents"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── CREATE ─────────────────────────── -->
+<section class="surface" data-surface="create">
+  <div class="relative">
+    <div class="atm-workspace absolute inset-0 pointer-events-none"></div>
+    <div class="relative px-8 pt-6 pb-10 max-w-6xl mx-auto">
+      <div class="mb-6">
+        <div class="eyebrow" style="color:#ff66b8;">create</div>
+        <h1 class="font-display text-[26px] font-semibold tracking-[-0.025em] text-ink mt-0.5">Paste a URL</h1>
+        <p class="text-[13px] text-ink-soft leading-relaxed mt-2 max-w-xl">YouTube, TikTok, Instagram, X, public podcast feeds. The AI lifts a transcript, finds the viral bits, and cuts clips ready to schedule. Around 90 seconds of work per long-form video.</p>
+      </div>
+
+      <!-- URL input + analysis sequence -->
+      <div class="relative hud-frame rounded-3xl p-8 mb-8" style="background:rgba(255,26,140,0.04);">
+        <div class="flex items-center gap-3 mb-5">
+          <svg viewBox="0 0 24 24" class="w-5 h-5 text-fuchsia flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          <input type="text" value="https://www.youtube.com/watch?v=morning-podcast-ep-14" class="flex-1 h-12 bg-paper-elev/40 border border-line rounded-xl px-4 text-sm text-ink focus:outline-none focus:border-fuchsia/60" />
+          <button class="h-12 px-6 rounded-full bg-fuchsia text-white text-sm font-semibold hover:bg-fuchsia-bright shadow-glow-sm inline-flex items-center gap-2">
+            Analyze
+            <svg viewBox="0 0 24 24" class="w-4 h-4 fill-none stroke-current" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+
+        <!-- ANALYSIS sequence — live progress lines -->
+        <div class="space-y-2 mt-6" style="border-top:1px solid rgba(255,255,255,0.05); padding-top:18px;">
+          <div class="flex items-center gap-3"><svg viewBox="0 0 24 24" class="w-4 h-4 text-fuchsia-deep" style="color:#ff66b8;" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg><span class="font-mono text-[12px] text-ink-soft">Resolved &nbsp;<span class="text-ink">morning podcast · ep 14 · 47 minutes</span></span></div>
+          <div class="flex items-center gap-3"><svg viewBox="0 0 24 24" class="w-4 h-4 text-fuchsia-deep" style="color:#ff66b8;" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg><span class="font-mono text-[12px] text-ink-soft">Downloaded &nbsp;<span class="text-ink">audio + frames</span></span></div>
+          <div class="flex items-center gap-3"><svg viewBox="0 0 24 24" class="w-4 h-4 text-fuchsia animate-spin" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9" opacity="0.2"/><path d="M21 12a9 9 0 0 0-9-9"/></svg><span class="font-mono text-[12px] text-ink-soft">Transcribing &nbsp;<span class="text-ink">faster-whisper · tiny · 5× realtime</span></span></div>
+          <div class="flex items-center gap-3 opacity-50"><span class="w-1 h-1 rounded-full bg-t3"></span><span class="font-mono text-[12px] text-t3">Surfacing best bits</span></div>
+          <div class="flex items-center gap-3 opacity-50"><span class="w-1 h-1 rounded-full bg-t3"></span><span class="font-mono text-[12px] text-t3">Reframing to 9:16 with face crop</span></div>
+          <div class="flex items-center gap-3 opacity-50"><span class="w-1 h-1 rounded-full bg-t3"></span><span class="font-mono text-[12px] text-t3">Generating thumbnails</span></div>
+        </div>
+
+        <!-- Working bar (live progress) -->
+        <div class="working-bar mt-5" style="position:relative; height:3px; border-radius:2px; background:rgba(255,255,255,0.06); overflow:hidden;">
+          <div style="position:absolute; inset:0; width:30%; background:linear-gradient(90deg, transparent, #ff1a8c, transparent); animation: marquee 1.4s linear infinite;"></div>
+        </div>
+        <div class="flex items-center justify-between mt-3">
+          <span class="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep" style="color:#ff66b8;">Stage 3 / 6 · ~58 seconds left</span>
+          <button class="eyebrow text-t3 hover:text-ink">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Recently created projects -->
+      <div class="mb-3 flex items-center justify-between">
+        <span class="eyebrow">recently created · 5</span>
+        <button class="eyebrow text-fuchsia hover:text-fuchsia-bright" style="color:#ff66b8;">view all →</button>
+      </div>
+      <div class="grid grid-cols-5 gap-3" id="create-recents"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── YOUTUBE ─────────────────────────── -->
+<section class="surface" data-surface="youtube">
+  <div class="relative">
+    <div class="atm-thumbnail absolute inset-0 pointer-events-none"></div>
+    <div class="relative px-8 pt-6 pb-10 max-w-6xl mx-auto">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <div class="eyebrow" style="color:#ff66b8;">youtube</div>
+          <h1 class="font-display text-[26px] font-semibold tracking-[-0.025em] text-ink mt-0.5">Title, thumbnail, publish</h1>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="pill is-active">Edit</button>
+          <button class="pill">Preview</button>
+          <button class="h-9 px-5 rounded-full bg-fuchsia text-white text-xs font-semibold hover:bg-fuchsia-bright shadow-glow-sm inline-flex items-center gap-2">
+            <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 fill-none stroke-current" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            Publish to YouTube
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-[1fr_360px] gap-6">
+        <!-- LEFT: editor -->
+        <div class="space-y-6">
+          <!-- Title + Description card -->
+          <div class="library-card relative rounded-2xl p-6">
+            <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+            <div class="eyebrow mb-3">title</div>
+            <input type="text" value="What Nobody Tells You About Building A Software Company Solo" class="w-full bg-transparent border-0 text-[22px] font-display font-semibold tracking-[-0.02em] text-ink leading-tight focus:outline-none mb-4 border-b border-line pb-3" />
+            <div class="eyebrow mb-3 mt-2">description</div>
+            <textarea rows="6" class="w-full bg-transparent border-0 text-[13px] text-ink-soft leading-relaxed focus:outline-none resize-none">Day 14 of 90. I shipped v0.7.50 last night — non-blocking dispatcher, brand atmospheres, the Earn fix. Then I clipped my own podcast about what nobody tells you about building a software company solo. Episode 14 in the build series.
+
+Liquid Clips: https://liquidclips.app</textarea>
+            <div class="flex items-center justify-between mt-3 pt-3 border-t border-line">
+              <span class="eyebrow text-t3">142 / 5000 chars</span>
+              <button class="eyebrow text-fuchsia hover:text-fuchsia-bright" style="color:#ff66b8;">add chapter timestamps →</button>
+            </div>
+          </div>
+
+          <!-- Tags card -->
+          <div class="library-card relative rounded-2xl p-6">
+            <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+            <div class="eyebrow mb-3">tags · 6 / 15</div>
+            <div class="flex flex-wrap gap-2">
+              <span class="pill is-active">build in public</span>
+              <span class="pill is-active">software founder</span>
+              <span class="pill is-active">solo founder</span>
+              <span class="pill is-active">liquid clips</span>
+              <span class="pill is-active">day 14</span>
+              <span class="pill is-active">podcast</span>
+              <button class="pill text-t3">+ add tag</button>
+            </div>
+          </div>
+
+          <!-- Schedule card -->
+          <div class="library-card relative rounded-2xl p-6">
+            <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+            <div class="flex items-center justify-between mb-2">
+              <div>
+                <div class="eyebrow mb-1">publish window</div>
+                <div class="text-[15px] text-ink font-semibold">Today, 18:00 GMT · prime engagement window</div>
+              </div>
+              <button class="pill is-active">Today</button>
+            </div>
+            <div class="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep mt-3" style="color:#ff66b8;">predicted reach · 48k–82k · 92% confidence</div>
+          </div>
+        </div>
+
+        <!-- RIGHT: thumbnail picker + preview -->
+        <div class="space-y-4">
+          <div class="library-card relative rounded-2xl p-4">
+            <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+            <div class="eyebrow mb-3">thumbnail · selected</div>
+            <div class="aspect-video rounded-xl overflow-hidden mb-3 shadow-[0_4px_18px_rgba(0,0,0,0.6)]">
+              <img src="demo-assets/yt-references/yt-03.png" class="w-full h-full object-cover" />
+            </div>
+            <div class="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep mb-3" style="color:#ff66b8;">brand-locked · character-locked · 1672 × 941</div>
+            <div class="eyebrow mb-2">alternatives · 5</div>
+            <div class="grid grid-cols-5 gap-1.5">
+              <div class="aspect-video rounded-md overflow-hidden ring-1 ring-line cursor-pointer hover:ring-fuchsia/55"><img src="demo-assets/yt-references/yt-01.png" class="w-full h-full object-cover" /></div>
+              <div class="aspect-video rounded-md overflow-hidden ring-1 ring-line cursor-pointer hover:ring-fuchsia/55"><img src="demo-assets/yt-references/yt-02.png" class="w-full h-full object-cover" /></div>
+              <div class="aspect-video rounded-md overflow-hidden ring-1 ring-line cursor-pointer hover:ring-fuchsia/55"><img src="demo-assets/yt-references/yt-04.png" class="w-full h-full object-cover" /></div>
+              <div class="aspect-video rounded-md overflow-hidden ring-1 ring-line cursor-pointer hover:ring-fuchsia/55"><img src="demo-assets/yt-references/yt-05.png" class="w-full h-full object-cover" /></div>
+              <div class="aspect-video rounded-md overflow-hidden ring-1 ring-line cursor-pointer hover:ring-fuchsia/55"><img src="demo-assets/yt-references/yt-06.png" class="w-full h-full object-cover" /></div>
+            </div>
+            <button class="w-full mt-3 h-9 rounded-full mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep border border-fuchsia/45 hover:bg-fuchsia/10 transition" style="color:#ff66b8;">Regenerate 6 more · $0.42</button>
+          </div>
+
+          <!-- Visibility card -->
+          <div class="library-card relative rounded-2xl p-4">
+            <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+            <div class="eyebrow mb-3">visibility</div>
+            <div class="flex items-center gap-1 p-0.5 rounded-full border border-line bg-paper-elev/50">
+              <button class="pill is-active">Public</button>
+              <button class="pill">Unlisted</button>
+              <button class="pill">Private</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ─────────────────────────── LIBRARY ─────────────────────────── -->
 <section class="surface" data-surface="library">
   <div class="relative">
@@ -573,17 +848,17 @@
       <div class="grid grid-cols-3 gap-4 max-w-2xl mx-auto">
         <div class="library-card relative flex items-center gap-3 px-3.5 py-3 rounded-xl">
           <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
-          <div class="halo-digit"><span>1</span></div>
+          <div class="halo-digit"><svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg></div>
           <div class="text-left min-w-0"><div class="text-[13px] font-semibold text-ink leading-tight">Upload identity</div><div class="font-mono text-[9px] uppercase tracking-[0.14em] text-t3 mt-1">3 face crops · once</div></div>
         </div>
         <div class="library-card relative flex items-center gap-3 px-3.5 py-3 rounded-xl">
           <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
-          <div class="halo-digit"><span>2</span></div>
+          <div class="halo-digit"><svg viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor" stroke="none"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor" stroke="none"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor" stroke="none"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor" stroke="none"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg></div>
           <div class="text-left min-w-0"><div class="text-[13px] font-semibold text-ink leading-tight">Pick your style</div><div class="font-mono text-[9px] uppercase tracking-[0.14em] text-t3 mt-1">brand name + mood</div></div>
         </div>
         <div class="library-card relative flex items-center gap-3 px-3.5 py-3 rounded-xl">
           <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
-          <div class="halo-digit"><span>3</span></div>
+          <div class="halo-digit"><svg viewBox="0 0 24 24"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg></div>
           <div class="text-left min-w-0"><div class="text-[13px] font-semibold text-ink leading-tight">Generate</div><div class="font-mono text-[9px] uppercase tracking-[0.14em] text-t3 mt-1">$0.07 per image</div></div>
         </div>
       </div>
@@ -702,7 +977,7 @@
       document.querySelectorAll('.surface').forEach(s => {
         s.classList.toggle('is-active', s.dataset.surface === target);
       });
-      document.querySelectorAll('[data-target]').forEach(b => {
+      document.querySelectorAll('.lc-sidenav-item[data-target]').forEach(b => {
         b.classList.toggle('is-active', b.dataset.target === target);
       });
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -774,6 +1049,51 @@
         <button class="h-8 w-8 grid place-items-center rounded-md hover:bg-paper-elev text-t2 hover:text-ink">
           <svg viewBox="0 0 24 24" class="w-4 h-4 fill-none stroke-current" stroke-width="1.75"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
         </button>
+      </div>
+    `).join('');
+  }
+
+  // Import: recent imports
+  const importRecents = document.getElementById('import-recents');
+  if (importRecents) {
+    const items = [
+      { name: 'DJI_morning_take_01.MP4', size: '142 MB', when: 'today · 09:14', status: 'ready' },
+      { name: 'podcast-ep-14-master.mov', size: '892 MB', when: 'today · 08:02', status: 'baked' },
+      { name: 'ddbeauty-tutorial-raw.mp4', size: '1.2 GB', when: 'yesterday', status: 'baked' },
+      { name: 'stairmaster-day-14.mkv', size: '348 MB', when: 'yesterday', status: 'baked' },
+    ];
+    importRecents.innerHTML = items.map(it => `
+      <div class="library-card relative rounded-xl p-3.5">
+        <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+        <div class="flex items-center gap-2 mb-1">
+          <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 fill-none stroke-fuchsia-deep" style="color:#ff66b8;" stroke-width="1.75"><path d="M19 11.5V19a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7.5L19 7.5z M14 3v5h5"/></svg>
+          <div class="mono text-[10px] uppercase tracking-[0.10em] text-fuchsia-deep" style="color:#ff66b8;">${it.status}</div>
+        </div>
+        <div class="text-[12px] text-ink font-medium truncate mb-0.5">${it.name}</div>
+        <div class="font-mono text-[9px] uppercase tracking-[0.12em] text-t3">${it.size} · ${it.when}</div>
+      </div>
+    `).join('');
+  }
+
+  // Create: recent projects
+  const createRecents = document.getElementById('create-recents');
+  if (createRecents) {
+    const items = [
+      { title: 'morning podcast · ep 14', src: 'demo-assets/yt-references/yt-03.png', clips: '7 clips' },
+      { title: 'lex fridman · ai future', src: 'demo-assets/yt-references/yt-04.png', clips: '5 clips' },
+      { title: 'sam parr · niche down', src: 'demo-assets/yt-references/yt-02.png', clips: '9 clips' },
+      { title: 'hormozi · marketing edit', src: 'demo-assets/yt-references/yt-05.png', clips: '6 clips' },
+      { title: 'beast games · season pulls', src: 'demo-assets/yt-references/yt-01.png', clips: '12 clips' },
+    ];
+    createRecents.innerHTML = items.map(it => `
+      <div class="library-card relative rounded-xl overflow-hidden">
+        <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+        <div class="aspect-video relative">
+          <img src="${it.src}" class="absolute inset-0 w-full h-full object-cover" />
+          <div class="absolute inset-0 bg-gradient-to-t from-paper/85 via-paper/5 to-transparent"></div>
+          <span class="absolute top-1.5 left-1.5 mono text-[9px] uppercase tracking-[0.12em] px-1.5 py-0.5 rounded bg-paper/80 text-fuchsia-deep border border-fuchsia/40" style="color:#ff66b8;">${it.clips}</span>
+          <div class="absolute inset-x-0 bottom-0 p-2"><div class="text-[11px] text-ink font-semibold leading-tight" style="text-shadow:0 1px 4px rgba(0,0,0,0.95);">${it.title}</div></div>
+        </div>
       </div>
     `).join('');
   }
