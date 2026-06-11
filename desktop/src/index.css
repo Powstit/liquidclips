@@ -428,13 +428,20 @@ pre {
   /* v0.6.6 — Float cycle dropped from 4.2s → 3s and amplitude from -2.5px
      → -6px so the motion is actually visible at 34px badge size (Daniel
      "nav bar doesn't animate" report on v0.6.5). */
-  animation: lc-badge-float 3s ease-in-out infinite;
+  /* v0.7.48 — Animation gated on prefers-reduced-motion: no-preference so
+     reduced-motion users get NO declaration (cleaner than `animation: none
+     !important` override). Smoothness diagnostic finding #3. */
   transition: transform 220ms cubic-bezier(.34, 1.56, .64, 1), filter 240ms ease;
   will-change: transform, filter;
   /* The img badges already carry their own fuchsia colour + alpha, so the
      ink-tinted opacity/scale rules above (designed for lucide SVGs that
      inherit `color`) need to be neutralised. */
   opacity: 1 !important;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lc-sidenav-item-icon-img {
+    animation: lc-badge-float 3s ease-in-out infinite;
+  }
 }
 .lc-sidenav-item:hover .lc-sidenav-icon.lc-sidenav-item-icon-img {
   transform: none; /* keyframe controls the lift */
@@ -543,7 +550,13 @@ pre {
     radial-gradient(ellipse 80% 50% at 50% -20%, rgba(255, 26, 140, 0.28), transparent 60%),
     radial-gradient(ellipse 70% 45% at 20% 110%, rgba(140, 40, 255, 0.22), transparent 60%),
     radial-gradient(ellipse 70% 45% at 90% 90%, rgba(255, 90, 80, 0.18), transparent 60%);
-  animation: lc-aurora-pulse 14s ease-in-out infinite alternate;
+  /* v0.7.48 — Aurora pulse gated on prefers-reduced-motion: no-preference.
+     Smoothness diagnostic finding #3. */
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lc-aurora-blobs {
+    animation: lc-aurora-pulse 14s ease-in-out infinite alternate;
+  }
 }
 /* v0.7.32 — aurora-stripes removed. impeccable bans repeating-linear-
    gradient as section decoration; the diagonal-stripe overlay had no
@@ -567,7 +580,15 @@ pre {
    /tmp/lc-mockup/v063.html section 3.
    ===================================================================== */
 .lc-deck-cover-img {
-  animation: lc-deck-cover-pan 26s ease-in-out infinite;
+  /* v0.7.48 — Pan gated on prefers-reduced-motion: no-preference.
+     Smoothness diagnostic finding #3 (runs on every deck-cover even when
+     scrolled off-screen — the 26s loop is the longest, most expensive
+     loop in the kit). */
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lc-deck-cover-img {
+    animation: lc-deck-cover-pan 26s ease-in-out infinite;
+  }
 }
 @keyframes lc-deck-cover-pan {
   0%, 100% { transform: scale(1.04) translateX(0); }
@@ -612,10 +633,14 @@ pre {
 }
 
 /* CTA pill pulse — applies to any direct-descendant button inside the
-   trailing slot, so the consumer doesn't have to remember a class. */
-.lc-deck-cover-cta-wrap > button,
-.lc-deck-cover-cta-wrap > a {
-  animation: lc-cta-pulse 2.4s ease-in-out infinite;
+   trailing slot, so the consumer doesn't have to remember a class.
+   v0.7.48 — Gated on prefers-reduced-motion: no-preference. Smoothness
+   diagnostic finding #3. */
+@media (prefers-reduced-motion: no-preference) {
+  .lc-deck-cover-cta-wrap > button,
+  .lc-deck-cover-cta-wrap > a {
+    animation: lc-cta-pulse 2.4s ease-in-out infinite;
+  }
 }
 @keyframes lc-cta-pulse {
   0%, 100% { box-shadow: 0 0 18px rgba(255, 26, 140, 0.4);  transform: translateY(0); }
@@ -1225,8 +1250,14 @@ pre {
   -webkit-user-drag: none;
   user-select: none;
   filter: drop-shadow(0 4px 14px rgba(255, 26, 140, 0.55));
-  animation: lc-badge-float 3.2s ease-in-out infinite;
+  /* v0.7.48 — Float gated on prefers-reduced-motion: no-preference.
+     Smoothness diagnostic finding #3. */
   transition: transform 320ms cubic-bezier(.34, 1.56, .64, 1), filter 320ms ease;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .library-card-bug {
+    animation: lc-badge-float 3.2s ease-in-out infinite;
+  }
 }
 .library-card:hover .library-card-bug {
   animation-play-state: paused;
@@ -1240,4 +1271,45 @@ pre {
 @media (prefers-reduced-motion: reduce) {
   .library-card,
   .library-wall header { transform: none !important; transition: none !important; }
+}
+
+/* =====================================================================
+   v0.7.48 — Animation budget controls (smoothness diagnostic finding #3).
+
+   The kit accreted 15+ `animation: ... infinite` rules across decks, the
+   sidenav, the aurora, CTA pills, and tile chrome. Even when the GPU
+   handles them cheaply, the layout/composite work fires on every frame
+   for every off-screen element too. Three CSS-only pause vectors below
+   so any caller can opt out without a JS observer:
+
+     1. `.lc-anim-paused` — explicit class toggle from any component
+        that knows its own visibility (e.g. a deck whose header was
+        scrolled out of the viewport).
+
+     2. `content-visibility: hidden` — when the browser has skipped
+        rendering the element, also skip animating it. Off-screen tiles
+        in a virtualised list get this for free in Chrome / WebKit.
+
+     3. `[data-route-inactive="true"]` ancestor — scaffolded for the
+        next pass: any future route surface can mark itself inactive
+        and every descendant animation pauses. No call site sets this
+        attribute yet; the rule is defensive scaffolding for the v0.7.49
+        pause-on-tab-switch / pause-in-background pipeline.
+
+   Pause via `animation-play-state` is intentionally chosen over
+   `animation: none` so the animation keeps its current frame instead of
+   snapping back to 0%. No layout thrash when the element reactivates.
+   ===================================================================== */
+/* All three vectors below are opt-in: the consumer adds the class or sets
+   the data-attribute explicitly. We intentionally do NOT key off the
+   `aria-hidden` attribute — many modal / popover libraries flip that on
+   visible decoration (e.g. backdrops, off-screen Headless UI portals)
+   and a global pause there would freeze animations users CAN see. */
+.lc-anim-paused,
+.lc-anim-paused *,
+[data-content-visibility="hidden"],
+[data-content-visibility="hidden"] *,
+[data-route-inactive="true"],
+[data-route-inactive="true"] * {
+  animation-play-state: paused !important;
 }
