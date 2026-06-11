@@ -16,6 +16,7 @@ import {
   type ThumbnailBrandPreset,
   type ThumbnailItem,
 } from "../lib/sidecar";
+import type { Tier } from "../lib/backend";
 
 export type ThumbnailStudioProps = {
   open: boolean;
@@ -211,7 +212,11 @@ export function ThumbnailStudio({
         // retired for border-line (canonical #fff at 7%) so the modal
         // chrome reads as the same family as ConfirmDialog / AddChannel /
         // every other brand-correct modal.
-        className="relative w-full max-w-6xl max-h-[88vh] overflow-hidden rounded-3xl border border-line bg-paper shadow-2xl flex flex-col"
+        // v0.7.50 — Brand modal spec: bg-paper-warm border-line
+        // rounded-2xl. rounded-3xl exceeded the 24px card-radius ceiling;
+        // bg-paper → bg-paper-warm matches AddChannelModal /
+        // LibraryQuickPreview / SubmissionPortal canonical chrome.
+        className="relative w-full max-w-6xl max-h-[88vh] overflow-hidden rounded-2xl border border-line bg-paper-warm shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <Header
@@ -298,7 +303,10 @@ export function ThumbnailStudio({
               href="https://platform.openai.com/account/billing/limits"
               target="_blank"
               rel="noreferrer"
-              className="px-3 py-1 rounded bg-amber-900 text-white text-xs"
+              // v0.7.50 — Brand-palette pass. text-white on amber bg
+              // wasn't reading on the kit; text-paper on amber is the
+              // canonical warn pattern (dark text on warm bg).
+              className="px-3 py-1 rounded bg-warn text-paper text-xs"
             >
               Open billing →
             </a>
@@ -895,7 +903,10 @@ function SoloUpsell({
   tier,
   onOpenSettings,
 }: {
-  tier: string | null;
+  // v0.7.50 — Typed to Tier so notifyPaywall's currentTier parameter
+  // accepts it without a cast. userTier on ThumbnailStudioProps is
+  // typed as Tier | null already; this just propagates that through.
+  tier: Tier | null;
   onOpenSettings?: () => void;
 }) {
   return (
@@ -913,7 +924,12 @@ function SoloUpsell({
       </p>
       {onOpenSettings && (
         <button
-          onClick={onOpenSettings}
+          onClick={() => {
+            import("../lib/paywallNotify").then(({ notifyPaywall }) =>
+              notifyPaywall("thumbnail_studio_ai", tier),
+            );
+            onOpenSettings?.();
+          }}
           className="px-5 py-2 rounded-full bg-fuchsia text-paper text-sm font-medium"
         >
           Upgrade in Settings →
@@ -978,7 +994,10 @@ function SetupRow({
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center justify-between p-4 rounded-xl border border-ink/10 hover:border-ink/30 transition-colors text-left bg-paper"
+      // v0.7.50 — border-ink/10 (warm-cream alpha on dark surface, fights
+      // the brand line color) retired for border-line (canonical).
+      // bg-paper → bg-paper-warm/40 so the row reads as elevated.
+      className="w-full flex items-center justify-between p-4 rounded-xl border border-line hover:border-fuchsia/55 transition-colors text-left bg-paper-warm/40"
     >
       <div className="flex items-center gap-3">
         <div
@@ -1203,7 +1222,10 @@ function BrandWizard({
         </button>
 
         {showAdvanced && (
-          <div className="space-y-4 p-4 rounded-xl bg-ink/3 border border-ink/10">
+          // v0.7.50 — Brand palette. bg-ink/3 (ink-tinted near-transparent)
+          // + border-ink/10 retired for bg-paper-warm/40 + border-line —
+          // canonical advanced-options panel chrome.
+          <div className="space-y-4 p-4 rounded-xl bg-paper-warm/40 border border-line">
             <Field label="Style mood">
               <select
                 value={preset.style_mood || "cinematic"}
@@ -1402,7 +1424,7 @@ function AIGenerateView({
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs border transition-all ${
                   form.accent === a.key
                     ? "border-fuchsia bg-fuchsia/5"
-                    : "border-ink/10 hover:border-ink/30"
+                    : "border-line hover:border-fuchsia/55"
                 }`}
               >
                 <span
@@ -1426,7 +1448,7 @@ function AIGenerateView({
                 className={`flex flex-col px-3 py-2 rounded-lg text-xs border transition-all ${
                   form.quality === q.key
                     ? "border-fuchsia bg-fuchsia/5"
-                    : "border-ink/10 hover:border-ink/30"
+                    : "border-line hover:border-fuchsia/55"
                 }`}
               >
                 <span className="font-medium">{q.label}</span>

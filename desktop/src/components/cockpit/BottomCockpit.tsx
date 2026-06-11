@@ -183,6 +183,9 @@ export function BottomCockpit({
     // non-"none" layout type; without this guard a Free user could bake
     // a paid layout by triggering a deliberate failure and clicking Retry.
     if (cockpitTier.tier === "free") {
+      import("../../lib/paywallNotify").then(({ notifyPaywall }) =>
+        notifyPaywall("reaction_layout_retry", cockpitTier.tier),
+      );
       openAuthPanel("upgrade");
       return;
     }
@@ -329,7 +332,9 @@ export function BottomCockpit({
           {/* dashed corner brackets — the ONLY ornamentation per v7 */}
           <CockpitCorners />
 
-          <div className="relative bg-black border border-line/40 rounded-md overflow-hidden">
+          {/* v0.7.50 — Brand palette pass. bg-black retired for bg-paper-warm
+              (out-of-palette → canonical). Near-identical visually. */}
+          <div className="relative bg-paper-warm border border-line/40 rounded-md overflow-hidden">
             {/* ───── STATUS STRIP ───── */}
             <StatusStrip
               clipIdx={safeFocusedIdx}
@@ -883,9 +888,13 @@ function CollapsedBody({
         disabled={busy}
         className={cn(
           "inline-flex items-center gap-1.5 rounded px-3 py-1.5 font-sans text-[12px] font-semibold transition-colors",
+          // v0.7.50 — Background gradients retired for solid brand tokens
+          // (brand kit: "One fuchsia accent. Period."). Custom dark off-
+          // palette text colors (#241500, #190007) swapped for canonical
+          // text-paper / text-white per CTA pill spec.
           ctaIsPublish
-            ? "bg-gradient-to-b from-amber-300 to-amber-500 text-[#241500] shadow-[0_8px_18px_-8px_rgba(255,176,46,0.7)]"
-            : "bg-gradient-to-b from-fuchsia-bright to-fuchsia text-[#190007] shadow-[0_8px_18px_-8px_rgba(255,45,149,0.7)]",
+            ? "bg-warn text-paper shadow-[0_8px_18px_-8px_rgba(245,158,11,0.7)]"
+            : "bg-fuchsia text-white shadow-[0_8px_18px_-8px_rgba(255,26,140,0.7)]",
           "disabled:opacity-40 disabled:shadow-none",
         )}
       >
@@ -1003,7 +1012,10 @@ function MasterCta({
         // scheduled paper-plane) + the label morph ("Publish now" vs
         // "Schedule +1h" etc.). Icon + label carry the semantic; color
         // carries the brand.
-        "bg-gradient-to-b from-fuchsia-bright to-fuchsia text-[#190007] shadow-[0_12px_24px_-12px_rgba(255,45,149,0.7),inset_0_1px_0_rgba(255,255,255,0.34)] hover:-translate-y-0.5",
+        // v0.7.50 — Solid bg-fuchsia + canonical white CTA text replace
+        // the gradient + custom dark hex. Glow shadow retained but normalised
+        // to the canonical fuchsia hex.
+        "bg-fuchsia text-white shadow-[0_12px_24px_-12px_rgba(255,26,140,0.7),inset_0_1px_0_rgba(255,255,255,0.18)] hover:-translate-y-0.5",
         "disabled:bg-line/20 disabled:text-text-tertiary disabled:shadow-none disabled:cursor-not-allowed disabled:translate-y-0",
       )}
     >
