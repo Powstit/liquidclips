@@ -866,6 +866,16 @@ export const sidecar = {
       "regenerate_clip",
       slug,
     ),
+  // v0.7.48 — "Generate more clips" button on ResultsGrid. Re-runs the LLM
+  // picker with a hint that excludes already-picked time ranges, then
+  // appends new clips and idempotently re-runs cut/reframe/thumbs (the
+  // stages skip already-rendered files). No timeout: LLM + ffmpeg for many
+  // clips can be several minutes; the UI shows an in-flight state instead.
+  pickMoreClips: (slug: string) =>
+    sidecarCall<{ project: Project; added: number; skipped: number }>(
+      "pick_more_clips",
+      { slug },
+    ),
   getCaptions: (slug: string, idx: number) =>
     sidecarCall<{
       idx: number;
