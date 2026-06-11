@@ -8,10 +8,27 @@
 // Cheap by design: one mousemove listener writes two CSS variables on the
 // root (--cockpit-px, --cockpit-py). Children opt-in by reading those vars
 // in transform expressions. Nothing else here knows or cares.
+//
+// v0.7.48 — `active` prop scopes the parallax listener to views that
+// actually consume the CSS vars (Workstation / Results). On Library, Earn,
+// Settings, Schedule, Learn the pointermove listener used to fire on every
+// pixel of cursor motion — each event scheduled a rAF that wrote two CSS
+// custom properties on the cockpit root, forcing style recalculation
+// throughout the subtree. None of those views read --cockpit-px/py, so it
+// was pure waste. Passing active=false skips listener mount entirely.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-export function Cockpit({ children }: { children: ReactNode }) {
+export function Cockpit({
+  children,
+  active = true,
+}: {
+  children: ReactNode;
+  /** v0.7.48 — When false, skip mounting the parallax pointermove listener.
+   *  Defaults to true so existing call sites keep their behaviour; pass
+   *  false on views that don't render workstation tiles. */
+  active?: boolean;
+}) {
   const ref = useRef<HTMLDivElement | null>(null);
 
   // v0.7.45 — Reactive reduced-motion preference. The old code checked once
@@ -30,6 +47,10 @@ export function Cockpit({ children }: { children: ReactNode }) {
   useEffect(() => {
     const el = ref.current;
     if (!el || reducedMotion) return;
+    // v0.7.48 — Skip listener mount on views that don't consume
+    // --cockpit-px/py. Drops per-frame style recalcs on Library / Earn /
+    // Settings / Schedule / Learn (smoothness diagnostic finding #2).
+    if (!active) return;
 
     let rafId = 0;
     let targetX = 0;
@@ -85,7 +106,7 @@ export function Cockpit({ children }: { children: ReactNode }) {
       el.removeEventListener("pointermove", onMove);
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [reducedMotion]);
+  }, [reducedMotion, active]);
 
   return (
     <div ref={ref} className="cockpit-root">
