@@ -291,6 +291,41 @@ locked the structure after the literal demo-copy fix landed)
 
 ---
 
+## IG-009 — Cloud release flow (auto-update + GitHub release)
+
+**Locked at:** v0.7.49
+**Files:**
+- `desktop/scripts/cloud-ship.sh` — the proven build → sign → tar → minisign → upload → tag → GH release chain. Sentinel at the top + end of file.
+- `desktop/scripts/sign-clean-macos-app.sh` — the macOS-Desktop-FinderInfo resign workaround that cloud-ship calls.
+- `desktop/scripts/strip-xattrs.sh` — the `beforeBundleCommand` xattr stripper.
+- `desktop/src-tauri/tauri.conf.json` — the `updater.endpoints` + `updater.pubkey`. Changing these breaks every existing install.
+
+**What survived the loop:**
+1. **`tauri build --bundles app,dmg`** in ONE cargo pass. Splitting these into two builds means cargo compiles twice + the .dmg gets built from the unsigned .app (Gatekeeper warning).
+2. **`sign-clean-macos-app.sh`** workaround for the macOS "resource fork, Finder information, or similar detritus not allowed" failure. This hits Tauri's auto-codesign step on dev machines where `target/` lives under iCloud File Provider OR the Desktop dir holds `com.apple.FinderInfo` xattrs. The fix rsyncs into a clean workdir under `~/LiquidClipsBuild/sign-clean/`, strips xattrs, signs in there, leaves the result for downstream steps. Verified survives v0.7.46, v0.7.47, v0.7.48, v0.7.49.
+3. **Repack .dmg from the signed clean .app** via `hdiutil create -format UDZO` + `codesign --sign` on the .dmg itself. The .dmg Tauri produced earlier in step 1 is discarded because it contains the unsigned .app.
+4. **`tar --no-xattrs`** is mandatory. Bare `tar` embeds FinderInfo into the tarball which corrupts the updater payload on extract on the user's machine — Tauri silently fails to install and the user stares at a blank "installing" state with no progress.
+5. **minisign via `TAURI_SIGNING_PRIVATE_KEY` env var** (NEVER `--private-key <path>` flag). Tauri 2.x rejects our key file with `"failed to decode base64 secret key: Invalid symbol 46, offset 34"` when passed via the flag — the byte format works only via env. The legacy `release.sh` + `ship.sh` still use the flag and are therefore broken on Tauri 2.x; cloud-ship.sh is the replacement.
+6. **Upload to `api.jnremployee.com/updates/upload`** with all six `x-release-*` headers + `x-internal-secret`. Empty `x-release-signature` → backend 400 silently rejects. BOTH arch slots mandatory (`darwin-x86_64` + `darwin-aarch64`) — the same universal binary serves both.
+7. **Verify manifest on both hosts × both arches.** The backend (`api.jnremployee.com`) is the source of truth; the brand-aligned proxy (`updates.liquidclips.app`) is what installed apps hit per `tauri.conf.json`. A broken Vercel rewrite at the proxy means users can't update even if the backend upload "worked."
+8. **Tag + GH release with .dmg attached.** The marketing site at `liquidclips.app` only sees a new version when `getLatestRelease()` (in `liquidclips-marketing/src/lib/latest-release.ts`) finds it on `api.github.com/repos/Powstit/liquidclips/releases/latest`. Vercel ISR caches for 10 min — new releases appear on the site within that window. Uploading to the auto-update manifest alone is invisible to new-install visitors.
+
+**Do NOT:**
+- Swap `TAURI_SIGNING_PRIVATE_KEY` env var for `--private-key <path>` flag (breaks signing).
+- Skip `--no-xattrs` on the tar (breaks Tauri install on user machines).
+- Bypass sign-clean and ship the Tauri auto-signed .app directly (codesign rejects on machines with FinderInfo on the bundle).
+- Upload to only one arch slot or only one host.
+- Skip the GH release (new website visitors stay on the previous version forever).
+- Reuse the `release.sh` or `ship.sh` scripts on Tauri 2.x without first patching them to the IG-009 contract.
+
+**Do:**
+- Add NEW post-ship steps (e.g. notarization via `xcrun notarytool`, Sentry release notification) as siblings BELOW the existing chain. The script already has the `LIQUIDCLIPS_NOTARY_PROFILE` hook for notarization — supply an `AC_PASSWORD` keychain profile to enable.
+- Bump the gate version in this section + the sentinels when materially changing the chain.
+
+**Sign-off:** Daniel 2026-06-11 (v0.7.49 — cloud release flow proven across v0.7.48 + v0.7.49, locked here before the legacy `ship.sh` / `release.sh` get patched)
+
+---
+
 ## Adding a new gate
 
 1. Pick the next free `IG-NNN`.
