@@ -166,6 +166,17 @@ jobs:
         run: |
           set -euo pipefail
           IDENTITY='Developer ID Application: daniel diyepriye dokubo (KT68NGT4LX)'
+          codesign_with_retry() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if codesign "$@"; then
+                return 0
+              fi
+              echo "codesign failed on attempt $attempt; retrying after timestamp service backoff..." >&2
+              sleep $((attempt * 10))
+            done
+            codesign "$@"
+          }
           for bin in \
             desktop/python-sidecar/bin/ffmpeg \
             desktop/python-sidecar/bin/ffprobe \
@@ -176,7 +187,7 @@ jobs:
               continue
             fi
             echo "Signing $bin"
-            codesign --force --options runtime --timestamp --sign "$IDENTITY" "$bin"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$bin"
             codesign --verify --strict --verbose=2 "$bin"
           done
           echo "✓ sidecar binaries signed"
@@ -189,7 +200,7 @@ jobs:
         # Per-arch native build. Each matrix runner builds its own slice; the
         # brew sidecar fetched earlier in this job is the matching arch. We do
         # not lipo a universal binary — instead we publish two DMGs.
-        run: npm run tauri -- build --target ${{ matrix.target.rust_target }}
+        run: npm run tauri -- build --target ${{ matrix.target.rust_target }} --bundles app
 
       - name: repair-sign macOS app bundle
         run: |

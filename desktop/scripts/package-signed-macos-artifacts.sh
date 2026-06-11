@@ -10,6 +10,18 @@ set -euo pipefail
 APP_PATH="${1:?usage: package-signed-macos-artifacts.sh /path/to/Liquid\\ Clips.app [arch]}"
 ARCH="${2:-$(uname -m)}"
 
+codesign_with_retry() {
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if codesign "$@"; then
+      return 0
+    fi
+    echo "codesign failed on attempt $attempt; retrying after timestamp service backoff..." >&2
+    sleep $((attempt * 10))
+  done
+  codesign "$@"
+}
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TAURI_CONF="$ROOT/src-tauri/tauri.conf.json"
 VERSION="$(node -e "const fs=require('fs'); const c=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); process.stdout.write(c.version);" "$TAURI_CONF")"
@@ -70,7 +82,7 @@ hdiutil create \
 # would silently fail Gatekeeper installer assessment.
 echo "=== Codesigning DMG container ==="
 DMG_IDENTITY="${APPLE_SIGNING_IDENTITY:-Developer ID Application: daniel diyepriye dokubo (KT68NGT4LX)}"
-codesign --sign "$DMG_IDENTITY" --timestamp "$DMG_PATH"
+codesign_with_retry --sign "$DMG_IDENTITY" --timestamp "$DMG_PATH"
 codesign --verify --verbose=2 "$DMG_PATH"
 
 echo "=== Verifying DMG exists ==="

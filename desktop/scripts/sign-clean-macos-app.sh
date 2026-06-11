@@ -19,6 +19,18 @@ APP_PATH="${1:?usage: sign-clean-macos-app.sh /path/to/Liquid\\ Clips.app [ident
 IDENTITY="${2:-Developer ID Application: daniel diyepriye dokubo (KT68NGT4LX)}"
 ENTITLEMENTS="${3:-$(cd "$(dirname "$0")/.." && pwd)/src-tauri/entitlements-direct.plist}"
 
+codesign_with_retry() {
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if codesign "$@"; then
+      return 0
+    fi
+    echo "codesign failed on attempt $attempt; retrying after timestamp service backoff..." >&2
+    sleep $((attempt * 10))
+  done
+  codesign "$@"
+}
+
 if [ ! -d "$APP_PATH" ]; then
   echo "✗ app not found: $APP_PATH" >&2
   exit 1
@@ -53,15 +65,15 @@ rm -rf "$CLEAN_APP/Contents/_CodeSignature"
 echo "=== Signing helper binaries ==="
 if [ -d "$CLEAN_APP/Contents/Resources/_up_/python-sidecar/bin" ]; then
   find "$CLEAN_APP/Contents/Resources/_up_/python-sidecar/bin" -type f -perm -111 -print0 | while IFS= read -r -d '' f; do
-    codesign --force --timestamp --options runtime --sign "$IDENTITY" "$f"
+    codesign_with_retry --force --timestamp --options runtime --sign "$IDENTITY" "$f"
   done
 fi
 
 echo "=== Signing main executable ==="
-codesign --force --timestamp --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$CLEAN_APP/Contents/MacOS/junior-desktop"
+codesign_with_retry --force --timestamp --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$CLEAN_APP/Contents/MacOS/junior-desktop"
 
 echo "=== Signing app bundle ==="
-codesign --force --deep --timestamp --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$CLEAN_APP"
+codesign_with_retry --force --deep --timestamp --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$CLEAN_APP"
 codesign --verify --deep --strict --verbose=2 "$CLEAN_APP"
 
 echo "=== Replacing original app with signed clean copy ==="
