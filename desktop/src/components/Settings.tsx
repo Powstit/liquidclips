@@ -8,7 +8,7 @@ import { openSmart } from "../lib/openSmart";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { Camera, Trash2, User, Key, Info, Activity, ChevronLeft } from "lucide-react";
+import { Camera, Trash2, User, Key, Info, Activity, ChevronLeft, Droplet } from "lucide-react";
 import { sidecar, humanError, type HardwareInfo, type SecretName } from "../lib/sidecar";
 import { useAvatar, avatarSrc, initialsOf } from "../lib/avatar";
 // v0.7.8 S1 — single source of truth for sign-out side-effects. Settings'
@@ -415,6 +415,35 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
               <span className="block text-text-tertiary normal-case">
                 {bootErrors.join(" · ")}
               </span>
+            </div>
+          )}
+          {/* v0.7.49 — Free-tier watermark banner. The watermark itself is
+              already burned server-authoritatively at stages.py:_should_watermark;
+              this banner makes the constraint visible so the upsell beat is
+              concrete: "your clips ship with our wordmark today, here's the
+              path to clean exports." Hidden the moment the user upgrades. */}
+          {(sync?.tier ?? tier) === "free" && (
+            <div className="relative overflow-hidden rounded-2xl border border-fuchsia-soft bg-gradient-to-br from-fuchsia-soft/30 via-paper to-paper px-5 py-4">
+              <div className="flex items-start gap-3.5">
+                <div className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-fuchsia/40 bg-paper shadow-[var(--glow-sm)]">
+                  <Droplet className="h-5 w-5 text-fuchsia" strokeWidth={2.2} />
+                </div>
+                <div className="flex-1">
+                  <div className="font-display text-[15px] font-semibold leading-tight text-ink">
+                    Your exports include the Liquid Clips wordmark.
+                  </div>
+                  <p className="mt-1 font-sans text-[13px] leading-snug text-text-secondary">
+                    Free tier burns a corner watermark on every clip you publish or save. Upgrade to Solo for clean exports plus 1-click publish on connected channels.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openAuthPanel("upgrade")}
+                  className="shrink-0 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-semibold text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+                >
+                  Upgrade to Solo
+                </button>
+              </div>
             </div>
           )}
           {/* v0.7.7 ship-lens fix #9 — the JWT was present but rejected by
