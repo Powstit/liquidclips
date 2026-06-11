@@ -312,6 +312,10 @@ export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
   // so the tab never looks blank while Rust is still attaching the webview
   // or the hosted page is fetching its first paint.
   return (
+    // IRON GATE IG-011 — h-full w-full on this containerRef MUST stay.
+    // RoomShell stretches EarnTab to a definite height; this div is the
+    // last hop of the cascade. Drop h-full here and the ResizeObserver
+    // measures 0px → the native webview pins to a 0×0 rect → blank Earn.
     <div ref={containerRef} className="relative h-full w-full" aria-hidden>
       {!panelReady && (
         <div className="absolute inset-0 grid place-items-center bg-paper">

@@ -369,6 +369,41 @@ v0.8.0 Phase 1.4 shipped the backend infrastructure for non-blocking versions of
 
 ---
 
+## IG-011 — Webview room height cascade (RoomShell stretch contract)
+
+**Locked at:** v0.7.50
+**Files:**
+- `desktop/src/components/cockpit/RoomShell.tsx` — the `align="stretch"` variant in the type union + `items-stretch` mapping in the inner flex.
+- `desktop/src/App.tsx` — the `<RoomShell roomKey="earn" align="stretch">` mount.
+- `desktop/src/components/earn/EarnPanelMount.tsx` — the `containerRef` div + ResizeObserver + `panelReady`-gated `pushRect` pattern that depends on a non-zero container rect.
+
+**Why it exists:**
+v0.7.40 fixed a blank-Earn report by giving the RoomShell motion div an explicit `h-full` (commit 3118b27). Days later, the IG-008 two-layer scroll wrap (commit c7a4a1f) moved the inner flex to `min-h-full` so list-style rooms can overflow. That broke Earn again — `min-h-full` is NOT a definite parent height for CSS height-percentage resolution; EarnTab's `h-full` collapsed to intrinsic (0px because EarnPanelMount renders an empty containerRef div), the ResizeObserver reported a 0×0 rect, Rust pinned the native webview to 0×0, and Earn looked blank. The fix added `align="stretch"` to RoomShell and switched Earn to use it. This gate locks the pattern so the next refactor of RoomShell or addition of a webview-style room can't regress it again.
+
+**What survived the loop:**
+1. **`align="stretch"` is the contract for webview rooms.** Any room that pins a native Tauri child webview behind a measured React container MUST request `align="stretch"` on RoomShell. Default `center` and `top` both leave the cross-axis on `items-start` / `items-center`, neither of which stretches children to fill — webview rooms then collapse to 0 height. Earn is the canonical case; future Browse-Rewards-as-a-room, Bounty-Workspace-as-a-room, or any other native-webview surface uses the same contract.
+2. **The IG-008 two-layer scroll pattern stays.** IG-011 does NOT replace or weaken IG-008. The outer wrap is still a block scroller with `overflow-y-auto`. The inner wrap is still a flex column with `min-h-full`. IG-011 only adds a cross-axis alignment variant. Both gates can coexist on the same file (RoomShell.tsx).
+3. **The container div in webview-mount components MUST stay `h-full w-full`** (or equivalent). `align="stretch"` stretches RoomShell's child (e.g. EarnTab) to definite height, but EarnTab → EarnPanelMount → containerRef must cascade that height down. Any intermediate wrapper that ditches `h-full` re-breaks the chain.
+4. **`panelReady`-gated pushRect.** EarnPanelMount's resize effect depends on `panelReady` (set true when `openEarnPanel` resolves). The first pushRect fires after open succeeds so the webview isn't pinned to a stale fallback rect. This timing is part of the contract — moving the resize effect to fire before panelReady reintroduces the original v0.7.40 race.
+5. **The ResizeObserver itself stays attached to the containerRef.** Removing the observer (or moving it to a parent) leaks fast resize events between paint and IPC, leaving the webview misaligned during window drags. v0.7.8 fix E2 rAF-coalesced this; that coalescer is part of the gate.
+
+**Do NOT:**
+- Remove the `align="stretch"` option from RoomShell or change it to anything other than `items-stretch` (e.g. `flex-1`, `items-end` — only `items-stretch` gives the definite height the height-percentage chain needs).
+- Drop `align="stretch"` from the EarnRoomShell call site in App.tsx without a replacement that provides a definite container height (e.g. inline `min-h-screen` would also work, but switching variants without explicit override = bug).
+- Change EarnPanelMount's containerRef div away from `h-full w-full` — that's where the cascade lands.
+- Wire a new webview-style room (Bounty Workspace, Browse Rewards as a room, future Whop embed, etc.) without `align="stretch"`. Use the existing Earn pattern.
+- Replace `panelReady`-gated pushRect with eager pushRect; the open/resize race comes back.
+- Remove the IG-008 `min-h-full` two-layer pattern thinking IG-011 obsoletes it; both gates protect different concerns. IG-008 = scrollability; IG-011 = webview cascade.
+
+**Do:**
+- When adding a new room that mounts a native child webview, pass `align="stretch"` to RoomShell and ensure the cascade `h-full → flex-1 min-h-0 → h-full w-full containerRef` is unbroken.
+- When refactoring RoomShell, preserve the type union `"center" | "top" | "stretch"` exhaustively and the mapping to `items-center | items-start | items-stretch`.
+- Bump this gate's version if the contract changes (e.g. switching to a CSS Grid-based room shell that handles height differently).
+
+**Sign-off:** Daniel 2026-06-11 (v0.7.50 — quoted instruction: "iron gate it pls." Locked immediately after the blank-Earn fix so the regression class can't return through a future RoomShell rewrite.)
+
+---
+
 ## Adding a new gate
 
 1. Pick the next free `IG-NNN`.

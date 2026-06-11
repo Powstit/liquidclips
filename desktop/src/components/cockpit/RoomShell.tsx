@@ -42,12 +42,20 @@ export function RoomShell({
    *  parent (CSS height-percentage needs a definite parent height), the
    *  container collapses to 0 px, and the webview pins to a 0×0 rect →
    *  invisible / "blank Earn" symptom. v0.7.50 fix. */
+  // ───── IRON GATE IG-011 (v0.7.50) — see docs/IRON_GATES.md ─────
+  // Webview-style rooms (Earn, future native-webview surfaces) MUST be
+  // able to request `stretch` so EarnPanelMount's containerRef has a
+  // definite height to cascade to the ResizeObserver. Removing the
+  // stretch variant OR changing items-stretch to anything else re-breaks
+  // the blank-Earn class. Coexists with IG-008 — that gate locks the
+  // two-layer block-scroller + min-h-full pattern; this gate locks the
+  // cross-axis alignment options.
   align?: "center" | "top" | "stretch";
 }) {
   const reduced = useReducedMotion();
   const innerAlign =
     align === "top" ? "items-start" :
-    align === "stretch" ? "items-stretch" :
+    align === "stretch" ? "items-stretch" :  // IRON GATE IG-011 — webview rooms cascade via items-stretch (do not change)
     "items-center";
   return (
     <motion.div
