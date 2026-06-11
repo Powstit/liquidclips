@@ -82,7 +82,7 @@ const faqs = [
   },
   {
     q: "Does it work on Windows / Linux?",
-    a: "Mac-only today (macOS 12+, Intel and Apple Silicon). Windows and Linux are not on the roadmap yet — we don't ship until each platform feels native.",
+    a: "Mac-only today. The current public installer is Apple Silicon on macOS 13+. Intel, Windows, and Linux do not ship until each platform feels native.",
   },
   {
     q: "Can I cancel anytime?",

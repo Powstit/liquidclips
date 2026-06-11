@@ -8,14 +8,14 @@ import { getLatestRelease } from "@/lib/latest-release";
 export const metadata: Metadata = {
   title: "Download Liquid Clips",
   description:
-    "Download the Liquid Clips Mac app. Universal Apple Silicon + Intel DMG, notarized by Apple.",
+    "Download the Liquid Clips Mac app. Apple Silicon DMG, notarized by Apple.",
 };
 
 const steps = [
   {
     num: "01",
     title: "Download the DMG.",
-    body: "Universal macOS build, signed and notarized. Works on Apple Silicon and Intel.",
+    body: "Apple Silicon macOS build, signed and notarized by Apple. Intel is coming once its release artifact passes the same gate.",
   },
   {
     num: "02",
@@ -31,7 +31,7 @@ const steps = [
 
 const requirements = [
   { label: "macOS", value: "13 Ventura or later" },
-  { label: "Chip", value: "Apple Silicon or Intel" },
+  { label: "Chip", value: "Apple Silicon" },
   { label: "Memory", value: "8 GB minimum, 16 GB recommended" },
   { label: "Disk", value: "~2 GB after install (models + ffmpeg bundled)" },
 ];
@@ -58,7 +58,7 @@ export default async function DownloadPage() {
                 Get Liquid Clips. <em>Run it locally.</em>
               </h1>
               <p className="hero-copy">
-                Universal macOS DMG, notarized by Apple. Your videos, transcripts, and exports
+                Apple Silicon macOS DMG, notarized by Apple. Your videos, transcripts, and exports
                 stay on your machine for local-tier workflows. No browser tab editor pretending
                 to be an app.
               </p>
@@ -105,7 +105,7 @@ export default async function DownloadPage() {
                 </ul>
                 <div className="media-rail" style={{ marginTop: "auto" }}>
                   <div className="media-pill">notarized</div>
-                  <div className="media-pill">universal</div>
+                  <div className="media-pill">Apple Silicon</div>
                   <div className="media-pill">local-first</div>
                 </div>
               </div>

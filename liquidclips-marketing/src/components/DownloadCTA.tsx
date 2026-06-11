@@ -51,7 +51,7 @@ function detectPlatform(): Platform {
         }
       }
     } catch { /* ignore */ }
-    return "mac-universal";
+    return "mac-arm";
   }
   if (/Win/.test(plat) || /Windows/.test(ua)) return "windows";
   if (/Linux/.test(plat) || /Linux/.test(ua)) return "linux";
@@ -63,9 +63,9 @@ function pickArtifact(p: Platform, a: ArtifactMap): string | null {
     case "mac-arm":
       return a.macArm ?? a.macUniversal ?? null;
     case "mac-intel":
-      return a.macIntel ?? a.macUniversal ?? null;
+      return a.macIntel ?? null;
     case "mac-universal":
-      return a.macUniversal ?? a.macArm ?? a.macIntel ?? null;
+      return a.macArm ?? a.macUniversal ?? a.macIntel ?? null;
     case "windows":
       return a.windows ?? null;
     case "linux":
@@ -113,7 +113,7 @@ export function DownloadCTA({
   // link still works. The point of this default is to AVOID the visible
   // "Get notified when ready" flash during the SSR → hydration window, which
   // looks like the app is unreleased to anyone watching a demo recording.
-  const [detected, setDetected] = useState<Platform>("mac-universal");
+  const [detected, setDetected] = useState<Platform>("mac-arm");
   const [override, setOverride] = useState<Platform | null>(null);
   const artifacts = useMemo(() => {
     // Server-provided artifacts win; merge any missing entries from env-var
@@ -137,6 +137,7 @@ export function DownloadCTA({
 
   const platform = override ?? detected;
   const href = pickArtifact(platform, artifacts);
+  const intelReady = Boolean(artifacts.macIntel);
   const waitlistHref = `mailto:${supportEmail}?subject=${encodeURIComponent("Let me know when Liquid Clips is ready")}`;
 
   const cls = [
@@ -174,7 +175,9 @@ export function DownloadCTA({
             type="button"
             className={`download-pick ${platform === "mac-intel" ? "is-active" : ""}`}
             onClick={() => setOverride("mac-intel")}
+            disabled={!intelReady}
             aria-pressed={platform === "mac-intel"}
+            title={intelReady ? "Download Intel Mac build" : "Intel build is not available in the current release"}
           >
             Intel
           </button>
@@ -191,7 +194,7 @@ export function DownloadMeta() {
   }, []);
   if (platform === "unknown") {
     return (
-      <p className="microcopy">Mac DMG · Apple Silicon &amp; Intel builds · signed &amp; notarized.</p>
+      <p className="microcopy">Apple Silicon DMG · signed &amp; notarized.</p>
     );
   }
   if (platform === "windows" || platform === "linux") {
