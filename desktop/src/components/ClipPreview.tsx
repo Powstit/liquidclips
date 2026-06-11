@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useGlobalBakeEvents } from "../lib/useGlobalBakeEvents";
+import { useRegenerateEvents } from "../lib/useRegenerateEvents";
 import { convertFileSrc } from "@tauri-apps/api/core";
 // v0.7.45 — `openSmart` replaces direct shell.open: the "Reveal in Finder"
 // + "Play in default app" buttons feed `/Users/...` paths that fail
@@ -105,6 +107,9 @@ export function ClipPreview({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [trimStart, setTrimStart] = useState(clip.start);
   const [trimEnd, setTrimEnd] = useState(clip.end);
+  // IRON GATE IG-010 — v0.8.0 non-blocking event waiters.
+  const { waitForBake } = useGlobalBakeEvents();
+  const { waitForRegenerate } = useRegenerateEvents();
   const [showVariants, setShowVariants] = useState(false);
   // Editable metadata. Reset whenever the underlying clip / index changes
   // (i.e. user navigates to the next clip, the previous one finished
@@ -389,9 +394,16 @@ export function ClipPreview({
     setOverlayTplBusy(true);
     setActionError(null);
     try {
-      const r = await sidecar.applyOverlayTemplate(slug, index - 1, key);
+      // IRON GATE IG-010 — non-blocking. start_apply_overlay_template runs
+      // ffmpeg on a daemon thread and emits bake_complete/bake_error.
+      await sidecar.startApplyOverlayTemplate(slug, index - 1, key);
+      const result = await waitForBake(slug, index - 1);
       if (gen !== rpcGenRef.current) return;
-      onProjectChange(r.project);
+      if (result.status === "error") {
+        if (!result.canceled) setActionError(result.message);
+        return;
+      }
+      onProjectChange(result.project);
       setOverlayTplOpen(false);
     } catch (e) {
       if (gen !== rpcGenRef.current) return;
@@ -413,9 +425,17 @@ export function ClipPreview({
     setBusy(true);
     setActionError(null);
     try {
-      const r = await sidecar.regenerateClip(slug, index - 1, start, end);
+      // IRON GATE IG-010 — non-blocking. start_regenerate_clip re-runs
+      // cut + reframe on a daemon thread and emits regenerate_complete /
+      // regenerate_error events keyed by slug:idx.
+      await sidecar.startRegenerateClip(slug, index - 1, start, end);
+      const result = await waitForRegenerate(slug, index - 1);
       if (gen !== rpcGenRef.current) return;
-      onProjectChange(r.project);
+      if (result.status === "error") {
+        if (!result.canceled) setActionError(result.message);
+        return;
+      }
+      onProjectChange(result.project);
       setTrimOpen(false);
     } catch (e) {
       if (gen !== rpcGenRef.current) return;

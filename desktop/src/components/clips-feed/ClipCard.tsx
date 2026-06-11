@@ -30,8 +30,9 @@ import { RingButton } from "../cockpit/LibraryCard";
 import { useTier } from "../../lib/useTier";
 import { openAuthPanel } from "../auth/useAuthPanel";
 import type { Clip, OverlayType, Project, RatioKey } from "../../lib/sidecar";
-import { sidecar } from "../../lib/sidecar";
+import { sidecar, humanError } from "../../lib/sidecar";
 import { useReactionBakeProgress } from "../../lib/useReactionBakeProgress";
+import { useGlobalBakeEvents } from "../../lib/useGlobalBakeEvents";
 import { type LayoutKey } from "./LayoutIcon";
 import { pickOverlaySource } from "../OverlaySourcePicker";
 import { BountyFitPill } from "../earn/bounty-fit";
@@ -142,6 +143,7 @@ export function ClipCard({
   // finally. The inline strip renders below the existing cockpitError slot.
   const { progress: bakeProgress, start: startBakeProgress, stop: stopBakeProgress } =
     useReactionBakeProgress();
+  const { waitForBake } = useGlobalBakeEvents();
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const videoPath = useMemo(
@@ -226,34 +228,49 @@ export function ClipCard({
     if (busy) return;
     setBusy(true);
     setCockpitError(null);
-    // P1 #12 — start the overlay_progress listener so the inline strip can
-    // render per-bake pct + ratio while ffmpeg runs. Pickers run BEFORE the
-    // bake starts so it's safe to attach now and stop in finally.
     await startBakeProgress();
     try {
       if (kind === "none") {
-        const r = await sidecar.applyOverlay(slug, index - 1, null);
-        onProjectChange(r.project);
+        await sidecar.startOverlayBake(slug, index - 1, null);
       } else {
         const pick = await pickOverlaySource({ project, excludeIdx: index - 1 });
-        if (pick.kind === "cancel") return;
-        const r = await sidecar.applyOverlay(slug, index - 1, {
+        if (pick.kind === "cancel") {
+          stopBakeProgress();
+          setBusy(false);
+          return;
+        }
+        await sidecar.startOverlayBake(slug, index - 1, {
           type: kind as OverlayType,
           source_path: pick.path,
           start_offset_s: 0,
         });
-        onProjectChange(r.project);
       }
+      // Fire-and-forget: the UI unblocks immediately; completion updates
+      // the project via the global bake listener.
+      waitForBake(slug, index - 1)
+        .then((result) => {
+          stopBakeProgress();
+          setBusy(false);
+          if (result.status === "complete") {
+            onProjectChange(result.project);
+          } else if (!result.canceled) {
+            setCockpitError(`Layout swap failed — ${result.message.slice(0, 90)}`);
+            window.setTimeout(() => setCockpitError(null), 4500);
+          }
+        })
+        .catch((err) => {
+          stopBakeProgress();
+          setBusy(false);
+          const msg = humanError(err);
+          setCockpitError(`Layout swap failed — ${msg.slice(0, 90)}`);
+          window.setTimeout(() => setCockpitError(null), 4500);
+        });
     } catch (e) {
-      // Lens fix — was silently leaving the user staring at the old layout
-      // after a failed bake. Surface the cause so they know to retry vs.
-      // pick a different source.
-      const msg = e instanceof Error ? e.message : String(e);
-      setCockpitError(`Layout swap failed — ${msg.slice(0, 90)}`);
-      window.setTimeout(() => setCockpitError(null), 4500);
-    } finally {
       stopBakeProgress();
       setBusy(false);
+      const msg = humanError(e);
+      setCockpitError(`Layout swap failed — ${msg.slice(0, 90)}`);
+      window.setTimeout(() => setCockpitError(null), 4500);
     }
   }
 
