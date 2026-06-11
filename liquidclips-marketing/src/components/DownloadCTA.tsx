@@ -13,16 +13,16 @@ type ArtifactMap = {
   linux?: string;
 };
 
-// Fallback artifact URLs from env vars. These are now only used when the
-// server hasn't passed `artifacts` props (e.g. the GH API call failed at
-// render time). Primary path is the `artifacts` prop on DownloadCTA, fed
-// by getLatestRelease() in src/lib/latest-release.ts.
+// v0.7.49 hotfix — Removed the NEXT_PUBLIC_DOWNLOAD_DMG_URL legacy fallback.
+// The env var on Vercel was still pointing to Jnr-employee/v0.6.44 and was
+// being served as a stale .dmg button on 2026-06-11. Primary path stays
+// getLatestRelease() via the `artifacts` prop. Per-platform env vars (if a
+// future use case needs them) still work, but no stale all-Mac fallback.
 function loadArtifacts(): ArtifactMap {
-  const legacyDmg = process.env.NEXT_PUBLIC_DOWNLOAD_DMG_URL;
   return {
-    macUniversal: process.env.NEXT_PUBLIC_DOWNLOAD_MAC_UNIVERSAL_URL ?? legacyDmg,
-    macArm: process.env.NEXT_PUBLIC_DOWNLOAD_MAC_ARM_URL ?? legacyDmg,
-    macIntel: process.env.NEXT_PUBLIC_DOWNLOAD_MAC_INTEL_URL ?? legacyDmg,
+    macUniversal: process.env.NEXT_PUBLIC_DOWNLOAD_MAC_UNIVERSAL_URL,
+    macArm: process.env.NEXT_PUBLIC_DOWNLOAD_MAC_ARM_URL,
+    macIntel: process.env.NEXT_PUBLIC_DOWNLOAD_MAC_INTEL_URL,
     windows: process.env.NEXT_PUBLIC_DOWNLOAD_WINDOWS_URL,
     linux: process.env.NEXT_PUBLIC_DOWNLOAD_LINUX_URL,
   };
