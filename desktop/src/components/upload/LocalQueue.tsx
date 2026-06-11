@@ -722,8 +722,10 @@ function Row({
           <HudChip
             active={false}
             onClick={() => void (async () => {
-              const { open } = await import("@tauri-apps/plugin-shell");
-              await open(item.post_url!);
+              try {
+                const { open } = await import("@tauri-apps/plugin-shell");
+                await open(item.post_url!);
+              } catch { /* ignore */ }
             })()}
           >
             <ExternalLink className="h-3 w-3" strokeWidth={2} />

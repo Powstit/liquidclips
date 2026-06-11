@@ -5,7 +5,7 @@ import { openAuthPanel } from "./auth/useAuthPanel";
 import {
   backend,
   QuotaExceededError,
-  socialGetConnection,
+  socialGetConnectionStrict,
   listChannels,
   type Channel,
   type ConnectionPlatform,
@@ -162,11 +162,11 @@ export function PublishModal({
     (async () => {
       try {
         const [state, chs] = await Promise.all([
-          socialGetConnection(),
+          socialGetConnectionStrict(),
           listChannels(),
         ]);
         if (cancelled) return;
-        setConnection(state);
+        setConnection(state === "no-connection" ? null : state);
         const activeChannels = chs.filter((c: Channel) => c.status === "active");
         setChannels(activeChannels);
         // v0.6.3 — "Schedule everywhere": tick every connected platform the
@@ -175,7 +175,7 @@ export function PublishModal({
         // gating still applies — if the tier disallows multi, we leave
         // the first platform selected and let the existing togglePick
         // logic enforce the rest.
-        if (prefillAll && mode === "publish-now" && state && state.platforms.length > 0) {
+        if (prefillAll && mode === "publish-now" && state !== "no-connection" && state.platforms.length > 0) {
           setPicked(new Set(state.platforms));
         }
         // Caller-driven pre-selection. Runs once per mount, after channels

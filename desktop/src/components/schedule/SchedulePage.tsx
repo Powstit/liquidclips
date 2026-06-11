@@ -24,7 +24,7 @@ import { DirectPublishQueue } from "../upload/DirectPublishQueue";
 import { LocalQueue } from "../upload/LocalQueue";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
 import * as backend from "../../lib/backend";
-import { socialGetConnection, type SocialConnectionState, type ConnectionPlatform } from "../../lib/backend";
+import { socialGetConnectionStrict, type SocialConnectionState, type ConnectionPlatform } from "../../lib/backend";
 import { PUBLISHING_ENABLED } from "../../lib/flags";
 import { sidecar, type Project } from "../../lib/sidecar";
 
@@ -68,10 +68,12 @@ export function SchedulePage({
   // deep-link from Settings/ChannelCard already specifies where to land,
   // and yanking that user to Loadout would strand them at the wrong tab.
   useEffect(() => {
-    void backend.listChannels().then((cs) => {
-      setHasChannels(cs.length > 0);
-      if (cs.length === 0 && !initialSub) setSub("channels");
-    });
+    void backend.listChannels()
+      .then((cs) => {
+        setHasChannels(cs.length > 0);
+        if (cs.length === 0 && !initialSub) setSub("channels");
+      })
+      .catch(() => setHasChannels(false));
   }, [initialSub]);
 
   // Hydrate the connected-platforms rail. Mirrors UploadTab's pattern:
@@ -87,8 +89,8 @@ export function SchedulePage({
           return;
         }
         setAuthed(true);
-        const state = await socialGetConnection();
-        if (!cancelled) setConnection(state);
+        const state = await socialGetConnectionStrict();
+        if (!cancelled) setConnection(state === "no-connection" ? null : state);
       } catch {
         if (!cancelled) setConnection(null);
       }
