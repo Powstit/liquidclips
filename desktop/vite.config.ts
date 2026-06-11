@@ -39,7 +39,29 @@ export default defineConfig({
     },
   },
   define: isWeb ? { "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV ?? "production") } : {},
-  build: isWeb ? { outDir: "dist-web" } : undefined,
+  build: {
+    ...(isWeb ? { outDir: "dist-web" } : {}),
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ["react", "react-dom"],
+          motion: ["motion/react"],
+          lucide: ["lucide-react"],
+          tauri: [
+            "@tauri-apps/api/core",
+            "@tauri-apps/api/event",
+            "@tauri-apps/api/app",
+            "@tauri-apps/plugin-dialog",
+            "@tauri-apps/plugin-shell",
+            "@tauri-apps/plugin-fs",
+            "@tauri-apps/plugin-clipboard-manager",
+            "@tauri-apps/plugin-updater",
+            "@tauri-apps/plugin-process",
+          ],
+        },
+      },
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,

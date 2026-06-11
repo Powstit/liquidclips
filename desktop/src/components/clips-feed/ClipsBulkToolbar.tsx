@@ -6,6 +6,7 @@ import { sidecar, RATIOS, type OverlayType, type Project, type RatioKey } from "
 import { LayoutIcon, LAYOUTS, type LayoutKey } from "./LayoutIcon";
 import { pickOverlaySource } from "../OverlaySourcePicker";
 import { useReactionBakeProgress } from "../../lib/useReactionBakeProgress";
+import { globalWaitForBake } from "../../lib/useGlobalBakeEvents";
 
 // Bulk actions that apply across every clip in the project. Lives directly
 // above the grid. Stays simple — three actions, no nested submenus.
@@ -120,8 +121,13 @@ export function ClipsBulkToolbar({
             ? null
             : { type: kind as OverlayType, source_path: pickedPath!, start_offset_s: 0 };
         try {
-          const r = await sidecar.applyOverlay(current.slug, i, spec);
-          current = r.project;
+          await sidecar.startOverlayBake(current.slug, i, spec);
+          const result = await globalWaitForBake(current.slug, i, 300_000);
+          if (result.status === "complete") {
+            current = result.project;
+          } else {
+            failures.push(i + 1);
+          }
         } catch {
           failures.push(i + 1);
         }
