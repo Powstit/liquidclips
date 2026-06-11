@@ -441,6 +441,44 @@ v0.7.50 introduced the demo HTML reference set so any agent or human can open `d
 
 ---
 
+## IG-013 — Apple notarisation chain (release.yml → notarize.sh)
+
+**Locked at:** v0.7.50
+**Files:**
+- `.github/workflows/release.yml` (REPO ROOT, NOT `desktop/.github/`) — the orchestrator. Imports the Developer ID cert, codesigns with hardened runtime, calls notarize.sh with the three Apple secrets in env, stapler-staples after.
+- `desktop/scripts/notarize.sh` — the script that runs `xcrun notarytool submit --wait` + `xcrun stapler staple`. Detects `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` env vars (CI path) or falls back to the keychain profile `LIQUIDCLIPS_NOTARY` (local path; intentionally NOT set up so local cloud-ship.sh skips notarisation).
+- GitHub Actions secrets on `Powstit/liquidclips`: `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` (set 2026-06-02; same set used by the `apple-actions/import-codesign-certs@v3` step).
+
+**Why it exists:**
+Daniel set this up on 2026-06-02 and explicitly flagged that future agents (including me) keep proposing to "re-set up Apple notarisation" instead of recognising it's already wired through GH Actions. v0.7.49 went out unnotarised because the CI run hung on the macOS-13 Intel runner for 9.5 hours, then I claimed the cloud-ship local flow + asked Daniel for an app-specific password — both wrong. This gate locks the canonical chain so no agent can drift toward "let me set this up locally" or "let me re-wire the secrets" again.
+
+**What survived the loop:**
+1. **Cert import via `apple-actions/import-codesign-certs@v3`** at release.yml:128-131 reading `APPLE_CERTIFICATE` + `APPLE_CERTIFICATE_PASSWORD`. NEVER swap for `apple-actions/import-codesign-certs@v2` or hand-rolled `security import`.
+2. **Keychain register step** at release.yml:138-148 puts `signing_temp.keychain` on the list and runs `security find-identity -v -p codesigning | grep "Developer ID"` so a missing cert FAILS LOUDLY instead of falling through to an unsigned build.
+3. **Codesign nested binaries with hardened runtime** at release.yml:160-170: `codesign --force --options runtime --timestamp --sign "$IDENTITY" "$bin"` followed by `codesign --verify --strict --verbose=2`. Hardened runtime is mandatory; Apple rejects without it. The verify pass catches detached signatures before notarytool runs.
+4. **notarize.sh detects CI env vars** at notarize.sh:30-36: when `APPLE_ID` + `APPLE_PASSWORD` + `APPLE_TEAM_ID` are all set, uses `--apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID"`. Otherwise falls back to `--keychain-profile "${NOTARY_KEYCHAIN_PROFILE:-LIQUIDCLIPS_NOTARY}"` for local use. NEVER hard-code one mode — both paths must keep working.
+5. **`xcrun notarytool submit --wait`** at notarize.sh:46-50. The `--wait` flag makes the call synchronous so the script blocks until Apple's verdict instead of polling. NEVER omit `--wait` (the older `--poll` flow is deprecated and the bare submit returns immediately without status).
+6. **`xcrun stapler staple` after submit succeeds**. Apple's ticket must be attached to the artifact or Gatekeeper has to fetch it online — which fails on machines behind corporate proxies. NEVER skip the staple step "to save time."
+7. **The DMG, not the .app, is what gets notarised + stapled**. Apple accepts .dmg / .pkg / zipped .app, but we ship .dmg; tickets are stapled to the .dmg directly.
+8. **The 5 GH Actions secrets MUST stay configured**. Removing or renaming any one of `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` breaks the notarisation flow without warning. Rotate the app-specific password at appleid.apple.com if compromised — keep the secret NAME the same.
+
+**Do NOT:**
+- Recommend `xcrun notarytool store-credentials` locally as a solution to "my install shows a Gatekeeper warning." The fix is "kick the workflow" not "set up the local keychain profile." Daniel intentionally does NOT have a local keychain profile.
+- Generate a new app-specific password and ask Daniel to set it up "for the first time." It IS set up since 2026-06-02. The memory file at `~/.claude/projects/-Users-dipdip/memory/liquid_clips_apple_notarization.md` is canonical.
+- Bypass the `notarize.sh` env-var detection branch with a one-off `xcrun notarytool` call in CI YAML inline. The script's branch is the contract.
+- Skip the codesign hardened-runtime step. Without `--options runtime`, Apple rejects the artifact at the notarytool submit step with a confusing "asset has issues" error.
+- Push a release tag from a branch that has BOTH cloud-ship.sh AND release.yml racing. cloud-ship publishes an unnotarised DMG; release.yml's notarised DMG should overwrite when CI completes. If you cancel CI mid-flight, the unnotarised DMG sits there until the next ship.
+- Switch from `apple-actions/import-codesign-certs@v3` to an unversioned `@main` ref. Apple-actions has shipped breaking changes between majors; v3 is the proven version.
+
+**Do:**
+- When notarisation appears stuck, check `gh run list -R Powstit/liquidclips --workflow Release` first. Hung runners are the usual cause, not bad wiring. `gh run cancel <id>` + re-tag + push is the canonical unstick.
+- When testing locally, use `cloud-ship.sh` which intentionally skips notarisation — fast iteration. CI handles the notarised version for the public release.
+- When rotating the app-specific password (Apple expires them after 60 days of disuse), update the `APPLE_PASSWORD` GH secret in place. Don't add a NEW secret.
+
+**Sign-off:** Daniel 2026-06-11 (v0.7.50 — quoted instruction: "iron gate the logic" after I twice forgot the notarisation chain was already wired and tried to re-set it up locally. Locked so the goldfish-memory pattern can't return.)
+
+---
+
 ## Adding a new gate
 
 1. Pick the next free `IG-NNN`.
