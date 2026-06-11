@@ -246,7 +246,9 @@ export function UploadPortal({
         >
           <motion.div
             layoutId="cockpit-create"
-            className="relative w-full max-w-[520px] rounded-3xl p-7"
+            // v0.7.50 — Brand-kit ceiling: cards top out at radius-card-lg
+            // (24px / rounded-2xl). 3xl (~30px) was over budget.
+            className="relative w-full max-w-[520px] rounded-2xl p-7"
             onClick={(e) => e.stopPropagation()}
             // No local drag handlers: the Tauri webview's synthetic FileList
             // on drop has no usable path for the sidecar. App.tsx owns the

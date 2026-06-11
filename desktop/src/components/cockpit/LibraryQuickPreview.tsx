@@ -42,15 +42,18 @@ export function LibraryQuickPreview({ project, onOpen, onClose }: LibraryQuickPr
   }, [project.cover_thumb_path]);
 
   return (
+    // v0.7.50 — Brand modal pass. Backdrop bg-black/50 (out-of-palette)
+    // and inner bg-paper (should be paper-warm per modal spec) both
+    // brought to canonical.
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/85 backdrop-blur-md p-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={`Preview ${project.source_filename}`}
     >
       <div
-        className="flex w-full max-w-[420px] flex-col gap-4 rounded-2xl border border-line bg-paper p-5 shadow-2xl"
+        className="flex w-full max-w-[420px] flex-col gap-4 rounded-2xl border border-line bg-paper-warm p-5 shadow-e2"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Poster */}
