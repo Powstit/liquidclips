@@ -1528,7 +1528,14 @@ export default function App() {
         )}
 
         {view.kind === "earn" && (
-          <RoomShell roomKey="earn" align="top">
+          // v0.7.50 — `align="stretch"` so EarnTab fills the full visible
+          // height. With the IG-008 `min-h-full` two-layer scroll wrap,
+          // `items-start` left EarnTab at intrinsic height (0px because
+          // EarnPanelMount renders an empty containerRef div), the
+          // ResizeObserver pinned the native webview to a 0×0 rect, and
+          // Earn looked blank. `items-stretch` gives the child a definite
+          // height so h-full resolves end-to-end.
+          <RoomShell roomKey="earn" align="stretch">
           <EarnTab
             userTier={userTier}
             onSignIn={() => setView({ kind: "first-run" })}
