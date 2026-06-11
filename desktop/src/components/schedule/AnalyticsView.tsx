@@ -236,7 +236,7 @@ export function AnalyticsView() {
 
 function EmptyAnalytics() {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-3xl border border-dashed border-line bg-paper-warm/40 px-8 py-16 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line bg-paper-warm/40 px-8 py-16 text-center">
       <span className="grid h-12 w-12 place-items-center rounded-full bg-fuchsia text-paper">
         <BarChart3 size={18} strokeWidth={2.5} />
       </span>

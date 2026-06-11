@@ -266,7 +266,9 @@ export function AddChannelModal({
           onClose();
         }}
       />
-      <div className="relative w-full max-w-md rounded-3xl border border-line bg-paper shadow-[0_30px_90px_rgba(0,0,0,0.5)]">
+      {/* v0.7.50 — Brand modal pass. rounded-3xl (over 24px ceiling) +
+          bg-paper (should be paper-warm per spec) brought to canonical. */}
+      <div className="relative w-full max-w-md rounded-2xl border border-line bg-paper-warm shadow-[0_30px_90px_rgba(0,0,0,0.5)]">
         <button
           onClick={attemptClose}
           aria-label="Close"

@@ -562,7 +562,7 @@ function Dashboard({
               aria-hidden
               className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-paper/60 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
             >
-              <Pencil size={11} className="text-white" strokeWidth={2.5} />
+              <Pencil size={11} className="text-ink" strokeWidth={2.5} />
             </span>
           </button>
           <Eyebrow hint="Your default referral link and QR. Use campaign links later when you want separate tracking.">
@@ -1045,7 +1045,7 @@ export function AffiliateHeroPopover({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/85 p-6 backdrop-blur-md"
       onClick={onClose}
     >
       <div
