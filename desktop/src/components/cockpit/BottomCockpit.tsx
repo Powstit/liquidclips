@@ -21,7 +21,7 @@
 //              Routes alt → schedule popover, ⋮ menu items → modals/routes.
 //   WATCH   — clip.overlay.bake_status (server writes "error" on ffmpeg
 //             fail; pending phase is client-side via reactionBakingAt
-//             because applyOverlay is a synchronous RPC), channel health,
+//             because startOverlayBake is fire-and-forget), channel health,
 //             project counters.
 // Don't reintroduce the legacy "TAKE ACTION · Drip across · Publish now ·
 // Schedule one" header above the cards (integration-lens violation: that
@@ -108,7 +108,7 @@ export function BottomCockpit({
   const [popover, setPopover] = useState<Popover>({ kind: "none" });
   const [busy, setBusy] = useState(false);
   // v0.7.49 — Tier read for the BakeErrorStrip Retry gate below. Closes a
-  // bypass path the gates audit flagged: free users could refire applyOverlay
+  // bypass path the gates audit flagged: free users could refire a bake
   // with a paid layout by clicking Retry after a deliberate bake failure.
   const cockpitTier = useTier();
   // v0.8.0 — Reaction bake in flight (client-side mirror).
@@ -179,8 +179,8 @@ export function BottomCockpit({
   // when bake_complete / bake_error arrives.
   const retryReactionBake = useCallback(async () => {
     if (!focusedClip) return;
-    // v0.7.49 — Tier gate. BakeErrorStrip Retry refires applyOverlay with
-    // a non-"none" layout type; without this guard a Free user could bake
+    // v0.7.49 — Tier gate. BakeErrorStrip Retry refires a bake with a
+    // non-"none" layout type; without this guard a Free user could bake
     // a paid layout by triggering a deliberate failure and clicking Retry.
     if (cockpitTier.tier === "free") {
       openAuthPanel("upgrade");
