@@ -241,7 +241,10 @@ export function AddChannelModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-ink/70 backdrop-blur-md p-6">
+    // v0.7.50 — Brand-kit modal pass. Backdrop bg-ink/70 (#f4f1ea at 70%
+    // — warm cream wash, didn't match the dark-mode paper system) retired
+    // for bg-paper/85 (matches ConfirmDialog canonical backdrop language).
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-paper/85 backdrop-blur-md p-6">
       <ConfirmDialog
         open={confirmAbandonOpen}
         tone="destructive"

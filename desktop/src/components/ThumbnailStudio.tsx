@@ -207,7 +207,11 @@ export function ThumbnailStudio({
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-6xl max-h-[88vh] overflow-hidden rounded-3xl border border-ink/10 bg-paper shadow-2xl flex flex-col"
+        // v0.7.50 — Brand-kit modal pass. border-ink/10 (#000 at 10%)
+        // retired for border-line (canonical #fff at 7%) so the modal
+        // chrome reads as the same family as ConfirmDialog / AddChannel /
+        // every other brand-correct modal.
+        className="relative w-full max-w-6xl max-h-[88vh] overflow-hidden rounded-3xl border border-line bg-paper shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <Header

@@ -185,7 +185,11 @@ export function AvatarPanel({
           />
 
           <motion.div
-            className="avatar-panel fixed right-4 top-[80px] z-50 flex w-[400px] max-h-[calc(100vh-100px)] flex-col gap-3 overflow-hidden rounded-3xl border border-fuchsia/30 bg-paper-elev p-4 shadow-2xl"
+            // v0.7.50 — Brand-kit modal pass. border-fuchsia/30 retired
+            // (the brand kit treats fuchsia as the sole CTA accent; modal
+            // chrome stays line-neutral). bg-paper-elev → bg-paper-warm
+            // to match the canonical modal spec.
+            className="avatar-panel fixed right-4 top-[80px] z-50 flex w-[400px] max-h-[calc(100vh-100px)] flex-col gap-3 overflow-hidden rounded-3xl border border-line bg-paper-warm p-4 shadow-2xl"
             initial={{ opacity: 0, y: -12, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.97 }}
