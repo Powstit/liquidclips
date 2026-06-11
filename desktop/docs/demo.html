@@ -322,6 +322,26 @@
 
       <!-- Editorial grid: hero clip + others -->
       <div id="grid-container" class="relative z-[1] grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); grid-auto-flow: dense;"></div>
+
+      <!-- Thumbnail Studio strip — 6 brand-locked YouTube thumbnails. The
+           Thumbnails tile up top opens this as a full modal; the strip below
+           is a live preview of what was generated for this project so the
+           cockpit shows a complete pipeline (clips left + thumbnails right). -->
+      <div class="relative z-[1] mt-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="eyebrow" style="color:#ff66b8">thumbnail studio · 6 generated</span>
+          <span class="w-1 h-1 rounded-full bg-fuchsia pulse-dot"></span>
+          <span class="eyebrow">character-locked · brand-fuchsia caption</span>
+        </div>
+        <div class="grid grid-cols-6 gap-3">
+          <div class="aspect-video rounded-lg overflow-hidden relative shadow-[0_4px_18px_rgba(0,0,0,0.5)]"><img src="demo-assets/yt-references/yt-01.png" class="absolute inset-0 w-full h-full object-cover" /></div>
+          <div class="aspect-video rounded-lg overflow-hidden relative shadow-[0_4px_18px_rgba(0,0,0,0.5)]"><img src="demo-assets/yt-references/yt-02.png" class="absolute inset-0 w-full h-full object-cover" /></div>
+          <div class="aspect-video rounded-lg overflow-hidden relative shadow-[0_4px_18px_rgba(0,0,0,0.5)]"><img src="demo-assets/yt-references/yt-03.png" class="absolute inset-0 w-full h-full object-cover" /></div>
+          <div class="aspect-video rounded-lg overflow-hidden relative shadow-[0_4px_18px_rgba(0,0,0,0.5)]"><img src="demo-assets/yt-references/yt-04.png" class="absolute inset-0 w-full h-full object-cover" /></div>
+          <div class="aspect-video rounded-lg overflow-hidden relative shadow-[0_4px_18px_rgba(0,0,0,0.5)]"><img src="demo-assets/yt-references/yt-05.png" class="absolute inset-0 w-full h-full object-cover" /></div>
+          <div class="aspect-video rounded-lg overflow-hidden relative shadow-[0_4px_18px_rgba(0,0,0,0.5)]"><img src="demo-assets/yt-references/yt-06.png" class="absolute inset-0 w-full h-full object-cover" /></div>
+        </div>
+      </div>
     </section>
 
     <div id="resize" class="resize h-1 hidden md:block"></div>
