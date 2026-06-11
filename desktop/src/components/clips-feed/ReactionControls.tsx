@@ -1,16 +1,17 @@
-// ───── IRON GATE IG-005 (v0.7.30) — see desktop/docs/IRON_GATES.md ─────
+// ───── IRON GATE IG-005 (v0.8.0) — see desktop/docs/IRON_GATES.md ─────
 // SHARED-WRITE component. The single source of truth for clip.overlay.
 // Mounted in EXACTLY ONE place at a time (modalOpen suppression in
-// BottomCockpit gates the second mount). The pendingFlushRef + empty-deps
-// unmount effect handle the dual-mount-during-debounce data loss class.
-// Don't mount this in two surfaces concurrently. Don't remove the unmount
-// flush. Don't default a layout from a source-only pick.
+// BottomCockpit gates the second mount). Audio / offset edits are now
+// explicit-Apply (v0.8.0) — no debounced auto-save, no unmount flush.
+// Don't mount this in two surfaces concurrently. Don't default a layout
+// from a source-only pick.
 //
-// ───── IRON GATE IG-006 (v0.7.30) — see desktop/docs/IRON_GATES.md ─────
+// ───── IRON GATE IG-006 (v0.8.0) — see desktop/docs/IRON_GATES.md ─────
 // onBusyChange callback is load-bearing. The cockpit's pending strip
-// reads from this signal because the apply_overlay RPC is synchronous
-// (sidecar can't write bake_status until ffmpeg finishes). Don't remove
-// the wrapped setBusy that fires onBusyChange on every transition.
+// reads from this signal. startOverlayBake is fire-and-forget; setBusy
+// fires immediately on start and is cleared by the bake_complete / bake_error
+// event listener. Don't remove the wrapped setBusy that fires onBusyChange
+// on every transition.
 //
 // v0.7.25 — Reaction Studio controls extracted from ClipPreview so the
 // BottomCockpit can mount the SAME widget directly on the main clipping
@@ -20,7 +21,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AudioLines, Lock, Volume2, VolumeX } from "lucide-react";
-import { sidecar, humanError, type Clip, type OverlayType, type Project } from "../../lib/sidecar";
+import {
+  sidecar,
+  humanError,
+  onBakeComplete,
+  onBakeError,
+  type BakeComplete,
+  type BakeError,
+  type Clip,
+  type OverlayType,
+  type Project,
+} from "../../lib/sidecar";
 import { useReactionBakeProgress } from "../../lib/useReactionBakeProgress";
 import { useTier } from "../../lib/useTier";
 import { openAuthPanel } from "../auth/useAuthPanel";
@@ -38,10 +49,10 @@ export type ReactionControlsProps = {
   /** Compact: cockpit mount. Hides ReactionCellPreview + tightens spacing.
    *  Default false renders the full studio (ClipPreview's right rail). */
   compact?: boolean;
-  /** v0.7.30 (IG-006 Bug 3 fix) — Notify parent when the bake is in flight
-   *  so the cockpit can mount the teal pending strip during the synchronous
-   *  apply_overlay RPC. Without this the strip would never show because
-   *  the sidecar can't write bake_status until after ffmpeg finishes. */
+  /** v0.8.0 (IG-006) — Notify parent when a background bake is in flight
+   *  so the cockpit can mount the teal pending strip. startOverlayBake is
+   *  fire-and-forget; busy goes true immediately and false when the event
+   *  listener receives bake_complete / bake_error. */
   onBusyChange?: (busy: boolean) => void;
 };
 
@@ -97,7 +108,6 @@ export function ReactionControls({
   );
   const [overlaySaveState, setOverlaySaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [overlaySaveError, setOverlaySaveError] = useState<string | null>(null);
-  const [overlaySaveLabel, setOverlaySaveLabel] = useState<string>("");
   const { progress: bakeProgress, start: startBakeProgress, stop: stopBakeProgress } =
     useReactionBakeProgress();
 
@@ -110,7 +120,6 @@ export function ReactionControls({
     setActionError(null);
     setOverlaySaveState("idle");
     setOverlaySaveError(null);
-    setOverlaySaveLabel("");
     // v0.7.48 — Clear optimistic pendingLayout on clip switch. The cockpit
     // mount reuses this instance across clipIdx changes; a stale tap on
     // clip A would otherwise paint a wrong tile fuchsia on clip B for the
@@ -118,124 +127,75 @@ export function ReactionControls({
     setPendingLayout(null);
   }, [clipIdx, clip.overlay?.source_path, clip.overlay?.type]);
 
-  // Auto-persist audio + offset edits (mirrors the prior ClipPreview effect).
-  // Only runs when an overlay with a source already exists — applyOverlay
-  // requires source_path.
-  //
-  // user-journey-lens fix: pendingFlushRef tracks the latest dirty state so
-  // we can fire a best-effort save on UNMOUNT (not on every dep change).
-  // Without this, user drags the slider then clicks "Open captions ▸"
-  // within 400ms → cleanup cancels the timer → the dragged value is gone.
-  type PendingFlush = {
-    slug: string;
-    clipIdx: number;
-    type: string;
-    sourcePath: string;
-    offset: number;
-    audio: "main" | "broll" | "muted";
-  } | null;
-  const pendingFlushRef = useRef<PendingFlush>(null);
+  // v0.8.0 — Background bake event listeners. startOverlayBake is fire-and-
+  // forget; completion / error arrive via Tauri events. We filter by slug+idx
+  // so only events for THIS clip update our state.
+  const activeBakeKeyRef = useRef<{ slug: string; clipIdx: number } | null>(null);
   useEffect(() => {
-    const overlay = clip.overlay;
-    if (!overlay || !overlay.source_path) {
-      pendingFlushRef.current = null;
-      return;
-    }
-    const audioDiverges = audioSource !== (overlay.audio_source ?? "main");
-    const offsetDiverges = Math.abs(brollOffset - (overlay.start_offset_s ?? 0)) > 1e-6;
-    if (!audioDiverges && !offsetDiverges) {
-      pendingFlushRef.current = null;
-      return;
-    }
-    pendingFlushRef.current = {
-      slug,
-      clipIdx,
-      type: overlay.type,
-      sourcePath: overlay.source_path,
-      offset: brollOffset,
-      audio: audioSource,
-    };
-    const label =
-      audioDiverges && offsetDiverges
-        ? "reaction saved"
-        : audioDiverges
-        ? "audio saved"
-        : "offset saved";
-    let cancelled = false;
-    const handle = window.setTimeout(async () => {
-      setOverlaySaveState("saving");
-      setOverlaySaveError(null);
-      setOverlaySaveLabel(label);
-      // v0.7.45 — debounced audio/offset edits also trigger a real ffmpeg
-      // bake. Without progress wrapping, the user drags the slider and
-      // sees "saving…" with no actual progress feedback for the 5-30s
-      // ffmpeg pass — looks like a hang. Mirror applyLayout's pattern.
-      await startBakeProgress();
-      try {
-        const r = await sidecar.applyOverlay(slug, clipIdx, {
-          type: overlay.type,
-          source_path: overlay.source_path,
-          start_offset_s: brollOffset,
-          audio_source: audioSource,
-        });
-        if (cancelled) return;
-        onProjectChange(r.project);
-        pendingFlushRef.current = null;
+    let unlistenComplete: (() => void) | undefined;
+    let unlistenError: (() => void) | undefined;
+
+    (async () => {
+      unlistenComplete = await onBakeComplete((payload: BakeComplete) => {
+        if (payload.slug !== slug || payload.idx !== clipIdx) return;
+        if (
+          activeBakeKeyRef.current &&
+          activeBakeKeyRef.current.slug === slug &&
+          activeBakeKeyRef.current.clipIdx === clipIdx
+        ) {
+          activeBakeKeyRef.current = null;
+        }
+        stopBakeProgress();
+        setBusy(false);
+        setPendingLayout(null);
+        onProjectChange(payload.project);
         setOverlaySaveState("saved");
         window.setTimeout(() => {
           setOverlaySaveState((s) => (s === "saved" ? "idle" : s));
         }, 1500);
-      } catch (e) {
-        if (cancelled) return;
-        setOverlaySaveError(humanError(e));
-        setOverlaySaveState("idle");
-      } finally {
+      });
+      unlistenError = await onBakeError((payload: BakeError) => {
+        if (payload.slug !== slug || payload.idx !== clipIdx) return;
+        if (
+          activeBakeKeyRef.current &&
+          activeBakeKeyRef.current.slug === slug &&
+          activeBakeKeyRef.current.clipIdx === clipIdx
+        ) {
+          activeBakeKeyRef.current = null;
+        }
         stopBakeProgress();
-      }
-    }, 400);
+        setBusy(false);
+        setPendingLayout(null);
+        if (payload.canceled) {
+          // User-initiated cancel — no error UI needed.
+          return;
+        }
+        setActionError(payload.message);
+        setOverlaySaveError(payload.message);
+        setOverlaySaveState("idle");
+      });
+    })();
+
     return () => {
-      cancelled = true;
-      window.clearTimeout(handle);
+      unlistenComplete?.();
+      unlistenError?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioSource, brollOffset, slug, clipIdx, clip.overlay]);
+  }, [slug, clipIdx, onProjectChange]);
 
-  // user-journey-lens fix: unmount-only flush of any pending dirty state.
-  // Fires fire-and-forget so unmount-during-debounce can't silently drop a
-  // drag. Empty deps → cleanup runs exactly once, on unmount.
-  useEffect(() => {
-    return () => {
-      const p = pendingFlushRef.current;
-      if (!p) return;
-      void sidecar
-        .applyOverlay(p.slug, p.clipIdx, {
-          type: p.type as never,
-          source_path: p.sourcePath,
-          start_offset_s: p.offset,
-          audio_source: p.audio,
-        })
-        .then((r) => onProjectChange(r.project))
-        .catch(() => {
-          // Best-effort: the user already navigated away. The next mount
-          // will re-read the (now-stale-from-this-edit) clip.overlay.
-        });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  // v0.8.0 — Fire-and-forget background bake. The event listener above
+  // handles completion / error so the UI never blocks during ffmpeg.
   async function applyLayout(kind: LayoutKey, opts?: { forcePick?: boolean }) {
     if (busy) return;
-    // v0.7.48 — Optimistic-active: paint the tapped tile fuchsia immediately
-    // so the user gets instant visual feedback during the 5-30s bake. Cleared
-    // in finally (success + error) and on picker cancel below.
     setPendingLayout(kind);
     setBusy(true);
     setActionError(null);
+    setOverlaySaveError(null);
     await startBakeProgress();
     try {
       if (kind === "none") {
-        const r = await sidecar.applyOverlay(slug, clipIdx, null);
-        onProjectChange(r.project);
+        activeBakeKeyRef.current = { slug, clipIdx };
+        await sidecar.startOverlayBake(slug, clipIdx, null);
       } else {
         const existing = clip.overlay?.source_path;
         let source: string | undefined = existing;
@@ -249,20 +209,52 @@ export function ReactionControls({
           }
           source = pick.path;
         }
-        const r = await sidecar.applyOverlay(slug, clipIdx, {
+        activeBakeKeyRef.current = { slug, clipIdx };
+        await sidecar.startOverlayBake(slug, clipIdx, {
           type: kind as OverlayType,
           source_path: source,
           start_offset_s: brollOffset,
           audio_source: audioSource,
         });
-        onProjectChange(r.project);
       }
     } catch (e) {
-      setActionError(humanError(e));
-    } finally {
       stopBakeProgress();
       setBusy(false);
       setPendingLayout(null);
+      setActionError(humanError(e));
+    }
+  }
+
+  // Explicit Apply for audio / offset changes (replaces the 400ms debounced
+  // auto-save that stacked ffmpeg jobs every drag stop).
+  const hasPendingChanges =
+    layout !== "none" &&
+    !!clip.overlay?.source_path &&
+    (audioSource !== (clip.overlay.audio_source ?? "main") ||
+      Math.abs(brollOffset - (clip.overlay.start_offset_s ?? 0)) > 1e-6);
+
+  async function applyAudioOffset() {
+    if (busy || !hasPendingChanges) return;
+    const overlay = clip.overlay;
+    if (!overlay || !overlay.source_path) return;
+    setBusy(true);
+    setActionError(null);
+    setOverlaySaveError(null);
+    setOverlaySaveState("saving");
+    await startBakeProgress();
+    try {
+      activeBakeKeyRef.current = { slug, clipIdx };
+      await sidecar.startOverlayBake(slug, clipIdx, {
+        type: overlay.type,
+        source_path: overlay.source_path,
+        start_offset_s: brollOffset,
+        audio_source: audioSource,
+      });
+    } catch (e) {
+      stopBakeProgress();
+      setBusy(false);
+      setOverlaySaveState("idle");
+      setOverlaySaveError(humanError(e));
     }
   }
 
@@ -510,20 +502,36 @@ export function ReactionControls({
             />
           </label>
 
-          {(overlaySaveState !== "idle" || overlaySaveError) && (
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => void applyAudioOffset()}
+              disabled={!hasPendingChanges || busy}
+              className={`rounded-lg border font-sans font-medium transition-colors ${
+                compact ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-[11px]"
+              } ${
+                hasPendingChanges && !busy
+                  ? "border-fuchsia bg-fuchsia text-white hover:bg-fuchsia-deep"
+                  : "border-line bg-paper text-text-tertiary opacity-50"
+              }`}
+            >
+              Apply
+            </button>
             <div
               aria-live="polite"
-              className="flex items-center justify-end font-mono text-[10px] uppercase tracking-[0.12em]"
+              className="font-mono text-[10px] uppercase tracking-[0.12em]"
             >
               {overlaySaveError ? (
-                <span className="text-[var(--color-danger)]">save failed — try a layout tile to retry</span>
+                <span className="text-[var(--color-danger)]">{overlaySaveError}</span>
               ) : overlaySaveState === "saving" ? (
                 <span className="text-text-tertiary">saving…</span>
-              ) : (
-                <span className="text-fuchsia">{overlaySaveLabel || "saved"}</span>
-              )}
+              ) : overlaySaveState === "saved" ? (
+                <span className="text-fuchsia">saved</span>
+              ) : hasPendingChanges ? (
+                <span className="text-text-tertiary">unsaved changes</span>
+              ) : null}
             </div>
-          )}
+          </div>
         </div>
       )}
 
