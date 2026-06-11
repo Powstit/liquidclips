@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>liquid/clips — canonical page set (matches live app shell)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // ───── IRON GATE IG-012 (v0.7.50) — see docs/IRON_GATES.md ─────
+  // MIRROR of the canonical brand kit at src/index.css @theme block.
+  // These values MUST match. Pre-commit hook refuses a diff that drifts.
+  tailwind.config = { theme: { extend: {
+    colors: {
+      paper:"#0b0b10","paper-warm":"#15151c","paper-elev":"#1c1c25",
+      ink:"#f4f1ea","ink-soft":"#c8c4be",t2:"#c8c4be",t3:"#8a857e",
+      line:"rgba(255,255,255,0.07)","line-strong":"rgba(255,255,255,0.12)",
+      fuchsia:"#ff1a8c","fuchsia-bright":"#ff3da5","fuchsia-deep":"#ff66b8","fuchsia-soft":"rgba(255,26,140,0.16)",
+      danger:"#dc2626",warn:"#f59e0b",cyan:"#00e5ff",
+    },
+    fontFamily: {
+      display:["Inter","ui-sans-serif","system-ui","sans-serif"],
+      sans:["Inter","ui-sans-serif","system-ui","sans-serif"],
+      mono:["Geist Mono","ui-monospace","SF Mono","Menlo","monospace"],
+    },
+    boxShadow: {
+      "e1":"0 1px 0 rgba(255,255,255,0.03) inset, 0 2px 8px rgba(0,0,0,0.45)",
+      "e2":"0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 28px rgba(0,0,0,0.55)",
+      "glow-sm":"0 0 0 1px rgba(255,26,140,0.35), 0 6px 18px rgba(255,26,140,0.18)",
+      "glow-md":"0 0 0 1px rgba(255,26,140,0.45), 0 12px 36px rgba(255,26,140,0.28)",
+    },
+  }}};
+  // ───── END IRON GATE IG-012 brand-kit mirror ─────
+</script>
+<style>
+  :root { --color-fuchsia:#ff1a8c; }
+  body { background:#0b0b10; color:#f4f1ea; font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
+  .pixel { image-rendering: pixelated; }
+  .eyebrow { font-family:"Geist Mono",ui-monospace,monospace; text-transform:uppercase; letter-spacing:0.18em; font-size:10px; font-weight:500; color:#c8c4be; opacity:0.7; }
+  .mono { font-family:"Geist Mono",ui-monospace,monospace; }
+
+  @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1);} 50%{opacity:0.6;transform:scale(1.3);} }
+  .pulse-dot { animation: pulse-dot 2.4s ease-in-out infinite; }
+  @keyframes breathe { 0%,100%{transform:scale(1);} 50%{transform:scale(1.015);} }
+  .breathing { animation: breathe 5s ease-in-out infinite; }
+  @keyframes nav-bob { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-2px);} }
+
+  /* HUD frame */
+  .hud-frame { position:relative; border-radius:16px; box-shadow: inset 0 0 24px rgba(255,26,140,0.06); }
+  .hud-frame::before, .hud-frame::after {
+    content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+    background:
+      linear-gradient(to right,  var(--color-fuchsia) 0 12px, transparent 12px) top left      / 12px 1.5px no-repeat,
+      linear-gradient(to bottom, var(--color-fuchsia) 0 12px, transparent 12px) top left      / 1.5px 12px no-repeat,
+      linear-gradient(to left,   var(--color-fuchsia) 0 12px, transparent 12px) top right     / 12px 1.5px no-repeat,
+      linear-gradient(to bottom, var(--color-fuchsia) 0 12px, transparent 12px) top right     / 1.5px 12px no-repeat,
+      linear-gradient(to right,  var(--color-fuchsia) 0 12px, transparent 12px) bottom left   / 12px 1.5px no-repeat,
+      linear-gradient(to top,    var(--color-fuchsia) 0 12px, transparent 12px) bottom left   / 1.5px 12px no-repeat,
+      linear-gradient(to left,   var(--color-fuchsia) 0 12px, transparent 12px) bottom right  / 12px 1.5px no-repeat,
+      linear-gradient(to top,    var(--color-fuchsia) 0 12px, transparent 12px) bottom right  / 1.5px 12px no-repeat;
+  }
+  .hud-frame::after { opacity:0.85; }
+
+  /* Library-card brackets */
+  .library-card { position:relative; }
+  .lcc { position:absolute; width:18px; height:18px; border-style:dashed; border-color:var(--color-fuchsia); border-width:0;
+         filter: drop-shadow(0 0 4px rgba(255,26,140,0.5)); transition: filter 240ms ease, width 240ms ease, height 240ms ease;
+         pointer-events:none; z-index:2; }
+  .lcc-tl { top:0; left:0; border-top-width:1.5px; border-left-width:1.5px; }
+  .lcc-tr { top:0; right:0; border-top-width:1.5px; border-right-width:1.5px; }
+  .lcc-bl { bottom:0; left:0; border-bottom-width:1.5px; border-left-width:1.5px; }
+  .lcc-br { bottom:0; right:0; border-bottom-width:1.5px; border-right-width:1.5px; }
+  .library-card:hover .lcc { width:24px; height:24px; filter: drop-shadow(0 0 10px rgba(255,26,140,1)); }
+
+  /* Cockpit-tile bracket corners */
+  .cockpit-tile { position:relative; background:transparent !important; cursor:pointer; }
+  .ctc { position:absolute; width:28px; height:28px; border-style:dashed; border-color:var(--color-fuchsia); border-width:0;
+         filter: drop-shadow(0 0 6px rgba(255,26,140,0.55)); transition: filter 240ms ease, width 240ms ease, height 240ms ease; pointer-events:none; }
+  .ctc-tl { top:0; left:0; border-top-width:2px; border-left-width:2px; }
+  .ctc-tr { top:0; right:0; border-top-width:2px; border-right-width:2px; }
+  .ctc-bl { bottom:0; left:0; border-bottom-width:2px; border-left-width:2px; }
+  .ctc-br { bottom:0; right:0; border-bottom-width:2px; border-right-width:2px; }
+  .cockpit-tile:hover .ctc { width:36px; height:36px; filter: drop-shadow(0 0 14px rgba(255,26,140,1)); }
+  .cockpit-tile-halo {
+    position:absolute; top:50%; left:50%; width:70%; height:70%; margin:-35% 0 0 -35%;
+    border-radius:50%; background: radial-gradient(closest-side, rgba(255,26,140,0.35), rgba(255,26,140,0) 65%);
+    opacity:0.45; filter: blur(22px); transition: opacity 240ms ease; pointer-events:none; z-index:0;
+  }
+  .cockpit-tile:hover .cockpit-tile-halo { opacity:0.95; }
+
+  @keyframes marquee { 0%{transform:translateX(0);} 100%{transform:translateX(-50%);} }
+
+  /* ── SIDE NAV (canonical LEFT RAIL — matches src/components/nav/SideNav.tsx) ── */
+  .lc-sidenav {
+    position: fixed; left:0; top:0; bottom:0; width:76px; z-index:40;
+    background: rgba(11,11,16,0.92); backdrop-filter: blur(14px);
+    border-right: 1px solid rgba(255,255,255,0.06);
+    display: flex; flex-direction: column; align-items: center; padding: 18px 0 14px;
+    overflow: hidden;
+  }
+  .lc-sidenav-logo { margin-bottom: 12px; }
+  .lc-sidenav-logo img { width: 38px; height: 38px; filter: drop-shadow(0 0 14px rgba(255,26,140,0.55)); }
+  .lc-sidenav-collapse {
+    width: 22px; height: 22px; border-radius: 999px;
+    background: rgba(255,255,255,0.04); color:#8a857e;
+    display:grid; place-items:center; margin: 2px 0 14px;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .lc-sidenav-collapse:hover { color:#f4f1ea; }
+  .lc-sidenav-list { display:flex; flex-direction:column; gap:14px; flex:1; }
+  .lc-sidenav-bottom { padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.05); }
+
+  /* Each nav item — cockpit-tile aesthetic */
+  .nav-tile {
+    position: relative; width: 56px; height: 56px;
+    border-radius: 12px; background: transparent;
+    display: grid; place-items: center; cursor: pointer;
+    animation: nav-bob 4.5s ease-in-out infinite;
+  }
+  .nav-tile:nth-of-type(2) { animation-delay: -0.8s; }
+  .nav-tile:nth-of-type(3) { animation-delay: -1.6s; }
+  .nav-tile:nth-of-type(4) { animation-delay: -2.4s; }
+  .nav-tile:nth-of-type(5) { animation-delay: -3.2s; }
+  .nav-tile img { width: 44px; height: 44px; image-rendering: pixelated; filter: drop-shadow(0 0 8px rgba(255,26,140,0.35)); transition: filter 240ms ease, transform 240ms ease; }
+  .nav-tile:hover img { filter: drop-shadow(0 0 16px rgba(255,26,140,0.85)); transform: scale(1.08); }
+  .nav-tile.is-active img { filter: drop-shadow(0 0 22px rgba(255,26,140,1)); }
+  .nav-tile-corner { position:absolute; width:14px; height:14px; border-style:dashed; border-color:var(--color-fuchsia); border-width:0; filter: drop-shadow(0 0 4px rgba(255,26,140,0.6)); pointer-events:none; opacity:0.55; transition: opacity 200ms ease, width 200ms ease, height 200ms ease; }
+  .nav-tile.is-active .nav-tile-corner { opacity: 1; width:18px; height:18px; }
+  .nav-tile-corner.tl { top:-2px; left:-2px; border-top-width:1.5px; border-left-width:1.5px; }
+  .nav-tile-corner.tr { top:-2px; right:-2px; border-top-width:1.5px; border-right-width:1.5px; }
+  .nav-tile-corner.bl { bottom:-2px; left:-2px; border-bottom-width:1.5px; border-left-width:1.5px; }
+  .nav-tile-corner.br { bottom:-2px; right:-2px; border-bottom-width:1.5px; border-right-width:1.5px; }
+  .nav-tile-chip { position:absolute; bottom:-4px; left:50%; transform:translateX(-50%); padding:1px 5px; border-radius:3px; background:rgba(11,11,16,0.85); border:1px solid rgba(255,255,255,0.08); font-family:"Geist Mono",monospace; font-size:8px; letter-spacing:0.10em; color:#8a857e; text-transform:uppercase; }
+  .nav-tile.is-active .nav-tile-chip { color:#ff66b8; border-color: rgba(255,26,140,0.45); }
+
+  /* ── BROWSE side tab — right edge ── */
+  .browse-tab {
+    position: fixed; right: 0; top: 50%; transform: translateY(-50%) rotate(180deg);
+    writing-mode: vertical-rl; padding: 12px 6px; z-index:40;
+    background: #ff1a8c; color: #fff;
+    font-family: "Geist Mono", monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 600;
+    border-top-left-radius: 6px; border-bottom-left-radius: 6px;
+    box-shadow: 0 8px 28px rgba(255,26,140,0.5), 0 0 0 1px rgba(255,255,255,0.1) inset;
+    cursor: pointer;
+  }
+
+  /* Atmosphere plates */
+  .atm-workspace { background: radial-gradient(120% 80% at 20% 0%, rgba(255,26,140,0.30) 0%, transparent 55%), radial-gradient(80% 50% at 90% 100%, rgba(0,229,255,0.12) 0%, transparent 60%); opacity:0.16; }
+  .atm-library   { background: radial-gradient(80% 60% at 10% 100%, rgba(255,102,184,0.25) 0%, transparent 60%); opacity:0.10; }
+  .atm-earn      { background: radial-gradient(70% 50% at 80% 0%, rgba(255,26,140,0.35) 0%, transparent 55%), radial-gradient(50% 30% at 50% 100%, rgba(245,158,11,0.12) 0%, transparent 70%); opacity:0.16; }
+  .atm-schedule  { background: radial-gradient(120% 50% at 50% 0%, rgba(255,26,140,0.22) 0%, transparent 55%); opacity:0.14; }
+  .atm-settings  { background: radial-gradient(60% 30% at 50% 100%, rgba(255,102,184,0.20) 0%, transparent 65%); opacity:0.08; }
+  .atm-thumbnail { background: radial-gradient(120% 80% at 80% 0%, rgba(255,26,140,0.35) 0%, transparent 55%), radial-gradient(80% 50% at 10% 100%, rgba(0,229,255,0.18) 0%, transparent 60%); opacity:0.10; }
+  .atm-signin    { background: radial-gradient(80% 60% at 50% 50%, rgba(255,26,140,0.40) 0%, transparent 60%); opacity:0.22; }
+
+  .halo-digit { position:relative; width:36px; height:36px; display:grid; place-items:center; flex-shrink:0; }
+  .halo-digit::before { content:""; position:absolute; inset:0; border-radius:50%; background: radial-gradient(closest-side, rgba(255,26,140,0.45), rgba(255,26,140,0) 70%); filter: blur(6px); }
+  .halo-digit > span { position:relative; font-family:Inter; font-size:18px; font-weight:600; color:#ff1a8c; filter: drop-shadow(0 2px 6px rgba(255,26,140,0.65)); }
+
+  .pill { padding:4px 10px; border-radius:9999px; font-family:"Geist Mono",monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.14em; color:#8a857e; border:1px solid transparent; }
+  .pill:hover { color:#f4f1ea; }
+  .pill.is-active { background:rgba(255,26,140,0.14); color:#ff66b8; border-color:rgba(255,26,140,0.45); }
+
+  /* Surfaces — only the active one is visible. Body data attribute drives it. */
+  .surface { display: none; }
+  .surface.is-active { display: block; }
+
+  /* Stage layout — leave room for left rail (76px) + right BROWSE tab (44px) */
+  .stage { margin-left: 76px; margin-right: 44px; min-height: 100dvh; }
+</style>
+</head>
+<body class="overflow-x-hidden" data-surface="earn">
+
+<!-- ── LEFT SIDENAV (matches src/components/nav/SideNav.tsx — pixel game-tier badges) ── -->
+<aside class="lc-sidenav">
+  <div class="lc-sidenav-logo">
+    <img src="demo-assets/glyph.png" alt="Liquid Clips" draggable="false" />
+  </div>
+  <button class="lc-sidenav-collapse" title="Collapse">
+    <svg viewBox="0 0 24 24" class="w-3 h-3 fill-none stroke-current" stroke-width="2.25"><path d="M15 6l-6 6 6 6"/></svg>
+  </button>
+  <nav class="lc-sidenav-list">
+    <button class="nav-tile" data-target="workspace" title="Workspace">
+      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
+      <img src="demo-assets/nav-badges/workspace.png" alt="" draggable="false" />
+      <span class="nav-tile-chip">Make</span>
+    </button>
+    <button class="nav-tile" data-target="library" title="Library">
+      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
+      <img src="demo-assets/nav-badges/library.png" alt="" draggable="false" />
+      <span class="nav-tile-chip">Vault</span>
+    </button>
+    <button class="nav-tile is-active" data-target="earn" title="Earn">
+      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
+      <img src="demo-assets/nav-badges/earn.png" alt="" draggable="false" />
+      <span class="nav-tile-chip">Earn</span>
+    </button>
+    <button class="nav-tile" data-target="schedule" title="Schedule">
+      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
+      <img src="demo-assets/nav-badges/schedule.png" alt="" draggable="false" />
+      <span class="nav-tile-chip">Ship</span>
+    </button>
+    <button class="nav-tile" data-target="learn" title="Learn">
+      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
+      <img src="demo-assets/nav-badges/learn.png" alt="" draggable="false" />
+      <span class="nav-tile-chip">Learn</span>
+    </button>
+    <button class="nav-tile" data-target="community" title="Community">
+      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
+      <img src="demo-assets/nav-badges/community.png" alt="" draggable="false" />
+      <span class="nav-tile-chip">Crew</span>
+    </button>
+    <button class="nav-tile" data-target="thumbnail" title="Thumbnail Studio">
+      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
+      <img src="demo-assets/nav-badges/library.png" alt="" draggable="false" style="filter:hue-rotate(-20deg) drop-shadow(0 0 8px rgba(255,26,140,0.35));"/>
+      <span class="nav-tile-chip">Thumb</span>
+    </button>
+    <button class="nav-tile" data-target="signin" title="Sign-In · Activation">
+      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
+      <img src="demo-assets/glyph.png" alt="" draggable="false" />
+      <span class="nav-tile-chip">Doors</span>
+    </button>
+  </nav>
+  <div class="lc-sidenav-bottom">
+    <button class="nav-tile" data-target="settings" title="Settings">
+      <span class="nav-tile-corner tl"></span><span class="nav-tile-corner tr"></span><span class="nav-tile-corner bl"></span><span class="nav-tile-corner br"></span>
+      <img src="demo-assets/nav-badges/settings.png" alt="" draggable="false" />
+      <span class="nav-tile-chip">Setup</span>
+    </button>
+  </div>
+</aside>
+
+<!-- ── BROWSE side tab (right edge — matches src-tauri/src/browse.rs child webview) ── -->
+<button class="browse-tab" title="Browse Rewards">Browse</button>
+
+<!-- ── TOP CHROME (mac-style title bar with traffic lights + avatar) ── -->
+<div class="stage">
+<header class="h-9 flex items-center justify-between px-4 border-b border-line">
+  <div class="flex items-center gap-2">
+    <span class="w-3 h-3 rounded-full bg-[#ff5f57]"></span>
+    <span class="w-3 h-3 rounded-full bg-[#febc2e]"></span>
+    <span class="w-3 h-3 rounded-full bg-[#28c840]"></span>
+    <span class="ml-3 font-display text-[13px] font-semibold tracking-[-0.02em] text-ink">liquid<span class="text-fuchsia">/</span>clips</span>
+  </div>
+  <div class="flex items-center gap-2">
+    <div class="relative">
+      <div class="h-8 w-8 grid place-items-center rounded-full bg-fuchsia text-white text-xs font-semibold shadow-glow-sm">DD</div>
+      <svg viewBox="0 0 24 24" class="absolute -top-1 -right-1 w-4 h-4 fill-fuchsia"><path d="M5 16l2.5-9L12 13l4.5-6L19 16z"/></svg>
+    </div>
+  </div>
+</header>
+
+<main class="relative">
+
+<!-- ────────────────────────────────────────────────────────────────────────────
+     1. EARN — affiliate strip + Sponsored Rewards horizontal hero carousel
+        (matches the screenshot from 2026-06-10).
+─────────────────────────────────────────────────────────────────────────── -->
+<section class="surface is-active" data-surface="earn">
+  <div class="relative">
+    <div class="atm-earn absolute inset-0 pointer-events-none"></div>
+
+    <!-- TOP REFLECTION / SURFACE TAB — mimics the chrome glint at top of screenshot -->
+    <div class="relative h-2 bg-gradient-to-b from-fuchsia/30 via-fuchsia/10 to-transparent"></div>
+
+    <!-- AFFILIATE STRIP -->
+    <div class="relative px-8 py-4 border-b border-line/40 flex items-center justify-between">
+      <div class="flex items-center gap-4 text-[12px]">
+        <span class="font-mono uppercase tracking-[0.16em] text-fuchsia" style="color:#ff66b8;">Liquid Clips Affiliate</span>
+        <span class="text-t3">·</span>
+        <span class="text-ink-soft">Refer 2 paid users</span>
+        <span class="text-t3">·</span>
+        <span class="text-ink-soft">50% recurring lifetime</span>
+        <span class="text-t3">·</span>
+        <span class="text-ink-soft">pick Whop or Stripe payout</span>
+      </div>
+      <button class="font-mono text-[12px] uppercase tracking-[0.16em] text-fuchsia hover:text-fuchsia-bright" style="color:#ff66b8;">GET MY AFFILIATE LINK →</button>
+    </div>
+
+    <!-- SPONSORED REWARDS SECTION -->
+    <div class="relative px-8 pt-7 pb-10">
+      <div class="flex items-center justify-between mb-5">
+        <div class="flex items-center gap-2">
+          <svg viewBox="0 0 24 24" class="w-4 h-4 fill-fuchsia"><path d="M12 2C9 6 6 9 6 13a6 6 0 0 0 12 0c0-2-1-4-2-5 0 2-1 3-2 3 1-3-1-6-2-9z"/></svg>
+          <span class="eyebrow" style="color:#ff66b8;">Sponsored Rewards</span>
+        </div>
+        <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-soft">6 LIVE</span>
+      </div>
+
+      <!-- HERO CAROUSEL CARD — featuring the LIQUID LIFT cinematic Kade hero -->
+      <div class="relative hud-frame rounded-3xl overflow-hidden">
+        <div class="grid grid-cols-[1fr_1.1fr] min-h-[420px]">
+          <!-- LEFT pane: brand block + reward stats -->
+          <div class="relative px-12 py-10 flex flex-col justify-center">
+            <span class="absolute top-6 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-fuchsia text-white shadow-glow-sm">
+              <span class="w-1.5 h-1.5 rounded-full bg-white pulse-dot"></span>
+              <span class="font-mono text-[10px] uppercase tracking-[0.14em] font-semibold">LIVE</span>
+            </span>
+
+            <!-- Inset LIQUID/CLIPS wordmark logo block -->
+            <div class="flex items-center gap-3 mb-6">
+              <svg viewBox="0 0 24 16" class="h-9 w-12 fill-fuchsia pixel drop-shadow-[0_0_18px_rgba(255,26,140,0.75)]">
+                <rect x="3" y="2" width="2" height="2"/><rect x="19" y="2" width="2" height="2"/>
+                <rect x="5" y="4" width="14" height="2"/>
+                <rect x="3" y="6" width="2" height="2"/><rect x="7" y="6" width="2" height="2"/><rect x="15" y="6" width="2" height="2"/><rect x="19" y="6" width="2" height="2"/>
+                <rect x="3" y="8" width="18" height="2"/>
+                <rect x="5" y="10" width="2" height="2"/><rect x="9" y="10" width="6" height="2"/><rect x="17" y="10" width="2" height="2"/>
+                <rect x="1" y="12" width="2" height="2"/><rect x="7" y="12" width="2" height="2"/><rect x="15" y="12" width="2" height="2"/><rect x="21" y="12" width="2" height="2"/>
+              </svg>
+              <span class="font-display font-bold tracking-[-0.025em] text-[24px] text-ink leading-none">LIQUID<br/><span class="text-fuchsia">/</span>CLIPS</span>
+            </div>
+
+            <h2 class="font-display text-[36px] font-semibold italic tracking-[-0.025em] text-ink leading-tight mb-2">Liquid Lift</h2>
+            <div class="flex items-baseline gap-3 mb-3">
+              <span class="font-display text-[68px] font-bold tracking-[-0.03em] text-fuchsia leading-none">$9 RPM</span>
+              <span class="font-mono text-[14px] text-ink-soft">· $50,000 pool</span>
+            </div>
+            <div class="text-[15px] text-ink-soft">Shopify overlay · Recurring</div>
+          </div>
+
+          <!-- RIGHT pane: cinematic creator hero image -->
+          <div class="relative overflow-hidden">
+            <img src="demo-assets/kade-oasis-hero.png" alt="" class="absolute inset-0 w-full h-full object-cover" />
+            <!-- Subtle vignette over the image edge so the text side blends -->
+            <div class="absolute inset-0 bg-gradient-to-r from-paper/80 via-paper/20 to-transparent"></div>
+          </div>
+        </div>
+
+        <!-- Carousel left/right arrows, positioned over the card edges -->
+        <button class="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-paper/70 backdrop-blur grid place-items-center text-ink-soft hover:text-ink hover:bg-paper-elev border border-line">
+          <svg viewBox="0 0 24 24" class="w-4 h-4 fill-none stroke-current" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <button class="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-paper/70 backdrop-blur grid place-items-center text-ink-soft hover:text-ink hover:bg-paper-elev border border-line">
+          <svg viewBox="0 0 24 24" class="w-4 h-4 fill-none stroke-current" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+
+      <!-- Carousel dots -->
+      <div class="flex items-center justify-center gap-2 mt-6">
+        <span class="w-1.5 h-1.5 rounded-full bg-ink-soft/30"></span>
+        <span class="w-1.5 h-1.5 rounded-full bg-ink-soft/30"></span>
+        <span class="w-8 h-1.5 rounded-full bg-fuchsia"></span>
+        <span class="w-1.5 h-1.5 rounded-full bg-ink-soft/30"></span>
+        <span class="w-1.5 h-1.5 rounded-full bg-ink-soft/30"></span>
+      </div>
+    </div>
+
+    <!-- BOTTOM SPRINT STRIP — dev/status fingerprint, matches "SPRINT 3 · ONBOARDING ..." in screenshot -->
+    <div class="relative px-8 py-3 border-t border-line/40 flex items-center justify-between">
+      <div class="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] text-t3">
+        <span>SPRINT 3</span><span>·</span><span>ONBOARDING</span><span>·</span><span>KEYCHAIN</span><span>·</span><span>SETTINGS</span><span>·</span><span>AUTO-UPDATE</span>
+      </div>
+      <div class="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-t3">
+        <span class="w-1.5 h-1.5 rounded-full bg-fuchsia pulse-dot"></span>
+        <span>v0.7.50 · idle</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ────────────────────────────────────────────────────────────────────────────
+     2. WORKSPACE — cockpit tiles + clip grid (canonical).
+─────────────────────────────────────────────────────────────────────────── -->
+<section class="surface" data-surface="workspace">
+  <div class="relative">
+    <div class="atm-workspace absolute inset-0 pointer-events-none"></div>
+    <div class="relative px-8 pt-6 pb-10">
+      <div class="flex items-center justify-between mb-5">
+        <div class="flex items-center gap-3">
+          <span class="eyebrow">workstation</span>
+          <span class="eyebrow" style="color:#ff66b8">12 clips · 3 selected</span>
+          <span class="w-1 h-1 rounded-full bg-fuchsia pulse-dot"></span>
+          <span class="eyebrow">baking · vertical 42%</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <button class="pill is-active">All · 12</button>
+          <button class="pill">Best bits · 7</button>
+          <button class="pill">Reactions · 3</button>
+          <button class="pill">Scheduled · 2</button>
+        </div>
+      </div>
+      <div class="grid grid-cols-4 gap-5 mb-6 max-w-5xl mx-auto">
+        <button class="cockpit-tile h-44 rounded-2xl grid place-items-center">
+          <span class="ctc ctc-tl"></span><span class="ctc ctc-tr"></span><span class="ctc ctc-bl"></span><span class="ctc ctc-br"></span>
+          <span class="cockpit-tile-halo"></span>
+          <div class="relative text-center">
+            <svg viewBox="0 0 24 24" class="w-12 h-12 mx-auto mb-3 fill-none stroke-fuchsia drop-shadow-[0_8px_18px_rgba(255,26,140,0.45)]" stroke-width="1.5"><path d="M12 3v18M3 12h18"/></svg>
+            <div class="text-ink font-semibold text-sm mb-0.5">Create</div>
+            <div class="eyebrow">paste a url</div>
+          </div>
+        </button>
+        <button class="cockpit-tile h-44 rounded-2xl grid place-items-center">
+          <span class="ctc ctc-tl"></span><span class="ctc ctc-tr"></span><span class="ctc ctc-bl"></span><span class="ctc ctc-br"></span>
+          <span class="cockpit-tile-halo"></span>
+          <div class="relative text-center">
+            <svg viewBox="0 0 24 24" class="w-12 h-12 mx-auto mb-3 fill-none stroke-fuchsia drop-shadow-[0_8px_18px_rgba(255,26,140,0.45)]" stroke-width="1.5"><path d="M5 5h14v14H5z M9 9h6v6H9z"/></svg>
+            <div class="text-ink font-semibold text-sm mb-0.5">Import</div>
+            <div class="eyebrow">drop a video</div>
+          </div>
+        </button>
+        <button class="cockpit-tile h-44 rounded-2xl grid place-items-center">
+          <span class="ctc ctc-tl"></span><span class="ctc ctc-tr"></span><span class="ctc ctc-bl"></span><span class="ctc ctc-br"></span>
+          <span class="cockpit-tile-halo"></span>
+          <div class="relative text-center">
+            <svg viewBox="0 0 24 24" class="w-12 h-12 mx-auto mb-3 fill-none stroke-fuchsia drop-shadow-[0_8px_18px_rgba(255,26,140,0.45)]" stroke-width="1.5"><path d="M6 4h12l-2 16H8L6 4z M9 8h6"/></svg>
+            <div class="text-ink font-semibold text-sm mb-0.5">Script</div>
+            <div class="eyebrow">lift transcript</div>
+          </div>
+        </button>
+        <button class="cockpit-tile h-44 rounded-2xl grid place-items-center">
+          <span class="ctc ctc-tl"></span><span class="ctc ctc-tr"></span><span class="ctc ctc-bl"></span><span class="ctc ctc-br"></span>
+          <span class="cockpit-tile-halo"></span>
+          <div class="relative text-center">
+            <svg viewBox="0 0 24 24" class="w-12 h-12 mx-auto mb-3 fill-none stroke-fuchsia drop-shadow-[0_8px_18px_rgba(255,26,140,0.45)]" stroke-width="1.5"><path d="M3 5h18v14H3z M3 13l5-3 4 3 4-5 5 6"/></svg>
+            <div class="text-ink font-semibold text-sm mb-0.5">Thumbnails</div>
+            <div class="eyebrow">3 in 1 click</div>
+          </div>
+        </button>
+      </div>
+      <div class="max-w-5xl mx-auto">
+        <div class="eyebrow mb-3">today's clips</div>
+        <div class="grid grid-cols-4 gap-4" id="workspace-grid"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── LIBRARY ─────────────────────────── -->
+<section class="surface" data-surface="library">
+  <div class="relative">
+    <div class="atm-library absolute inset-0 pointer-events-none"></div>
+    <div class="relative px-8 pt-6 pb-10 max-w-6xl mx-auto">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <div class="eyebrow">library</div>
+          <h1 class="font-display text-[26px] font-semibold tracking-[-0.025em] text-ink mt-0.5">Previously loved</h1>
+        </div>
+        <div class="relative">
+          <input type="text" placeholder="Search archived clips" class="w-72 h-10 pl-9 pr-3 rounded-xl border border-line bg-paper-elev focus:outline-none focus:border-fuchsia/60 text-sm text-ink placeholder:text-t3" />
+          <svg viewBox="0 0 24 24" class="w-4 h-4 text-t3 absolute left-3 top-1/2 -translate-y-1/2 fill-none stroke-current" stroke-width="1.75"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        </div>
+      </div>
+      <div id="library-grid" class="grid grid-cols-6 gap-3"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── SCHEDULE ─────────────────────────── -->
+<section class="surface" data-surface="schedule">
+  <div class="relative">
+    <div class="atm-schedule absolute inset-0 pointer-events-none"></div>
+    <div class="relative px-8 pt-6 pb-10 max-w-6xl mx-auto">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <div class="eyebrow">schedule</div>
+          <h1 class="font-display text-[26px] font-semibold tracking-[-0.025em] text-ink mt-0.5">Mission control</h1>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="pill is-active">Queue · 5</button>
+          <button class="pill">Channels · 4</button>
+          <button class="pill">Analytics</button>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 mb-5">
+        <span class="eyebrow text-t3 mr-2">routed to</span>
+        <span class="pill is-active">@ddbeauty</span>
+        <span class="pill is-active">@danieldiyepriyebeauty</span>
+        <span class="pill">finish linking · ig</span>
+        <span class="pill">+ add</span>
+      </div>
+      <div class="grid grid-cols-3 gap-6">
+        <div id="schedule-list" class="col-span-2 space-y-3"></div>
+        <div class="library-card relative rounded-2xl p-5">
+          <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+          <div class="eyebrow mb-3">this week</div>
+          <div class="grid grid-cols-7 gap-1 text-center mb-4">
+            <div class="text-t3 text-[10px] mono">M</div><div class="text-t3 text-[10px] mono">T</div><div class="text-t3 text-[10px] mono">W</div><div class="text-t3 text-[10px] mono">T</div><div class="text-t3 text-[10px] mono">F</div><div class="text-t3 text-[10px] mono">S</div><div class="text-t3 text-[10px] mono">S</div>
+            <div class="aspect-square rounded grid place-items-center text-[11px] text-t2">9</div>
+            <div class="aspect-square rounded grid place-items-center text-[11px] text-t2">10</div>
+            <div class="aspect-square rounded grid place-items-center text-[11px] text-ink bg-fuchsia/15 border border-fuchsia/40">11</div>
+            <div class="aspect-square rounded grid place-items-center text-[11px] text-t2">12</div>
+            <div class="aspect-square rounded grid place-items-center text-[11px] text-t2">13</div>
+            <div class="aspect-square rounded grid place-items-center text-[11px] text-t2">14</div>
+            <div class="aspect-square rounded grid place-items-center text-[11px] text-t2">15</div>
+          </div>
+          <div class="space-y-2">
+            <div class="flex items-center justify-between text-[11px] mono uppercase tracking-[0.10em]"><span class="text-t3">queued</span><span class="text-ink">5</span></div>
+            <div class="flex items-center justify-between text-[11px] mono uppercase tracking-[0.10em]"><span class="text-t3">posted today</span><span style="color:#ff66b8">2</span></div>
+            <div class="flex items-center justify-between text-[11px] mono uppercase tracking-[0.10em]"><span class="text-t3">channels live</span><span class="text-ink">2 / 4</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── SETTINGS ─────────────────────────── -->
+<section class="surface" data-surface="settings">
+  <div class="relative">
+    <div class="atm-settings absolute inset-0 pointer-events-none"></div>
+    <div class="relative px-8 pt-6 pb-10 max-w-6xl mx-auto">
+      <div class="mb-6">
+        <div class="eyebrow">settings</div>
+        <h1 class="font-display text-[26px] font-semibold tracking-[-0.025em] text-ink mt-0.5">Loadout</h1>
+      </div>
+      <div class="grid grid-cols-[220px_1fr] gap-6">
+        <nav class="space-y-1">
+          <button class="library-card relative w-full text-left px-3 py-2.5 rounded-xl flex items-center gap-2.5" style="background:rgba(255,26,140,0.08);">
+            <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+            <span class="w-1 h-1 rounded-full bg-fuchsia"></span>
+            <span class="text-[13px] font-semibold text-ink">Channels</span>
+          </button>
+          <button class="w-full text-left px-3 py-2.5 rounded-xl text-[13px] text-ink-soft hover:bg-paper-elev hover:text-ink">Account</button>
+          <button class="w-full text-left px-3 py-2.5 rounded-xl text-[13px] text-ink-soft hover:bg-paper-elev hover:text-ink">API keys</button>
+          <button class="w-full text-left px-3 py-2.5 rounded-xl text-[13px] text-ink-soft hover:bg-paper-elev hover:text-ink">Billing</button>
+          <button class="w-full text-left px-3 py-2.5 rounded-xl text-[13px] text-ink-soft hover:bg-paper-elev hover:text-ink">Brand</button>
+          <button class="w-full text-left px-3 py-2.5 rounded-xl text-[13px] text-ink-soft hover:bg-paper-elev hover:text-ink">Updates</button>
+        </nav>
+        <div>
+          <div class="mb-5">
+            <h2 class="font-display text-[20px] font-semibold tracking-[-0.02em] text-ink mb-1">Channels</h2>
+            <p class="text-[13px] text-ink-soft leading-relaxed max-w-xl">Link the places you want Liquid Clips to post. Each channel routes through Ayrshare. No tokens held on this Mac.</p>
+          </div>
+          <div id="settings-channels" class="space-y-3"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── THUMBNAIL SETUP ─────────────────────────── -->
+<section class="surface" data-surface="thumbnail">
+  <div class="relative">
+    <div class="atm-thumbnail absolute inset-0 pointer-events-none"></div>
+    <div class="relative px-8 pt-6 pb-10 max-w-5xl mx-auto">
+      <div class="flex items-center justify-between mb-5">
+        <div>
+          <div class="eyebrow">thumbnails</div>
+          <h1 class="font-display text-[26px] font-semibold tracking-[-0.025em] text-ink mt-0.5">Thumbnail setup</h1>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="flex items-center p-0.5 rounded-full border border-line bg-paper-elev">
+            <button class="pill">Cover Pack</button>
+            <button class="pill is-active">AI Generate</button>
+          </div>
+          <span class="font-mono text-[12px] text-t3">$0.00</span>
+        </div>
+      </div>
+      <div class="max-w-3xl mx-auto text-center mb-5">
+        <div class="eyebrow mb-2" style="color:#ff66b8">Make this in 3 steps</div>
+        <h3 class="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink leading-tight">Character-locked YouTube thumbnails — your face, every time.</h3>
+      </div>
+      <div class="relative hud-frame rounded-2xl overflow-hidden mb-6 h-44">
+        <div class="flex gap-3 absolute inset-y-0 py-3 pl-3 will-change-transform" style="width:max-content; animation: marquee 55s linear infinite;">
+          <img src="demo-assets/yt-references/yt-01.png" class="h-full w-auto rounded-lg object-cover flex-shrink-0 shadow-[0_4px_16px_rgba(0,0,0,0.55)]"/>
+          <img src="demo-assets/yt-references/yt-02.png" class="h-full w-auto rounded-lg object-cover flex-shrink-0 shadow-[0_4px_16px_rgba(0,0,0,0.55)]"/>
+          <img src="demo-assets/yt-references/yt-03.png" class="h-full w-auto rounded-lg object-cover flex-shrink-0 shadow-[0_4px_16px_rgba(0,0,0,0.55)]"/>
+          <img src="demo-assets/yt-references/yt-04.png" class="h-full w-auto rounded-lg object-cover flex-shrink-0 shadow-[0_4px_16px_rgba(0,0,0,0.55)]"/>
+          <img src="demo-assets/yt-references/yt-05.png" class="h-full w-auto rounded-lg object-cover flex-shrink-0 shadow-[0_4px_16px_rgba(0,0,0,0.55)]"/>
+          <img src="demo-assets/yt-references/yt-06.png" class="h-full w-auto rounded-lg object-cover flex-shrink-0 shadow-[0_4px_16px_rgba(0,0,0,0.55)]"/>
+          <img src="demo-assets/yt-references/yt-01.png" class="h-full w-auto rounded-lg object-cover flex-shrink-0 shadow-[0_4px_16px_rgba(0,0,0,0.55)]"/>
+          <img src="demo-assets/yt-references/yt-02.png" class="h-full w-auto rounded-lg object-cover flex-shrink-0 shadow-[0_4px_16px_rgba(0,0,0,0.55)]"/>
+          <img src="demo-assets/yt-references/yt-03.png" class="h-full w-auto rounded-lg object-cover flex-shrink-0 shadow-[0_4px_16px_rgba(0,0,0,0.55)]"/>
+          <img src="demo-assets/yt-references/yt-04.png" class="h-full w-auto rounded-lg object-cover flex-shrink-0 shadow-[0_4px_16px_rgba(0,0,0,0.55)]"/>
+          <img src="demo-assets/yt-references/yt-05.png" class="h-full w-auto rounded-lg object-cover flex-shrink-0 shadow-[0_4px_16px_rgba(0,0,0,0.55)]"/>
+          <img src="demo-assets/yt-references/yt-06.png" class="h-full w-auto rounded-lg object-cover flex-shrink-0 shadow-[0_4px_16px_rgba(0,0,0,0.55)]"/>
+        </div>
+        <div class="absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-paper to-transparent pointer-events-none z-[1]"></div>
+        <div class="absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-paper to-transparent pointer-events-none z-[1]"></div>
+      </div>
+      <div class="grid grid-cols-3 gap-4 max-w-2xl mx-auto">
+        <div class="library-card relative flex items-center gap-3 px-3.5 py-3 rounded-xl">
+          <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+          <div class="halo-digit"><span>1</span></div>
+          <div class="text-left min-w-0"><div class="text-[13px] font-semibold text-ink leading-tight">Upload identity</div><div class="font-mono text-[9px] uppercase tracking-[0.14em] text-t3 mt-1">3 face crops · once</div></div>
+        </div>
+        <div class="library-card relative flex items-center gap-3 px-3.5 py-3 rounded-xl">
+          <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+          <div class="halo-digit"><span>2</span></div>
+          <div class="text-left min-w-0"><div class="text-[13px] font-semibold text-ink leading-tight">Pick your style</div><div class="font-mono text-[9px] uppercase tracking-[0.14em] text-t3 mt-1">brand name + mood</div></div>
+        </div>
+        <div class="library-card relative flex items-center gap-3 px-3.5 py-3 rounded-xl">
+          <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+          <div class="halo-digit"><span>3</span></div>
+          <div class="text-left min-w-0"><div class="text-[13px] font-semibold text-ink leading-tight">Generate</div><div class="font-mono text-[9px] uppercase tracking-[0.14em] text-t3 mt-1">$0.07 per image</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── LEARN ─────────────────────────── -->
+<section class="surface" data-surface="learn">
+  <div class="relative">
+    <div class="atm-library absolute inset-0 pointer-events-none"></div>
+    <div class="relative px-8 pt-6 pb-10 max-w-5xl mx-auto">
+      <div class="mb-6">
+        <div class="eyebrow">learn</div>
+        <h1 class="font-display text-[26px] font-semibold tracking-[-0.025em] text-ink mt-0.5">Walkthroughs</h1>
+      </div>
+      <div class="grid grid-cols-3 gap-4">
+        <div class="library-card relative rounded-2xl p-5">
+          <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+          <div class="eyebrow mb-3">5 min</div>
+          <h3 class="font-display text-[16px] font-semibold tracking-[-0.01em] text-ink leading-tight mb-2">Your first viral clip</h3>
+          <p class="text-[12px] text-ink-soft leading-relaxed mb-4">Paste a YouTube URL → pick the moments AI surfaces → schedule the top 3 across IG/TT.</p>
+          <button class="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep" style="color:#ff66b8">Start →</button>
+        </div>
+        <div class="library-card relative rounded-2xl p-5">
+          <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+          <div class="eyebrow mb-3">3 min</div>
+          <h3 class="font-display text-[16px] font-semibold tracking-[-0.01em] text-ink leading-tight mb-2">Brand a caption style</h3>
+          <p class="text-[12px] text-ink-soft leading-relaxed mb-4">Lock fuchsia accent + per-word colour. Apply across every clip in the project.</p>
+          <button class="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep" style="color:#ff66b8">Start →</button>
+        </div>
+        <div class="library-card relative rounded-2xl p-5">
+          <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+          <div class="eyebrow mb-3">7 min</div>
+          <h3 class="font-display text-[16px] font-semibold tracking-[-0.01em] text-ink leading-tight mb-2">Earn from sponsored briefs</h3>
+          <p class="text-[12px] text-ink-soft leading-relaxed mb-4">Pick a campaign, clip to spec, submit. Track payouts in the Earn deck.</p>
+          <button class="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep" style="color:#ff66b8">Start →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── COMMUNITY ─────────────────────────── -->
+<section class="surface" data-surface="community">
+  <div class="relative">
+    <div class="atm-earn absolute inset-0 pointer-events-none"></div>
+    <div class="relative px-8 pt-6 pb-10 max-w-5xl mx-auto">
+      <div class="mb-6">
+        <div class="eyebrow">community</div>
+        <h1 class="font-display text-[26px] font-semibold tracking-[-0.025em] text-ink mt-0.5">The crew</h1>
+      </div>
+      <div class="space-y-3">
+        <div class="library-card relative rounded-2xl p-5">
+          <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+          <div class="flex items-center justify-between mb-2">
+            <span class="eyebrow" style="color:#ff66b8">announcement · today</span>
+            <span class="eyebrow text-t3">team</span>
+          </div>
+          <h3 class="font-display text-[16px] font-semibold tracking-[-0.01em] text-ink leading-tight mb-1">v0.7.50 ships tonight</h3>
+          <p class="text-[12px] text-ink-soft leading-relaxed">Non-blocking dispatcher, brand atmospheres, Earn fix, big YT thumbnail pack. Auto-update fires when CI lands.</p>
+        </div>
+        <div class="library-card relative rounded-2xl p-5">
+          <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+          <div class="flex items-center justify-between mb-2">
+            <span class="eyebrow">campaign brief · liquid lift</span>
+            <span class="eyebrow text-fuchsia-deep" style="color:#ff66b8">$50K POOL</span>
+          </div>
+          <h3 class="font-display text-[16px] font-semibold tracking-[-0.01em] text-ink leading-tight mb-1">Clip Liquid Lift demos, earn $9 RPM recurring</h3>
+          <p class="text-[12px] text-ink-soft leading-relaxed">Shopify overlay product. The brief auto-suggests cuts. Submit through Earn → payouts via Whop or Stripe Connect.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── SIGN-IN / ACTIVATION ─────────────────────────── -->
+<section class="surface" data-surface="signin">
+  <div class="relative min-h-[600px]">
+    <div class="atm-signin absolute inset-0 pointer-events-none"></div>
+    <div class="relative px-8 py-16 max-w-xl mx-auto text-center">
+      <div class="eyebrow mb-6">first run</div>
+      <svg viewBox="0 0 24 16" class="h-20 w-28 mx-auto fill-fuchsia drop-shadow-[0_0_40px_rgba(255,26,140,0.85)] breathing pixel mb-6">
+        <rect x="3" y="2" width="2" height="2"/><rect x="19" y="2" width="2" height="2"/>
+        <rect x="5" y="4" width="14" height="2"/>
+        <rect x="3" y="6" width="2" height="2"/><rect x="7" y="6" width="2" height="2"/><rect x="15" y="6" width="2" height="2"/><rect x="19" y="6" width="2" height="2"/>
+        <rect x="3" y="8" width="18" height="2"/>
+        <rect x="5" y="10" width="2" height="2"/><rect x="9" y="10" width="6" height="2"/><rect x="17" y="10" width="2" height="2"/>
+        <rect x="1" y="12" width="2" height="2"/><rect x="7" y="12" width="2" height="2"/><rect x="15" y="12" width="2" height="2"/><rect x="21" y="12" width="2" height="2"/>
+      </svg>
+      <h1 class="font-display text-[32px] font-semibold tracking-[-0.025em] text-ink leading-tight mb-3">Welcome to the dojo.</h1>
+      <p class="text-[14px] text-ink-soft leading-relaxed max-w-md mx-auto mb-8">Sign in to count your first 100 free clips. No card. Sign-in just makes you a known clipper.</p>
+      <button class="h-12 px-6 rounded-full bg-fuchsia text-white text-sm font-semibold hover:bg-fuchsia-bright shadow-glow-md inline-flex items-center gap-2">
+        Sign in to Liquid Clips
+        <svg viewBox="0 0 24 24" class="w-4 h-4 fill-none stroke-current" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+      <div class="mt-3 eyebrow text-t3">stays in this window · no route change</div>
+      <div class="mt-10 flex items-center justify-center gap-2">
+        <span class="eyebrow text-t3">already signed in?</span>
+        <button class="eyebrow text-fuchsia hover:text-fuchsia-bright">activate this mac →</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<!-- ── JS ── -->
+<script>
+  // Side nav switcher
+  document.querySelectorAll('[data-target]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.target;
+      document.body.dataset.surface = target;
+      document.querySelectorAll('.surface').forEach(s => {
+        s.classList.toggle('is-active', s.dataset.surface === target);
+      });
+      document.querySelectorAll('[data-target]').forEach(b => {
+        b.classList.toggle('is-active', b.dataset.target === target);
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+
+  // Workspace clips
+  const wsGrid = document.getElementById('workspace-grid');
+  if (wsGrid) {
+    const caps = [
+      'every black girl should go brunette',
+      'this is the actual move i made on the airline app',
+      'how do you stay so long on the stairmaster',
+      'we shipped v0.7.49 last night',
+    ];
+    wsGrid.innerHTML = caps.map((cap, i) => `
+      <article class="library-card aspect-[9/16] rounded-2xl bg-paper-warm overflow-hidden relative" style="background:linear-gradient(135deg, rgba(255,26,140,${0.04 + (i%4)*0.02}), rgba(0,0,0,0.6));">
+        <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+        <div class="absolute inset-0 bg-gradient-to-t from-paper/85 via-paper/15 to-transparent"></div>
+        <span class="absolute top-2 right-2 mono text-[10px] uppercase tracking-[0.08em] px-2 py-0.5 rounded-full bg-paper/80 text-ink border border-line">0:${(28 + i * 4).toString().padStart(2,'0')}</span>
+        <div class="absolute inset-x-0 bottom-0 p-2.5 pt-8">
+          <div class="text-ink text-xs font-semibold leading-snug" style="text-shadow:0 1px 4px rgba(0,0,0,0.95);">${cap}</div>
+        </div>
+      </article>
+    `).join('');
+  }
+
+  // Library 12 archived
+  const libGrid = document.getElementById('library-grid');
+  if (libGrid) {
+    const captions = ['morning recap day 14','airline jet $500','brunette black girls','stairmaster how','shipped 0.7.49','three cents a month','subtraction senior','me on top works','clips land where','reaction backdoors','signed who notarized','cap the cost'];
+    libGrid.innerHTML = captions.map((cap, i) => `
+      <article class="library-card aspect-[9/16] rounded-2xl bg-paper-warm overflow-hidden relative" style="background:linear-gradient(135deg, rgba(255,26,140,${0.04 + (i%4)*0.02}), rgba(0,0,0,0.6));">
+        <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+        <div class="absolute inset-0 bg-gradient-to-t from-paper/85 via-paper/15 to-transparent"></div>
+        <span class="absolute top-2 left-2 mono text-[9px] uppercase tracking-[0.12em] px-1.5 py-0.5 rounded bg-paper/80 text-t3 border border-line">archived</span>
+        <span class="absolute top-2 right-2 mono text-[10px] uppercase tracking-[0.08em] px-2 py-0.5 rounded-full bg-paper/80 text-ink border border-line">0:${(28 + i % 18).toString().padStart(2,'0')}</span>
+        <div class="absolute inset-x-0 bottom-0 p-2 pt-6">
+          <div class="text-ink text-[11px] font-semibold leading-snug mb-1.5" style="text-shadow:0 1px 4px rgba(0,0,0,0.95); display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${cap}</div>
+          <button class="w-full h-7 rounded-md bg-paper/85 backdrop-blur eyebrow font-semibold hover:bg-fuchsia hover:text-white transition">Restore</button>
+        </div>
+      </article>
+    `).join('');
+  }
+
+  // Schedule queue
+  const scheduleList = document.getElementById('schedule-list');
+  if (scheduleList) {
+    const queue = [
+      { time:'Today · 14:30', clip:'every black girl should go brunette', platforms:['IG','TT','YT'], status:'queued' },
+      { time:'Today · 16:00', clip:'this is the actual move i made on the airline app', platforms:['IG','TT'], status:'queued' },
+      { time:'Today · 18:45', clip:'how do you stay so long on the stairmaster', platforms:['TT','YT'], status:'queued' },
+      { time:'Tomorrow · 09:00', clip:'we shipped v0.7.49 last night', platforms:['YT'], status:'queued' },
+      { time:'Tomorrow · 12:00', clip:'fourteen days in, here is what changed', platforms:['IG','TT','YT'], status:'draft' },
+    ];
+    scheduleList.innerHTML = queue.map(row => `
+      <div class="library-card relative flex items-center gap-4 px-4 py-3 rounded-xl">
+        <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+        <div class="flex-shrink-0 w-32">
+          <div class="mono text-[10px] uppercase tracking-[0.12em]" style="${row.status === 'draft' ? 'color:#f59e0b' : 'color:#ff66b8'}">${row.time}</div>
+          <div class="eyebrow mt-1">${row.status}</div>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-[13px] text-ink font-medium truncate">${row.clip}</div>
+          <div class="flex items-center gap-2 mt-1">
+            ${row.platforms.map(p => `<span class="mono text-[9px] uppercase tracking-[0.14em] text-t3 px-1.5 py-0.5 rounded border border-line">${p}</span>`).join('')}
+          </div>
+        </div>
+        <button class="h-8 w-8 grid place-items-center rounded-md hover:bg-paper-elev text-t2 hover:text-ink">
+          <svg viewBox="0 0 24 24" class="w-4 h-4 fill-none stroke-current" stroke-width="1.75"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+        </button>
+      </div>
+    `).join('');
+  }
+
+  // Settings channels
+  const settingsChannels = document.getElementById('settings-channels');
+  if (settingsChannels) {
+    const channels = [
+      { handle:'@ddbeauty',                bg:'#ff0000', label:'YouTube',   status:'connected', statusColor:'#ff66b8' },
+      { handle:'@danieldiyepriyebeauty',   bg:'#000',    label:'TikTok',    status:'connected', statusColor:'#ff66b8' },
+      { handle:'@danieldiyepriyebeauty',   bg:'linear-gradient(135deg,#feda75,#fa7e1e,#d62976,#962fbf)', label:'Instagram', status:'finish linking', statusColor:'#f59e0b' },
+      { handle:'@enumcos',                 bg:'#000',    label:'X',         status:'not connected', statusColor:'#8a857e' },
+    ];
+    settingsChannels.innerHTML = channels.map(c => `
+      <div class="library-card relative flex items-center gap-4 px-4 py-3.5 rounded-xl">
+        <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+        <div class="w-10 h-10 rounded-[10px] grid place-items-center flex-shrink-0" style="background:${c.bg};">
+          <div class="text-white text-[11px] font-bold mono">${c.label[0]}</div>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-[13px] font-semibold text-ink">${c.label} · ${c.handle}</div>
+          <div class="mono text-[10px] uppercase tracking-[0.12em] mt-0.5" style="color:${c.statusColor};">${c.status}</div>
+        </div>
+        <button class="h-9 px-4 rounded-full mono text-[10px] uppercase tracking-[0.12em] font-semibold ${c.status === 'connected' ? 'text-t3 border border-line hover:text-ink' : 'bg-fuchsia text-white hover:bg-fuchsia-bright shadow-glow-sm'}">
+          ${c.status === 'connected' ? 'Manage' : 'Connect'}
+        </button>
+      </div>
+    `).join('');
+  }
+</script>
+</body>
+</html>
