@@ -42,6 +42,8 @@ import {
   Zap,
 } from "lucide-react";
 import { humanError, sidecar, type Project } from "../../lib/sidecar";
+import { useTier } from "../../lib/useTier";
+import { openAuthPanel } from "../auth/useAuthPanel";
 import {
   CAPTION_STYLES,
   CAPTION_STYLE_KEYS,
@@ -105,6 +107,10 @@ export function BottomCockpit({
 }: Props): JSX.Element {
   const [popover, setPopover] = useState<Popover>({ kind: "none" });
   const [busy, setBusy] = useState(false);
+  // v0.7.49 — Tier read for the BakeErrorStrip Retry gate below. Closes a
+  // bypass path the gates audit flagged: free users could refire applyOverlay
+  // with a paid layout by clicking Retry after a deliberate bake failure.
+  const cockpitTier = useTier();
   // v0.7.30 (IG-006 Bug 3 fix) — Reaction bake in flight (client-side).
   // Synchronous RPC means the sidecar can't write bake_status until after
   // ffmpeg finishes. We mirror the local busy from ReactionControls so the
@@ -175,6 +181,13 @@ export function BottomCockpit({
   // pending strip during the await.
   const retryReactionBake = useCallback(async () => {
     if (!focusedClip) return;
+    // v0.7.49 — Tier gate. BakeErrorStrip Retry refires applyOverlay with
+    // a non-"none" layout type; without this guard a Free user could bake
+    // a paid layout by triggering a deliberate failure and clicking Retry.
+    if (cockpitTier.tier === "free") {
+      openAuthPanel("upgrade");
+      return;
+    }
     const ov = focusedClip.overlay;
     if (!ov || !ov.source_path) {
       pushToast("No reaction layout to retry — pick one from the cockpit.");

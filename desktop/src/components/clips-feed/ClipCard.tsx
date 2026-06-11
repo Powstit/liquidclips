@@ -27,6 +27,8 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openSmart as openExternal } from "../../lib/openSmart";
 import { AlertTriangle, Check, Copy, Edit3, MessageSquare, Sparkles, Trash2 } from "lucide-react";
 import { RingButton } from "../cockpit/LibraryCard";
+import { useTier } from "../../lib/useTier";
+import { openAuthPanel } from "../auth/useAuthPanel";
 import type { Clip, OverlayType, Project, RatioKey } from "../../lib/sidecar";
 import { sidecar } from "../../lib/sidecar";
 import { useReactionBakeProgress } from "../../lib/useReactionBakeProgress";
@@ -110,6 +112,10 @@ export function ClipCard({
   onSelectClick?: (e: { meta: boolean; shift: boolean }) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  // v0.7.49 — Tier gate. ClipCard's "R" Sparkles button was a live bypass
+  // around ReactionControls' Solo+ moat; mirroring the gate here closes
+  // that surface so the conversion offer stays consistent everywhere.
+  const clipCardTier = useTier();
   // v0.7.46 — kebab menu retired in favour of the inline RingButton row
   // (Caption / Reaction / Copy / Editor / Remove). Removing the showMenu
   // state + refs and the dead MenuItem helper.
@@ -257,6 +263,14 @@ export function ClipCard({
   // clipper sees the source picker immediately. Aligned with the cockpit
   // row's promise: every action visible, no modal dance.
   async function changeReaction() {
+    // v0.7.49 — Bypass path closed. The ClipCard "R" Sparkles button used
+    // to skip the tier gate that lives on the cockpit's layout-tile grid,
+    // letting free users bake paid layouts from any card. Match the same
+    // Solo+ guard that ReactionControls enforces.
+    if (clipCardTier.tier === "free") {
+      openAuthPanel("upgrade");
+      return;
+    }
     const startingLayout: LayoutKey =
       currentLayout !== "none" ? currentLayout : "pip-bl";
     await applyLayout(startingLayout);

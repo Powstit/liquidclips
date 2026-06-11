@@ -15,6 +15,8 @@ import type { Clip, Project, RatioKey } from "../lib/sidecar";
 import { sidecar, RATIOS, humanError } from "../lib/sidecar";
 import { PlatformBadgePicker } from "./PlatformBadge";
 import { OverlayTemplateGallery } from "./OverlayTemplateGallery";
+import { useTier } from "../lib/useTier";
+import { openAuthPanel } from "./auth/useAuthPanel";
 import { CopyButton } from "./CopyButton";
 import { InfoTip } from "./InfoTip";
 import { type LayoutKey } from "./clips-feed/LayoutIcon";
@@ -89,6 +91,10 @@ export function ClipPreview({
   // See docs/UI_MAP_workbench.md (Cut list: "ClipPreview header in window mode").
   const [ratio, setRatio] = useState<RatioKey>("vertical");
   const [busy, setBusy] = useState(false);
+  // v0.7.49 — Tier gate for the OverlayTemplateGallery callback below.
+  // Templates fire applyOverlay with a paid layout type; without this the
+  // gallery would be a backdoor around ReactionControls' Solo+ moat.
+  const clipPreviewTier = useTier();
   const [actionError, setActionError] = useState<string | null>(null);
   // ship-lens v0.7.13 F4 (T1.7) — surface <video> errors so corrupt /
   // 0-byte / iCloud-placeholder files don't render as a silent black square.
@@ -371,6 +377,14 @@ export function ClipPreview({
   // immediately and the gallery's "selected" highlight updates.
   async function applyOverlayTemplateKey(key: import("../lib/sidecar").OverlayTemplateKey) {
     if (overlayTplBusy) return;
+    // v0.7.49 — Tier gate. Reaction templates kick off applyOverlay on the
+    // sidecar with a paid layout type; without this guard a Free user
+    // could pick a template here and bypass the Solo+ moat that
+    // ReactionControls enforces on the layout-tile grid.
+    if (clipPreviewTier.tier === "free") {
+      openAuthPanel("upgrade");
+      return;
+    }
     const gen = rpcGenRef.current;
     setOverlayTplBusy(true);
     setActionError(null);
