@@ -3,15 +3,15 @@ export const appUrl = "https://app.jnremployee.com";
 export const partnerUrl = "https://partner.jnremployee.com";
 export const supportEmail = "hello@liquidclips.app";
 
-// v0.6.11 — Default points at the brand /download page. The previous default
-// was a `https://github.com/Powstit/Jnr-employee/releases/latest` URL which
-// (a) leaked the old "Jnr-employee" brand, (b) exposed the source repo to
-// customers, and (c) showed draft/CI artifacts. Set NEXT_PUBLIC_DOWNLOAD_DMG_URL
-// on Vercel to the canonical signed DMG URL once a public release is hosted —
-// then every Download button on the marketing site points at the real file.
-export const downloadUrl =
-  process.env.NEXT_PUBLIC_DOWNLOAD_DMG_URL ??
-  "https://liquidclips.app/download";
+// v0.7.49 hotfix — Removed the NEXT_PUBLIC_DOWNLOAD_DMG_URL env-var fallback.
+// That env var was set to the OLD Jnr-employee/v0.6.44 URL months ago and
+// turned into a footgun: visitors who clicked the homepage Hero button were
+// served a stale, dead-repo build (Ryan hit this on 2026-06-11, Liquid Clips
+// 0.6.44 dmg got served, Gatekeeper rejected it). The /download page already
+// reads from getLatestRelease() (src/lib/latest-release.ts) which polls the
+// live GitHub release. Every download button now routes through that one
+// dynamic source — no stale env-var override possible.
+export const downloadUrl = "https://liquidclips.app/download";
 
 export const navLinks = [
   { href: "/#how", label: "How it works" },
