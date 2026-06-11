@@ -15,7 +15,7 @@
 //
 // ship-lens v0.7.13: select + onError. Selection state lifted to parent via onSelectClick — the grid manages a Set<number>. onError plate replaces the silent-black-square strand for corrupt / iCloud-placeholder / 0-byte files.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 // v0.7.45 — `openSmart` replaces shell.open in `revealBrokenFile` below.
@@ -26,6 +26,8 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 // outer <article>; this swap is import-only.
 import { openSmart as openExternal } from "../../lib/openSmart";
 import { AlertTriangle, Check, Copy, Edit3, MessageSquare, Sparkles, Trash2 } from "lucide-react";
+import type { PlatformId } from "../PlatformBadge";
+import type { ChannelStatus } from "../../lib/backend";
 import { RingButton } from "../cockpit/LibraryCard";
 import { useTier } from "../../lib/useTier";
 import { openAuthPanel } from "../auth/useAuthPanel";
@@ -60,7 +62,7 @@ function pathForRatio(clip: Clip, ratio: RatioKey): string | undefined {
   return clip.portrait_path;
 }
 
-export function ClipCard({
+export const ClipCard = React.memo(function ClipCard({
   clip,
   index,
   slug,
@@ -74,6 +76,7 @@ export function ClipCard({
   selected,
   onSelectClick,
   focused = false,
+  connectionStatus,
 }: {
   clip: Clip;
   index: number;          // 1-based
@@ -82,6 +85,8 @@ export function ClipCard({
   ratio: RatioKey;
   onProjectChange: (p: Project) => void;
   onOpenEditor: () => void;
+  /** v0.8.0 — Per-platform connection state for smart badges. */
+  connectionStatus?: Partial<Record<PlatformId, ChannelStatus | "no-channel" | "loading">>;
   /** Optional — click on the captions chip opens the editor with the
    * captions drawer pre-opened. Falls back to onOpenEditor when undefined. */
   onOpenCaptions?: () => void;
@@ -495,6 +500,7 @@ export function ClipCard({
             <PlatformBadge
               platforms={clip.platforms}
               size="sm"
+              connectionStatus={connectionStatus}
               onClick={() => {
                 window.dispatchEvent(
                   new CustomEvent("lc:settings-open-tab", { detail: { tab: "channels" } })
@@ -514,6 +520,7 @@ export function ClipCard({
             <PlatformBadge
               platforms={["tiktok", "instagram", "youtube", "x"]}
               size="sm"
+              connectionStatus={connectionStatus}
             />
           </span>
         )}
@@ -688,7 +695,7 @@ export function ClipCard({
       )}
     </article>
   );
-}
+});
 
 function formatCardDur(seconds: number): string {
   const total = Math.max(0, Math.round(seconds));
