@@ -5,7 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 // regex rejects `/Users/...` paths; the opener plugin handles them.
 import { openSmart as openExternal } from "../lib/openSmart";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { CheckCircle2, FolderOpen, Plus, Film, Sparkles, Loader2 } from "lucide-react";
+import { CheckCircle2, FolderOpen, Plus, Film, Sparkles, Loader2, Lock } from "lucide-react";
+import { openAuthPanel } from "./auth/useAuthPanel";
 import type { Project, RatioKey } from "../lib/sidecar";
 import { ClipPreview } from "./ClipPreview";
 import { DripCalendar } from "./DripCalendar";
@@ -307,22 +308,37 @@ export function ResultsGrid({
           )}
           {/* v0.7.48 — Generate more clips: re-run LLM picker against
               the same transcript excluding already-picked ranges. Hidden
-              on imported packs (no transcript to mine). */}
+              on imported packs (no transcript to mine).
+              v0.7.49 — Solo+ gate. Free hits the upgrade wall on click;
+              the button stays visible so the upsell beat is loud, not a
+              hidden feature. */}
           {!isImported && (
-            <button
-              type="button"
-              onClick={() => void generateMoreClips()}
-              disabled={generatingMore}
-              title={generatingMore ? "Picking more clips…" : "Re-run the AI picker to add more clips"}
-              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-2.5 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia disabled:cursor-wait disabled:opacity-60"
-            >
-              {generatingMore ? (
-                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
-              ) : (
-                <Sparkles className="h-4 w-4" strokeWidth={2} />
-              )}
-              {generatingMore ? "Picking more…" : "Generate more clips"}
-            </button>
+            tier.tier === "free" ? (
+              <button
+                type="button"
+                onClick={() => openAuthPanel("upgrade")}
+                title="Re-run the AI picker — unlocks at Solo"
+                className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-soft bg-fuchsia-soft/30 px-4 py-2.5 font-sans text-[13px] font-medium text-fuchsia-deep transition-colors hover:border-fuchsia hover:bg-fuchsia-soft/50"
+              >
+                <Lock className="h-3.5 w-3.5" strokeWidth={2.4} />
+                Generate more · Solo
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void generateMoreClips()}
+                disabled={generatingMore}
+                title={generatingMore ? "Picking more clips…" : "Re-run the AI picker to add more clips"}
+                className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-2.5 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia disabled:cursor-wait disabled:opacity-60"
+              >
+                {generatingMore ? (
+                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                ) : (
+                  <Sparkles className="h-4 w-4" strokeWidth={2} />
+                )}
+                {generatingMore ? "Picking more…" : "Generate more clips"}
+              </button>
+            )
           )}
           <button
             onClick={async () => {
