@@ -63,14 +63,24 @@ _HTTPS_CONTEXT: ssl.SSLContext | None = None
 #     method call, so any stray library writes go to stderr instead.
 _RPC_STDOUT = sys.stdout
 
-# v0.8.0 — Background bake registry. Maps (slug, clip_idx) to a
-# threading.Event that the bake thread polls for cancellation.
+# v0.8.0 — Background operation registries. Each maps an operation key to a
+# threading.Event that the worker thread polls for cancellation.
 _ACTIVE_BAKES: dict[tuple[str, int], threading.Event] = {}
+_ACTIVE_REGENERATIONS: dict[tuple[str, int], threading.Event] = {}
+_ACTIVE_PICKS: dict[str, threading.Event] = {}
+_ACTIVE_TEMPLATES: dict[tuple[str, int], threading.Event] = {}
+_ACTIVE_INGESTS: dict[str, threading.Event] = {}
+_ACTIVE_LIFTS: dict[str, threading.Event] = {}
+
+# Thread-safe emit lock so multiple background worker threads can't interleave
+# JSON lines on stdout and break the RPC framing.
+_EMIT_LOCK = threading.Lock()
 
 
 def emit(payload: dict[str, Any]) -> None:
-    _RPC_STDOUT.write(json.dumps(payload, separators=(",", ":")) + "\n")
-    _RPC_STDOUT.flush()
+    with _EMIT_LOCK:
+        _RPC_STDOUT.write(json.dumps(payload, separators=(",", ":")) + "\n")
+        _RPC_STDOUT.flush()
 
 
 def log(msg: str) -> None:
@@ -894,6 +904,119 @@ def method_pick_more_clips(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# v0.8.0 — Background pick-more-clips.
+
+def method_start_pick_more_clips(params: dict[str, Any]) -> dict[str, Any]:
+    """Run the LLM picker + stages in a background thread. Returns immediately.
+
+    Caller listens for:
+      - pick_progress  { slug, stage, added, skipped, pct }
+      - pick_complete  { slug, project, added, skipped }
+      - pick_error     { slug, message }
+    """
+    slug = params.get("slug")
+    if not isinstance(slug, str):
+        raise ValueError("start_pick_more_clips requires `slug` (str)")
+
+    if slug in _ACTIVE_PICKS:
+        raise RuntimeError(f"Pick-more already in progress for {slug}")
+
+    cancel_event = threading.Event()
+    _ACTIVE_PICKS[slug] = cancel_event
+
+    def _run() -> None:
+        try:
+            original_check = stages._check_canceled
+            def _check_pick_canceled(project: Project) -> None:
+                if cancel_event.is_set():
+                    raise stages.CanceledError("canceled by user")
+                original_check(project)
+            stages._check_canceled = _check_pick_canceled
+
+            try:
+                project = Project.load(slug)
+                emit({"event": "pick_progress", "data": {"slug": slug, "stage": "analyzing", "pct": 0}})
+
+                transcript_path = project.root / "transcript" / "transcript.json"
+                if not transcript_path.exists():
+                    raise FileNotFoundError("Cannot pick more clips — this project has no transcript.")
+                with transcript_path.open("r", encoding="utf-8") as f:
+                    transcript = json.load(f)
+
+                existing_ranges: list[tuple[float, float]] = []
+                for c in project.clips:
+                    try:
+                        existing_ranges.append((float(c["start"]), float(c["end"])))
+                    except (KeyError, TypeError, ValueError):
+                        continue
+
+                if existing_ranges:
+                    excluded_text = "; ".join(f"{s:.0f}-{e:.0f}s" for s, e in existing_ranges[:30])
+                    brief_hint = (
+                        (project.brief or "")
+                        + f"\n\nIMPORTANT: We already have clips covering these "
+                          f"time ranges: {excluded_text}. Pick DIFFERENT moments "
+                          f"from elsewhere in the transcript — surprise us with "
+                          f"hooks the first pass missed."
+                    )
+                else:
+                    brief_hint = project.brief or ""
+
+                from llm import pick_clips_from_transcript
+                bundle = pick_clips_from_transcript(transcript, brief=brief_hint, intent="clips")
+                new_clips_raw = bundle.get("clips", []) or []
+
+                def _overlaps(c: dict[str, Any]) -> bool:
+                    try:
+                        mid = (float(c["start"]) + float(c["end"])) / 2.0
+                    except (KeyError, TypeError, ValueError):
+                        return True
+                    for s, e in existing_ranges:
+                        if s - 5.0 <= mid <= e + 5.0:
+                            return True
+                    return False
+
+                fresh = [c for c in new_clips_raw if not _overlaps(c)]
+                skipped = len(new_clips_raw) - len(fresh)
+
+                if not fresh:
+                    emit({"event": "pick_complete", "data": {"slug": slug, "project": project.to_dict(), "added": 0, "skipped": skipped}})
+                    return
+
+                project.set_clips(list(project.clips) + fresh)
+                emit({"event": "pick_progress", "data": {"slug": slug, "stage": "cut", "added": len(fresh), "skipped": skipped, "pct": 25}})
+                project.stage_start("cut")
+                project.stage_done("cut", stages.stage_cut(project))
+                emit({"event": "pick_progress", "data": {"slug": slug, "stage": "reframe", "added": len(fresh), "skipped": skipped, "pct": 50}})
+                project.stage_start("reframe")
+                project.stage_done("reframe", stages.stage_reframe(project))
+                emit({"event": "pick_progress", "data": {"slug": slug, "stage": "thumbs", "added": len(fresh), "skipped": skipped, "pct": 75}})
+                project.stage_start("thumbs")
+                project.stage_done("thumbs", stages.stage_thumbs(project))
+                emit({"event": "pick_progress", "data": {"slug": slug, "stage": "done", "added": len(fresh), "skipped": skipped, "pct": 100}})
+                emit({"event": "pick_complete", "data": {"slug": slug, "project": project.to_dict(), "added": len(fresh), "skipped": skipped}})
+            finally:
+                stages._check_canceled = original_check
+        except stages.CanceledError:
+            emit({"event": "pick_error", "data": {"slug": slug, "message": "Canceled", "canceled": True}})
+        except Exception as exc:
+            emit({"event": "pick_error", "data": {"slug": slug, "message": f"{type(exc).__name__}: {exc}"}})
+        finally:
+            _ACTIVE_PICKS.pop(slug, None)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"started": True}
+
+
+def method_cancel_pick_more_clips(params: dict[str, Any]) -> dict[str, Any]:
+    slug = params.get("slug")
+    event = _ACTIVE_PICKS.get(slug)
+    if event:
+        event.set()
+        return {"canceled": True}
+    return {"canceled": False, "reason": "no active pick-more"}
+
+
 
 
 # v0.8.0 — Background overlay bake. Replaces the synchronous
@@ -1065,6 +1188,116 @@ def method_regenerate_clip(params: dict[str, Any]) -> dict[str, Any]:
     project.stage_start("reframe"); project.stage_done("reframe", stages.stage_reframe(project))
     project.stage_start("thumbs"); project.stage_done("thumbs", stages.stage_thumbs(project))
     return {"project": project.to_dict()}
+
+
+# v0.8.0 — Background regenerate clip.
+
+def method_start_regenerate_clip(params: dict[str, Any]) -> dict[str, Any]:
+    """Re-cut a clip in a background thread. Returns immediately.
+
+    Caller listens for:
+      - regenerate_progress  { slug, idx, stage, pct }
+      - regenerate_complete  { slug, idx, project }
+      - regenerate_error     { slug, idx, message }
+    """
+    slug = params.get("slug")
+    idx = params.get("idx")
+    start = params.get("start")
+    end = params.get("end")
+    if not isinstance(slug, str) or not isinstance(idx, int):
+        raise ValueError("start_regenerate_clip requires slug (str) + idx (int)")
+    if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
+        raise ValueError("start_regenerate_clip requires start + end (numeric)")
+    if end <= start:
+        raise ValueError("end must be greater than start")
+
+    key = (slug, idx)
+    if key in _ACTIVE_REGENERATIONS:
+        raise RuntimeError(f"Regeneration already in progress for {slug} clip {idx}")
+
+    cancel_event = threading.Event()
+    _ACTIVE_REGENERATIONS[key] = cancel_event
+
+    def _run() -> None:
+        try:
+            original_check = stages._check_canceled
+            def _check_regen_canceled(project: Project) -> None:
+                if cancel_event.is_set():
+                    raise stages.CanceledError("canceled by user")
+                original_check(project)
+            stages._check_canceled = _check_regen_canceled
+
+            try:
+                project = Project.load(slug)
+                if idx < 0 or idx >= len(project.clips):
+                    raise ValueError(f"clip idx {idx} out of range")
+
+                clip = project.clips[idx]
+                clip["start"] = round(float(start), 2)
+                clip["end"] = round(float(end), 2)
+
+                import os
+                from pathlib import Path
+                for k in (
+                    "cut_path", "vertical_path", "square_path", "portrait_path",
+                    "srt_path", "vtt_path",
+                ):
+                    path = clip.get(k)
+                    if path:
+                        try:
+                            Path(path).unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                        clip[k] = None
+                overlay = clip.get("overlay") or {}
+                for p in (overlay.get("applied_paths") or {}).values():
+                    try:
+                        Path(p).unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                clip["overlay"] = None
+                clip_dir_name = f"{idx + 1:02d}-{clip.get('slug') or 'clip'}"
+                thumbs_dir = project.root / "thumbnails" / clip_dir_name
+                if thumbs_dir.exists():
+                    for f in thumbs_dir.iterdir():
+                        try:
+                            f.unlink()
+                        except OSError:
+                            pass
+                clip["thumbnails"] = []
+                project.set_clips(project.clips)
+
+                emit({"event": "regenerate_progress", "data": {"slug": slug, "idx": idx, "stage": "cut", "pct": 0}})
+                project.stage_start("cut")
+                project.stage_done("cut", stages.stage_cut(project))
+                emit({"event": "regenerate_progress", "data": {"slug": slug, "idx": idx, "stage": "reframe", "pct": 33}})
+                project.stage_start("reframe")
+                project.stage_done("reframe", stages.stage_reframe(project))
+                emit({"event": "regenerate_progress", "data": {"slug": slug, "idx": idx, "stage": "thumbs", "pct": 66}})
+                project.stage_start("thumbs")
+                project.stage_done("thumbs", stages.stage_thumbs(project))
+                emit({"event": "regenerate_progress", "data": {"slug": slug, "idx": idx, "stage": "done", "pct": 100}})
+                emit({"event": "regenerate_complete", "data": {"slug": slug, "idx": idx, "project": project.to_dict()}})
+            finally:
+                stages._check_canceled = original_check
+        except stages.CanceledError:
+            emit({"event": "regenerate_error", "data": {"slug": slug, "idx": idx, "message": "Canceled", "canceled": True}})
+        except Exception as exc:
+            emit({"event": "regenerate_error", "data": {"slug": slug, "idx": idx, "message": f"{type(exc).__name__}: {exc}"}})
+        finally:
+            _ACTIVE_REGENERATIONS.pop(key, None)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"started": True}
+
+
+def method_cancel_regenerate_clip(params: dict[str, Any]) -> dict[str, Any]:
+    key = (params["slug"], params["idx"])
+    event = _ACTIVE_REGENERATIONS.get(key)
+    if event:
+        event.set()
+        return {"canceled": True}
+    return {"canceled": False, "reason": "no active regeneration"}
 
 
 def method_get_captions(params: dict[str, Any]) -> dict[str, Any]:
@@ -1651,6 +1884,118 @@ def method_apply_overlay_template(params: dict[str, Any]) -> dict[str, Any]:
     return {"project": project.to_dict()}
 
 
+# v0.8.0 — Background apply overlay template.
+
+def method_start_apply_overlay_template(params: dict[str, Any]) -> dict[str, Any]:
+    """Bake an overlay template in a background thread. Returns immediately.
+
+    Caller listens for:
+      - overlay_progress  { slug, idx, stage, pct }  (reuses existing)
+      - bake_complete     { slug, idx, project }     (reuses existing)
+      - bake_error        { slug, idx, message }     (reuses existing)
+    """
+    slug = params.get("slug")
+    idx = params.get("idx")
+    template = params.get("template")
+    source_path = params.get("source_path")
+    if not isinstance(slug, str) or not isinstance(idx, int):
+        raise ValueError("start_apply_overlay_template requires slug (str) + idx (int)")
+    if template is not None and template not in _OVERLAY_TEMPLATE_PRESETS:
+        raise ValueError(f"unknown overlay template: {template!r}")
+
+    # No source_path → just persist the template choice, no bake needed.
+    if not isinstance(source_path, str) or not source_path:
+        project = Project.load(slug)
+        if idx < 0 or idx >= len(project.clips):
+            raise ValueError(f"clip idx {idx} out of range")
+        clip = project.clips[idx]
+        if template is None:
+            clip["overlay_template"] = None
+        else:
+            clip["overlay_template"] = template
+        project.save()
+        return {"project": project.to_dict()}
+
+    key = (slug, idx)
+    if key in _ACTIVE_TEMPLATES:
+        raise RuntimeError(f"Template bake already in progress for {slug} clip {idx}")
+
+    # Set pending state on the clip so the UI can show a spinner immediately.
+    project = Project.load(slug)
+    if 0 <= idx < len(project.clips):
+        clip = project.clips[idx]
+        if clip.get("overlay") is None:
+            clip["overlay"] = {}
+        clip["overlay"]["bake_status"] = "pending"
+        clip["overlay"]["bake_started_at"] = datetime.now(timezone.utc).isoformat()
+        for field in ("bake_error",):
+            clip["overlay"].pop(field, None)
+        project.save()
+
+    cancel_event = threading.Event()
+    _ACTIVE_TEMPLATES[key] = cancel_event
+
+    def _run() -> None:
+        try:
+            original_check = stages._check_canceled
+            def _check_template_canceled(project: Project) -> None:
+                if cancel_event.is_set():
+                    raise stages.CanceledError("canceled by user")
+                original_check(project)
+            stages._check_canceled = _check_template_canceled
+
+            try:
+                proj = Project.load(slug)
+                if not (0 <= idx < len(proj.clips)):
+                    raise IndexError(f"clip idx {idx} out of range")
+                preset = _OVERLAY_TEMPLATE_PRESETS[template]
+                overlay_spec = {
+                    "type": "reaction",
+                    "source_path": source_path,
+                    "layout": preset["layout"],
+                    "position": preset["position"],
+                }
+                stages.apply_overlay_to_clip(proj, idx, overlay_spec)
+                clip = proj.clips[idx]
+                if clip.get("overlay"):
+                    for field in ("bake_status", "bake_started_at", "bake_error"):
+                        clip["overlay"].pop(field, None)
+                proj.save()
+                emit({"event": "bake_complete", "data": {"slug": slug, "idx": idx, "project": proj.to_dict()}})
+            finally:
+                stages._check_canceled = original_check
+        except stages.CanceledError:
+            emit({"event": "bake_error", "data": {"slug": slug, "idx": idx, "message": "Canceled", "canceled": True}})
+        except Exception as exc:
+            err_msg = f"{type(exc).__name__}: {exc}"
+            try:
+                proj = Project.load(slug)
+                if 0 <= idx < len(proj.clips):
+                    clip = proj.clips[idx]
+                    if clip.get("overlay") is None:
+                        clip["overlay"] = {}
+                    clip["overlay"]["bake_status"] = "error"
+                    clip["overlay"]["bake_error"] = err_msg
+                    proj.save()
+            except Exception:
+                pass
+            emit({"event": "bake_error", "data": {"slug": slug, "idx": idx, "message": err_msg}})
+        finally:
+            _ACTIVE_TEMPLATES.pop(key, None)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"started": True}
+
+
+def method_cancel_apply_overlay_template(params: dict[str, Any]) -> dict[str, Any]:
+    key = (params["slug"], params["idx"])
+    event = _ACTIVE_TEMPLATES.get(key)
+    if event:
+        event.set()
+        return {"canceled": True}
+    return {"canceled": False, "reason": "no active template bake"}
+
+
 def method_set_clip_platforms(params: dict[str, Any]) -> dict[str, Any]:
     """Update a clip's per-platform publish target list.
 
@@ -2204,6 +2549,75 @@ def method_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
     return {"project": project.to_dict(), "downloaded_path": downloaded_path}
 
 
+# v0.8.0 — Background ingest URL.
+
+def method_start_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
+    """Download + ingest a URL in a background thread. Returns immediately.
+
+    The original method already emits ingest_progress events. The caller
+    additionally listens for:
+      - ingest_complete  { project, downloaded_path }
+      - ingest_error     { message }
+    """
+    url = params.get("url")
+    if not isinstance(url, str) or not url.strip():
+        raise ValueError("start_ingest_url requires `url` (str)")
+
+    slug_hint = url.strip()[:120]
+    if slug_hint in _ACTIVE_INGESTS:
+        raise RuntimeError("Ingest already in progress for this URL")
+
+    cancel_event = threading.Event()
+    _ACTIVE_INGESTS[slug_hint] = cancel_event
+
+    # Hook into the existing file-marker cancel mechanism.
+    cancel_marker = CLIPS_HOME / ".lift_cancel"
+    try:
+        cancel_marker.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    def _run() -> None:
+        try:
+            # Poll the cancel event and write the file marker if set,
+            # so the existing yt-dlp progress hooks pick it up.
+            def _poll_cancel() -> None:
+                while not cancel_event.is_set():
+                    time.sleep(0.5)
+                try:
+                    cancel_marker.touch()
+                except OSError:
+                    pass
+
+            polling_thread = threading.Thread(target=_poll_cancel, daemon=True)
+            polling_thread.start()
+
+            result = method_ingest_url(params)
+            result["url"] = url.strip()
+            emit({"event": "ingest_complete", "data": result})
+        except Exception as exc:
+            emit({"event": "ingest_error", "data": {"url": url.strip(), "message": f"{type(exc).__name__}: {exc}"}})
+        finally:
+            _ACTIVE_INGESTS.pop(slug_hint, None)
+            try:
+                cancel_marker.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"started": True}
+
+
+def method_cancel_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
+    url = params.get("url", "")
+    slug_hint = url.strip()[:120]
+    event = _ACTIVE_INGESTS.get(slug_hint)
+    if event:
+        event.set()
+        return {"canceled": True}
+    return {"canceled": False, "reason": "no active ingest"}
+
+
 def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
     """Fast-path: pull just the transcript from a social URL (IG reel, TikTok,
     YouTube short, X post). Audio-only download via yt-dlp → 16kHz mono wav →
@@ -2660,6 +3074,72 @@ def method_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
     except OSError:
         pass
     return payload
+
+
+# v0.8.0 — Background lift transcript.
+
+def method_start_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
+    """Lift transcript in a background thread. Returns immediately.
+
+    The original method already emits lift_progress events. The caller
+    additionally listens for:
+      - lift_complete  { url, transcript, meta }
+      - lift_error     { url, message }
+    """
+    url = params.get("url")
+    if not isinstance(url, str) or not url.strip():
+        raise ValueError("start_lift_transcript requires `url` (str)")
+    url = url.strip()
+
+    if url in _ACTIVE_LIFTS:
+        raise RuntimeError("Lift already in progress for this URL")
+
+    cancel_event = threading.Event()
+    _ACTIVE_LIFTS[url] = cancel_event
+
+    # Hook into the existing file-marker cancel mechanism.
+    cancel_marker = CLIPS_HOME / ".lift_cancel"
+    try:
+        cancel_marker.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    def _run() -> None:
+        try:
+            def _poll_cancel() -> None:
+                while not cancel_event.is_set():
+                    time.sleep(0.5)
+                try:
+                    cancel_marker.touch()
+                except OSError:
+                    pass
+
+            polling_thread = threading.Thread(target=_poll_cancel, daemon=True)
+            polling_thread.start()
+
+            result = method_lift_transcript(params)
+            result["url"] = url
+            emit({"event": "lift_complete", "data": result})
+        except Exception as exc:
+            emit({"event": "lift_error", "data": {"url": url, "message": f"{type(exc).__name__}: {exc}"}})
+        finally:
+            _ACTIVE_LIFTS.pop(url, None)
+            try:
+                cancel_marker.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"started": True}
+
+
+def method_cancel_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
+    url = params.get("url", "")
+    event = _ACTIVE_LIFTS.get(url)
+    if event:
+        event.set()
+        return {"canceled": True}
+    return {"canceled": False, "reason": "no active lift"}
 
 
 def method_lift_cancel(_params: dict[str, Any]) -> dict[str, Any]:
@@ -3755,6 +4235,25 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     # v0.7.45 P0-2: authoritative arch detection so WorkingStage ETA stops
     # relying on the lying Tauri WebKit UA + `hardwareConcurrency` heuristic.
     "system_info": method_system_info,
+    # ───── IRON GATE IG-010 (v0.8.0-pre) — see docs/IRON_GATES.md ─────
+    # v0.8.0 Phase 1 — background-thread (non-blocking) versions of the five
+    # methods that previously locked the sidecar's stdin dispatcher. Method
+    # definitions exist around lines 909/1195/1889/2554/3081. ALL 10 entries
+    # below MUST stay registered together (5 start + 5 cancel pairs). The
+    # blocking versions above stay registered as compatibility paths for
+    # call sites not yet migrated. Removing any of these 10 entries without
+    # IRON_GATE_OVERRIDE=1 is refused by the pre-commit hook.
+    "start_pick_more_clips": method_start_pick_more_clips,
+    "cancel_pick_more_clips": method_cancel_pick_more_clips,
+    "start_regenerate_clip": method_start_regenerate_clip,
+    "cancel_regenerate_clip": method_cancel_regenerate_clip,
+    "start_apply_overlay_template": method_start_apply_overlay_template,
+    "cancel_apply_overlay_template": method_cancel_apply_overlay_template,
+    "start_ingest_url": method_start_ingest_url,
+    "cancel_ingest_url": method_cancel_ingest_url,
+    "start_lift_transcript": method_start_lift_transcript,
+    "cancel_lift_transcript": method_cancel_lift_transcript,
+    # ───── END IRON GATE IG-010 ─────
 }
 
 

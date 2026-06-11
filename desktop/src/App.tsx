@@ -87,6 +87,8 @@ import { isAdminEmail } from "./lib/useTier";
 import { ThumbnailStudio } from "./components/ThumbnailStudio";
 import { recordAchievement } from "./lib/achievements";
 import { humanError, sidecar, subscribeSidecarDied, visibleStagesFor, pipelineStagesFor, backgroundStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type SecretName, type StageName } from "./lib/sidecar";
+import { useIngestEvents } from "./lib/useIngestEvents";
+import { useLiftEvents } from "./lib/useLiftEvents";
 import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
 import { initDeepLinks, setOnActivated } from "./lib/activation";
 import { HOSTED_LLM_ENABLED } from "./lib/flags";
@@ -148,6 +150,13 @@ export { inWhopIframe };
 
 export default function App() {
   const [view, setView] = useState<View>({ kind: "empty" });
+  // IRON GATE IG-010 — v0.8.0 non-blocking URL ingest. waitForIngest resolves
+  // when the background-thread method_start_ingest_url emits ingest_complete,
+  // or rejects on ingest_error / timeout. The sidecar dispatcher returns
+  // immediately so paste-URL no longer freezes the whole app.
+  const { waitForIngest } = useIngestEvents();
+  // IRON GATE IG-010 — v0.8.0 non-blocking lift transcript (Script mode).
+  const { waitForLift } = useLiftEvents();
   // Generation guard for lift_transcript — bumped on every new lift and on
   // Cancel. Inflight awaits compare against the captured generation before
   // touching view state, so an abandoned Promise can't yank the user back
@@ -856,7 +865,18 @@ export default function App() {
         setView((v) => (v.kind === "downloading" ? { ...v, progress: p } : v));
       });
       const trimmed = brief.trim();
-      const { project } = await sidecar.ingestUrl(url, trimmed || undefined, intent, bounty);
+      // IRON GATE IG-010 — v0.8.0 non-blocking path. The blocking
+      // sidecar.ingestUrl froze the entire sidecar stdin dispatcher for
+      // the full download + ffmpeg + transcribe run (could be 5min+),
+      // leaving every other RPC unable to even check secrets state. The
+      // start_ingest_url method offloads to a daemon thread and returns
+      // immediately; waitForIngest awaits the ingest_complete event.
+      await sidecar.startIngestUrl(url, trimmed || undefined, intent, bounty);
+      const ingestResult = await waitForIngest(url);
+      if (ingestResult.status === "error") {
+        throw new SidecarError({ error: ingestResult.message, human: ingestResult.message });
+      }
+      const { project } = ingestResult;
       if (project.whop_bounty_id) {
         trackFirstBountyWorkspace({
           bounty_id: project.whop_bounty_id,
@@ -1272,20 +1292,16 @@ export default function App() {
         if (liftGenRef.current !== myGen) return;
         setView((v) => (v.kind === "lifting" ? { ...v, progress: p } : v));
       });
-      // Frontend-side belt-and-braces timeout (1h). The Python sidecar emits
-      // a clearer scaled-to-duration timeout for honest UX before this fires;
-      // this is just the absolute floor so the invoke promise can never hang
-      // forever. User can hit Cancel any time — that path returns immediately.
-      const TIMEOUT_MS = 60 * 60 * 1000;
-      const result = await Promise.race([
-        sidecar.liftTranscript(url),
-        new Promise<never>((_, reject) =>
-          window.setTimeout(
-            () => reject(new Error("Transcription took longer than 1 hour — give up and try a shorter video.")),
-            TIMEOUT_MS,
-          ),
-        ),
-      ]);
+      // IRON GATE IG-010 — non-blocking path. Replaces the previous
+      // Promise.race(blockingLiftTranscript, 1h timeout). The sidecar
+      // dispatcher no longer freezes for the entire transcribe; the
+      // 1h floor is now inside waitForLift as the last-resort safety net.
+      await sidecar.startLiftTranscript(url);
+      const liftResult = await waitForLift(url);
+      if (liftResult.status === "error") {
+        throw new Error(liftResult.message);
+      }
+      const result = liftResult.transcript;
       if (liftGenRef.current === myGen) setView({ kind: "lifted", result });
       const transcribeEngine = result.transcribe_engine ?? result.meta?.transcribe_engine ?? null;
       trackEvent("pipeline_transcribe_completed", {
