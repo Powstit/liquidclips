@@ -67,6 +67,21 @@ export function ReactionControls({
       return resolved;
     });
   };
+  // v0.7.48 — Optimistic-active layout tile.
+  //
+  // Smoothness fix: before this, tapping a layout tile dimmed the entire
+  // strip (`disabled={busy}` + `disabled:opacity-50`) for the full 5-30s
+  // ffmpeg bake, then the new tile flipped fuchsia only AFTER the RPC
+  // returned. The dim-then-eventually-light pattern reads as "I clicked
+  // nothing happened" — the most common clunky-feel complaint.
+  //
+  // pendingLayout = the layout the user JUST tapped, held until the bake
+  // resolves (success or failure). The render compares `(pendingLayout
+  // ?? layout) === item.key` so the tapped tile instantly looks active,
+  // even while busy. Cleared in applyLayout's finally + on cancel from
+  // the source picker + on clip switch (the cockpit reuses this mount
+  // across clipIdx changes, so a stale pendingLayout would survive).
+  const [pendingLayout, setPendingLayout] = useState<LayoutKey | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [brollOffset, setBrollOffset] = useState(clip.overlay?.start_offset_s ?? 0);
   const [audioSource, setAudioSource] = useState<"main" | "broll" | "muted">(
@@ -88,6 +103,11 @@ export function ReactionControls({
     setOverlaySaveState("idle");
     setOverlaySaveError(null);
     setOverlaySaveLabel("");
+    // v0.7.48 — Clear optimistic pendingLayout on clip switch. The cockpit
+    // mount reuses this instance across clipIdx changes; a stale tap on
+    // clip A would otherwise paint a wrong tile fuchsia on clip B for the
+    // remainder of clip B's session.
+    setPendingLayout(null);
   }, [clipIdx, clip.overlay?.source_path, clip.overlay?.type]);
 
   // Auto-persist audio + offset edits (mirrors the prior ClipPreview effect).
@@ -197,6 +217,10 @@ export function ReactionControls({
 
   async function applyLayout(kind: LayoutKey, opts?: { forcePick?: boolean }) {
     if (busy) return;
+    // v0.7.48 — Optimistic-active: paint the tapped tile fuchsia immediately
+    // so the user gets instant visual feedback during the 5-30s bake. Cleared
+    // in finally (success + error) and on picker cancel below.
+    setPendingLayout(kind);
     setBusy(true);
     setActionError(null);
     await startBakeProgress();
@@ -211,6 +235,7 @@ export function ReactionControls({
           const pick = await pickOverlaySource({ project, excludeIdx: clipIdx });
           if (pick.kind === "cancel") {
             stopBakeProgress();
+            setPendingLayout(null);
             setBusy(false);
             return;
           }
@@ -229,6 +254,7 @@ export function ReactionControls({
     } finally {
       stopBakeProgress();
       setBusy(false);
+      setPendingLayout(null);
     }
   }
 
@@ -265,7 +291,11 @@ export function ReactionControls({
 
         <div className={`${compact ? "mt-0" : "mt-3"} grid ${tileGridCols} gap-1.5`}>
           {LAYOUTS.map((item) => {
-            const active = layout === item.key;
+            // v0.7.48 — Optimistic-active. While a bake is in flight,
+            // pendingLayout wins so the tapped tile lights up immediately.
+            // Falls back to the committed `layout` from clip.overlay once
+            // the RPC resolves (and pendingLayout is cleared in finally).
+            const active = (pendingLayout ?? layout) === item.key;
             return (
               <button
                 key={item.key}
