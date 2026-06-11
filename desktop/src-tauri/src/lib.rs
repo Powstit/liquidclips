@@ -2,7 +2,6 @@ mod auth_panel;
 mod browse;
 mod earn_panel;
 mod sidecar;
-mod social_link;
 
 use serde_json::Value;
 use tauri::Manager;
@@ -192,8 +191,6 @@ pub fn run() {
             earn_panel::resize_earn_panel,
             earn_panel::is_earn_panel_open,
             earn_panel::post_to_earn_panel,
-            social_link::open_social_link_window,
-            social_link::close_social_link_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running liquid clips desktop");

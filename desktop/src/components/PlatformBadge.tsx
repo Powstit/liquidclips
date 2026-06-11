@@ -11,7 +11,10 @@
 //
 // This file is now the single source of truth for the badge visual. Used by
 // ClipCard, ClipWindow, and PlatformBadgePicker. No lucide-react dependency.
-export type PlatformId = "youtube" | "tiktok" | "instagram" | "x" | "linkedin" | "facebook";
+import type { ChannelStatus } from "../lib/backend";
+import { ConnectionDot } from "./platforms/ConnectionDot";
+
+export type PlatformId = "youtube" | "tiktok" | "instagram" | "x" | "linkedin" | "facebook" | "threads";
 
 // Brand background per the mockup. IG is a gradient (corner-to-corner Instagram
 // brand pattern); the rest are solid hex.
@@ -22,6 +25,7 @@ const BRAND_BG: Record<PlatformId, string> = {
   x: "#000000",
   linkedin: "#0A66C2",
   facebook: "#1877F2",
+  threads: "#000000",
 };
 
 const BRAND_LABEL: Record<PlatformId, string> = {
@@ -31,34 +35,35 @@ const BRAND_LABEL: Record<PlatformId, string> = {
   x: "X",
   linkedin: "LinkedIn",
   facebook: "Facebook",
+  threads: "Threads",
 };
 
 // Solid brand glyphs — copied verbatim from clip-dashboard-demo.html L850-854.
 // Every path is `fill="currentColor"` so the parent controls color (we always
 // pass white via the inline style on the wrapper). viewBox is 24×24.
-function PlatformGlyph({ id }: { id: PlatformId }) {
+export function PlatformGlyph({ id, className }: { id: PlatformId; className?: string }) {
   switch (id) {
     case "instagram":
       return (
-        <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor" aria-hidden>
+        <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor" aria-hidden className={className}>
           <path d="M12 2c2.717 0 3.056.01 4.122.06 1.065.05 1.79.217 2.428.465.66.254 1.216.598 1.772 1.153a4.908 4.908 0 0 1 1.153 1.772c.247.637.415 1.363.465 2.428.047 1.066.06 1.405.06 4.122 0 2.717-.01 3.056-.06 4.122-.05 1.065-.218 1.79-.465 2.428a4.883 4.883 0 0 1-1.153 1.772 4.915 4.915 0 0 1-1.772 1.153c-.637.247-1.363.415-2.428.465-1.066.047-1.405.06-4.122.06-2.717 0-3.056-.01-4.122-.06-1.065-.05-1.79-.218-2.428-.465a4.89 4.89 0 0 1-1.772-1.153 4.904 4.904 0 0 1-1.153-1.772c-.248-.637-.415-1.363-.465-2.428C2.013 15.056 2 14.717 2 12c0-2.717.01-3.056.06-4.122.05-1.066.217-1.79.465-2.428a4.88 4.88 0 0 1 1.153-1.772A4.897 4.897 0 0 1 5.45 2.525c.638-.248 1.362-.415 2.428-.465C8.944 2.013 9.283 2 12 2zm0 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm6.5-.25a1.25 1.25 0 0 0-2.5 0 1.25 1.25 0 0 0 2.5 0zM12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" />
         </svg>
       );
     case "tiktok":
       return (
-        <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor" aria-hidden>
+        <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor" aria-hidden className={className}>
           <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1.84-.1z" />
         </svg>
       );
     case "youtube":
       return (
-        <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor" aria-hidden>
+        <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor" aria-hidden className={className}>
           <path d="M23.5 6.2a3.02 3.02 0 0 0-2.12-2.13C19.5 3.55 12 3.55 12 3.55s-7.5 0-9.38.52A3.02 3.02 0 0 0 .5 6.2C0 8.07 0 12 0 12s0 3.93.5 5.8a3.02 3.02 0 0 0 2.12 2.13c1.88.52 9.38.52 9.38.52s7.5 0 9.38-.52a3.02 3.02 0 0 0 2.12-2.13c.5-1.87.5-5.8.5-5.8s0-3.93-.5-5.8zM9.6 15.6V8.4l6.4 3.6-6.4 3.6z" />
         </svg>
       );
     case "x":
       return (
-        <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor" aria-hidden>
+        <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor" aria-hidden className={className}>
           <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
         </svg>
       );
@@ -85,9 +90,11 @@ interface PlatformBadgeProps {
    *  calls onClick with the platform id. Used by ClipCard to route to
    *  Schedule → Channels. */
   onClick?: (platform: PlatformId) => void;
+  /** v0.8.0 — Connection state per platform. Shows a dot overlay. */
+  connectionStatus?: Partial<Record<PlatformId, ChannelStatus | "no-channel" | "loading">>;
 }
 
-export function PlatformBadge({ platforms, size = "sm", showLabel = false, onClick }: PlatformBadgeProps) {
+export function PlatformBadge({ platforms, size = "sm", showLabel = false, onClick, connectionStatus }: PlatformBadgeProps) {
   if (!platforms || platforms.length === 0) return null;
 
   // sm = 34 matches the mockup's `.social-pip` (clip-dashboard-demo.html L107).
@@ -103,7 +110,7 @@ export function PlatformBadge({ platforms, size = "sm", showLabel = false, onCli
         const badge = (
           <div
             key={p}
-            className="grid place-items-center shadow-[0_4px_14px_rgba(0,0,0,0.55)]"
+            className="relative grid place-items-center shadow-[0_4px_14px_rgba(0,0,0,0.55)]"
             style={{
               width: s,
               height: s,
@@ -119,6 +126,11 @@ export function PlatformBadge({ platforms, size = "sm", showLabel = false, onCli
             <span style={{ width: glyph, height: glyph, display: "flex" }}>
               <PlatformGlyph id={p} />
             </span>
+            {connectionStatus?.[p] && (
+              <span className="absolute -top-0.5 -right-0.5">
+                <ConnectionDot status={connectionStatus[p]} />
+              </span>
+            )}
           </div>
         );
         if (!onClick) return badge;
