@@ -535,7 +535,8 @@ export type PlatformId =
   | "instagram"
   | "x"
   | "linkedin"
-  | "facebook";
+  | "facebook"
+  | "threads";
 
 /** v0.7.14 — Reaction overlay template keys used by Kimi's
  *  OverlayTemplateGallery. The sidecar maps each key to a canonical layout
@@ -1177,6 +1178,18 @@ export const sidecar = {
       total_usd: number;
       count: number;
     }>("thumbnail_ledger", {}),
+  // v0.8.0 — Batch thumbnail generation (365 in groups of 11).
+  thumbnailBatchStart: (
+    slug: string,
+    items: ThumbnailItem[],
+    config?: Partial<ThumbnailBrandPreset>,
+  ) =>
+    sidecarCall<{ started: boolean; total: number; slug: string }>(
+      "thumbnail_batch_start",
+      { slug, items, ...(config ? { config } : {}) },
+    ),
+  thumbnailBatchCancel: (slug: string) =>
+    sidecarCall<{ canceled: boolean; reason?: string }>("thumbnail_batch_cancel", { slug }),
   // v0.7.32 — Bulk library delete. No tombstone; the UI confirms once.
   libraryBulkDelete: (slugs: string[]) =>
     sidecarCall<{
@@ -1261,6 +1274,45 @@ export function onBakeComplete(cb: (p: BakeComplete) => void): Promise<UnlistenF
 
 export function onBakeError(cb: (p: BakeError) => void): Promise<UnlistenFn> {
   return listen<BakeError>("sidecar:bake_error", (ev) => cb(ev.payload));
+}
+
+// v0.8.0 — Thumbnail batch generation events.
+export type ThumbnailBatchProgress = {
+  slug: string;
+  done: number;
+  total: number;
+  current_text: string;
+};
+export type ThumbnailBatchComplete = {
+  slug: string;
+  generated: unknown[];
+  ledger: unknown;
+};
+export type ThumbnailBatchError = {
+  slug: string;
+  message: string;
+  canceled?: boolean;
+  done_at_failure: number;
+};
+
+export function onThumbnailBatchProgress(
+  cb: (p: ThumbnailBatchProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<ThumbnailBatchProgress>("sidecar:thumbnail_batch_progress", (ev) =>
+    cb(ev.payload),
+  );
+}
+export function onThumbnailBatchComplete(
+  cb: (p: ThumbnailBatchComplete) => void,
+): Promise<UnlistenFn> {
+  return listen<ThumbnailBatchComplete>("sidecar:thumbnail_batch_complete", (ev) =>
+    cb(ev.payload),
+  );
+}
+export function onThumbnailBatchError(
+  cb: (p: ThumbnailBatchError) => void,
+): Promise<UnlistenFn> {
+  return listen<ThumbnailBatchError>("sidecar:thumbnail_batch_error", (ev) => cb(ev.payload));
 }
 
 // v0.8.0 — Background regenerate clip.

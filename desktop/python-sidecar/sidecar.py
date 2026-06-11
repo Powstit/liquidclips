@@ -71,6 +71,7 @@ _ACTIVE_PICKS: dict[str, threading.Event] = {}
 _ACTIVE_TEMPLATES: dict[tuple[str, int], threading.Event] = {}
 _ACTIVE_INGESTS: dict[str, threading.Event] = {}
 _ACTIVE_LIFTS: dict[str, threading.Event] = {}
+_ACTIVE_THUMB_BATCHES: dict[str, threading.Event] = {}
 
 # Thread-safe emit lock so multiple background worker threads can't interleave
 # JSON lines on stdout and break the RPC framing.
@@ -4122,6 +4123,149 @@ def method_thumbnail_generate(params: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def method_thumbnail_batch_start(params: dict[str, Any]) -> dict[str, Any]:
+    """Generate thumbnails in batches of 11 (engine limit) in a background thread.
+
+    Params:
+      - slug (str): project slug
+      - items (list[dict]): thumbnail items, each needs {text, ...}
+      - config (dict, optional): brand preset override
+
+    Emits events:
+      - thumbnail_batch_progress { slug, done, total, current_text }
+      - thumbnail_batch_complete { slug, generated, ledger }
+      - thumbnail_batch_error { slug, message, done_at_failure }
+    """
+    slug = (params.get("slug") or "").strip()
+    items = params.get("items") or []
+    if not slug:
+        raise ValueError("slug is required")
+    if not items:
+        raise ValueError("items array is required")
+
+    if slug in _ACTIVE_THUMB_BATCHES:
+        raise RuntimeError(f"Thumbnail batch already in progress for {slug}")
+
+    cancel_event = threading.Event()
+    _ACTIVE_THUMB_BATCHES[slug] = cancel_event
+
+    def _batch() -> None:
+        from thumbnail_engine import (
+            generate as engine_generate,
+            BillingLimitError,
+            CancelledError,
+        )
+        from llm import resolve_openai_key
+
+        generated: list[dict[str, Any]] = []
+        total = len(items)
+        batch_size = 11
+
+        api_key = resolve_openai_key()
+        cfg_override = params.get("config") or {}
+        config = {**_read_brand_preset(), **cfg_override}
+        config["api_key"] = api_key
+        config["references_dir"] = str(_IDENTITY_DIR)
+        thumbs = _thumbs_dir(slug)
+
+        try:
+            for i in range(0, total, batch_size):
+                if cancel_event.is_set():
+                    raise CancelledError("Canceled by user")
+
+                chunk = items[i : i + batch_size]
+                for item in chunk:
+                    if cancel_event.is_set():
+                        raise CancelledError("Canceled by user")
+
+                    fname = f"{int(datetime.now(timezone.utc).timestamp() * 1000)}.png"
+                    output_path = thumbs / fname
+
+                    result = engine_generate(
+                        item=item,
+                        output_path=output_path,
+                        config=config,
+                        cancel_marker=_thumb_cancel_marker(slug),
+                    )
+                    generated.append(result)
+                    emit({
+                        "event": "thumbnail_batch_progress",
+                        "data": {
+                            "slug": slug,
+                            "done": len(generated),
+                            "total": total,
+                            "current_text": item.get("text", ""),
+                        },
+                    })
+
+                # Small yield between batches to avoid hammering the API
+                if i + batch_size < total:
+                    import time
+                    time.sleep(1.0)
+
+            # Ledger write for batch
+            ledger = {"rows": [], "total_usd": 0.0}
+            try:
+                _LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
+                with _LEDGER_PATH.open("a", encoding="utf-8") as f:
+                    for g in generated:
+                        row = {
+                            "ts": g.get("completed_at"),
+                            "slug": slug,
+                            "model": g.get("model"),
+                            "cost_usd": g.get("cost_usd"),
+                            "output_path": g.get("output_path"),
+                            "title": g.get("title", ""),
+                        }
+                        f.write(json.dumps(row) + "\n")
+                        ledger["rows"].append(row)
+                        ledger["total_usd"] += float(g.get("cost_usd") or 0)
+            except OSError as exc:
+                log(f"[thumbnail batch] ledger write failed (non-fatal): {exc}")
+
+            emit({
+                "event": "thumbnail_batch_complete",
+                "data": {"slug": slug, "generated": generated, "ledger": ledger},
+            })
+        except CancelledError:
+            emit({
+                "event": "thumbnail_batch_error",
+                "data": {
+                    "slug": slug,
+                    "message": "Canceled by user",
+                    "canceled": True,
+                    "done_at_failure": len(generated),
+                },
+            })
+        except Exception as exc:
+            emit({
+                "event": "thumbnail_batch_error",
+                "data": {
+                    "slug": slug,
+                    "message": f"{type(exc).__name__}: {exc}",
+                    "done_at_failure": len(generated),
+                },
+            })
+        finally:
+            _ACTIVE_THUMB_BATCHES.pop(slug, None)
+
+    thread = threading.Thread(target=_batch, daemon=True)
+    thread.start()
+    return {"started": True, "total": len(items), "slug": slug}
+
+
+def method_thumbnail_batch_cancel(params: dict[str, Any]) -> dict[str, Any]:
+    """Cancel an in-flight thumbnail batch."""
+    slug = (params.get("slug") or "").strip()
+    if not slug:
+        raise ValueError("slug is required")
+    event = _ACTIVE_THUMB_BATCHES.get(slug)
+    if event:
+        event.set()
+        return {"canceled": True}
+    return {"canceled": False, "reason": "No batch in progress"}
+
+
 def method_thumbnail_ledger(_params: dict[str, Any]) -> dict[str, Any]:
     """Returns the lifetime cost-ledger rows + total spend in USD."""
     if not _LEDGER_PATH.exists():
@@ -4228,6 +4372,8 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "thumbnail_generate": method_thumbnail_generate,
     "thumbnail_cancel": method_thumbnail_cancel,
     "thumbnail_ledger": method_thumbnail_ledger,
+    "thumbnail_batch_start": method_thumbnail_batch_start,
+    "thumbnail_batch_cancel": method_thumbnail_batch_cancel,
     # v0.7.45 P0-1: per-project cancel marker — used by withCancelOnTimeout for
     # apply_overlay / regenerate_clip stuck-ffmpeg recovery. Replaces the
     # wrong-marker (.lift_cancel) drop that killed concurrent transcribes.
