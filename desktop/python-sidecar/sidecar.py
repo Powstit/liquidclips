@@ -27,6 +27,7 @@ import os
 import platform as _platform
 import subprocess
 import sys
+import threading
 import traceback
 import re
 import shutil
@@ -61,6 +62,10 @@ _HTTPS_CONTEXT: ssl.SSLContext | None = None
 #   - handle() redirects sys.stdout → sys.stderr for the duration of every
 #     method call, so any stray library writes go to stderr instead.
 _RPC_STDOUT = sys.stdout
+
+# v0.8.0 — Background bake registry. Maps (slug, clip_idx) to a
+# threading.Event that the bake thread polls for cancellation.
+_ACTIVE_BAKES: dict[tuple[str, int], threading.Event] = {}
 
 
 def emit(payload: dict[str, Any]) -> None:
@@ -888,6 +893,109 @@ def method_pick_more_clips(params: dict[str, Any]) -> dict[str, Any]:
         "skipped": skipped,
     }
 
+
+
+
+# v0.8.0 — Background overlay bake. Replaces the synchronous
+# method_apply_overlay for cockpit reaction tiles so the UI never
+# blocks while ffmpeg runs.
+
+def method_start_overlay_bake(params: dict[str, Any]) -> dict[str, Any]:
+    """Start an overlay bake in a background thread.
+
+    Returns immediately. The caller listens for Tauri events:
+      - bake_progress  { slug, idx, stage, pct }
+      - bake_complete  { slug, idx, project }
+      - bake_error     { slug, idx, message }
+    """
+    slug = params.get("slug")
+    idx = params.get("idx")
+    overlay_spec = params.get("overlay")
+    if not isinstance(slug, str) or not isinstance(idx, int):
+        raise ValueError("start_overlay_bake requires slug (str) + idx (int)")
+
+    key = (slug, idx)
+    if key in _ACTIVE_BAKES:
+        raise RuntimeError(f"Bake already in progress for {slug} clip {idx}")
+
+    # Set pending state so the UI can show a spinner immediately.
+    project = Project.load(slug)
+    if 0 <= idx < len(project.clips):
+        clip = project.clips[idx]
+        if clip.get("overlay") is None:
+            clip["overlay"] = {}
+        clip["overlay"]["bake_status"] = "pending"
+        clip["overlay"]["bake_started_at"] = datetime.now(timezone.utc).isoformat()
+        for field in ("bake_error",):
+            clip["overlay"].pop(field, None)
+        project.save()
+
+    cancel_event = threading.Event()
+    _ACTIVE_BAKES[key] = cancel_event
+
+    def _bake() -> None:
+        try:
+            # Reload inside the thread so we don't race with other edits.
+            proj = Project.load(slug)
+            if not (0 <= idx < len(proj.clips)):
+                raise IndexError(f"clip idx {idx} out of range")
+
+            # Monkey-patch _check_canceled to respect our per-bake event.
+            original_check = stages._check_canceled
+            def _check_bake_canceled(project: Project) -> None:
+                if cancel_event.is_set():
+                    raise stages.CanceledError("canceled by user")
+                original_check(project)
+            stages._check_canceled = _check_bake_canceled
+
+            try:
+                stages.apply_overlay_to_clip(proj, idx, overlay_spec)
+            finally:
+                stages._check_canceled = original_check
+
+            # Clear transient pending fields on success.
+            clip = proj.clips[idx]
+            if clip.get("overlay"):
+                for field in ("bake_status", "bake_started_at", "bake_error"):
+                    clip["overlay"].pop(field, None)
+            proj.save()
+            emit({"event": "bake_complete", "data": {"slug": slug, "idx": idx, "project": proj.to_dict()}})
+        except stages.CanceledError:
+            emit({"event": "bake_error", "data": {"slug": slug, "idx": idx, "message": "Canceled by user", "canceled": True}})
+        except Exception as exc:
+            err_msg = f"{type(exc).__name__}: {exc}"
+            try:
+                proj = Project.load(slug)
+                if 0 <= idx < len(proj.clips):
+                    clip = proj.clips[idx]
+                    if clip.get("overlay") is None:
+                        clip["overlay"] = {}
+                    clip["overlay"]["bake_status"] = "error"
+                    clip["overlay"]["bake_error"] = err_msg
+                    proj.save()
+            except Exception:
+                pass
+            emit({"event": "bake_error", "data": {"slug": slug, "idx": idx, "message": err_msg}})
+        finally:
+            _ACTIVE_BAKES.pop(key, None)
+
+    thread = threading.Thread(target=_bake, daemon=True)
+    thread.start()
+    return {"started": True}
+
+
+def method_cancel_overlay_bake(params: dict[str, Any]) -> dict[str, Any]:
+    """Cancel an in-flight overlay bake."""
+    slug = params.get("slug")
+    idx = params.get("idx")
+    if not isinstance(slug, str) or not isinstance(idx, int):
+        raise ValueError("cancel_overlay_bake requires slug (str) + idx (int)")
+    key = (slug, idx)
+    event = _ACTIVE_BAKES.get(key)
+    if event:
+        event.set()
+        return {"canceled": True}
+    return {"canceled": False, "reason": "no active bake"}
 
 def method_regenerate_clip(params: dict[str, Any]) -> dict[str, Any]:
     """Re-cut + reframe + re-thumb a single clip with new start/end times.
@@ -3568,6 +3676,8 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "ingest_url": method_ingest_url,
     "import_ready_clips": method_import_ready_clips,
     "apply_overlay_template": method_apply_overlay_template,
+    "start_overlay_bake": method_start_overlay_bake,
+    "cancel_overlay_bake": method_cancel_overlay_bake,
     "set_clip_platforms": method_set_clip_platforms,
     "save_avatar": method_save_avatar,
     "clear_avatar": method_clear_avatar,

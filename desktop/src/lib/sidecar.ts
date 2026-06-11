@@ -1184,7 +1184,49 @@ export const sidecar = {
       failed: number;
       results: { slug: string; deleted: boolean; error: string | null }[];
     }>("library_bulk_delete", { slugs }),
+  // v0.8.0 — Background overlay bake (non-blocking).
+  startOverlayBake: (
+    slug: string,
+    idx: number,
+    overlay: { type: string; source_path: string; start_offset_s?: number; audio_source?: string } | null,
+  ) => sidecarCall<{ started: boolean }>("start_overlay_bake", { slug, idx, overlay }),
+  cancelOverlayBake: (slug: string, idx: number) =>
+    sidecarCall<{ canceled: boolean; reason?: string }>("cancel_overlay_bake", { slug, idx }),
 };
+
+// v0.8.0 — Background bake event types and listeners.
+export type BakeProgress = {
+  slug: string;
+  idx: number;
+  stage: "starting" | "baking" | "done";
+  ratio?: string;
+  pct: number;
+};
+
+export type BakeComplete = {
+  slug: string;
+  idx: number;
+  project: Project;
+};
+
+export type BakeError = {
+  slug: string;
+  idx: number;
+  message: string;
+  canceled?: boolean;
+};
+
+export function onBakeProgress(cb: (p: BakeProgress) => void): Promise<UnlistenFn> {
+  return listen<BakeProgress>("sidecar:bake_progress", (ev) => cb(ev.payload));
+}
+
+export function onBakeComplete(cb: (p: BakeComplete) => void): Promise<UnlistenFn> {
+  return listen<BakeComplete>("sidecar:bake_complete", (ev) => cb(ev.payload));
+}
+
+export function onBakeError(cb: (p: BakeError) => void): Promise<UnlistenFn> {
+  return listen<BakeError>("sidecar:bake_error", (ev) => cb(ev.payload));
+}
 
 /** A clip that's already cut + ready to schedule/publish directly, without
  *  the long-form clip-pick pipeline. Persisted in
