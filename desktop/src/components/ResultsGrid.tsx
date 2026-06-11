@@ -261,8 +261,13 @@ export function ResultsGrid({
           {(() => {
             const out = project.stages.ingest?.output as { poster_path?: string | null } | undefined;
             const poster = out?.poster_path;
+            // v0.7.50 — Brand-kit pass. Solid `border border-line` retired
+            // on this URL-preview thumbnail frame. At 88px scale, bracket
+            // corners would compete with the poster image; chrome is just
+            // the rounded paper-warm backdrop so the image carries the
+            // visual weight.
             return poster ? (
-              <div className="aspect-video h-[88px] shrink-0 overflow-hidden rounded-xl border border-line bg-paper-warm">
+              <div className="aspect-video h-[88px] shrink-0 overflow-hidden rounded-xl bg-paper-warm">
                 <img
                   src={convertFileSrc(poster)}
                   alt=""
