@@ -6,6 +6,7 @@
 //
 // See docs/thumbnail-journey.md for the 6-beat user journey, lens-clean.
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Camera, Palette, Sparkles } from "lucide-react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
@@ -804,9 +805,9 @@ function ThumbnailHero({
       </div>
 
       <div className="relative grid grid-cols-3 gap-4 max-w-2xl mx-auto mb-5">
-        <HeroStep n={1} label="Upload identity" hint="3 face crops · once" />
-        <HeroStep n={2} label="Pick your style" hint="brand name + mood" />
-        <HeroStep n={3} label="Generate" hint="$0.07 per image" />
+        <HeroStep icon={<Camera className="w-5 h-5" strokeWidth={1.75} />} label="Upload identity" hint="3 face crops · once" />
+        <HeroStep icon={<Palette className="w-5 h-5" strokeWidth={1.75} />} label="Pick your style" hint="brand name + mood" />
+        <HeroStep icon={<Sparkles className="w-5 h-5" strokeWidth={1.75} />} label="Generate" hint="$0.07 per image" />
       </div>
 
       <div className="relative flex items-center justify-center gap-3">
@@ -823,10 +824,12 @@ function ThumbnailHero({
 
 // v0.7.50 — Cockpit-vocabulary step card. No solid border (the chrome is the
 // four dashed fuchsia bracket corners + a faint fuchsia halo behind the
-// number digit, both inherited from the cockpit-tile brand system at
-// src/index.css). The container uses .library-card so its hover state
-// lights the corners + halo per the brand kit.
-function HeroStep({ n, label, hint }: { n: number; label: string; hint: string }) {
+// glyph, both inherited from the cockpit-tile brand system at src/index.css).
+// The container uses .library-card so its hover state lights the corners +
+// halo per the brand kit. The glyph slot accepts a Lucide icon node so each
+// step gets a semantic glyph (Camera / Palette / Sparkles) instead of a
+// generic numbered digit — same halo language either way.
+function HeroStep({ icon, label, hint }: { icon: React.ReactNode; label: string; hint: string }) {
   return (
     <div className="library-card relative flex items-center gap-3 px-3.5 py-3 rounded-xl">
       <span className="library-card-corner library-card-corner-tl" />
@@ -844,12 +847,12 @@ function HeroStep({ n, label, hint }: { n: number; label: string; hint: string }
           }}
         />
         <span
-          className="relative font-display text-[18px] font-semibold leading-none text-fuchsia"
+          className="relative text-fuchsia"
           style={{
             filter: "drop-shadow(0 2px 6px rgba(255,26,140,0.65))",
           }}
         >
-          {n}
+          {icon}
         </span>
       </div>
       <div className="text-left min-w-0">
