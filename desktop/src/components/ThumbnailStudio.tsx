@@ -76,7 +76,7 @@ export function ThumbnailStudio({
   onOpenSettings,
   onCoverChanged,
 }: ThumbnailStudioProps) {
-  const aiUnlocked = userTier === "agency";
+  const aiUnlocked = userTier !== "free";
 
   const [view, setView] = useState<View>("cover_pack");
   const [wizard, setWizard] = useState<WizardStep>(null);
@@ -325,7 +325,7 @@ export function ThumbnailStudio({
             />
           )}
           {view === "ai_generate" && !aiUnlocked && (
-            <AgencyUpsell tier={userTier} onOpenSettings={onOpenSettings} />
+            <SoloUpsell tier={userTier} onOpenSettings={onOpenSettings} />
           )}
           {view === "ai_generate" && aiUnlocked && !loaded && (
             <div className="px-10 py-20 text-center text-ink/50">Loading…</div>
@@ -886,8 +886,8 @@ const HERO_FACTORY_SAMPLES = [
   ytRef06,
 ];
 
-// ── Agency upsell ────────────────────────────────────────────────────────
-function AgencyUpsell({
+// ── Solo upsell ──────────────────────────────────────────────────────────
+function SoloUpsell({
   tier,
   onOpenSettings,
 }: {
@@ -897,7 +897,7 @@ function AgencyUpsell({
   return (
     <div className="px-10 py-16 text-center max-w-xl mx-auto">
       <div className="inline-flex items-center gap-2 text-xs uppercase tracking-wider text-fuchsia bg-fuchsia/10 px-3 py-1 rounded-full mb-4">
-        ✦ Agency tier
+        ✦ Solo tier
       </div>
       <h3 className="text-2xl font-semibold mb-3">AI thumbnails — your face, on autopilot</h3>
       <p className="text-ink/60 text-sm mb-6 leading-relaxed">
