@@ -111,7 +111,7 @@ export function LibraryCard({
             className={`inline-flex h-5 w-5 items-center justify-center rounded border ${
               selected
                 ? "border-fuchsia bg-fuchsia text-white"
-                : "border-white/60 bg-black/40 text-white/70"
+                : "border-ink-soft/60 bg-paper/40 text-ink-soft/80"
             }`}
           >
             {selected && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
@@ -217,7 +217,7 @@ export function LibraryCard({
             hover. The calm-wall version hid this until hover; users prefer
             scanning the wall without hovering. */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink/95 via-ink/55 to-transparent p-3 opacity-65 transition-opacity duration-300 group-hover:opacity-100">
-          <h3 className="line-clamp-2 font-display text-[13px] font-semibold leading-tight tracking-[-0.01em] text-white">
+          <h3 className="line-clamp-2 font-display text-[13px] font-semibold leading-tight tracking-[-0.01em] text-ink">
             {project.source_filename}
           </h3>
           <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.12em] text-white/70">

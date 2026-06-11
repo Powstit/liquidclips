@@ -134,7 +134,7 @@ export function SubmissionPortal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-ink/70 backdrop-blur-md p-6"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-paper/85 backdrop-blur-md p-6"
       onClick={onClose}
       role="presentation"
     >

@@ -54,7 +54,7 @@ export function SponsoredBannerCarousel({ tier = null, onUpgrade }: Props) {
     return (
       <section className="flex flex-col gap-2">
         <SectionHeader label="featured" count={0} icon="play" />
-        <div className="h-[180px] animate-pulse rounded-3xl border border-line bg-paper-elev/40" />
+        <div className="h-[180px] animate-pulse rounded-2xl border border-line bg-paper-elev/40" />
       </section>
     );
   }
@@ -62,7 +62,7 @@ export function SponsoredBannerCarousel({ tier = null, onUpgrade }: Props) {
     return (
       <section className="flex flex-col gap-2">
         <SectionHeader label="featured" count={0} icon="play" />
-        <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-line bg-paper-elev/40 px-5 py-4">
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-paper-elev/40 px-5 py-4">
           <p className="flex-1 font-sans text-[13px] text-text-secondary">
             Couldn&apos;t load campaigns &mdash; {loadError}
           </p>
