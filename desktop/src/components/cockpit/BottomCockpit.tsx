@@ -111,11 +111,12 @@ export function BottomCockpit({
   // bypass path the gates audit flagged: free users could refire applyOverlay
   // with a paid layout by clicking Retry after a deliberate bake failure.
   const cockpitTier = useTier();
-  // v0.7.30 (IG-006 Bug 3 fix) — Reaction bake in flight (client-side).
-  // Synchronous RPC means the sidecar can't write bake_status until after
-  // ffmpeg finishes. We mirror the local busy from ReactionControls so the
-  // teal pending strip mounts during the await. `reactionBakingAt` records
-  // when the bake started (for the elapsed timer).
+  // v0.8.0 — Reaction bake in flight (client-side mirror).
+  // startOverlayBake is fire-and-forget; the sidecar writes bake_status
+  // immediately. We still mirror ReactionControls' busy signal here so the
+  // teal pending strip mounts the instant the user taps a tile. Retry also
+  // sets this optimistically. `reactionBakingAt` records when the bake
+  // started (for the elapsed timer).
   const [reactionBakingAt, setReactionBakingAt] = useState<string | null>(null);
   const [whenKey, setWhenKey] = useState<WhenKey>("now");
   const [captionDrafts, setCaptionDrafts] = useState<Record<number, string>>({});
@@ -153,10 +154,10 @@ export function BottomCockpit({
     return [...s][0] ?? null;
   }, [effectiveIdxs, project.clips]);
 
-  // Bake state — WATCH-bucket per IG-006. Server-side bake_status only
-  // surfaces "error" (the synchronous RPC can't write pending while
-  // running). Client-side reactionBakingAt fills the pending phase during
-  // the await so the user sees feedback immediately.
+  // Bake state — WATCH-bucket per IG-006. Server-side bake_status surfaces
+  // "pending" (set immediately by startOverlayBake) and "error". Client-side
+  // reactionBakingAt fills the pending phase for the instant between tap and
+  // event delivery so the strip never flickers.
   const bakeState = useMemo(() => {
     if (reactionBakingAt) {
       return { phase: "pending" as const, startedAt: reactionBakingAt };
@@ -172,13 +173,10 @@ export function BottomCockpit({
     if (bakeState.phase === "error" && collapsed) setCollapsed(false);
   }, [bakeState.phase, collapsed, setCollapsed]);
 
-  // Demo audit P1-DEMO-C: BakeErrorStrip Retry button previously fired a
-  // toast telling the user to "touch a layout tile to bake again" — i.e. it
-  // was a label, not an action. On camera that reads as "the retry button
-  // is broken." Re-fire applyOverlay with the focused clip's existing
-  // overlay metadata (the same payload ReactionControls.applyLayout uses,
-  // minus the layout-picker prompt). Sets reactionBakingAt to mount the
-  // pending strip during the await.
+  // v0.8.0 — Retry uses the fire-and-forget startOverlayBake so the UI
+  // never blocks. The pending strip is mounted optimistically here; the
+  // ReactionControls event listener will clear it via onBusyChange(false)
+  // when bake_complete / bake_error arrives.
   const retryReactionBake = useCallback(async () => {
     if (!focusedClip) return;
     // v0.7.49 — Tier gate. BakeErrorStrip Retry refires applyOverlay with
@@ -193,22 +191,19 @@ export function BottomCockpit({
       pushToast("No reaction layout to retry — pick one from the cockpit.");
       return;
     }
-    const startedAt = new Date().toISOString();
-    setReactionBakingAt(startedAt);
     try {
-      const r = await sidecar.applyOverlay(project.slug, safeFocusedIdx, {
+      await sidecar.startOverlayBake(project.slug, safeFocusedIdx, {
         type: ov.type,
         source_path: ov.source_path,
         start_offset_s: ov.start_offset_s,
         audio_source: ov.audio_source,
       });
-      onProjectChange(r.project);
+      // Optimistically set pending so the strip appears immediately.
+      setReactionBakingAt(new Date().toISOString());
     } catch (e) {
       pushToast(`Retry failed — ${humanError(e)}`);
-    } finally {
-      setReactionBakingAt(null);
     }
-  }, [focusedClip, project.slug, safeFocusedIdx, onProjectChange]);
+  }, [focusedClip, project.slug, safeFocusedIdx]);
 
   // v0.7.45 — If ReactionControls unmounts mid-bake (modal opens, clip
   // changes), the busy callback may never fire false. Reset the flag so the
