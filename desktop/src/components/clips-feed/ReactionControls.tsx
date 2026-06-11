@@ -306,6 +306,9 @@ export function ReactionControls({
                 type="button"
                 onClick={() => {
                   if (isLocked) {
+                    import("../../lib/paywallNotify").then(({ notifyPaywall }) =>
+                      notifyPaywall("reaction_layout", tier.tier),
+                    );
                     openAuthPanel("upgrade");
                     return;
                   }

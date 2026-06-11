@@ -13,6 +13,7 @@ const CATEGORY_LABELS: Record<NotificationDto["category"], string> = {
   founder: "founder",
   junior_message: "liquid clips",
   pipeline_event: "pipeline",
+  paywall: "upgrade",
 };
 
 function timeAgo(iso: string): string {

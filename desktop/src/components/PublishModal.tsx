@@ -689,7 +689,15 @@ function UpgradeWall({
             Maybe later
           </button>
           <button
-            onClick={() => openAuthPanel("upgrade")}
+            onClick={() => {
+              import("../lib/paywallNotify").then(({ notifyPaywall }) =>
+                notifyPaywall(
+                  mode === "publish-now" ? "publish_now" : "schedule_one",
+                  currentTier,
+                ),
+              );
+              openAuthPanel("upgrade");
+            }}
             className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
           >
             Upgrade to {req.name} →
