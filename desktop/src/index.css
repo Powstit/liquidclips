@@ -1265,7 +1265,14 @@ pre {
    enter the viewport. */
 .library-wall-grid > * {
   content-visibility: auto;
-  contain-intrinsic-size: auto 320px;
+  /* v0.7.50 — Recalculated from actual measured card heights. Cards are
+     aspect-[9/16] inside a grid that runs 2 cols (mobile) → 3 (sm) → 4
+     (lg) → 5 (xl). At common laptop widths (1280-1440px) column widths
+     give cards roughly 280px wide → 280 × (16/9) ≈ 500px tall for the
+     thumb, plus the 3-line meta strip below (≈ 80px). 480px is the
+     centre of that range — much closer than the initial 320px guess
+     which would have caused scrollbar drift on the long tail. */
+  contain-intrinsic-size: auto 480px;
 }
 
 /* The fallback bug glyph used when a project has no thumbnail. Floats
