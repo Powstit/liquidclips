@@ -1528,13 +1528,12 @@ export default function App() {
         )}
 
         {view.kind === "earn" && (
-          // v0.7.50 — `align="stretch"` so EarnTab fills the full visible
-          // height. With the IG-008 `min-h-full` two-layer scroll wrap,
-          // `items-start` left EarnTab at intrinsic height (0px because
-          // EarnPanelMount renders an empty containerRef div), the
-          // ResizeObserver pinned the native webview to a 0×0 rect, and
-          // Earn looked blank. `items-stretch` gives the child a definite
-          // height so h-full resolves end-to-end.
+          // ───── IRON GATE IG-011 (v0.7.50) — see docs/IRON_GATES.md ─────
+          // Earn pins a native Tauri child webview behind a measured React
+          // container — `align="stretch"` is required for the height cascade
+          // (EarnTab h-full → EarnPanelMount containerRef h-full → non-zero
+          // ResizeObserver rect → webview visible). Without stretch the
+          // container collapses to 0 and Earn looks blank. Do not change.
           <RoomShell roomKey="earn" align="stretch">
           <EarnTab
             userTier={userTier}
