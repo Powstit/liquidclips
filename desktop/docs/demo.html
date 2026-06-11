@@ -1,0 +1,1052 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>liquid/clips · v0.8.0</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            fuchsia:  { DEFAULT:'#ff1a8c', bright:'#ff3da5', deep:'#ff66b8', soft:'rgba(255,26,140,0.16)', glow:'#ff8fcb' },
+            cyan:     { cool:'#00e5ff' },
+            ink:      { DEFAULT:'#f4f1ea', soft:'#c8c4be' },
+            paper:    { DEFAULT:'#0b0b10', warm:'#15151c', elev:'#1c1c25' },
+            line:     { DEFAULT:'rgba(255,255,255,0.07)', strong:'rgba(255,255,255,0.12)' },
+            t2:'#c8c4be', t3:'#8a857e',
+            danger:'#dc2626',
+          },
+          fontFamily: {
+            sans:    ['Inter','ui-sans-serif','system-ui','sans-serif'],
+            display: ['Inter','ui-sans-serif','system-ui','sans-serif'],
+            mono:    ['Geist Mono','ui-monospace','SF Mono','Menlo','monospace'],
+          },
+          boxShadow: {
+            'glow-sm':'0 0 0 1px rgba(255,26,140,0.35), 0 6px 18px rgba(255,26,140,0.18)',
+            'glow-md':'0 0 0 1px rgba(255,26,140,0.45), 0 12px 36px rgba(255,26,140,0.28)',
+            'glow-lg':'0 0 0 1px rgba(255,26,140,0.5),  0 16px 48px rgba(255,26,140,0.32)',
+            'e2':'0 1px 0 rgba(255,255,255,0.04) inset, 0 12px 36px rgba(0,0,0,0.6)',
+          },
+        }
+      }
+    }
+  </script>
+
+  <style>
+    html, body { background:#0b0b10; color:#f4f1ea; }
+    body { font-family:'Inter', system-ui, sans-serif; -webkit-font-smoothing:antialiased; }
+
+    /* Workspace ambient — radial fuchsia haze + reactive aurora that follows cursor */
+    body::before {
+      content:''; position:fixed; inset:0; pointer-events:none; z-index:-2;
+      background:
+        radial-gradient(900px 700px at -10% -20%, rgba(255,26,140,0.12), transparent 60%),
+        radial-gradient(700px 500px at 110% 0%,  rgba(255,26,140,0.08), transparent 60%),
+        radial-gradient(900px 700px at 50% 130%, rgba(0,229,255,0.04),  transparent 60%);
+    }
+    /* Cursor-reactive halo — the iconic feel layer */
+    body::after {
+      content:''; position:fixed; inset:0; pointer-events:none; z-index:-1; opacity:0.5;
+      background: radial-gradient(560px 420px at var(--cx, 50%) var(--cy, 50%), rgba(255,26,140,0.10), transparent 60%);
+      transition: opacity 600ms ease;
+    }
+
+    .eyebrow { font-family:'Geist Mono', monospace; font-weight:500; font-size:10px; text-transform:uppercase; letter-spacing:0.18em; color:#c8c4be; }
+    .mono    { font-family:'Geist Mono', monospace; }
+
+    /* ========== HUD BRACKET CORNERS ========== */
+    .lcc { position:absolute; width:18px; height:18px; border-style:dashed; border-color:#ff1a8c; border-width:0;
+           filter: drop-shadow(0 0 4px rgba(255,26,140,0.5)); transition: width 220ms cubic-bezier(.34,1.56,.64,1), height 220ms cubic-bezier(.34,1.56,.64,1), filter 220ms ease; opacity:0.7; pointer-events:none; }
+    .lcc-tl { top:7px; left:7px;     border-top-width:1px; border-left-width:1px; }
+    .lcc-tr { top:7px; right:7px;    border-top-width:1px; border-right-width:1px; }
+    .lcc-bl { bottom:7px; left:7px;  border-bottom-width:1px; border-left-width:1px; }
+    .lcc-br { bottom:7px; right:7px; border-bottom-width:1px; border-right-width:1px; }
+    .clip-card:hover .lcc, .clip-card.selected .lcc, .clip-card.focused .lcc {
+      width:26px; height:26px; opacity:1; filter: drop-shadow(0 0 10px rgba(255,26,140,0.9));
+    }
+
+    /* HUD frame on panels */
+    .hud-frame { position:relative; box-shadow: inset 0 0 24px rgba(255,26,140,0.08); }
+    .hud-frame::before, .hud-frame::after {
+      content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+      background:
+        linear-gradient(to right,  #ff1a8c 0 14px, transparent 14px) top left      / 14px 1.5px no-repeat,
+        linear-gradient(to bottom, #ff1a8c 0 14px, transparent 14px) top left      / 1.5px 14px no-repeat,
+        linear-gradient(to left,   #ff1a8c 0 14px, transparent 14px) top right     / 14px 1.5px no-repeat,
+        linear-gradient(to bottom, #ff1a8c 0 14px, transparent 14px) top right     / 1.5px 14px no-repeat,
+        linear-gradient(to right,  #ff1a8c 0 14px, transparent 14px) bottom left   / 14px 1.5px no-repeat,
+        linear-gradient(to top,    #ff1a8c 0 14px, transparent 14px) bottom left   / 1.5px 14px no-repeat,
+        linear-gradient(to left,   #ff1a8c 0 14px, transparent 14px) bottom right  / 14px 1.5px no-repeat,
+        linear-gradient(to top,    #ff1a8c 0 14px, transparent 14px) bottom right  / 1.5px 14px no-repeat;
+    }
+
+    /* Working shimmer */
+    @keyframes shimmer-move { 0% { transform:translateX(-100%); } 100% { transform:translateX(330%); } }
+    .working-bar { position:relative; overflow:hidden; background:rgba(255,255,255,0.06); height:3px; border-radius:2px; }
+    .working-bar::after { content:''; position:absolute; inset:0; width:45%; background:linear-gradient(90deg, transparent, #ff1a8c, transparent); animation: shimmer-move 1.5s linear infinite; }
+
+    /* Breathing */
+    @keyframes breathe { 0%,100% { transform:scale(1); } 50% { transform:scale(1.02); } }
+    .breathing { animation: breathe 5s ease-in-out infinite; }
+    @keyframes pulse-dot { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.55; transform:scale(1.35); } }
+    .pulse-dot { animation: pulse-dot 2.4s ease-in-out infinite; }
+    @keyframes pulse-ring {
+      0% { box-shadow: 0 0 0 0 rgba(255,26,140,0.55); }
+      70% { box-shadow: 0 0 0 14px rgba(255,26,140,0); }
+      100% { box-shadow: 0 0 0 0 rgba(255,26,140,0); }
+    }
+    .pulse-ring { animation: pulse-ring 2.6s ease-out infinite; }
+
+    /* Tabs */
+    .tab { font-family:'Geist Mono', monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.08em; font-weight:500; color:#c8c4be; padding:0 12px; height:30px; border-radius:9999px; transition: all 200ms cubic-bezier(.34,1.56,.64,1); position:relative; overflow:hidden; }
+    .tab:hover:not(.active) { color:#f4f1ea; background: rgba(255,255,255,0.04); }
+    .tab.active { background:#ff1a8c; color:#fff; box-shadow: 0 0 0 1px rgba(255,26,140,0.45), 0 4px 16px rgba(255,26,140,0.3); }
+
+    /* Layout tile */
+    .layout-tile {
+      position:relative; background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01));
+      border: 1px solid rgba(255,255,255,0.07); border-radius:14px; transition: all 200ms cubic-bezier(.34,1.56,.64,1);
+      cursor:pointer; min-height:64px; padding: 8px 8px;
+    }
+    .layout-tile:hover { border-color: rgba(255,26,140,0.5); background: linear-gradient(180deg, rgba(255,26,140,0.10), rgba(255,26,140,0.03)); transform: translateY(-1px); }
+    .layout-tile.active {
+      border-color:#ff1a8c;
+      background: linear-gradient(180deg, rgba(255,26,140,0.22), rgba(255,26,140,0.08));
+      box-shadow: 0 0 0 1px rgba(255,26,140,0.55), 0 6px 22px rgba(255,26,140,0.32);
+    }
+    .layout-tile.active::before {
+      content:''; position:absolute; top:6px; right:6px; width:6px; height:6px; border-radius:50%; background:#ff1a8c; box-shadow: 0 0 8px #ff1a8c;
+    }
+
+    /* === ICONIC MOMENT 1: layout-morph in clip thumbnails === */
+    .clip-thumb-stage { position:absolute; inset:0; transition: all 320ms cubic-bezier(.34,1.4,.64,1); will-change:transform; }
+    /* Layout: stack-bottom (default) */
+    .clip-card[data-layout="stack-bottom"] .layer-broll { transform: translateY(20%) scale(0.7); border-radius: 8px; }
+    /* Layout: circle-tr */
+    .clip-card[data-layout="circle-tr"] .layer-broll { transform: translate(28%, -32%) scale(0.32); border-radius:50%; box-shadow: 0 0 0 1.5px rgba(255,26,140,0.6), 0 0 18px rgba(255,26,140,0.5); }
+    /* Layout: split */
+    .clip-card[data-layout="split"] .layer-broll { transform: translateX(-25%) scale(0.5, 1); border-radius:0; }
+    /* Layout: full (no broll) */
+    .clip-card[data-layout="full"] .layer-broll { opacity:0; }
+    /* Layout: pip-br */
+    .clip-card[data-layout="pip-br"] .layer-broll { transform: translate(30%, 30%) scale(0.35); border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.6); }
+
+    .layer-broll { position:absolute; inset:0; transition: transform 360ms cubic-bezier(.34,1.4,.64,1), border-radius 360ms ease, box-shadow 360ms ease, opacity 280ms ease; will-change:transform, border-radius; pointer-events:none; overflow:hidden; }
+
+    /* Clip card */
+    .clip-card { position:relative; transition: transform 200ms cubic-bezier(.34,1.56,.64,1), box-shadow 240ms ease; }
+    .clip-card:hover { transform: translateY(-2px); }
+    .clip-card.selected, .clip-card.focused {
+      box-shadow: 0 0 0 1.5px #ff1a8c, 0 12px 32px rgba(255,26,140,0.28);
+    }
+    .clip-card .action-bar { opacity:0; transform: translateY(4px); transition: opacity 180ms ease-out, transform 220ms cubic-bezier(.34,1.56,.64,1); }
+    .clip-card:hover .action-bar { opacity:1; transform: translateY(0); }
+
+    /* Buttons */
+    button { transition: transform 100ms ease-out, background 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out, box-shadow 200ms ease-out; }
+    button:active:not(:disabled) { transform: scale(0.96); }
+
+    /* Resize */
+    .resize { cursor: ns-resize; background: rgba(255,255,255,0.04); transition: background 200ms ease; }
+    .resize:hover { background: rgba(255,26,140,0.3); }
+
+    /* Slide-up panel */
+    .panel-enter { transform: translateY(100%); opacity:0; }
+    .panel-shown { transform: translateY(0); opacity:1; transition: transform 360ms cubic-bezier(.16,1,.3,1), opacity 240ms ease-out; }
+
+    /* Popover arrow */
+    .popover-arrow::before { content:''; position:absolute; top:-7px; left:24px; border-left:7px solid transparent; border-right:7px solid transparent; border-bottom:7px solid #1c1c25; }
+
+    /* Selected clip ring breathing */
+    @keyframes ring-breathe {
+      0%,100% { box-shadow: 0 0 0 1.5px rgba(255,26,140,1), 0 12px 32px rgba(255,26,140,0.28); }
+      50%     { box-shadow: 0 0 0 2px rgba(255,26,140,1),   0 18px 44px rgba(255,26,140,0.4); }
+    }
+    .clip-card.focused { animation: ring-breathe 3.4s ease-in-out infinite; }
+
+    /* Pixel art */
+    .pixel { image-rendering: pixelated; }
+
+    /* Deck cover (cockpit panel — proof-of-pattern) */
+    .deck-cover { background-image:url('demo-assets/cockpit-deck-cover.png'); background-size:cover; background-position:center; background-repeat:no-repeat; }
+
+    /* === Brand atmospheres (per-deck) ===
+       Sit behind content at low opacity, scoped against the brand kit.
+       Body's data-deck attribute swaps which atmosphere fills the grid backdrop. */
+    .atmosphere-plate {
+      position:absolute; inset:0; pointer-events:none; z-index:0;
+      background-size:cover; background-position:center; background-repeat:no-repeat;
+      transition: opacity 720ms cubic-bezier(.34,1,.64,1), background-image 0ms;
+    }
+    body[data-deck="workspace"] #grid-atmosphere { background-image:url('demo-assets/atmosphere-workspace.png'); opacity:0.20; }
+    body[data-deck="library"]   #grid-atmosphere { background-image:url('demo-assets/atmosphere-library.png');   opacity:0.16; }
+    body[data-deck="earn"]      #grid-atmosphere { background-image:url('demo-assets/atmosphere-earn.png');      opacity:0.22; }
+    body[data-deck="schedule"]  #grid-atmosphere { background-image:url('demo-assets/atmosphere-schedule.png');  opacity:0.18; }
+    body[data-deck="settings"]  #grid-atmosphere { background-image:url('demo-assets/atmosphere-settings.png');  opacity:0.12; }
+
+    /* === ⌘K command palette === */
+    @keyframes cmdk-in { 0%{ opacity:0; transform: translateY(8px) scale(0.97); } 100%{ opacity:1; transform: translateY(0) scale(1); } }
+    #cmdk { background-image:url('demo-assets/state-cmd-k.png'); background-size:cover; background-position:center; }
+    #cmdk-shell { animation: cmdk-in 320ms cubic-bezier(.34,1.4,.64,1) forwards; }
+
+    /* === Drop target overlay === */
+    @keyframes droptarget-in { 0%{ opacity:0; } 100%{ opacity:1; } }
+    @keyframes droptarget-pulse { 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.04); } }
+    #drop-overlay { background-image:url('demo-assets/interaction-drop-target.png'); background-size:cover; background-position:center; animation: droptarget-in 240ms ease-out forwards; }
+    #drop-overlay .invader-pulse { animation: droptarget-pulse 1.4s ease-in-out infinite; }
+
+    /* === Hot streak badge === */
+    .hot-badge {
+      background-image:url('demo-assets/badge-hot-streak.png');
+      background-size:cover; background-position:center;
+      width:28px; height:28px; border-radius:6px;
+      filter: drop-shadow(0 0 8px rgba(255,26,140,0.55));
+    }
+
+    /* === ⌘K row + kbd === */
+    .cmdk-row {
+      width:100%; display:flex; align-items:center; gap:12px;
+      padding: 9px 14px; border-radius: 10px;
+      font-size: 13px; color: #f4f1ea; text-align:left;
+      transition: background 160ms ease;
+    }
+    .cmdk-row:hover { background: rgba(255,26,140,0.10); }
+    .cmdk-row > .cmdk-kbd {
+      margin-left:auto;
+      font-family:"Geist Mono", ui-monospace, monospace;
+      font-size:10px; letter-spacing:0.10em; text-transform:uppercase;
+      color:#8a857e; padding:2px 6px; border:1px solid rgba(255,255,255,0.10); border-radius:5px;
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      .breathing, .pulse-dot, .pulse-ring { animation:none !important; }
+      .working-bar::after { animation:none; left:0; right:0; opacity:0.4; }
+      .clip-card.focused { animation:none; }
+    }
+
+    /* === ICONIC MOMENT 3: URL analysis sequence === */
+    .stage-line { opacity:0; transform: translateX(-6px); transition: opacity 320ms ease, transform 320ms cubic-bezier(.34,1.56,.64,1); }
+    .stage-line.shown { opacity:1; transform: translateX(0); }
+    .stage-line.done { color:#c8c4be; }
+
+    /* Schedule confirm burst */
+    @keyframes burst { 0% { opacity:0; transform: scale(0.5); } 60% { opacity:1; transform:scale(1.1); } 100% { opacity:0; transform:scale(1.4); } }
+    .burst { animation: burst 1.6s ease-out forwards; }
+
+    /* Live status counter */
+    .counter { transition: color 200ms ease; }
+
+    /* Spring-press ripple */
+    @keyframes ripple { 0% { transform:scale(0); opacity:0.5; } 100% { transform:scale(2.6); opacity:0; } }
+    .ripple { position:absolute; border-radius:50%; background:rgba(255,255,255,0.4); pointer-events:none; animation: ripple 600ms ease-out forwards; }
+  </style>
+</head>
+<body class="min-h-dvh overflow-hidden" data-deck="workspace">
+
+  <!-- TOP NAV -->
+  <header class="h-12 bg-paper/85 backdrop-blur-md border-b border-line flex items-center justify-between px-4 fixed inset-x-0 top-0 z-30">
+    <div class="flex items-center gap-3">
+      <a href="#" class="flex items-center gap-2 group">
+        <svg viewBox="0 0 24 16" class="h-5 w-7 fill-fuchsia drop-shadow-[0_0_10px_rgba(255,26,140,0.85)] breathing pixel">
+          <rect x="3" y="2" width="2" height="2"/><rect x="19" y="2" width="2" height="2"/>
+          <rect x="5" y="4" width="14" height="2"/>
+          <rect x="3" y="6" width="2" height="2"/><rect x="7" y="6" width="2" height="2"/><rect x="15" y="6" width="2" height="2"/><rect x="19" y="6" width="2" height="2"/>
+          <rect x="3" y="8" width="18" height="2"/>
+          <rect x="5" y="10" width="2" height="2"/><rect x="9" y="10" width="6" height="2"/><rect x="17" y="10" width="2" height="2"/>
+          <rect x="1" y="12" width="2" height="2"/><rect x="7" y="12" width="2" height="2"/><rect x="15" y="12" width="2" height="2"/><rect x="21" y="12" width="2" height="2"/>
+        </svg>
+        <span class="font-display font-semibold tracking-[-0.025em] text-[15px] text-ink">
+          liquid<span class="text-fuchsia">/</span>clips
+        </span>
+      </a>
+      <span class="text-t3 text-xs">/</span>
+      <span class="text-sm text-t2 truncate max-w-[260px]">daniel · morning podcast · ep 14</span>
+      <span class="ml-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-fuchsia/40 bg-fuchsia-soft">
+        <span class="w-1.5 h-1.5 rounded-full bg-fuchsia pulse-dot"></span>
+        <span class="eyebrow" style="color:#ff66b8">baking 1</span>
+      </span>
+    </div>
+    <div class="flex items-center gap-1">
+      <button class="h-8 w-8 grid place-items-center rounded-md hover:bg-paper-elev text-t2 hover:text-ink" aria-label="Undo">
+        <i data-lucide="undo-2" class="w-4 h-4"></i>
+      </button>
+      <button class="h-8 w-8 grid place-items-center rounded-md hover:bg-paper-elev text-t2 hover:text-ink" aria-label="Redo">
+        <i data-lucide="redo-2" class="w-4 h-4"></i>
+      </button>
+      <button id="cmdk-open" class="hidden md:flex items-center gap-1 ml-1 mr-1 px-2 h-7 rounded-md border border-line bg-paper-elev hover:border-fuchsia/60 hover:text-fuchsia-deep transition" title="Open command palette (⌘K)">
+        <span class="eyebrow text-t3">⌘</span><span class="eyebrow text-t3">K</span>
+        <span class="eyebrow text-t3 ml-1">command</span>
+      </button>
+      <button id="add-clips-btn" class="h-8 px-3 rounded-full bg-fuchsia text-white text-xs font-semibold hover:bg-fuchsia-bright shadow-glow-sm flex items-center gap-1.5 ripple-host">
+        <i data-lucide="plus" class="w-3.5 h-3.5"></i> add clips
+      </button>
+      <button class="h-8 w-8 grid place-items-center rounded-md hover:bg-paper-elev text-t2 hover:text-ink" aria-label="Settings">
+        <i data-lucide="settings" class="w-4 h-4"></i>
+      </button>
+      <div class="h-8 w-8 grid place-items-center rounded-full bg-fuchsia text-white text-xs font-semibold ml-1 shadow-glow-sm">DD</div>
+    </div>
+  </header>
+
+  <main class="pt-12 h-dvh flex flex-col">
+
+    <!-- ─────────── GRID ─────────── -->
+    <section id="grid" class="flex-1 overflow-y-auto px-4 pt-4 pb-3 relative">
+      <!-- Brand atmosphere plate — swaps by data-deck attribute on <body> -->
+      <div id="grid-atmosphere" class="atmosphere-plate"></div>
+      <div class="relative z-[1] flex items-center justify-between mb-3">
+        <div class="flex items-center gap-3">
+          <span class="eyebrow">workstation</span>
+          <span class="eyebrow text-fuchsia-deep" style="color:#ff66b8"><span class="counter" id="cnt-clips">12</span> clips · <span id="cnt-selected">3</span> selected</span>
+          <span class="w-1 h-1 rounded-full bg-fuchsia pulse-dot"></span>
+          <span class="eyebrow" id="bake-status">baking · vertical 42%</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <button class="tab active">All · 12</button>
+          <button class="tab">Best bits · 7</button>
+          <button class="tab">Reactions · 3</button>
+          <button class="tab">Scheduled · 2</button>
+        </div>
+      </div>
+
+      <!-- Editorial grid: hero clip + others -->
+      <div id="grid-container" class="relative z-[1] grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); grid-auto-flow: dense;"></div>
+    </section>
+
+    <div id="resize" class="resize h-1 hidden md:block"></div>
+
+    <!-- ─────────── COCKPIT ─────────── -->
+    <section id="cockpit" class="bg-paper-warm border-t border-line shadow-e2 flex flex-col relative" style="height:300px;">
+      <div class="absolute inset-0 deck-cover opacity-25 pointer-events-none"></div>
+      <!-- Cursor-tracked fuchsia spotlight inside the cockpit -->
+      <div class="absolute pointer-events-none rounded-full" id="cockpit-spotlight"
+           style="left: var(--cpx, 50%); top: var(--cpy, 50%); width: 380px; height: 380px; margin: -190px 0 0 -190px; background: radial-gradient(closest-side, rgba(255,26,140,0.20), transparent 70%); opacity: 0.85; transition: opacity 600ms ease;"></div>
+
+      <div class="relative h-11 px-4 flex items-center justify-between border-b border-line shrink-0">
+        <div class="flex items-center gap-2">
+          <button id="cockpit-toggle" class="h-7 w-7 grid place-items-center rounded-md hover:bg-paper-elev text-t2 hover:text-ink" aria-label="Toggle cockpit">
+            <i data-lucide="chevron-down" class="w-4 h-4" id="cockpit-chevron"></i>
+          </button>
+          <span class="eyebrow"><span id="cock-count">3</span> clips selected</span>
+          <button class="eyebrow text-t3 hover:text-ink ml-1" style="color:#8a857e">clear</button>
+          <span class="ml-3 hidden lg:inline-flex items-center gap-1.5 px-2 h-6 rounded-full border border-line bg-paper-elev">
+            <span class="eyebrow">layout</span>
+            <span class="eyebrow text-ink" id="active-layout-name">stack ↓</span>
+          </span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="h-7 px-3 rounded-full border border-line bg-paper-elev text-xs font-medium text-ink-soft hover:border-fuchsia/60 hover:text-ink flex items-center gap-1.5">
+            <i data-lucide="calendar-clock" class="w-3.5 h-3.5"></i> Schedule
+          </button>
+          <button id="publish-btn" class="h-7 px-3.5 rounded-full bg-fuchsia text-white text-xs font-semibold hover:bg-fuchsia-bright shadow-glow-sm flex items-center gap-1.5 ripple-host">
+            <i data-lucide="send" class="w-3.5 h-3.5"></i> Publish now
+          </button>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div id="cockpit-body" class="relative flex-1 flex flex-col min-h-0">
+        <div class="h-10 px-3 flex items-center gap-1 border-b border-line shrink-0 backdrop-blur-sm bg-paper-warm/70">
+          <button class="tab active" data-tab="reaction">Reaction</button>
+          <button class="tab" data-tab="caption">Caption</button>
+          <button class="tab" data-tab="trim">Trim</button>
+          <button class="tab" data-tab="style">Style</button>
+          <button class="tab" data-tab="schedule">Schedule</button>
+          <div class="flex-1"></div>
+          <span class="eyebrow flex items-center gap-1.5">
+            <span class="w-1 h-1 rounded-full bg-fuchsia pulse-dot"></span> <span id="bake-tab-status">baking · vertical 42%</span>
+          </span>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-4 min-h-0">
+
+          <!-- Reaction tab -->
+          <div data-panel="reaction" class="space-y-4">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <div class="eyebrow">layout · <span id="layout-eyebrow" class="text-fuchsia-deep" style="color:#ff66b8">stack ↓</span></div>
+                <div class="text-[10px] text-t3 mono">tap to morph every selected clip</div>
+              </div>
+              <div class="grid grid-cols-5 gap-2" id="layout-tiles">
+                <button class="layout-tile flex flex-col items-center justify-center gap-1.5" data-layout="full">
+                  <svg viewBox="0 0 24 24" class="w-7 h-7 text-ink-soft"><rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor"/></svg>
+                  <span class="eyebrow">Full</span>
+                </button>
+                <button class="layout-tile flex flex-col items-center justify-center gap-1.5" data-layout="circle-tr">
+                  <svg viewBox="0 0 24 24" class="w-7 h-7 text-ink-soft"><rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor"/><circle cx="17" cy="7" r="2.6" fill="#ff1a8c"/></svg>
+                  <span class="eyebrow">Circle TR</span>
+                </button>
+                <button class="layout-tile active flex flex-col items-center justify-center gap-1.5" data-layout="stack-bottom">
+                  <svg viewBox="0 0 24 24" class="w-7 h-7 text-white"><rect x="4" y="4" width="16" height="5" rx="1" fill="currentColor"/><rect x="4" y="11" width="16" height="9" rx="1" fill="currentColor" opacity="0.55"/></svg>
+                  <span class="eyebrow text-white">Stack ↓</span>
+                </button>
+                <button class="layout-tile flex flex-col items-center justify-center gap-1.5" data-layout="split">
+                  <svg viewBox="0 0 24 24" class="w-7 h-7 text-ink-soft"><rect x="4" y="4" width="7.5" height="16" rx="1" fill="currentColor"/><rect x="12.5" y="4" width="7.5" height="16" rx="1" fill="currentColor" opacity="0.5"/></svg>
+                  <span class="eyebrow">Split</span>
+                </button>
+                <button class="layout-tile flex flex-col items-center justify-center gap-1.5 opacity-55" disabled data-layout="pip-br">
+                  <svg viewBox="0 0 24 24" class="w-7 h-7 text-ink-soft"><rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor" opacity="0.5"/><rect x="13" y="13" width="6" height="6" rx="1" fill="#ff1a8c"/></svg>
+                  <span class="eyebrow flex items-center gap-1"><i data-lucide="lock" class="w-2.5 h-2.5"></i> PiP · Solo</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <div class="eyebrow mb-1.5">source</div>
+                <button class="w-full h-10 px-3 rounded-xl border border-line bg-paper-elev hover:border-fuchsia/60 flex items-center justify-between text-sm group">
+                  <span class="flex items-center gap-2 min-w-0">
+                    <i data-lucide="film" class="w-3.5 h-3.5 text-fuchsia-deep shrink-0" style="color:#ff66b8"></i>
+                    <span class="text-ink truncate">DJI_20260610_0012.MP4</span>
+                  </span>
+                  <span class="eyebrow group-hover:text-fuchsia" style="color:#ff66b8">change ›</span>
+                </button>
+              </div>
+              <div>
+                <div class="eyebrow mb-1.5">audio</div>
+                <div class="grid grid-cols-3 gap-1">
+                  <button class="h-10 rounded-xl border border-line bg-paper-elev text-xs text-ink-soft hover:border-fuchsia/60 hover:text-ink flex items-center justify-center gap-1.5">
+                    <i data-lucide="volume-2" class="w-3.5 h-3.5"></i> Main
+                  </button>
+                  <button class="h-10 rounded-xl border border-fuchsia bg-fuchsia-soft text-xs font-semibold flex items-center justify-center gap-1.5" style="color:#ff66b8">
+                    <i data-lucide="mic" class="w-3.5 h-3.5"></i> Reaction
+                  </button>
+                  <button class="h-10 rounded-xl border border-line bg-paper-elev text-xs text-ink-soft hover:border-fuchsia/60 hover:text-ink flex items-center justify-center gap-1.5">
+                    <i data-lucide="volume-x" class="w-3.5 h-3.5"></i> Muted
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <div class="eyebrow">reaction offset</div>
+                <div class="mono text-xs text-ink"><span id="offset-num">0.0</span> s</div>
+              </div>
+              <div id="offset-track" class="h-2 rounded-full relative cursor-pointer" style="background: rgba(255,255,255,0.06);">
+                <div id="offset-fill" class="absolute inset-y-0 left-0 rounded-full" style="width:8%; background: linear-gradient(90deg, rgba(255,26,140,0.3), #ff1a8c);"></div>
+                <div id="offset-handle" class="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-fuchsia shadow-glow-sm border-2 border-paper-warm pulse-ring" style="left:8%; margin-left:-8px;"></div>
+              </div>
+              <div class="flex items-center justify-between mt-3">
+                <div class="flex items-center gap-2">
+                  <button class="h-7 px-3 rounded-full bg-fuchsia text-white text-[11px] font-semibold mono uppercase tracking-[0.08em] hover:bg-fuchsia-bright">apply</button>
+                  <button class="h-7 px-3 rounded-full border border-line bg-paper-elev text-[11px] mono uppercase tracking-[0.08em] text-ink-soft hover:border-fuchsia/40 hover:text-ink">start at 0</button>
+                </div>
+                <span class="eyebrow" style="color:#ff66b8" id="bake-detail">baking · vertical 42%</span>
+              </div>
+              <div class="working-bar mt-2"></div>
+            </div>
+          </div>
+
+          <!-- Caption tab -->
+          <div data-panel="caption" class="hidden space-y-4">
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="eyebrow">pin caption · all 3 selected</div>
+                <span class="eyebrow text-fuchsia-deep" style="color:#ff66b8">mixed</span>
+              </div>
+              <textarea rows="3" placeholder="Mixed — type to apply to all selected clips" class="w-full px-3 py-2.5 rounded-xl border border-line bg-paper-elev text-sm focus:outline-none focus:border-fuchsia text-ink placeholder:text-t3 resize-none"></textarea>
+            </div>
+            <div>
+              <div class="eyebrow mb-1.5">caption style</div>
+              <div class="flex gap-1.5 flex-wrap">
+                <button class="h-9 px-3.5 rounded-full border border-line bg-paper-elev text-xs text-ink-soft hover:border-fuchsia/60 hover:text-ink">Clean</button>
+                <button class="h-9 px-3.5 rounded-full border border-fuchsia bg-fuchsia text-white text-xs font-semibold shadow-glow-sm">Bold</button>
+                <button class="h-9 px-3.5 rounded-full border border-line bg-paper-elev text-xs text-ink-soft hover:border-fuchsia/60 hover:text-ink">Minimal</button>
+                <button class="h-9 px-3.5 rounded-full border border-line bg-paper-elev text-xs text-ink-soft hover:border-fuchsia/60 hover:text-ink">Neon</button>
+                <button class="h-9 px-3.5 rounded-full border border-fuchsia/40 bg-fuchsia-soft text-xs" style="color:#ff66b8">Mixed</button>
+              </div>
+            </div>
+            <button class="w-full h-10 rounded-xl border border-line bg-paper-elev hover:border-fuchsia/60 text-sm text-ink-soft hover:text-ink flex items-center justify-center gap-2">
+              <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Open full editor
+            </button>
+          </div>
+
+          <!-- Trim tab -->
+          <div data-panel="trim" class="hidden space-y-4">
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="eyebrow">trim · 32s → 58s</div>
+                <div class="mono text-xs text-fuchsia-deep" style="color:#ff66b8">26 s</div>
+              </div>
+              <div class="h-14 rounded-xl bg-paper-elev/60 border border-line relative overflow-hidden flex items-end gap-[1px] px-2 py-2" id="waveform"></div>
+            </div>
+            <button class="w-full h-10 rounded-xl bg-fuchsia text-white text-sm font-semibold hover:bg-fuchsia-bright shadow-glow-sm flex items-center justify-center gap-2">
+              <i data-lucide="scissors" class="w-4 h-4"></i> Regenerate clip
+            </button>
+          </div>
+
+          <!-- Style tab -->
+          <div data-panel="style" class="hidden space-y-4">
+            <div>
+              <div class="eyebrow mb-1.5">caption style</div>
+              <div class="grid grid-cols-5 gap-1.5">
+                <button class="h-16 rounded-xl border border-fuchsia bg-fuchsia-soft text-[10px] mono uppercase tracking-[0.08em] flex items-end justify-center pb-1.5 relative" style="color:#ff66b8">Clean
+                  <div class="absolute inset-x-2 top-2 h-6 rounded bg-paper border border-line"></div></button>
+                <button class="h-16 rounded-xl border border-line bg-paper-elev text-[10px] mono uppercase tracking-[0.08em] flex items-end justify-center pb-1.5 text-ink-soft hover:border-fuchsia/60 hover:text-ink relative">Bold
+                  <div class="absolute inset-x-2 top-2 h-6 rounded bg-ink"></div></button>
+                <button class="h-16 rounded-xl border border-line bg-paper-elev text-[10px] mono uppercase tracking-[0.08em] flex items-end justify-center pb-1.5 text-ink-soft hover:border-fuchsia/60 hover:text-ink relative">Minimal
+                  <div class="absolute inset-x-3 top-3.5 h-2 rounded bg-ink-soft"></div></button>
+                <button class="h-16 rounded-xl border border-line bg-paper-elev text-[10px] mono uppercase tracking-[0.08em] flex items-end justify-center pb-1.5 text-ink-soft hover:border-fuchsia/60 hover:text-ink relative">Neon
+                  <div class="absolute inset-x-2 top-2 h-6 rounded bg-fuchsia shadow-glow-sm"></div></button>
+                <button class="h-16 rounded-xl border border-line bg-paper-elev text-[10px] mono uppercase tracking-[0.08em] flex items-end justify-center pb-1.5 text-ink-soft hover:border-fuchsia/60 hover:text-ink relative">Typewriter
+                  <div class="absolute inset-x-2 top-2 h-6 rounded border border-ink-soft"></div></button>
+              </div>
+            </div>
+            <div>
+              <div class="eyebrow mb-1.5">reaction style</div>
+              <div class="grid grid-cols-4 gap-1.5">
+                <button class="h-10 rounded-xl border border-fuchsia bg-fuchsia-soft text-xs" style="color:#ff66b8">Smooth</button>
+                <button class="h-10 rounded-xl border border-line bg-paper-elev text-xs text-ink-soft hover:border-fuchsia/60 hover:text-ink">Snap</button>
+                <button class="h-10 rounded-xl border border-line bg-paper-elev text-xs text-ink-soft hover:border-fuchsia/60 hover:text-ink">Bounce</button>
+                <button class="h-10 rounded-xl border border-line bg-paper-elev text-xs text-ink-soft hover:border-fuchsia/60 hover:text-ink">Fade</button>
+              </div>
+            </div>
+            <button class="w-full h-10 rounded-xl bg-fuchsia text-white text-sm font-semibold hover:bg-fuchsia-bright shadow-glow-sm">Apply to all selected</button>
+          </div>
+
+          <!-- Schedule tab -->
+          <div data-panel="schedule" class="hidden space-y-4">
+            <div>
+              <div class="eyebrow mb-1.5">when</div>
+              <div class="grid grid-cols-4 gap-1.5">
+                <button class="h-10 rounded-xl border border-fuchsia bg-fuchsia text-white text-xs font-semibold shadow-glow-sm">Now</button>
+                <button class="h-10 rounded-xl border border-line bg-paper-elev text-xs text-ink-soft hover:border-fuchsia/60 hover:text-ink flex flex-col items-center justify-center leading-tight">
+                  <span>+1h</span><span class="text-[9px] mono text-t3">13:42</span>
+                </button>
+                <button class="h-10 rounded-xl border border-line bg-paper-elev text-xs text-ink-soft hover:border-fuchsia/60 hover:text-ink flex flex-col items-center justify-center leading-tight">
+                  <span>+24h</span><span class="text-[9px] mono text-t3">Wed</span>
+                </button>
+                <button class="h-10 rounded-xl border border-line bg-paper-elev text-xs text-ink-soft hover:border-fuchsia/60 hover:text-ink flex items-center justify-center gap-1">
+                  <i data-lucide="calendar" class="w-3.5 h-3.5"></i> Custom
+                </button>
+              </div>
+            </div>
+            <div>
+              <div class="eyebrow mb-1.5">platforms</div>
+              <div class="flex gap-1.5 flex-wrap">
+                <button class="h-10 px-3.5 rounded-full border border-fuchsia bg-fuchsia-soft text-xs font-semibold flex items-center gap-2" style="color:#ff66b8">
+                  <i data-lucide="youtube" class="w-4 h-4"></i> YouTube <i data-lucide="check" class="w-3 h-3"></i>
+                </button>
+                <button class="h-10 px-3.5 rounded-full border border-fuchsia bg-fuchsia-soft text-xs font-semibold flex items-center gap-2" style="color:#ff66b8">
+                  <span class="w-4 h-4 rounded-sm bg-ink/90 text-fuchsia text-[9px] grid place-items-center mono font-bold">TT</span> TikTok <i data-lucide="check" class="w-3 h-3"></i>
+                </button>
+                <button id="connect-instagram-btn" class="h-10 px-3.5 rounded-full border border-line bg-paper-elev text-ink-soft text-xs flex items-center gap-2 hover:border-fuchsia/60 hover:text-ink opacity-75">
+                  <i data-lucide="instagram" class="w-4 h-4"></i> Instagram <i data-lucide="plus" class="w-3 h-3 text-fuchsia"></i>
+                </button>
+                <button class="h-10 px-3.5 rounded-full border border-line bg-paper-elev text-ink-soft text-xs flex items-center gap-2 hover:border-fuchsia/60 hover:text-ink opacity-75">
+                  <i data-lucide="twitter" class="w-4 h-4"></i> X <i data-lucide="plus" class="w-3 h-3 text-fuchsia"></i>
+                </button>
+              </div>
+            </div>
+            <button id="confirm-schedule" class="w-full h-10 rounded-xl bg-fuchsia text-white text-sm font-semibold hover:bg-fuchsia-bright shadow-glow-sm flex items-center justify-center gap-2 ripple-host">
+              <i data-lucide="send" class="w-4 h-4"></i> Confirm schedule · 2 platforms
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Schedule confirm burst — uses the new full-frame celebration plate -->
+  <div id="confirm-burst" class="hidden fixed inset-0 z-50 grid place-items-center pointer-events-none">
+    <img src="demo-assets/interaction-celebration-burst.png" class="w-[640px] max-w-[80vw] burst" alt="" />
+    <div class="absolute mt-[24rem] eyebrow text-ink text-base" style="font-size:13px; letter-spacing:0.18em;">scheduled · 2 platforms</div>
+  </div>
+
+  <!-- ⌘K command palette overlay -->
+  <div id="cmdk-backdrop" class="hidden fixed inset-0 bg-paper/80 backdrop-blur-md z-[55]"></div>
+  <div id="cmdk" class="hidden fixed inset-0 z-[60] grid place-items-center px-4">
+    <div id="cmdk-shell" class="w-full max-w-2xl rounded-2xl bg-paper-warm/80 backdrop-blur-2xl border border-line shadow-e3 hud-frame overflow-hidden">
+      <div class="px-5 h-14 flex items-center gap-3 border-b border-line">
+        <i data-lucide="search" class="w-4 h-4 text-fuchsia drop-shadow-[0_0_8px_rgba(255,26,140,0.7)]"></i>
+        <input id="cmdk-input" type="text" placeholder="search clips, decks, actions…" class="flex-1 bg-transparent text-ink placeholder:text-t3 text-sm outline-none" />
+        <span class="eyebrow text-t3">esc</span>
+      </div>
+      <div class="px-2 py-2 max-h-[60vh] overflow-y-auto">
+        <div class="px-3 pt-2 pb-1 eyebrow text-t3">recent</div>
+        <button class="cmdk-row"><i data-lucide="plus" class="w-4 h-4 text-fuchsia"></i>add clips<span class="cmdk-kbd">⌘N</span></button>
+        <button class="cmdk-row"><i data-lucide="send" class="w-4 h-4 text-fuchsia"></i>schedule selection<span class="cmdk-kbd">⌘↵</span></button>
+        <button class="cmdk-row"><i data-lucide="layers" class="w-4 h-4 text-fuchsia"></i>jump to library<span class="cmdk-kbd">2</span></button>
+        <div class="px-3 pt-3 pb-1 eyebrow text-t3">decks</div>
+        <button class="cmdk-row" data-deck-switch="workspace"><i data-lucide="square" class="w-4 h-4"></i>workspace<span class="cmdk-kbd">1</span></button>
+        <button class="cmdk-row" data-deck-switch="library"><i data-lucide="library" class="w-4 h-4"></i>library<span class="cmdk-kbd">2</span></button>
+        <button class="cmdk-row" data-deck-switch="earn"><i data-lucide="trophy" class="w-4 h-4"></i>earn<span class="cmdk-kbd">3</span></button>
+        <button class="cmdk-row" data-deck-switch="schedule"><i data-lucide="clock" class="w-4 h-4"></i>schedule<span class="cmdk-kbd">4</span></button>
+        <button class="cmdk-row" data-deck-switch="settings"><i data-lucide="settings" class="w-4 h-4"></i>settings<span class="cmdk-kbd">5</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Drop-target overlay (dragover on window) -->
+  <div id="drop-overlay" class="hidden fixed inset-0 z-[58] grid place-items-center pointer-events-none">
+    <div class="invader-pulse" style="filter: drop-shadow(0 0 28px rgba(255,26,140,0.9));">
+      <svg viewBox="0 0 24 16" class="w-32 h-20 fill-fuchsia pixel">
+        <rect x="3" y="2" width="2" height="2"/><rect x="19" y="2" width="2" height="2"/>
+        <rect x="5" y="4" width="14" height="2"/>
+        <rect x="3" y="6" width="2" height="2"/><rect x="7" y="6" width="2" height="2"/><rect x="15" y="6" width="2" height="2"/><rect x="19" y="6" width="2" height="2"/>
+        <rect x="3" y="8" width="18" height="2"/>
+        <rect x="5" y="10" width="2" height="2"/><rect x="9" y="10" width="6" height="2"/><rect x="17" y="10" width="2" height="2"/>
+        <rect x="1" y="12" width="2" height="2"/><rect x="7" y="12" width="2" height="2"/><rect x="15" y="12" width="2" height="2"/><rect x="21" y="12" width="2" height="2"/>
+      </svg>
+    </div>
+    <div class="absolute bottom-20 eyebrow text-fuchsia-deep" style="color:#ff66b8; letter-spacing:0.18em;">release to drop · auto-detects platform aspect</div>
+  </div>
+
+  <!-- Connect popover -->
+  <div id="connect-popover" class="hidden fixed z-40 w-80 bg-paper-elev rounded-2xl border border-line shadow-e2 p-4 popover-arrow hud-frame">
+    <div class="flex items-start justify-between mb-2">
+      <div>
+        <div class="text-sm font-semibold flex items-center gap-2 text-ink">
+          <i data-lucide="instagram" class="w-4 h-4 text-fuchsia"></i> Connect Instagram
+        </div>
+        <p class="text-xs text-ink-soft mt-1 leading-relaxed">Sign in once. Liquid Clips schedules through Ayrshare, no app passwords held here.</p>
+      </div>
+      <button id="connect-popover-close" class="text-t3 hover:text-ink">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <ol class="text-xs text-ink-soft space-y-1 list-decimal list-inside mt-3 mb-3">
+      <li>Click Authorize below.</li>
+      <li>Log in to Instagram in your browser.</li>
+      <li>Return here, connection lands automatically.</li>
+    </ol>
+    <button class="w-full h-10 rounded-xl bg-fuchsia text-white text-sm font-semibold hover:bg-fuchsia-bright shadow-glow-sm flex items-center justify-center gap-2">
+      <i data-lucide="external-link" class="w-4 h-4"></i> Authorize with Ayrshare
+    </button>
+    <p class="eyebrow mt-3 text-center">stays in the same window · no route change</p>
+  </div>
+
+  <!-- Add Clips panel -->
+  <div id="add-clips-backdrop" class="hidden fixed inset-0 bg-paper/70 backdrop-blur-sm z-40"></div>
+  <div id="add-clips-panel" class="hidden fixed inset-x-0 bottom-0 z-40 panel-enter">
+    <div class="mx-auto max-w-2xl bg-paper-warm border border-line rounded-t-2xl shadow-e2 overflow-hidden hud-frame">
+      <div class="flex items-center justify-between px-5 h-12 border-b border-line">
+        <div class="text-sm font-semibold flex items-center gap-2 text-ink">
+          <i data-lucide="plus-circle" class="w-4 h-4 text-fuchsia"></i> Add Clips
+        </div>
+        <button id="add-clips-close" class="h-8 w-8 grid place-items-center rounded-md hover:bg-paper-elev text-t2 hover:text-ink">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="px-5 pt-4 pb-2">
+        <div class="flex gap-1 p-1 bg-paper-elev rounded-full w-fit border border-line">
+          <button class="add-tab tab active" data-addtab="url">URL</button>
+          <button class="add-tab tab" data-addtab="upload">Upload</button>
+          <button class="add-tab tab" data-addtab="library">Library</button>
+        </div>
+      </div>
+
+      <div class="px-5 pb-5 pt-3">
+        <!-- URL pane with ICONIC MOMENT 3: signature analysis sequence -->
+        <div data-addpanel="url" class="space-y-3">
+          <div class="relative">
+            <input id="url-input" type="url" placeholder="Paste a YouTube, TikTok, or Instagram Reels URL"
+              class="w-full h-12 px-4 pr-10 rounded-xl border border-line bg-paper-elev focus:outline-none focus:border-fuchsia text-sm text-ink placeholder:text-t3" />
+            <i data-lucide="link" class="w-4 h-4 text-t3 absolute right-3 top-1/2 -translate-y-1/2"></i>
+          </div>
+          <button id="analyze-btn" class="w-full h-11 rounded-xl bg-fuchsia text-white text-sm font-semibold hover:bg-fuchsia-bright flex items-center justify-center gap-2 shadow-glow-md ripple-host">
+            <i data-lucide="sparkles" class="w-4 h-4"></i> <span id="analyze-label">Analyze and Clip</span>
+          </button>
+
+          <!-- The signature analysis sequence — appears on click -->
+          <div id="analyze-stage" class="hidden rounded-xl border border-line bg-paper-elev p-4 space-y-2 hud-frame">
+            <div class="stage-line mono text-xs text-fuchsia flex items-center gap-2" data-stage="0">
+              <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Reading transcript · 0:00 → 41:18
+            </div>
+            <div class="stage-line mono text-xs text-fuchsia flex items-center gap-2" data-stage="1">
+              <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Finding hooks · 17 candidates
+            </div>
+            <div class="stage-line mono text-xs text-fuchsia flex items-center gap-2" data-stage="2">
+              <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Cutting clips · 12 ready
+            </div>
+            <div class="stage-line mono text-xs text-fuchsia-deep flex items-center gap-2" data-stage="3" style="color:#ff66b8">
+              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> 12 clips landed
+            </div>
+            <div class="working-bar mt-2"></div>
+          </div>
+
+          <div class="flex items-center gap-2 text-t3 eyebrow">
+            <div class="flex-1 h-px bg-line"></div> or <div class="flex-1 h-px bg-line"></div>
+          </div>
+          <div class="border-2 border-dashed border-line rounded-xl px-5 py-6 text-center hover:border-fuchsia hover:bg-fuchsia-soft transition cursor-pointer">
+            <i data-lucide="upload-cloud" class="w-7 h-7 text-fuchsia mx-auto drop-shadow-[0_0_14px_rgba(255,26,140,0.7)]"></i>
+            <p class="text-sm text-ink mt-2">Drop video files or click to browse</p>
+            <p class="eyebrow mt-1">MP4 · MOV · MKV · ≤ 2 GB</p>
+          </div>
+        </div>
+
+        <!-- Upload pane -->
+        <div data-addpanel="upload" class="hidden space-y-3">
+          <div class="border-2 border-dashed border-fuchsia bg-fuchsia-soft rounded-xl px-5 py-10 text-center">
+            <i data-lucide="upload-cloud" class="w-9 h-9 text-fuchsia mx-auto drop-shadow-[0_0_18px_rgba(255,26,140,0.9)]"></i>
+            <p class="text-sm text-ink font-medium mt-2">Drop video files here</p>
+            <p class="eyebrow mt-1">or click anywhere in this zone</p>
+          </div>
+          <div class="space-y-1.5">
+            <div class="flex items-center gap-3 p-2.5 rounded-xl bg-paper-elev border border-line">
+              <i data-lucide="check-circle-2" class="w-4 h-4" style="color:#ff66b8"></i>
+              <div class="flex-1 min-w-0">
+                <div class="text-xs text-ink truncate">DJI_morning_take_01.MP4</div>
+                <div class="eyebrow">142 MB · ready</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 p-2.5 rounded-xl bg-paper-elev border border-line">
+              <i data-lucide="loader-2" class="w-4 h-4 text-fuchsia animate-spin"></i>
+              <div class="flex-1 min-w-0">
+                <div class="text-xs text-ink truncate">DJI_morning_take_02.MP4</div>
+                <div class="working-bar mt-1.5"></div>
+              </div>
+              <div class="mono text-xs" style="color:#ff66b8">63%</div>
+            </div>
+          </div>
+          <button class="w-full h-11 rounded-xl bg-fuchsia text-white text-sm font-semibold hover:bg-fuchsia-bright shadow-glow-sm">Import as clips</button>
+        </div>
+
+        <!-- Library pane -->
+        <div data-addpanel="library" class="hidden">
+          <div class="relative mb-2">
+            <input type="text" placeholder="Search archived clips" class="w-full h-10 pl-9 pr-3 rounded-xl border border-line bg-paper-elev focus:outline-none focus:border-fuchsia text-sm text-ink placeholder:text-t3" />
+            <i data-lucide="search" class="w-4 h-4 text-t3 absolute left-3 top-1/2 -translate-y-1/2"></i>
+          </div>
+          <div class="grid grid-cols-3 gap-2" id="library-grid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script>
+    // === REAL clip data with thumbnail paths ===
+    const CLIPS = [
+      { i:1, dur:'0:32', cap:'every black girl should go brunette once in their lives', hot:true,  selected:false, thumb:1, plats:['youtube','tiktok','instagram'], focused:false, hero:true },
+      { i:2, dur:'0:28', cap:'this is the actual move i made on the airline app',      hot:true,  selected:true,  thumb:2, plats:['youtube','tiktok'],              focused:true },
+      { i:3, dur:'0:41', cap:'how do you stay so long on the stairmaster',             hot:false, selected:true,  thumb:3, plats:['tiktok','instagram'] },
+      { i:4, dur:'0:34', cap:'we shipped v0.7.49 last night',                          hot:false, selected:false, thumb:4, plats:['youtube'] },
+      { i:5, dur:'0:38', cap:'fourteen days in, here is what changed',                 hot:true,  selected:true,  thumb:5, plats:['tiktok','youtube','instagram'] },
+      { i:6, dur:'0:24', cap:'free users cost about three cents a month',              hot:false, selected:false, thumb:2, plats:['youtube'] },
+      { i:7, dur:'0:46', cap:'subtraction is the senior engineer move',                hot:false, selected:false, thumb:1, plats:['tiktok'] },
+      { i:8, dur:'0:31', cap:'me on top, the content does the work',                   hot:true,  selected:false, thumb:3, plats:['tiktok','instagram'] },
+      { i:9, dur:'0:29', cap:'finished clips land where source clips do',              hot:false, selected:false, thumb:4, plats:[] },
+      { i:10,dur:'0:42', cap:'cap the cost, predict the conversion',                   hot:false, selected:false, thumb:5, plats:['youtube'] },
+      { i:11,dur:'0:33', cap:'signed is who, notarized is what',                       hot:false, selected:false, thumb:1, plats:[] },
+      { i:12,dur:'0:36', cap:'three reaction backdoors, one commit',                   hot:false, selected:false, thumb:2, plats:['tiktok'] },
+    ];
+
+    function platBadge(p, connected){
+      const m = {
+        youtube:   { icon:'youtube',   color:'#ff0033' },
+        tiktok:    { icon:'music-2',   color:'#f4f1ea' },
+        instagram: { icon:'instagram', color:'#ff66b8' },
+        twitter:   { icon:'twitter',   color:'#f4f1ea' },
+      }[p];
+      const ring = connected ? 'shadow-[0_0_0_1px_rgba(255,26,140,0.55),0_0_10px_rgba(255,26,140,0.35)]' : '';
+      const opa  = connected ? '' : 'opacity-40';
+      const tip  = connected ? `${p.charAt(0).toUpperCase()+p.slice(1)} · connected` : `Connect ${p}`;
+      return `<button class="w-5 h-5 rounded-full bg-paper-elev grid place-items-center backdrop-blur-sm border border-line ${ring} ${opa} hover:opacity-100 hover:shadow-glow-sm transition" style="color:${m.color}" title="${tip}"><i data-lucide="${m.icon}" class="w-3 h-3"></i></button>`;
+    }
+
+    // LARGE brand badges for top-right of clips — real platform glyphs, brand colors
+    function platBadgeBig(p, hero){
+      const size = hero ? 44 : 36;
+      const ico  = hero ? 22 : 18;
+      const SVG = {
+        youtube: `<svg viewBox="0 0 24 24" style="width:${ico}px;height:${ico}px" class="fill-white"><path d="M9.5 16.5v-9l7 4.5-7 4.5z"/></svg>`,
+        tiktok:  `<svg viewBox="0 0 24 24" style="width:${ico}px;height:${ico}px" class="fill-white"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1.84-.1z"/></svg>`,
+        instagram: `<svg viewBox="0 0 24 24" style="width:${ico}px;height:${ico}px" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="white" stroke="none"/></svg>`,
+        twitter: `<svg viewBox="0 0 24 24" style="width:${ico}px;height:${ico}px" class="fill-white"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>`,
+      }[p];
+      const BG = {
+        youtube:   'background:#ff0000;',
+        tiktok:    'background:#000; border:1px solid rgba(255,255,255,0.08);',
+        instagram: 'background:linear-gradient(135deg, #feda75 0%, #fa7e1e 22%, #d62976 50%, #962fbf 75%, #4f5bd5 100%);',
+        twitter:   'background:#000; border:1px solid rgba(255,255,255,0.08);',
+      }[p];
+      const TIP = { youtube:'YouTube · connected', tiktok:'TikTok · connected', instagram:'Instagram · connected', twitter:'X · connected' }[p];
+      return `<button class="grid place-items-center rounded-[10px] shadow-[0_4px_14px_rgba(0,0,0,0.55),0_0_0_1px_rgba(255,26,140,0.25),0_0_18px_rgba(255,26,140,0.30)] hover:shadow-[0_6px_22px_rgba(0,0,0,0.7),0_0_0_1px_rgba(255,26,140,0.55),0_0_24px_rgba(255,26,140,0.55)] transition" style="${BG} width:${size}px; height:${size}px;" title="${TIP}">${SVG}</button>`;
+    }
+
+    function renderClipCard(c){
+      // LARGE brand badges, only the connected platforms, vertical stack top-right
+      const platsBig = c.plats.map(p => platBadgeBig(p, !!c.hero)).join('');
+      const sizing = c.hero ? 'sm:col-span-2 sm:row-span-2 aspect-[9/12]' : 'aspect-[9/16]';
+      const classes = `clip-card group relative rounded-2xl overflow-hidden ${sizing} ${c.selected?'selected':''} ${c.focused?'focused':''}`;
+      const thumbStyle = `background-image:url('demo-assets/clip-thumb-${c.thumb}.png'); background-size:cover; background-position:center;`;
+
+      return `
+        <article class="${classes}" data-idx="${c.i}" data-layout="stack-bottom">
+          <!-- Main video layer -->
+          <div class="clip-thumb-stage" style="${thumbStyle}"></div>
+          <!-- Reactor overlay (broll) — morphs by data-layout -->
+          <div class="layer-broll" style="background-image:url('demo-assets/clip-thumb-${(c.thumb%5)+1}.png'); background-size:cover; background-position:center;"></div>
+          <!-- Dim layer to keep brackets readable -->
+          <div class="absolute inset-0 bg-gradient-to-t from-paper/85 via-paper/15 to-transparent pointer-events-none"></div>
+
+          <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+
+          <button class="absolute top-2 left-2 z-10 w-6 h-6 rounded-md border ${c.selected?'border-fuchsia bg-fuchsia text-white':'border-line-strong bg-paper/70 text-transparent hover:text-ink-soft'} grid place-items-center backdrop-blur-sm">
+            <i data-lucide="check" class="w-3.5 h-3.5" stroke-width="3"></i>
+          </button>
+
+          ${c.hot ? '<div class="hot-badge absolute top-10 left-2 z-10" title="hot streak"></div>' : ''}
+
+          <!-- LARGE platform brand badges — vertical stack top-right -->
+          <div class="absolute top-2 right-2 z-10 flex flex-col gap-1.5">${platsBig}</div>
+
+          <div class="absolute inset-x-0 bottom-0 p-2.5 pt-8 z-10">
+            <div class="text-ink ${c.hero?'text-sm':'text-xs'} font-semibold leading-snug" style="text-shadow:0 1px 4px rgba(0,0,0,0.95); display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${c.cap}</div>
+            <div class="mt-1.5 flex items-center gap-2">
+              <span class="mono text-[10px] uppercase tracking-[0.08em] px-1.5 py-0.5 rounded bg-paper/80 text-ink backdrop-blur-sm border border-line">${c.dur}</span>
+            </div>
+          </div>
+
+          <div class="action-bar absolute inset-x-1 bottom-1 z-20 flex items-center justify-end gap-1 pointer-events-none">
+            <button class="pointer-events-auto w-7 h-7 rounded-full bg-paper-elev/95 hover:bg-fuchsia hover:text-white text-ink-soft grid place-items-center backdrop-blur-md border border-line" title="Edit"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
+            <button class="pointer-events-auto w-7 h-7 rounded-full bg-paper-elev/95 hover:bg-fuchsia hover:text-white text-ink-soft grid place-items-center backdrop-blur-md border border-line" title="Split"><i data-lucide="scissors" class="w-3.5 h-3.5"></i></button>
+            <button class="pointer-events-auto w-7 h-7 rounded-full bg-paper-elev/95 hover:bg-fuchsia hover:text-white text-ink-soft grid place-items-center backdrop-blur-md border border-line" title="Copy"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+            <button class="pointer-events-auto w-7 h-7 rounded-full bg-paper-elev/95 hover:bg-danger hover:text-white text-ink-soft grid place-items-center backdrop-blur-md border border-line" title="Delete"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+          </div>
+        </article>
+      `;
+    }
+
+    const grid = document.getElementById('grid-container');
+    grid.innerHTML = CLIPS.map(renderClipCard).join('');
+
+    // Library pane
+    const libGrid = document.getElementById('library-grid');
+    if (libGrid) libGrid.innerHTML = [1,2,4].map(i => `
+      <div class="aspect-[9/16] rounded-xl overflow-hidden relative" style="background-image:url('demo-assets/clip-thumb-${i}.png');background-size:cover;background-position:center;">
+        <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+        <button class="absolute inset-x-2 bottom-2 h-7 rounded-lg bg-paper/85 backdrop-blur eyebrow font-semibold hover:bg-fuchsia hover:text-white">Restore</button>
+      </div>
+    `).join('');
+
+    // Waveform bars
+    const wf = document.getElementById('waveform');
+    if (wf) {
+      wf.innerHTML = Array.from({length:84}).map((_,i)=>{
+        const h = 18 + Math.abs(Math.sin(i*0.32) + Math.cos(i*0.18)) * 38;
+        const inTrim = (i >= 12 && i <= 62);
+        const color = inTrim ? '#ff1a8c' : 'rgba(244,241,234,0.18)';
+        return `<div style="width:2px;height:${h}%;background:${color};border-radius:1px;${inTrim ? 'filter:drop-shadow(0 0 3px rgba(255,26,140,0.55));' : ''}"></div>`;
+      }).join('') + `
+        <div class="absolute top-1/2 -translate-y-1/2 w-3 h-10 rounded bg-fuchsia shadow-glow-md" style="left:14%"></div>
+        <div class="absolute top-1/2 -translate-y-1/2 w-3 h-10 rounded bg-fuchsia shadow-glow-md" style="left:74%"></div>
+      `;
+    }
+
+    // === ICONIC MOMENT 1: layout tile tap = morph all selected clips ===
+    document.querySelectorAll('[data-layout]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        const layout = btn.dataset.layout;
+        document.querySelectorAll('#layout-tiles [data-layout]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const nameMap = { full:'Full', 'circle-tr':'Circle TR', 'stack-bottom':'Stack ↓', 'split':'Split', 'pip-br':'PiP BR' };
+        document.getElementById('layout-eyebrow').textContent = nameMap[layout].toLowerCase();
+        document.getElementById('active-layout-name').textContent = nameMap[layout].toLowerCase();
+        // Morph every selected clip's thumbnail
+        document.querySelectorAll('.clip-card.selected, .clip-card.focused').forEach(card => {
+          card.dataset.layout = layout;
+        });
+      });
+    });
+
+    // Cockpit tab switching
+    document.querySelectorAll('[data-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-tab]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.querySelectorAll('[data-panel]').forEach(p => p.classList.add('hidden'));
+        const panel = document.querySelector(`[data-panel="${btn.dataset.tab}"]`);
+        if (panel) panel.classList.remove('hidden');
+      });
+    });
+
+    // Add Clips tab switching
+    document.querySelectorAll('[data-addtab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-addtab]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.querySelectorAll('[data-addpanel]').forEach(p => p.classList.add('hidden'));
+        const panel = document.querySelector(`[data-addpanel="${btn.dataset.addtab}"]`);
+        if (panel) panel.classList.remove('hidden');
+      });
+    });
+
+    // Cockpit collapse
+    const cockpit = document.getElementById('cockpit');
+    const cockpitBody = document.getElementById('cockpit-body');
+    const cockpitToggle = document.getElementById('cockpit-toggle');
+    const cockpitChevron = document.getElementById('cockpit-chevron');
+    let cockpitOpen = true;
+    cockpitToggle.addEventListener('click', () => {
+      cockpitOpen = !cockpitOpen;
+      cockpit.style.height = cockpitOpen ? '300px' : '44px';
+      cockpitBody.style.display = cockpitOpen ? '' : 'none';
+      cockpitChevron.setAttribute('data-lucide', cockpitOpen ? 'chevron-down' : 'chevron-up');
+      lucide.createIcons();
+    });
+
+    // Resize drag
+    const resize = document.getElementById('resize');
+    let dragging=false, startY=0, startH=0;
+    resize.addEventListener('pointerdown', e => { dragging=true; startY=e.clientY; startH=cockpit.offsetHeight; resize.setPointerCapture(e.pointerId); });
+    resize.addEventListener('pointermove', e => { if (!dragging) return; cockpit.style.height = Math.max(200, Math.min(window.innerHeight*0.7, startH + (startY - e.clientY))) + 'px'; });
+    resize.addEventListener('pointerup', () => dragging=false);
+
+    // Add Clips panel
+    const panel = document.getElementById('add-clips-panel');
+    const backdrop = document.getElementById('add-clips-backdrop');
+    document.getElementById('add-clips-btn').addEventListener('click', () => {
+      panel.classList.remove('hidden'); backdrop.classList.remove('hidden');
+      requestAnimationFrame(() => { panel.classList.remove('panel-enter'); panel.classList.add('panel-shown'); });
+    });
+    function closeAddClips() {
+      panel.classList.remove('panel-shown'); panel.classList.add('panel-enter');
+      setTimeout(() => { panel.classList.add('hidden'); backdrop.classList.add('hidden'); }, 320);
+      // Reset analysis stage
+      const stage = document.getElementById('analyze-stage');
+      if (stage) { stage.classList.add('hidden'); stage.querySelectorAll('.stage-line').forEach(l => l.classList.remove('shown','done')); }
+      const lbl = document.getElementById('analyze-label'); if (lbl) lbl.textContent = 'Analyze and Clip';
+    }
+    document.getElementById('add-clips-close').addEventListener('click', closeAddClips);
+    backdrop.addEventListener('click', closeAddClips);
+
+    // === ICONIC MOMENT 3: Add Clips analysis sequence ===
+    document.getElementById('analyze-btn').addEventListener('click', () => {
+      const stage = document.getElementById('analyze-stage');
+      const lines = stage.querySelectorAll('.stage-line');
+      stage.classList.remove('hidden');
+      lines.forEach(l => l.classList.remove('shown','done'));
+      document.getElementById('analyze-label').textContent = 'Analyzing…';
+      [0, 1200, 2600, 3800].forEach((t, idx) => {
+        setTimeout(() => {
+          lines[idx].classList.add('shown');
+          if (idx > 0) lines[idx-1].classList.add('done');
+        }, t);
+      });
+      setTimeout(() => {
+        document.getElementById('analyze-label').textContent = '12 clips landed ›';
+      }, 4200);
+    });
+
+    // Connect popover
+    const popover = document.getElementById('connect-popover');
+    const connectBtn = document.getElementById('connect-instagram-btn');
+    if (connectBtn) connectBtn.addEventListener('click', () => {
+      const r = connectBtn.getBoundingClientRect();
+      popover.style.left = Math.min(window.innerWidth - 340, r.left) + 'px';
+      popover.style.top  = (r.bottom + 10) + 'px';
+      popover.classList.remove('hidden');
+    });
+    document.getElementById('connect-popover-close').addEventListener('click', () => popover.classList.add('hidden'));
+    document.addEventListener('click', e => {
+      if (popover.contains(e.target) || (connectBtn && connectBtn.contains(e.target))) return;
+      popover.classList.add('hidden');
+    });
+
+    // === ICONIC MOMENT 2: Cursor-tracked cockpit spotlight + body halo ===
+    document.addEventListener('pointermove', e => {
+      document.body.style.setProperty('--cx', e.clientX + 'px');
+      document.body.style.setProperty('--cy', e.clientY + 'px');
+      const cr = cockpit.getBoundingClientRect();
+      if (e.clientY >= cr.top && e.clientY <= cr.bottom) {
+        cockpit.style.setProperty('--cpx', (e.clientX - cr.left) + 'px');
+        cockpit.style.setProperty('--cpy', (e.clientY - cr.top) + 'px');
+      }
+    });
+
+    // Spring-press ripple on .ripple-host buttons
+    document.querySelectorAll('.ripple-host').forEach(btn => {
+      btn.style.position = 'relative'; btn.style.overflow = 'hidden';
+      btn.addEventListener('pointerdown', e => {
+        const r = btn.getBoundingClientRect();
+        const ripple = document.createElement('span');
+        ripple.className = 'ripple';
+        const size = Math.max(r.width, r.height);
+        ripple.style.width = size + 'px'; ripple.style.height = size + 'px';
+        ripple.style.left = (e.clientX - r.left - size/2) + 'px';
+        ripple.style.top  = (e.clientY - r.top  - size/2) + 'px';
+        btn.appendChild(ripple);
+        setTimeout(() => ripple.remove(), 700);
+      });
+    });
+
+    // Schedule confirm burst
+    document.getElementById('confirm-schedule').addEventListener('click', () => {
+      const burst = document.getElementById('confirm-burst');
+      burst.classList.remove('hidden');
+      const img = burst.querySelector('img');
+      img.classList.remove('burst'); void img.offsetWidth; img.classList.add('burst');
+      setTimeout(() => burst.classList.add('hidden'), 1700);
+    });
+
+    // Live bake counter — counts up to 100% over 18s, then resets
+    let pct = 42;
+    setInterval(() => {
+      pct = pct >= 100 ? 0 : pct + 1;
+      const txt = pct === 0 ? 'idle' : `baking · vertical ${pct}%`;
+      const el1 = document.getElementById('bake-status'); if (el1) el1.textContent = txt;
+      const el2 = document.getElementById('bake-tab-status'); if (el2) el2.textContent = txt;
+      const el3 = document.getElementById('bake-detail'); if (el3) el3.textContent = txt;
+    }, 300);
+
+    // ─── ⌘K command palette ───
+    const cmdk = document.getElementById('cmdk');
+    const cmdkBackdrop = document.getElementById('cmdk-backdrop');
+    const cmdkInput = document.getElementById('cmdk-input');
+    function openCmdk() {
+      cmdk.classList.remove('hidden');
+      cmdkBackdrop.classList.remove('hidden');
+      setTimeout(() => cmdkInput && cmdkInput.focus(), 40);
+    }
+    function closeCmdk() {
+      cmdk.classList.add('hidden');
+      cmdkBackdrop.classList.add('hidden');
+      if (cmdkInput) cmdkInput.value = '';
+    }
+    document.getElementById('cmdk-open').addEventListener('click', openCmdk);
+    cmdkBackdrop.addEventListener('click', closeCmdk);
+    window.addEventListener('keydown', e => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openCmdk(); }
+      else if (e.key === 'Escape') closeCmdk();
+      else if (!cmdk.classList.contains('hidden') && /^[1-5]$/.test(e.key)) {
+        const decks = ['workspace','library','earn','schedule','settings'];
+        switchDeck(decks[parseInt(e.key,10)-1]); closeCmdk();
+      }
+    });
+    document.querySelectorAll('[data-deck-switch]').forEach(b => {
+      b.addEventListener('click', () => { switchDeck(b.dataset.deckSwitch); closeCmdk(); });
+    });
+
+    // ─── Deck atmosphere switcher (also reachable via ⌘K rows) ───
+    function switchDeck(name) {
+      document.body.setAttribute('data-deck', name);
+      // Light toast — re-using the bake-status eyebrow as the ambient signal
+      const el = document.getElementById('bake-status');
+      if (el) { const prev = el.textContent; el.textContent = `deck · ${name}`; setTimeout(() => el.textContent = prev, 1400); }
+    }
+
+    // ─── Drop-target overlay (window dragenter/dragover) ───
+    const dropOverlay = document.getElementById('drop-overlay');
+    let dragDepth = 0;
+    window.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; dropOverlay.classList.remove('hidden'); });
+    window.addEventListener('dragover',  e => { e.preventDefault(); });
+    window.addEventListener('dragleave', e => { dragDepth = Math.max(0, dragDepth-1); if (dragDepth === 0) dropOverlay.classList.add('hidden'); });
+    window.addEventListener('drop',      e => { e.preventDefault(); dragDepth = 0; dropOverlay.classList.add('hidden'); });
+
+    lucide.createIcons();
+  </script>
+</body>
+</html>
