@@ -113,3 +113,10 @@ LAUNCH 2.md
 * 3.md
 * 3.txt
 * 3.tsx
+
+# Sibling working dirs (separate Codex / Powstit / marketing-asset clones).
+# Live next to desktop/ in the repo root but aren't part of the main app.
+/jnr-codex-launch/
+/jnr-powstit/
+/liquid-clips-assets/
+/liquidclips-marketing/
