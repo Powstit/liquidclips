@@ -33,11 +33,22 @@ export function RoomShell({
 }: {
   roomKey: string;
   children: ReactNode;
-  /** Most pages centre their content; some (Library, Earn, Schedule) want
-   *  top-aligned so long lists don't lurch as they fill. */
-  align?: "center" | "top";
+  /** Most pages centre their content; some (Library, Schedule) want
+   *  top-aligned so long lists don't lurch as they fill. The `stretch`
+   *  variant is for rooms that pin a NATIVE webview (Earn) behind the
+   *  React layer — the child must fill the full visible area so the
+   *  ResizeObserver-measured container rect is non-zero. Without this,
+   *  `h-full` on the child can't resolve against the IG-008 `min-h-full`
+   *  parent (CSS height-percentage needs a definite parent height), the
+   *  container collapses to 0 px, and the webview pins to a 0×0 rect →
+   *  invisible / "blank Earn" symptom. v0.7.50 fix. */
+  align?: "center" | "top" | "stretch";
 }) {
   const reduced = useReducedMotion();
+  const innerAlign =
+    align === "top" ? "items-start" :
+    align === "stretch" ? "items-stretch" :
+    "items-center";
   return (
     <motion.div
       key={roomKey}
@@ -48,9 +59,7 @@ export function RoomShell({
       transition={reduced ? { duration: 0.14 } : { type: "spring", stiffness: 260, damping: 28 }}
     >
       <div
-        className={`flex min-h-full w-full justify-center ${
-          align === "top" ? "items-start" : "items-center"
-        }`}
+        className={`flex min-h-full w-full justify-center ${innerAlign}`}
       >
         {children}
       </div>
