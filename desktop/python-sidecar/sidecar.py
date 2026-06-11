@@ -791,6 +791,104 @@ def method_secret_delete(params: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "name": name}
 
 
+def method_pick_more_clips(params: dict[str, Any]) -> dict[str, Any]:
+    """v0.7.48 — Re-run the LLM picker to APPEND more viral moments.
+
+    Daniel's brief: "i need it generate the best bits also we need generate
+    more clips button." This is the more-clips backend. The picker runs with
+    a brief HINT that lists the already-picked time ranges so the LLM
+    targets a different portion of the transcript. A safety post-filter
+    drops any new pick whose midpoint sits within 5s of an existing clip's
+    range — protects against the LLM ignoring the hint.
+
+    New clips are APPENDED (not replaced) onto project.clips, then
+    stage_cut + stage_reframe + stage_thumbs run idempotently — they skip
+    already-rendered files, so only the NEW slots actually do ffmpeg work.
+
+    Returns the updated project, the count of new clips added, and the
+    count skipped due to overlap (so the UI can toast "Added N · skipped M
+    overlapping").
+    """
+    slug = params.get("slug")
+    if not isinstance(slug, str):
+        raise ValueError("pick_more_clips requires `slug` (str)")
+    project = Project.load(slug)
+
+    transcript_path = project.root / "transcript" / "transcript.json"
+    if not transcript_path.exists():
+        raise FileNotFoundError(
+            "Cannot pick more clips — this project has no transcript "
+            "(was it imported from finished clip files?)."
+        )
+    with transcript_path.open("r", encoding="utf-8") as f:
+        transcript = json.load(f)
+
+    existing_ranges: list[tuple[float, float]] = []
+    for c in project.clips:
+        try:
+            existing_ranges.append((float(c["start"]), float(c["end"])))
+        except (KeyError, TypeError, ValueError):
+            continue
+
+    # Build a brief hint that nudges the LLM toward DIFFERENT segments.
+    # Capped at 30 ranges so the prompt doesn't balloon for long videos.
+    if existing_ranges:
+        excluded_text = "; ".join(
+            f"{s:.0f}-{e:.0f}s" for s, e in existing_ranges[:30]
+        )
+        brief_hint = (
+            (project.brief or "")
+            + f"\n\nIMPORTANT: We already have clips covering these "
+              f"time ranges: {excluded_text}. Pick DIFFERENT moments "
+              f"from elsewhere in the transcript — surprise us with "
+              f"hooks the first pass missed."
+        )
+    else:
+        brief_hint = project.brief or ""
+
+    from llm import pick_clips_from_transcript
+    bundle = pick_clips_from_transcript(transcript, brief=brief_hint, intent="clips")
+    new_clips_raw = bundle.get("clips", []) or []
+
+    # Post-filter: drop any pick whose midpoint sits within 5s of an
+    # existing clip's range (belt-and-braces against the LLM ignoring
+    # the hint).
+    def _overlaps(c: dict[str, Any]) -> bool:
+        try:
+            mid = (float(c["start"]) + float(c["end"])) / 2.0
+        except (KeyError, TypeError, ValueError):
+            return True  # malformed = skip
+        for s, e in existing_ranges:
+            if s - 5.0 <= mid <= e + 5.0:
+                return True
+        return False
+
+    fresh = [c for c in new_clips_raw if not _overlaps(c)]
+    skipped = len(new_clips_raw) - len(fresh)
+
+    if not fresh:
+        return {
+            "project": project.to_dict(),
+            "added": 0,
+            "skipped": skipped,
+        }
+
+    # Append to project.clips and persist.
+    project.set_clips(list(project.clips) + fresh)
+
+    # Re-run per-clip stages. They iterate all clips but skip outputs that
+    # already exist on disk — only the newly-appended clips get ffmpeg'd.
+    project.stage_start("cut"); project.stage_done("cut", stages.stage_cut(project))
+    project.stage_start("reframe"); project.stage_done("reframe", stages.stage_reframe(project))
+    project.stage_start("thumbs"); project.stage_done("thumbs", stages.stage_thumbs(project))
+
+    return {
+        "project": project.to_dict(),
+        "added": len(fresh),
+        "skipped": skipped,
+    }
+
+
 def method_regenerate_clip(params: dict[str, Any]) -> dict[str, Any]:
     """Re-cut + reframe + re-thumb a single clip with new start/end times.
 
@@ -3494,6 +3592,7 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "secret_delete": method_secret_delete,
     "hardware_info": method_hardware_info,
     "regenerate_clip": method_regenerate_clip,
+    "pick_more_clips": method_pick_more_clips,
     "get_captions": method_get_captions,
     "edit_captions": method_edit_captions,
     "add_clip": method_add_clip,

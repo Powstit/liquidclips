@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 // regex rejects `/Users/...` paths; the opener plugin handles them.
 import { openSmart as openExternal } from "../lib/openSmart";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { CheckCircle2, FolderOpen, Plus, Film } from "lucide-react";
+import { CheckCircle2, FolderOpen, Plus, Film, Sparkles, Loader2 } from "lucide-react";
 import type { Project, RatioKey } from "../lib/sidecar";
 import { ClipPreview } from "./ClipPreview";
 import { DripCalendar } from "./DripCalendar";
@@ -20,12 +20,18 @@ import { YouTubeView } from "./YouTubeView";
 import { BountySubmissionCapture } from "./earn/BountySubmissionCapture";
 import { CampaignContextStrip } from "./earn/CampaignContextStrip";
 import { BountyWorkspaceHeader } from "./earn/BountyWorkspaceHeader";
-import { sidecar, type DripSlot } from "../lib/sidecar";
+import { sidecar, humanError, type DripSlot } from "../lib/sidecar";
 import { useTier, FREE_TIER_VISIBLE_CLIPS } from "../lib/useTier";
 import { useLocalPref } from "../lib/useLocalPref";
 import { useMultiSelect } from "../lib/useMultiSelect";
 
 type Tab = "clips" | "youtube" | "files";
+
+// v0.7.48 — Best-bits floor. The LLM scores each pick 0-100 on virality;
+// 70 is the natural threshold (Cockpit's HOT badge fires at ≥78, but for
+// the grid filter we want a bit more inclusive). User can toggle to see
+// all picks; default-on so the demo lands on the best of the best.
+const VIRALITY_FLOOR = 70;
 
 export function ResultsGrid({
   project,
@@ -56,6 +62,15 @@ export function ResultsGrid({
     clipIdx: number;
   } | null>(null);
   const [actionToast, setActionToast] = useState<string | null>(null);
+  // v0.7.48 — "Best bits" filter (virality ≥ 70) + "Generate more clips"
+  // in-flight indicator. Persisted so the user's preference survives
+  // navigation; the more-clips RPC may take minutes (LLM + ffmpeg) so we
+  // show a spinner and disable the trigger while it runs.
+  const [bestBitsOnly, setBestBitsOnly] = useLocalPref<boolean>("lc:best_bits_only", true);
+  const [generatingMore, setGeneratingMore] = useState(false);
+  // Detect imports — they have no transcript, so "Generate more" can't
+  // run on them. We grey out the button rather than firing an error.
+  const isImported = project.clips.length > 0 && project.clips.every((c) => c.imported);
   // Default OFF — kept so ClipsBulkToolbar's preview-sound + preview-motion
   // toggles still wire to localStorage; the workbench tile honours them via
   // the workbench store on a future pass.
@@ -180,6 +195,36 @@ export function ResultsGrid({
   const previewClip = previewIdx !== null ? project.clips[previewIdx] : null;
   const selectedIdxs = Array.from(selected).sort((a, b) => a - b);
 
+  // v0.7.48 — Visible vs hidden by the "best bits" toggle. We preserve
+  // the ORIGINAL index for every clip so multi-select / focus / cockpit
+  // operations stay coherent — the filter is a render concern only.
+  const bestBitsCount = useMemo(
+    () => project.clips.filter((c) => (c.virality ?? 0) >= VIRALITY_FLOOR).length,
+    [project.clips],
+  );
+
+  async function generateMoreClips() {
+    if (generatingMore || isImported) return;
+    setGeneratingMore(true);
+    try {
+      const r = await sidecar.pickMoreClips(project.slug);
+      onProjectChange(r.project);
+      const msg = r.added > 0
+        ? `Added ${r.added} new clip${r.added === 1 ? "" : "s"}${r.skipped > 0 ? ` · skipped ${r.skipped} overlap` : ""}`
+        : `No new viral bits found — the AI couldn't find more outside what's already picked.`;
+      window.dispatchEvent(
+        new CustomEvent("lc:toast", { detail: { kind: r.added > 0 ? "info" : "error", message: msg } }),
+      );
+    } catch (e) {
+      const msg = humanError(e);
+      window.dispatchEvent(
+        new CustomEvent("lc:toast", { detail: { kind: "error", message: msg } }),
+      );
+    } finally {
+      setGeneratingMore(false);
+    }
+  }
+
   return (
     <div className="w-full max-w-[1080px]">
       <BountyWorkspaceHeader project={project} />
@@ -241,7 +286,44 @@ export function ResultsGrid({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* v0.7.48 — Best-bits toggle. Default on so the demo lands on
+              the highest-virality picks first; click to see everything. */}
+          {project.clips.length > 0 && bestBitsCount > 0 && bestBitsCount < project.clips.length && (
+            <button
+              type="button"
+              onClick={() => setBestBitsOnly((v) => !v)}
+              aria-pressed={bestBitsOnly}
+              title={bestBitsOnly ? "Show all clips" : `Show only virality ≥ ${VIRALITY_FLOOR}`}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors ${
+                bestBitsOnly
+                  ? "border-fuchsia bg-fuchsia text-white shadow-[0_0_18px_rgba(255,26,140,0.4)]"
+                  : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
+              }`}
+            >
+              <Sparkles className="h-3 w-3" strokeWidth={2.4} />
+              {bestBitsOnly ? `Best bits · ${bestBitsCount}` : `All clips · ${project.clips.length}`}
+            </button>
+          )}
+          {/* v0.7.48 — Generate more clips: re-run LLM picker against
+              the same transcript excluding already-picked ranges. Hidden
+              on imported packs (no transcript to mine). */}
+          {!isImported && (
+            <button
+              type="button"
+              onClick={() => void generateMoreClips()}
+              disabled={generatingMore}
+              title={generatingMore ? "Picking more clips…" : "Re-run the AI picker to add more clips"}
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-2.5 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia disabled:cursor-wait disabled:opacity-60"
+            >
+              {generatingMore ? (
+                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+              ) : (
+                <Sparkles className="h-4 w-4" strokeWidth={2} />
+              )}
+              {generatingMore ? "Picking more…" : "Generate more clips"}
+            </button>
+          )}
           <button
             onClick={async () => {
               try {
@@ -403,9 +485,18 @@ export function ResultsGrid({
                     ? Math.min(FREE_TIER_VISIBLE_CLIPS, project.clips.length)
                     : project.clips.length;
                 const hidden = project.clips.length - visibleCount;
+                // v0.7.48 — Apply best-bits filter at render. Indices stay
+                // canonical (multi-select / focus / cockpit operate on the
+                // original index); the filter only controls what mounts.
+                const indexedClips = project.clips
+                  .slice(0, visibleCount)
+                  .map((clip, idx) => ({ clip, idx }))
+                  .filter(({ clip }) =>
+                    !bestBitsOnly || (clip.virality ?? 0) >= VIRALITY_FLOOR,
+                  );
                 return (
                   <>
-                    {project.clips.slice(0, visibleCount).map((clip, idx) => (
+                    {indexedClips.map(({ clip, idx }) => (
                       <FeedClipCard
                         key={`${idx}-${clip.slug}`}
                         clip={clip}
