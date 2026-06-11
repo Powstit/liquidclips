@@ -7,6 +7,7 @@ import { usePickEvents } from "../lib/usePickEvents";
 import { openSmart as openExternal } from "../lib/openSmart";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { CheckCircle2, FolderOpen, Plus, Film, Sparkles, Loader2, Lock } from "lucide-react";
+import { EmptyState } from "./brand";
 import { openAuthPanel } from "./auth/useAuthPanel";
 import type { Project, RatioKey } from "../lib/sidecar";
 import { ClipPreview } from "./ClipPreview";
@@ -26,6 +27,9 @@ import { sidecar, humanError, type DripSlot } from "../lib/sidecar";
 import { useTier, FREE_TIER_VISIBLE_CLIPS } from "../lib/useTier";
 import { useLocalPref } from "../lib/useLocalPref";
 import { useMultiSelect } from "../lib/useMultiSelect";
+import { usePlatformConnections } from "../lib/usePlatformConnections";
+import type { PlatformId } from "./PlatformBadge";
+import type { ChannelStatus } from "../lib/backend";
 
 type Tab = "clips" | "youtube" | "files";
 
@@ -53,6 +57,7 @@ export function ResultsGrid({
   const { waitForPick } = usePickEvents();
   const defaultTab: Tab = intent === "youtube" ? "youtube" : "clips";
   const [tab, setTab] = useState<Tab>(defaultTab);
+  const { getStatus } = usePlatformConnections();
   const [openCaptionsForIdx, setOpenCaptionsForIdx] = useState<number | null>(null);
   const [previewIdx, setPreviewIdx] = useState<number | null>(null);
   const [previewScrollTo, setPreviewScrollTo] = useState<"reaction" | "captions" | null>(null);
@@ -472,40 +477,30 @@ export function ResultsGrid({
             {false && <GridMasterToolbar selectedIdxs={[]} project={project} onProjectChange={onProjectChange} onClear={clear} />}
             {/* v0.7.34 — Explicit zero-clip empty state. Before, a project
                 that finished with 0 clips rendered a blank pb-44 grid with
-                no signal — users thought the app froze. Now we surface the
-                most-likely causes and a one-click path forward. */}
+                no signal — users thought the app froze.
+                v0.7.50 — Migrated to the brand-locked EmptyState primitive
+                so the no-clips room reads the same as Library-empty /
+                Schedule-empty / Earn-empty (IG-012). Solid-bordered icon
+                container removed; pixel invader landmark replaces the
+                Film-in-a-box. */}
             {project.clips.length === 0 && (
-              <div className="mx-auto flex max-w-[460px] flex-col items-center gap-4 pb-44 pt-12 text-center">
-                <div className="grid h-14 w-14 place-items-center rounded-2xl border border-line bg-paper">
-                  <Film className="h-8 w-8 text-text-tertiary" strokeWidth={1.5} />
-                </div>
-                <h3 className="font-display text-[24px] font-semibold tracking-[-0.02em] text-ink">
-                  No clips found.
-                </h3>
-                <p className="max-w-[360px] font-sans text-[14px] leading-relaxed text-text-secondary">
-                  Your video may be too short, mostly silent, or the AI didn't find moments that
-                  hit the highlight bar. Try a different video or rerun on the source.
-                </p>
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  <button
-                    onClick={() => onDropAnother?.()}
-                    className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright"
-                  >
-                    Try a different video
-                  </button>
-                  <button
-                    onClick={async () => {
+              <div className="pb-44 pt-12">
+                <EmptyState
+                  eyebrow="no clips found"
+                  heading="The AI didn't find moments that hit the highlight bar."
+                  body="Your video may be too short, mostly silent, or the cuts the model surfaced fell under the virality floor. Try a different video, or open the project folder to inspect."
+                  cta={{ label: "Try a different video", onClick: () => onDropAnother?.() }}
+                  secondaryCta={{
+                    label: "Open project folder",
+                    onClick: async () => {
                       try {
                         await openExternal(project.root);
                       } catch (e) {
                         console.warn("open folder failed:", e);
                       }
-                    }}
-                    className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia"
-                  >
-                    Open project folder
-                  </button>
-                </div>
+                    },
+                  }}
+                />
               </div>
             )}
             {project.clips.length > 0 && (
@@ -542,6 +537,10 @@ export function ResultsGrid({
                         previewMotionOn={previewMotionOn}
                         selected={isSelected(idx)}
                         focused={safeFocusedIdx === idx}
+                        connectionStatus={Object.fromEntries(
+                          (["youtube", "tiktok", "instagram", "x", "linkedin", "facebook", "threads"] as const)
+                            .map((p) => [p, getStatus(p)]),
+                        ) as Partial<Record<PlatformId, ChannelStatus | "no-channel" | "loading">>}
                         onSelectClick={(e) => {
                           // v0.7.25 — Plain click = focus the cockpit on
                           // this clip. Meta/shift = multi-select.
