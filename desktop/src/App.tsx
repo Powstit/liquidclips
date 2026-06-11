@@ -1445,8 +1445,13 @@ export default function App() {
             with the same camera-dolly entry via RoomShell. Pipeline states
             (lifting / downloading / failure cards) stay raw inside the
             cockpit — they ignore the parallax CSS vars and shouldn't tilt
-            during heavy progress UIs. */}
-        <Cockpit>
+            during heavy progress UIs.
+            v0.7.48 — Parallax listener is scoped to the two views that
+            actually render workstation tiles consuming --cockpit-px/py
+            (Results + Empty / Workstation). On Library / Earn / Settings /
+            Schedule / Learn the listener used to fire on every pointer
+            event for no visual gain — smoothness diagnostic finding #2. */}
+        <Cockpit active={view.kind === "results" || view.kind === "empty"}>
         {/* v0.6.39 — Ambient bottom-edge ticker rotating rank / next-scheduled
             / today's leader signals. Fixed-position; below modals (z-20). */}
         <SignalLine />
