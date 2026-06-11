@@ -76,10 +76,10 @@ export function DropZone({
           paper bg so the URL mode panel matches the rest of the brand
           surface vocabulary. */}
       <div className="library-card relative rounded-2xl bg-paper-warm/40 p-4">
-        <span className="library-card-corner library-card-corner-tl" />
-        <span className="library-card-corner library-card-corner-tr" />
-        <span className="library-card-corner library-card-corner-bl" />
-        <span className="library-card-corner library-card-corner-br" />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
         {/* Mode toggle — picks WHAT you get (clips vs script). One primary
             CTA below dispatches by mode. Filled dot = selected; the row is
             keyboard-focusable so you can tab between them. */}

@@ -343,10 +343,10 @@ export function AddChannelModal({
                   of library-card bracket spans so the waiting card reads
                   as the same chrome family as other loading surfaces. */}
               <div className="library-card relative rounded-xl bg-paper-warm/40 p-4 text-center">
-                <span className="library-card-corner library-card-corner-tl" />
-                <span className="library-card-corner library-card-corner-tr" />
-                <span className="library-card-corner library-card-corner-bl" />
-                <span className="library-card-corner library-card-corner-br" />
+                <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+                <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+                <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+                <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
                 <Loader2 className="mx-auto h-6 w-6 animate-spin text-fuchsia" />
                 <p className="mt-3 font-mono text-[11px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
                   waiting for you…
