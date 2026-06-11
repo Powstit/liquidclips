@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useVisibilityInterval } from "../../lib/useVisibilityInterval";
 import { openSmart as openExternal } from "../../lib/openSmart";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -134,14 +135,9 @@ export function LocalQueue() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-    // Re-render every 30s so the "in 12 min" / "5 min ago" labels stay live
-    // and items naturally roll out of "Upcoming" into "Due now" without a
-    // user interaction. Cheap — we're just reading a JSON file.
-    const id = window.setInterval(load, 30_000);
-    return () => window.clearInterval(id);
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
+  // v0.7.48 — Visibility-aware polling: pauses in background tabs.
+  useVisibilityInterval(() => void load(), 30_000);
 
   const groups = useMemo(() => groupByStatus(items ?? []), [items]);
 

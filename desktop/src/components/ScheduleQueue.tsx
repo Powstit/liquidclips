@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useVisibilityInterval } from "../lib/useVisibilityInterval";
 import { openSmart as openExternal } from "../lib/openSmart";
 import { RefreshCw } from "lucide-react";
 import { backend, type ScheduleDto } from "../lib/backend";
@@ -130,18 +131,15 @@ export function ScheduleQueue() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-    const id = window.setInterval(load, 30_000); // refresh every 30 s
-    return () => window.clearInterval(id);
-  }, [load]);
+  // v0.7.48 — Visibility-aware polling: pauses when user switches tabs
+  // so background tabs don't burn CPU on refreshes they can't see.
+  useEffect(() => { void load(); }, [load]);
+  useVisibilityInterval(() => void load(), 30_000);
 
   // Re-render the "X ago" caption once a minute so stale-data warnings
   // don't lie about how stale the data is.
-  useEffect(() => {
-    const id = window.setInterval(() => setTick((t) => t + 1), 60_000);
-    return () => window.clearInterval(id);
-  }, []);
+  // v0.7.48 — Visibility-aware tick: pauses in background tabs.
+  useVisibilityInterval(() => setTick((t) => t + 1), 60_000);
 
   function cancel(row: ScheduleDto) {
     setConfirmCancelRow(row);

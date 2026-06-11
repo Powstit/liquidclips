@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useVisibilityInterval } from "../../lib/useVisibilityInterval";
 import { openSmart as openExternal } from "../../lib/openSmart";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
@@ -440,11 +441,11 @@ function WhopFetchFailedCard({
   const [openError, setOpenError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
-  useEffect(() => {
-    if (lockedUntil <= Date.now()) return;
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [lockedUntil]);
+  // v0.7.48 — Visibility-aware countdown: pauses in background tabs
+  // so the timer doesn't waste CPU when the user can't see it.
+  useVisibilityInterval(() => setNow(Date.now()),
+    lockedUntil > Date.now() ? 1000 : null
+  );
 
   const locked = lockedUntil > now;
   const lockSecondsLeft = locked ? Math.ceil((lockedUntil - now) / 1000) : 0;
