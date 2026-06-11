@@ -19,7 +19,9 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import { AlertTriangle, CheckCircle2, LogIn } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, LogIn } from "lucide-react";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { getVersion } from "@tauri-apps/api/app";
 // motion / AnimatePresence are no longer used directly from App.tsx — the
 // route-level dolly + room-change exit live inside RoomShell. Keeping the
 // import out lets TS strict catch any future regressions where someone
@@ -588,6 +590,34 @@ export default function App() {
         window.setTimeout(() => {
           setUpdateBanner((current) => (current.kind === "up-to-date" ? { kind: "idle" } : current));
         }, 5000);
+      }
+    })();
+
+    // v0.7.49 — "You just updated" toast. Daniel ran the v0.7.48 install
+    // cycle and saw nothing (the downloaded banner disappeared and the app
+    // appeared to hang). Compare current version against the one we recorded
+    // at last launch; if it's higher, the user just installed an update —
+    // celebrate it via lc:toast so the success is unambiguous. Without this
+    // beat the auto-update felt silent and broken.
+    void (async () => {
+      try {
+        const currentVersion = await getVersion();
+        const stored = window.localStorage.getItem("lc:last_launched_version") || "";
+        if (stored && stored !== currentVersion) {
+          window.setTimeout(() => {
+            window.dispatchEvent(
+              new CustomEvent("lc:toast", {
+                detail: {
+                  kind: "success",
+                  message: `Updated to Liquid Clips ${currentVersion} — you're on the latest build.`,
+                },
+              }),
+            );
+          }, 1200);
+        }
+        window.localStorage.setItem("lc:last_launched_version", currentVersion);
+      } catch {
+        /* getVersion can fail outside Tauri; safe to ignore */
       }
     })();
 
@@ -2002,6 +2032,54 @@ export default function App() {
         <div className="border-t border-fuchsia-soft bg-fuchsia-soft/40 px-6 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
           ↓ downloading update…
           {updateBanner.total ? ` ${Math.round((updateBanner.downloaded / updateBanner.total) * 100)}%` : ""}
+        </div>
+      )}
+
+      {/* v0.7.49 — "installing" used to render NOTHING (the bug Daniel
+          hit on v0.7.48: download bar disappeared, then silence, then he
+          closed the app thinking it was broken). Full-screen blocking
+          overlay makes it impossible to miss + a "Restart now" fallback
+          covers the case where Tauri's relaunch() hangs. */}
+      {updateBanner.kind === "installing" && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/85 backdrop-blur-sm">
+          <div className="relative max-w-[440px] rounded-2xl border border-fuchsia bg-paper p-8 shadow-[0_30px_90px_rgba(0,0,0,0.6)]">
+            <span className="cockpit-tile-corner-tl" aria-hidden />
+            <span className="cockpit-tile-corner-tr" aria-hidden />
+            <span className="cockpit-tile-corner-bl" aria-hidden />
+            <span className="cockpit-tile-corner-br" aria-hidden />
+            <div className="flex items-start gap-4">
+              <Loader2 className="mt-1 h-10 w-10 shrink-0 animate-spin text-fuchsia" strokeWidth={2} />
+              <div>
+                <h2 className="font-display text-[22px] font-semibold leading-tight tracking-[-0.02em] text-ink">
+                  Installing the update…
+                </h2>
+                <p className="mt-2 font-sans text-[14px] leading-relaxed text-text-secondary">
+                  Liquid Clips will restart automatically in a moment. If nothing happens in 15 seconds, click Restart now.
+                </p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await relaunch();
+                    } catch (e) {
+                      console.warn("[update] manual relaunch failed", e);
+                      window.dispatchEvent(
+                        new CustomEvent("lc:toast", {
+                          detail: {
+                            kind: "error",
+                            message: "Couldn't restart — quit the app from the menu bar and reopen it.",
+                          },
+                        }),
+                      );
+                    }
+                  }}
+                  className="mt-4 inline-flex items-center gap-2 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-semibold text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+                >
+                  Restart now
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
