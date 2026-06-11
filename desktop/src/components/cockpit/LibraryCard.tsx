@@ -130,6 +130,12 @@ export function LibraryCard({
           <img
             src={thumbSrc}
             alt=""
+            // v0.7.50 — Browser-native lazy load. Paired with
+            // content-visibility: auto on library-wall-grid > *, this
+            // means cards below the fold neither paint nor download
+            // their posters until the user scrolls near them.
+            loading="lazy"
+            decoding="async"
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.05]"
             draggable={false}
             onError={() => setThumbError(true)}
