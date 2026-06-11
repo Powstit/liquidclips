@@ -28,7 +28,10 @@ jobs:
             arch: aarch64
             rust_target: aarch64-apple-darwin
             slug: aarch64
-          - runner: macos-13
+          # GitHub deprecated/retired macos-13 Intel capacity; use the
+          # supported standard Intel image so x86_64 releases do not sit
+          # queued until the run is cancelled.
+          - runner: macos-15-intel
             arch: x86_64
             rust_target: x86_64-apple-darwin
             slug: x86_64
@@ -178,7 +181,7 @@ jobs:
           done
           echo "✓ sidecar binaries signed"
 
-      - name: build signed Apple Silicon app
+      - name: build signed macOS app
         working-directory: ./desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -247,7 +250,7 @@ jobs:
             See [CHANGELOG.md](./CHANGELOG.md) for full details.
 
             **Install**
-            1. Download `Liquid.Clips_*_aarch64.dmg`
+            1. Download `Liquid.Clips_*_aarch64.dmg` for Apple Silicon or `Liquid.Clips_*_x86_64.dmg` for Intel
             2. Open the DMG, drag **Liquid Clips** to **Applications**
             3. Double-click from Applications — the app is signed and notarized by Apple.
           files: |
