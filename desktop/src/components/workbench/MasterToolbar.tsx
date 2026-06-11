@@ -56,14 +56,6 @@ import { MasterActionToast } from "./MasterActionToast";
 // store internals that other agents may shift around.
 import { useWorkbenchStore } from "./useWorkbenchStore";
 
-type ToolbarStore = {
-  windows: Map<WindowId, WindowLite & { boundChannelIds?: string[] }>;
-  selection: { selectedIds: Set<WindowId>; focusedId: WindowId | null };
-  clearSelection: () => void;
-  setRatio?: (id: WindowId, ratio: RatioKey | null) => void;
-  setCaptionsOpen?: (id: WindowId, open: boolean) => void;
-};
-
 type Props = {
   project: Project;
   onProjectChange: (p: Project) => void;
@@ -88,10 +80,15 @@ export function MasterToolbar({ project, onProjectChange }: Props) {
   // The store hook returns the full store; we narrow with a runtime shape
   // because Agent 1 may ship a slightly different export name. The cast
   // happens once, here, so downstream code stays typed.
-  const store = useWorkbenchStore() as unknown as ToolbarStore;
-  const selectedIds = store.selection.selectedIds;
+  const selectedIds = useWorkbenchStore((s) => s.selection.selectedIds);
   const selectionSize = selectedIds.size;
-  const totalWindows = store.windows.size;
+  const totalWindows = useWorkbenchStore((s) => s.windows.size);
+  const windows = useWorkbenchStore((s) => s.windows);
+  const clearSelection = useWorkbenchStore((s) => s.clearSelection);
+  const setRatio = useWorkbenchStore((s) => s.setRatio);
+  const selection = useWorkbenchStore((s) => s.selection);
+  const focusedId = selection.focusedId;
+  const setCaptionsOpen = useWorkbenchStore((s) => s.setCaptionsOpen);
 
   const [popover, setPopover] = useState<PopoverKind>({ kind: "none" });
   const [busy, setBusy] = useState(false);
@@ -116,7 +113,7 @@ export function MasterToolbar({ project, onProjectChange }: Props) {
     setBusy(true);
     const snapshot = new Set(selectedIds);
     const windowsLite: ReadonlyMap<WindowId, WindowLite> = new Map(
-      [...store.windows.entries()].map(([id, w]) => [
+      [...windows.entries()].map(([id, w]) => [
         id,
         { clipIdx: w.clipIdx, boundChannelIds: w.boundChannelIds },
       ]),
@@ -136,14 +133,14 @@ export function MasterToolbar({ project, onProjectChange }: Props) {
       // Ratio fan-out: the store owns per-window ratio; update it for the
       // succeeded ids so the canvas re-renders. We do this AFTER fanOut so
       // we never apply a ratio to a clip that just failed.
-      if (action.kind === "apply_ratio" && store.setRatio) {
-        for (const id of result.ok) store.setRatio(id, action.ratio);
+      if (action.kind === "apply_ratio" && setRatio) {
+        for (const id of result.ok) setRatio(id, action.ratio);
       }
       if (action.kind === "remove") {
         // Store reconciliation is the store's job — once it sees a new
         // project with fewer clips it'll prune the removed windows. We
         // still clear selection so the toolbar resets cleanly.
-        store.clearSelection();
+        clearSelection();
       }
 
       setToast({
@@ -164,7 +161,7 @@ export function MasterToolbar({ project, onProjectChange }: Props) {
   ): Promise<MasterActionResult> {
     const ids = new Set(failedIds);
     const windowsLite: ReadonlyMap<WindowId, WindowLite> = new Map(
-      [...store.windows.entries()].map(([id, w]) => [
+      [...windows.entries()].map(([id, w]) => [
         id,
         { clipIdx: w.clipIdx, boundChannelIds: w.boundChannelIds },
       ]),
@@ -217,7 +214,7 @@ export function MasterToolbar({ project, onProjectChange }: Props) {
           {selectionSize > 0 ? (
             <button
               type="button"
-              onClick={() => store.clearSelection()}
+              onClick={() => clearSelection()}
               className="rounded-full p-0.5 text-fuchsia/80 hover:text-fuchsia"
               aria-label="Clear selection"
             >
@@ -286,15 +283,14 @@ export function MasterToolbar({ project, onProjectChange }: Props) {
               gated on selection (the drawer edits ONE tile — the focused
               one). Disabled when there is no focused window. */}
           {(() => {
-            const focusedId = store.selection.focusedId;
-            const canEdit = !!focusedId && !!store.setCaptionsOpen;
+            const canEdit = !!focusedId && !!setCaptionsOpen;
             return (
               <button
                 type="button"
                 disabled={!canEdit}
                 onClick={() => {
-                  if (!focusedId || !store.setCaptionsOpen) return;
-                  store.setCaptionsOpen(focusedId, true);
+                  if (!focusedId || !setCaptionsOpen) return;
+                  setCaptionsOpen(focusedId, true);
                 }}
                 className={actionBtn(canEdit)}
                 aria-label="Edit focused tile"
