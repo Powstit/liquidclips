@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>liquid/clips — Thumbnail Setup (cockpit brand language)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // ───── IRON GATE IG-012 (v0.7.50) — see docs/IRON_GATES.md ─────
+  // MIRROR of canonical brand tokens at src/index.css @theme block.
+  // These values MUST match the canonical. Pre-commit hook refuses drift.
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          paper:      "#0b0b10",
+          "paper-warm":"#15151c",
+          "paper-elev":"#1c1c25",
+          ink:        "#f4f1ea",
+          "ink-soft": "#c8c4be",
+          t2:         "#c8c4be",
+          t3:         "#8a857e",
+          line:       "rgba(255,255,255,0.07)",
+          "line-strong":"rgba(255,255,255,0.12)",
+          fuchsia:    "#ff1a8c",
+          "fuchsia-bright": "#ff3da5",
+          "fuchsia-deep": "#ff66b8",
+          "fuchsia-soft": "rgba(255,26,140,0.16)",
+          danger: "#dc2626",
+          warn: "#f59e0b",
+        },
+        fontFamily: {
+          display: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+          sans:    ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+          mono:    ["Geist Mono", "ui-monospace", "SF Mono", "Menlo", "monospace"],
+        },
+        boxShadow: {
+          "e1": "0 1px 0 rgba(255,255,255,0.03) inset, 0 2px 8px rgba(0,0,0,0.45)",
+          "e2": "0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 28px rgba(0,0,0,0.55)",
+          "glow-sm": "0 0 0 1px rgba(255,26,140,0.35), 0 6px 18px rgba(255,26,140,0.18)",
+          "glow-md": "0 0 0 1px rgba(255,26,140,0.45), 0 12px 36px rgba(255,26,140,0.28)",
+        },
+      },
+    },
+  };
+  // ───── END IRON GATE IG-012 brand-kit mirror ─────
+</script>
+<style>
+  :root {
+    --color-fuchsia: #ff1a8c;
+  }
+  body { background:#0b0b10; color:#f4f1ea; font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
+  .pixel { image-rendering: pixelated; }
+  .eyebrow {
+    font-family: "Geist Mono", ui-monospace, monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 10px;
+    font-weight: 500;
+    color: #c8c4be;
+    opacity: 0.7;
+  }
+  /* Pulse dot */
+  @keyframes pulse-dot { 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:0.6; transform:scale(1.3); } }
+  .pulse-dot { animation: pulse-dot 2.4s ease-in-out infinite; }
+  /* Breathing tile */
+  @keyframes breathe { 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.015); } }
+  .breathing { animation: breathe 5s ease-in-out infinite; }
+
+  /* === HUD frame — 12px L-shaped bracket corners via pseudo-elements === */
+  .hud-frame { position: relative; border-radius: 16px; box-shadow: inset 0 0 24px rgba(255,26,140,0.06); }
+  .hud-frame::before, .hud-frame::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background:
+      linear-gradient(to right,  var(--color-fuchsia) 0 12px, transparent 12px) top left      / 12px 1.5px no-repeat,
+      linear-gradient(to bottom, var(--color-fuchsia) 0 12px, transparent 12px) top left      / 1.5px 12px no-repeat,
+      linear-gradient(to left,   var(--color-fuchsia) 0 12px, transparent 12px) top right     / 12px 1.5px no-repeat,
+      linear-gradient(to bottom, var(--color-fuchsia) 0 12px, transparent 12px) top right     / 1.5px 12px no-repeat,
+      linear-gradient(to right,  var(--color-fuchsia) 0 12px, transparent 12px) bottom left   / 12px 1.5px no-repeat,
+      linear-gradient(to top,    var(--color-fuchsia) 0 12px, transparent 12px) bottom left   / 1.5px 12px no-repeat,
+      linear-gradient(to left,   var(--color-fuchsia) 0 12px, transparent 12px) bottom right  / 12px 1.5px no-repeat,
+      linear-gradient(to top,    var(--color-fuchsia) 0 12px, transparent 12px) bottom right  / 1.5px 12px no-repeat;
+  }
+  .hud-frame::after { opacity: 0.85; }
+
+  /* === Library-card-corner bracket spans for HeroStep cards === */
+  .library-card { position: relative; }
+  .lcc {
+    position: absolute; width: 18px; height: 18px;
+    border-style: dashed; border-color: var(--color-fuchsia); border-width: 0;
+    filter: drop-shadow(0 0 4px rgba(255,26,140,0.5));
+    transition: filter 240ms ease, width 240ms ease, height 240ms ease;
+    pointer-events: none; z-index: 2;
+  }
+  .lcc-tl { top:0; left:0;  border-top-width: 1.5px;    border-left-width: 1.5px; }
+  .lcc-tr { top:0; right:0; border-top-width: 1.5px;    border-right-width: 1.5px; }
+  .lcc-bl { bottom:0; left:0;  border-bottom-width: 1.5px; border-left-width: 1.5px; }
+  .lcc-br { bottom:0; right:0; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+  .library-card:hover .lcc { width: 24px; height: 24px; filter: drop-shadow(0 0 10px rgba(255,26,140,1)); }
+
+  /* === Marquee animation === */
+  @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+
+  /* === Atmosphere plate (radial gradient) === */
+  .atmosphere-thumbnails {
+    background:
+      radial-gradient(120% 80% at 80% 0%, rgba(255,26,140,0.35) 0%, transparent 55%),
+      radial-gradient(80% 50% at 10% 100%, rgba(0,229,255,0.18) 0%, transparent 60%);
+    opacity: 0.10;
+  }
+
+  /* Card chrome — atelier dark, faint inner highlight */
+  .panel-card { background:#0b0b10; box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 28px 84px rgba(0,0,0,0.65); border-radius: 20px; }
+</style>
+</head>
+<body class="min-h-dvh overflow-hidden">
+
+<!-- TOP NAV — workspace context -->
+<header class="h-12 bg-paper/85 backdrop-blur-md border-b border-line flex items-center justify-between px-4 fixed inset-x-0 top-0 z-30">
+  <div class="flex items-center gap-3">
+    <a href="#" class="flex items-center gap-2 group">
+      <svg viewBox="0 0 24 16" class="h-5 w-7 fill-fuchsia drop-shadow-[0_0_10px_rgba(255,26,140,0.85)] breathing pixel">
+        <rect x="3" y="2" width="2" height="2"/><rect x="19" y="2" width="2" height="2"/>
+        <rect x="5" y="4" width="14" height="2"/>
+        <rect x="3" y="6" width="2" height="2"/><rect x="7" y="6" width="2" height="2"/><rect x="15" y="6" width="2" height="2"/><rect x="19" y="6" width="2" height="2"/>
+        <rect x="3" y="8" width="18" height="2"/>
+        <rect x="5" y="10" width="2" height="2"/><rect x="9" y="10" width="6" height="2"/><rect x="17" y="10" width="2" height="2"/>
+        <rect x="1" y="12" width="2" height="2"/><rect x="7" y="12" width="2" height="2"/><rect x="15" y="12" width="2" height="2"/><rect x="21" y="12" width="2" height="2"/>
+      </svg>
+      <span class="font-display font-semibold tracking-[-0.025em] text-[15px] text-ink">
+        liquid<span class="text-fuchsia">/</span>clips
+      </span>
+    </a>
+    <span class="text-t3 text-xs">/</span>
+    <span class="text-sm text-t2 truncate max-w-[260px]">daniel · morning podcast · ep 14</span>
+    <span class="ml-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-fuchsia/40 bg-fuchsia-soft">
+      <span class="w-1.5 h-1.5 rounded-full bg-fuchsia pulse-dot"></span>
+      <span class="eyebrow" style="color:#ff66b8">thumbnail studio</span>
+    </span>
+  </div>
+  <div class="flex items-center gap-1">
+    <div class="hidden md:flex items-center gap-1 mx-1 px-2 h-7 rounded-md border border-line bg-paper-elev">
+      <span class="eyebrow text-t3">⌘</span><span class="eyebrow text-t3">K</span>
+      <span class="eyebrow text-t3 ml-1">command</span>
+    </div>
+    <div class="h-8 w-8 grid place-items-center rounded-full bg-fuchsia text-white text-xs font-semibold ml-1 shadow-glow-sm">DD</div>
+  </div>
+</header>
+
+<!-- BODY -->
+<main class="pt-12 h-dvh flex items-center justify-center px-6">
+  <!-- The ThumbnailStudio modal/card -->
+  <section class="panel-card w-full max-w-[1440px] relative overflow-hidden">
+    <!-- Modal header strip -->
+    <div class="flex items-center justify-between px-7 pt-6 pb-3">
+      <div>
+        <div class="eyebrow" style="color:#8a857e">thumbnails</div>
+        <h1 class="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink mt-0.5">Thumbnail setup</h1>
+      </div>
+      <div class="flex items-center gap-3">
+        <!-- Tab pair -->
+        <div class="flex items-center p-0.5 rounded-full border border-line bg-paper-elev">
+          <button class="px-3 h-8 text-[12px] text-ink-soft hover:text-ink">Cover Pack</button>
+          <button class="px-3 h-8 text-[12px] rounded-full text-ink relative" style="background:rgba(255,26,140,0.14); color:#ff66b8; border:1px solid rgba(255,26,140,0.4);">
+            AI Generate
+            <span class="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-fuchsia"></span>
+          </button>
+        </div>
+        <span class="font-mono text-[12px] text-t3">$0.00</span>
+        <button class="h-8 w-8 grid place-items-center rounded-md hover:bg-paper-elev text-t2 hover:text-ink">
+          <svg viewBox="0 0 24 24" class="w-4 h-4 fill-none stroke-current" stroke-width="1.75"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- HERO -->
+    <div class="relative px-7 py-8 border-b border-line">
+      <!-- Atmosphere plate -->
+      <div class="atmosphere-thumbnails absolute inset-0 pointer-events-none"></div>
+
+      <!-- Heading -->
+      <div class="relative max-w-3xl mx-auto text-center mb-6">
+        <div class="eyebrow mb-2" style="color:#ff66b8;">Make this in 3 steps</div>
+        <h3 class="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink leading-tight">
+          Character-locked YouTube thumbnails — your face, every time.
+        </h3>
+      </div>
+
+      <!-- Marquee row, wrapped in hud-frame. 5× scale per Daniel's call —
+           h-32 (128px) → h-[640px], so each thumbnail reads as a near-hero
+           YouTube card on the deck instead of a tiny reference strip. -->
+      <div class="relative hud-frame rounded-2xl overflow-hidden mb-7 h-[640px]">
+        <div class="flex gap-6 absolute inset-y-0 py-5 pl-5 will-change-transform" style="width:max-content; animation: marquee 90s linear infinite;">
+          <!-- 6 thumbnails × 2 for seamless loop -->
+          <img src="demo-assets/yt-references/yt-01.png" class="h-full w-auto rounded-2xl object-cover flex-shrink-0 shadow-[0_18px_56px_rgba(0,0,0,0.75)]" />
+          <img src="demo-assets/yt-references/yt-02.png" class="h-full w-auto rounded-2xl object-cover flex-shrink-0 shadow-[0_18px_56px_rgba(0,0,0,0.75)]" />
+          <img src="demo-assets/yt-references/yt-03.png" class="h-full w-auto rounded-2xl object-cover flex-shrink-0 shadow-[0_18px_56px_rgba(0,0,0,0.75)]" />
+          <img src="demo-assets/yt-references/yt-04.png" class="h-full w-auto rounded-2xl object-cover flex-shrink-0 shadow-[0_18px_56px_rgba(0,0,0,0.75)]" />
+          <img src="demo-assets/yt-references/yt-05.png" class="h-full w-auto rounded-2xl object-cover flex-shrink-0 shadow-[0_18px_56px_rgba(0,0,0,0.75)]" />
+          <img src="demo-assets/yt-references/yt-06.png" class="h-full w-auto rounded-2xl object-cover flex-shrink-0 shadow-[0_18px_56px_rgba(0,0,0,0.75)]" />
+          <!-- duplicate -->
+          <img src="demo-assets/yt-references/yt-01.png" class="h-full w-auto rounded-2xl object-cover flex-shrink-0 shadow-[0_18px_56px_rgba(0,0,0,0.75)]" />
+          <img src="demo-assets/yt-references/yt-02.png" class="h-full w-auto rounded-2xl object-cover flex-shrink-0 shadow-[0_18px_56px_rgba(0,0,0,0.75)]" />
+          <img src="demo-assets/yt-references/yt-03.png" class="h-full w-auto rounded-2xl object-cover flex-shrink-0 shadow-[0_18px_56px_rgba(0,0,0,0.75)]" />
+          <img src="demo-assets/yt-references/yt-04.png" class="h-full w-auto rounded-2xl object-cover flex-shrink-0 shadow-[0_18px_56px_rgba(0,0,0,0.75)]" />
+          <img src="demo-assets/yt-references/yt-05.png" class="h-full w-auto rounded-2xl object-cover flex-shrink-0 shadow-[0_18px_56px_rgba(0,0,0,0.75)]" />
+          <img src="demo-assets/yt-references/yt-06.png" class="h-full w-auto rounded-2xl object-cover flex-shrink-0 shadow-[0_18px_56px_rgba(0,0,0,0.75)]" />
+        </div>
+        <div class="absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-paper to-transparent pointer-events-none z-[1]"></div>
+        <div class="absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-paper to-transparent pointer-events-none z-[1]"></div>
+      </div>
+
+      <!-- 3 Step cards with cockpit brand language -->
+      <div class="relative grid grid-cols-3 gap-4 max-w-2xl mx-auto mb-5">
+        <!-- Step 1 -->
+        <div class="library-card relative flex items-center gap-3 px-3.5 py-3 rounded-xl">
+          <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+          <div class="relative w-9 h-9 grid place-items-center flex-shrink-0">
+            <span aria-hidden class="absolute inset-0 rounded-full" style="background: radial-gradient(closest-side, rgba(255,26,140,0.45), rgba(255,26,140,0) 70%); filter: blur(6px);"></span>
+            <span class="relative font-display text-[18px] font-semibold leading-none text-fuchsia" style="filter: drop-shadow(0 2px 6px rgba(255,26,140,0.65));">1</span>
+          </div>
+          <div class="text-left min-w-0">
+            <div class="text-[13px] font-semibold text-ink leading-tight">Upload identity</div>
+            <div class="font-mono text-[9px] uppercase tracking-[0.14em] text-t3 mt-1">3 face crops · once</div>
+          </div>
+        </div>
+        <!-- Step 2 -->
+        <div class="library-card relative flex items-center gap-3 px-3.5 py-3 rounded-xl">
+          <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+          <div class="relative w-9 h-9 grid place-items-center flex-shrink-0">
+            <span aria-hidden class="absolute inset-0 rounded-full" style="background: radial-gradient(closest-side, rgba(255,26,140,0.45), rgba(255,26,140,0) 70%); filter: blur(6px);"></span>
+            <span class="relative font-display text-[18px] font-semibold leading-none text-fuchsia" style="filter: drop-shadow(0 2px 6px rgba(255,26,140,0.65));">2</span>
+          </div>
+          <div class="text-left min-w-0">
+            <div class="text-[13px] font-semibold text-ink leading-tight">Pick your style</div>
+            <div class="font-mono text-[9px] uppercase tracking-[0.14em] text-t3 mt-1">brand name + mood</div>
+          </div>
+        </div>
+        <!-- Step 3 -->
+        <div class="library-card relative flex items-center gap-3 px-3.5 py-3 rounded-xl">
+          <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+          <div class="relative w-9 h-9 grid place-items-center flex-shrink-0">
+            <span aria-hidden class="absolute inset-0 rounded-full" style="background: radial-gradient(closest-side, rgba(255,26,140,0.45), rgba(255,26,140,0) 70%); filter: blur(6px);"></span>
+            <span class="relative font-display text-[18px] font-semibold leading-none text-fuchsia" style="filter: drop-shadow(0 2px 6px rgba(255,26,140,0.65));">3</span>
+          </div>
+          <div class="text-left min-w-0">
+            <div class="text-[13px] font-semibold text-ink leading-tight">Generate</div>
+            <div class="font-mono text-[9px] uppercase tracking-[0.14em] text-t3 mt-1">$0.07 per image</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="relative flex items-center justify-center gap-3">
+        <button class="font-mono text-[10px] uppercase tracking-[0.14em] text-t3 hover:text-ink transition-colors">
+          Skip and pick a cover frame instead
+        </button>
+      </div>
+    </div>
+
+    <!-- LOWER STRIP — Quick setup wizard cards -->
+    <div class="px-7 py-8">
+      <div class="max-w-2xl mx-auto">
+        <div class="mb-4">
+          <h2 class="font-display text-[18px] font-semibold tracking-[-0.02em] text-ink mb-1">Quick setup — about 2 minutes</h2>
+          <p class="text-[13px] text-ink-soft leading-relaxed">Lock in your face and brand once. Every thumbnail after this is just a title + a metaphor.</p>
+        </div>
+
+        <div class="space-y-3">
+          <!-- Identity wizard card -->
+          <button class="library-card relative w-full flex items-center justify-between gap-4 px-4 py-4 rounded-2xl hover:bg-paper-elev/40 transition">
+            <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+            <div class="flex items-center gap-4 min-w-0">
+              <div class="relative w-10 h-10 grid place-items-center flex-shrink-0">
+                <span aria-hidden class="absolute inset-0 rounded-full" style="background: radial-gradient(closest-side, rgba(255,26,140,0.45), rgba(255,26,140,0) 70%); filter: blur(6px);"></span>
+                <span class="relative font-display text-[20px] font-semibold leading-none text-fuchsia" style="filter: drop-shadow(0 2px 6px rgba(255,26,140,0.65));">1</span>
+              </div>
+              <div class="text-left min-w-0">
+                <div class="text-[14px] font-semibold text-ink leading-tight">Identity — 3 face crops</div>
+                <div class="font-mono text-[10px] uppercase tracking-[0.14em] text-t3 mt-1">Front, three-quarter, profile</div>
+              </div>
+            </div>
+            <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep flex items-center gap-1" style="color:#ff66b8;">
+              Start
+              <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 fill-none stroke-current" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </span>
+          </button>
+
+          <!-- Brand preset wizard card -->
+          <button class="library-card relative w-full flex items-center justify-between gap-4 px-4 py-4 rounded-2xl hover:bg-paper-elev/40 transition">
+            <span class="lcc lcc-tl"></span><span class="lcc lcc-tr"></span><span class="lcc lcc-bl"></span><span class="lcc lcc-br"></span>
+            <div class="flex items-center gap-4 min-w-0">
+              <div class="relative w-10 h-10 grid place-items-center flex-shrink-0">
+                <span aria-hidden class="absolute inset-0 rounded-full" style="background: radial-gradient(closest-side, rgba(255,26,140,0.45), rgba(255,26,140,0) 70%); filter: blur(6px);"></span>
+                <span class="relative font-display text-[20px] font-semibold leading-none text-fuchsia" style="filter: drop-shadow(0 2px 6px rgba(255,26,140,0.65));">2</span>
+              </div>
+              <div class="text-left min-w-0">
+                <div class="text-[14px] font-semibold text-ink leading-tight">Brand preset</div>
+                <div class="font-mono text-[10px] uppercase tracking-[0.14em] text-t3 mt-1">Name, identity description, wardrobe</div>
+              </div>
+            </div>
+            <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep flex items-center gap-1" style="color:#ff66b8;">
+              Start
+              <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 fill-none stroke-current" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+</body>
+</html>

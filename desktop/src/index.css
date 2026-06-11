@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* ───── IRON GATE IG-012 (v0.7.50) — see docs/IRON_GATES.md ─────
+   CANONICAL BRAND KIT TOKENS — single source of truth. The demo files at
+   docs/demo-pages.html / docs/demo.html / docs/demo-thumbnail.html mirror
+   these values in their inline Tailwind-CDN configs. Pre-commit hook
+   refuses any diff that changes a token here without updating the demo
+   mirrors (and vice versa). Don't add or rename a token without bumping
+   all the files together. */
 @theme {
   /* Brand — fuchsia ladder, tuned for dark surfaces.
      `fuchsia-deep` was #c70066 in the light era (a punchy saturated pink that
@@ -37,6 +44,7 @@
   --color-paper-elev: #1c1c25;
   --color-line: rgba(255, 255, 255, 0.07);
   --color-line-strong: rgba(255, 255, 255, 0.12);
+  /* ───── END IRON GATE IG-012 brand-kit token block ───── */
 
   /* Text — secondary/tertiary keep the same names; values are tuned for
      dark surface contrast (WCAG AA on --color-paper). */

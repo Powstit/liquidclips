@@ -404,6 +404,43 @@ v0.7.40 fixed a blank-Earn report by giving the RoomShell motion div an explicit
 
 ---
 
+## IG-012 — Brand kit single source of truth (canonical CSS ↔ demo mirrors)
+
+**Locked at:** v0.7.50
+**Files:**
+- `desktop/src/index.css` — canonical `@theme` token block (the source of truth).
+- `desktop/docs/demo-pages.html` — inline Tailwind CDN config (the canonical visual reference, all 9 surfaces).
+- `desktop/docs/demo.html` — inline Tailwind CDN config (workspace + cockpit demo).
+- `desktop/docs/demo-thumbnail.html` — inline Tailwind CDN config (5× Thumbnail Setup hero).
+- `desktop/scripts/brand-kit-drift-check.sh` — the drift detector that runs on every commit touching a gated file.
+
+**Why it exists:**
+v0.7.50 introduced the demo HTML reference set so any agent or human can open `docs/demo-pages.html` and see exactly what every surface should look like — the canonical visual contract. The risk is that the brand tokens (`#ff1a8c` fuchsia, `#0b0b10` paper, etc.) get edited in `src/index.css` for a brand reason but the demos drift out of sync — over time the references become inaccurate and the "canonical look" gradually doesn't match the live app. This gate refuses any commit that changes a token in one place without updating all the others.
+
+**What the contract enforces:**
+1. **Canonical block** in `src/index.css` wrapped in `IRON GATE IG-012` sentinels: the fuchsia ladder + paper ladder + ink ladder.
+2. **Mirror blocks** in each demo file: identical hex values, also wrapped in `IRON GATE IG-012` sentinels.
+3. **`scripts/brand-kit-drift-check.sh`** runs from `.git/hooks/pre-commit` whenever a staged file matches `src/index.css` OR any `docs/demo*.html`. It refuses the commit if any of the 8 tracked hexes (`fuchsia`, `fuchsia-bright`, `fuchsia-deep`, `paper`, `paper-warm`, `paper-elev`, `ink`, `ink-soft`) appears in canonical but is missing from a mirror's IG-012 range (or vice versa).
+
+**What's gated vs. what's free:**
+- **GATED:** the 8 core brand hexes + the IG-012 sentinel comments themselves.
+- **NOT gated:** atmosphere plate gradients, animation durations, per-surface vibe colours (cyan-cool, warn amber). Those evolve independently per surface. The drift check is scoped to the load-bearing brand tokens only.
+
+**Do NOT:**
+- Change a hex value in `src/index.css` without changing it in every demo mirror in the same commit.
+- Remove the IG-012 sentinel comments (the iron-gate-precommit hook refuses this regardless).
+- Bypass `LENS_OVERRIDE=1` to ship a drift commit without a real reason — that's how the demos rot.
+- Use `LENS_OVERRIDE` for token additions without subsequently mirroring; the drift check is permissive on new tokens (it only checks the 8 named ones) but you should still mirror anything load-bearing.
+
+**Do:**
+- When adding a new core brand colour, add it to `src/index.css`, every demo mirror, AND the `CANONICAL_HEXES` array in `scripts/brand-kit-drift-check.sh` in the same commit.
+- Run `bash scripts/brand-kit-drift-check.sh` locally before committing brand-kit changes to catch drift before the hook does.
+- Bump the gate version when materially changing what's in the canonical (e.g. moving to OKLCH, retiring a colour).
+
+**Sign-off:** Daniel 2026-06-11 (v0.7.50 — quoted instruction: "hard wire this to brand kit". Locked so the canonical demos can never silently drift away from the live brand tokens.)
+
+---
+
 ## Adding a new gate
 
 1. Pick the next free `IG-NNN`.
