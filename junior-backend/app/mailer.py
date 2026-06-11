@@ -1595,3 +1595,79 @@ def send_mc_leaderboard_placement(email: str, *, handle: str, rank: int, earning
         "earnings_usd": earnings_usd,
     })
     _async(_send, to=email, subject=subject, html=html, text=text, tag="mc_leaderboard_placement")
+
+
+# --- paywall hit -------------------------------------------------------------
+# Triggered by the desktop inbox when a user tries to use a paid feature.
+# The in-app notification (NotificationSheet) shows the same content; this
+# email is the second-touch nudge so the user gets an upgrade prompt in
+# their inbox too. 100 free clip exports stay free; everything else paywalls.
+
+def send_paywall_hit(
+    email: str,
+    *,
+    feature_label: str,
+    required_tier: str,
+    cta_url: str,
+    first_name: str | None = None,
+) -> None:
+    """Fired when a desktop user hits a paywall (tries to use a paid feature).
+
+    feature_label: human-readable feature ("Generate more clips", "Reaction
+        layouts", "AI thumbnails", "Schedule queue", ...)
+    required_tier: tier needed to unlock ("solo" | "pro" | "agency")
+    cta_url: deep-link to /upgrade with the right tier pre-selected
+    """
+    ctx = MailContext.build()
+    subject, html, text = render_paywall_hit(
+        email=email,
+        feature_label=feature_label,
+        required_tier=required_tier,
+        cta_url=cta_url,
+        first_name=first_name,
+        ctx=ctx,
+    )
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="paywall_hit")
+
+
+def render_paywall_hit(
+    *,
+    email: str,
+    feature_label: str,
+    required_tier: str,
+    cta_url: str,
+    first_name: str | None,
+    ctx: MailContext,
+) -> tuple[str, str, str]:
+    pretty_tier = {
+        "solo": "Solo",
+        "pro": "Pro",
+        "agency": "Agency",
+        "growth": "Pro",       # legacy alias
+        "channel": "Pro",      # legacy alias
+        "autopilot": "Agency", # legacy alias
+    }.get(required_tier, required_tier.capitalize())
+    safe_feature = _escape_html(feature_label)
+    upgrade_label = f"Upgrade to {pretty_tier} →"
+    subject = f"Liquid Clips — {feature_label} is a {pretty_tier} feature."
+    body = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">paywall hit · {pretty_tier} required</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
+  You tried to use {safe_feature}.
+</h1>
+<p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  {safe_feature} is a <strong style="color:{INK};">{pretty_tier}</strong> feature. Upgrade in one click and pick up exactly where you left off — your project, your clips, your settings all stay where they are.
+</p>
+<p style="margin:0 0 16px;">{_btn(upgrade_label, cta_url)}</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
+  100 free clip exports stay free · cancel anytime · stays on this Mac
+</p>
+"""
+    text = (
+        f"You tried to use {feature_label}.\n\n{_greeting(first_name)}\n\n"
+        f"{feature_label} is a {pretty_tier} feature. Upgrade and pick up where you left off — your project, clips, and settings all stay put.\n\n"
+        f"Upgrade: {cta_url}\n\n"
+        "100 free clip exports stay free. Cancel anytime.\n— Liquid Clips"
+    )
+    return subject, _shell(subject, body, ctx=ctx), text

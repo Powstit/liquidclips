@@ -131,7 +131,7 @@ def dismiss(
 # Category locked to `pipeline_event` and `junior_message` so a compromised
 # desktop client can't impersonate billing / founder / affiliate alerts.
 
-_DESKTOP_ALLOWED_CATEGORIES: set[str] = {"pipeline_event", "junior_message"}
+_DESKTOP_ALLOWED_CATEGORIES: set[str] = {"pipeline_event", "junior_message", "paywall"}
 
 
 class NotificationCreateRequest(BaseModel):
@@ -175,6 +175,35 @@ def create_notification(
         )
         return NotificationDto.model_validate(existing)
     db.commit()
+
+    # v0.7.50 — Paywall hit also fires a Resend email for the second-touch
+    # nudge. In-app notification (NotificationSheet) is the first touch;
+    # email lands in the user's inbox for when they're not at the Mac.
+    # Fire-and-forget via _async inside send_paywall_hit — Resend failures
+    # are logged but never break the API response. action_data carries:
+    #   feature_label: human-readable feature name
+    #   required_tier: "solo" | "pro" | "agency"
+    #   cta_url:       optional — defaults to account-app upgrade page
+    if payload.category == "paywall" and user.email:
+        try:
+            from app.mailer import send_paywall_hit
+            from app.config import get_settings as _gs
+            data = payload.action_data or {}
+            feature_label = str(data.get("feature_label", "this feature"))[:120]
+            required_tier = str(data.get("required_tier", "solo"))
+            cta_url = str(data.get("cta_url") or f"{_gs().account_site_url}/upgrade?tier={required_tier}")
+            send_paywall_hit(
+                user.email,
+                feature_label=feature_label,
+                required_tier=required_tier,
+                cta_url=cta_url,
+                first_name=None,  # User model doesn't carry first_name
+            )
+        except Exception:  # noqa: BLE001
+            # Email failure must never block the notification. The log line
+            # inside _send already records the actual Resend error.
+            pass
+
     return NotificationDto.model_validate(row)
 
 
