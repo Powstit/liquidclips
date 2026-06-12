@@ -258,21 +258,30 @@ function Section({
 function ChannelCard({ c, isPremium }: { c: Channel; isPremium: boolean }) {
   const locked =
     !isPremium && (c.required_tier === "paid" || c.required_tier === "paid_admin");
-  // v0.7.55 P1-002 — `coming` was previously "no whop_channel_id at
-  // all", which left every paid clipper staring at "Coming soon" pills
-  // because the seed ships every room with null whop_channel_id (the
-  // chat feeds are provisioned later). Now: free users still see
-  // "Coming soon"; paid users get a working fallback to the main
-  // Liquid Clips forums URL so they always have somewhere to land. The
-  // room-specific chat feed lights up automatically once the admin
-  // patches in a whop_channel_id from Admin HQ.
+  // v0.7.55 — three card states.
+  //   • normal: whop_channel_id set → opens whop.com/c/<id> directly,
+  //     landing the user in the per-room chat feed inside the browse
+  //     panel.
+  //   • fallbackToCommunity: paid user, whop_channel_id NOT set →
+  //     opens the canonical Liquid Clips community landing
+  //     (WHOP_COMMUNITY_URL = whop.com/liquidclips/). Pre-v0.7.55 this
+  //     routed to the forums tab, which was misleading because forum ≠
+  //     chat — the room name promises chat, the destination served
+  //     read-only forum posts. Now the user lands on the community
+  //     hub and picks the right room manually.
+  //   • coming: free user looking at an unconfigured room → static
+  //     "Room coming soon" pill. We don't route them anywhere because
+  //     the locked path (Upgrade →) already owns the free→paid CTA.
+  //
+  // Per-room chat lights up automatically once admin pastes the
+  // chat_feed_XXX id into Admin HQ > Community Channels.
   const coming = !c.whop_channel_id;
-  const fallbackToForums = coming && !locked;
+  const fallbackToCommunity = coming && !locked;
 
   const openRoom = () => {
     if (c.whop_channel_id) {
       void openBrowsePanel(whopChatUrl(c.whop_channel_id));
-    } else if (fallbackToForums) {
+    } else if (fallbackToCommunity) {
       void openBrowsePanel(WHOP_COMMUNITY_URL);
     }
   };
@@ -324,7 +333,7 @@ function ChannelCard({ c, isPremium }: { c: Channel; isPremium: boolean }) {
               Upgrade →
             </button>
           </>
-        ) : fallbackToForums ? (
+        ) : fallbackToCommunity ? (
           <>
             <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
               dedicated chat coming · open community for now
@@ -338,12 +347,18 @@ function ChannelCard({ c, isPremium }: { c: Channel; isPremium: boolean }) {
             </button>
           </>
         ) : coming ? (
+          // v0.7.55 — free user, room not yet provisioned. No clickable
+          // CTA: the locked path above already owned the upgrade nudge.
+          // The static pill prevents a misleading "this room exists" read
+          // and avoids routing free users to a chat they can't post in
+          // anyway. Once admin pastes a chat_feed_XXX the room rolls
+          // forward to the normal state automatically.
           <>
             <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
-              Whop chat feed not provisioned yet
+              we&apos;re standing up this room
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
-              Coming soon
+              Room coming soon
             </span>
           </>
         ) : (
