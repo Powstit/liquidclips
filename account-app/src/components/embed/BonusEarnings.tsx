@@ -95,6 +95,30 @@ export function BonusEarnings({ tier }: { tier: Tier }) {
     void fetchRows();
   }, [jwt, fetchRows]);
 
+  // ── State 0: tier resolution failed (backend unreachable on the
+  // server-side /affiliate/me call in page.tsx). v0.7.55 P1-003 — pre-
+  // fix this state fell through to skeletons forever OR rendered the
+  // "submit through Whop" empty state, both of which lie to the user
+  // about their entitlement. Render an honest "couldn't read tier" card
+  // so the user knows what's missing without us picking a side.
+  if (tier === null) {
+    return (
+      <section className="flex flex-col gap-3">
+        <Heading subline="paid clippers track their +$4 RPM bonus here" />
+        <div className="rounded-2xl border border-line bg-paper-elev/40 p-4">
+          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+            tier resolution paused
+          </p>
+          <p className="mt-1 font-sans text-[13px] leading-relaxed text-text-secondary">
+            Couldn&apos;t read your Liquid Clips tier. Reopen Earn from the
+            desktop sidebar — when your tier resolves the bonus ledger
+            renders here.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   // ── State 1: free user without an active LC membership.
   // Render an honest preview tile instead of pretending the ledger exists
   // for them. The bonus rail is the paid-tier carrot, so this is the

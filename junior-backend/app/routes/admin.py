@@ -1463,12 +1463,41 @@ def import_whop_submission_to_ledger(
     """Mirror an approved Whop submission into the bonus ledger. Idempotent
     on `whop_submission_id`: a re-import patches the existing row instead
     of duplicating. Computes base + bonus from per-row RPMs at mirror
-    time so the liability is locked against later campaign edits."""
+    time so the liability is locked against later campaign edits.
+
+    v0.7.55 P1-001 — auto-resolve the clipper's `liquid_clips_user_id`
+    from the supplied email or whop_user_id when the admin doesn't pass
+    one explicitly. Pre-fix the import form had no LC user input and the
+    backend never resolved one, so every imported row was unreachable
+    from /bonus-ledger/me (the clipper-facing read filters by
+    liquid_clips_user_id == self.id) — every clipper saw their bonus
+    queue empty even after a successful import.
+    """
     existing = (
         db.query(RewardBonusLedger)
         .filter(RewardBonusLedger.whop_submission_id == payload.whop_submission_id)
         .one_or_none()
     )
+
+    # v0.7.55 P1-001 — auto-resolve LC user from email or whop_user_id.
+    # Both lookups fall back gracefully (resolved_user stays None and the
+    # row simply isn't owned yet; admin can patch later by re-importing).
+    resolved_user_id: str | None = payload.liquid_clips_user_id
+    resolved_user: User | None = None
+    if not resolved_user_id and payload.email:
+        resolved_user = (
+            db.query(User).filter(User.email == payload.email.lower()).one_or_none()
+        )
+        if resolved_user:
+            resolved_user_id = resolved_user.id
+    if not resolved_user_id and payload.whop_user_id:
+        resolved_user = (
+            db.query(User).filter(User.whop_user_id == payload.whop_user_id).one_or_none()
+        )
+        if resolved_user:
+            resolved_user_id = resolved_user.id
+    if resolved_user_id and resolved_user is None:
+        resolved_user = db.query(User).filter(User.id == resolved_user_id).one_or_none()
 
     campaign: SponsoredCampaign | None = None
     if payload.campaign_id:
@@ -1503,7 +1532,7 @@ def import_whop_submission_to_ledger(
     if existing:
         existing.whop_bounty_id = payload.whop_bounty_id
         existing.whop_user_id = payload.whop_user_id
-        existing.liquid_clips_user_id = payload.liquid_clips_user_id
+        existing.liquid_clips_user_id = resolved_user_id
         existing.email = payload.email
         existing.campaign_id = payload.campaign_id
         existing.mission_lane = payload.mission_lane
@@ -1525,7 +1554,7 @@ def import_whop_submission_to_ledger(
             whop_submission_id=payload.whop_submission_id,
             whop_bounty_id=payload.whop_bounty_id,
             whop_user_id=payload.whop_user_id,
-            liquid_clips_user_id=payload.liquid_clips_user_id,
+            liquid_clips_user_id=resolved_user_id,
             email=payload.email,
             campaign_id=payload.campaign_id,
             mission_lane=payload.mission_lane,
@@ -1546,11 +1575,11 @@ def import_whop_submission_to_ledger(
     db.commit()
     db.refresh(row)
 
-    user = (
-        db.query(User).filter(User.id == row.liquid_clips_user_id).one_or_none()
-        if row.liquid_clips_user_id
-        else None
-    )
+    # v0.7.55 P1-001 — reuse the user we already resolved instead of a
+    # third query. Also signals to the admin in the response whether the
+    # row is now attributable: `liquid_clips_user_id` non-null means the
+    # clipper will see it on /bonus-ledger/me.
+    user = resolved_user
     return {"row": _admin_serialize_ledger(row, user, campaign)}
 
 

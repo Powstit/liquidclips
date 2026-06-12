@@ -1,300 +1,193 @@
 {
-  "reviewed_at": "2026-06-12T08:55:00Z",
-  "commit_sha": "d5da5ea7d203dafd7f3df5be0ace473079e5ead8",
-  "version_under_review": "0.7.54",
+  "reviewed_at": "2026-06-12T09:14:29Z",
+  "commit_sha": "7ea9b755ceacac3db38240103640755c6c754f8d",
+  "version_under_review": "0.7.55",
+  "commit_range": "d5da5ea..HEAD (5ab1e51, 38d7ab9, 7ea9b75)",
   "files_in_diff": [
-    ".gitignore",
-    "account-app/next.config.ts",
+    "junior-backend/app/models.py",
+    "junior-backend/app/main.py",
+    "junior-backend/app/routes/campaigns.py",
+    "junior-backend/app/routes/bonus_ledger.py",
+    "junior-backend/app/routes/admin.py",
+    "junior-backend/app/routes/community.py",
+    "junior-backend/scripts/seed_uncle_daniel_campaigns.py",
+    "junior-backend/scripts/seed_community_channels.py",
+    "account-app/src/app/api/admin/[...path]/route.ts",
     "account-app/src/app/embed/earn/page.tsx",
-    "account-app/src/app/embed/layout.tsx",
-    "account-app/src/components/embed/EarnEmbedCtas.tsx",
+    "account-app/src/components/admin/AdminHQ.tsx",
     "account-app/src/components/embed/SponsoredCarousel.tsx",
-    "desktop/docs/ROADMAP_LOCK.md",
-    "desktop/package.json",
-    "desktop/src-tauri/src/earn_panel.rs",
-    "desktop/src-tauri/src/sidecar.rs",
-    "desktop/src-tauri/tauri.conf.json",
-    "desktop/src/App.tsx",
-    "desktop/src/components/CommunityTab.tsx",
-    "desktop/src/components/FailureCard.tsx",
-    "desktop/src/components/FirstRun.tsx",
-    "desktop/src/components/Settings.tsx",
-    "desktop/src/components/Splash.tsx",
-    "desktop/src/components/auth/AuthPanel.tsx",
-    "desktop/src/components/earn/AffiliateHero.tsx",
-    "desktop/src/components/earn/EarnPanelMount.tsx",
-    "desktop/src/lib/activation.ts",
-    "desktop/src/lib/backend.ts",
-    "desktop/src/lib/browse.ts",
-    "liquidclips-marketing/src/app/download/page.tsx"
+    "account-app/src/components/embed/BonusEarnings.tsx",
+    "desktop/src/components/CommunityTab.tsx"
   ],
   "findings": [
     {
       "id": "P0-001",
       "severity": "P0",
-      "phase": "STATE",
-      "file": "account-app/next.config.ts:9-29",
-      "summary": "The /embed/* frame-deny relaxation is silently overridden by the catch-all /:path* rule that follows it, so the production /embed/earn surface still ships X-Frame-Options: DENY and CSP frame-ancestors 'none' — the headline fix of the Earn UI rebuild is not in effect.",
-      "evidence": "Live probe (2026-06-12 09:00 UTC) of https://account.liquidclips.app/embed/earn returns:\n  content-security-policy: frame-ancestors 'none'\n  x-frame-options: DENY\nThe second header block in next.config.ts (source: '/:path*') matches every path including '/embed/...'. Next.js applies BOTH matching header sets; the catch-all wins for X-Frame-Options (single-header) and stacks two CSP headers (browsers intersect → most-restrictive applies).",
-      "reproduce": "curl -sI https://account.liquidclips.app/embed/earn | grep -i -E 'frame|content-security'",
-      "suggested_fix": "Either (a) negate the catch-all with `missing: [{ type: 'header', key: 'x-passthrough' }]` plus a matching positive on /embed/*, or (b) split the catch-all to explicit non-/embed sources, or (c) move the global rule first and gate it with `has: [{ type: 'header', key: 'x-route', value: '!embed' }]`. Verify post-deploy with the curl above — both headers must disappear on /embed/* responses.",
-      "addressed": false
-    },
-    {
-      "id": "P0-002",
-      "severity": "P0",
-      "phase": "JOURNEY",
-      "file": "account-app/src/components/embed/SponsoredCarousel.tsx:126-148",
-      "summary": "HeroSlide will crash with `Cannot read properties of undefined (reading 'banner_url')` if `idx` ever exceeds `campaigns.length - 1` (idx is not reset when the campaigns array shrinks). The page is server-rendered today so the bug is dormant on first paint, but the autoplay interval increments idx every 6s and `% campaigns.length` only protects against UPPER drift, not downward array changes.",
-      "evidence": "Line 128: `const current = campaigns[idx];` — `idx` is component state with no `useEffect` that clamps it on `[campaigns]`. Line 144: `<HeroSlide c={current} ... />` — `HeroSlide` type signature requires `c: SponsoredCampaign` (non-nullable). Line 204: `const comingSoon = isComingSoon(c);` dereferences without a null guard. Any future client-side campaigns refresh (or React Strict Mode re-mount race) will reach idx > new-length.",
-      "reproduce": "Mount SponsoredCarousel with campaigns=[A,B,C], let autoplay tick idx to 2, then re-render with campaigns=[A]. current === undefined → crash.",
-      "suggested_fix": "Add `useEffect(() => { if (idx >= campaigns.length) setIdx(0); }, [campaigns.length, idx]);` directly above the early-return on line 126, or compute `const current = campaigns[idx % campaigns.length] ?? campaigns[0];` and let the modulo guard the lookup.",
+      "phase": "WALK",
+      "file": "account-app/next.config.ts:31",
+      "summary": "Production /embed/earn STILL serves frame-ancestors 'none' + X-Frame-Options DENY — the supposed v0.7.54 P0-001 fix is broken in prod. The desktop Tauri webview cannot load this surface, so EVERYTHING shipped in v0.7.55 (PayoutLadder, BonusEarnings, mission filter) is unreachable to actual users.",
+      "evidence": "curl -sI https://account.liquidclips.app/embed/earn → 'content-security-policy: frame-ancestors none' + 'x-frame-options: DENY'. The negative-lookahead pattern '/((?!embed/).*)' written into next.config.ts:31 is being parsed by Next.js path-to-regexp and is matching /embed/earn (the catch-all wins because both source rules match). The fuchsia 'embed/:path*' override on line 21 cascades with the catch-all but the catch-all DENY wins per Next.js header-merge semantics — exactly the cascade pattern the comment on line 14 says was fixed.",
+      "reproduce": "curl -sI https://account.liquidclips.app/embed/earn | grep -i 'frame-ancestors\\|x-frame'",
+      "suggested_fix": "Stop using a regex catch-all source. Use the `missing` cookie/header trick OR move the DENY into a Next.js middleware that EXCLUDES /embed/* explicitly. The current path-to-regexp interpretation of '/((?!embed/).*)' is NOT a negative lookahead — path-to-regexp doesn't honor lookaheads. Verify with a curl probe BEFORE claiming fixed.",
       "addressed": false
     },
     {
       "id": "P1-001",
       "severity": "P1",
       "phase": "JOURNEY",
-      "file": "account-app/src/app/embed/earn/page.tsx:108-133",
-      "summary": "AffiliateStrip CTA falsely promises 'GET MY AFFILIATE LINK →' when linkStatus === 'unknown'. The ConnectionBadge directly below handles 'unknown' as a distinct non-committal state, but the strip treats it as 'unlinked'. A user whose /affiliate/me lookup failed (Railway 502, network blip, cold cache) sees the same CTA as a genuinely unlinked user and is sent to the Whop signup flow — even when they are in fact already linked.",
-      "evidence": "Line 109-112:\n  const ctaLabel = linkStatus === 'linked' ? 'OPEN AFFILIATE DASHBOARD →' : 'GET MY AFFILIATE LINK →';\nThe binary branch swallows the third documented state from line 141 (`type WhopLinkStatus = 'linked' | 'unlinked' | 'unknown'`). Page-level fetchAffiliate (page.tsx:157-172) explicitly returns linkStatus: 'unknown' on backend unreachability.",
-      "reproduce": "Temporarily set BACKEND_URL to an unreachable host on the account-app deployment and load /embed/earn — the strip shows the 'GET MY AFFILIATE LINK' CTA even though the user may already be linked. Then load the same page with the backend up to see the badge resolve to 'linked'.",
-      "suggested_fix": "Three-branch the label and disable / soften the CTA on 'unknown': linked → 'OPEN AFFILIATE DASHBOARD'; unlinked → 'GET MY AFFILIATE LINK'; unknown → 'CHECK MY AFFILIATE STATUS' with a neutral destination that retries the lookup. Mirror the strip + badge so both surfaces agree.",
+      "file": "account-app/src/components/admin/AdminHQ.tsx:1830-1937",
+      "summary": "BonusLedgerImport form omits the `liquid_clips_user_id` field entirely, so every imported row has liquid_clips_user_id=null. The clipper-facing GET /bonus-ledger/me filter is `liquid_clips_user_id == user.id`, so EVERY imported row is invisible to the clipper it tracks. The whole Phase 1 closes a loop nobody can see.",
+      "evidence": "AdminHQ.tsx lines 1830-1841 declare the form state with no liquid_clips_user_id field. BonusLedgerImport submit (line 1853-1860) JSON.stringify's `form` directly. Backend admin.py:1457 import_whop_submission_to_ledger has no email→user_id resolution (grep User.email in admin.py only finds the user search route at line 730 + the field assignment at 1507/1529 from payload). Result: row.liquid_clips_user_id stays null. bonus_ledger.py:87 filter excludes the row from the clipper's response.",
+      "reproduce": "1) Import a row via Admin HQ with email=clipper@example.com. 2) Sign in as that clipper. 3) GET /bonus-ledger/me returns {rows: []}. 4) Verify in DB: SELECT liquid_clips_user_id FROM reward_bonus_ledger WHERE email='clipper@example.com' → NULL.",
+      "suggested_fix": "Either (a) auto-resolve `payload.email` → User.id server-side in import_whop_submission_to_ledger before writing the row, OR (b) add a `liquid_clips_user_id` text input to the BonusLedgerImport form with a 'find by email' lookup helper, OR (c) document explicitly that admin must populate liquid_clips_user_id via direct DB write and surface that warning in the import form. Without one of these, the Earn UI BonusEarnings tile is a dead surface.",
       "addressed": false
     },
     {
       "id": "P1-002",
       "severity": "P1",
-      "phase": "WALK",
-      "file": "desktop/src/components/earn/AffiliateHero.tsx:409",
-      "summary": "The LapsedCard 'Partner dashboard' CTA opens https://partner.liquidclips.app which returns HTTP 404 today — the user lands on a dead page in their browser. This is one of the URL flips in BUG-004, but the new hostname has no live route to receive the click.",
-      "evidence": "Live probe 2026-06-12:\n  curl -sI -L https://partner.liquidclips.app → 404\n  Effective URL: https://partner.liquidclips.app/\nPre-flip URL https://partner.jnremployee.com (legacy) is the Whop affiliate dashboard. partner.liquidclips.app is a new hostname without DNS-mapped path coverage. Code: `onClick={() => void safeOpen('https://partner.liquidclips.app', setOpenError)}`.",
-      "reproduce": "curl -sI -L https://partner.liquidclips.app  # 404; curl -sI -L https://partner.jnremployee.com  # confirm legacy still serves the dashboard",
-      "suggested_fix": "Either (a) DNS-point partner.liquidclips.app at the same target as partner.jnremployee.com BEFORE this ship, or (b) revert this single URL back to partner.jnremployee.com until the Whop affiliate dashboard mirrors on the new hostname. Same applies to any AffiliateHero PaymentRoutingRow `partner_dashboard_url` defaults — leave on jnremployee.com until partner.* is live. Cross-reference desktop/docs/CLERK_DOMAIN_MIGRATION_SCOPE.md line 188 which already flags that partner.* is owned by Whop.",
+      "phase": "JOURNEY",
+      "file": "junior-backend/scripts/seed_community_channels.py:31-140 + desktop/src/components/CommunityTab.tsx:257-340",
+      "summary": "All 9 seeded community channels ship with whop_channel_id=null. A paid user upgrading to access premium rooms sees 'Coming soon' on EVERY room — including the rooms the upgrade gate sold them. Free user upgrade → paid user with zero working rooms = a confirmed dead-end.",
+      "evidence": "seed_community_channels.py never sets whop_channel_id (line 3 comment confirms 'whop_channel_id stays null in Phase 1'). CommunityTab.tsx:260 computes coming = !c.whop_channel_id, line 314-322 renders 'Coming soon' pill with no action when coming=true. Phase 1 ships ZERO populated whop_channel_ids — paid clipper sees Coming soon on every room they paid for. Free user sees Upgrade → on paid rooms, upgrades, then sees Coming soon on the same rooms.",
+      "reproduce": "1) Sign in as a paid user. 2) Open Community tab. 3) Every card shows 'Coming soon' pill. 4) No room is openable.",
+      "suggested_fix": "Either (a) populate whop_channel_id for at minimum the two free-paid rooms (announcements + free-clipper-lobby) and the two paid_core rooms (premium-rewards-hq + affiliate-growth-room) in the seed BEFORE shipping, OR (b) gate ALL paid_core/mission rooms behind a 'launching soon' banner above the section so the user understands the empty state is universal not their tier. The current state ships a tab whose advertised value is invisible.",
       "addressed": false
     },
     {
       "id": "P1-003",
       "severity": "P1",
-      "phase": "KARPATHY",
-      "file": "desktop/src/components/FirstRun.tsx:11",
-      "summary": "APP_VERSION is hardcoded to the literal '0.7.54' at the top of FirstRun.tsx. The diagnostics blob the user copies from the failed-login rescue panel will report a stale version the moment the next patch bump lands. Settings.tsx already imports `pkg.version` from package.json as the canonical pattern — FirstRun should follow it.",
-      "evidence": "FirstRun.tsx:11 — `const APP_VERSION = \"0.7.54\";`\nSettings.tsx:27 — `const APP_VERSION: string = pkg.version;` (the established pattern).\nThe value is consumed by `activationDiagnostics(APP_VERSION)` (line ~315) which is the support-ticket blob — a stale version misroutes triage.",
-      "reproduce": "grep -n 'APP_VERSION' desktop/src/components/FirstRun.tsx desktop/src/components/Settings.tsx",
-      "suggested_fix": "Replace the hardcoded constant with `import pkg from '../../package.json'; const APP_VERSION: string = pkg.version;` (the same pattern Settings.tsx uses on line 27). One-line change, kills the version-drift class.",
-      "addressed": false
-    },
-    {
-      "id": "P1-004",
-      "severity": "P1",
       "phase": "STATE",
-      "file": "account-app/src/components/embed/SponsoredCarousel.tsx:204,346",
-      "summary": "HeroSlide collapses the 5-state status enum (coming_soon · partially_funded · funded · live · closed) into a 2-state visual (coming_soon vs LIVE). A `closed` campaign — which the wire type explicitly emits — now renders as a fuchsia 'LIVE' pill with a pulse dot, lying about its open/closed state. The previous component never had this regression because it had no LIVE pill.",
-      "evidence": "SponsoredCarousel.tsx:34-35 — `status: 'coming_soon' | 'partially_funded' | 'funded' | 'live' | 'closed';`\nLine 226: `{comingSoon ? <Coming-soon pill> : <LIVE pill>}` — no closed/partially_funded branch.\nLine 346: `isComingSoon` returns true only for `type === 'coming_soon' || status === 'coming_soon'`, so a status='closed' campaign is reported LIVE.",
-      "reproduce": "Inject a fixture campaign with `status: 'closed'` into /campaigns and load /embed/earn — the LIVE pill renders with the white pulse dot. Same for status='partially_funded' (not necessarily wrong, but should be flagged 'funding pool 60%' per the prior banner pattern).",
-      "suggested_fix": "Add a third branch (or fold 'closed' into the disabled/locked UX): `if (c.status === 'closed') return <ClosedPill />;`. Surface `partially_funded` either as a soft tone or with a `${funded_pct}% funded` micro-line so the user can read it. Update isComingSoon to a fuller `slideState(c)` helper returning `'live' | 'coming_soon' | 'closed' | 'partial'` so both pill + CTA derive from one source.",
-      "addressed": false
-    },
-    {
-      "id": "P1-005",
-      "severity": "P1",
-      "phase": "GREP",
-      "file": "desktop/src/lib/backend.ts:1056",
-      "summary": "Comment + implied fallback string for `partner_dashboard_url` still references partner.jnremployee.com — the URL rebrand sweep missed this surface. If the backend returns null/empty for partner_dashboard_url, AffiliateHero.tsx:722 routes to `affiliate.partner_dashboard_url` directly with no override, but BUG-002 specifically claimed every Whop/account URL was flipped. The fact that the inline comment lies signals the actual fallback constant elsewhere in the backend is also stale.",
-      "evidence": "backend.ts:1056 — `partner_dashboard_url: string;       // always present, falls back to partner.jnremployee.com`\nThis contradicts BUG-002's claim of an exhaustive flip. The backend (out-of-tree) likely still emits the jnremployee.com URL.",
-      "reproduce": "Check the backend's affiliate/me response: `curl -H 'Authorization: Bearer $LICENSE_JWT' https://api.liquidclips.app/affiliate/me | jq .partner_dashboard_url` — if it returns partner.jnremployee.com, the desktop surface STILL renders the legacy URL anywhere the affiliate dashboard CTA fires.",
-      "suggested_fix": "(1) Update the comment to match the actual fallback string post-backend rebrand. (2) Coordinate with the backend repo to flip the partner_dashboard_url emission. (3) For UI safety, AffiliateHero should defensively swap `partner.jnremployee.com` → `partner.liquidclips.app` at render time — but only after the partner.liquidclips.app host actually serves a page (see P1-002).",
-      "addressed": false
-    },
-    {
-      "id": "P1-006",
-      "severity": "P1",
-      "phase": "GREP",
-      "file": "desktop/src/App.tsx:351, desktop/src/lib/telemetry.ts:11, desktop/src/vite-env.d.ts:9",
-      "summary": "Pattern-grep follow-up for the jnremployee → liquidclips URL flip: three desktop/src locations still reference api.jnremployee.com / account.jnremployee.com in comments or documentation strings. None are load-bearing today, but the rebrand sweep was supposed to be exhaustive — these stragglers will confuse the next reader and may quietly seed drift if any are upgraded to live code paths.",
-      "evidence": "  desktop/src/vite-env.d.ts:9 — `*  https://api.jnremployee.com (see src/lib/backend.ts). */`\n  desktop/src/App.tsx:351 — `// the keychain (i.e. they've activated via account.jnremployee.com). Drives`\n  desktop/src/lib/telemetry.ts:11 — `// api.jnremployee.com for back-compat with v0.7.2 and older installs.`\nplus `desktop/src/lib/backend.ts:31,41,48` and `desktop/src/lib/activation.ts:25` reference jnremployee.com but each of those is the v0.7.54 migration comment which is acceptable history.",
-      "reproduce": "grep -rn 'jnremployee\\.com' desktop/src 2>/dev/null | grep -v 'v0.7.54\\|migration\\|legacy\\|fallback'",
-      "suggested_fix": "Rewrite the three comments to read liquidclips.app (vite-env.d.ts), 'activated via account.liquidclips.app' (App.tsx), 'api.liquidclips.app' (telemetry.ts). Zero behavioural risk — pure rebrand hygiene that prevents the next grep from a future contributor pulling the old hostname back into code.",
-      "addressed": false
-    },
-    {
-      "id": "P1-007",
-      "severity": "P1",
-      "phase": "KARPATHY",
-      "file": "account-app/src/app/embed/earn/page.tsx:62, account-app/src/components/embed/SponsoredCarousel.tsx:3, account-app/src/components/embed/EarnEmbedCtas.tsx:3, account-app/src/app/embed/layout.tsx:49",
-      "summary": "Four new account-app files stamp themselves with `v0.7.55` in inline comments while the actual ship-version (package.json, tauri.conf.json, commit message) is 0.7.54. Either the version was rolled forward then back without a sweep, or the comment was speculatively dated for a future ship. Either way the inline version markers are now lies the next reader will trust.",
-      "evidence": "  page.tsx:62 — `// v0.7.55 — layout matches demo-pages.html lines 338-438.`\n  SponsoredCarousel.tsx:3 — `// v0.7.55 — cinematic 2-col hero carousel.`\n  EarnEmbedCtas.tsx:3 — `// v0.7.55 — Client-only CTAs used by /embed/earn/page.tsx`\n  embed/layout.tsx:49 — `// v0.7.55 — hard-positioned shell.`\nVs desktop/package.json:4 = 0.7.54 and tauri.conf.json:4 = 0.7.54.",
-      "reproduce": "grep -rn 'v0\\.7\\.55' account-app/src",
-      "suggested_fix": "Find-replace v0.7.55 → v0.7.54 across the four files. Belt-and-braces: add a `desktop/scripts/version-marker-check.sh` that fails CI if inline `vN.N.N` markers in newly-modified files don't match `package.json`.",
-      "addressed": false
-    },
-    {
-      "id": "P1-008",
-      "severity": "P1",
-      "phase": "STATE",
-      "file": "desktop/src/lib/activation.ts:262-275",
-      "summary": "`resetLoginSession` silently swallows the sidecar.secretDelete failure with a bare catch + comment — but the failure case it claims to handle ('keyring missing → JWT now orphaned') is exactly the scenario the FailedLoginRescue panel was built for. The user clicks 'Reset login session', sees 'Session reset', and the keychain JWT may still be there. Next 'Sign in' run will succeed on the deep-link, attempt to write again, fail again, and the user loops.",
-      "evidence": "activation.ts:264-272:\n  try {\n    await sidecar.secretDelete('LICENSE_JWT');\n  } catch {\n    /* sidecar / keyring unavailable — clearing in-memory state is still\n       the right move; the JWT (if any) is now orphaned but the next\n       activation overwrites it. */\n  }\nThe comment says 'the next activation overwrites it' — but the next activation is itself a `sidecar.secretSet` which is the exact call that failed in BUG-002. The reset is a no-op for the user actually hitting the dead-end.",
-      "reproduce": "Simulate keyring-missing: kill the python-sidecar process or stub `method_secret_delete` to raise. Click 'Reset login session'. The button reports 'Session reset' even though nothing on disk changed.",
-      "suggested_fix": "Catch the secretDelete failure as a non-empty value, propagate to the UI: change the rescue button copy on failure to 'Session reset (keychain unreachable)' or surface `humanError(e)` in a small inline note. At minimum, return a boolean from `resetLoginSession()` and let FailedLoginRescue render 'partial reset — keychain unreachable, restart Liquid Clips' on false. The 'best-effort' silent path is exactly the lie-on-success pattern ship-lens forbids.",
+      "file": "account-app/src/components/embed/BonusEarnings.tsx:67-102",
+      "summary": "When tier === null (signed-in user but /affiliate/me failed → tier resolves to null per page.tsx fetchAffiliate catch path), BonusEarnings falls through to the JWT path, fetches /bonus-ledger/me, and renders the empty-state copy 'Submit a clip through Whop' to a possibly-free user — making a false promise that bonus tracking is active for them.",
+      "evidence": "BonusEarnings.tsx:71 isPremium = !!tier && PREMIUM_TIERS.includes(...). When tier=null, isPremium=false. Line 102 'if (tier && !isPremium)' → skips upsell tile because tier is null. Line 158 'if (!jwt)' → skeleton. Once JWT lands, fetch runs. Line 200 list.length===0 → renders empty state 'submit a clip through Whop. When it's approved we mirror it here'. A free user reading this is being told their bonus ledger is live.",
+      "reproduce": "1) In page.tsx:fetchAffiliate, mock the /affiliate/me call to throw → return tier=null. 2) Sign in a free user. 3) BonusEarnings renders the empty-state with the 'we mirror it here' promise rather than the upsell tile.",
+      "suggested_fix": "Treat tier===null as 'unknown' and render a quiet 'tier loading' skeleton or a soft fallback 'your bonus tracking will load once we verify your tier' instead of the empty-state-with-promise. Or: when tier===null and rows.length===0, fall back to the free-tier upsell tile copy.",
       "addressed": false
     },
     {
       "id": "P2-001",
       "severity": "P2",
-      "phase": "KARPATHY",
-      "file": "desktop/src/App.tsx:2558",
-      "summary": "Regex `/\\/opt\\/homebrew\\/|\\/usr\\/local\\/(?:Cellar|opt)\\//` may NOT match when the user runs Homebrew Python on Intel and `sys.executable` resolves to `/usr/local/bin/python3` (the bin-dir symlink) instead of the Cellar canonical path. Practically `sys.executable` on macOS resolves to the canonical Cellar path 99%+ of the time, but the edge case (custom launcher wrappers, pyenv-wrapped Homebrew installs) would silently drop the --break-system-packages flag and present a command that fails with the PEP-668 error.",
-      "evidence": "Python docs: 'sys.executable: A string giving the absolute path of the executable binary for the Python interpreter, on systems where this makes sense.' On macOS Homebrew, this is normally /opt/homebrew/Cellar/python@3.x/x.y.z/Frameworks/Python.framework/Versions/3.x/bin/python3.x or /usr/local/Cellar/... — both match. Edge cases (pyenv-shim, asdf, mise, direnv wrappers) may report the shim path instead.",
-      "reproduce": "Install pyenv + a 3.11 build, set as global, run `python3 -c 'import sys; print(sys.executable)'` → typically /Users/me/.pyenv/versions/3.11.x/bin/python3 → regex misses → command lacks --break-system-packages → user retries indefinitely.",
-      "suggested_fix": "Augment with a runtime probe: if the user's Python responds to `python3 -c 'import sys; print(any(p.startswith((\"/opt/homebrew\", \"/usr/local/Cellar\", \"/usr/local/opt\")) for p in sys.path))'` true → add the flag. Or simpler: ship `--break-system-packages` always and additionally `--user` as a fallback (the flag is harmless on pip < 23 — actually it IS rejected; that was the original bug. So the fix must remain path-based). The pragmatic path: have `method_check_deps` ALSO return a `pip_supports_break_system_packages: bool` by shelling `pip install --help | grep break-system-packages` and let the UI consume that, removing client-side regex guessing entirely.",
+      "phase": "JOURNEY",
+      "file": "account-app/src/components/admin/AdminHQ.tsx:1675-1699",
+      "summary": "The mark-paid flow is a native window.prompt(). Admin cannot edit notes, cannot re-mark-paid an already-paid row, and cannot record WHY they paid out-of-band. Hostile UX for the only Phase 1 write action.",
+      "evidence": "AdminHQ.tsx:1676 window.prompt(...) asks ONLY for approved_views. The backend BonusMarkPaidPayload (admin.py:1349) accepts {approved_views, notes} but the UI never sends notes. Line 1801 'paid' rows render bonus_marked_paid_at as a static date with no edit action — once paid, the row is frozen even though admin.py:1571 supports re-saves with new approved_views.",
+      "reproduce": "1) Open Admin HQ → Bonus Ledger. 2) Mark a row paid via the prompt — notes field unused. 3) Try to edit the same row — no UI affordance. Must re-import to change anything.",
+      "suggested_fix": "Replace the prompt() with a small inline editor (popover or row-expansion) that takes both approved_views AND notes, AND allows re-saving a paid row (the backend already supports it).",
       "addressed": false
     },
     {
       "id": "P2-002",
       "severity": "P2",
-      "phase": "DESIGN",
-      "file": "account-app/src/app/embed/earn/page.tsx:73-77",
-      "summary": "AffiliateStrip is rendered ABOVE the ConnectionBadge — but both panels solicit the same action ('connect / open dashboard'). Two CTAs on the same surface with different copy duplicate cognitive load and risk the user clicking the wrong one. This breaches the Panel Design Lens 'one primary CTA' budget.",
-      "evidence": "page.tsx:73-77 + ConnectionBadge on :82 — strip says 'GET MY AFFILIATE LINK →' (or OPEN DASHBOARD), badge (when unlinked) says 'Sign up via Whop →' + 'Connect bank (Stripe) →'. Three CTAs on the unlinked path, all heading to roughly the same destination via different verbs.",
-      "reproduce": "Load /embed/earn signed in but unlinked. Count primary CTAs on the surface above the fold.",
-      "suggested_fix": "Either (a) hide the AffiliateStrip CTA when ConnectionBadge is showing an action-required state (the badge already carries the destination), or (b) hide the ConnectionBadge action buttons when linkStatus === 'unlinked' since the strip's headline CTA covers them. Pick the demo-pages.html pattern and stick to it.",
+      "phase": "STATE",
+      "file": "account-app/src/components/admin/AdminHQ.tsx:1722-1726",
+      "summary": "The mission_lane filter dropdown hard-codes lane names ('training' / 'main' / 'proof'). If an admin imports a row with a different lane string (e.g. capitalised, or a new mission lane the campaign added), the filter silently excludes it. No 'other' option.",
+      "evidence": "AdminHQ.tsx:1722-1726 hard-codes <option value='training'> / <option value='main'> / <option value='proof'>. The import form (line 1892) free-texts mission_lane with a placeholder hint only. Backend filter (admin.py:1430) does exact string match. An admin who types 'Training' gets a row excluded from the filter forever.",
+      "reproduce": "Import a row with mission_lane='Training' (capitalised). Filter to 'uncle daniel · training'. Row missing.",
+      "suggested_fix": "Either (a) compute the dropdown from the actual mission_lane values present in the rows, OR (b) lowercase mission_lane server-side at import, OR (c) replace the dropdown with a free-text filter.",
       "addressed": false
     },
     {
       "id": "P2-003",
       "severity": "P2",
-      "phase": "JOURNEY",
-      "file": "desktop/src-tauri/src/earn_panel.rs:138-145",
-      "summary": "The new v0.7.54 `window.parent.postMessage = wrappedPostMessage` reassignment inside a child-webview init script is wrapped in try/catch with `cross-origin or sealed parent — ignore`, but in the actual Tauri child-webview case `window.parent === window` (the webview is the topmost frame from the page's perspective), so the `if (window.parent && window.parent !== window)` branch is never entered. The fix is a no-op in the canonical case AND the unwrap call site (the embed page) calls `window.parent.postMessage(...)` which when parent===window is literally `window.postMessage(...)` — already covered by the FIRST wrapper. The new branch is dead code masquerading as a fix.",
-      "evidence": "earn_panel.rs:136-145 — `if (window.parent && window.parent !== window) { window.parent.postMessage = wrappedPostMessage; }`. Tauri child webviews are top-level browsing contexts, so window.parent === window. The original wrapper on line 130 already overrides window.postMessage which is what `window.parent.postMessage(...)` resolves to.",
-      "reproduce": "Inside the embed page, add console.log(window.parent === window) — true. The added override branch is never hit.",
-      "suggested_fix": "Either remove the branch (the first override is sufficient) or, if a genuine cross-frame scenario exists (e.g. a future nested iframe inside the embed), document the specific webview partition + version where parent !== window. Otherwise the dead branch is a maintenance trap.",
+      "phase": "STATE",
+      "file": "junior-backend/app/routes/community.py:128-132",
+      "summary": "Anonymous /community/channels callers (no clerk_user_id) get every paid room with locked=false. The desktop CommunityTab ignores the backend locked field and re-computes client-side, so this is currently masked — but the wire contract is misleading and a future API consumer could trust the false 'open' state.",
+      "evidence": "community.py:128 sets locked = _is_locked(...) if viewer_tier else False. For viewer_tier=None this returns False unconditionally, even for paid rooms. desktop CommunityTab.tsx:138 recomputes locked itself so the issue is contained today, but contract is wrong.",
+      "reproduce": "curl -s 'https://api.liquidclips.app/community/channels' | jq '.channels[] | {slug, required_tier, locked}' → every row shows locked:false.",
+      "suggested_fix": "When viewer_tier is None, emit locked=null (not false). The Pydantic schema already declares locked: bool | None. Update the assignment on line 128 to None so unauthenticated callers get an honest 'unknown' signal.",
       "addressed": false
     },
     {
       "id": "P2-004",
       "severity": "P2",
-      "phase": "STATE",
-      "file": "account-app/src/components/embed/SponsoredCarousel.tsx:139",
-      "summary": "Section header right-side counter displays 'loading…' when liveCount is 0 — but the carousel only renders if `campaigns.length > 0` (early-return at line 126). 'Loading' is the wrong word when we already have data but none of it is live. The correct copy is 'all coming soon' or just 'no live campaigns'.",
-      "evidence": "Line 139: `{liveCount > 0 ? `${liveCount} live` : 'loading…'}`. By the time this renders, `campaigns.length > 0` is guaranteed (line 126 early-return). 'Loading' lies about state — what the user sees is 'we fetched a list but every campaign is coming-soon'.",
-      "reproduce": "Inject all-coming_soon fixture into /campaigns. The header says 'loading…' indefinitely.",
-      "suggested_fix": "Change the false branch to `'all coming soon'` or omit the right column entirely when liveCount === 0.",
-      "addressed": false
-    },
-    {
-      "id": "P2-005",
-      "severity": "P2",
       "phase": "KARPATHY",
-      "file": "desktop/src/components/earn/EarnPanelMount.tsx:303",
-      "summary": "Pre-existing `error: String(e)` violates the project-wide `humanError(e)` convention documented in desktop/src/lib/sidecar.ts:12-13 ('NEVER setError(String(e))'). The v0.7.54 diff added `humanError(e)` usage in this same file (lines 111, 270) but left line 303 stale. The pre-commit gate that 'caught one' didn't catch this.",
-      "evidence": "EarnPanelMount.tsx:303 — `error: String(e),` inside a bounty-failure postMessage payload. The same file two screens down imports `humanError` from sidecar.ts and uses it correctly twice; this site is inconsistent.",
-      "reproduce": "grep -n 'String(e)' desktop/src/components/earn/EarnPanelMount.tsx",
-      "suggested_fix": "Swap `String(e)` → `humanError(e)`. Same shape as line 270. Then tighten the pre-commit grep to flag any `error:\\s*String\\(` literal in JSX/object-literal contexts, not just `setError(String(`.",
+      "file": "junior-backend/app/routes/campaigns.py:171",
+      "summary": "Bare 'c.premium_rpm_cents > 0' comparison assumes the column has a numeric value. If a row exists from before the v0.7.55 ALTER ran (transient deploy window or a SQLite dev DB that uses Base.metadata.create_all which never adds new columns to existing tables), Python raises TypeError on None > 0 and the entire /campaigns response 500s.",
+      "evidence": "campaigns.py:171 'if is_premium and c.premium_rpm_cents > 0'. The model declares default=0 nullable=False, but Base.metadata.create_all (junior-backend/app/main.py:50) does NOT add columns to existing tables in SQLite dev. Postgres ALTER lines 204-206 run only in lifespan with engine.dialect.name=='postgresql' (line 288).",
+      "reproduce": "1) Local dev with a pre-v0.7.55 SQLite junior.db. 2) Start backend. 3) GET /campaigns?clerk_user_id=anything → 500 'unsupported operand type(s) for >: NoneType and int'.",
+      "suggested_fix": "Coerce: 'if is_premium and (c.premium_rpm_cents or 0) > 0'. Three lines below do the same coercion correctly. Apply the same defensive pattern.",
       "addressed": false
     }
   ],
   "smoke_tests_run": [
     {
-      "name": "url-reachability-api-liquidclips",
-      "command": "curl -sI -o /dev/null -w '%{http_code}' https://api.liquidclips.app/campaigns",
+      "name": "GET-embed-earn-headers",
       "exit_code": 0,
-      "result_code": "200 (GET)",
-      "notes": "Host live; canonical PROD backend swap is safe."
+      "output": "frame-ancestors 'none' + X-Frame-Options DENY — confirms P0-001 still broken in production"
     },
     {
-      "name": "url-reachability-account-liquidclips",
-      "command": "curl -sI -o /dev/null -w '%{http_code}' https://account.liquidclips.app",
+      "name": "GET-campaigns-public",
       "exit_code": 0,
-      "result_code": "200",
-      "notes": "Host live; AuthPanel + activation surfaces reachable."
+      "output": "200 OK; old shape (no funnel fields) — expected pre-deploy; campaign rows render"
     },
     {
-      "name": "url-reachability-partner-liquidclips",
-      "command": "curl -sI -L -o /dev/null -w '%{http_code}' https://partner.liquidclips.app",
+      "name": "GET-community-channels",
       "exit_code": 0,
-      "result_code": "404",
-      "notes": "P1-002 evidence. Hostname resolves but no live page — clicking AffiliateHero LapsedCard partner button → user lands on 404."
+      "output": "404 Not Found — expected, backend not deployed; no 5xx so non-deploy failure ruled out"
     },
     {
-      "name": "url-reachability-whop-forums",
-      "command": "curl -sI -L -o /dev/null -w '%{http_code}' https://whop.com/liquidclips/forums-83fovyATgXDQpO/app/",
+      "name": "GET-healthcheck",
       "exit_code": 0,
-      "result_code": "200 (after 307 redirect to /joined/...)",
-      "notes": "Community URL flip lands on a live page."
+      "output": "api.liquidclips.app and api.jnremployee.com both return 405 Allow:GET — backend is live"
     },
     {
-      "name": "csp-frame-deny-on-embed-earn",
-      "command": "curl -sI https://account.liquidclips.app/embed/earn | grep -i -E 'frame|content-security'",
+      "name": "TSC-account-app",
       "exit_code": 0,
-      "result_code": "content-security-policy: frame-ancestors 'none'\\nx-frame-options: DENY",
-      "notes": "P0-001 evidence. Next.config /embed/* relaxation did not take effect — either the cascade order is wrong or the deploy is stale."
+      "output": "clean"
     },
     {
-      "name": "iron-gate-IG-004-preserved",
-      "command": "grep -n 'IRON GATE IG-004' desktop/src/lib/activation.ts",
+      "name": "TSC-desktop",
       "exit_code": 0,
-      "result_code": "line 8 sentinel present; deep-link scheme (junior://) unchanged; no manual JWT paste flow added; 401 self-heal flag untouched",
-      "notes": "IG-004 contract preserved. The CONNECT_URL host flip is consistent with the gate's own 'Clerk satellite-domain config (account.liquidclips.app)' line."
+      "output": "clean"
     },
     {
-      "name": "iron-gate-IG-011-preserved",
-      "command": "grep -n 'IRON GATE IG-011' desktop/src/components/earn/EarnPanelMount.tsx",
+      "name": "brand-kit-drift-check",
       "exit_code": 0,
-      "result_code": "Sentinel on line 348 present; containerRef still h-full w-full",
-      "notes": "Webview room height cascade gate intact."
+      "output": "green from desktop/ cwd"
     },
     {
-      "name": "rpc-contract-secret-delete-LICENSE_JWT",
-      "command": "grep -n 'LICENSE_JWT' desktop/python-sidecar/sidecar.py | grep -E '794|801'",
+      "name": "iron-gate-grep",
       "exit_code": 0,
-      "result_code": "LICENSE_JWT present in method_secret_delete whitelist (line 801)",
-      "notes": "New resetLoginSession() call path is contract-clean. RPC won't reject LICENSE_JWT."
+      "output": "no IRON GATE sentinels touched in any of the 14 changed files"
     },
     {
-      "name": "rpc-contract-onEarnPanelLoaded-exists",
-      "command": "grep -n 'export async function onEarnPanelLoaded' desktop/src/lib/earn_panel.ts",
+      "name": "String-e-annotation-grep",
       "exit_code": 0,
-      "result_code": "Line 106 — function exists.",
-      "notes": "EarnPanelMount.tsx import resolves."
-    },
-    {
-      "name": "csp-connect-src-coverage",
-      "command": "grep 'connect-src' desktop/src-tauri/tauri.conf.json",
-      "exit_code": 0,
-      "result_code": "api.liquidclips.app + account.liquidclips.app both present; partner.liquidclips.app NOT present",
-      "notes": "partner.liquidclips.app is opened via shell.open (system browser), not in-app fetch — CSP coverage NOT required. Confirmed via openSmart.ts:23 (shell plugin)."
-    },
-    {
-      "name": "no-jnremployee-leftovers",
-      "command": "grep -rn 'jnremployee\\.com' desktop/src 2>/dev/null | grep -v 'v0.7.54\\|migration\\|legacy\\|fallback\\|back-compat'",
-      "exit_code": 0,
-      "result_code": "Three remaining string literals in desktop/src — see P1-006.",
-      "notes": "Comment + docstring drift; not load-bearing in code."
-    },
-    {
-      "name": "string-e-error-swallow",
-      "command": "grep -rn 'String(e)' desktop/src account-app/src 2>/dev/null | grep -v 'v0.7\\|comment'",
-      "exit_code": 0,
-      "result_code": "Pre-existing site at EarnPanelMount.tsx:303 — see P2-005.",
-      "notes": "Pre-commit gate missed this; should be tightened."
+      "output": "all 7 String(e) additions carry an allow-raw-error annotation, no slips"
     }
   ],
-  "phase_summary": {
-    "DESIGN": "Earn embed layered AffiliateStrip + ConnectionBadge + SponsoredCarousel — two CTAs converge for the same action (P2-002). Otherwise clean.",
-    "STATE": "Five-state campaign status enum collapsed into 2-state UI (P1-004 — 'closed' shows LIVE). HeroSlide will crash if idx exceeds new campaigns.length (P0-002). next.config.ts header rules conflict on /embed/* (P0-001).",
-    "JOURNEY": "linkStatus 'unknown' is misrepresented as 'unlinked' in the strip CTA (P1-001). resetLoginSession lies on success when keychain unreachable (P1-008). Dead partner URL lands the user on 404 (P1-002).",
-    "WALK": "Live URL probes: account/api/marketing green. partner.liquidclips.app 404. Whop forums 200 after redirect. Frame-deny still active on production /embed/earn — P0-001 not yet effective live.",
-    "KARPATHY": "Hardcoded APP_VERSION (P1-003) + v0.7.55 stamps on v0.7.54 files (P1-007) + path-regex assumption (P2-001) + dead override branch in earn_panel.rs (P2-003) + stale String(e) (P2-005).",
-    "GREP": "Three jnremployee.com comment-leftovers in desktop/src + backend.ts:1056 still says fallback is partner.jnremployee.com (P1-005, P1-006)."
-  },
-  "iron_gate_check": {
-    "IG-004": "PRESERVED — CONNECT_URL host change is consistent with the gate's own satellite-domain spec (Clerk satellite-domain config: account.liquidclips.app). Deep-link scheme junior:// unchanged. 401 self-heal flag untouched. No manual JWT paste added. New exports resetLoginSession + activationDiagnostics are additive escape hatches.",
-    "IG-011": "PRESERVED — EarnPanelMount.tsx containerRef remains h-full w-full. Added panelError state is overlay-only, not a height-cascade change.",
-    "IG-010": "PRESERVED — non-blocking dispatcher pattern untouched (no diff to App.tsx ingest/lift paths).",
-    "others_in_touched_files": "Nothing else triggered."
+  "user_journey_table": {
+    "free_user_on_earn": [
+      "ENABLES: see PayoutLadder $1 free / $4 locked premium; mission filter chips (when ≥2 missions); upgrade CTA on locked campaigns; BonusEarnings upsell tile.",
+      "PREVENTS: free user from clicking 'Submit through Whop' — only paid users get that CTA per SponsoredCarousel.tsx:520; no path to mistakenly submit a clip thinking they'll get bonus.",
+      "BREAKS: nothing on Earn rendering — but the entire surface is BLOCKED from rendering inside the desktop webview (P0-001).",
+      "STRANDS: free user clicks Upgrade → posts lc:open-auth panel=upgrade → desktop should open Clerk upgrade flow. If desktop bridge swallows the postMessage (no handler attached), user is stuck."
+    ],
+    "free_user_on_community": [
+      "ENABLES: see Announcements + Free Clipper Lobby + Uncle Daniel Clips open cards; see paid rooms as Upgrade preview tiles.",
+      "PREVENTS: nothing.",
+      "BREAKS: nothing.",
+      "STRANDS: 'Coming soon' on free_paid rooms (whop_channel_id null in seed) is a quiet dead-end — no retry, no notify CTA. Free user just sees the room exists with no action. P1-002."
+    ],
+    "premium_stalled_jwt": [
+      "ENABLES: amber 'bonus ledger paused — reopen Earn from the Liquid Clips sidebar, or retry'. (No retry button in BonusEarnings — only in BountyList.)",
+      "PREVENTS: nothing.",
+      "BREAKS: the user instructions say 'or retry' but there's NO retry button on the stalled state in BonusEarnings.tsx:143-156. Copy promises a button that doesn't exist. Minor honesty drift — P2 (not logged separately, fold into P1-001 fix).",
+      "STRANDS: user closes Earn, reopens from sidebar → bridge re-fires; that's the documented escape hatch. Works."
+    ],
+    "admin_importing_collision": [
+      "ENABLES: idempotent re-import patches the existing row (backend admin.py:1467-1521).",
+      "PREVENTS: duplicate ledger rows for the same whop_submission_id.",
+      "BREAKS: when collision happens, the import sub-form DOES clear (onSaved calls setShowImport(false) + load) AdminHQ.tsx:1738-1741. UI handles this correctly.",
+      "STRANDS: admin gets no visible signal that a re-import happened vs a create. Both close the form and reload the table. Acceptable for Phase 1 — recorded as observation, not finding."
+    ],
+    "admin_mark_paid": [
+      "ENABLES: window.prompt sets approved_views, mark-paid sets bonus_payout_status='paid'.",
+      "PREVENTS: nothing.",
+      "BREAKS: notes never sent (P2-001). No re-edit of approved row (P2-001).",
+      "STRANDS: admin can't fix a mistyped view count once paid — must re-import."
+    ]
   },
   "verdict": "BLOCK",
-  "ship_recommendation_v0_7_54": "Two P0s and eight P1s block the cut. The headline P0 (next.config.ts header cascade — P0-001) is the biggest visible failure: production still serves frame-ancestors 'none' + X-Frame-Options DENY on /embed/earn, which means the EARN UI REBUILD does NOT actually fix the 'blank Earn' symptom on any browser-loaded embed surface — the fix needs either rule-negation or rule-reorder + redeploy + post-deploy curl verification. P0-002 (HeroSlide crash on stale idx) is dormant on first paint but will fire as soon as the carousel is refreshed client-side. P1-001 (linkStatus unknown lying as unlinked) and P1-002 (partner.liquidclips.app 404) are user-visible deceits that ship-lens v0.7.x feedback explicitly flags. P1-003/P1-007 are version-drift hygiene; trivial fixes that prevent the next reader from trusting stale strings. Address P0-001 + P0-002 + P1-001 + P1-002 + P1-003 + P1-007 + P1-008 BEFORE running ship.sh 0.7.54. P1-004/P1-005/P1-006 and all P2s should ride the same fix-up commit. None of the findings touch iron-gate sentinels."
+  "verdict_rationale": "One P0 (broken frame-ancestors in production) prevents the entire Earn surface from rendering in the desktop webview — every v0.7.55 UI change is invisible to users until fixed. Three P1s (P1-001 invisible ledger rows, P1-002 zero working community rooms, P1-003 false-positive empty state) each render a major user journey dead on arrival. P2s are polish — non-blocking."
 }

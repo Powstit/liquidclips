@@ -34,7 +34,7 @@ import {
   Trophy,
   type LucideIcon,
 } from "lucide-react";
-import { openBrowsePanel } from "../lib/browse";
+import { openBrowsePanel, WHOP_COMMUNITY_URL } from "../lib/browse";
 import { humanError } from "../lib/sidecar";
 import { openAuthPanel } from "./auth/useAuthPanel";
 import { useTier } from "../lib/useTier";
@@ -257,11 +257,23 @@ function Section({
 function ChannelCard({ c, isPremium }: { c: Channel; isPremium: boolean }) {
   const locked =
     !isPremium && (c.required_tier === "paid" || c.required_tier === "paid_admin");
+  // v0.7.55 P1-002 — `coming` was previously "no whop_channel_id at
+  // all", which left every paid clipper staring at "Coming soon" pills
+  // because the seed ships every room with null whop_channel_id (the
+  // chat feeds are provisioned later). Now: free users still see
+  // "Coming soon"; paid users get a working fallback to the main
+  // Liquid Clips forums URL so they always have somewhere to land. The
+  // room-specific chat feed lights up automatically once the admin
+  // patches in a whop_channel_id from Admin HQ.
   const coming = !c.whop_channel_id;
+  const fallbackToForums = coming && !locked;
 
   const openRoom = () => {
-    if (!c.whop_channel_id) return;
-    void openBrowsePanel(whopChatUrl(c.whop_channel_id));
+    if (c.whop_channel_id) {
+      void openBrowsePanel(whopChatUrl(c.whop_channel_id));
+    } else if (fallbackToForums) {
+      void openBrowsePanel(WHOP_COMMUNITY_URL);
+    }
   };
 
   const upgrade = () => {
@@ -309,6 +321,19 @@ function ChannelCard({ c, isPremium }: { c: Channel; isPremium: boolean }) {
               className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-fuchsia-bright"
             >
               Upgrade →
+            </button>
+          </>
+        ) : fallbackToForums ? (
+          <>
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+              dedicated chat coming · open community for now
+            </span>
+            <button
+              type="button"
+              onClick={openRoom}
+              className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia/40 bg-fuchsia-soft/20 px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-fuchsia-deep transition-colors hover:border-fuchsia hover:bg-fuchsia hover:text-white"
+            >
+              Open community →
             </button>
           </>
         ) : coming ? (
