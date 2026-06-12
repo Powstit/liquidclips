@@ -171,7 +171,53 @@ export function SponsoredCarousel({
     }
   }, [visible.length, idx]);
 
-  if (!campaigns || campaigns.length === 0) return null;
+  // v0.7.55 P1-003 — pre-fix returned `null` on empty/error, so a
+  // Railway 502 or admin-deleted feed silently blanked the surface
+  // between the AffiliateStrip and BountyList. The lens reviewer
+  // flagged this as a journey blocker on Journey 4 (Earn). Render an
+  // honest empty state with a reload affordance. Free-tier eyebrow
+  // still matches the rest of the page; brand kit stays canonical
+  // (fuchsia/ink/paper/library-card vocabulary).
+  if (!campaigns || campaigns.length === 0) {
+    return (
+      <section className="flex flex-col gap-3">
+        <header className="flex items-center justify-between">
+          <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia">
+            <FlameIcon />
+            sponsored rewards
+          </div>
+          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
+            no live missions
+          </span>
+        </header>
+        <div className="library-card relative bg-transparent p-6">
+          <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+          <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+          <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+          <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
+          <p className="relative z-10 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+            mission feed empty
+          </p>
+          <p className="relative z-10 mt-2 max-w-[420px] font-sans text-[13px] leading-relaxed text-ink-soft">
+            We couldn&apos;t load any live missions right now. This usually
+            clears in a moment — reload the panel, or hop into the
+            community for the latest drops.
+          </p>
+          <div className="relative z-10 mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== "undefined") window.location.reload();
+              }}
+              className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-fuchsia-bright"
+            >
+              Reload missions →
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   // v0.7.55 — count missions present so we only render the chip row when
   // there's actually a choice to make. A single-mission feed renders the

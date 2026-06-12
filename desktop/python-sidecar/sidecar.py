@@ -3649,6 +3649,19 @@ def method_set_runtime_flag(params: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "name": name, "value": os.environ.get(name)}
 
 
+def method_tier_status(_params: dict[str, Any]) -> dict[str, Any]:
+    """v0.7.55 P1-012 — expose the watermark tier cache state to the
+    desktop's pre-export gate. The desktop blocks an export when the
+    user is `last_known_paid` AND `last_failure` is set (meaning the
+    last /sync errored and the fail-safe just turned watermark ON for
+    a user who should be paid).
+
+    Returns the dict shape documented in stages.watermark_status().
+    """
+    from stages import watermark_status
+    return watermark_status()
+
+
 def method_tier_invalidate(_params: dict[str, Any]) -> dict[str, Any]:
     """v0.7.55 P1-007 — clear the export-time tier cache so the very
     next export re-queries /sync. The React side calls this on the
@@ -4368,6 +4381,7 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "secret_set": method_secret_set,
     "secret_delete": method_secret_delete,
     "tier_invalidate": method_tier_invalidate,
+    "tier_status": method_tier_status,
     "set_runtime_flag": method_set_runtime_flag,
     "hardware_info": method_hardware_info,
     "regenerate_clip": method_regenerate_clip,

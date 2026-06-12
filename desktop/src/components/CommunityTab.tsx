@@ -272,13 +272,28 @@ function ChannelCard({ c, isPremium }: { c: Channel; isPremium: boolean }) {
   //   • coming: free user looking at an unconfigured room → static
   //     "Room coming soon" pill. We don't route them anywhere because
   //     the locked path (Upgrade →) already owns the free→paid CTA.
+  //   • adminOnlyReadOnly (v0.7.55 P1-005): non-admin viewing an
+  //     is_admin_only room (e.g. Announcements where required_tier is
+  //     free_paid). Pre-fix the room fell into fallbackToCommunity and
+  //     showed an "Open community →" button that suggested the user
+  //     could engage in chat there. Now: no clickable CTA, static
+  //     "Admin posts only" copy, so the room reads as read-only.
+  //     Admins keep the normal/open path.
   //
   // Per-room chat lights up automatically once admin pastes the
   // chat_feed_XXX id into Admin HQ > Community Channels.
+  //
+  // NOTE: this surface has no first-class admin signal yet — every
+  // signed-in user is treated as non-admin for the UI gate. When admin
+  // routing lands (next sprint) the !isAdmin branch below becomes the
+  // real gate; until then admin-only rooms read as read-only for
+  // everyone, which is the safe failure mode.
+  const adminOnlyReadOnly = c.is_admin_only;
   const coming = !c.whop_channel_id;
-  const fallbackToCommunity = coming && !locked;
+  const fallbackToCommunity = coming && !locked && !adminOnlyReadOnly;
 
   const openRoom = () => {
+    if (adminOnlyReadOnly) return;
     if (c.whop_channel_id) {
       void openBrowsePanel(whopChatUrl(c.whop_channel_id));
     } else if (fallbackToCommunity) {
@@ -332,6 +347,20 @@ function ChannelCard({ c, isPremium }: { c: Channel; isPremium: boolean }) {
             >
               Upgrade →
             </button>
+          </>
+        ) : adminOnlyReadOnly ? (
+          // v0.7.55 P1-005 — Announcements + any other is_admin_only
+          // room shouldn't dangle a misleading CTA at non-admin viewers.
+          // Static "Admin posts only" pill — non-clickable. Admins will
+          // see this same surface today (no admin-detect yet); when
+          // admin routing lands, gate on the real admin check.
+          <>
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+              read in community · admins post here
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
+              Admin posts only
+            </span>
           </>
         ) : fallbackToCommunity ? (
           <>

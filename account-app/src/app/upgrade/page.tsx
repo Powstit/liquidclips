@@ -40,9 +40,20 @@ export default async function UpgradePage({
 }: {
   searchParams: SearchParams;
 }) {
+  // v0.7.55 P1-006 — read the affiliate code BEFORE the auth gate so we
+  // can preserve it through the sign-in round-trip. Pre-fix the redirect
+  // hard-coded `redirect_url=/upgrade` and the `?ref=`/`?affiliate=`
+  // querystring was lost on every unauthed visit — affiliate links sent
+  // to a logged-out user attributed zero conversions.
+  const { ref, affiliate } = await searchParams;
+  const affiliateCode = ref ?? affiliate ?? null;
+
   const { userId } = await auth();
   if (!userId) {
-    redirect("/sign-in?redirect_url=/upgrade");
+    const upgradeQuery = affiliateCode
+      ? `/upgrade?ref=${encodeURIComponent(affiliateCode)}`
+      : "/upgrade";
+    redirect(`/sign-in?redirect_url=${encodeURIComponent(upgradeQuery)}`);
   }
   const user = await currentUser();
   const email = user?.primaryEmailAddress?.emailAddress ?? null;
@@ -51,9 +62,6 @@ export default async function UpgradePage({
   const returnUrl =
     process.env.NEXT_PUBLIC_WHOP_RETURN_URL ??
     "https://account.liquidclips.app/checkout/complete";
-
-  const { ref, affiliate } = await searchParams;
-  const affiliateCode = ref ?? affiliate ?? null;
 
   return (
     <div className="min-h-screen bg-paper">

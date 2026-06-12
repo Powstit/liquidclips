@@ -48,13 +48,33 @@ def _is_fast_draft() -> bool:
     return _pipeline_mode() == "fast_draft"
 
 
-def _animated_captions_enabled() -> bool:
-    """Fast Draft turns off animated captions; Full Polish keeps the historic
-    on-by-default. Explicit JUNIOR_ANIMATED_CAPTIONS env wins either way."""
+def _captions_burn_enabled() -> bool:
+    """v0.7.55 — single switch for ANY caption burn-in (animated ASS or
+    static SRT). The user-facing toggle in UnifiedDropZone writes
+    JUNIOR_ANIMATED_CAPTIONS via the set_runtime_flag RPC. The env-var
+    name kept its historical "ANIMATED" suffix because that's the flag
+    the codebase has been reading since v0.6.8 — flipping the name would
+    silently break anyone shipping a cached value.
+
+    Pre-fix this helper ONLY gated the animated/ASS path. When the user
+    turned the toggle OFF, reframe still ran `_subtitles_filter(clip_srt)`
+    and burned static SRT captions into the export. P0-001 ship-lens
+    finding 2026-06-12. The same return value now governs both paths
+    (see _reframe stage's `if has_subtitles_filter and
+    _captions_burn_enabled():` gate).
+
+    Fast Draft default still OFF, Full Polish default ON.
+    """
     raw = os.environ.get("JUNIOR_ANIMATED_CAPTIONS")
     if raw is not None:
         return raw.strip().lower() not in ("0", "false", "off", "")
     return not _is_fast_draft()
+
+
+# Back-compat alias — older modules import _animated_captions_enabled.
+# Keep the name pointing at the same gate so a stale import doesn't
+# silently re-enable SRT burn-in.
+_animated_captions_enabled = _captions_burn_enabled
 
 
 def _silence_remove_enabled() -> bool:
@@ -1294,7 +1314,13 @@ def stage_reframe(project: Project) -> dict[str, Any]:
             if not out_path.exists():
                 # Build the video filter chain that goes AFTER any silence-skip.
                 vf_after = _build_crop_filter(cap_size, face_cx, out_w, out_h, aw, ah)
-                if has_subtitles_filter:
+                # v0.7.55 P0-001 — single gate covers BOTH the animated
+                # ASS path AND the static SRT fallback. Pre-fix the
+                # `if has_subtitles_filter:` block only checked ffmpeg
+                # capability; even when the user toggled captions OFF,
+                # the SRT fallback still burned in. Now `animated_captions_on`
+                # (alias for _captions_burn_enabled()) governs both.
+                if has_subtitles_filter and animated_captions_on:
                     # Prefer animated ASS captions (sprint #2) when the file
                     # exists for this clip. Otherwise fall back to the
                     # static SRT-based captions the pipeline always emitted.
@@ -1398,7 +1424,9 @@ def stage_reframe(project: Project) -> dict[str, Any]:
             "srt_path": str(clip_srt),
             "vtt_path": str(clip_vtt),
             "ass_path": str(clip_ass) if clip_ass is not None and clip_ass.exists() else None,
-            "captions_burned": has_subtitles_filter,
+            # v0.7.55 P0-001 — honest report: only "burned" when both ffmpeg
+            # supports the filter AND the user-facing toggle is ON.
+            "captions_burned": has_subtitles_filter and animated_captions_on,
             "captions_animated": clip_ass is not None and clip_ass.exists(),
             "hook_text": hook_text or None,
         }
@@ -1514,7 +1542,16 @@ def _drawtext_hook_filter(hook_path: Path, out_w: int) -> str:
     )
 
 
-_WATERMARK_TIER_CACHE: dict[str, object] = {"checked_at": 0.0, "result": None}
+_WATERMARK_TIER_CACHE: dict[str, object] = {
+    "checked_at": 0.0,
+    "result": None,
+    # v0.7.55 P1-012 — last failure reason + timestamp. The desktop's
+    # pre-export gate reads this via `tier_status` RPC and blocks paid
+    # users when they would otherwise get a silent fail-safe watermark.
+    "last_failure": None,           # str | None — human-readable reason
+    "last_failure_at": 0.0,         # epoch seconds
+    "last_known_paid": False,       # bool — True if any prior /sync returned a paid tier
+}
 
 
 def invalidate_watermark_cache() -> None:
@@ -1525,6 +1562,56 @@ def invalidate_watermark_cache() -> None:
     """
     _WATERMARK_TIER_CACHE["result"] = None
     _WATERMARK_TIER_CACHE["checked_at"] = 0.0
+    _WATERMARK_TIER_CACHE["last_failure"] = None
+    _WATERMARK_TIER_CACHE["last_failure_at"] = 0.0
+
+
+def watermark_status() -> dict:
+    """v0.7.55 P1-012 — expose the cache state to the frontend so the
+    pre-export gate can refuse to start a paid user's export when the
+    tier check has been failing (network blip, JWT expired, Railway
+    down). Without this surface, a paid user silently gets watermarked
+    clips because _should_watermark() fail-safes to True.
+
+    Returns:
+      cached_watermark    : True/False/None — last decision (None=never queried).
+      last_failure        : str | None — reason for last failed /sync.
+      last_failure_at     : epoch seconds of last failure (0 if none).
+      last_known_paid     : bool — True if ANY prior /sync resolved to a paid tier.
+                            Frontend uses this to decide whether to block: a
+                            user who was paid 10 min ago but whose /sync now
+                            errors is the case we must protect.
+    """
+    return {
+        "cached_watermark": _WATERMARK_TIER_CACHE["result"],
+        "last_failure": _WATERMARK_TIER_CACHE.get("last_failure"),
+        "last_failure_at": float(_WATERMARK_TIER_CACHE.get("last_failure_at") or 0.0),
+        "last_known_paid": bool(_WATERMARK_TIER_CACHE.get("last_known_paid") or False),
+    }
+
+
+def _record_watermark_failure(reason: str) -> None:
+    """Stamp the cache with a failure reason + emit a structured stderr
+    line so the desktop can surface a toast. The frontend listens for
+    `lc:watermark-fallback` markers in stderr (existing pattern used by
+    other emit_stage_progress events)."""
+    import sys as _sys
+    import time as _time
+    import json as _json
+
+    _WATERMARK_TIER_CACHE["last_failure"] = reason
+    _WATERMARK_TIER_CACHE["last_failure_at"] = _time.time()
+    try:
+        _sys.stderr.write(
+            "[lc:watermark-fallback] "
+            + _json.dumps({"reason": reason, "at": _time.time()})
+            + "\n"
+        )
+        _sys.stderr.flush()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 _WATERMARK_CACHE_TTL_S = 600
 
 
@@ -1567,7 +1654,8 @@ def _should_watermark() -> bool:
         jwt_token = None
 
     if not jwt_token:
-        # No license → treat as free → watermark on
+        # No license → treat as free → watermark on. No failure stamp:
+        # this is the steady-state for free users, not a transient error.
         _WATERMARK_TIER_CACHE["result"] = True
         _WATERMARK_TIER_CACHE["checked_at"] = now
         return True
@@ -1582,6 +1670,9 @@ def _should_watermark() -> bool:
                 headers={"Authorization": f"Bearer {jwt_token}"},
             )
         if r.status_code != 200:
+            # v0.7.55 P1-012 — surfacing fail-safe so the desktop can
+            # block paid users instead of silently watermarking them.
+            _record_watermark_failure(f"/sync returned HTTP {r.status_code}")
             _WATERMARK_TIER_CACHE["result"] = True
             _WATERMARK_TIER_CACHE["checked_at"] = now
             return True
@@ -1592,9 +1683,18 @@ def _should_watermark() -> bool:
         wm = bool(features.get("watermark", True))
         _WATERMARK_TIER_CACHE["result"] = wm
         _WATERMARK_TIER_CACHE["checked_at"] = now
+        # v0.7.55 P1-012 — Successful /sync — clear stale failure stamps
+        # and remember if this user IS paid so the pre-export gate can
+        # protect them on a later transient failure.
+        _WATERMARK_TIER_CACHE["last_failure"] = None
+        _WATERMARK_TIER_CACHE["last_failure_at"] = 0.0
+        if wm is False:
+            _WATERMARK_TIER_CACHE["last_known_paid"] = True
         return wm
-    except Exception:
-        # Network/SSL failure → fail safe (watermark on)
+    except Exception as _exc:  # noqa: BLE001
+        # Network/SSL failure → fail safe (watermark on) + emit fail-safe
+        # marker so the desktop can block paid users.
+        _record_watermark_failure(f"/sync network failure: {type(_exc).__name__}")
         _WATERMARK_TIER_CACHE["result"] = True
         _WATERMARK_TIER_CACHE["checked_at"] = now
         return True

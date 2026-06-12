@@ -9,6 +9,7 @@ export function DropZone({
   onPasteUrl,
   onLiftTranscript,
   remainingExports = null,
+  tierResolved = true,
 }: {
   onPickFile: (brief: string) => void;
   onPasteUrl: (url: string, brief: string) => void;
@@ -16,6 +17,11 @@ export function DropZone({
   // Free clip exports left on the starter pass. null = unlimited (paid /
   // founder / unactivated) — counter is hidden in that case.
   remainingExports?: number | null;
+  // v0.7.55 P1-007 — defaults to true. When false, render a neutral
+  // "checking quota…" pill (matches UnifiedDropZone). Pre-fix the surface
+  // read null as Premium, so a free user mid-boot flashed Premium for
+  // ~500ms before /sync populated the counter.
+  tierResolved?: boolean;
 }) {
   // Sprint #16 — brief input removed. LLM clip-picker uses the source
   // title / description for guidance by default; if a power-user wants to
@@ -61,10 +67,13 @@ export function DropZone({
         </p>
       </button>
 
-      {/* v0.7.55 — Paid tier pill mirrors UnifiedDropZone. Free keeps
-          the countdown copy Daniel approved ("X / 100 free clips
-          remaining"). */}
-      {remainingExports !== null ? (
+      {/* v0.7.55 — Three tier states. Mirrors UnifiedDropZone. */}
+      {!tierResolved ? (
+        <p className="inline-flex w-fit items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-text-tertiary" />
+          checking quota…
+        </p>
+      ) : remainingExports !== null ? (
         <p className="px-1 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
           {remainingExports} / 100 free clips remaining
         </p>
