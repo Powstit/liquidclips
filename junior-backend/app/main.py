@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.cron import start_cron, stop_cron
 from app.db import Base, engine
-from app.routes import admin, affiliate, analytics, auth_whop, bonus_ledger, campaigns, channels, community, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, affiliate, analytics, auth_whop, bonus_ledger, campaigns, channels, community, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, promo, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -284,6 +284,46 @@ async def lifespan(_app: FastAPI):
         "CREATE INDEX IF NOT EXISTS ix_community_channels_section ON community_channels (section)",
         "CREATE INDEX IF NOT EXISTS ix_community_channels_business ON community_channels (business_unit)",
         "CREATE INDEX IF NOT EXISTS ix_community_channels_sort ON community_channels (sort_order)",
+        # v0.7.55 (admin mission control) — banners + announcements.
+        # `placement` enum + priority drives which banner wins per surface.
+        """CREATE TABLE IF NOT EXISTS banners (
+            id varchar PRIMARY KEY,
+            title varchar NOT NULL,
+            subtitle varchar,
+            image_url varchar,
+            cta_text varchar,
+            cta_url varchar,
+            placement varchar NOT NULL DEFAULT 'earn_hero',
+            target_tier varchar,
+            target_mission_id varchar,
+            priority integer NOT NULL DEFAULT 0,
+            starts_at timestamptz,
+            ends_at timestamptz,
+            is_active boolean NOT NULL DEFAULT true,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_banners_placement ON banners (placement)",
+        "CREATE INDEX IF NOT EXISTS ix_banners_mission ON banners (target_mission_id)",
+        # Announcements table — Whop channel posts originate here so we
+        # have a write-side ledger even when the chat feed is not yet
+        # provisioned. body_markdown is rendered client-side.
+        """CREATE TABLE IF NOT EXISTS announcements (
+            id varchar PRIMARY KEY,
+            title varchar NOT NULL,
+            body_markdown text,
+            kind varchar NOT NULL DEFAULT 'other',
+            cta_text varchar,
+            cta_url varchar,
+            target_tier varchar,
+            pinned boolean NOT NULL DEFAULT false,
+            published_at timestamptz,
+            is_active boolean NOT NULL DEFAULT true,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_announcements_kind ON announcements (kind)",
+        "CREATE INDEX IF NOT EXISTS ix_announcements_pinned ON announcements (pinned)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -349,6 +389,7 @@ app.include_router(admin.router)
 app.include_router(campaigns.router)
 app.include_router(bonus_ledger.router)
 app.include_router(community.router)
+app.include_router(promo.router)
 app.include_router(redirect.router)
 app.include_router(reward_clips.router)
 app.include_router(proxy_llm.router)

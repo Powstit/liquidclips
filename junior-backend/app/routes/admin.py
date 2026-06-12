@@ -40,6 +40,8 @@ from app.config import get_settings
 from app.db import engine, get_db
 from app.features import is_admin_email
 from app.models import (
+    Announcement,
+    Banner,
     CommunityChannel,
     DesktopErrorEvent,
     RewardBonusLedger,
@@ -1752,5 +1754,225 @@ def delete_channel(
     if not c:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"channel not found: {slug}")
     db.delete(c)
+    db.commit()
+
+
+# ── Banners (v0.7.55) ─────────────────────────────────────────────────
+
+
+class BannerPayload(BaseModel):
+    title: str = Field(..., min_length=2, max_length=200)
+    subtitle: str | None = Field(None, max_length=400)
+    image_url: str | None = Field(None, max_length=600)
+    cta_text: str | None = Field(None, max_length=80)
+    cta_url: str | None = Field(None, max_length=600)
+    placement: str = Field(
+        "earn_hero",
+        pattern=r"^(earn_hero|mission_card|mission_detail|upgrade_modal|community_top|home_hero|checkout_modal)$",
+    )
+    target_tier: str | None = Field(None, pattern=r"^(free|paid)$")
+    target_mission_id: str | None = Field(None, max_length=120)
+    priority: int = Field(0, ge=0, le=1000)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    is_active: bool = True
+
+
+class BannerPatch(BaseModel):
+    title: str | None = Field(None, min_length=2, max_length=200)
+    subtitle: str | None = Field(None, max_length=400)
+    image_url: str | None = Field(None, max_length=600)
+    cta_text: str | None = Field(None, max_length=80)
+    cta_url: str | None = Field(None, max_length=600)
+    placement: str | None = Field(
+        None,
+        pattern=r"^(earn_hero|mission_card|mission_detail|upgrade_modal|community_top|home_hero|checkout_modal)$",
+    )
+    target_tier: str | None = Field(None, pattern=r"^(free|paid)$")
+    target_mission_id: str | None = Field(None, max_length=120)
+    priority: int | None = Field(None, ge=0, le=1000)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    is_active: bool | None = None
+
+
+def _admin_serialize_banner(b: Banner) -> dict[str, Any]:
+    return {
+        "id": b.id,
+        "title": b.title,
+        "subtitle": b.subtitle,
+        "image_url": b.image_url,
+        "cta_text": b.cta_text,
+        "cta_url": b.cta_url,
+        "placement": b.placement,
+        "target_tier": b.target_tier,
+        "target_mission_id": b.target_mission_id,
+        "priority": b.priority,
+        "starts_at": b.starts_at.isoformat() if b.starts_at else None,
+        "ends_at": b.ends_at.isoformat() if b.ends_at else None,
+        "is_active": bool(b.is_active),
+        "created_at": b.created_at.isoformat() if b.created_at else None,
+        "updated_at": b.updated_at.isoformat() if b.updated_at else None,
+    }
+
+
+@router.get("/banners")
+def list_admin_banners(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    rows = (
+        db.query(Banner)
+        .order_by(Banner.placement.asc(), Banner.priority.desc(), Banner.created_at.desc())
+        .all()
+    )
+    return {"banners": [_admin_serialize_banner(b) for b in rows]}
+
+
+@router.post("/banners", status_code=status.HTTP_201_CREATED)
+def create_banner(
+    payload: BannerPayload,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    b = Banner(**payload.model_dump())
+    db.add(b)
+    db.commit()
+    db.refresh(b)
+    return {"banner": _admin_serialize_banner(b)}
+
+
+@router.patch("/banners/{banner_id}")
+def update_banner(
+    banner_id: str,
+    payload: BannerPatch,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    b = db.query(Banner).filter(Banner.id == banner_id).one_or_none()
+    if not b:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"banner not found: {banner_id}")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(b, k, v)
+    db.commit()
+    db.refresh(b)
+    return {"banner": _admin_serialize_banner(b)}
+
+
+@router.delete("/banners/{banner_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_banner(
+    banner_id: str,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    b = db.query(Banner).filter(Banner.id == banner_id).one_or_none()
+    if not b:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"banner not found: {banner_id}")
+    db.delete(b)
+    db.commit()
+
+
+# ── Announcements (v0.7.55) ──────────────────────────────────────────
+
+
+class AnnouncementPayload(BaseModel):
+    title: str = Field(..., min_length=2, max_length=200)
+    body_markdown: str | None = Field(None, max_length=8000)
+    kind: str = Field(
+        "other",
+        pattern=r"^(mission_drop|payout|rule_change|deadline|other)$",
+    )
+    cta_text: str | None = Field(None, max_length=80)
+    cta_url: str | None = Field(None, max_length=600)
+    target_tier: str | None = Field(None, pattern=r"^(free|paid)$")
+    pinned: bool = False
+    published_at: datetime | None = None
+    is_active: bool = True
+
+
+class AnnouncementPatch(BaseModel):
+    title: str | None = Field(None, min_length=2, max_length=200)
+    body_markdown: str | None = Field(None, max_length=8000)
+    kind: str | None = Field(
+        None, pattern=r"^(mission_drop|payout|rule_change|deadline|other)$"
+    )
+    cta_text: str | None = Field(None, max_length=80)
+    cta_url: str | None = Field(None, max_length=600)
+    target_tier: str | None = Field(None, pattern=r"^(free|paid)$")
+    pinned: bool | None = None
+    published_at: datetime | None = None
+    is_active: bool | None = None
+
+
+def _admin_serialize_announcement(a: Announcement) -> dict[str, Any]:
+    return {
+        "id": a.id,
+        "title": a.title,
+        "body_markdown": a.body_markdown,
+        "kind": a.kind,
+        "cta_text": a.cta_text,
+        "cta_url": a.cta_url,
+        "target_tier": a.target_tier,
+        "pinned": bool(a.pinned),
+        "published_at": a.published_at.isoformat() if a.published_at else None,
+        "is_active": bool(a.is_active),
+        "created_at": a.created_at.isoformat() if a.created_at else None,
+        "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+    }
+
+
+@router.get("/announcements")
+def list_admin_announcements(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    rows = (
+        db.query(Announcement)
+        .order_by(Announcement.pinned.desc(), Announcement.created_at.desc())
+        .all()
+    )
+    return {"announcements": [_admin_serialize_announcement(a) for a in rows]}
+
+
+@router.post("/announcements", status_code=status.HTTP_201_CREATED)
+def create_announcement(
+    payload: AnnouncementPayload,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    a = Announcement(**payload.model_dump())
+    db.add(a)
+    db.commit()
+    db.refresh(a)
+    return {"announcement": _admin_serialize_announcement(a)}
+
+
+@router.patch("/announcements/{announcement_id}")
+def update_announcement(
+    announcement_id: str,
+    payload: AnnouncementPatch,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    a = db.query(Announcement).filter(Announcement.id == announcement_id).one_or_none()
+    if not a:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"announcement not found: {announcement_id}")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(a, k, v)
+    db.commit()
+    db.refresh(a)
+    return {"announcement": _admin_serialize_announcement(a)}
+
+
+@router.delete("/announcements/{announcement_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_announcement(
+    announcement_id: str,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    a = db.query(Announcement).filter(Announcement.id == announcement_id).one_or_none()
+    if not a:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"announcement not found: {announcement_id}")
+    db.delete(a)
     db.commit()
 
