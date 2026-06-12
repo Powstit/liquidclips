@@ -1000,3 +1000,66 @@ a { color: inherit; text-decoration: none; }
   border-bottom-color: transparent;
 }
 .download-pick-sep { color: var(--text-tertiary); opacity: 0.4; }
+
+/* v0.7.56 — install helpers row, sits below the 6-step grid on /download.
+   Reads as a glossary, not as another tile row: borderless, small mono
+   label + cream-ink value, single visual rhythm via column dividers. */
+.install-helpers {
+  list-style: none;
+  margin: 36px 0 0;
+  padding: 24px 0 0;
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px 28px;
+}
+.install-helpers li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+.install-helpers__label {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.install-helpers__value {
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+.install-fallback-link {
+  display: inline-block;
+  margin-top: 18px;
+  font-size: 13px;
+  color: var(--fuchsia-deep);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (max-width: 920px) {
+  .install-helpers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .install-helpers { grid-template-columns: 1fr; gap: 14px; }
+}
+
+
+.hero-install-anchor {
+  display: inline-block;
+  margin-top: 10px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fuchsia-deep);
+  border-bottom: 1px dashed rgba(255, 102, 184, 0.5);
+  padding-bottom: 2px;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+.hero-install-anchor:hover { color: var(--fuchsia-bright); border-bottom-color: var(--fuchsia-bright); }
+

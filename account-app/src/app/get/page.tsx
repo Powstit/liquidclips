@@ -267,13 +267,13 @@ function SignedInPanel({ link, clerkUserId, email }: { link: LinkState; clerkUse
           your own OpenAI key for clip selection (hosted AI is in private beta).
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <Link
-            href="/download"
+          <a
+            href="https://liquidclips.app/download"
             onClick={() => track("desktop_download_clicked", { source: "get" })}
             className="w-full rounded-full bg-ink px-6 py-3 text-center font-sans text-[15px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] sm:w-auto"
           >
             Download Liquid Clips →
-          </Link>
+          </a>
           <Link
             href="/dashboard"
             className="w-full rounded-full border border-line bg-paper px-6 py-3 text-center font-sans text-[15px] font-medium text-ink transition-colors hover:border-fuchsia sm:w-auto"
@@ -455,13 +455,13 @@ function RedeemPanel({ redeem }: { redeem: RedeemState }) {
           Your purchase is now attached to this account. Grab the app and start clipping.
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <Link
-            href="/download"
+          <a
+            href="https://liquidclips.app/download"
             onClick={() => track("desktop_download_clicked", { source: "claim" })}
             className="w-full rounded-full bg-ink px-6 py-3 text-center font-sans text-[15px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] sm:w-auto"
           >
             Download Liquid Clips →
-          </Link>
+          </a>
           <Link
             href="/dashboard"
             className="w-full rounded-full border border-line bg-paper px-6 py-3 text-center font-sans text-[15px] font-medium text-ink transition-colors hover:border-fuchsia sm:w-auto"
