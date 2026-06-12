@@ -21,7 +21,7 @@
 // the new sidecar `import_ready_clips(paths[])` which wraps each file in a
 // Clip record with cut_path == vertical_path == the imported file.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   ArrowRight,
@@ -35,6 +35,10 @@ import {
   Upload,
 } from "lucide-react";
 import { sidecar, humanError, type Project } from "../lib/sidecar";
+import {
+  readCaptionsEnabled,
+  setCaptionsEnabled as persistCaptionsEnabled,
+} from "../lib/captionsPref";
 
 const URL_RE = /^https?:\/\//i;
 
@@ -65,6 +69,18 @@ export function UnifiedDropZone({
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [importing, setImporting] = useState(false);
+  // v0.7.55 — captions on/off. Persists to localStorage + pushes to
+  // the sidecar's JUNIOR_ANIMATED_CAPTIONS env var so the next
+  // pipeline call honors the choice.
+  const [captionsOn, setCaptionsOnState] = useState<boolean>(true);
+  useEffect(() => {
+    setCaptionsOnState(readCaptionsEnabled());
+  }, []);
+  function toggleCaptions() {
+    const next = !captionsOn;
+    setCaptionsOnState(next);
+    persistCaptionsEnabled(next);
+  }
 
   function submitMake() {
     const trimmed = url.trim();
@@ -209,11 +225,38 @@ export function UnifiedDropZone({
             </div>
           </div>
 
-          {remainingExports !== null && (
-            <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-              {remainingExports} free export{remainingExports === 1 ? "" : "s"} left
-            </p>
-          )}
+          {/* v0.7.55 — Free tier sees the countdown (X / 100 remaining).
+              Paid tier sees premium status instead. Captions toggle sits
+              beside the tier pill since both are export-step settings. */}
+          <div className="flex flex-wrap items-center gap-3">
+            {remainingExports !== null ? (
+              <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                {remainingExports} / 100 free clips remaining
+              </p>
+            ) : (
+              <p className="inline-flex w-fit items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
+                Premium · no watermark
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={toggleCaptions}
+              aria-pressed={captionsOn}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors ${
+                captionsOn
+                  ? "border-fuchsia/40 bg-fuchsia-soft/30 text-fuchsia-deep hover:border-fuchsia"
+                  : "border-line bg-paper text-text-tertiary hover:border-fuchsia hover:text-fuchsia"
+              }`}
+            >
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${
+                  captionsOn ? "bg-fuchsia" : "bg-text-tertiary"
+                }`}
+              />
+              Captions {captionsOn ? "on" : "off"}
+            </button>
+          </div>
           {error && <p className="font-mono text-[11px] text-[var(--color-danger)]">{error}</p>}
 
           {dragOver && (

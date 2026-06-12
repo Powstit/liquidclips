@@ -61,9 +61,17 @@ export function DropZone({
         </p>
       </button>
 
-      {remainingExports !== null && (
+      {/* v0.7.55 — Paid tier pill mirrors UnifiedDropZone. Free keeps
+          the countdown copy Daniel approved ("X / 100 free clips
+          remaining"). */}
+      {remainingExports !== null ? (
         <p className="px-1 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-          {remainingExports} free export{remainingExports === 1 ? "" : "s"} left
+          {remainingExports} / 100 free clips remaining
+        </p>
+      ) : (
+        <p className="inline-flex w-fit items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
+          Premium · no watermark
         </p>
       )}
 

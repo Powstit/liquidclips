@@ -3618,6 +3618,37 @@ def method_preload_whisper(_params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def method_set_runtime_flag(params: dict[str, Any]) -> dict[str, Any]:
+    """v0.7.55 — set a whitelisted runtime flag on the sidecar's
+    process environment. Used by the desktop's captions on/off toggle
+    so the user's choice propagates to the next pipeline call without
+    a sidecar restart. Whitelist prevents the RPC from being a generic
+    env-var write surface (would let a malicious caller flip
+    PYTHONPATH / LD_LIBRARY_PATH / etc).
+
+    Per Daniel's locked spec ("Do not build new caption cockpit. Use
+    existing caption infrastructure only.") — JUNIOR_ANIMATED_CAPTIONS
+    already controls _animated_captions_enabled() in stages.py. The
+    toggle below just wires the existing knob to the UI.
+    """
+    name = params.get("name")
+    value = params.get("value")
+    allowed = {"JUNIOR_ANIMATED_CAPTIONS"}
+    if not isinstance(name, str) or name not in allowed:
+        raise ValueError(f"unknown or unsupported runtime flag: {name}")
+    if value is None:
+        os.environ.pop(name, None)
+    else:
+        # Normalize bool-ish payloads — both Python True and the JS
+        # string "true" should yield "1". Anything explicitly falsy
+        # ("0", "false", "off", "") clears the flag's effect.
+        if isinstance(value, bool):
+            os.environ[name] = "1" if value else "0"
+        else:
+            os.environ[name] = str(value)
+    return {"ok": True, "name": name, "value": os.environ.get(name)}
+
+
 def method_tier_invalidate(_params: dict[str, Any]) -> dict[str, Any]:
     """v0.7.55 P1-007 — clear the export-time tier cache so the very
     next export re-queries /sync. The React side calls this on the
@@ -4337,6 +4368,7 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "secret_set": method_secret_set,
     "secret_delete": method_secret_delete,
     "tier_invalidate": method_tier_invalidate,
+    "set_runtime_flag": method_set_runtime_flag,
     "hardware_info": method_hardware_info,
     "regenerate_clip": method_regenerate_clip,
     "pick_more_clips": method_pick_more_clips,
