@@ -55,6 +55,8 @@ const READ_PATHS = [
   // owns the submission + base $1 RPM; this ledger tracks the $4 premium
   // bonus due to paid users only, keyed by whop_submission_id.
   /^bonus-ledger$/,
+  // v0.7.55 (community architecture) — tier-gated room CRUD.
+  /^community\/channels$/,
 ];
 const WRITE_PATHS = [
   /^claims\/[^/]+\/expire$/,
@@ -64,10 +66,18 @@ const WRITE_PATHS = [
   // v0.7.55 — admin imports a Whop submission row + marks bonus paid.
   /^bonus-ledger\/import$/,
   /^bonus-ledger\/[^/]+\/mark-paid$/,
+  // v0.7.55 — community channel CRUD (POST create, PATCH/DELETE via
+  // method override below — Next.js route handlers dispatch on method).
+  /^community\/channels$/,
+  /^community\/channels\/[^/]+$/,
 ];
 
 function pathAllowed(path: string, method: string): boolean {
-  const list = method === "POST" ? WRITE_PATHS : READ_PATHS;
+  // GET → read paths. Anything else (POST, PATCH, DELETE) is a write.
+  // v0.7.55 — pre-fix the proxy only flipped on POST; PATCH/DELETE
+  // requests fell through to the GET allow-list, which made the new
+  // community CRUD endpoints unreachable.
+  const list = method === "GET" ? READ_PATHS : WRITE_PATHS;
   return list.some((re) => re.test(path));
 }
 
@@ -101,10 +111,25 @@ async function handle(req: NextRequest, ctx: AdminRouteCtx): Promise<Response> {
   params.set("clerk_user_id", adminId);
 
   const target = `${BACKEND_URL}/admin/${path}?${params.toString()}`;
+  // v0.7.55 — forward the request body on non-GET methods. Pre-fix the
+  // proxy stripped the body, so any admin POST/PATCH that carried JSON
+  // (bonus-ledger import, community channel create/update) silently
+  // hit the backend with an empty body and 422'd.
+  const headers: Record<string, string> = {
+    "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "",
+  };
+  let body: string | undefined;
+  if (req.method !== "GET" && req.method !== "DELETE") {
+    body = await req.text();
+    const ct = req.headers.get("content-type");
+    if (ct) headers["content-type"] = ct;
+    else if (body) headers["content-type"] = "application/json";
+  }
   try {
     const res = await fetch(target, {
       method: req.method,
-      headers: { "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "" },
+      headers,
+      body,
       cache: "no-store",
     });
     const text = await res.text();
@@ -122,5 +147,13 @@ export async function GET(req: NextRequest, ctx: AdminRouteCtx): Promise<Respons
 }
 
 export async function POST(req: NextRequest, ctx: AdminRouteCtx): Promise<Response> {
+  return handle(req, ctx);
+}
+
+export async function PATCH(req: NextRequest, ctx: AdminRouteCtx): Promise<Response> {
+  return handle(req, ctx);
+}
+
+export async function DELETE(req: NextRequest, ctx: AdminRouteCtx): Promise<Response> {
   return handle(req, ctx);
 }
