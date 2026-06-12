@@ -819,6 +819,14 @@ export const sidecar = {
   // so the next export re-queries /sync. Called when checkout completes
   // so a just-upgraded user gets a clean export immediately.
   tierInvalidate: () => sidecarCall<{ ok: true }>("tier_invalidate", {}),
+  // v0.7.55 — set a whitelisted env var on the sidecar process so the
+  // next pipeline call picks it up. Only JUNIOR_ANIMATED_CAPTIONS is
+  // whitelisted today; the backend gate rejects anything else.
+  setRuntimeFlag: (name: "JUNIOR_ANIMATED_CAPTIONS", value: boolean) =>
+    sidecarCall<{ ok: true; name: string; value: string | null }>(
+      "set_runtime_flag",
+      { name, value },
+    ),
   reactionSearch: (query: string, perPage = 12) =>
     sidecarCall<{
       provider: "giphy" | "pexels" | "pixabay";
