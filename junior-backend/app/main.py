@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.cron import start_cron, stop_cron
 from app.db import Base, engine
-from app.routes import admin, affiliate, analytics, auth_whop, bonus_ledger, campaigns, channels, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, affiliate, analytics, auth_whop, bonus_ledger, campaigns, channels, community, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -247,6 +247,43 @@ async def lifespan(_app: FastAPI):
         "CREATE INDEX IF NOT EXISTS ix_reward_bonus_ledger_campaign ON reward_bonus_ledger (campaign_id)",
         "CREATE INDEX IF NOT EXISTS ix_reward_bonus_ledger_status ON reward_bonus_ledger (bonus_payout_status)",
         "CREATE INDEX IF NOT EXISTS ix_reward_bonus_ledger_whop_bounty ON reward_bonus_ledger (whop_bounty_id)",
+        # v0.7.55 (community architecture) — sponsored_campaigns gains 7
+        # columns for channel binding + brand metadata + funnel flags.
+        # All nullable / default false so existing rows survive untouched.
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS brand_name varchar",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS business_unit varchar",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS required_tier varchar",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS community_channel_id varchar",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS affiliate_enabled boolean NOT NULL DEFAULT false",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS is_high_rpm boolean NOT NULL DEFAULT false",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS is_invite_only boolean NOT NULL DEFAULT false",
+        "CREATE INDEX IF NOT EXISTS ix_sponsored_campaigns_brand ON sponsored_campaigns (brand_name)",
+        "CREATE INDEX IF NOT EXISTS ix_sponsored_campaigns_business_unit ON sponsored_campaigns (business_unit)",
+        "CREATE INDEX IF NOT EXISTS ix_sponsored_campaigns_channel ON sponsored_campaigns (community_channel_id)",
+        # community_channels — tier-gated rooms with locked-preview support.
+        # whop_channel_id nullable in Phase 1 (rooms can be created on the
+        # LC side before the Whop chat feed exists). is_admin_only =
+        # announcements-mode (read-only for members). section drives the
+        # UI grouping: announcements | free_lobby | paid_core | mission.
+        """CREATE TABLE IF NOT EXISTS community_channels (
+            id varchar PRIMARY KEY,
+            slug varchar NOT NULL UNIQUE,
+            name varchar NOT NULL,
+            purpose varchar,
+            whop_channel_id varchar,
+            required_tier varchar NOT NULL DEFAULT 'paid',
+            business_unit varchar,
+            mission_lane varchar,
+            is_admin_only boolean NOT NULL DEFAULT false,
+            is_locked_preview_enabled boolean NOT NULL DEFAULT true,
+            section varchar NOT NULL DEFAULT 'mission',
+            sort_order integer NOT NULL DEFAULT 0,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_community_channels_section ON community_channels (section)",
+        "CREATE INDEX IF NOT EXISTS ix_community_channels_business ON community_channels (business_unit)",
+        "CREATE INDEX IF NOT EXISTS ix_community_channels_sort ON community_channels (sort_order)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -311,6 +348,7 @@ app.include_router(tiktok_verify.router)
 app.include_router(admin.router)
 app.include_router(campaigns.router)
 app.include_router(bonus_ledger.router)
+app.include_router(community.router)
 app.include_router(redirect.router)
 app.include_router(reward_clips.router)
 app.include_router(proxy_llm.router)

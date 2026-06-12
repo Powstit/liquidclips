@@ -130,6 +130,7 @@ const TABS = [
   "Postiz",
   "Bugs",
   "Bonus Ledger",
+  "Community Channels",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -282,6 +283,7 @@ export function AdminHQ({ adminEmail, initialOverview }: { adminEmail: string; i
         {tab === "Postiz" && <PostizTab />}
         {tab === "Bugs" && <BugsTab />}
         {tab === "Bonus Ledger" && <BonusLedgerTab />}
+        {tab === "Community Channels" && <CommunityChannelsTab />}
       </div>
 
       <footer className="mt-14 border-t border-line pt-5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
@@ -1930,6 +1932,351 @@ function BonusLedgerImport({
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
           base + bonus computed server-side at import
         </span>
+      </div>
+    </div>
+  );
+}
+
+/* ── Community Channels tab (v0.7.55) ────────────────────────────── */
+
+type AdminChannel = {
+  id: string;
+  slug: string;
+  name: string;
+  purpose: string | null;
+  whop_channel_id: string | null;
+  required_tier: string;
+  business_unit: string | null;
+  mission_lane: string | null;
+  is_admin_only: boolean;
+  is_locked_preview_enabled: boolean;
+  section: string;
+  sort_order: number;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type ChannelDraft = {
+  slug: string;
+  name: string;
+  purpose: string;
+  whop_channel_id: string;
+  required_tier: string;
+  business_unit: string;
+  mission_lane: string;
+  is_admin_only: boolean;
+  is_locked_preview_enabled: boolean;
+  section: string;
+  sort_order: string;
+};
+
+const EMPTY_DRAFT: ChannelDraft = {
+  slug: "",
+  name: "",
+  purpose: "",
+  whop_channel_id: "",
+  required_tier: "paid",
+  business_unit: "",
+  mission_lane: "",
+  is_admin_only: false,
+  is_locked_preview_enabled: true,
+  section: "mission",
+  sort_order: "100",
+};
+
+function CommunityChannelsTab() {
+  const adminFetch = useAdminFetch();
+  const [rows, setRows] = useState<AdminChannel[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<ChannelDraft>(EMPTY_DRAFT);
+  const [editingSlug, setEditingSlug] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const j = (await adminFetch("community/channels")) as { channels: AdminChannel[] };
+      setRows(j.channels);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e)); // allow-raw-error — admin-internal debug surface
+    }
+  }, [adminFetch]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  function reset() {
+    setDraft(EMPTY_DRAFT);
+    setEditingSlug(null);
+  }
+
+  function edit(c: AdminChannel) {
+    setEditingSlug(c.slug);
+    setDraft({
+      slug: c.slug,
+      name: c.name,
+      purpose: c.purpose ?? "",
+      whop_channel_id: c.whop_channel_id ?? "",
+      required_tier: c.required_tier,
+      business_unit: c.business_unit ?? "",
+      mission_lane: c.mission_lane ?? "",
+      is_admin_only: !!c.is_admin_only,
+      is_locked_preview_enabled: !!c.is_locked_preview_enabled,
+      section: c.section,
+      sort_order: String(c.sort_order),
+    });
+  }
+
+  async function save() {
+    if (!draft.slug.trim() || !draft.name.trim()) {
+      setError("slug and name are required");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const sortOrder = parseInt(draft.sort_order.trim() || "0", 10);
+    const body = {
+      slug: draft.slug.trim(),
+      name: draft.name.trim(),
+      purpose: draft.purpose.trim() || null,
+      whop_channel_id: draft.whop_channel_id.trim() || null,
+      required_tier: draft.required_tier,
+      business_unit: draft.business_unit.trim() || null,
+      mission_lane: draft.mission_lane.trim() || null,
+      is_admin_only: draft.is_admin_only,
+      is_locked_preview_enabled: draft.is_locked_preview_enabled,
+      section: draft.section,
+      sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
+    };
+    try {
+      if (editingSlug) {
+        const patch = { ...body } as Record<string, unknown>;
+        // Slug is immutable on PATCH per the backend contract.
+        delete patch.slug;
+        await adminFetch(`community/channels/${editingSlug}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+      } else {
+        await adminFetch("community/channels", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      }
+      reset();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e)); // allow-raw-error — admin-internal debug surface
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(slug: string) {
+    if (!window.confirm(`Delete channel "${slug}"? This cannot be undone.`)) return;
+    try {
+      await adminFetch(`community/channels/${slug}`, { method: "DELETE" });
+      if (editingSlug === slug) reset();
+      await load();
+    } catch (e) {
+      window.alert(`Delete failed: ${e instanceof Error ? e.message : String(e)}`); // allow-raw-error — admin-internal alert
+    }
+  }
+
+  return (
+    <Panel
+      title="Community channels"
+      sub="Tier-gated rooms backed by Whop chat feeds. Sections: announcements · free_lobby · paid_core · mission."
+      right={
+        <button
+          type="button"
+          onClick={reset}
+          className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia"
+        >
+          {editingSlug ? "Cancel edit" : "New channel"}
+        </button>
+      }
+    >
+      <ChannelDraftForm
+        draft={draft}
+        setDraft={setDraft}
+        save={save}
+        busy={busy}
+        editingSlug={editingSlug}
+      />
+      {error && (
+        <p className="mt-3 rounded-md border border-[#DC2626]/40 bg-[#DC2626]/5 px-3 py-2 font-mono text-[11px] text-[#F87171]">
+          {error}
+        </p>
+      )}
+      {!rows ? (
+        <p className="mt-4 font-mono text-[11px] text-text-tertiary">loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="mt-4 font-mono text-[11px] text-text-tertiary">no channels yet</p>
+      ) : (
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full font-mono text-[11px]">
+            <thead className="border-b border-line text-text-tertiary">
+              <tr className="text-left">
+                <th className="px-2 py-2">section</th>
+                <th className="px-2 py-2">slug · name</th>
+                <th className="px-2 py-2">tier</th>
+                <th className="px-2 py-2">whop_channel_id</th>
+                <th className="px-2 py-2">business · lane</th>
+                <th className="px-2 py-2 text-right">sort</th>
+                <th className="px-2 py-2"> </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((c) => (
+                <tr key={c.id} className="border-b border-line/40">
+                  <td className="px-2 py-2 text-text-tertiary">{c.section}</td>
+                  <td className="px-2 py-2 text-ink">
+                    <div className="flex flex-col">
+                      <span className="font-display text-[13px] font-semibold text-ink">{c.name}</span>
+                      <span className="text-text-tertiary">{c.slug}</span>
+                    </div>
+                  </td>
+                  <td className="px-2 py-2"><Chip label={c.required_tier} /></td>
+                  <td className="px-2 py-2 text-text-tertiary">{c.whop_channel_id ?? "—"}</td>
+                  <td className="px-2 py-2 text-text-tertiary">
+                    {(c.business_unit ?? "—") + " · " + (c.mission_lane ?? "—")}
+                  </td>
+                  <td className="px-2 py-2 text-right text-text-tertiary tabular-nums">{c.sort_order}</td>
+                  <td className="px-2 py-2 text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => edit(c)}
+                        className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void remove(c.slug)}
+                        className="rounded-full border border-[#DC2626]/40 bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#F87171] hover:bg-[#DC2626]/10"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function ChannelDraftForm({
+  draft,
+  setDraft,
+  save,
+  busy,
+  editingSlug,
+}: {
+  draft: ChannelDraft;
+  setDraft: (fn: (d: ChannelDraft) => ChannelDraft) => void;
+  save: () => Promise<void> | void;
+  busy: boolean;
+  editingSlug: string | null;
+}) {
+  function text(name: keyof ChannelDraft, label: string, opts?: { placeholder?: string }) {
+    return (
+      <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+        {label}
+        <input
+          type="text"
+          value={draft[name] as string}
+          placeholder={opts?.placeholder}
+          disabled={name === "slug" && !!editingSlug}
+          onChange={(e) =>
+            setDraft((d) => ({ ...d, [name]: e.target.value }))
+          }
+          className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink disabled:opacity-60"
+        />
+      </label>
+    );
+  }
+
+  function bool(name: keyof ChannelDraft, label: string) {
+    return (
+      <label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+        <input
+          type="checkbox"
+          checked={!!draft[name]}
+          onChange={(e) => setDraft((d) => ({ ...d, [name]: e.target.checked }))}
+        />
+        {label}
+      </label>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-line bg-paper p-4">
+      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia">
+        {editingSlug ? `editing ${editingSlug}` : "new channel"}
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
+        {text("slug", "slug *", { placeholder: "premium-rewards-hq" })}
+        {text("name", "name *", { placeholder: "Premium Rewards HQ" })}
+        {text("whop_channel_id", "whop_channel_id", { placeholder: "chat_feed_…" })}
+        {text("business_unit", "business_unit", { placeholder: "uncle_daniel" })}
+        {text("mission_lane", "mission_lane", { placeholder: "training" })}
+        {text("sort_order", "sort_order")}
+        <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+          required_tier
+          <select
+            value={draft.required_tier}
+            onChange={(e) => setDraft((d) => ({ ...d, required_tier: e.target.value }))}
+            className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink"
+          >
+            <option value="free">free</option>
+            <option value="free_paid">free_paid</option>
+            <option value="paid">paid</option>
+            <option value="paid_admin">paid_admin</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+          section
+          <select
+            value={draft.section}
+            onChange={(e) => setDraft((d) => ({ ...d, section: e.target.value }))}
+            className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink"
+          >
+            <option value="announcements">announcements</option>
+            <option value="free_lobby">free_lobby</option>
+            <option value="paid_core">paid_core</option>
+            <option value="mission">mission</option>
+          </select>
+        </label>
+        <label className="col-span-2 flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary md:col-span-3">
+          purpose
+          <textarea
+            value={draft.purpose}
+            onChange={(e) => setDraft((d) => ({ ...d, purpose: e.target.value }))}
+            rows={2}
+            className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink"
+          />
+        </label>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-4">
+        {bool("is_admin_only", "admin-only posts")}
+        {bool("is_locked_preview_enabled", "show locked preview to free users")}
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={busy}
+          className="ml-auto rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-white hover:bg-fuchsia-bright disabled:opacity-60"
+        >
+          {busy ? "Saving…" : editingSlug ? "Save changes" : "Create channel"}
+        </button>
       </div>
     </div>
   );

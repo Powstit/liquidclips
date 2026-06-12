@@ -640,6 +640,69 @@ class SponsoredCampaign(Base):
     whop_campaign_id: Mapped[str | None] = mapped_column(String, nullable=True)
     whop_campaign_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # v0.7.55 (community architecture) — campaign↔channel binding +
+    # brand metadata so the campaign card knows which Whop chat feed to
+    # link to, which business unit the budget belongs to, and whether
+    # this campaign should render in the affiliate room (separate from
+    # the main rewards HQ). Matches Daniel's locked field list verbatim.
+    brand_name: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    business_unit: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    required_tier: Mapped[str | None] = mapped_column(String, nullable=True)
+    community_channel_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    affiliate_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_high_rpm: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_invite_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class CommunityChannel(Base):
+    """v0.7.55 — tier-gated community rooms. One row per Whop chat feed
+    that Liquid Clips routes to.
+
+    Architecture (locked by Daniel):
+      • Free rooms: Free Clipper Lobby + Announcements. Open to all.
+      • Paid core: Premium Rewards HQ + Affiliate Growth Room. Members
+        only. Locked preview shown to free users with an upgrade CTA.
+      • Mission rooms: Uncle Daniel · Viral Reaction · DDB Beauty · DDB
+        Fashion · Sponsor Campaigns. Tier-gated AND mission-specific.
+
+    `whop_channel_id` is the chat_feed_* id from Whop. Nullable in Phase
+    1 because the Whop channels can be provisioned later; the UI
+    surfaces a "Coming soon" state when the id is missing.
+
+    `is_admin_only` flips the room to announcements-mode (read-only for
+    members). `is_locked_preview_enabled` controls whether free users
+    see a teaser card OR get the room hidden entirely from the listing.
+    """
+
+    __tablename__ = "community_channels"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    slug: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    purpose: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    whop_channel_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # 'free' | 'free_paid' | 'paid' | 'paid_admin' — drives the locked/
+    # unlocked render. 'free_paid' = open to everyone signed in (the
+    # lobby + announcements). 'paid' = solo|pro|agency. 'paid_admin' =
+    # paid users + admins can post; everyone else is read-only.
+    required_tier: Mapped[str] = mapped_column(String, nullable=False, default="paid")
+
+    business_unit: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    mission_lane: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    is_admin_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_locked_preview_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # Section drives the grouping in the UI. Free locks the room into
+    # the lobby/announcements section; everything else groups by purpose.
+    # Values: 'announcements' | 'free_lobby' | 'paid_core' | 'mission'.
+    section: Mapped[str] = mapped_column(String, nullable=False, default="mission", index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
