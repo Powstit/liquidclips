@@ -1322,10 +1322,17 @@ def stage_reframe(project: Project) -> dict[str, Any]:
                 # _watermark_filter() loops the overlay so a 3s clip still
                 # gets watermarked despite the 12s loop.
                 if _should_watermark():
-                    _clip_seconds = max(
-                        0.1,
-                        float(clip.get("end", 0)) - float(clip.get("start", 0)),
-                    )
+                    # v0.7.55 P0-002 — clip.get('end', 0) only fires when
+                    # the key is ABSENT, not when present-as-null. The
+                    # desktop emits null for unset starts on imported-
+                    # but-untrimmed clips, which would TypeError out the
+                    # entire stage_reframe loop. Coerce defensively.
+                    _end = clip.get("end") if clip.get("end") is not None else 0
+                    _start = clip.get("start") if clip.get("start") is not None else 0
+                    try:
+                        _clip_seconds = max(0.1, float(_end) - float(_start))
+                    except (TypeError, ValueError):
+                        _clip_seconds = 0.1
                     vf_after = f"{vf_after},{_watermark_filter(out_w, out_h, _clip_seconds)}"
 
                 # Sprint #14 Voice enhancement — afftdn removes background hiss /
@@ -1508,6 +1515,16 @@ def _drawtext_hook_filter(hook_path: Path, out_w: int) -> str:
 
 
 _WATERMARK_TIER_CACHE: dict[str, object] = {"checked_at": 0.0, "result": None}
+
+
+def invalidate_watermark_cache() -> None:
+    """v0.7.55 P1-007 — clear the 10-min tier cache so the very next
+    export re-queries /sync. Called by sidecar's `tier_invalidate` RPC
+    on `lc:checkout-complete` so a just-upgraded user doesn't keep
+    seeing the watermark while the cache decays.
+    """
+    _WATERMARK_TIER_CACHE["result"] = None
+    _WATERMARK_TIER_CACHE["checked_at"] = 0.0
 _WATERMARK_CACHE_TTL_S = 600
 
 
@@ -1607,6 +1624,15 @@ def _watermark_filter(out_w: int, out_h: int, clip_seconds: float) -> str:
       (b) build a setpts loop on the overlay so a 3s clip doesn't see
           the bug walk off and disappear at t=10.2.
     """
+    # v0.7.55 P1-004 — sanity-bail on degenerate output dimensions.
+    # cap_size can be (0,0) on a freshly-imported clip where the
+    # probe failed before reframe ran. Forwarding 0 to the overlay
+    # filter produces a zero-width watermark which ffmpeg rejects with
+    # an opaque parser error. Fall through to the static path (which
+    # also no-ops on zero dimensions but doesn't error).
+    if out_w < 100 or out_h < 100:
+        return _liquid_lift_watermark_filter(out_w, out_h)
+
     animated_path = (
         Path(__file__).resolve().parent
         / "assets"
@@ -1616,7 +1642,19 @@ def _watermark_filter(out_w: int, out_h: int, clip_seconds: float) -> str:
     # Animated overlay needs at least a full intro (1s) + visible
     # settled hold (~1.5s) to read coherently. Anything shorter falls
     # back to the static wordmark.
-    if clip_seconds >= 2.5 and animated_path.exists():
+    #
+    # v0.7.55 P1-003 — Path.exists() returns True for empty/corrupt
+    # files too. The MOV header is at least ~1KB; rejecting anything
+    # smaller than 8KB catches a truncated install (DMG transfer
+    # interrupted, signing strip corrupted alpha, etc) before ffmpeg
+    # crashes mid-encode. The static fallback handles those cases.
+    mov_ok = False
+    try:
+        mov_ok = animated_path.exists() and animated_path.stat().st_size >= 8 * 1024
+    except OSError:
+        mov_ok = False
+
+    if clip_seconds >= 2.5 and mov_ok:
         try:
             return _made_with_animated_watermark_filter(
                 out_w, out_h, clip_seconds, animated_path
@@ -1664,12 +1702,24 @@ def _made_with_animated_watermark_filter(
     wm_w = max(280, int(out_w * 0.32))
     margin_x = max(36, int(out_w * 0.055))
     margin_y = max(72, int(out_h * 0.062))
+    # v0.7.55 P1-005 — escape ffmpeg-filter special chars in the path.
+    # Spaces are tolerated by every ffmpeg build we ship, but ':' (option
+    # separator), '\\' (escape), and '\\'' (quote) MUST be backslash-
+    # escaped or movie= parses them as filter options. The install path
+    # on macOS resolves to `/Applications/Liquid Clips.app/Contents/...`
+    # which only has spaces today; the escape future-proofs against
+    # users who relocate the bundle to a path with brackets / colons.
+    escaped_path = (
+        str(overlay_path)
+        .replace("\\", "\\\\")
+        .replace(":", "\\:")
+        .replace("'", "\\'")
+    )
     # `loop=0` on movie= means infinite source loops, which combined
-    # with setpts=PTS-STARTPTS gives a clean wrap. Quote the path in
-    # case of spaces (none expected — assets/ is repo-controlled).
+    # with setpts=PTS-STARTPTS gives a clean wrap.
     return (
         f"split=1[main];"
-        f"movie={overlay_path}:loop=0,"
+        f"movie={escaped_path}:loop=0,"
         f"setpts=PTS-STARTPTS,"
         f"scale={wm_w}:-2,"
         f"format=rgba[wm];"

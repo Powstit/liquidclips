@@ -60,6 +60,8 @@
       "../python-sidecar/models/faster-whisper-tiny/tokenizer.json",
       "../python-sidecar/models/faster-whisper-tiny/vocabulary.txt",
       "../python-sidecar/assets/liquid-clips-wordmark.png",
+      "../python-sidecar/assets/watermark/made-with-liquid-clips.mov",
+      "../python-sidecar/assets/watermark/made-with-liquid-clips-static.png",
       "PrivacyInfo.xcprivacy"
     ],
     "category": "Productivity",

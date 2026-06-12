@@ -815,6 +815,10 @@ export const sidecar = {
     sidecarCall<{ name: "LICENSE_JWT"; value: string | null }>("secret_get", { name: "LICENSE_JWT" }),
   secretSet: (name: SecretName, value: string) => sidecarCall<{ ok: true; name: SecretName }>("secret_set", { name, value }),
   secretDelete: (name: SecretName) => sidecarCall<{ ok: true; name: SecretName }>("secret_delete", { name }),
+  // v0.7.55 P1-007 — clear the sidecar's 10-min watermark tier cache
+  // so the next export re-queries /sync. Called when checkout completes
+  // so a just-upgraded user gets a clean export immediately.
+  tierInvalidate: () => sidecarCall<{ ok: true }>("tier_invalidate", {}),
   reactionSearch: (query: string, perPage = 12) =>
     sidecarCall<{
       provider: "giphy" | "pexels" | "pixabay";

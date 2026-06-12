@@ -3618,6 +3618,18 @@ def method_preload_whisper(_params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def method_tier_invalidate(_params: dict[str, Any]) -> dict[str, Any]:
+    """v0.7.55 P1-007 — clear the export-time tier cache so the very
+    next export re-queries /sync. The React side calls this on the
+    `lc:checkout-complete` postMessage from /checkout/complete so a
+    just-upgraded user gets a clean export without waiting 10 minutes
+    for the cache to decay. Safe to call on any tier transition (the
+    server is the source of truth)."""
+    from stages import invalidate_watermark_cache
+    invalidate_watermark_cache()
+    return {"ok": True}
+
+
 def method_hardware_info(_params: dict[str, Any]) -> dict[str, Any]:
     """Silent hardware probe per spec §1.8 Sprint 3 — RAM / GPU / free disk.
 
@@ -4324,6 +4336,7 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "secret_get": method_secret_get,
     "secret_set": method_secret_set,
     "secret_delete": method_secret_delete,
+    "tier_invalidate": method_tier_invalidate,
     "hardware_info": method_hardware_info,
     "regenerate_clip": method_regenerate_clip,
     "pick_more_clips": method_pick_more_clips,
