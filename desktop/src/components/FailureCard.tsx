@@ -7,7 +7,9 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 // Email support, and surfaces where the logs live so a clipper has somewhere
 // to go besides quitting.
 
-const SUPPORT_EMAIL = "support@jnremployee.com";
+// v0.7.54 — canonical Liquid Clips support inbox (mirrors marketing site
+// `liquidclips-marketing/src/lib/site.ts:supportEmail`).
+const SUPPORT_EMAIL = "hello@liquidclips.app";
 
 export function FailureCard({
   eyebrow,

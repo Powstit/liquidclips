@@ -44,12 +44,12 @@ function routeFor(path: string): string {
 // it lazily so we can keep the helper sync at the surface but resilient when
 // the user hasn't activated yet.
 
-// v0.7.x — Railway now hosts BOTH api.liquidclips.app (new canonical) and
-// api.jnremployee.com (legacy, both pointing at the same service). PROD
-// stays on jnremployee.com until Let's Encrypt finishes issuing the
-// liquidclips.app cert end-to-end. CSP allows both hosts so the flip is a
-// one-line bump once SSL is green.
-const PROD_BACKEND_URL = "https://api.jnremployee.com";
+// v0.7.54 — SSL on api.liquidclips.app is green (verified 405/allow:GET
+// matches api.jnremployee.com identically). Flipping PROD to the canonical
+// hostname so the user-facing wire reads liquidclips.app end-to-end.
+// CSP already allows both hosts; the legacy jnremployee.com hostname
+// continues to resolve to the same Railway service as a transitional fallback.
+const PROD_BACKEND_URL = "https://api.liquidclips.app";
 const DEV_BACKEND_URL = "http://localhost:8000";
 
 const BACKEND_URL =
@@ -1310,7 +1310,7 @@ export async function createSubmission(input: SubmissionCreateInput): Promise<Su
     if (detail.code === "watermark_detected") {
       throw new WatermarkDetectedError(
         detail.message ?? "Watermark detected — re-export without watermark and try again.",
-        detail.upgrade_url ?? "https://account.jnremployee.com/upgrade?reason=watermark",
+        detail.upgrade_url ?? "https://account.liquidclips.app/upgrade?reason=watermark",
         detail.submission_id ?? "",
       );
     }

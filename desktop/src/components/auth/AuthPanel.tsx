@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 // AuthPanel — host the Clerk-routed sign-in / sign-up / upgrade page inside
 // the desktop instead of bouncing through Safari. The native child webview
 // (auth_panel.rs) does the heavy lifting: it owns the cookie partition for
-// account.jnremployee.com, so a user who's already signed in renders
+// account.liquidclips.app, so a user who's already signed in renders
 // already-authed on first paint.
 //
 // React owns ONLY the chrome bar — title eyebrow on the left, close button
@@ -18,7 +18,11 @@ import { X } from "lucide-react";
 
 export type AuthPanelMode = "sign-in" | "sign-up" | "upgrade" | "dashboard" | "payouts";
 
-const ACCOUNT_HOST = "https://account.jnremployee.com";
+// v0.7.54 — moved from account.jnremployee.com → account.liquidclips.app
+// so the URL bar inside the embedded auth webview reads liquidclips.app
+// end-to-end. Both hosts serve the same Next.js app via the satellite
+// cookie path; existing sessions still resolve.
+const ACCOUNT_HOST = "https://account.liquidclips.app";
 
 function urlFor(mode: AuthPanelMode): string {
   switch (mode) {

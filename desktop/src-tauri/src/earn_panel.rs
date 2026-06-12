@@ -121,7 +121,7 @@ fn bridge_init_script() -> String {
 
   // Capture explicit postMessage calls aimed at the parent.
   var origPostMessage = window.postMessage.bind(window);
-  window.postMessage = function (message, targetOrigin, transfer) {{
+  function wrappedPostMessage(message, targetOrigin, transfer) {{
     try {{
       if (message && typeof message === "object" && typeof message.type === "string"
           && message.type.indexOf("lc:") === 0) {{
@@ -129,7 +129,18 @@ fn bridge_init_script() -> String {
       }}
     }} catch (e) {{ /* ignore */ }}
     return origPostMessage(message, targetOrigin, transfer);
-  }};
+  }}
+  window.postMessage = wrappedPostMessage;
+
+  // v0.7.54 — Some Tauri child-webview partitions present window.parent as a
+  // distinct object from window. The embed page calls window.parent.postMessage,
+  // so make sure that path is also routed through our override. If parent is the
+  // same object or cross-origin, the assignment is harmless inside try/catch.
+  try {{
+    if (window.parent && window.parent !== window) {{
+      window.parent.postMessage = wrappedPostMessage;
+    }}
+  }} catch (e) {{ /* cross-origin or sealed parent — ignore */ }}
 
   // Also expose a direct send so the embed can call it without dancing
   // around postMessage semantics.

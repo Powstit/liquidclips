@@ -2548,7 +2548,16 @@ function DepsMissingCard({
   python: string;
   onRetry: () => void | Promise<void>;
 }) {
-  const pipCmd = `"${python}" -m pip install --break-system-packages ${missing.join(" ")}`;
+  // v0.7.54 — `--break-system-packages` is only valid on pip ≥ 23 with a
+  // PEP 668 marker. Among the Pythons a Mac user is likely to have, ONLY
+  // Homebrew Python 3.11+ ships that marker. Xcode-bundled Python and the
+  // python.org / Framework installer (the canonical sidecar Python, per
+  // CLAUDE.md) reject the flag entirely with "no such option".
+  // Pre-fix: every Mac was shown the Homebrew command, which Xcode pip
+  // refused, and the user was stuck on "missing packages" forever.
+  const needsBreakSystem = /\/opt\/homebrew\/|\/usr\/local\/(?:Cellar|opt)\//.test(python);
+  const pipFlags = needsBreakSystem ? " --break-system-packages" : "";
+  const pipCmd = `"${python}" -m pip install${pipFlags} ${missing.join(" ")}`;
   return (
     <div className="w-full max-w-[720px] rounded-3xl border border-fuchsia-soft bg-paper-elev p-7">
       <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">

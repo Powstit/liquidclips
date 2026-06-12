@@ -8,6 +8,17 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
+      // Embed surfaces are loaded inside the desktop app's Tauri child webview.
+      // They intentionally need to be presentable in that hosted context, so
+      // remove the blanket frame-deny for /embed/* while keeping it everywhere
+      // else. (Tauri webviews are not frames, but some WebKit partitions still
+      // consult these headers and a DENY can leave the surface blank.)
+      {
+        source: "/embed/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: "frame-ancestors *" },
+        ],
+      },
       {
         source: "/:path*",
         headers: [

@@ -81,7 +81,7 @@ export default async function DownloadPage() {
                   height: "100%",
                   background:
                     "linear-gradient(160deg, rgba(255,26,140,0.12) 0%, rgba(11,11,16,0.95) 60%)",
-                  color: "var(--paper)",
+                  color: "var(--ink)",
                   borderRadius: "inherit",
                 }}
               >

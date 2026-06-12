@@ -46,16 +46,19 @@ export default async function EmbedLayout({
   const { userId } = await auth();
   const initialTier = userId ? await fetchInitialTier(userId) : null;
 
+  // v0.7.55 — hard-positioned shell. Prior version relied on a
+  // `body:has([data-embed-shell])` rule to hide the parent marketing <Nav>
+  // (sticky z-50) and zero the parent <main> padding. When `:has()` failed
+  // to apply in time (WebKit hydration race in the Tauri child webview), the
+  // marketing nav covered the top of the embed and RouteSplash (fixed
+  // inset-0 z-[100]) could blanket the whole surface — the "blank Earn"
+  // symptom. Lifting the shell to `fixed inset-0 z-[200]` makes the embed
+  // own the viewport regardless of what the root layout renders behind it.
   return (
-    <div data-embed-shell="true" className="min-h-screen bg-paper text-ink">
-      {/* Single rule — drop the regular Nav and any layout padding the parent
-          <main> applies, so /embed/* paints from the top of the webview. Inline
-          <style> keeps this self-contained; the root layout never has to know
-          /embed exists. */}
-      <style>{`
-        body:has([data-embed-shell]) > nav { display: none; }
-        body:has([data-embed-shell]) > main { padding: 0; }
-      `}</style>
+    <div
+      data-embed-shell="true"
+      className="fixed inset-0 z-[200] overflow-y-auto bg-paper text-ink"
+    >
       <EmbedAuthBridge initialUserId={userId ?? null} initialTier={initialTier}>
         {children}
       </EmbedAuthBridge>

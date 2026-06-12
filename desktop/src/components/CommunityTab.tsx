@@ -48,7 +48,7 @@ const PINNED: Pinned = {
   eyebrow: "live · public · join now",
   title: "Influencer launch campaign — $5 RPM + 50% MRR",
   body: "First sponsored Liquid Clips campaign. Watermark-free clip exports earn $5 RPM on approved views; refer a paid user and unlock 50% recurring on every customer they bring in — lifetime, not first month. Whop handles the payout cycle.",
-  cta: { label: "Open campaign brief →", url: "https://whop.com/jnremployee/" },
+  cta: { label: "Open campaign brief →", url: WHOP_COMMUNITY_URL },
   Icon: Flame,
 };
 
@@ -86,7 +86,7 @@ const FEED: Post[] = [
     tag: "guide",
     title: "How to claim 50% MRR for life",
     body: "Refer two paid users through your link → 50% recurring commission unlocks on every customer you refer from that point on. Lifetime, not just first month. Find your link inside Account → Dashboard.",
-    cta: { label: "Get my link →", url: "https://account.jnremployee.com/dashboard" },
+    cta: { label: "Get my link →", url: "https://account.liquidclips.app/dashboard" },
     Icon: MessageCircle,
   },
 ];

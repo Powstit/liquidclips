@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { openSmart as openExternal } from "../lib/openSmart";
 import { sidecar, humanError, type HardwareInfo } from "../lib/sidecar";
-import { useActivation } from "../lib/activation";
+import {
+  useActivation,
+  resetLoginSession,
+  activationDiagnostics,
+} from "../lib/activation";
 import { useTier } from "../lib/useTier";
 import { Logo } from "./Logo";
+
+const APP_VERSION = "0.7.54";
 
 // ship-lens v0.7.8: E7 — the "01 — required" badge now flips to "optional · hosted AI active" for Solo / Pro / Agency users. Pre-fix Pro+ users were told the OpenAI key was required when their hosted AI already had it covered. Card 2 (sign-in) stays "required" because hosted AI needs the JWT.
 // First-run flow per spec §3.8 screen 1.
@@ -131,24 +137,19 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
               finish sign-in in the panel — Liquid Clips activates automatically
             </p>
           )}
-          {act.kind === "error" && (
-            <button
-              onClick={() => {
-                startedActivation.current = true;
-                void activate({ via: "browser" });
-              }}
-              className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary underline-offset-2 hover:text-fuchsia hover:underline"
-            >
-              sign in via browser instead
-            </button>
-          )}
           {act.kind === "activating" && (
             <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
               activated — syncing your account…
             </p>
           )}
           {act.kind === "error" && (
-            <p className="mt-2 font-mono text-[12px] text-[var(--color-danger)]">{act.message}</p>
+            <FailedLoginRescue
+              message={act.message}
+              onTryBrowser={() => {
+                startedActivation.current = true;
+                void activate({ via: "browser" });
+              }}
+            />
           )}
         </div>
 
@@ -244,6 +245,91 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
           ? `${hw.ram_gb} gb ram · ${hw.cpu_count} cpu · ${hw.free_disk_gb} gb free`
           : "probing hardware…"}
       </footer>
+    </div>
+  );
+}
+
+/* ── Failed-login rescue panel (BUG-003) ─────────────────────────── */
+
+// v0.7.54 — replaces the prior dead-end "sign in via browser instead +
+// error message" pair. Surfaces four escape hatches so a user who failed
+// sign-in (e.g. missing keyring dep → keychain write threw → license never
+// saved) can recover without quitting the app:
+//   • Sign in via browser — the existing rescue path, now grouped.
+//   • Reset login session — clears pending challenge + keychain JWT +
+//     status, so the next "Sign in" mints a FRESH challenge instead of
+//     fighting stale state.
+//   • Copy diagnostics — version + status + error to the clipboard so a
+//     support ticket carries concrete signal instead of "it broke".
+//   • Detailed error message — the real reason, not the generic
+//     "couldn't save your license" we used to show.
+function FailedLoginRescue({
+  message,
+  onTryBrowser,
+}: {
+  message: string;
+  onTryBrowser: () => void;
+}) {
+  const [resetState, setResetState] = useState<"idle" | "resetting" | "done">(
+    "idle",
+  );
+  const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
+
+  async function doReset() {
+    if (resetState === "resetting") return;
+    setResetState("resetting");
+    try {
+      await resetLoginSession();
+    } finally {
+      setResetState("done");
+      window.setTimeout(() => setResetState("idle"), 1800);
+    }
+  }
+
+  async function doCopy() {
+    const blob = activationDiagnostics(APP_VERSION);
+    try {
+      await navigator.clipboard.writeText(blob);
+      setCopyState("copied");
+      window.setTimeout(() => setCopyState("idle"), 1800);
+    } catch {
+      /* clipboard blocked — diagnostics still visible inline below */
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-2xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/5 p-4">
+      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--color-danger)]">
+        sign-in failed
+      </p>
+      <p className="mt-1 font-sans text-[12px] leading-relaxed text-ink">
+        {message}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          onClick={onTryBrowser}
+          className="rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink hover:border-fuchsia hover:text-fuchsia"
+        >
+          Sign in via browser
+        </button>
+        <button
+          onClick={() => void doReset()}
+          disabled={resetState === "resetting"}
+          className="rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink hover:border-fuchsia hover:text-fuchsia disabled:opacity-60"
+        >
+          {resetState === "resetting"
+            ? "Resetting…"
+            : resetState === "done"
+              ? "Session reset"
+              : "Reset login session"}
+        </button>
+        <button
+          onClick={() => void doCopy()}
+          className="rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink hover:border-fuchsia hover:text-fuchsia"
+        >
+          {copyState === "copied" ? "Copied" : "Copy diagnostics"}
+        </button>
+      </div>
     </div>
   );
 }

@@ -8,6 +8,9 @@
 *.env
 !*.env.example
 .envrc
+env.md
+ENV.md
+*.env.md
 
 # Keychain / credentials stores from this machine that may exist alongside.
 .claude-credentials/

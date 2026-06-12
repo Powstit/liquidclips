@@ -22,6 +22,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   closeEarnPanel,
+  onEarnPanelLoaded,
   onEarnPanelMessage,
   openEarnPanel,
   postToEarnPanel,
@@ -69,6 +70,7 @@ type Props = {
 export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [panelReady, setPanelReady] = useState(false);
+  const [panelError, setPanelError] = useState<string | null>(null);
 
   // Open + close the native webview alongside the React mount. Re-open
   // hits the same Rust singleton — calling openEarnPanel twice is a no-op
@@ -76,14 +78,40 @@ export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
   useEffect(() => {
     let cancelled = false;
     let resizeRetryId = 0;
+    let loadUnlisten: (() => void) | undefined;
+    let loadRetries = 0;
 
     async function boot() {
       try {
         await openEarnPanel();
         if (cancelled) return;
         setPanelReady(true);
+        setPanelError(null);
+        // Listen for the embed's first paint. If it never fires, the webview
+        // URL may be unreachable (dev server not running / deployed page down)
+        // and the surface will stay blank underneath the loading overlay.
+        const u = await onEarnPanelLoaded(() => {
+          console.log("[earn-panel] embed reported first paint");
+        });
+        if (cancelled) {
+          try {
+            u();
+          } catch {
+            /* ignore */
+          }
+        } else {
+          loadUnlisten = u;
+        }
       } catch (e) {
         console.error("[earn-panel] open failed:", e);
+        loadRetries += 1;
+        if (loadRetries >= 6) {
+          // ~3s of retries — main window isn't just slow, something is wrong.
+          setPanelError(
+            `Could not open Earn: ${humanError(e)}. Try restarting Liquid Clips.`,
+          );
+          return;
+        }
         // Retry open on a short delay — the main window may still be
         // initialising when the Earn tab mounts on cold boot.
         resizeRetryId = window.setTimeout(boot, 500);
@@ -94,6 +122,11 @@ export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
     return () => {
       cancelled = true;
       if (resizeRetryId !== 0) window.clearTimeout(resizeRetryId);
+      try {
+        loadUnlisten?.();
+      } catch {
+        /* ignore */
+      }
       void closeEarnPanel().catch((e) => {
         console.error("[earn-panel] close failed:", e);
       });
@@ -317,11 +350,23 @@ export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
     // last hop of the cascade. Drop h-full here and the ResizeObserver
     // measures 0px → the native webview pins to a 0×0 rect → blank Earn.
     <div ref={containerRef} className="relative h-full w-full" aria-hidden>
-      {!panelReady && (
+      {!panelReady && !panelError && (
         <div className="absolute inset-0 grid place-items-center bg-paper">
           <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
             Loading Earn…
           </p>
+        </div>
+      )}
+      {panelError && (
+        <div className="absolute inset-0 grid place-items-center bg-paper px-6">
+          <div className="max-w-[360px] rounded-2xl border border-[#DC2626]/40 bg-[#DC2626]/5 p-5 text-center">
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#F87171]">
+              Earn couldn&apos;t load
+            </p>
+            <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
+              {panelError}
+            </p>
+          </div>
         </div>
       )}
     </div>

@@ -56,7 +56,9 @@ import { ConfirmDialog } from "./ConfirmDialog";
 
 type Tier = "free" | "solo" | "growth" | "autopilot";
 
-const WHOP_MANAGE_URL = "https://whop.com/jnremployee";
+// v0.7.54 — jnremployee Whop product is deprecated; liquidclips is the
+// active hub (same canonical URL as the in-app Community tab).
+const WHOP_MANAGE_URL = "https://whop.com/liquidclips";
 
 // v0.6.4 — Strict-utility (Whop-pattern) Settings.
 // Categories drive what the right pane shows; left rail switches between

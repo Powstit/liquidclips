@@ -219,7 +219,10 @@ fn spawn_child(
         if cfg!(debug_assertions) {
             "http://localhost:8000".to_string()
         } else {
-            "https://api.jnremployee.com".to_string()
+            // v0.7.54 — Railway service is reachable at both
+            // api.jnremployee.com and api.liquidclips.app (same backend,
+            // two hostnames). User-facing requests now read liquidclips.app.
+            "https://api.liquidclips.app".to_string()
         }
     });
 
