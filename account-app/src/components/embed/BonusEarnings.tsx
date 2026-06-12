@@ -20,6 +20,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useEmbedAuth } from "./EmbedAuthBridge";
+import { PoweredByWhop } from "./PoweredByWhop";
 import { BACKEND_URL } from "@/lib/embed-auth";
 
 type LedgerRow = {
@@ -260,7 +261,16 @@ export function BonusEarnings({ tier }: { tier: Tier }) {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Bonus pending" value={dollars(totals.bonusPending)} tone="fuchsia" />
         <Stat label="Bonus paid" value={dollars(totals.bonusPaid)} tone="ink" />
-        <Stat label="Whop base (info)" value={dollars(totals.base)} tone="soft" />
+        <Stat
+          label={
+            <span className="inline-flex items-center gap-1.5">
+              Whop base
+              <PoweredByWhop size="xs" />
+            </span>
+          }
+          value={dollars(totals.base)}
+          tone="soft"
+        />
         <Stat label="Total effective" value={dollars(totals.base + totals.bonus)} tone="ink" />
       </div>
       <ul className="flex flex-col gap-2">
@@ -325,7 +335,7 @@ function Stat({
   value,
   tone,
 }: {
-  label: string;
+  label: React.ReactNode;
   value: string;
   tone: "fuchsia" | "ink" | "soft";
 }) {

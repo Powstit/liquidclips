@@ -248,6 +248,22 @@ def list_campaigns(
 # ── Admin ────────────────────────────────────────────────────────────
 
 
+@router.get("/admin/campaigns")
+def admin_list_campaigns(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    """Admin list — every row INCLUDING closed/draft (status filters
+    that the public endpoint excludes). Used by Admin HQ Missions tab.
+    v0.7.55."""
+    rows = (
+        db.query(SponsoredCampaign)
+        .order_by(SponsoredCampaign.sort_order.asc(), SponsoredCampaign.created_at.desc())
+        .all()
+    )
+    return {"campaigns": [_serialize(c) for c in rows]}
+
+
 @router.post("/admin/campaigns", status_code=status.HTTP_201_CREATED)
 def create_campaign(
     payload: CampaignCreate,

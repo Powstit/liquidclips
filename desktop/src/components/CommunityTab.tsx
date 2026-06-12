@@ -37,6 +37,7 @@ import {
 import { openBrowsePanel, WHOP_COMMUNITY_URL } from "../lib/browse";
 import { humanError } from "../lib/sidecar";
 import { openAuthPanel } from "./auth/useAuthPanel";
+import { PoweredByWhop } from "./PoweredByWhop";
 import { useTier } from "../lib/useTier";
 
 const PREMIUM_TIERS = new Set([
@@ -347,9 +348,12 @@ function ChannelCard({ c, isPremium }: { c: Channel; isPremium: boolean }) {
           </>
         ) : (
           <>
-            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
-              opens in-app · Whop session authed
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+                opens in-app · Whop session authed
+              </span>
+              <PoweredByWhop size="xs" />
+            </div>
             <button
               type="button"
               onClick={openRoom}

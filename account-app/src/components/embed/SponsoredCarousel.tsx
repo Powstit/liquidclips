@@ -21,6 +21,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EMBED_MSG } from "@/lib/embed-auth";
+import { PoweredByWhop } from "./PoweredByWhop";
 
 // Mirror of `desktop/src/lib/backend.ts` — keep in lockstep with the server
 // shape. Trimmed of the fields the embed never reads, but the wire fields are
@@ -524,6 +525,13 @@ function HeroSlide({
               <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
                 {c.duration_label}
               </span>
+            )}
+            {/* v0.7.55 — Whop attribution. The base $1 RPM is paid by
+                Whop's content reward; the +$4 bonus is paid by LC. Only
+                show the badge when this campaign actually maps to a
+                Whop bounty, otherwise we're misattributing. */}
+            {(c.whop_campaign_id || c.whop_campaign_url) && (
+              <PoweredByWhop className="self-center" />
             )}
           </div>
         </div>

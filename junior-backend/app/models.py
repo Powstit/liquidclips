@@ -707,6 +707,66 @@ class CommunityChannel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
 
+class Banner(Base):
+    """v0.7.55 — admin-managed promotional placements.
+
+    Renders across the app surfaces listed in `placement`. Per spec:
+      earn_hero · mission_card · mission_detail · upgrade_modal ·
+      community_top · home_hero · checkout_modal.
+
+    `target_tier` (free | paid | null) gates which audience sees it.
+    `target_mission_id` optionally pins the banner to one campaign's
+    detail view. `priority` decides which banner wins when multiple are
+    eligible (higher number wins).
+    """
+
+    __tablename__ = "banners"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    subtitle: Mapped[str | None] = mapped_column(String, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    cta_text: Mapped[str | None] = mapped_column(String, nullable=True)
+    cta_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    # earn_hero | mission_card | mission_detail | upgrade_modal |
+    # community_top | home_hero | checkout_modal
+    placement: Mapped[str] = mapped_column(String, nullable=False, default="earn_hero", index=True)
+    # null = open to every tier · "free" | "paid" — see _is_premium in
+    # routes/campaigns.py for tier resolution.
+    target_tier: Mapped[str | None] = mapped_column(String, nullable=True)
+    target_mission_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class Announcement(Base):
+    """v0.7.55 — admin posts surfaced in the Announcements community
+    room AND on first-paint of the dashboard. `kind` segments the feed
+    so the UI can filter (mission_drop, payout, rule_change, deadline,
+    other). `pinned` keeps a row at the top until manually unpinned.
+    """
+
+    __tablename__ = "announcements"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    body_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # mission_drop | payout | rule_change | deadline | other
+    kind: Mapped[str] = mapped_column(String, nullable=False, default="other", index=True)
+    cta_text: Mapped[str | None] = mapped_column(String, nullable=True)
+    cta_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    target_tier: Mapped[str | None] = mapped_column(String, nullable=True)
+    pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
 class RewardBonusLedger(Base):
     """v0.7.55 (Uncle Daniel funnel — Phase 1) — premium bonus ledger
     keyed by Whop submission id.
