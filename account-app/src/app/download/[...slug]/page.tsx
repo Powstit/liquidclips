@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 
-// Until signed installers exist (Sprint 9), any /download/* path lands on
-// the main download page. Sprint 9 swaps this for routes that 302 to the
-// CDN-hosted installer artifacts (e.g. /download/mac → DMG URL).
+// v0.7.56 — every /download/* path lands on liquidclips.app/download,
+// the single source of truth for installer URLs (notarised DMGs via
+// getLatestRelease() against the GitHub release API). Async + no
+// force-static for the same reason as /download — layout reads
+// headers() so the route is dynamic.
 export default async function DownloadCatchAll() {
-  redirect("/download");
+  redirect("https://liquidclips.app/download");
 }
