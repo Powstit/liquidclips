@@ -123,3 +123,7 @@ LAUNCH 2.md
 /jnr-powstit/
 /liquid-clips-assets/
 /liquidclips-marketing/
+
+# Motion-graphics intermediates + unused gpt-image-1 variants.
+desktop/src/assets/bug-3d/*.b64
+desktop/src/assets/bug-3d/fuchsia-beetle.png
