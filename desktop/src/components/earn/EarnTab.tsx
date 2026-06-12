@@ -20,6 +20,7 @@
 // the signature for binary compatibility with the existing parent.
 
 import { EarnPanelMount } from "./EarnPanelMount";
+import { EarnErrorBoundary } from "./EarnErrorBoundary";
 import type { WhopBounty, BountyContext } from "../../lib/sidecar";
 
 export function EarnTab({
@@ -45,7 +46,13 @@ export function EarnTab({
           The hosted embed at account.liquidclips.app/embed/earn owns all
           bounty discovery + listing; no native sub-tab needed. */}
       <div className="relative min-h-0 flex-1">
-        <EarnPanelMount onStartBounty={onStartBounty} userTier={userTier} />
+        {/* v0.7.56 P0 — Error Boundary so a React render exception inside
+            EarnPanelMount never lands as a pure black screen. The boundary's
+            recovery card uses the same 4 CTAs (Retry / Open in browser /
+            Copy diagnostics / Reload app) as the embed-timeout fallback. */}
+        <EarnErrorBoundary>
+          <EarnPanelMount onStartBounty={onStartBounty} userTier={userTier} />
+        </EarnErrorBoundary>
       </div>
     </div>
   );

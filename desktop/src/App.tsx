@@ -556,45 +556,45 @@ export default function App() {
           });
         }
         sidecar.preloadWhisper().catch(() => undefined);
-        // Check for a license JWT in the keychain. Presence = signed in. We
-        // don't validate the JWT here — that's the backend's job on /sync.
-        // We only need a yes/no signal for the nav button copy.
+        // v0.7.56 P0 — Boot-safe "is the user signed in?" check.
+        //
+        // Used to call `sidecar.licenseJwtRead()` which fires `secret_get` →
+        // `keyring.get_password()` → macOS Keychain prompt on a freshly
+        // rebuilt/renamed sidecar binary. With other boot probes (8 keys via
+        // `secretsStatus()`, 1 via `openaiKeyStatus()`) this stacked into
+        // ~10 password prompts on first launch.
+        //
+        // `licenseJwtPresence` reads a plaintext presence-file mirror that
+        // `secret_set`/`secret_delete` keep updated. No keychain access, no
+        // prompt. We only need a yes/no for nav copy here — the actual JWT
+        // value still comes from `licenseJwtRead()` later, called from the
+        // auth-panel open path and the embed's `lc:auth-request` (both
+        // explicit user actions, one expected prompt).
         try {
-          const { value } = await sidecar.licenseJwtRead();
-          setSignedIn(!!value);
+          const { present } = await sidecar.licenseJwtPresence();
+          setSignedIn(present);
         } catch {
           setSignedIn(false);
         }
-        // Seed the starter-pass counter from /sync (null = unlimited / paid /
-        // unactivated). Best-effort: a missing backend just leaves it null,
-        // which hides the counter and never blocks.
-        // Boot tier resolution — parallel /sync + /me so we can apply the
-        // same three-signal admin check as useTier: admin_override field,
-        // effective_tier=autopilot, or isAdminEmail(me.email). Mirrors
-        // useTier.ts so App.tsx's parallel userTier state never drifts.
-        void import("./lib/backend")
-          .then(async (m) => {
-            // v0.7.7 ship-lens fix #9 — meStatus now returns a discriminated
-            // union; the boot-time admin-fallback only needs `.email`, so
-            // meStatusLegacy() preserves the prior `MeStatus | null` shape
-            // without dropping the new "expired" signal (Settings consumes
-            // the union directly to fire the re-activate banner).
-            const [s, me] = await Promise.all([
-              m.syncStatus().catch(() => null),
-              m.meStatusLegacy().catch(() => null),
-            ]);
-            return { s, me };
-          })
-          .then(({ s, me }) => {
-            const isAdmin =
-              s?.admin_override === true ||
-              s?.tier === "autopilot" ||
-              isAdminEmail(me?.email);
-            setRemainingExports(isAdmin ? null : (s?.remaining_exports ?? null));
-            const tier = isAdmin ? "agency" : (s?.tier ?? null);
-            setUserTier(normalizeTier(tier));
-          })
-          .catch(() => undefined);
+        // v0.7.56 P0 — Boot tier resolution removed.
+        //
+        // This block used to fire `syncStatus()` + `meStatusLegacy()` on
+        // every cold boot — both call `authedFetch` → `licenseJwt()` →
+        // `keyring.get_password()`. On a freshly rebuilt/renamed sidecar
+        // binary that's a macOS Keychain password prompt at startup, before
+        // the user has done anything explicit. Daniel's directive forbids
+        // any automatic keychain read at boot.
+        //
+        // Tier now paints from the cached value seeded in App.tsx state
+        // (the `readCachedTier()`-aligned localStorage cache that useTier
+        // also writes on every successful /sync). Real refresh happens on:
+        //   * window focus (`useTier`'s focus handler)
+        //   * any explicit auth'd user action (Settings open, clip-run
+        //     start, schedule queue load, NotificationSheet open, etc) —
+        //     each goes through `authedFetch` which only reads the
+        //     keychain when presence + cache miss demand it.
+        // remainingExports stays null until first authed read; the counter
+        // UI hides cleanly in that state.
       } catch {
         setSidecarStatus("failed");
       } finally {
@@ -1413,7 +1413,9 @@ export default function App() {
             setNeedsActivation(false); // fresh JWT written → clear the prompt; polls recover
             // Activation usually writes the license JWT during FirstRun.
             // Re-poll so the nav swaps Sign in → Account without a relaunch.
-            void sidecar.licenseJwtRead().then(({ value }) => setSignedIn(!!value)).catch(() => undefined);
+            // v0.7.56 P0 — presence-only (no keychain prompt); the JWT value
+            // is read lazily by callers that genuinely need a Bearer header.
+            void sidecar.licenseJwtPresence().then(({ present }) => setSignedIn(present)).catch(() => undefined);
           }}
         />
       </div>
@@ -2204,7 +2206,10 @@ export default function App() {
             // Settings can change auth state — for example, the user activated
             // via /connect-desktop in another window or the JWT was rotated
             // by /sync. Re-poll so the top-nav indicator stays honest.
-            void sidecar.licenseJwtRead().then(({ value }) => setSignedIn(!!value)).catch(() => undefined);
+            // v0.7.56 P0 — presence-only (no keychain prompt). The presence
+            // file is rewritten by secret_set/delete on every JWT change, so
+            // this reflects the latest auth state without a keychain read.
+            void sidecar.licenseJwtPresence().then(({ present }) => setSignedIn(present)).catch(() => undefined);
           }}
           onSignOut={() => {
             // JWT already cleared by Settings; bounce the user back to
@@ -2485,6 +2490,24 @@ export async function performAtomicSignOutWipe(): Promise<void> {
     // store reset in one call.
     useAvatar.getState().clear().catch(() => undefined),
   ]);
+  // v0.7.56 P0 — Wipe every in-memory + localStorage breadcrumb the prior
+  // signed-in session left behind. Without these clears the next paint
+  // still shows the old user's tier (cached), reads the old JWT from the
+  // in-memory cache, and surfaces an inbox badge for messages they no
+  // longer own.
+  try {
+    const { invalidateLicenseJwtCache } = await import("./lib/backend");
+    invalidateLicenseJwtCache();
+  } catch {
+    /* best-effort — module load can fail in HMR */
+  }
+  try {
+    // Tier cache lives in two slots (App.tsx state + useTier hook); both
+    // mirror to the same localStorage key.
+    window.localStorage?.removeItem("lc:cached_tier");
+  } catch {
+    /* best-effort — private mode, quota, etc */
+  }
   // Reset telemetry to opt-out — Mac handoff posture. The next user
   // explicitly opts in via Settings → About → Send anonymous telemetry.
   try {

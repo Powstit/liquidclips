@@ -6,6 +6,7 @@
 //
 // ship-lens v0.7.8: E8 — intro <video autoPlay> can be blocked by macOS WebKit autoplay rules; pre-fix the user saw 28.5s of black before the splash advanced. Now we detect the play() rejection, render a centered "Tap to play" overlay, and resume on click.
 import { useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { openSmart as openExternal } from "../lib/openSmart";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -161,16 +162,25 @@ export function Splash({
     }
   }
 
+  // v0.7.56 P0 — recovery surface. Reads the real startup log from
+  // ~/Library/Application Support/Liquid Clips/logs/sidecar-startup.log
+  // via the Rust sidecar_log_read command, so what gets copied is the
+  // actual diagnostic trail (resolved binary path, codesign verdict,
+  // quarantine state, stderr tail) rather than a generic blurb.
   async function onCopyDiagnostic() {
     const ua = typeof navigator !== "undefined" ? navigator.userAgent : "n/a";
+    let log = "";
+    try {
+      log = await invoke<string>("sidecar_log_read");
+    } catch (e) {
+      log = `(could not read startup log: ${e})`;
+    }
     const dump =
-      `Liquid Clips sidecar failed to start\n` +
+      `Liquid Clips — clip engine did not start\n` +
       `Time: ${new Date().toISOString()}\n` +
       `User agent: ${ua}\n` +
-      `Logs folder: ~/LiquidClips/projects/<slug>/.progress.json (per run)\n` +
-      `Common cause: Python sidecar missing dependencies or model files. ` +
-      `If you installed the .app fresh, try reopening once more — first launch ` +
-      `extracts bundled resources and can take a few seconds.`;
+      `\n--- sidecar-startup.log ---\n` +
+      log;
     try {
       await writeText(dump);
       setCopied(true);
@@ -178,6 +188,24 @@ export function Splash({
     } catch {
       /* silent */
     }
+  }
+
+  async function onOpenLogs() {
+    try {
+      await invoke("sidecar_log_open");
+    } catch {
+      /* silent — best-effort */
+    }
+  }
+
+  async function onRepair() {
+    try {
+      await invoke("sidecar_repair");
+    } catch {
+      /* silent — best-effort */
+    }
+    // Repair clears cached state; relaunch picks up a clean engine.
+    void onRestart();
   }
 
   function onEmail() {
@@ -201,6 +229,9 @@ export function Splash({
   `;
 
   if (failed) {
+    // v0.7.56 P0 — recovery surface. Replaces the dead "sidecar failed
+    // to start" terminal screen with five real actions the user can take
+    // before they have to email support. Daniel directive 2026-06-12.
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-8 bg-paper">
         <Logo />
@@ -212,35 +243,50 @@ export function Splash({
             />
           </div>
           <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
-            sidecar failed to start
+            clip engine did not start
           </p>
         </div>
 
-        <div className="flex max-w-[520px] flex-col items-center gap-4 px-6 text-center">
-          <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-            The Python sidecar didn't come up. First-launch unpacking can take a
-            few seconds — give it one restart before opening a ticket.
+        <div className="flex max-w-[560px] flex-col items-center gap-5 px-6 text-center">
+          <p className="font-sans text-[14px] leading-relaxed text-text-secondary">
+            The clip engine did not start. Liquid Clips can repair the local
+            engine and try again.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               onClick={() => void onRestart()}
               className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright"
             >
-              Restart Liquid Clips
+              Retry engine
+            </button>
+            <button
+              onClick={() => void onRepair()}
+              className="rounded-full border border-line bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia"
+            >
+              Repair engine
+            </button>
+            <button
+              onClick={() => void onOpenLogs()}
+              className="rounded-full border border-line bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia"
+            >
+              Open logs folder
             </button>
             <button
               onClick={() => void onCopyDiagnostic()}
               className="rounded-full border border-line bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia"
             >
-              {copied ? "Copied ✓" : "Copy diagnostic"}
+              {copied ? "Copied ✓" : "Copy diagnostics"}
             </button>
             <button
               onClick={onEmail}
               className="rounded-full border border-line bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia"
             >
-              Email support →
+              Contact support →
             </button>
           </div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+            log: ~/Library/Application Support/Liquid Clips/logs/sidecar-startup.log
+          </p>
         </div>
 
         <style>{splashStyle}</style>

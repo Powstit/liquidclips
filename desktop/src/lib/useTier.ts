@@ -187,28 +187,45 @@ export function useTier(): TierState {
     }
   }, []);
 
+  // v0.7.56 P0 — Mount-time tier refresh removed.
+  //
+  // This effect used to fire `syncStatus()` + `meStatusLegacy()` on every
+  // hook mount (i.e. on every cold app boot, because the hook is consumed
+  // by App-level surfaces). Both call `authedFetch` → `licenseJwt()` →
+  // `keyring.get_password()`, which prompts macOS for a Keychain password
+  // on a freshly rebuilt/renamed sidecar binary. Daniel's directive forbids
+  // any automatic keychain read at boot or in background polling.
+  //
+  // Tier paints from the localStorage cache (`readCachedTier()` above) and
+  // refreshes on:
+  //   * window focus — the user came back to the app (treated as an
+  //     explicit "I'm here again" signal)
+  //   * `refreshTier()` — called by surfaces that genuinely need a fresh
+  //     tier value (Settings save, upgrade complete, post-clip-run)
+  // Loading/resolved are flipped synchronously so consumers don't sit on
+  // a permanent spinner waiting for a refresh that no longer auto-fires.
   useEffect(() => {
-    const signal = { cancelled: false };
-    void doRefresh(signal);
-    return () => {
-      signal.cancelled = true;
-    };
-  }, [doRefresh]);
+    setLoading(false);
+    setResolved(true);
+  }, []);
 
-  // Window focus → re-pull /sync. Covers the canonical "user came back from
-  // Stripe Checkout / Whop billing in their browser" path — without this,
-  // a successful upgrade only flips the UI on next manual reload.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    function onFocus(): void {
-      const signal = { cancelled: false };
-      void doRefresh(signal);
-    }
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [doRefresh]);
+  // v0.7.56 P0 — Focus refresh removed.
+  //
+  // Window focus is a passive signal — macOS fires it the instant the new
+  // app window becomes active at cold-boot launch, and again every time
+  // the user Cmd-Tabs back from another app. Either would trigger
+  // `syncStatus()` → `authedFetch()` → `licenseJwt()` → Keychain on a
+  // freshly rebuilt/renamed sidecar binary. Daniel's directive: no
+  // automatic Keychain reads from passive callers.
+  //
+  // The Stripe-Checkout-came-back path that this used to cover is now
+  // handled by:
+  //   * `lc:tier-refresh` (dispatched by GlobalAuthPanel on close)
+  //   * the explicit `refreshTier()` callers in Settings save, post-
+  //     clip-run, and the upgrade flow's completion handler
+  // Cold-boot users keep the cached tier from localStorage until any of
+  // those explicit refresh paths run.
+  useEffect(() => undefined, []);
 
   const refreshTier = useCallback(async (): Promise<void> => {
     const signal = { cancelled: false };

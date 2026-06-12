@@ -15,6 +15,78 @@ async fn sidecar_call(
     state.call(&method, params).await.map_err(|e| e.to_string())
 }
 
+// v0.7.56 P0 — recovery surface commands. Splash.tsx renders Retry /
+// Repair / Open logs / Copy diagnostics actions when the sidecar fails
+// to start. These three commands give those buttons real backing logic
+// instead of stub clipboard strings.
+
+fn logs_folder() -> Option<std::path::PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    Some(
+        std::path::PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
+            .join("Liquid Clips")
+            .join("logs"),
+    )
+}
+
+#[tauri::command]
+async fn sidecar_log_read() -> Result<String, String> {
+    let Some(folder) = logs_folder() else {
+        return Err("HOME not set".to_string());
+    };
+    let path = folder.join("sidecar-startup.log");
+    std::fs::read_to_string(&path).map_err(|e| {
+        format!(
+            "could not read {}: {} — the engine may not have attempted to start yet.",
+            path.display(),
+            e
+        )
+    })
+}
+
+#[tauri::command]
+async fn sidecar_log_open() -> Result<(), String> {
+    let Some(folder) = logs_folder() else {
+        return Err("HOME not set".to_string());
+    };
+    // mkdir -p so the user always lands on a real Finder window even if
+    // the sidecar hasn't tried to start yet (cold first launch of /Applications
+    // copy).
+    let _ = std::fs::create_dir_all(&folder);
+    std::process::Command::new("/usr/bin/open")
+        .arg(&folder)
+        .spawn()
+        .map_err(|e| format!("open {} failed: {}", folder.display(), e))?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn sidecar_repair() -> Result<(), String> {
+    // The sidecar binary itself is inside the read-only .app bundle so
+    // there's nothing to "repair" in the engine sense. What we CAN do
+    // is clear any cache state the engine writes to app-support that
+    // might be corrupting startup (a half-written keychain marker,
+    // a stale .progress.json mid-restart, the startup log itself if
+    // it's grown unmanageable). We bound the wipe to specific names
+    // so a misuse doesn't nuke user projects.
+    let Some(folder) = logs_folder() else {
+        return Err("HOME not set".to_string());
+    };
+    let app_support = folder.parent().ok_or("logs folder has no parent")?;
+    // Clear known-safe cache subpaths only.
+    for name in &["sidecar-cache", "sidecar-startup.log"] {
+        let p = app_support.join(name);
+        if p.is_dir() {
+            let _ = std::fs::remove_dir_all(&p);
+        } else if p.is_file() {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+    Ok(())
+}
+
 /// Native crash reporting (sprint #14c P2 audit fix).
 ///
 /// Rust release is built with `panic = "abort"` so unwinding handlers don't
@@ -177,6 +249,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             sidecar_call,
+            sidecar_log_read,
+            sidecar_log_open,
+            sidecar_repair,
             browse::open_browse_panel,
             browse::close_browse_panel,
             browse::is_browse_panel_open,

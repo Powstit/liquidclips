@@ -47,7 +47,7 @@ sys.dont_write_bytecode = True
 from project import CLIPS_HOME, Project
 import stages
 
-VERSION = "0.3.0"  # multi-ratio (9:16/1:1/4:5), hook overlay, b-roll, YT extras
+VERSION = "0.7.56"  # tracked to desktop app version — surfaces in startup log + method_ping
 
 _HTTPS_CONTEXT: ssl.SSLContext | None = None
 
@@ -144,6 +144,164 @@ def method_check_deps(_params: dict[str, Any]) -> dict[str, Any]:
         "missing": missing,
         "errors": errors,
         "python": sys.executable,
+    }
+
+
+# v0.7.56 P0 — Packaged sidecar health check. Distinct from check_deps:
+#
+# - check_deps only verifies pip imports work. It says nothing about
+#   ffmpeg/ffprobe being executable, the whisper model being readable,
+#   or the app's writable data dirs existing.
+# - health_check is the single preflight Rust calls IMMEDIATELY after
+#   spawning the bundled sidecar, BEFORE any UI surface mounts. If this
+#   passes, every downstream RPC has the assets it needs.
+#
+# Return shape matches what Splash.tsx's recovery card expects:
+#   { ok: bool, code: str, message: str, details: dict, fix_hint: str }
+def method_health_check(_params: dict[str, Any]) -> dict[str, Any]:
+    """Single preflight that confirms the bundled sidecar can do its job.
+
+    Layers checked, in order (later layers don't run if earlier ones fail):
+      1. Python imports — every heavy module
+      2. ffmpeg + ffprobe — bundled binaries are executable
+      3. Whisper model — config + model.bin present and readable
+      4. Writable app-data + log dirs — can persist user state
+
+    Returns a structured envelope the UI can render verbatim.
+    """
+    details: dict[str, Any] = {
+        "python": sys.executable,
+        "python_version": _platform.python_version(),
+        "frozen": bool(getattr(sys, "frozen", False)),
+        "meipass": getattr(sys, "_MEIPASS", None),
+        "arch": _platform.machine(),
+        "platform": _platform.platform(),
+        "cwd": os.getcwd(),
+    }
+
+    # --- 1. imports -----------------------------------------------------
+    required = [
+        ("yt_dlp", "yt-dlp"),
+        ("faster_whisper", "faster-whisper"),
+        ("openai", "openai"),
+        ("cv2", "opencv-python"),
+        ("pydantic", "pydantic"),
+        ("psutil", "psutil"),
+        ("keyring", "keyring"),
+    ]
+    import_errors: dict[str, str] = {}
+    for mod, pip_name in required:
+        try:
+            __import__(mod)
+        except Exception as exc:  # noqa: BLE001
+            import_errors[pip_name] = f"{type(exc).__name__}: {exc}"
+    details["imports"] = {
+        "missing": list(import_errors.keys()),
+        "errors": import_errors,
+    }
+    if import_errors:
+        return {
+            "ok": False,
+            "code": "missing_python_deps",
+            "message": f"Python dependencies missing or broken: {', '.join(import_errors.keys())}",
+            "details": details,
+            "fix_hint": "Rebuild the sidecar bundle — pip dependencies were not included in this build.",
+        }
+
+    # --- 2. ffmpeg + ffprobe --------------------------------------------
+    binary_errors: dict[str, str] = {}
+    binary_paths: dict[str, str] = {}
+    try:
+        import stages as _stages  # imported lazily; depends on os/Path
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ok": False,
+            "code": "stages_import_failed",
+            "message": f"Sidecar core (stages.py) failed to import: {exc}",
+            "details": {**details, "stages_error": traceback.format_exc()},
+            "fix_hint": "Rebuild the sidecar bundle — core modules are not included.",
+        }
+    for fn_name, label in (("ffmpeg_bin", "ffmpeg"), ("ffprobe_bin", "ffprobe")):
+        try:
+            path = getattr(_stages, fn_name)()
+            binary_paths[label] = path
+            if not (isinstance(path, str) and os.path.isfile(path) and os.access(path, os.X_OK)):
+                binary_errors[label] = f"resolved path not executable: {path}"
+        except Exception as exc:  # noqa: BLE001
+            binary_errors[label] = f"{type(exc).__name__}: {exc}"
+    details["binaries"] = {"paths": binary_paths, "errors": binary_errors}
+    if binary_errors:
+        return {
+            "ok": False,
+            "code": "missing_binaries",
+            "message": f"Bundled binaries unreachable: {', '.join(binary_errors.keys())}",
+            "details": details,
+            "fix_hint": "Rebuild the sidecar bundle so ffmpeg + ffprobe are bundled with the correct architecture.",
+        }
+
+    # --- 3. whisper model ----------------------------------------------
+    # stages._bundled_whisper_model_path() returns None when the model
+    # files don't exist OR when model.bin is truncated (<30MB). Either
+    # case is a packaging bug — surface as a missing-model failure.
+    model_errors: dict[str, str] = {}
+    model_paths: dict[str, str] = {}
+    try:
+        model_dir = _stages._bundled_whisper_model_path()
+        if model_dir is None:
+            model_errors["resolver"] = "no bundled faster-whisper-tiny model found at any expected path"
+        else:
+            model_paths["model_dir"] = model_dir
+            for name in ("config.json", "model.bin", "tokenizer.json", "vocabulary.txt"):
+                p = os.path.join(model_dir, name)
+                if not os.path.isfile(p):
+                    model_errors[name] = f"missing: {p}"
+    except Exception as exc:  # noqa: BLE001
+        model_errors["resolver"] = f"{type(exc).__name__}: {exc}"
+    details["model"] = {"paths": model_paths, "errors": model_errors}
+    if model_errors:
+        return {
+            "ok": False,
+            "code": "missing_model",
+            "message": "Whisper model files are missing or unreadable.",
+            "details": details,
+            "fix_hint": "Rebuild the sidecar bundle — the faster-whisper-tiny model is not included.",
+        }
+
+    # --- 4. writable dirs ----------------------------------------------
+    write_errors: dict[str, str] = {}
+    write_paths: dict[str, str] = {}
+    home = os.path.expanduser("~")
+    candidates = {
+        "app_support": os.path.join(home, "Library", "Application Support", "Liquid Clips"),
+        "logs": os.path.join(home, "Library", "Application Support", "Liquid Clips", "logs"),
+        "clips_home": str(CLIPS_HOME),
+    }
+    for name, path in candidates.items():
+        write_paths[name] = path
+        try:
+            os.makedirs(path, exist_ok=True)
+            test_file = os.path.join(path, ".liquid-clips-write-probe")
+            with open(test_file, "w") as f:
+                f.write("ok")
+            os.remove(test_file)
+        except Exception as exc:  # noqa: BLE001
+            write_errors[name] = f"{type(exc).__name__}: {exc}"
+    details["writable"] = {"paths": write_paths, "errors": write_errors}
+    if write_errors:
+        return {
+            "ok": False,
+            "code": "non_writable_dirs",
+            "message": f"App data directories are not writable: {', '.join(write_errors.keys())}",
+            "details": details,
+            "fix_hint": "Check macOS Full Disk Access for Liquid Clips, or run from /Applications instead of a quarantined Downloads copy.",
+        }
+
+    return {
+        "ok": True,
+        "code": "healthy",
+        "message": "Clip engine ready.",
+        "details": details,
+        "fix_hint": "",
     }
 
 
@@ -703,11 +861,55 @@ def method_secrets_status(_params: dict[str, Any]) -> dict[str, Any]:
 
 
 def method_openai_key_status(_params: dict[str, Any]) -> dict[str, Any]:
-    """Whether the LLM clip-picker can resolve an OpenAI key through the full
-    chain (env → keychain → dev file) — not just the keychain. The desktop's
-    pre-run guard uses this so a key set via env/dev-file doesn't false-block."""
-    from llm import openai_key_available
-    return {"available": openai_key_available()}
+    """Whether an OpenAI key is *resolvable* without touching the keychain.
+
+    v0.7.56 P0 — was `from llm import openai_key_available` which called
+    `resolve_openai_key()` → `_read_keychain_openai_key()` → `get_secret()` →
+    macOS Keychain prompt. The pre-run guard called this on Settings mount
+    AND boot, so a rebuilt/renamed sidecar binary triggered the password
+    prompt before the user had taken any explicit action.
+
+    New shape: env-var OR presence-file-says-yes. If presence says the
+    keychain has a key, the actual value-read still happens later when the
+    clip-picker stage runs (mid-pipeline, explicit user action — a single
+    expected prompt). The boot/Settings green-dot stays accurate via the
+    presence file without ever opening the keychain. The hosted-LLM check is
+    skipped here for the same reason — it requires the LICENSE_JWT keychain
+    read and is recomputed lazily in `llm.openai_key_available()` when the
+    clip-picker actually needs it.
+    """
+    import os as _os
+    if _os.environ.get("OPENAI_API_KEY"):
+        return {"available": True}
+    from secrets_store import list_known_secrets
+    presence = list_known_secrets()
+    return {"available": bool(presence.get("OPENAI_API_KEY", False))}
+
+
+def method_license_jwt_presence(_params: dict[str, Any]) -> dict[str, Any]:
+    """v0.7.56 P0 — Boot-safe "is the user signed in?" check.
+
+    Reads from the presence-file mirror (no keychain). Used by App.tsx boot
+    so the nav-copy "Sign in" vs "Account" flips correctly without firing a
+    macOS Keychain prompt on a freshly rebuilt/renamed sidecar binary.
+
+    The actual JWT value is still only readable via `method_secret_get`
+    (which keeps its keychain-only path) — that fires lazily after explicit
+    user action (auth panel open, embed `lc:auth-request`).
+    """
+    from secrets_store import list_known_secrets
+    presence = list_known_secrets()
+    return {"present": bool(presence.get("LICENSE_JWT", False))}
+
+
+def method_secret_repair_presence(_params: dict[str, Any]) -> dict[str, Any]:
+    """v0.7.56 P0 — Repair path. Probes the keychain for every known key and
+    rewrites the presence-file mirror. WILL trigger macOS Keychain prompts on
+    a rebuilt/renamed binary (one per key, ~8). Only invoke from an explicit
+    "Repair keychain" Settings action, never from boot.
+    """
+    from secrets_store import rebuild_presence_from_keychain
+    return {"secrets": rebuild_presence_from_keychain()}
 
 
 def method_validate_openai_key(_params: dict[str, Any]) -> dict[str, Any]:
@@ -4380,6 +4582,9 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "secret_get": method_secret_get,
     "secret_set": method_secret_set,
     "secret_delete": method_secret_delete,
+    # v0.7.56 P0 — keychain-free boot-safe presence checks.
+    "license_jwt_presence": method_license_jwt_presence,
+    "secret_repair_presence": method_secret_repair_presence,
     "tier_invalidate": method_tier_invalidate,
     "tier_status": method_tier_status,
     "set_runtime_flag": method_set_runtime_flag,
@@ -4459,6 +4664,10 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "start_lift_transcript": method_start_lift_transcript,
     "cancel_lift_transcript": method_cancel_lift_transcript,
     # ───── END IRON GATE IG-010 ─────
+    # v0.7.56 P0 — packaged sidecar preflight. Called by Rust IMMEDIATELY
+    # after spawn, BEFORE the splash advances. Returns structured envelope
+    # the recovery UI renders verbatim. See method_health_check docstring.
+    "health_check": method_health_check,
 }
 
 

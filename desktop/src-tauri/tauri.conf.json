@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0",
   "productName": "Liquid Clips",
-  "version": "0.7.55",
+  "version": "0.7.56",
   "identifier": "app.liquidclips.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -62,6 +62,7 @@
       "../python-sidecar/assets/liquid-clips-wordmark.png",
       "../python-sidecar/assets/watermark/made-with-liquid-clips.mov",
       "../python-sidecar/assets/watermark/made-with-liquid-clips-static.png",
+      "../python-sidecar/dist/sidecar-bundle/**/*",
       "PrivacyInfo.xcprivacy"
     ],
     "category": "Productivity",
