@@ -819,6 +819,17 @@ export const sidecar = {
   // so the next export re-queries /sync. Called when checkout completes
   // so a just-upgraded user gets a clean export immediately.
   tierInvalidate: () => sidecarCall<{ ok: true }>("tier_invalidate", {}),
+  // v0.7.55 P1-012 — surfaces the watermark fail-safe state to the
+  // pre-export gate. When last_failure is set AND last_known_paid is
+  // true, the export should be blocked with a "Checking membership…"
+  // toast rather than silently shipping a watermarked clip.
+  tierStatus: () =>
+    sidecarCall<{
+      cached_watermark: boolean | null;
+      last_failure: string | null;
+      last_failure_at: number;
+      last_known_paid: boolean;
+    }>("tier_status", {}),
   // v0.7.55 — set a whitelisted env var on the sidecar process so the
   // next pipeline call picks it up. Only JUNIOR_ANIMATED_CAPTIONS is
   // whitelisted today; the backend gate rejects anything else.

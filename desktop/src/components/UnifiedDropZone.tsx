@@ -54,6 +54,13 @@ type Props = {
   onImportReadyClips: (project: Project) => void;
   /** Free-tier export counter. null = unlimited; hidden in that case. */
   remainingExports?: number | null;
+  /** v0.7.55 P1-007 — defaults to true. When false, the surface knows
+   *  the tier hasn't resolved yet (boot, in-flight /sync) and renders
+   *  a neutral "checking quota…" pill instead of either the countdown
+   *  or the Premium copy. Pre-fix the surface read `remainingExports
+   *  === null` as Premium, so a free user mid-boot flashed Premium for
+   *  ~500ms before /sync populated the counter. */
+  tierResolved?: boolean;
 };
 
 export function UnifiedDropZone({
@@ -62,6 +69,7 @@ export function UnifiedDropZone({
   onLiftTranscript,
   onImportReadyClips,
   remainingExports = null,
+  tierResolved = true,
 }: Props) {
   const [lane, setLane] = useState<Lane>("make");
   const [url, setUrl] = useState("");
@@ -225,11 +233,22 @@ export function UnifiedDropZone({
             </div>
           </div>
 
-          {/* v0.7.55 — Free tier sees the countdown (X / 100 remaining).
-              Paid tier sees premium status instead. Captions toggle sits
-              beside the tier pill since both are export-step settings. */}
+          {/* v0.7.55 — Three tier states.
+              • unresolved (boot, /sync in-flight) → neutral
+                "checking quota…" pill so we don't lie about Premium
+                before tier resolves (P1-007).
+              • free (remainingExports is a number) → countdown copy.
+              • paid (remainingExports === null AFTER resolve) → premium
+                status pill.
+              Captions toggle sits beside the tier pill since both are
+              export-step settings. */}
           <div className="flex flex-wrap items-center gap-3">
-            {remainingExports !== null ? (
+            {!tierResolved ? (
+              <p className="inline-flex w-fit items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+                <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-text-tertiary" />
+                checking quota…
+              </p>
+            ) : remainingExports !== null ? (
               <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
                 {remainingExports} / 100 free clips remaining
               </p>

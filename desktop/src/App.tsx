@@ -966,6 +966,32 @@ export default function App() {
   }
 
   async function runRemainingStages(initial: Project) {
+    // v0.7.55 P1-012 — pre-export gate. If the sidecar's last /sync call
+    // FAILED AND a prior /sync had returned a paid tier, the
+    // _should_watermark() fail-safe path would silently watermark this
+    // user's clips. Block instead — surface a toast asking them to
+    // retry once membership reverifies. Free users are unaffected
+    // (last_known_paid stays false until a paid /sync ever lands).
+    try {
+      const status = await sidecar.tierStatus();
+      if (status.last_known_paid && status.last_failure) {
+        window.dispatchEvent(
+          new CustomEvent("lc:toast", {
+            detail: {
+              kind: "warn",
+              message:
+                "Checking membership… we couldn't reach the backend. Try the export again in a moment.",
+            },
+          }),
+        );
+        return;
+      }
+    } catch {
+      // Sidecar unreachable — let the existing pipeline error path
+      // handle it. Better to attempt the export than to lock the user
+      // out on a transient sidecar blip.
+    }
+
     // P1 #24 — generation guard, mirroring liftGenRef. Bumped + captured at
     // entry; each `await sidecar.runStage(...)` re-checks runGenRef before
     // mutating view state. A stale resolution from an abandoned run (e.g.
@@ -1802,8 +1828,15 @@ export default function App() {
               Your 100 free clip exports — used up.
             </h2>
             <p className="mt-2 max-w-[520px] font-sans text-[14px] leading-relaxed text-text-secondary">
-              You've exported 100 clips for free. Keep going for unlimited exports. Growth · $99.99/mo adds
-              hosted transcribe and multi-platform publishing. Autopilot · $199.99/mo adds drip-mode.
+              {/* v0.7.55 P0-002 — locked tier vocabulary. The prior copy
+                  pushed Growth · $99.99 / Autopilot · $199.99, both
+                  retired in the v2 matrix. Liquid Clips Pro is the
+                  single Solo plan at $29.99/mo; the upsell talks the
+                  user-facing funnel (no watermark + the $5 RPM ladder
+                  + 50% MRR affiliate). */}
+              You&apos;ve exported 100 clips for free. Upgrade to Solo at $29.99/mo for unlimited
+              watermark-free exports, the $5 RPM premium reward ladder, the premium mission lanes,
+              and 50% MRR on every paid user you refer.
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
               <button
