@@ -131,6 +131,9 @@ const TABS = [
   "Bugs",
   "Bonus Ledger",
   "Community Channels",
+  "Missions",
+  "Banners",
+  "Announcements",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -284,6 +287,9 @@ export function AdminHQ({ adminEmail, initialOverview }: { adminEmail: string; i
         {tab === "Bugs" && <BugsTab />}
         {tab === "Bonus Ledger" && <BonusLedgerTab />}
         {tab === "Community Channels" && <CommunityChannelsTab />}
+        {tab === "Missions" && <MissionsTab />}
+        {tab === "Banners" && <BannersTab />}
+        {tab === "Announcements" && <AnnouncementsTab />}
       </div>
 
       <footer className="mt-14 border-t border-line pt-5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
@@ -2277,6 +2283,795 @@ function ChannelDraftForm({
         >
           {busy ? "Saving…" : editingSlug ? "Save changes" : "Create channel"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Missions tab (v0.7.55) ──────────────────────────────────────── */
+// Thin CRUD wrapper over /admin/campaigns. The underlying table is
+// sponsored_campaigns — missions and campaigns are the same row in
+// schema terms. Slug is immutable on edit.
+
+type AdminMission = {
+  id: string;
+  slug: string;
+  name: string;
+  brand: string | null;
+  brand_name: string | null;
+  business_unit: string | null;
+  mission_type: string | null;
+  mission_lane: string | null;
+  status: string;
+  type: string;
+  rpm_cents: number;
+  base_rpm_cents: number;
+  premium_rpm_cents: number;
+  premium_bonus_cents: number;
+  budget_cents: number;
+  required_tier: string | null;
+  is_high_rpm: boolean;
+  is_invite_only: boolean;
+  affiliate_enabled: boolean;
+  community_channel_id: string | null;
+  whop_campaign_id: string | null;
+  whop_campaign_url: string | null;
+  whop_url: string;
+  visibility_tiers: string[];
+};
+
+const EMPTY_MISSION: Record<string, string | boolean> = {
+  slug: "",
+  name: "",
+  brand: "",
+  brand_name: "",
+  business_unit: "",
+  mission_type: "uncle_daniel",
+  mission_lane: "",
+  status: "draft",
+  type: "public",
+  rpm_cents: "0",
+  base_rpm_cents: "100",
+  premium_rpm_cents: "500",
+  premium_bonus_cents: "400",
+  budget_cents: "0",
+  required_tier: "",
+  is_high_rpm: false,
+  is_invite_only: false,
+  affiliate_enabled: false,
+  community_channel_id: "",
+  whop_campaign_id: "",
+  whop_campaign_url: "",
+  whop_url: "https://whop.com/liquidclips/",
+  sort_order: "100",
+};
+
+function MissionsTab() {
+  const adminFetch = useAdminFetch();
+  const [rows, setRows] = useState<AdminMission[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Record<string, string | boolean>>(EMPTY_MISSION);
+  const [editingSlug, setEditingSlug] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      // Public /campaigns lists every row including draft (status filter
+      // on the public read excludes "closed" only).
+      const j = (await adminFetch("campaigns")) as { campaigns: AdminMission[] };
+      setRows(j.campaigns);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e)); // allow-raw-error — admin-internal debug surface
+    }
+  }, [adminFetch]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  function reset() {
+    setDraft(EMPTY_MISSION);
+    setEditingSlug(null);
+  }
+
+  function edit(m: AdminMission) {
+    setEditingSlug(m.slug);
+    setDraft({
+      slug: m.slug,
+      name: m.name,
+      brand: m.brand ?? "",
+      brand_name: m.brand_name ?? "",
+      business_unit: m.business_unit ?? "",
+      mission_type: m.mission_type ?? "uncle_daniel",
+      mission_lane: m.mission_lane ?? "",
+      status: m.status,
+      type: m.type,
+      rpm_cents: String(m.rpm_cents),
+      base_rpm_cents: String(m.base_rpm_cents),
+      premium_rpm_cents: String(m.premium_rpm_cents),
+      premium_bonus_cents: String(m.premium_bonus_cents),
+      budget_cents: String(m.budget_cents),
+      required_tier: m.required_tier ?? "",
+      is_high_rpm: !!m.is_high_rpm,
+      is_invite_only: !!m.is_invite_only,
+      affiliate_enabled: !!m.affiliate_enabled,
+      community_channel_id: m.community_channel_id ?? "",
+      whop_campaign_id: m.whop_campaign_id ?? "",
+      whop_campaign_url: m.whop_campaign_url ?? "",
+      whop_url: m.whop_url,
+      sort_order: "100",
+    });
+  }
+
+  async function save() {
+    if (!draft.slug || !draft.name || !draft.whop_url) {
+      setError("slug, name, and whop_url are required");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const numField = (k: string) => parseInt(String(draft[k] ?? "0"), 10) || 0;
+    const body: Record<string, unknown> = {
+      slug: String(draft.slug).trim(),
+      name: String(draft.name).trim(),
+      brand: String(draft.brand).trim() || null,
+      brand_name: String(draft.brand_name).trim() || null,
+      business_unit: String(draft.business_unit).trim() || null,
+      mission_type: String(draft.mission_type).trim() || null,
+      mission_lane: String(draft.mission_lane).trim() || null,
+      status: String(draft.status),
+      type: String(draft.type),
+      rpm_cents: numField("rpm_cents"),
+      base_rpm_cents: numField("base_rpm_cents"),
+      premium_rpm_cents: numField("premium_rpm_cents"),
+      premium_bonus_cents: numField("premium_bonus_cents"),
+      budget_cents: numField("budget_cents"),
+      required_tier: String(draft.required_tier).trim() || null,
+      is_high_rpm: !!draft.is_high_rpm,
+      is_invite_only: !!draft.is_invite_only,
+      affiliate_enabled: !!draft.affiliate_enabled,
+      community_channel_id: String(draft.community_channel_id).trim() || null,
+      whop_campaign_id: String(draft.whop_campaign_id).trim() || null,
+      whop_campaign_url: String(draft.whop_campaign_url).trim() || null,
+      whop_url: String(draft.whop_url).trim(),
+      sort_order: numField("sort_order"),
+    };
+    try {
+      if (editingSlug) {
+        const patch = { ...body };
+        delete patch.slug;
+        await adminFetch(`campaigns/${editingSlug}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+      } else {
+        await adminFetch("campaigns", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      }
+      reset();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e)); // allow-raw-error — admin-internal debug surface
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(slug: string) {
+    if (!window.confirm(`Delete mission "${slug}"?`)) return;
+    try {
+      await adminFetch(`campaigns/${slug}`, { method: "DELETE" });
+      if (editingSlug === slug) reset();
+      await load();
+    } catch (e) {
+      window.alert(`Delete failed: ${e instanceof Error ? e.message : String(e)}`); // allow-raw-error — admin-internal alert
+    }
+  }
+
+  return (
+    <Panel
+      title="Missions"
+      sub="Every clipping mission across Uncle Daniel, viral reactions, DDB, fashion, sponsors, proof. Whop bounty id is the Whop content reward bound to this mission."
+      right={
+        <button
+          type="button"
+          onClick={reset}
+          className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia"
+        >
+          {editingSlug ? "Cancel edit" : "New mission"}
+        </button>
+      }
+    >
+      <MissionDraftForm
+        draft={draft}
+        setDraft={setDraft}
+        save={save}
+        busy={busy}
+        editingSlug={editingSlug}
+      />
+      {error && (
+        <p className="mt-3 rounded-md border border-[#DC2626]/40 bg-[#DC2626]/5 px-3 py-2 font-mono text-[11px] text-[#F87171]">{error}</p>
+      )}
+      {!rows ? (
+        <p className="mt-4 font-mono text-[11px] text-text-tertiary">loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="mt-4 font-mono text-[11px] text-text-tertiary">no missions yet</p>
+      ) : (
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full font-mono text-[11px]">
+            <thead className="border-b border-line text-text-tertiary">
+              <tr className="text-left">
+                <th className="px-2 py-2">status</th>
+                <th className="px-2 py-2">slug · name</th>
+                <th className="px-2 py-2">lane</th>
+                <th className="px-2 py-2 text-right">base $RPM</th>
+                <th className="px-2 py-2 text-right">premium $RPM</th>
+                <th className="px-2 py-2 text-right">budget</th>
+                <th className="px-2 py-2">whop_bounty_id</th>
+                <th className="px-2 py-2"> </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((m) => (
+                <tr key={m.id} className="border-b border-line/40">
+                  <td className="px-2 py-2"><Chip label={m.status} /></td>
+                  <td className="px-2 py-2 text-ink">
+                    <div className="flex flex-col">
+                      <span className="font-display text-[13px] font-semibold text-ink">{m.name}</span>
+                      <span className="text-text-tertiary">{m.slug}</span>
+                    </div>
+                  </td>
+                  <td className="px-2 py-2 text-text-tertiary">{(m.mission_lane ?? m.mission_type) ?? "—"}</td>
+                  <td className="px-2 py-2 text-right text-ink tabular-nums">${(m.base_rpm_cents / 100).toFixed(0)}</td>
+                  <td className="px-2 py-2 text-right text-ink tabular-nums">${(m.premium_rpm_cents / 100).toFixed(0)}</td>
+                  <td className="px-2 py-2 text-right text-text-tertiary tabular-nums">${(m.budget_cents / 100).toLocaleString()}</td>
+                  <td className="px-2 py-2 text-text-tertiary">{m.whop_campaign_id ?? "—"}</td>
+                  <td className="px-2 py-2 text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button onClick={() => edit(m)} className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia">Edit</button>
+                      <button onClick={() => void remove(m.slug)} className="rounded-full border border-[#DC2626]/40 bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#F87171] hover:bg-[#DC2626]/10">Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function MissionDraftForm({
+  draft,
+  setDraft,
+  save,
+  busy,
+  editingSlug,
+}: {
+  draft: Record<string, string | boolean>;
+  setDraft: (fn: (d: Record<string, string | boolean>) => Record<string, string | boolean>) => void;
+  save: () => Promise<void> | void;
+  busy: boolean;
+  editingSlug: string | null;
+}) {
+  function text(name: string, label: string, opts?: { placeholder?: string }) {
+    return (
+      <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+        {label}
+        <input
+          type="text"
+          value={String(draft[name] ?? "")}
+          placeholder={opts?.placeholder}
+          disabled={name === "slug" && !!editingSlug}
+          onChange={(e) => setDraft((d) => ({ ...d, [name]: e.target.value }))}
+          className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink disabled:opacity-60"
+        />
+      </label>
+    );
+  }
+
+  function bool(name: string, label: string) {
+    return (
+      <label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+        <input type="checkbox" checked={!!draft[name]} onChange={(e) => setDraft((d) => ({ ...d, [name]: e.target.checked }))} />
+        {label}
+      </label>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-line bg-paper p-4">
+      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia">
+        {editingSlug ? `editing ${editingSlug}` : "new mission"}
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+        {text("slug", "slug *")}
+        {text("name", "name *")}
+        {text("brand", "brand label")}
+        {text("brand_name", "brand_name")}
+        {text("business_unit", "business_unit")}
+        <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+          mission_type
+          <select value={String(draft.mission_type)} onChange={(e) => setDraft((d) => ({ ...d, mission_type: e.target.value }))} className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink">
+            <option value="uncle_daniel">uncle_daniel</option>
+            <option value="viral_reaction">viral_reaction</option>
+            <option value="software_proof">software_proof</option>
+          </select>
+        </label>
+        {text("mission_lane", "mission_lane")}
+        <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+          status
+          <select value={String(draft.status)} onChange={(e) => setDraft((d) => ({ ...d, status: e.target.value }))} className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink">
+            <option value="coming_soon">coming_soon</option>
+            <option value="partially_funded">partially_funded</option>
+            <option value="funded">funded</option>
+            <option value="live">live</option>
+            <option value="closed">closed</option>
+          </select>
+        </label>
+        {text("base_rpm_cents", "base_rpm (cents)")}
+        {text("premium_rpm_cents", "premium_rpm (cents)")}
+        {text("premium_bonus_cents", "bonus_rpm (cents)")}
+        {text("budget_cents", "budget (cents)")}
+        {text("required_tier", "required_tier")}
+        {text("whop_url", "whop_url *")}
+        {text("whop_campaign_id", "whop_campaign_id")}
+        {text("whop_campaign_url", "whop_campaign_url")}
+        {text("community_channel_id", "community_channel_id")}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-4">
+        {bool("is_high_rpm", "high RPM")}
+        {bool("is_invite_only", "invite only")}
+        {bool("affiliate_enabled", "affiliate enabled")}
+        <button onClick={() => void save()} disabled={busy} className="ml-auto rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-white hover:bg-fuchsia-bright disabled:opacity-60">
+          {busy ? "Saving…" : editingSlug ? "Save changes" : "Create mission"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Banners tab (v0.7.55) ───────────────────────────────────────── */
+
+type AdminBanner = {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  image_url: string | null;
+  cta_text: string | null;
+  cta_url: string | null;
+  placement: string;
+  target_tier: string | null;
+  target_mission_id: string | null;
+  priority: number;
+  starts_at: string | null;
+  ends_at: string | null;
+  is_active: boolean;
+};
+
+function BannersTab() {
+  const adminFetch = useAdminFetch();
+  const [rows, setRows] = useState<AdminBanner[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const j = (await adminFetch("banners")) as { banners: AdminBanner[] };
+      setRows(j.banners);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e)); // allow-raw-error — admin-internal debug surface
+    }
+  }, [adminFetch]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function toggleActive(b: AdminBanner) {
+    try {
+      await adminFetch(`banners/${b.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ is_active: !b.is_active }),
+      });
+      await load();
+    } catch (e) {
+      window.alert(`Toggle failed: ${e instanceof Error ? e.message : String(e)}`); // allow-raw-error — admin-internal alert
+    }
+  }
+
+  async function remove(b: AdminBanner) {
+    if (!window.confirm(`Delete banner "${b.title}"?`)) return;
+    try {
+      await adminFetch(`banners/${b.id}`, { method: "DELETE" });
+      await load();
+    } catch (e) {
+      window.alert(`Delete failed: ${e instanceof Error ? e.message : String(e)}`); // allow-raw-error — admin-internal alert
+    }
+  }
+
+  return (
+    <Panel
+      title="Banners"
+      sub="Promotional placements across earn_hero · mission_card · mission_detail · upgrade_modal · community_top · home_hero · checkout_modal."
+      right={
+        <button
+          type="button"
+          onClick={() => setShowForm((v) => !v)}
+          className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia"
+        >
+          {showForm ? "Close form" : "New banner"}
+        </button>
+      }
+    >
+      {showForm && (
+        <BannerForm
+          adminFetch={adminFetch}
+          onSaved={async () => {
+            setShowForm(false);
+            await load();
+          }}
+        />
+      )}
+      {error && (
+        <p className="mt-3 rounded-md border border-[#DC2626]/40 bg-[#DC2626]/5 px-3 py-2 font-mono text-[11px] text-[#F87171]">{error}</p>
+      )}
+      {!rows ? (
+        <p className="mt-4 font-mono text-[11px] text-text-tertiary">loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="mt-4 font-mono text-[11px] text-text-tertiary">no banners yet</p>
+      ) : (
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full font-mono text-[11px]">
+            <thead className="border-b border-line text-text-tertiary">
+              <tr className="text-left">
+                <th className="px-2 py-2">placement</th>
+                <th className="px-2 py-2">title</th>
+                <th className="px-2 py-2">target</th>
+                <th className="px-2 py-2 text-right">priority</th>
+                <th className="px-2 py-2">cta</th>
+                <th className="px-2 py-2">active</th>
+                <th className="px-2 py-2"> </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((b) => (
+                <tr key={b.id} className="border-b border-line/40">
+                  <td className="px-2 py-2 text-text-tertiary">{b.placement}</td>
+                  <td className="px-2 py-2 text-ink">{b.title}</td>
+                  <td className="px-2 py-2 text-text-tertiary">{[b.target_tier, b.target_mission_id].filter(Boolean).join(" · ") || "everyone"}</td>
+                  <td className="px-2 py-2 text-right text-text-tertiary tabular-nums">{b.priority}</td>
+                  <td className="px-2 py-2 text-text-tertiary">{b.cta_text ?? "—"}</td>
+                  <td className="px-2 py-2"><Chip label={b.is_active ? "live" : "paused"} /></td>
+                  <td className="px-2 py-2 text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button onClick={() => void toggleActive(b)} className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia">{b.is_active ? "Pause" : "Resume"}</button>
+                      <button onClick={() => void remove(b)} className="rounded-full border border-[#DC2626]/40 bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#F87171] hover:bg-[#DC2626]/10">Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function BannerForm({
+  adminFetch,
+  onSaved,
+}: {
+  adminFetch: (path: string, init?: RequestInit) => Promise<Json>;
+  onSaved: () => Promise<void> | void;
+}) {
+  const [draft, setDraft] = useState({
+    title: "",
+    subtitle: "",
+    image_url: "",
+    cta_text: "",
+    cta_url: "",
+    placement: "earn_hero",
+    target_tier: "",
+    target_mission_id: "",
+    priority: "100",
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    if (!draft.title) {
+      setError("title required");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await adminFetch("banners", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: draft.title,
+          subtitle: draft.subtitle || null,
+          image_url: draft.image_url || null,
+          cta_text: draft.cta_text || null,
+          cta_url: draft.cta_url || null,
+          placement: draft.placement,
+          target_tier: draft.target_tier || null,
+          target_mission_id: draft.target_mission_id || null,
+          priority: parseInt(draft.priority || "0", 10) || 0,
+          is_active: true,
+        }),
+      });
+      await onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e)); // allow-raw-error — admin-internal debug surface
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mb-4 rounded-2xl border border-line bg-paper p-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        <Field label="title *" value={draft.title} onChange={(v) => setDraft({ ...draft, title: v })} />
+        <Field label="subtitle" value={draft.subtitle} onChange={(v) => setDraft({ ...draft, subtitle: v })} />
+        <Field label="image_url" value={draft.image_url} onChange={(v) => setDraft({ ...draft, image_url: v })} />
+        <Field label="cta_text" value={draft.cta_text} onChange={(v) => setDraft({ ...draft, cta_text: v })} />
+        <Field label="cta_url" value={draft.cta_url} onChange={(v) => setDraft({ ...draft, cta_url: v })} />
+        <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+          placement
+          <select value={draft.placement} onChange={(e) => setDraft({ ...draft, placement: e.target.value })} className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink">
+            <option value="earn_hero">earn_hero</option>
+            <option value="mission_card">mission_card</option>
+            <option value="mission_detail">mission_detail</option>
+            <option value="upgrade_modal">upgrade_modal</option>
+            <option value="community_top">community_top</option>
+            <option value="home_hero">home_hero</option>
+            <option value="checkout_modal">checkout_modal</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+          target_tier
+          <select value={draft.target_tier} onChange={(e) => setDraft({ ...draft, target_tier: e.target.value })} className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink">
+            <option value="">everyone</option>
+            <option value="free">free</option>
+            <option value="paid">paid</option>
+          </select>
+        </label>
+        <Field label="target_mission_id" value={draft.target_mission_id} onChange={(v) => setDraft({ ...draft, target_mission_id: v })} />
+        <Field label="priority" value={draft.priority} onChange={(v) => setDraft({ ...draft, priority: v })} />
+      </div>
+      {error && <p className="mt-3 rounded-md border border-[#DC2626]/40 bg-[#DC2626]/5 px-3 py-2 font-mono text-[11px] text-[#F87171]">{error}</p>}
+      <div className="mt-3 flex items-center">
+        <button onClick={() => void save()} disabled={busy} className="ml-auto rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-white hover:bg-fuchsia-bright disabled:opacity-60">{busy ? "Saving…" : "Create banner"}</button>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+      {label}
+      <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink" />
+    </label>
+  );
+}
+
+/* ── Announcements tab (v0.7.55) ─────────────────────────────────── */
+
+type AdminAnnouncement = {
+  id: string;
+  title: string;
+  body_markdown: string | null;
+  kind: string;
+  cta_text: string | null;
+  cta_url: string | null;
+  target_tier: string | null;
+  pinned: boolean;
+  published_at: string | null;
+  is_active: boolean;
+};
+
+function AnnouncementsTab() {
+  const adminFetch = useAdminFetch();
+  const [rows, setRows] = useState<AdminAnnouncement[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const j = (await adminFetch("announcements")) as { announcements: AdminAnnouncement[] };
+      setRows(j.announcements);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e)); // allow-raw-error — admin-internal debug surface
+    }
+  }, [adminFetch]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function togglePin(a: AdminAnnouncement) {
+    try {
+      await adminFetch(`announcements/${a.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pinned: !a.pinned }),
+      });
+      await load();
+    } catch (e) {
+      window.alert(`Pin failed: ${e instanceof Error ? e.message : String(e)}`); // allow-raw-error — admin-internal alert
+    }
+  }
+
+  async function remove(a: AdminAnnouncement) {
+    if (!window.confirm(`Delete announcement "${a.title}"?`)) return;
+    try {
+      await adminFetch(`announcements/${a.id}`, { method: "DELETE" });
+      await load();
+    } catch (e) {
+      window.alert(`Delete failed: ${e instanceof Error ? e.message : String(e)}`); // allow-raw-error — admin-internal alert
+    }
+  }
+
+  return (
+    <Panel
+      title="Announcements"
+      sub="Mission drops, payout updates, rule changes. Pinned rows surface first in the Announcements room and on dashboard first paint."
+      right={
+        <button
+          type="button"
+          onClick={() => setShowForm((v) => !v)}
+          className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia"
+        >
+          {showForm ? "Close form" : "New post"}
+        </button>
+      }
+    >
+      {showForm && (
+        <AnnouncementForm
+          adminFetch={adminFetch}
+          onSaved={async () => {
+            setShowForm(false);
+            await load();
+          }}
+        />
+      )}
+      {error && (
+        <p className="mt-3 rounded-md border border-[#DC2626]/40 bg-[#DC2626]/5 px-3 py-2 font-mono text-[11px] text-[#F87171]">{error}</p>
+      )}
+      {!rows ? (
+        <p className="mt-4 font-mono text-[11px] text-text-tertiary">loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="mt-4 font-mono text-[11px] text-text-tertiary">no announcements yet</p>
+      ) : (
+        <ul className="mt-4 flex flex-col gap-2">
+          {rows.map((a) => (
+            <li key={a.id} className="flex flex-col gap-2 rounded-2xl border border-line bg-paper-elev/30 p-4 md:flex-row md:items-start md:justify-between">
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+                  <Chip label={a.kind} />
+                  {a.pinned && <Chip label="pinned" />}
+                  {a.target_tier && <span>· {a.target_tier}</span>}
+                </div>
+                <span className="font-display text-[15px] font-semibold text-ink">{a.title}</span>
+                {a.body_markdown && (
+                  <p className="font-sans text-[12px] leading-relaxed text-text-secondary">{a.body_markdown}</p>
+                )}
+                {a.cta_text && a.cta_url && (
+                  <a href={a.cta_url} target="_blank" rel="noreferrer" className="mt-1 inline-flex w-fit items-center gap-1 font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia underline-offset-2 hover:underline">{a.cta_text} ↗</a>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => void togglePin(a)} className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia">{a.pinned ? "Unpin" : "Pin"}</button>
+                <button onClick={() => void remove(a)} className="rounded-full border border-[#DC2626]/40 bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#F87171] hover:bg-[#DC2626]/10">Delete</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+function AnnouncementForm({
+  adminFetch,
+  onSaved,
+}: {
+  adminFetch: (path: string, init?: RequestInit) => Promise<Json>;
+  onSaved: () => Promise<void> | void;
+}) {
+  const [draft, setDraft] = useState({
+    title: "",
+    body_markdown: "",
+    kind: "other",
+    cta_text: "",
+    cta_url: "",
+    target_tier: "",
+    pinned: false,
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    if (!draft.title) {
+      setError("title required");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await adminFetch("announcements", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: draft.title,
+          body_markdown: draft.body_markdown || null,
+          kind: draft.kind,
+          cta_text: draft.cta_text || null,
+          cta_url: draft.cta_url || null,
+          target_tier: draft.target_tier || null,
+          pinned: draft.pinned,
+          published_at: new Date().toISOString(),
+          is_active: true,
+        }),
+      });
+      await onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e)); // allow-raw-error — admin-internal debug surface
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mb-4 rounded-2xl border border-line bg-paper p-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        <Field label="title *" value={draft.title} onChange={(v) => setDraft({ ...draft, title: v })} />
+        <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+          kind
+          <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink">
+            <option value="mission_drop">mission_drop</option>
+            <option value="payout">payout</option>
+            <option value="rule_change">rule_change</option>
+            <option value="deadline">deadline</option>
+            <option value="other">other</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+          target_tier
+          <select value={draft.target_tier} onChange={(e) => setDraft({ ...draft, target_tier: e.target.value })} className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink">
+            <option value="">everyone</option>
+            <option value="free">free</option>
+            <option value="paid">paid</option>
+          </select>
+        </label>
+        <Field label="cta_text" value={draft.cta_text} onChange={(v) => setDraft({ ...draft, cta_text: v })} />
+        <Field label="cta_url" value={draft.cta_url} onChange={(v) => setDraft({ ...draft, cta_url: v })} />
+        <label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+          <input type="checkbox" checked={draft.pinned} onChange={(e) => setDraft({ ...draft, pinned: e.target.checked })} />
+          pin to top
+        </label>
+        <label className="col-span-2 flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary md:col-span-3">
+          body (markdown)
+          <textarea value={draft.body_markdown} onChange={(e) => setDraft({ ...draft, body_markdown: e.target.value })} rows={4} className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink" />
+        </label>
+      </div>
+      {error && <p className="mt-3 rounded-md border border-[#DC2626]/40 bg-[#DC2626]/5 px-3 py-2 font-mono text-[11px] text-[#F87171]">{error}</p>}
+      <div className="mt-3 flex items-center">
+        <button onClick={() => void save()} disabled={busy} className="ml-auto rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-white hover:bg-fuchsia-bright disabled:opacity-60">{busy ? "Saving…" : "Publish"}</button>
       </div>
     </div>
   );

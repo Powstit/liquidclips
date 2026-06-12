@@ -22,6 +22,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useEmbedAuth } from "./EmbedAuthBridge";
+import { PoweredByWhop } from "./PoweredByWhop";
 import { BACKEND_URL, EMBED_MSG } from "@/lib/embed-auth";
 
 // Mirror of `desktop/src/lib/sidecar.ts` WhopBounty. Only the fields the embed
@@ -201,9 +202,12 @@ function Heading() {
       <h1 className="font-display text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink">
         Pick a campaign. Clip. Get paid.
       </h1>
-      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
-        open campaigns · pulled from whop
-      </p>
+      <div className="flex items-center gap-2">
+        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+          open campaigns
+        </p>
+        <PoweredByWhop size="xs" />
+      </div>
     </div>
   );
 }

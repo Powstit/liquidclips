@@ -57,6 +57,11 @@ const READ_PATHS = [
   /^bonus-ledger$/,
   // v0.7.55 (community architecture) — tier-gated room CRUD.
   /^community\/channels$/,
+  // v0.7.55 (admin mission control) — banners + announcements + missions.
+  /^banners$/,
+  /^announcements$/,
+  /^campaigns$/,
+  /^campaigns\/[^/]+$/,
 ];
 const WRITE_PATHS = [
   /^claims\/[^/]+\/expire$/,
@@ -70,6 +75,13 @@ const WRITE_PATHS = [
   // method override below — Next.js route handlers dispatch on method).
   /^community\/channels$/,
   /^community\/channels\/[^/]+$/,
+  // v0.7.55 admin mission control — banners + announcements + missions.
+  /^banners$/,
+  /^banners\/[^/]+$/,
+  /^announcements$/,
+  /^announcements\/[^/]+$/,
+  /^campaigns$/,
+  /^campaigns\/[^/]+$/,
 ];
 
 function pathAllowed(path: string, method: string): boolean {
