@@ -175,13 +175,13 @@ export default async function StartPage() {
               clips — or earn through Clip Rewards on Whop. This page walks you through every step.
             </p>
             <div className="hero-actions" style={{ justifyContent: "center" }}>
-              <DownloadCTA variant="primary" artifacts={artifacts} />
+              <DownloadCTA variant="primary" artifacts={artifacts} version={latest?.version} />
               <Link href="#how-it-works" className="button-secondary">
                 See the 5 steps
               </Link>
             </div>
             <div style={{ marginTop: 14, textAlign: "center" }}>
-              <DownloadMeta />
+              <DownloadMeta version={latest?.version} />
             </div>
           </div>
         </section>
@@ -372,10 +372,10 @@ export default async function StartPage() {
               enough.
             </p>
             <div className="hero-actions" style={{ justifyContent: "center", marginTop: 28 }}>
-              <DownloadCTA variant="primary" artifacts={artifacts} />
+              <DownloadCTA variant="primary" artifacts={artifacts} version={latest?.version} />
             </div>
             <div style={{ marginTop: 14 }}>
-              <DownloadMeta />
+              <DownloadMeta version={latest?.version} />
             </div>
           </div>
         </section>

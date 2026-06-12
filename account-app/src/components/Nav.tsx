@@ -3,6 +3,13 @@
 import Link from "next/link";
 import { SignInButton, SignUpButton, Show, UserButton } from "@clerk/nextjs";
 import { Logo } from "./Logo";
+import { InstallAppButton } from "./InstallAppButton";
+
+// liquidclips.app/download is the single source of truth for installer
+// URLs (v0.7.56). PWA "Install web app" surfaces separately via
+// InstallAppButton — kept distinct so users never confuse the browser
+// install with the Mac DMG download.
+const MARKETING_DOWNLOAD_URL = "https://liquidclips.app/download";
 
 export function Nav() {
   return (
@@ -10,6 +17,17 @@ export function Nav() {
       <div className="mx-auto flex max-w-[1240px] items-center justify-between">
         <Logo />
         <div className="flex items-center gap-4 text-sm">
+          {/* v0.7.56 P0 — Desktop download stays as a quiet text link
+              (not a pill) so it sits visually below Sign in / Sign up
+              for cold visitors. Cold visitor's primary action is still
+              "Sign up" — the desktop download is a utility next to it. */}
+          <a
+            href={MARKETING_DOWNLOAD_URL}
+            className="hidden font-sans text-[14px] font-medium text-text-secondary transition-colors hover:text-ink sm:inline-flex"
+            data-cta="desktop-download"
+          >
+            Download desktop app
+          </a>
           <Show when="signed-out">
             <SignInButton>
               <button className="font-sans text-[14px] font-medium text-text-secondary transition-colors hover:text-ink">
@@ -23,6 +41,12 @@ export function Nav() {
             </SignUpButton>
           </Show>
           <Show when="signed-in">
+            {/* v0.7.56 P0 — InstallAppButton is gated to signed-in users
+                only. A cold visitor without an account should never see
+                "Install web app" next to "Download desktop app" — too
+                much install-of-what ambiguity. Signed-in users already
+                know what the web app is. */}
+            <InstallAppButton />
             <Link
               href="/dashboard"
               className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary transition-colors hover:text-ink"

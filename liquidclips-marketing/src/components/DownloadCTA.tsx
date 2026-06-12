@@ -13,6 +13,8 @@ type ArtifactMap = {
   linux?: string;
 };
 
+const RELEASES_URL = "https://github.com/Powstit/liquidclips/releases";
+
 // v0.7.49 hotfix — Removed the NEXT_PUBLIC_DOWNLOAD_DMG_URL legacy fallback.
 // The env var on Vercel was still pointing to Jnr-employee/v0.6.44 and was
 // being served as a stale .dmg button on 2026-06-11. Primary path stays
@@ -98,6 +100,8 @@ export function DownloadCTA({
   className = "",
   showPicker = true,
   artifacts: artifactsProp,
+  version,
+  label,
 }: {
   variant?: "primary" | "secondary";
   size?: "md" | "lg";
@@ -107,6 +111,14 @@ export function DownloadCTA({
    *  these win over env-var fallbacks. Lets parent pages drive the
    *  download URL set without per-version Vercel env-var bumps. */
   artifacts?: ArtifactMap;
+  /** Public release version from getLatestRelease(). Surfaced in the
+   *  post-click "didn't start" helper so users see exactly which DMG
+   *  is wired up. */
+  version?: string;
+  /** Optional label override. The homepage hero uses `"Download Desktop"`
+   *  for value-prop framing; the /download page keeps the platform-
+   *  specific dynamic label ("Download for Apple Silicon" etc.). */
+  label?: string;
 }) {
   // SSR fallback: assume Mac. Liquid Clips is a Mac-only desktop app — even
   // if a Windows/Linux visitor lands here, the eventual client-side override
@@ -115,6 +127,20 @@ export function DownloadCTA({
   // looks like the app is unreleased to anyone watching a demo recording.
   const [detected, setDetected] = useState<Platform>("mac-arm");
   const [override, setOverride] = useState<Platform | null>(null);
+  // v0.7.56 — post-click helper. After the primary button is clicked we
+  // show a small "If your download didn't start, click here" link with
+  // the direct asset URL. Defends against browsers blocking the auto-
+  // download from a top-level <a download>.
+  //
+  // The `?show-fallback=1` query forces the fallback visible without a
+  // click — used for snapshot proof and for support links that need to
+  // walk a user to the manual download.
+  const [clicked, setClicked] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("show-fallback") === "1") setClicked(true);
+  }, []);
   const artifacts = useMemo(() => {
     // Server-provided artifacts win; merge any missing entries from env-var
     // fallbacks so we never go dead even if the GH API call failed.
@@ -151,12 +177,22 @@ export function DownloadCTA({
   return (
     <div className="download-cta-stack">
       {!href ? (
-        <a href={waitlistHref} className={cls} data-platform={platform} data-state="waitlist">
-          Get notified when ready
+        // Failure mode: GH API + env-var fallbacks both empty. Never goes
+        // dead — sends the user to the full GitHub releases page so they
+        // can grab the DMG directly, with mailto as a last resort.
+        <a href={RELEASES_URL} className={cls} data-platform={platform} data-state="releases-fallback" target="_blank" rel="noopener noreferrer">
+          View all releases on GitHub
         </a>
       ) : (
-        <a href={href} className={cls} data-platform={platform} data-state="ready" download>
-          {ctaLabel(platform)}
+        <a
+          href={href}
+          className={cls}
+          data-platform={platform}
+          data-state="ready"
+          download
+          onClick={() => setClicked(true)}
+        >
+          {label ?? ctaLabel(platform)}
         </a>
       )}
 
@@ -181,20 +217,60 @@ export function DownloadCTA({
           >
             Intel
           </button>
+          <span className="download-pick-sep">·</span>
+          <a
+            className="download-pick"
+            href={RELEASES_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-cta="view-all-releases"
+          >
+            View all releases
+          </a>
         </div>
       )}
+
+      {clicked && href && (
+        // Post-click safety net. The auto-download from <a download> can
+        // be silently blocked by some browsers (Safari ITP, popup blockers,
+        // overly-aggressive download managers). This persistent link gives
+        // the user a manual route to the exact same asset without
+        // re-detecting platform or refreshing.
+        <p className="microcopy download-fallback" data-state="post-click">
+          If your download didn&apos;t start,{" "}
+          <a href={href} download>
+            click here
+          </a>
+          {version ? ` to grab v${version} directly` : " to grab the DMG directly"}.
+          Or{" "}
+          <a href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
+            view all releases
+          </a>
+          .
+        </p>
+      )}
+
+      {!href && (
+        <p className="microcopy">
+          Trouble downloading? <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
+        </p>
+      )}
+      {/* Keep mailto reachable in the failure mode even though waitlistHref
+          is no longer the primary fallback. */}
+      <span hidden>{waitlistHref}</span>
     </div>
   );
 }
 
-export function DownloadMeta() {
+export function DownloadMeta({ version }: { version?: string } = {}) {
   const [platform, setPlatform] = useState<Platform>("unknown");
   useEffect(() => {
     setPlatform(detectPlatform());
   }, []);
+  const versionTag = version ? ` · v${version}` : "";
   if (platform === "unknown") {
     return (
-      <p className="microcopy">Apple Silicon DMG · signed &amp; notarized.</p>
+      <p className="microcopy">Apple Silicon DMG · signed &amp; notarized{versionTag}.</p>
     );
   }
   if (platform === "windows" || platform === "linux") {
@@ -207,7 +283,7 @@ export function DownloadMeta() {
   }
   return (
     <p className="microcopy">
-      {platform === "mac-arm" ? "Apple Silicon DMG" : platform === "mac-intel" ? "Intel DMG" : "Mac DMG"} · signed &amp; notarized · ~150MB
+      {platform === "mac-arm" ? "Apple Silicon DMG" : platform === "mac-intel" ? "Intel DMG" : "Mac DMG"} · signed &amp; notarized · ~150MB{versionTag}
     </p>
   );
 }

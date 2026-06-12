@@ -1,7 +1,8 @@
 import Image from "next/image";
+import Link from "next/link";
 import { PageShell } from "@/components/Chrome";
 import { DemoCabinet } from "@/components/DemoCabinet";
-import { DownloadCTA, DownloadMeta } from "@/components/DownloadCTA";
+import { DownloadCTA } from "@/components/DownloadCTA";
 import { FleetMarquee, Marquee } from "@/components/Marquee";
 import { accountUrl } from "@/lib/site";
 import { getLatestRelease } from "@/lib/latest-release";
@@ -94,34 +95,47 @@ export default async function Home() {
       <main>
         <Marquee tokens={["SUBMIT CLIP", "DROP VIDEO", "CLIP", "POST", "EARN", "REPEAT", "INSERT COIN"]} />
 
+        {/* v0.7.56 P0 — Hero rewritten for the 5-second cold-viewer test.
+            Old copy buried "Whop Content Rewards" in the subhead and pushed
+            the DownloadCTA below the demo cabinet (one full viewport scroll
+            from the H1). New hero answers: what it is, what it costs to try,
+            where the action is — all above the fold. Cabinet stays as proof
+            below the primary action, not as a gate to it. */}
         <section className="hero" style={{ minHeight: 0, padding: "56px 0 24px" }}>
           <div className="container" style={{ textAlign: "center" }}>
-            <div className="eyebrow" style={{ margin: "0 auto" }}>THE ARCADE FOR CLIPPERS · LIVE NOW</div>
+            <div className="eyebrow" style={{ margin: "0 auto" }}>MAC DESKTOP APP · 100 FREE CLIPS</div>
             <h1 style={{ margin: "20px auto 0", textAlign: "center" }}>
               Drop video. <em>Clip. Post. Earn.</em>
             </h1>
             <p className="hero-copy" style={{ margin: "20px auto 0", textAlign: "center" }}>
-              Liquid Clips turns long podcasts, livestreams, Twitch VODs and YouTube long-form
-              into captioned, ready-to-submit clips for Whop Content Rewards. Local-first.
-              Signed for Mac. Built by a clipper.
+              Turn long podcasts, livestreams, and YouTube videos into captioned clips ready
+              to post or submit for paid rewards. Start with 100 free watermarked clips on Mac.
             </p>
+            <div className="big-download" style={{ margin: "26px auto 0" }}>
+              <DownloadCTA
+                variant="primary"
+                className="button-primary--xl"
+                artifacts={artifacts}
+                version={latest?.version}
+                label="Download Desktop"
+              />
+              <div style={{ marginTop: 14 }}>
+                <Link className="button-secondary" href="#how">
+                  See how it works
+                </Link>
+              </div>
+              <p className="microcopy" style={{ marginTop: 12 }}>
+                100 free clips · No card required · Apple Silicon + Intel Mac
+              </p>
+            </div>
           </div>
         </section>
 
-        {/* THE DEMO CABINET — the interactive showpiece. Six buttons, real
-            clip workflow simulated on a looping video, floating Invader badge. */}
+        {/* THE DEMO CABINET — proof below the primary action. Cold viewer
+            has already seen the value prop + CTA above; cabinet earns the
+            scroll by showing the workflow on a looping clip. */}
         <section style={{ padding: "16px 0 120px", position: "relative" }}>
           <DemoCabinet />
-
-          {/* BIG download CTA — directly below the cabinet */}
-          <div className="container" style={{ marginTop: 56, textAlign: "center" }}>
-            <div className="big-download">
-              <DownloadCTA variant="primary" className="button-primary--xl" artifacts={artifacts} />
-              <div style={{ marginTop: 14 }}>
-                <DownloadMeta />
-              </div>
-            </div>
-          </div>
         </section>
 
         <section id="how" className="section section-warm">
@@ -136,6 +150,10 @@ export default async function Home() {
             <p className="section-copy">
               No timeline. No render farm. No &quot;premium&quot; cloud editor pretending to be an app.
               Just the clipper workflow, modeled directly: drop, clip, post.
+            </p>
+            <p className="section-copy" style={{ marginTop: 12, color: "var(--text-secondary)" }}>
+              Liquid Clips helps you create and manage clips. <strong>Whop</strong> handles
+              final campaign submission and payouts.
             </p>
             <div className="steps-grid">
               {steps.map((step) => (
@@ -290,7 +308,7 @@ export default async function Home() {
                   the local sidecar — give it a few seconds. Sign in to unlock your tier.
                 </p>
               </div>
-              <DownloadCTA variant="primary" artifacts={artifacts} />
+              <DownloadCTA variant="primary" artifacts={artifacts} version={latest?.version} />
             </div>
           </div>
         </section>

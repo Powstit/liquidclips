@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { ClerkProvider } from "@clerk/nextjs";
@@ -6,6 +6,7 @@ import { Nav } from "@/components/Nav";
 import { RouteSplash } from "@/components/RouteSplash";
 import { PostHogBoot } from "@/components/PostHogBoot";
 import { WhopLinkBoot } from "@/components/WhopLinkBoot";
+import { ServiceWorkerBoot } from "@/components/ServiceWorkerBoot";
 import "./globals.css";
 
 const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-fraunces", display: "swap" });
@@ -15,6 +16,19 @@ const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono"
 export const metadata: Metadata = {
   title: "Liquid Clips — your account",
   description: "Manage your Liquid Clips subscription, download the app, view your usage.",
+  applicationName: "Liquid Clips",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Liquid Clips",
+  },
+  icons: {
+    apple: "/brand/apple-touch-icon.png",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0A0A0F",
 };
 
 // v0.7.x — satellite domain support. The SAME Next.js app serves both
@@ -82,6 +96,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <body className="flex min-h-screen flex-col bg-paper text-ink">
           <PostHogBoot />
           <WhopLinkBoot />
+          <ServiceWorkerBoot />
           <Nav />
           <main className="flex-1">{children}</main>
           <RouteSplash />

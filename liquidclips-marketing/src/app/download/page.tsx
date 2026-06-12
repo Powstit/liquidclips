@@ -11,22 +11,50 @@ export const metadata: Metadata = {
     "Download the Liquid Clips Mac app. Apple Silicon DMG, notarized by Apple.",
 };
 
+// v0.7.56 — six-step install path. Each step is one action a cold Mac
+// user takes in order, with the macOS Gatekeeper prompt as its own
+// step (5) so it doesn't surprise anyone. Helper notes (architecture
+// glossary, manual link, older releases) live in `installHelpers`
+// below so the action steps stay clean and scannable.
 const steps = [
   {
     num: "01",
-    title: "Download the DMG.",
-    body: "Apple Silicon macOS build, signed and notarized by Apple. Intel is coming once its release artifact passes the same gate.",
+    title: "Download the correct version.",
+    body: "Apple Silicon for M1/M2/M3/M4. Intel for older Intel Macs. Not sure which? See the chooser above.",
   },
   {
     num: "02",
-    title: "Drag Liquid Clips to Applications.",
-    body: "Open the DMG and drop the app icon into the Applications folder.",
+    title: "Open the DMG.",
+    body: "Double-click the file you just downloaded. A small install window opens.",
   },
   {
     num: "03",
-    title: "Launch and sign in.",
-    body: "First boot installs the Python sidecar locally — give it a few seconds. Sign in with your account email to unlock your plan.",
+    title: "Drag Liquid Clips into Applications.",
+    body: "In the install window, drag the Liquid Clips icon onto the Applications folder shortcut.",
   },
+  {
+    num: "04",
+    title: "Open Liquid Clips from Applications.",
+    body: "Open Finder → Applications → double-click Liquid Clips. (Launching from Downloads is fine too.)",
+  },
+  {
+    num: "05",
+    title: "If macOS shows a security prompt, click Open.",
+    body: "First launch only. The app is signed with a Developer ID and notarised by Apple — Gatekeeper just wants you to confirm.",
+  },
+  {
+    num: "06",
+    title: "Sign in and create your first clip.",
+    body: "Use the account email you signed up with. Drop a video, pick the highlights you want, export. You're in.",
+  },
+];
+
+const installHelpers = [
+  { label: "Apple Silicon", value: "M1 / M2 / M3 / M4" },
+  { label: "Intel Mac", value: "Older Intel processor" },
+  { label: "Not sure?", value: "Apple menu → About This Mac" },
+  { label: "Download didn't start?", value: "Use the manual link under the button" },
+  { label: "Older version?", value: "View all releases on GitHub" },
 ];
 
 const requirements = [
@@ -63,12 +91,15 @@ export default async function DownloadPage() {
                 to be an app.
               </p>
               <div className="hero-actions">
-                <DownloadCTA variant="primary" artifacts={artifacts} />
+                <DownloadCTA variant="primary" artifacts={artifacts} version={latest?.version} />
                 <Link className="button-secondary" href="/#pricing">
                   See pricing
                 </Link>
               </div>
-              <DownloadMeta />
+              <DownloadMeta version={latest?.version} />
+              <a href="#install" className="hero-install-anchor">
+                How to install →
+              </a>
             </div>
 
             <div className="hero-media" aria-label="Mac install card">
@@ -113,10 +144,11 @@ export default async function DownloadPage() {
           </div>
         </section>
 
-        <section className="section section-warm">
+        <section id="install" className="section section-warm">
           <div className="container">
+            <div className="eyebrow">Install</div>
             <h2 className="section-title">
-              Install in <em>three moves.</em>
+              From DMG to first clip in <em>six steps.</em>
             </h2>
             <p className="section-copy">
               First launch installs the local Python sidecar. After that, opens in under a second.
@@ -130,18 +162,20 @@ export default async function DownloadPage() {
                 </article>
               ))}
             </div>
+
+            <ul className="install-helpers" aria-label="Helpful pointers">
+              {installHelpers.map((h) => (
+                <li key={h.label}>
+                  <span className="install-helpers__label">{h.label}</span>
+                  <span className="install-helpers__value">{h.value}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
 
         <section className="section">
           <div className="container">
-            <h2 className="section-title">First-launch warning?</h2>
-            <p className="section-copy">
-              If Gatekeeper says the app can&apos;t be opened, right-click Liquid Clips in
-              Applications and choose <strong>Open</strong>, then confirm. The build is signed
-              with a Developer ID certificate and notarized by Apple — the prompt only appears
-              on the very first launch from the DMG.
-            </p>
             <div className="feature-grid">
               <article className="tile">
                 <h3>Auto-update built in</h3>
@@ -178,7 +212,7 @@ export default async function DownloadPage() {
                   Free includes 100 clip exports. No card, no trial timer.
                 </p>
               </div>
-              <DownloadCTA variant="primary" artifacts={artifacts} />
+              <DownloadCTA variant="primary" artifacts={artifacts} version={latest?.version} />
             </div>
           </div>
         </section>
