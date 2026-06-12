@@ -1,6 +1,6 @@
 "use client";
 
-// v0.7.55 — Client-only CTAs used by /embed/earn/page.tsx (a server
+// v0.7.54 — Client-only CTAs used by /embed/earn/page.tsx (a server
 // component). Server components can't pass inline onClick handlers to
 // rendered <button>s — pre-fix the page errored at hydration ("Event
 // handlers cannot be passed to Client Component props") and the embed

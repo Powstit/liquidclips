@@ -8,8 +8,11 @@ import {
 } from "../lib/activation";
 import { useTier } from "../lib/useTier";
 import { Logo } from "./Logo";
+// v0.7.54 P1-003 — pull version from package.json so the diagnostics
+// blob never goes stale on a patch bump. Same pattern as Settings.tsx:24.
+import pkg from "../../package.json";
 
-const APP_VERSION = "0.7.54";
+const APP_VERSION: string = pkg.version;
 
 // ship-lens v0.7.8: E7 — the "01 — required" badge now flips to "optional · hosted AI active" for Solo / Pro / Agency users. Pre-fix Pro+ users were told the OpenAI key was required when their hosted AI already had it covered. Card 2 (sign-in) stays "required" because hosted AI needs the JWT.
 // First-run flow per spec §3.8 screen 1.
@@ -270,19 +273,32 @@ function FailedLoginRescue({
   message: string;
   onTryBrowser: () => void;
 }) {
-  const [resetState, setResetState] = useState<"idle" | "resetting" | "done">(
-    "idle",
-  );
+  const [resetState, setResetState] = useState<
+    "idle" | "resetting" | "done" | "partial"
+  >("idle");
+  const [resetReason, setResetReason] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
 
   async function doReset() {
     if (resetState === "resetting") return;
     setResetState("resetting");
+    setResetReason(null);
     try {
-      await resetLoginSession();
+      const result = await resetLoginSession();
+      if (result.ok) {
+        setResetState("done");
+      } else {
+        // v0.7.54 P1-008 — keychain wasn't reachable. The in-memory
+        // state is still cleared so Sign-in works on retry, but tell the
+        // user the JWT (if any) is still on disk.
+        setResetState("partial");
+        setResetReason(result.reason);
+      }
     } finally {
-      setResetState("done");
-      window.setTimeout(() => setResetState("idle"), 1800);
+      window.setTimeout(() => {
+        setResetState("idle");
+        setResetReason(null);
+      }, 2400);
     }
   }
 
@@ -321,7 +337,9 @@ function FailedLoginRescue({
             ? "Resetting…"
             : resetState === "done"
               ? "Session reset"
-              : "Reset login session"}
+              : resetState === "partial"
+                ? "Reset partial — keychain unreachable"
+                : "Reset login session"}
         </button>
         <button
           onClick={() => void doCopy()}
@@ -330,6 +348,11 @@ function FailedLoginRescue({
           {copyState === "copied" ? "Copied" : "Copy diagnostics"}
         </button>
       </div>
+      {resetState === "partial" && resetReason && (
+        <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+          {resetReason}
+        </p>
+      )}
     </div>
   );
 }

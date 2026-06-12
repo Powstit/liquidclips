@@ -1053,7 +1053,7 @@ export type AffiliateBlock = {
   monthly_recurring_revenue_usd: string | null;
   total_referral_earnings_usd: string | null;
   qualification: AffiliateQualification | null;
-  partner_dashboard_url: string;       // always present, falls back to partner.jnremployee.com
+  partner_dashboard_url: string;       // always present; fallback host is partner.jnremployee.com (partner.liquidclips.app subdomain not provisioned yet, see v0.7.54 P1-002)
   payout_provider: "whop" | "stripe_connect" | string;
   payout_status: "ready" | "setup_required" | "unavailable" | string;
   payout_setup_url: string;

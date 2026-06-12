@@ -406,7 +406,9 @@ function LapsedCard({ customer: _customer }: { customer: AffiliateCustomer }) {
           Reactivate →
         </button>
         <button
-          onClick={() => void safeOpen("https://partner.liquidclips.app", setOpenError)}
+          // v0.7.54 P1-002 — partner.liquidclips.app is not live yet; keep
+// jnremployee.com for this one CTA until the partner sub-domain ships.
+onClick={() => void safeOpen("https://partner.jnremployee.com", setOpenError)}
           className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
         >
           <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
