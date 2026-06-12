@@ -31,7 +31,8 @@ const TICKS = [
   "ready in a moment",
 ];
 
-const SUPPORT_EMAIL = "support@jnremployee.com";
+// v0.7.54 — canonical Liquid Clips support inbox (mirrors marketing site).
+const SUPPORT_EMAIL = "hello@liquidclips.app";
 
 // Splash 3-stage flow (Daniel 2026-06-02):
 //   1. intro    — Seedance cinematic 10s video, full-screen, skippable.

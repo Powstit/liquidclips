@@ -20,7 +20,7 @@ Rules:
 
 ---
 
-## 🚀 v0.7.32 — CURRENT SHIP (in progress)
+## ✅ v0.7.32 — CLOSED (see Shipped log)
 
 **Tracker:** `desktop/docs/SHIP_v0.7.32_BLOCKERS.md` (read THAT file for live blocker state).
 
@@ -112,4 +112,11 @@ These are real items that haven't been version-anchored. Append, don't reshuffle
 
 _(append as each version goes public)_
 
-- v0.7.32: target ship date 2026-06-09. Notes go here once tag is pushed + CI green + draft published.
+- v0.7.32: closed-without-tag 2026-06-09. Scope items (Thumbnail Studio, ch-row pattern, 6-agent lens sweep, Kimi P0-1/3/4, pricing alignment, B2 walk fixes) absorbed into the v0.7.33 cut the same day.
+- v0.7.33: shipped 2026-06-09. First tagged ship after the lock was written. Whop OAuth go-live did NOT land — bumped forward.
+- v0.7.42: shipped 2026-06-10. `/download` marketing-site route auto-picks the latest GH release. Intermediate patch versions consolidated.
+- v0.7.49: shipped 2026-06-11 07:13 UTC.
+- v0.7.50: shipped 2026-06-11 16:58 UTC. Feature-complete but **DMGs unstapled** — `find | head -1` in the CI rebuild step picked the unsigned tauri-default DMG before the slugged re-signed one existed. Re-cut as v0.7.51.
+- v0.7.51: shipped 2026-06-11 17:42 UTC. Fix commit `5760925` deletes the stale tauri-default DMG before rebuild + adds `xcrun stapler validate` gate. Apple Silicon DMG notarised + stapled, universal DMG attached, updater proxy serving v0.7.51 for both `darwin-aarch64` and `darwin-x86_64`. Per-arch Intel slug DMG (`Liquid.Clips_0.7.51_x64.dmg`) NOT built — `macos-13` CI job stuck queued 1h+ and was cancelled (universal DMG + updater proxy cover Intel users).
+
+**Discipline drift to flag for next cycle:** the locked sequence said "v0.7.32 → v0.7.33 → v0.7.34 → etc." but actual ships jumped v0.7.33 → v0.7.42 → v0.7.49 → v0.7.50 → v0.7.51 — intermediate patch versions were never tagged. Acceptable for emergency-fix cuts; not acceptable as the steady-state cadence.

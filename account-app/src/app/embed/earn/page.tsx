@@ -22,6 +22,10 @@ import { auth } from "@clerk/nextjs/server";
 import { SponsoredCarousel, type SponsoredCampaign } from "@/components/embed/SponsoredCarousel";
 import { BountyList } from "@/components/embed/BountyList";
 import { EmbedSignedOutPanel } from "@/components/embed/EmbedSignedOutPanel";
+import {
+  AffiliateStripCta,
+  ConnectStripeButton,
+} from "@/components/embed/EarnEmbedCtas";
 import { BACKEND_URL, normalizeTier, type EmbedTier } from "@/lib/embed-auth";
 
 export default async function EmbedEarnPage() {
@@ -55,29 +59,76 @@ export default async function EmbedEarnPage() {
   // markup deterministic; the carousel never has to render a "loading" state.
   const campaigns = await fetchCampaigns();
 
+  // v0.7.55 — layout matches demo-pages.html lines 338-438. Top affiliate
+  // strip drives the headline CTA; ConnectionBadge stays as a secondary
+  // pill so the link state is still verifiable here; cinematic hero
+  // carousel replaces the grid; BountyList + ManualEntry kept below per
+  // product decision (demo is aspirational top-of-page; real bounties +
+  // fallback path remain reachable on the same surface).
   return (
-    <main className="mx-auto flex w-full max-w-[960px] flex-col gap-6 px-5 py-6">
-      {/* (O #7 — proof of identity) Connection badge — server-rendered.
-          Reads /affiliate/me on the server so the link state is honest from
-          the first paint. The desktop-side Whop badge ("source: keychain /
-          iframe") lives natively on the parent; this badge mirrors what the
-          user can verify HERE. */}
-      <ConnectionBadge status={linkStatus} />
+    <div className="flex w-full flex-col">
+      {/* Top reflection glint — mirrors the demo's fuchsia top-edge */}
+      <div className="h-2 bg-gradient-to-b from-fuchsia/30 via-fuchsia/10 to-transparent" />
 
-      {/* (O #5) Sponsored rewards — featured video row + image banner carousel.
-          1:1 port of desktop SponsoredBannerCarousel; tier-gating preserved. */}
-      <SponsoredCarousel campaigns={campaigns} tier={tier} />
+      <AffiliateStrip linkStatus={linkStatus} />
 
-      {/* (O #5)(O #6) Bounty list — client-side fetch because /whop/bounties
-          needs the LICENSE_JWT (license-bearer auth, not Clerk). The Start CTA
-          posts `lc:start-bounty` to the desktop parent. The submission status
-          pill row underneath polls every 8s. */}
-      <BountyList userTier={tier} />
+      <main className="mx-auto flex w-full max-w-[960px] flex-col gap-6 px-5 py-6">
+        {/* (O #7 — proof of identity) Connection badge — server-rendered.
+            Reads /affiliate/me on the server so the link state is honest from
+            the first paint. The desktop-side Whop badge ("source: keychain /
+            iframe") lives natively on the parent; this badge mirrors what the
+            user can verify HERE. */}
+        <ConnectionBadge status={linkStatus} />
 
-      {/* (O #6 — fallback path) Manual entry. Collapsed by default so the
-          surface lands on the primary "Pick / Start" flow. */}
-      <ManualEntry />
-    </main>
+        {/* (O #5) Sponsored rewards — cinematic 2-col hero carousel. */}
+        <SponsoredCarousel campaigns={campaigns} tier={tier} />
+
+        {/* (O #5)(O #6) Bounty list — client-side fetch because /whop/bounties
+            needs the LICENSE_JWT (license-bearer auth, not Clerk). The Start CTA
+            posts `lc:start-bounty` to the desktop parent. The submission status
+            pill row underneath polls every 8s. */}
+        <BountyList userTier={tier} />
+
+        {/* (O #6 — fallback path) Manual entry. Collapsed by default so the
+            surface lands on the primary "Pick / Start" flow. */}
+        <ManualEntry />
+      </main>
+    </div>
+  );
+}
+
+/* ── Affiliate strip (top-of-page CTA row, per demo) ─────────────── */
+
+// Matches demo-pages.html line 345-357: single-row strip with fuchsia
+// eyebrow + bullet-separated value props + headline CTA on the right.
+// The CTA destination follows linkStatus — when the user is already
+// linked, "Open my affiliate dashboard" routes them to the desktop's
+// affiliate settings panel; when unlinked, the demo's "GET MY AFFILIATE
+// LINK" copy stays. Posts `lc:nav` so the desktop intercepts.
+function AffiliateStrip({ linkStatus }: { linkStatus: WhopLinkStatus }) {
+  const ctaLabel =
+    linkStatus === "linked"
+      ? "OPEN AFFILIATE DASHBOARD →"
+      : "GET MY AFFILIATE LINK →";
+  return (
+    <div className="flex flex-col items-start gap-3 border-b border-line/40 px-6 py-4 md:flex-row md:items-center md:justify-between md:gap-6 md:px-8">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] uppercase tracking-[0.14em] md:text-[12px] md:tracking-[0.16em]">
+        <span className="font-semibold text-fuchsia">Liquid Clips Affiliate</span>
+        <span className="text-text-tertiary">·</span>
+        <span className="normal-case tracking-normal text-ink-soft">
+          Refer 2 paid users
+        </span>
+        <span className="text-text-tertiary">·</span>
+        <span className="normal-case tracking-normal text-ink-soft">
+          50% recurring lifetime
+        </span>
+        <span className="text-text-tertiary">·</span>
+        <span className="normal-case tracking-normal text-ink-soft">
+          pick Whop or Stripe payout
+        </span>
+      </div>
+      <AffiliateStripCta label={ctaLabel} linkStatus={linkStatus} />
+    </div>
   );
 }
 
@@ -175,22 +226,7 @@ function ConnectionBadge({ status }: { status: WhopLinkStatus }) {
           >
             Sign up via Whop →
           </a>
-          <button
-            type="button"
-            onClick={() => {
-              try {
-                window.parent.postMessage(
-                  { type: "lc:nav", to: "settings/account" },
-                  "*",
-                );
-              } catch {
-                /* embed posts to parent; if parent isn't desktop, no-op */
-              }
-            }}
-            className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia/40 bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-fuchsia-deep transition-colors hover:bg-fuchsia-soft/40"
-          >
-            Connect bank (Stripe) →
-          </button>
+          <ConnectStripeButton>Connect bank (Stripe) →</ConnectStripeButton>
         </div>
       </div>
     );

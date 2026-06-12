@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openSmart as openExternal } from "./openSmart";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
-import { sidecar } from "./sidecar";
+import { sidecar, humanError } from "./sidecar";
 import { recordWhopAuthEvent } from "./whop-iframe";
 
 // ───── IRON GATE IG-004 (v0.4.21 + v0.7.x) — see desktop/docs/IRON_GATES.md ─────
@@ -15,14 +15,21 @@ import { recordWhopAuthEvent } from "./whop-iframe";
 // surface (FirstRun, top-nav, Earn, the 401 self-heal prompt) — no per-screen
 // hacks. Flow:
 //   1. generate a one-time challenge nonce,
-//   2. open the browser to account.jnremployee.com/connect-desktop?challenge=…,
+//   2. open the browser to account.liquidclips.app/connect-desktop?challenge=…,
 //   3. the page signs the user in (Clerk) and mints a license JWT server-side,
 //   4. the browser deep-links back: liquidclips://activate?token=<jwt>&challenge=…,
 //   5. we verify the challenge matches, store the JWT in the OS keychain via the
 //      sidecar, and fire onActivated so the app flips to signed-in — no restart,
 //      no JWT pasting, and only the license secret is ever touched.
 
-const CONNECT_URL = "https://account.jnremployee.com/connect-desktop";
+// v0.7.54 — moved from account.jnremployee.com → account.liquidclips.app.
+// The account-app serves both hosts; the satellite-cookie path keeps Clerk
+// auth working without a re-auth for existing users. User-facing URL bar
+// now reads liquidclips.app end-to-end. The account-app's root layout
+// still pins Clerk primary to jnremployee.com (intentional, see comment
+// there) so users may STILL see jnremployee.com briefly mid-flow until
+// that primary host is flipped in a separate sweep.
+const CONNECT_URL = "https://account.liquidclips.app/connect-desktop";
 const TIMEOUT_MS = 5 * 60_000; // generous — sign-up in the browser can take a while
 
 export type ActivationStatus =
@@ -146,7 +153,7 @@ async function handleDeepLink(urls: string[]): Promise<void> {
     try {
       emit({ kind: "activating" });
       await sidecar.secretSet("LICENSE_JWT", token);
-    } catch {
+    } catch (e) {
       // Clear pendingChallenge on keychain-write failure so a retry mints a
       // FRESH challenge instead of being silently de-duped against the stale
       // one (the browser deep-link could fire again on retry and the second
@@ -154,7 +161,17 @@ async function handleDeepLink(urls: string[]): Promise<void> {
       // the timeout timer — we already emitted the error.
       clearTimer();
       pendingChallenge = null;
-      emit({ kind: "error", message: "Couldn’t save your license. Try again." });
+      // v0.7.54 — surface the real reason. Pre-fix the catch swallowed the
+      // sidecar error (the most common cause is a missing `keyring` Python
+      // dep, which the deps-missing card should have caught — but if the
+      // user skipped it, the activation looks like a generic "try again"
+      // loop with no path forward). Now the error message names the cause
+      // so BUG-003's "Copy diagnostics" carries something useful.
+      const detail = humanError(e);
+      emit({
+        kind: "error",
+        message: `Couldn’t save your license: ${detail || "keychain write failed"}. Try again, or reset login below.`,
+      });
       return;
     }
     clearTimer();
@@ -208,7 +225,7 @@ export async function startActivation(opts?: { via?: "panel" | "browser" }): Pro
       message:
         via === "panel"
           ? "Couldn’t open the in-app sign-in panel. Try the browser fallback."
-          : "Couldn’t open your browser. Visit account.jnremployee.com/connect-desktop to sign in.",
+          : "Couldn’t open your browser. Visit account.liquidclips.app/connect-desktop to sign in.",
     });
     return;
   }
@@ -232,6 +249,44 @@ export async function startActivation(opts?: { via?: "panel" | "browser" }): Pro
 
 export function resetActivation(): void {
   emit({ kind: "idle" });
+}
+
+/** v0.7.54 — BUG-003. Full "Reset login session" escape hatch for the
+ *  FirstRun dead-end. Clears every piece of state that could be holding
+ *  a user on the failed-sign-in screen:
+ *    • the pending challenge (a stale match could fight a fresh activation),
+ *    • the local LICENSE_JWT (so a partial/corrupt write doesn't keep
+ *      reading back as a half-signed-in session),
+ *    • the activation status (back to idle so the button reads "Sign in").
+ *  Best-effort across the keychain delete — if `keyring` is missing (the
+ *  exact root cause that lands users here), we still clear the in-memory
+ *  state so the surface unwedges. */
+export async function resetLoginSession(): Promise<void> {
+  clearTimer();
+  pendingChallenge = null;
+  try {
+    await sidecar.secretDelete("LICENSE_JWT");
+  } catch {
+    /* sidecar / keyring unavailable — clearing in-memory state is still
+       the right move; the JWT (if any) is now orphaned but the next
+       activation overwrites it. */
+  }
+  emit({ kind: "idle" });
+}
+
+/** v0.7.54 — BUG-003. Diagnostics blob the user can copy from the error
+ *  card. Includes the version + the last error message we surfaced —
+ *  enough to file a ticket with concrete signal, no PII, no JWT. */
+export function activationDiagnostics(version: string): string {
+  const errMsg = status.kind === "error" ? status.message : "(no current error)";
+  return [
+    `Liquid Clips v${version}`,
+    `Activation status: ${status.kind}`,
+    `Last error: ${errMsg}`,
+    `Connect URL: ${CONNECT_URL}`,
+    `Platform: ${typeof navigator !== "undefined" ? navigator.userAgent : "(unknown)"}`,
+    `Timestamp: ${new Date().toISOString()}`,
+  ].join("\n");
 }
 
 /** Subscribe to activation status + trigger it. The deep-link listener is a

@@ -1,19 +1,23 @@
 "use client";
 
-// ship-lens v0.7.8: E3 — `coming_soon` campaigns now render a diagonal fuchsia ribbon in the top-left and the CTA becomes "Notify me" (posts `lc:nav` for a future notify backend). Pre-fix coming-soon campaigns looked identical to public ones; users clicked through expecting open campaigns.
+// v0.7.55 — cinematic 2-col hero carousel. Replaces the prior video-grid +
+// 4:1 banner-row split with a single carousel where each slide is the
+// editorial format from demo-pages.html (lines 338-438): left brand block
+// (logo · name · huge $RPM · pool · subtitle), right full-bleed banner
+// image or video, arrows + dots. One carousel for every campaign — the
+// "live" counter in the section header doubles as the "N LIVE" pill from
+// the demo.
+//
+// ship-lens v0.7.8: E3 — `coming_soon` campaigns render a fuchsia "Coming
+// soon" ribbon on the banner and swap the CTA copy to "Notify me".
+//
 // SURFACE: sponsored carousel (embed port of desktop SponsoredBannerCarousel)
 // MAP TAGS: (O #5) discovery | (O #5 — see what's locked) upgrade overlay
 // See desktop/docs/UI_MAP_embed_surfaces.md — the contract.
 //
-// 1:1 visual port of `desktop/src/components/earn/SponsoredBannerCarousel.tsx`.
-// Same SponsoredCampaign shape, same split:
-//   • Featured (video) — full-width autoplay card per campaign
-//   • Sponsored Rewards (image) — 4:1 banner carousel with 6s auto-advance
-//
-// Click-through does NOT open external URLs (the webview's `connectSrc` won't
-// load whop.com, and we don't want the embed to swallow navigation). Instead
-// we postMessage `lc:nav` to the desktop parent — desktop reads the campaign
-// id and routes natively (browse panel / system browser, owner's choice).
+// Click-through never opens external URLs from inside the webview. Each
+// slide posts `lc:nav` (or `lc:nav target=notify` for coming-soon slides)
+// to the desktop parent, which routes natively.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EMBED_MSG } from "@/lib/embed-auth";
@@ -62,12 +66,6 @@ export function SponsoredCarousel({
   );
 
   const go = useCallback((c: SponsoredCampaign) => {
-    // Bounce to the desktop parent — never load whop.com inside the embed.
-    // v0.7.8 fix E3 — coming-soon campaigns reuse the same channel for now:
-    // we ship a `target: "notify"` so the desktop can later branch to a
-    // notify-me sheet without us redeploying the embed. Until that backend
-    // exists, the desktop falls back to its current `lc:nav` no-op handler
-    // — no broken UX, just no notify confirmation toast yet.
     try {
       window.parent.postMessage(
         {
@@ -82,132 +80,14 @@ export function SponsoredCarousel({
     }
   }, []);
 
-  if (!campaigns || campaigns.length === 0) return null;
-
-  const videoCampaigns = campaigns.filter(
-    (c) => c.banner_url && isVideoUrl(c.banner_url),
-  );
-  const imageCampaigns = campaigns.filter(
-    (c) => !c.banner_url || !isVideoUrl(c.banner_url),
-  );
-
-  return (
-    <div className="flex flex-col gap-6">
-      {videoCampaigns.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <SectionHeader label="featured" count={videoCampaigns.length} icon="play" />
-          <div className="flex flex-col gap-3">
-            {videoCampaigns.map((c) => (
-              <VideoCard
-                key={c.id}
-                c={c}
-                locked={!isVisible(c)}
-                onClick={() => go(c)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {imageCampaigns.length > 0 && (
-        <BannerCarousel
-          campaigns={imageCampaigns}
-          isVisible={isVisible}
-          onGo={go}
-        />
-      )}
-    </div>
-  );
-}
-
-/* ── Video card ──────────────────────────────────────────────────── */
-
-function VideoCard({
-  c,
-  locked,
-  onClick,
-}: {
-  c: SponsoredCampaign;
-  locked: boolean;
-  onClick: () => void;
-}) {
-  // v0.7.8 fix E3 — coming-soon campaigns swap the brand CTA for "Notify me"
-  // and overlay a fuchsia diagonal ribbon. We still wire `onClick` (the
-  // button posts `lc:nav` with target="notify") so the desktop can choose
-  // to open a notify sheet later; for now the postMessage is the no-op the
-  // existing handler ignores, which is the desired "nothing visible
-  // happens yet" UX while the backend lands.
-  const comingSoon = isComingSoon(c);
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="library-card group relative w-full overflow-hidden rounded-3xl bg-transparent text-left p-2"
-    >
-      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
-      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
-      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
-      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
-      <div className="relative w-full overflow-hidden rounded-2xl">
-        <video
-          src={c.banner_url ?? undefined}
-          autoPlay
-          loop
-          muted
-          playsInline
-          className={`block h-auto w-full ${locked ? "opacity-50 grayscale" : ""}`}
-          draggable={false}
-        />
-        {locked && <LockedOverlay />}
-        {comingSoon && <ComingSoonRibbon />}
-      </div>
-      <div className="flex items-center justify-between gap-3 px-3 pt-3 font-mono text-[10px] uppercase tracking-[0.14em]">
-        <div className="flex flex-wrap items-center gap-3 text-text-tertiary">
-          <span className="text-fuchsia">{c.brand ?? c.name}</span>
-          {c.subtitle && (
-            <>
-              <span>·</span>
-              <span className="normal-case tracking-normal text-text-secondary">
-                {c.subtitle}
-              </span>
-            </>
-          )}
-        </div>
-        <span
-          className={`inline-flex shrink-0 items-center gap-1 ${
-            locked ? "text-text-tertiary" : "text-fuchsia"
-          }`}
-        >
-          {locked
-            ? "Upgrade →"
-            : comingSoon
-              ? "Notify me →"
-              : c.cta_text}
-        </span>
-      </div>
-    </button>
-  );
-}
-
-/* ── Image banner carousel ───────────────────────────────────────── */
-
-function BannerCarousel({
-  campaigns,
-  isVisible,
-  onGo,
-}: {
-  campaigns: SponsoredCampaign[];
-  isVisible: (c: SponsoredCampaign) => boolean;
-  onGo: (c: SponsoredCampaign) => void;
-}) {
   const [idx, setIdx] = useState(0);
-  const trackRef = useRef<HTMLDivElement>(null);
-  // Pauses autoplay when the carousel scrolls offscreen — webview heights are
+  // Pause autoplay when the carousel scrolls offscreen — webview heights are
   // unpredictable and we don't want a 6s timer firing in a hidden surface.
   const [onscreen, setOnscreen] = useState(true);
+  const hostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const el = trackRef.current;
+    const el = hostRef.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
     const obs = new IntersectionObserver(
       (entries) => {
@@ -221,9 +101,9 @@ function BannerCarousel({
 
   useEffect(() => {
     if (campaigns.length < 2) return;
-    const el = trackRef.current;
-    if (!el) return;
     let hoverPaused = false;
+    const el = hostRef.current;
+    if (!el) return;
     const onEnter = () => {
       hoverPaused = true;
     };
@@ -243,23 +123,30 @@ function BannerCarousel({
     };
   }, [campaigns.length, onscreen]);
 
-  useEffect(() => {
-    const el = trackRef.current;
-    if (!el) return;
-    const child = el.children[idx] as HTMLElement | undefined;
-    if (child) {
-      child.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
-        inline: "start",
-      });
-    }
-  }, [idx]);
+  if (!campaigns || campaigns.length === 0) return null;
+
+  const current = campaigns[idx];
+  const liveCount = campaigns.filter((c) => !isComingSoon(c)).length;
 
   return (
-    <section className="flex flex-col gap-3">
-      <SectionHeader label="sponsored rewards" count={campaigns.length} icon="flame" />
+    <section ref={hostRef} className="flex flex-col gap-5">
+      <header className="flex items-center justify-between">
+        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia">
+          <FlameIcon />
+          sponsored rewards
+        </div>
+        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
+          {liveCount > 0 ? `${liveCount} live` : "loading…"}
+        </span>
+      </header>
+
       <div className="relative">
+        <HeroSlide
+          c={current}
+          locked={!isVisible(current)}
+          onClick={() => go(current)}
+        />
+
         {campaigns.length > 1 && (
           <>
             <button
@@ -268,7 +155,7 @@ function BannerCarousel({
                 setIdx((i) => (i - 1 + campaigns.length) % campaigns.length)
               }
               aria-label="Previous campaign"
-              className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full border border-line bg-paper-elev/90 p-2 text-text-secondary backdrop-blur-sm transition-colors hover:border-fuchsia hover:text-fuchsia"
+              className="absolute left-3 top-1/2 z-10 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full border border-line bg-paper/70 text-text-secondary backdrop-blur transition-colors hover:border-fuchsia hover:bg-paper-elev hover:text-ink"
             >
               <ChevronLeftIcon />
             </button>
@@ -276,31 +163,16 @@ function BannerCarousel({
               type="button"
               onClick={() => setIdx((i) => (i + 1) % campaigns.length)}
               aria-label="Next campaign"
-              className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full border border-line bg-paper-elev/90 p-2 text-text-secondary backdrop-blur-sm transition-colors hover:border-fuchsia hover:text-fuchsia"
+              className="absolute right-3 top-1/2 z-10 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full border border-line bg-paper/70 text-text-secondary backdrop-blur transition-colors hover:border-fuchsia hover:bg-paper-elev hover:text-ink"
             >
               <ChevronRightIcon />
             </button>
           </>
         )}
-
-        <div
-          ref={trackRef}
-          className="flex snap-x snap-mandatory overflow-x-auto scroll-smooth rounded-3xl"
-          style={{ scrollbarWidth: "none" }}
-        >
-          {campaigns.map((c) => (
-            <CarouselSlide
-              key={c.id}
-              c={c}
-              locked={!isVisible(c)}
-              onClick={() => onGo(c)}
-            />
-          ))}
-        </div>
       </div>
 
       {campaigns.length > 1 && (
-        <div className="flex items-center justify-center gap-1.5">
+        <div className="flex items-center justify-center gap-2">
           {campaigns.map((c, i) => (
             <button
               key={c.id}
@@ -308,7 +180,7 @@ function BannerCarousel({
               onClick={() => setIdx(i)}
               aria-label={`Show ${c.name}`}
               className={`h-1.5 rounded-full transition-all ${
-                i === idx ? "w-6 bg-fuchsia" : "w-1.5 bg-line hover:bg-text-tertiary"
+                i === idx ? "w-8 bg-fuchsia" : "w-1.5 bg-line hover:bg-text-tertiary"
               }`}
             />
           ))}
@@ -318,7 +190,9 @@ function BannerCarousel({
   );
 }
 
-function CarouselSlide({
+/* ── Cinematic 2-col hero slide ──────────────────────────────────── */
+
+function HeroSlide({
   c,
   locked,
   onClick,
@@ -328,56 +202,130 @@ function CarouselSlide({
   onClick: () => void;
 }) {
   const comingSoon = isComingSoon(c);
+  const isVideo = !!c.banner_url && isVideoUrl(c.banner_url);
+  // Per demo: huge fuchsia "$X RPM" headline. rpm_cents is on the wire as
+  // integer cents; "$9 RPM" reads $9 per 1k views. For the Liquid Clips
+  // Affiliate campaign rpm is 0 — fall back to a clean "50% MRR" badge so
+  // the slot never reads "$0 RPM".
+  const rpm = Math.max(0, Math.round((c.rpm_cents || 0) / 100));
+  const budget = Math.max(0, Math.round((c.budget_cents || 0) / 100));
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="library-card group relative w-full shrink-0 snap-start overflow-hidden rounded-3xl bg-transparent p-2 text-left"
+    <article
+      className="library-card relative overflow-hidden rounded-3xl"
+      data-hot={comingSoon ? "false" : "true"}
     >
       <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
       <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
       <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
       <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
-      {c.banner_url ? (
-        <div
-          className="relative w-full overflow-hidden rounded-2xl"
-          style={{ aspectRatio: "4 / 1" }}
-        >
-          {/* The embed renders plain <img>, not next/image — banner_url points
-              at the backend's own static handler and Vercel image-optimization
-              isn't worth the egress for a 4:1 banner that won't be resized. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={c.banner_url}
-            alt={c.name}
-            className={`h-full w-full object-cover ${
-              locked ? "opacity-50 grayscale" : ""
-            }`}
-            loading="lazy"
-            draggable={false}
-          />
-          {locked && <LockedOverlay />}
-          {/* v0.7.8 fix E3 — ribbon overlays the banner art so the user
-              never mistakes a coming-soon campaign for a live one. */}
-          {comingSoon && <ComingSoonRibbon />}
-        </div>
-      ) : (
-        <div className="relative px-6 py-7">
-          {comingSoon && <ComingSoonRibbon />}
-          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia">
-            {c.brand ?? "campaign"}
-          </p>
-          <h3 className="mt-1 font-display text-[20px] font-semibold tracking-[-0.015em] text-ink">
-            {c.name}
-          </h3>
+
+      <div className="grid min-h-[360px] grid-cols-1 md:grid-cols-[1fr_1.1fr]">
+        {/* LEFT — brand block + reward stats */}
+        <div className="relative flex flex-col justify-center gap-6 px-8 py-10 md:px-12">
+          {comingSoon ? (
+            <span className="inline-flex w-fit items-center gap-1.5 self-start rounded-full border border-fuchsia/40 bg-fuchsia-soft/30 px-3 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-fuchsia-deep">
+              Coming soon
+            </span>
+          ) : (
+            <span className="inline-flex w-fit items-center gap-1.5 self-start rounded-full bg-fuchsia px-3 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_28px_-12px_rgba(255,26,140,0.55)]">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-white pulse-dot" />
+              LIVE
+            </span>
+          )}
+
+          <div className="flex flex-col gap-1">
+            <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-fuchsia">
+              {c.brand ?? "campaign"}
+            </span>
+            <h2 className="font-display text-[32px] font-semibold italic leading-tight tracking-[-0.025em] text-ink md:text-[36px]">
+              {c.name}
+            </h2>
+          </div>
+
+          <div className="flex items-baseline gap-3">
+            {rpm > 0 ? (
+              <>
+                <span className="font-display text-[56px] font-bold leading-none tracking-[-0.03em] text-fuchsia md:text-[68px]">
+                  ${rpm} RPM
+                </span>
+                {budget > 0 && (
+                  <span className="font-mono text-[13px] text-ink-soft md:text-[14px]">
+                    · ${budget.toLocaleString()} pool
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="font-display text-[44px] font-bold leading-none tracking-[-0.03em] text-fuchsia md:text-[52px]">
+                50% MRR
+              </span>
+            )}
+          </div>
+
           {c.subtitle && (
-            <p className="mt-1 font-sans text-[13px] text-text-secondary">
+            <p className="max-w-[420px] font-sans text-[14px] leading-relaxed text-ink-soft md:text-[15px]">
               {c.subtitle}
             </p>
           )}
+
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={onClick}
+              disabled={locked}
+              className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition-all hover:bg-fuchsia-bright disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {locked
+                ? "Upgrade to unlock →"
+                : comingSoon
+                  ? "Notify me →"
+                  : c.cta_text || "Open campaign →"}
+            </button>
+            {c.duration_label && (
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+                {c.duration_label}
+              </span>
+            )}
+          </div>
         </div>
-      )}
-    </button>
+
+        {/* RIGHT — full-bleed banner image/video */}
+        <div className="relative min-h-[220px] overflow-hidden md:min-h-0">
+          {c.banner_url ? (
+            isVideo ? (
+              <video
+                src={c.banner_url}
+                autoPlay
+                loop
+                muted
+                playsInline
+                className={`absolute inset-0 h-full w-full object-cover ${
+                  locked ? "opacity-50 grayscale" : ""
+                }`}
+                draggable={false}
+              />
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={c.banner_url}
+                alt={c.name}
+                className={`absolute inset-0 h-full w-full object-cover ${
+                  locked ? "opacity-50 grayscale" : ""
+                }`}
+                loading="lazy"
+                draggable={false}
+              />
+            )
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-fuchsia/20 via-paper-elev to-paper" />
+          )}
+          {/* Vignette over the image edge so it blends into the left brand
+              block — matches the demo's subtle paper→transparent fade. */}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-paper/85 via-paper/15 to-transparent md:from-paper/70 md:via-paper/0" />
+          {locked && <LockedOverlay />}
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -398,41 +346,9 @@ function isComingSoon(c: SponsoredCampaign): boolean {
   return c.type === "coming_soon" || c.status === "coming_soon";
 }
 
-/** v0.7.8 fix E3 — top-left diagonal ribbon. Pure CSS — no font/icon deps.
- *  Renders fuchsia + ink so it pops on both image and dark-bg banners. */
-function ComingSoonRibbon() {
-  return (
-    <div
-      className="pointer-events-none absolute left-0 top-0 z-10 overflow-hidden"
-      style={{ width: 110, height: 110 }}
-      aria-hidden="true"
-    >
-      <span
-        className="absolute font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-white"
-        style={{
-          background: "linear-gradient(135deg, #FF1A8C 0%, #B30D5E 100%)",
-          // Position so the ribbon's centre sits across the top-left corner.
-          // 36deg rotation matches the classic 45deg minus a small offset so
-          // the text reads diagonally without clipping on rounded card corners.
-          transform: "rotate(-45deg)",
-          transformOrigin: "center",
-          top: 22,
-          left: -28,
-          width: 140,
-          textAlign: "center",
-          padding: "4px 0",
-          boxShadow: "0 4px 12px rgba(255, 26, 140, 0.35)",
-        }}
-      >
-        Coming soon
-      </span>
-    </div>
-  );
-}
-
 function LockedOverlay() {
   return (
-    <div className="absolute inset-0 grid place-items-center bg-paper/50 backdrop-blur-sm">
+    <div className="absolute inset-0 grid place-items-center bg-paper/55 backdrop-blur-sm">
       <div className="relative flex flex-col items-center gap-2 px-6 py-4 text-center">
         <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
         <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
@@ -450,31 +366,7 @@ function LockedOverlay() {
   );
 }
 
-function SectionHeader({
-  label,
-  count,
-  icon,
-}: {
-  label: string;
-  count: number;
-  icon: "flame" | "play";
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia">
-        {icon === "play" ? <PlayCircleIcon /> : <FlameIcon />}
-        {label}
-      </div>
-      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
-        {count > 0 ? `${count} live` : "loading…"}
-      </span>
-    </div>
-  );
-}
-
-// Inline SVG icons — account-app doesn't ship lucide-react and we don't want
-// to pull a 200kb runtime icon dep just for the embed. Shapes match the
-// lucide originals used in desktop/src/components/earn/SponsoredBannerCarousel.
+/* ── inline icons ────────────────────────────────────────────────── */
 
 function ChevronLeftIcon() {
   return (
@@ -501,19 +393,10 @@ function LockIcon() {
   );
 }
 
-function PlayCircleIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <polygon points="10 8 16 12 10 16 10 8" />
-    </svg>
-  );
-}
-
 function FlameIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2C9 6 6 9 6 13a6 6 0 0 0 12 0c0-2-1-4-2-5 0 2-1 3-2 3 1-3-1-6-2-9z" />
     </svg>
   );
 }

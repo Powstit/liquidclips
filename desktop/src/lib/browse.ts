@@ -19,7 +19,16 @@ export const WHOP_REWARDS_URL = "https://whop.com/discover/content-rewards/";
 // product URL. Logged-out users land on the marketplace page; logged-in
 // members get the joined experience with chat / forum / announcements
 // already routed in the left rail of Whop's own UI.
-export const WHOP_COMMUNITY_URL = "https://whop.com/joined/jnremployee/";
+//
+// v0.7.54 — flipped from /joined/jnremployee/ → /liquidclips/forums-…/app/.
+// The jnremployee Whop community is empty / deprecated; the canonical
+// destination is the LIVE forums module inside the Liquid Clips community
+// (Daniel-supplied URL, 2026-06-12) so first-time users land directly in a
+// commentable feed instead of the marketing landing. Every code path that
+// opens "community" reads this constant — keep it single-source so the
+// rebrand can't drift again.
+export const WHOP_COMMUNITY_URL =
+  "https://whop.com/liquidclips/forums-83fovyATgXDQpO/app/";
 
 // --- singleton store -----------------------------------------------------
 //
