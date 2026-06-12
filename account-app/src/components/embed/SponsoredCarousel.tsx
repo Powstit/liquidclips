@@ -105,6 +105,22 @@ export function SponsoredCarousel({
   // unpredictable and we don't want a 6s timer firing in a hidden surface.
   const [onscreen, setOnscreen] = useState(true);
   const hostRef = useRef<HTMLDivElement>(null);
+  // v0.7.55 (Uncle Daniel funnel) — mission filter. "all" shows every
+  // campaign; the three buckets match the locked mission_type enum on
+  // the backend. We compute the visible set BEFORE the clamp effect so
+  // a filter switch can't strand idx on a hidden slide.
+  const [missionFilter, setMissionFilter] = useState<
+    "all" | "uncle_daniel" | "viral_reaction" | "software_proof"
+  >("all");
+  const visible = campaigns.filter((c) => {
+    if (missionFilter === "all") return true;
+    return c.mission_type === missionFilter;
+  });
+  // Reset idx when the filter changes so we don't land on slide 7 of a
+  // 2-slide filter view.
+  useEffect(() => {
+    setIdx(0);
+  }, [missionFilter]);
 
   useEffect(() => {
     const el = hostRef.current;
@@ -120,7 +136,7 @@ export function SponsoredCarousel({
   }, []);
 
   useEffect(() => {
-    if (campaigns.length < 2) return;
+    if (visible.length < 2) return;
     let hoverPaused = false;
     const el = hostRef.current;
     if (!el) return;
@@ -134,33 +150,71 @@ export function SponsoredCarousel({
     el.addEventListener("mouseleave", onLeave);
     const interval = window.setInterval(() => {
       if (hoverPaused || !onscreen) return;
-      setIdx((i) => (i + 1) % campaigns.length);
+      setIdx((i) => (i + 1) % visible.length);
     }, AUTO_ADVANCE_MS);
     return () => {
       window.clearInterval(interval);
       el.removeEventListener("mouseenter", onEnter);
       el.removeEventListener("mouseleave", onLeave);
     };
-  }, [campaigns.length, onscreen]);
+  }, [visible.length, onscreen]);
 
-  // v0.7.54 P0-002 — clamp idx back into range when the campaigns list
-  // shrinks under us (client re-fetch, Strict Mode race, hot-reload).
-  // Pre-fix: `campaigns[idx]` returned undefined and HeroSlide dereferenced
+  // v0.7.54 P0-002 — clamp idx back into range when the visible list
+  // shrinks under us (filter switch, client re-fetch, Strict Mode race).
+  // Pre-fix: `visible[idx]` returned undefined and HeroSlide dereferenced
   // `c.banner_url` → crash. Effect must precede the early-return so the
   // setIdx fires on the same tick the list shrinks.
   useEffect(() => {
-    if (idx >= campaigns.length && campaigns.length > 0) {
+    if (idx >= visible.length && visible.length > 0) {
       setIdx(0);
     }
-  }, [campaigns.length, idx]);
+  }, [visible.length, idx]);
 
   if (!campaigns || campaigns.length === 0) return null;
 
-  const current = campaigns[Math.min(idx, campaigns.length - 1)];
+  // v0.7.55 — count missions present so we only render the chip row when
+  // there's actually a choice to make. A single-mission feed renders the
+  // legacy header. mission_lane filter values come from the carousel —
+  // backend uses `mission_lane` strings, the chip filter reads
+  // `mission_type` (the higher-level bucket).
+  const missionCounts = campaigns.reduce(
+    (acc, c) => {
+      const t = c.mission_type;
+      if (t === "uncle_daniel") acc.uncle_daniel += 1;
+      else if (t === "viral_reaction") acc.viral_reaction += 1;
+      else if (t === "software_proof") acc.software_proof += 1;
+      return acc;
+    },
+    { uncle_daniel: 0, viral_reaction: 0, software_proof: 0 },
+  );
+  const hasMissionMix =
+    Number(missionCounts.uncle_daniel > 0) +
+      Number(missionCounts.viral_reaction > 0) +
+      Number(missionCounts.software_proof > 0) >=
+    2;
+
+  if (visible.length === 0) {
+    return (
+      <section className="flex flex-col gap-4">
+        <CarouselHeader
+          liveLabel="none in this lane"
+          missionFilter={missionFilter}
+          setMissionFilter={setMissionFilter}
+          missionCounts={missionCounts}
+          show={hasMissionMix}
+        />
+        <div className="rounded-3xl border border-dashed border-line bg-paper-elev/30 p-6 text-center font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
+          no campaigns in this mission lane right now
+        </div>
+      </section>
+    );
+  }
+
+  const current = visible[Math.min(idx, visible.length - 1)];
   // v0.7.54 P1-004 — "live" excludes both coming-soon AND closed. P2-004
   // — when the count is 0 but the list is non-empty (every campaign is
   // coming-soon or closed), say so honestly instead of "loading…".
-  const liveCount = campaigns.filter(
+  const liveCount = visible.filter(
     (c) => !isComingSoon(c) && c.status !== "closed",
   ).length;
   const liveLabel =
@@ -168,15 +222,13 @@ export function SponsoredCarousel({
 
   return (
     <section ref={hostRef} className="flex flex-col gap-5">
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia">
-          <FlameIcon />
-          sponsored rewards
-        </div>
-        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
-          {liveLabel}
-        </span>
-      </header>
+      <CarouselHeader
+        liveLabel={liveLabel}
+        missionFilter={missionFilter}
+        setMissionFilter={setMissionFilter}
+        missionCounts={missionCounts}
+        show={hasMissionMix}
+      />
 
       <div className="relative">
         <HeroSlide
@@ -185,12 +237,12 @@ export function SponsoredCarousel({
           onClick={() => go(current)}
         />
 
-        {campaigns.length > 1 && (
+        {visible.length > 1 && (
           <>
             <button
               type="button"
               onClick={() =>
-                setIdx((i) => (i - 1 + campaigns.length) % campaigns.length)
+                setIdx((i) => (i - 1 + visible.length) % visible.length)
               }
               aria-label="Previous campaign"
               className="absolute left-3 top-1/2 z-10 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full border border-line bg-paper/70 text-text-secondary backdrop-blur transition-colors hover:border-fuchsia hover:bg-paper-elev hover:text-ink"
@@ -199,7 +251,7 @@ export function SponsoredCarousel({
             </button>
             <button
               type="button"
-              onClick={() => setIdx((i) => (i + 1) % campaigns.length)}
+              onClick={() => setIdx((i) => (i + 1) % visible.length)}
               aria-label="Next campaign"
               className="absolute right-3 top-1/2 z-10 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full border border-line bg-paper/70 text-text-secondary backdrop-blur transition-colors hover:border-fuchsia hover:bg-paper-elev hover:text-ink"
             >
@@ -209,9 +261,9 @@ export function SponsoredCarousel({
         )}
       </div>
 
-      {campaigns.length > 1 && (
+      {visible.length > 1 && (
         <div className="flex items-center justify-center gap-2">
-          {campaigns.map((c, i) => (
+          {visible.map((c, i) => (
             <button
               key={c.id}
               type="button"
@@ -225,6 +277,116 @@ export function SponsoredCarousel({
         </div>
       )}
     </section>
+  );
+}
+
+// v0.7.55 — header + mission filter chips. Lives inside the carousel
+// section so it doesn't count as a separate panel-design-lens scan unit.
+// `show=false` collapses the chips when there's only one mission type in
+// the feed (no point offering a filter with only one option).
+function CarouselHeader({
+  liveLabel,
+  missionFilter,
+  setMissionFilter,
+  missionCounts,
+  show,
+}: {
+  liveLabel: string;
+  missionFilter: "all" | "uncle_daniel" | "viral_reaction" | "software_proof";
+  setMissionFilter: (
+    v: "all" | "uncle_daniel" | "viral_reaction" | "software_proof",
+  ) => void;
+  missionCounts: { uncle_daniel: number; viral_reaction: number; software_proof: number };
+  show: boolean;
+}) {
+  return (
+    <header className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia">
+          <FlameIcon />
+          sponsored rewards
+        </div>
+        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
+          {liveLabel}
+        </span>
+      </div>
+      {show && (
+        <div className="flex flex-wrap items-center gap-2">
+          <MissionChip
+            active={missionFilter === "all"}
+            onClick={() => setMissionFilter("all")}
+            count={
+              missionCounts.uncle_daniel +
+              missionCounts.viral_reaction +
+              missionCounts.software_proof
+            }
+          >
+            all missions
+          </MissionChip>
+          {missionCounts.uncle_daniel > 0 && (
+            <MissionChip
+              active={missionFilter === "uncle_daniel"}
+              onClick={() => setMissionFilter("uncle_daniel")}
+              count={missionCounts.uncle_daniel}
+            >
+              uncle daniel
+            </MissionChip>
+          )}
+          {missionCounts.viral_reaction > 0 && (
+            <MissionChip
+              active={missionFilter === "viral_reaction"}
+              onClick={() => setMissionFilter("viral_reaction")}
+              count={missionCounts.viral_reaction}
+            >
+              viral reaction
+            </MissionChip>
+          )}
+          {missionCounts.software_proof > 0 && (
+            <MissionChip
+              active={missionFilter === "software_proof"}
+              onClick={() => setMissionFilter("software_proof")}
+              count={missionCounts.software_proof}
+            >
+              software proof
+            </MissionChip>
+          )}
+        </div>
+      )}
+    </header>
+  );
+}
+
+function MissionChip({
+  active,
+  onClick,
+  count,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  count: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors ${
+        active
+          ? "border-fuchsia bg-fuchsia text-white shadow-[0_8px_28px_-12px_rgba(255,26,140,0.55)]"
+          : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
+      }`}
+    >
+      {children}
+      <span
+        className={`tabular-nums ${
+          active ? "text-white/80" : "text-text-tertiary"
+        }`}
+      >
+        {count}
+      </span>
+    </button>
   );
 }
 
