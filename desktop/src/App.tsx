@@ -386,6 +386,11 @@ export default function App() {
       const detail = (e as CustomEvent).detail as { tier?: string } | undefined;
       const normalized = normalizeTier(detail?.tier ?? null);
       if (normalized) setUserTier(normalized);
+      // v0.7.55 P1-007 — invalidate the sidecar's 10-min watermark cache
+      // so the very next export re-queries /sync. Without this, a just-
+      // upgraded user keeps seeing the watermark for up to 10 minutes
+      // even after Clerk + the React tier state both report paid.
+      void sidecar.tierInvalidate().catch(() => undefined);
     }
     window.addEventListener("lc:tier-refresh", onTierRefresh);
     return () => window.removeEventListener("lc:tier-refresh", onTierRefresh);

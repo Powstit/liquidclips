@@ -10,6 +10,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { openSmart as openExternal } from "../lib/openSmart";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { Logo } from "./Logo";
+import { MadeWithLiquidClips } from "./brand/MadeWithLiquidClips";
 import { SplashGame } from "./invaders/SplashGame";
 import { hasSeenIntro, markIntroSeen } from "../lib/intro";
 // 2026-06-03 v0.5.0 — Ready Player One redesign:
@@ -349,6 +350,14 @@ export function Splash({
           <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">
             {TICKS[i]}
           </p>
+        </div>
+      )}
+
+      {/* v0.7.55 — "Made with Liquid Clips" attribution. Mounted on
+          loading stage only so the gameplay arena stays clean. */}
+      {stage === "loading" && (
+        <div className="pointer-events-none absolute bottom-8 left-1/2 z-10 -translate-x-1/2">
+          <MadeWithLiquidClips className="h-10 w-[220px] opacity-90" loading="eager" />
         </div>
       )}
 

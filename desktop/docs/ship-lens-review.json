@@ -1,193 +1,191 @@
 {
-  "reviewed_at": "2026-06-12T09:14:29Z",
-  "commit_sha": "7ea9b755ceacac3db38240103640755c6c754f8d",
-  "version_under_review": "0.7.55",
-  "commit_range": "d5da5ea..HEAD (5ab1e51, 38d7ab9, 7ea9b75)",
+  "reviewed_at": "2026-06-12T10:23:39Z",
+  "commit_sha": "5947e9c107f462ba6244080fe5a026fd0b2f7320",
   "files_in_diff": [
-    "junior-backend/app/models.py",
-    "junior-backend/app/main.py",
-    "junior-backend/app/routes/campaigns.py",
-    "junior-backend/app/routes/bonus_ledger.py",
-    "junior-backend/app/routes/admin.py",
-    "junior-backend/app/routes/community.py",
-    "junior-backend/scripts/seed_uncle_daniel_campaigns.py",
-    "junior-backend/scripts/seed_community_channels.py",
-    "account-app/src/app/api/admin/[...path]/route.ts",
-    "account-app/src/app/embed/earn/page.tsx",
-    "account-app/src/components/admin/AdminHQ.tsx",
-    "account-app/src/components/embed/SponsoredCarousel.tsx",
-    "account-app/src/components/embed/BonusEarnings.tsx",
-    "desktop/src/components/CommunityTab.tsx"
+    "desktop/src/assets/made-with-liquid-clips.svg",
+    "desktop/src/assets/bug-3d/invader-evolution.png",
+    "desktop/src/assets/bug-3d/invader-evolution-320.png",
+    "desktop/docs/made-with-liquid-clips-demo.html",
+    "scripts/gen-made-with-bug-3d.py",
+    ".gitignore",
+    "desktop/python-sidecar/assets/watermark/made-with-liquid-clips.mov",
+    "desktop/python-sidecar/assets/watermark/made-with-liquid-clips-static.png",
+    "desktop/python-sidecar/render_watermark_overlay.py",
+    "desktop/python-sidecar/stages.py",
+    "desktop/src/components/brand/MadeWithLiquidClips.tsx",
+    "desktop/docs/WATERMARK_ACCEPTANCE.md"
   ],
   "findings": [
     {
       "id": "P0-001",
       "severity": "P0",
-      "phase": "WALK",
-      "file": "account-app/next.config.ts:31",
-      "summary": "Production /embed/earn STILL serves frame-ancestors 'none' + X-Frame-Options DENY — the supposed v0.7.54 P0-001 fix is broken in prod. The desktop Tauri webview cannot load this surface, so EVERYTHING shipped in v0.7.55 (PayoutLadder, BonusEarnings, mission filter) is unreachable to actual users.",
-      "evidence": "curl -sI https://account.liquidclips.app/embed/earn → 'content-security-policy: frame-ancestors none' + 'x-frame-options: DENY'. The negative-lookahead pattern '/((?!embed/).*)' written into next.config.ts:31 is being parsed by Next.js path-to-regexp and is matching /embed/earn (the catch-all wins because both source rules match). The fuchsia 'embed/:path*' override on line 21 cascades with the catch-all but the catch-all DENY wins per Next.js header-merge semantics — exactly the cascade pattern the comment on line 14 says was fixed.",
-      "reproduce": "curl -sI https://account.liquidclips.app/embed/earn | grep -i 'frame-ancestors\\|x-frame'",
-      "suggested_fix": "Stop using a regex catch-all source. Use the `missing` cookie/header trick OR move the DENY into a Next.js middleware that EXCLUDES /embed/* explicitly. The current path-to-regexp interpretation of '/((?!embed/).*)' is NOT a negative lookahead — path-to-regexp doesn't honor lookaheads. Verify with a curl probe BEFORE claiming fixed.",
+      "phase": "JOURNEY",
+      "file": "desktop/src-tauri/tauri.conf.json:52-64",
+      "summary": "Animated MOV and static fallback PNG are NOT in bundle.resources — the next CI build will ship without them and EVERY installed free user silently falls through to the legacy static wordmark.",
+      "evidence": "tauri.conf.json bundle.resources lists liquid-clips-wordmark.png but not assets/watermark/made-with-liquid-clips.mov or assets/watermark/made-with-liquid-clips-static.png. Verified: `ls /Applications/Liquid Clips.app/Contents/Resources/_up_/python-sidecar/assets/watermark/` → no such directory in the current install. After a CI rebuild, Path(__file__).resolve().parent / 'assets' / 'watermark' / 'made-with-liquid-clips.mov' resolves under Contents/Resources/_up_/python-sidecar/assets/watermark/ which never gets populated.",
+      "reproduce": "grep -n 'watermark\\|made-with' desktop/src-tauri/tauri.conf.json   # zero hits in bundle.resources",
+      "suggested_fix": "Add to bundle.resources: '../python-sidecar/assets/watermark/made-with-liquid-clips.mov' and '../python-sidecar/assets/watermark/made-with-liquid-clips-static.png'. Verify in CI by listing Contents/Resources/_up_/python-sidecar/assets/watermark/ after build. Without this fix the entire animated-overlay commit is dead code on shipped builds — only Daniel's dev tree will ever see it.",
       "addressed": false
     },
     {
-      "id": "P1-001",
-      "severity": "P1",
-      "phase": "JOURNEY",
-      "file": "account-app/src/components/admin/AdminHQ.tsx:1830-1937",
-      "summary": "BonusLedgerImport form omits the `liquid_clips_user_id` field entirely, so every imported row has liquid_clips_user_id=null. The clipper-facing GET /bonus-ledger/me filter is `liquid_clips_user_id == user.id`, so EVERY imported row is invisible to the clipper it tracks. The whole Phase 1 closes a loop nobody can see.",
-      "evidence": "AdminHQ.tsx lines 1830-1841 declare the form state with no liquid_clips_user_id field. BonusLedgerImport submit (line 1853-1860) JSON.stringify's `form` directly. Backend admin.py:1457 import_whop_submission_to_ledger has no email→user_id resolution (grep User.email in admin.py only finds the user search route at line 730 + the field assignment at 1507/1529 from payload). Result: row.liquid_clips_user_id stays null. bonus_ledger.py:87 filter excludes the row from the clipper's response.",
-      "reproduce": "1) Import a row via Admin HQ with email=clipper@example.com. 2) Sign in as that clipper. 3) GET /bonus-ledger/me returns {rows: []}. 4) Verify in DB: SELECT liquid_clips_user_id FROM reward_bonus_ledger WHERE email='clipper@example.com' → NULL.",
-      "suggested_fix": "Either (a) auto-resolve `payload.email` → User.id server-side in import_whop_submission_to_ledger before writing the row, OR (b) add a `liquid_clips_user_id` text input to the BonusLedgerImport form with a 'find by email' lookup helper, OR (c) document explicitly that admin must populate liquid_clips_user_id via direct DB write and surface that warning in the import form. Without one of these, the Earn UI BonusEarnings tile is a dead surface.",
-      "addressed": false
-    },
-    {
-      "id": "P1-002",
-      "severity": "P1",
-      "phase": "JOURNEY",
-      "file": "junior-backend/scripts/seed_community_channels.py:31-140 + desktop/src/components/CommunityTab.tsx:257-340",
-      "summary": "All 9 seeded community channels ship with whop_channel_id=null. A paid user upgrading to access premium rooms sees 'Coming soon' on EVERY room — including the rooms the upgrade gate sold them. Free user upgrade → paid user with zero working rooms = a confirmed dead-end.",
-      "evidence": "seed_community_channels.py never sets whop_channel_id (line 3 comment confirms 'whop_channel_id stays null in Phase 1'). CommunityTab.tsx:260 computes coming = !c.whop_channel_id, line 314-322 renders 'Coming soon' pill with no action when coming=true. Phase 1 ships ZERO populated whop_channel_ids — paid clipper sees Coming soon on every room they paid for. Free user sees Upgrade → on paid rooms, upgrades, then sees Coming soon on the same rooms.",
-      "reproduce": "1) Sign in as a paid user. 2) Open Community tab. 3) Every card shows 'Coming soon' pill. 4) No room is openable.",
-      "suggested_fix": "Either (a) populate whop_channel_id for at minimum the two free-paid rooms (announcements + free-clipper-lobby) and the two paid_core rooms (premium-rewards-hq + affiliate-growth-room) in the seed BEFORE shipping, OR (b) gate ALL paid_core/mission rooms behind a 'launching soon' banner above the section so the user understands the empty state is universal not their tier. The current state ships a tab whose advertised value is invisible.",
+      "id": "P0-002",
+      "severity": "P0",
+      "phase": "STATE",
+      "file": "desktop/python-sidecar/stages.py:1326",
+      "summary": "clip['start'] / clip['end'] can be None (desktop emits null for unset). float(None) raises TypeError BEFORE the dispatcher is called, crashing the entire stage_reframe loop — not just the watermark.",
+      "evidence": "Line 1326-1328: `_clip_seconds = max(0.1, float(clip.get('end', 0)) - float(clip.get('start', 0)))`. If clip.get('start') returns Python None (which it will if the key exists with a null value — `.get('start', 0)` only substitutes when the key is ABSENT, not when it's present-and-None), float(None) raises TypeError. The try/except at line 1623 only wraps the animated-filter construction inside `_watermark_filter`, NOT this enclosing arithmetic which runs first.",
+      "reproduce": "python3 -c \"clip = {'start': None, 'end': 5.0}; print(float(clip.get('start', 0)))\"   # TypeError",
+      "suggested_fix": "Coerce with explicit None-default: `float(clip.get('start') or 0)` and same for end. Or wrap the duration derivation in its own try/except that falls through to static. The downstream pattern at line 2207 has the same latent bug — fix both for consistency (pattern-grep follow-up).",
       "addressed": false
     },
     {
       "id": "P1-003",
       "severity": "P1",
-      "phase": "STATE",
-      "file": "account-app/src/components/embed/BonusEarnings.tsx:67-102",
-      "summary": "When tier === null (signed-in user but /affiliate/me failed → tier resolves to null per page.tsx fetchAffiliate catch path), BonusEarnings falls through to the JWT path, fetches /bonus-ledger/me, and renders the empty-state copy 'Submit a clip through Whop' to a possibly-free user — making a false promise that bonus tracking is active for them.",
-      "evidence": "BonusEarnings.tsx:71 isPremium = !!tier && PREMIUM_TIERS.includes(...). When tier=null, isPremium=false. Line 102 'if (tier && !isPremium)' → skips upsell tile because tier is null. Line 158 'if (!jwt)' → skeleton. Once JWT lands, fetch runs. Line 200 list.length===0 → renders empty state 'submit a clip through Whop. When it's approved we mirror it here'. A free user reading this is being told their bonus ledger is live.",
-      "reproduce": "1) In page.tsx:fetchAffiliate, mock the /affiliate/me call to throw → return tier=null. 2) Sign in a free user. 3) BonusEarnings renders the empty-state with the 'we mirror it here' promise rather than the upsell tile.",
-      "suggested_fix": "Treat tier===null as 'unknown' and render a quiet 'tier loading' skeleton or a soft fallback 'your bonus tracking will load once we verify your tier' instead of the empty-state-with-promise. Or: when tier===null and rows.length===0, fall back to the free-tier upsell tile copy.",
-      "addressed": false
-    },
-    {
-      "id": "P2-001",
-      "severity": "P2",
       "phase": "JOURNEY",
-      "file": "account-app/src/components/admin/AdminHQ.tsx:1675-1699",
-      "summary": "The mark-paid flow is a native window.prompt(). Admin cannot edit notes, cannot re-mark-paid an already-paid row, and cannot record WHY they paid out-of-band. Hostile UX for the only Phase 1 write action.",
-      "evidence": "AdminHQ.tsx:1676 window.prompt(...) asks ONLY for approved_views. The backend BonusMarkPaidPayload (admin.py:1349) accepts {approved_views, notes} but the UI never sends notes. Line 1801 'paid' rows render bonus_marked_paid_at as a static date with no edit action — once paid, the row is frozen even though admin.py:1571 supports re-saves with new approved_views.",
-      "reproduce": "1) Open Admin HQ → Bonus Ledger. 2) Mark a row paid via the prompt — notes field unused. 3) Try to edit the same row — no UI affordance. Must re-import to change anything.",
-      "suggested_fix": "Replace the prompt() with a small inline editor (popover or row-expansion) that takes both approved_views AND notes, AND allows re-saving a paid row (the backend already supports it).",
+      "file": "desktop/python-sidecar/stages.py:1612-1633",
+      "summary": "Empty/corrupt MOV passes Path.exists() but ffmpeg errors mid-encode — try/except only wraps filter-string CONSTRUCTION, not the eventual ffmpeg invocation, so the export crashes with a generic ffmpeg error instead of falling back to static.",
+      "evidence": "Line 1612: `if clip_seconds >= 2.5 and animated_path.exists():` then line 1620: `try: return _made_with_animated_watermark_filter(...)`. The animated function returns a string — it cannot fail on a corrupt MOV. The actual file-read happens later inside the ffmpeg subprocess (when the -vf chain runs the `movie=` filter), which is OUTSIDE this try/except. A 0-byte or partial MOV → Path.exists()=True → filter string returned → ffmpeg subprocess fails → entire export fails. The fallback path (_liquid_lift_watermark_filter) is never reached.",
+      "reproduce": "truncate -s 0 desktop/python-sidecar/assets/watermark/made-with-liquid-clips.mov; export a 5s clip → ffmpeg error, no static fallback fires.",
+      "suggested_fix": "Either (a) sanity-check the MOV before returning the filter (size > 1KB AND ffprobe stream count >= 1, cached so it doesn't run per-clip), or (b) document this gap in WATERMARK_ACCEPTANCE.md fallback section and accept it (the cosmetic alternative is the export fails — also a P0 UX outcome). The acceptance doc fallback test (`mv .mov{,.disabled}`) catches the missing case but not the corrupt case.",
       "addressed": false
     },
     {
-      "id": "P2-002",
-      "severity": "P2",
+      "id": "P1-004",
+      "severity": "P1",
       "phase": "STATE",
-      "file": "account-app/src/components/admin/AdminHQ.tsx:1722-1726",
-      "summary": "The mission_lane filter dropdown hard-codes lane names ('training' / 'main' / 'proof'). If an admin imports a row with a different lane string (e.g. capitalised, or a new mission lane the campaign added), the filter silently excludes it. No 'other' option.",
-      "evidence": "AdminHQ.tsx:1722-1726 hard-codes <option value='training'> / <option value='main'> / <option value='proof'>. The import form (line 1892) free-texts mission_lane with a placeholder hint only. Backend filter (admin.py:1430) does exact string match. An admin who types 'Training' gets a row excluded from the filter forever.",
-      "reproduce": "Import a row with mission_lane='Training' (capitalised). Filter to 'uncle daniel · training'. Row missing.",
-      "suggested_fix": "Either (a) compute the dropdown from the actual mission_lane values present in the rows, OR (b) lowercase mission_lane server-side at import, OR (c) replace the dropdown with a free-text filter.",
+      "file": "desktop/python-sidecar/stages.py:1664",
+      "summary": "When out_w or out_h come back 0/None (cap_size probe failure), wm_w clamps to 280 — wider than the output frame — and ffmpeg's overlay either clips silently or errors. No early-return guard.",
+      "evidence": "Line 1664-1666: `wm_w = max(280, int(out_w * 0.32))`. int(0 * 0.32) = 0, max(280, 0) = 280. If out_w==0, overlay is 280px wide on a 0px frame → ffmpeg `overlay=W-w-x:H-h-y` with negative coords. int(None * 0.32) → TypeError, but caught by the try/except wrapper (good). int(0 * 0.32) goes through silently — bad.",
+      "reproduce": "Direct call: `_made_with_animated_watermark_filter(0, 0, 5.0, Path('/tmp/x.mov'))` returns a filter string with `overlay=W-w-36:H-h-72` and `scale=280:-2`. Pipe into ffmpeg on a 0-frame source → likely error or zero-pixel paint.",
+      "suggested_fix": "Add early bail in _watermark_filter: `if not out_w or not out_h or out_w < 100 or out_h < 100: return _liquid_lift_watermark_filter(out_w, out_h)`. (Legacy static path has the same vulnerability but is pre-existing; flag for the static path's audit too.)",
       "addressed": false
     },
     {
-      "id": "P2-003",
-      "severity": "P2",
-      "phase": "STATE",
-      "file": "junior-backend/app/routes/community.py:128-132",
-      "summary": "Anonymous /community/channels callers (no clerk_user_id) get every paid room with locked=false. The desktop CommunityTab ignores the backend locked field and re-computes client-side, so this is currently masked — but the wire contract is misleading and a future API consumer could trust the false 'open' state.",
-      "evidence": "community.py:128 sets locked = _is_locked(...) if viewer_tier else False. For viewer_tier=None this returns False unconditionally, even for paid rooms. desktop CommunityTab.tsx:138 recomputes locked itself so the issue is contained today, but contract is wrong.",
-      "reproduce": "curl -s 'https://api.liquidclips.app/community/channels' | jq '.channels[] | {slug, required_tier, locked}' → every row shows locked:false.",
-      "suggested_fix": "When viewer_tier is None, emit locked=null (not false). The Pydantic schema already declares locked: bool | None. Update the assignment on line 128 to None so unauthenticated callers get an honest 'unknown' signal.",
+      "id": "P1-005",
+      "severity": "P1",
+      "phase": "WALK",
+      "file": "desktop/python-sidecar/stages.py:1671-1676",
+      "summary": "movie= filter path is NOT shell-quoted or backslash-escaped. Works in my smoke test for spaces, but a colon in the path (rare but possible — e.g. Time Machine snapshot paths, user-renamed Applications) WILL break parsing because ffmpeg uses `:` as the option separator inside movie=.",
+      "evidence": "Line 1672-1675 produces `movie={overlay_path}:loop=0,...`. Smoke test with `/tmp/Liquid Clips Test/wm.mov` succeeded (8 fuchsia pixels in br region of probe frame), but a path like `/Volumes/Backup:foo/.../wm.mov` would be parsed as `movie=/Volumes/Backup` with option `foo/.../wm.mov` and option `loop=0`. The same risk applies to `\\`, `'`, `[`, `]` in paths.",
+      "reproduce": "mkdir '/tmp/has:colon' && cp desktop/python-sidecar/assets/watermark/made-with-liquid-clips.mov '/tmp/has:colon/wm.mov' && desktop/python-sidecar/bin/ffmpeg -y -f lavfi -i color=c=gray:s=1080x1920:d=2 -filter_complex \"movie=/tmp/has:colon/wm.mov:loop=0,setpts=PTS-STARTPTS,scale=345:-2,format=rgba[wm];color=c=gray:s=1080x1920:d=2[main];[main][wm]overlay=W-w-59:H-h-118:shortest=1\" -t 1 /tmp/colon_test.mp4",
+      "suggested_fix": "ffmpeg `movie=` supports `\\:` escaping for literal colons. Either escape with `str(overlay_path).replace(':', '\\\\:').replace(\"'\", \"\\\\'\")` or wrap the option in `\\'...\\'` quotes per ffmpeg filter syntax. Acceptable to defer if the asset path is repo-controlled — but a TimeMachine restore or unusual mount could move it. Document the assumption.",
       "addressed": false
     },
     {
-      "id": "P2-004",
+      "id": "P1-006",
+      "severity": "P1",
+      "phase": "GREP",
+      "file": "desktop/src/components/brand/MadeWithLiquidClips.tsx (no callers)",
+      "summary": "Component is exported but has zero call-sites in the codebase. Either the in-app surfaces (Splash / About / end-card) listed in the file header aren't wired yet, or the component is dead-code-shipped.",
+      "evidence": "grep -rn 'MadeWithLiquidClips' desktop/src/ → only the component definition. No imports. Acceptance check #4 ('React preview ↔ exported MP4 presence match') REQUIRES this component be mounted somewhere observable, otherwise the visual agreement test has nothing to test.",
+      "reproduce": "grep -rn 'MadeWithLiquidClips' desktop/src/",
+      "suggested_fix": "Either (a) wire it into Splash / About / end-card now so acceptance #4 has a surface to verify, or (b) drop this commit's component until those surfaces are scoped. Shipping unused exported React in src/ adds bundle bytes without payoff.",
+      "addressed": false
+    },
+    {
+      "id": "P1-007",
+      "severity": "P1",
+      "phase": "JOURNEY",
+      "file": "desktop/docs/WATERMARK_ACCEPTANCE.md (test #3)",
+      "summary": "Just-upgraded user keeps watermark for up to 10 minutes due to the _WATERMARK_TIER_CACHE TTL — this IS a P0 UX risk for the conversion flow, not a footnote. A user paying £/$ and seeing the same watermark on their next export will rage-message support.",
+      "evidence": "stages.py:1511 `_WATERMARK_CACHE_TTL_S = 600`. Acceptance #3 documents this with 'wait 10 minutes OR restart' as the workaround. There is no cache-invalidation hook from the upgrade success path back into the sidecar. The acceptance doc treats this as expected behavior.",
+      "reproduce": "Sign in as free → export 5s clip → see watermark → complete upgrade via /upgrade → export same clip within 10 min → watermark STILL present.",
+      "suggested_fix": "Add a sidecar RPC `clear_watermark_cache` or simply have the desktop call _should_watermark cache eviction after a successful upgrade webhook. Or: shorten TTL to 60s for free-tier (paid is cached forever already since features.watermark=False). The conversion-event is rare; cache miss cost is one extra /sync per export which is bounded.",
+      "addressed": false
+    },
+    {
+      "id": "P2-008",
       "severity": "P2",
       "phase": "KARPATHY",
-      "file": "junior-backend/app/routes/campaigns.py:171",
-      "summary": "Bare 'c.premium_rpm_cents > 0' comparison assumes the column has a numeric value. If a row exists from before the v0.7.55 ALTER ran (transient deploy window or a SQLite dev DB that uses Base.metadata.create_all which never adds new columns to existing tables), Python raises TypeError on None > 0 and the entire /campaigns response 500s.",
-      "evidence": "campaigns.py:171 'if is_premium and c.premium_rpm_cents > 0'. The model declares default=0 nullable=False, but Base.metadata.create_all (junior-backend/app/main.py:50) does NOT add columns to existing tables in SQLite dev. Postgres ALTER lines 204-206 run only in lifespan with engine.dialect.name=='postgresql' (line 288).",
-      "reproduce": "1) Local dev with a pre-v0.7.55 SQLite junior.db. 2) Start backend. 3) GET /campaigns?clerk_user_id=anything → 500 'unsupported operand type(s) for >: NoneType and int'.",
-      "suggested_fix": "Coerce: 'if is_premium and (c.premium_rpm_cents or 0) > 0'. Three lines below do the same coercion correctly. Apply the same defensive pattern.",
+      "file": "desktop/python-sidecar/stages.py:1620-1632",
+      "summary": "Comment says 'Filter-string construction shouldn't fail at runtime' — when the assumption is THAT confident, the try/except adds noise rather than safety. Either remove the try/except (and accept a single failure path) or document a real failure mode it actually catches.",
+      "evidence": "Lines 1620-1632. The function body only does Path arithmetic and f-string composition, neither of which throw under normal Python operation. The comment admits this. The except clause uses `Exception as exc` which (correctly) excludes KeyboardInterrupt — flagged below as good. But the safety net catches almost nothing real.",
+      "reproduce": "n/a — code-review observation",
+      "suggested_fix": "Either drop the try/except (Karpathy: simpler wins), or expand the wrapped scope to ALSO include the Path.exists() probe + a 1KB+ size check so the wrapper genuinely catches the disk-failure mode P1-003 calls out.",
       "addressed": false
+    },
+    {
+      "id": "P2-009",
+      "severity": "P2",
+      "phase": "KARPATHY",
+      "file": "desktop/src/components/brand/MadeWithLiquidClips.tsx:41,50",
+      "summary": "ariaLabel default is 'Made with Liquid Clips'; if a consumer passes ariaLabel='' (per the JSDoc invitation 'on decorative-only mounts'), the resulting `alt=''` plus `role='img'` is screen-reader noise — role=img on an empty-alt image is an unannounced presentational element, but role=img demands a label. Conflict.",
+      "evidence": "Lines 41 + 50. ariaLabel='' → <img alt='' role='img'>. Per ARIA: role='img' requires aria-label OR alt. alt='' satisfies it nominally but axe-core warns. The JSDoc tells consumers to do this on decorative mounts.",
+      "reproduce": "n/a — accessibility lint",
+      "suggested_fix": "When ariaLabel === '', drop role='img' and rely on alt=''. Or document that decorative mounts should set aria-hidden='true' instead.",
+      "addressed": false
+    },
+    {
+      "id": "P2-010",
+      "severity": "P2",
+      "phase": "KARPATHY",
+      "file": "desktop/python-sidecar/assets/watermark/made-with-liquid-clips.mov (8.7MB)",
+      "summary": "8.6MB MOV shipped in every install for a 480×120 12s loop is high — render_watermark_overlay.py exists and bundled ffmpeg is present, so first-launch render is a viable alternative. Defer until DMG ship-cost is a real complaint.",
+      "evidence": "du -sh: 8.6M for the watermark dir. render_watermark_overlay.py builds the MOV in ~3s on a 2020 MBP per its docstring. ffmpeg is bundled at python-sidecar/bin/. Alternative: ship the 78KB bug PNG only and lazy-render the MOV on first export.",
+      "reproduce": "du -sh desktop/python-sidecar/assets/watermark/",
+      "suggested_fix": "Defer — 8.6MB on top of ~155MB ffmpeg+whisper baseline is 5% increase, not a blocker. Note for v0.7.6x if DMG size becomes a complaint. Don't change in this commit.",
+      "addressed": false
+    },
+    {
+      "id": "P2-011",
+      "severity": "P2",
+      "phase": "DESIGN",
+      "file": "desktop/python-sidecar/stages.py:1623",
+      "summary": "`except Exception as exc` — correctly excludes BaseException (SIGINT/SystemExit propagate). The user's audit asked to verify this; it's right. Flagging as confirmed-good, not a finding.",
+      "evidence": "Line 1623: `except Exception as exc:  # noqa: BLE001`. Exception is the right base — KeyboardInterrupt and SystemExit derive from BaseException, not Exception, so Ctrl-C still aborts the export. Matches user's intent.",
+      "reproduce": "n/a — confirmed correct",
+      "suggested_fix": "No action — leave as-is.",
+      "addressed": true
+    },
+    {
+      "id": "P2-012",
+      "severity": "P2",
+      "phase": "GREP",
+      "file": "desktop/src/assets/made-with-liquid-clips.svg (brand kit IG-012)",
+      "summary": "SVG uses only canonical fuchsia #FF1A8C, ink #F4F1EA, and black/white rgba derivatives — no drift. Brand kit gate IG-012 passes.",
+      "evidence": "grep -oE '#[0-9A-Fa-f]{3,8}|rgba?\\([^)]*\\)' → only #F4F1EA, #FF1A8C, rgba(0,0,0,0.5), rgba(244,241,234,0.7), rgba(255,26,140,0.55|0.95). All derive from the three canonical tokens.",
+      "reproduce": "grep -oE '#[0-9A-Fa-f]{3,8}|rgba?\\([^)]*\\)' desktop/src/assets/made-with-liquid-clips.svg | sort -u",
+      "suggested_fix": "No action — confirmed clean.",
+      "addressed": true
+    },
+    {
+      "id": "P2-013",
+      "severity": "P2",
+      "phase": "GREP",
+      "file": "Codebase IRON GATE sentinels",
+      "summary": "No IRON GATE sentinels exist near stages.py:1316 or in desktop/src/components/brand/. No locked contracts touched.",
+      "evidence": "grep -n 'IRON GATE' desktop/python-sidecar/stages.py → 0 hits. grep -rn 'IRON GATE' desktop/src/components/brand/ → 0 hits. IG-012 (brand kit) is contract-only and is satisfied per P2-012.",
+      "reproduce": "grep -n 'IRON GATE' desktop/python-sidecar/stages.py desktop/src/components/brand/*.tsx",
+      "suggested_fix": "No action — no sentinels at risk.",
+      "addressed": true
     }
   ],
   "smoke_tests_run": [
     {
-      "name": "GET-embed-earn-headers",
+      "name": "ffmpeg-bundled-prores-decode",
       "exit_code": 0,
-      "output": "frame-ancestors 'none' + X-Frame-Options DENY — confirms P0-001 still broken in production"
+      "output": "desktop/python-sidecar/bin/ffmpeg 8.1.1-tessus (x86_64) supports prores decode + encode (prores_ks). MOV decode path works."
     },
     {
-      "name": "GET-campaigns-public",
+      "name": "path-with-spaces-overlay",
       "exit_code": 0,
-      "output": "200 OK; old shape (no funnel fields) — expected pre-deploy; campaign rows render"
+      "output": "ffmpeg movie=/tmp/Liquid Clips Test/wm.mov SUCCEEDED — output frame contains 9 fuchsia pixels in bottom-right region. Unescaped spaces are tolerated by the bundled ffmpeg's movie= parser."
     },
     {
-      "name": "GET-community-channels",
-      "exit_code": 0,
-      "output": "404 Not Found — expected, backend not deployed; no 5xx so non-deploy failure ruled out"
+      "name": "bundle-resources-check",
+      "exit_code": 1,
+      "output": "tauri.conf.json bundle.resources missing the new MOV + static PNG. /Applications/Liquid Clips.app/Contents/Resources/_up_/python-sidecar/assets/watermark/ does NOT exist on the currently-installed app. Next CI build will not ship the animated overlay → silent fallback to static for EVERY shipped user."
     },
     {
-      "name": "GET-healthcheck",
+      "name": "brand-kit-drift",
       "exit_code": 0,
-      "output": "api.liquidclips.app and api.jnremployee.com both return 405 Allow:GET — backend is live"
+      "output": "SVG uses only #FF1A8C, #F4F1EA, and rgba derivatives — IG-012 satisfied."
     },
     {
-      "name": "TSC-account-app",
-      "exit_code": 0,
-      "output": "clean"
-    },
-    {
-      "name": "TSC-desktop",
-      "exit_code": 0,
-      "output": "clean"
-    },
-    {
-      "name": "brand-kit-drift-check",
-      "exit_code": 0,
-      "output": "green from desktop/ cwd"
-    },
-    {
-      "name": "iron-gate-grep",
-      "exit_code": 0,
-      "output": "no IRON GATE sentinels touched in any of the 14 changed files"
-    },
-    {
-      "name": "String-e-annotation-grep",
-      "exit_code": 0,
-      "output": "all 7 String(e) additions carry an allow-raw-error annotation, no slips"
+      "name": "react-component-call-sites",
+      "exit_code": 1,
+      "output": "MadeWithLiquidClips has zero importers in desktop/src/. Component is defined but never mounted."
     }
   ],
-  "user_journey_table": {
-    "free_user_on_earn": [
-      "ENABLES: see PayoutLadder $1 free / $4 locked premium; mission filter chips (when ≥2 missions); upgrade CTA on locked campaigns; BonusEarnings upsell tile.",
-      "PREVENTS: free user from clicking 'Submit through Whop' — only paid users get that CTA per SponsoredCarousel.tsx:520; no path to mistakenly submit a clip thinking they'll get bonus.",
-      "BREAKS: nothing on Earn rendering — but the entire surface is BLOCKED from rendering inside the desktop webview (P0-001).",
-      "STRANDS: free user clicks Upgrade → posts lc:open-auth panel=upgrade → desktop should open Clerk upgrade flow. If desktop bridge swallows the postMessage (no handler attached), user is stuck."
-    ],
-    "free_user_on_community": [
-      "ENABLES: see Announcements + Free Clipper Lobby + Uncle Daniel Clips open cards; see paid rooms as Upgrade preview tiles.",
-      "PREVENTS: nothing.",
-      "BREAKS: nothing.",
-      "STRANDS: 'Coming soon' on free_paid rooms (whop_channel_id null in seed) is a quiet dead-end — no retry, no notify CTA. Free user just sees the room exists with no action. P1-002."
-    ],
-    "premium_stalled_jwt": [
-      "ENABLES: amber 'bonus ledger paused — reopen Earn from the Liquid Clips sidebar, or retry'. (No retry button in BonusEarnings — only in BountyList.)",
-      "PREVENTS: nothing.",
-      "BREAKS: the user instructions say 'or retry' but there's NO retry button on the stalled state in BonusEarnings.tsx:143-156. Copy promises a button that doesn't exist. Minor honesty drift — P2 (not logged separately, fold into P1-001 fix).",
-      "STRANDS: user closes Earn, reopens from sidebar → bridge re-fires; that's the documented escape hatch. Works."
-    ],
-    "admin_importing_collision": [
-      "ENABLES: idempotent re-import patches the existing row (backend admin.py:1467-1521).",
-      "PREVENTS: duplicate ledger rows for the same whop_submission_id.",
-      "BREAKS: when collision happens, the import sub-form DOES clear (onSaved calls setShowImport(false) + load) AdminHQ.tsx:1738-1741. UI handles this correctly.",
-      "STRANDS: admin gets no visible signal that a re-import happened vs a create. Both close the form and reload the table. Acceptable for Phase 1 — recorded as observation, not finding."
-    ],
-    "admin_mark_paid": [
-      "ENABLES: window.prompt sets approved_views, mark-paid sets bonus_payout_status='paid'.",
-      "PREVENTS: nothing.",
-      "BREAKS: notes never sent (P2-001). No re-edit of approved row (P2-001).",
-      "STRANDS: admin can't fix a mistyped view count once paid — must re-import."
-    ]
-  },
-  "verdict": "BLOCK",
-  "verdict_rationale": "One P0 (broken frame-ancestors in production) prevents the entire Earn surface from rendering in the desktop webview — every v0.7.55 UI change is invisible to users until fixed. Three P1s (P1-001 invisible ledger rows, P1-002 zero working community rooms, P1-003 false-positive empty state) each render a major user journey dead on arrival. P2s are polish — non-blocking."
+  "verdict": "BLOCK"
 }
