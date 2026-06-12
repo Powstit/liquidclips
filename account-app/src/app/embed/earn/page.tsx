@@ -21,6 +21,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { SponsoredCarousel, type SponsoredCampaign } from "@/components/embed/SponsoredCarousel";
 import { BountyList } from "@/components/embed/BountyList";
+import { BonusEarnings } from "@/components/embed/BonusEarnings";
 import { EmbedSignedOutPanel } from "@/components/embed/EmbedSignedOutPanel";
 import {
   AffiliateStripCta,
@@ -84,8 +85,15 @@ export default async function EmbedEarnPage() {
             user can verify HERE. */}
         <ConnectionBadge status={linkStatus} />
 
-        {/* (O #5) Sponsored rewards — cinematic 2-col hero carousel. */}
+        {/* (O #5) Sponsored rewards — cinematic 2-col hero carousel with
+            mission filter chips. */}
         <SponsoredCarousel campaigns={campaigns} tier={tier} />
+
+        {/* v0.7.55 (Uncle Daniel funnel — Phase 1) — clipper's own bonus
+            ledger. Closes the loop for paid users who submit through Whop
+            and want to see their +$4 RPM bonus accrue. Free users see an
+            upgrade preview tile; the desktop bridge ferries the JWT. */}
+        <BonusEarnings tier={tier} />
 
         {/* (O #5)(O #6) Bounty list — client-side fetch because /whop/bounties
             needs the LICENSE_JWT (license-bearer auth, not Clerk). The Start CTA
