@@ -40,6 +40,7 @@ from app.config import get_settings
 from app.db import engine, get_db
 from app.features import is_admin_email
 from app.models import (
+    CommunityChannel,
     DesktopErrorEvent,
     RewardBonusLedger,
     License,
@@ -1600,4 +1601,127 @@ def mark_bonus_paid(
         else None
     )
     return {"row": _admin_serialize_ledger(row, user, campaign)}
+
+
+# ── Community channels (v0.7.55) ──────────────────────────────────────
+
+
+class CommunityChannelPayload(BaseModel):
+    """Create + patch share a shape so the admin form is one component.
+    Required fields are enforced at create-time only (we accept missing
+    keys on PATCH via the partial=True flag below)."""
+    slug: str = Field(..., min_length=2, max_length=80, pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    name: str = Field(..., min_length=2, max_length=120)
+    purpose: str | None = Field(None, max_length=400)
+    whop_channel_id: str | None = Field(None, max_length=80)
+    required_tier: str = Field(
+        "paid",
+        pattern=r"^(free|free_paid|paid|paid_admin)$",
+        description="free / free_paid = open · paid / paid_admin = locked for free users.",
+    )
+    business_unit: str | None = Field(None, max_length=80)
+    mission_lane: str | None = Field(None, max_length=60)
+    is_admin_only: bool = False
+    is_locked_preview_enabled: bool = True
+    section: str = Field(
+        "mission",
+        pattern=r"^(announcements|free_lobby|paid_core|mission)$",
+    )
+    sort_order: int = 0
+
+
+class CommunityChannelPatch(BaseModel):
+    name: str | None = Field(None, min_length=2, max_length=120)
+    purpose: str | None = Field(None, max_length=400)
+    whop_channel_id: str | None = Field(None, max_length=80)
+    required_tier: str | None = Field(
+        None, pattern=r"^(free|free_paid|paid|paid_admin)$"
+    )
+    business_unit: str | None = Field(None, max_length=80)
+    mission_lane: str | None = Field(None, max_length=60)
+    is_admin_only: bool | None = None
+    is_locked_preview_enabled: bool | None = None
+    section: str | None = Field(
+        None, pattern=r"^(announcements|free_lobby|paid_core|mission)$"
+    )
+    sort_order: int | None = None
+
+
+def _admin_serialize_channel(c: CommunityChannel) -> dict[str, Any]:
+    return {
+        "id": c.id,
+        "slug": c.slug,
+        "name": c.name,
+        "purpose": c.purpose,
+        "whop_channel_id": c.whop_channel_id,
+        "required_tier": c.required_tier,
+        "business_unit": c.business_unit,
+        "mission_lane": c.mission_lane,
+        "is_admin_only": bool(c.is_admin_only),
+        "is_locked_preview_enabled": bool(c.is_locked_preview_enabled),
+        "section": c.section,
+        "sort_order": c.sort_order,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+        "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+    }
+
+
+@router.get("/community/channels")
+def list_admin_channels(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    rows = (
+        db.query(CommunityChannel)
+        .order_by(CommunityChannel.section.asc(), CommunityChannel.sort_order.asc(), CommunityChannel.created_at.asc())
+        .all()
+    )
+    return {"channels": [_admin_serialize_channel(c) for c in rows]}
+
+
+@router.post("/community/channels", status_code=status.HTTP_201_CREATED)
+def create_channel(
+    payload: CommunityChannelPayload,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    if db.query(CommunityChannel).filter_by(slug=payload.slug).first():
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"channel slug already exists: {payload.slug}"
+        )
+    c = CommunityChannel(**payload.model_dump())
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    return {"channel": _admin_serialize_channel(c)}
+
+
+@router.patch("/community/channels/{slug}")
+def update_channel(
+    slug: str,
+    payload: CommunityChannelPatch,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    c = db.query(CommunityChannel).filter_by(slug=slug).one_or_none()
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"channel not found: {slug}")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(c, k, v)
+    db.commit()
+    db.refresh(c)
+    return {"channel": _admin_serialize_channel(c)}
+
+
+@router.delete("/community/channels/{slug}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_channel(
+    slug: str,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    c = db.query(CommunityChannel).filter_by(slug=slug).one_or_none()
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"channel not found: {slug}")
+    db.delete(c)
+    db.commit()
 

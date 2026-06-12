@@ -1,290 +1,388 @@
-// v0.6.39 — Liquid Clips Community (cockpit pass).
+// v0.7.55 — Liquid Clips Community (locked architecture pass).
 //
-// Same native in-app community surface introduced in v0.7.0, now wearing the
-// cockpit design language: transparent surfaces, fuchsia HUD bracket corners,
-// no plates / no solid panel chrome. The headlines, copy, and data flow are
-// unchanged — this pass only swaps SaaS-card chrome for the cockpit's reticle
-// language so Community reads as the same room as Workstation + Library.
+// Replaces the hand-coded PINNED + FEED with dynamic tier-gated rooms
+// fetched from /community/channels. Daniel's locked architecture:
 //
-// Eyebrow + heading sharpened to make Community clearly distinct from Browse
-// Rewards (the side panel): this is the LIQUID CLIPS feed — campaign drops
-// and release notes — not a Whop browser. Browse Rewards keeps its own label
-// in the side panel; that's untouched.
+//   Announcements          admin-only post; everyone reads.
+//   Free Clipper Lobby     onboarding, $1 RPM, 100 free clips.
+//   Premium Rewards HQ     paid clippers, high-RPM campaign drops.
+//   Affiliate Growth Room  paid clippers, 50% MRR strategy only.
+//   Uncle Daniel Clips     controlled training content; free + paid.
+//   Viral Reaction         viral source ideas, layouts; paid only.
+//   DDB Beauty             $10 RPM beauty campaign; paid only.
+//   DDB Fashion            fashion-house assets; paid only.
+//   Sponsor Campaigns      external SaaS/brand campaigns; paid only.
 //
-// Pinned card, post cards, and the live-chat section all reuse the
-// `library-card` + four `library-card-corner-*` spans pattern from
-// LibraryCard.tsx. One fuchsia. No red (no destructive surfaces here).
+// Card states:
+//   • open       → tap routes browse panel to whop_channel_id chat feed.
+//   • coming     → whop_channel_id is null; greyed CTA, no nav.
+//   • locked     → free user looking at a paid room; preview copy +
+//                   upgrade CTA. Hidden entirely when
+//                   is_locked_preview_enabled=false.
+//
+// Brand kit: library-card + four library-card-corner-* spans.
+// Vocabulary stays inside fuchsia / ink / paper-elev / line / mono +
+// display fonts. No ad-hoc colors.
 
-import { useMemo, useState } from "react";
-import { openSmart as openExternal } from "../lib/openSmart";
-import { CalendarClock, Flame, MessageCircle, Sparkles, Trophy, Zap } from "lucide-react";
-// v0.6.19 — Whop community chat opens in the in-app Tauri child webview (same
-// pane that hosts Browse Rewards). Members get a fully-authed Whop session
-// inline; no system-browser redirect.
-import { openBrowsePanel, WHOP_COMMUNITY_URL } from "../lib/browse";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Bell,
+  Crown,
+  Flame,
+  MessageCircle,
+  Sparkles,
+  Trophy,
+  type LucideIcon,
+} from "lucide-react";
+import { openBrowsePanel } from "../lib/browse";
 import { humanError } from "../lib/sidecar";
+import { openAuthPanel } from "./auth/useAuthPanel";
+import { useTier } from "../lib/useTier";
 
-type Pinned = {
+const PREMIUM_TIERS = new Set([
+  "solo",
+  "pro",
+  "agency",
+  "growth",
+  "channel",
+  "autopilot",
+]);
+
+// Backend URL — resolves to the prod backend via VITE_BACKEND_URL or
+// the canonical liquidclips.app fallback (mirrors lib/backend.ts).
+const BACKEND_URL: string =
+  (import.meta.env.VITE_BACKEND_URL as string | undefined) ??
+  "https://api.liquidclips.app";
+
+type Channel = {
   id: string;
-  eyebrow: string;
-  title: string;
-  body: string;
-  cta?: { label: string; url: string };
-  Icon: typeof Flame;
+  slug: string;
+  name: string;
+  purpose: string | null;
+  whop_channel_id: string | null;
+  required_tier: "free" | "free_paid" | "paid" | "paid_admin" | string;
+  business_unit: string | null;
+  mission_lane: string | null;
+  is_admin_only: boolean;
+  is_locked_preview_enabled: boolean;
+  section: "announcements" | "free_lobby" | "paid_core" | "mission" | string;
+  sort_order: number;
 };
 
-type Post = {
-  id: string;
-  posted_at: string;          // ISO date or relative ("today")
-  tag: string;                // "campaign" | "release" | "guide" | "win"
-  title: string;
-  body: string;
-  cta?: { label: string; url: string };
-  Icon: typeof Flame;
-};
+type SectionKey = "announcements" | "free_lobby" | "paid_core" | "mission";
 
-const PINNED: Pinned = {
-  id: "pinned-influencer",
-  eyebrow: "live · public · join now",
-  title: "Influencer launch campaign — $5 RPM + 50% MRR",
-  body: "First sponsored Liquid Clips campaign. Watermark-free clip exports earn $5 RPM on approved views; refer a paid user and unlock 50% recurring on every customer they bring in — lifetime, not first month. Whop handles the payout cycle.",
-  cta: { label: "Open campaign brief →", url: WHOP_COMMUNITY_URL },
-  Icon: Flame,
-};
-
-const FEED: Post[] = [
-  {
-    id: "ddb-coming-soon",
-    posted_at: "today",
-    tag: "campaign",
-    title: "Daniel Diyepriye Beauty — $80k recurring brand campaign · Coming Soon",
-    body: "Skincare brand replacing ad spend with clipper-powered distribution. RPM ladder: $10 base / $20 Pro / $30 invite-only Agency. Recurring monthly once funding threshold lands. Brief drops here when funding clears — no action yet.",
-    // CTA intentionally omitted while liquidclips.app/campaigns/ddb is unbuilt.
-    // Restore once the campaign brief page is live so the click goes
-    // somewhere honest instead of 404'ing.
+const SECTION_META: Record<SectionKey, { label: string; sub: string; Icon: LucideIcon }> = {
+  announcements: {
+    label: "announcements",
+    sub: "admin-only posts · everyone reads",
+    Icon: Bell,
+  },
+  free_lobby: {
+    label: "free clipper lobby",
+    sub: "onboarding · open to everyone signed in",
     Icon: Sparkles,
   },
-  {
-    id: "liquid-lift-coming-soon",
-    posted_at: "this week",
-    tag: "campaign",
-    title: "Liquid Lift — internal-growth campaign · Coming Soon",
-    body: "Clip Liquid Lift's Shopify overlay app and stack two earnings streams: $5–$20 RPM on the clip and 50% recurring MRR via your affiliate link. Open to every paid Liquid Clips user.",
-    Icon: Zap,
+  paid_core: {
+    label: "premium rooms",
+    sub: "paid clippers only · campaign HQ + affiliate growth",
+    Icon: Crown,
   },
-  {
-    id: "v0612-release",
-    posted_at: "today",
-    tag: "release",
-    title: "v0.6.12 — Community tab + Kade-branded email chrome",
-    body: "Community lives natively in-app now. Welcome + admin emails wear the Kade alien lockup on a black + pink shell. Resend domain (liquidclips.app) verified — receipts and payout alerts land in Primary.",
+  mission: {
+    label: "mission rooms",
+    sub: "brand + sponsor lanes · paid clippers",
     Icon: Trophy,
   },
-  {
-    id: "affiliate-50-mrr",
-    posted_at: "ongoing",
-    tag: "guide",
-    title: "How to claim 50% MRR for life",
-    body: "Refer two paid users through your link → 50% recurring commission unlocks on every customer you refer from that point on. Lifetime, not just first month. Find your link inside Account → Dashboard.",
-    cta: { label: "Get my link →", url: "https://account.liquidclips.app/dashboard" },
-    Icon: MessageCircle,
-  },
-];
+};
+
+// Whop chat feed URLs follow chat.whop.com/<channel_id>. We open them in
+// the in-app browse panel so the user never leaves Liquid Clips.
+function whopChatUrl(channelId: string): string {
+  return `https://whop.com/c/${channelId}`;
+}
 
 export function CommunityTab() {
-  const pinned = useMemo(() => PINNED, []);
-  const feed = useMemo(() => FEED, []);
-  // Surfacing openExternal failures — previously a silent `.catch(() =>
-  // undefined)` meant clicking a CTA that failed to launch the system
-  // browser (Tauri shell scope mismatch, missing handler) looked
-  // indistinguishable from a working click. Now we show an inline retry
-  // line under the hero so the user knows the click registered.
-  const [openError, setOpenError] = useState<{ url: string; message: string } | null>(null);
+  const { tier } = useTier();
+  const isPremium = !!tier && PREMIUM_TIERS.has(tier);
+  const [channels, setChannels] = useState<Channel[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  function go(url: string) {
-    openExternal(url)
-      .then(() => setOpenError(null))
-      .catch((e) => {
-        const msg = humanError(e);
-        setOpenError({
-          url,
-          message: msg ? `Couldn't open link: ${msg}` : "Couldn't open link.",
-        });
+  const fetchChannels = useCallback(async () => {
+    setError(null);
+    try {
+      const r = await fetch(`${BACKEND_URL}/community/channels`, {
+        cache: "no-store",
       });
-  }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = (await r.json()) as { channels?: Channel[] };
+      setChannels(Array.isArray(j.channels) ? j.channels : []);
+    } catch (e) {
+      setError(humanError(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchChannels();
+  }, [fetchChannels]);
+
+  // Group + sort. Hide rooms a free user can't even preview.
+  const grouped = useMemo(() => {
+    if (!channels) return null;
+    const buckets: Record<SectionKey, Channel[]> = {
+      announcements: [],
+      free_lobby: [],
+      paid_core: [],
+      mission: [],
+    };
+    for (const c of channels) {
+      const k = (c.section as SectionKey) in buckets ? (c.section as SectionKey) : "mission";
+      const locked = !isPremium && (c.required_tier === "paid" || c.required_tier === "paid_admin");
+      if (locked && !c.is_locked_preview_enabled) continue;
+      buckets[k].push(c);
+    }
+    for (const k of Object.keys(buckets) as SectionKey[]) {
+      buckets[k].sort((a, b) => a.sort_order - b.sort_order);
+    }
+    return buckets;
+  }, [channels, isPremium]);
 
   return (
-    <div className="flex w-full max-w-[920px] flex-col gap-6">
-      {/* Hero — sharpened to distinguish Community (the in-app feed) from the
-          Browse Rewards side panel (which is a Whop webview). */}
-      <header className="flex flex-col gap-2">
-        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-fuchsia">
-          <MessageCircle className="h-3 w-3" />
-          community feed
-        </div>
-        <h1 className="font-display text-[28px] font-semibold leading-tight tracking-[-0.025em] text-ink">
-          What's happening on Liquid Clips.
-        </h1>
-        <p className="font-sans text-[14px] leading-relaxed text-text-secondary">
-          Campaign drops, release notes, and wins from the community. Pinned briefs land here first; live chat opens in the side panel.
-        </p>
-        {/* Open-link error surface — small mono line, retry button + dismiss.
-            Sits under the header so it doesn't shift the pinned card layout. */}
-        {openError && (
-          <div
-            role="alert"
-            className="mt-1 flex items-center justify-between gap-3 rounded-2xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-3 py-2 font-mono text-[11px] text-[var(--color-danger)]"
-          >
-            <span className="min-w-0 flex-1 truncate">{openError.message}</span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => go(openError.url)}
-                className="rounded-full border border-[var(--color-danger)]/50 bg-transparent px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-danger)] transition-colors hover:bg-[var(--color-danger)]/15"
-              >
-                Retry
-              </button>
-              <button
-                type="button"
-                onClick={() => setOpenError(null)}
-                aria-label="Dismiss error"
-                className="rounded-full bg-transparent px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary transition-colors hover:text-ink"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        )}
-      </header>
+    <div className="flex w-full max-w-[920px] flex-col gap-8">
+      <Header
+        sub={
+          tier
+            ? isPremium
+              ? `signed in as ${tier} · every room unlocked`
+              : `signed in as free · upgrade to unlock premium rooms`
+            : `signed in · loading tier`
+        }
+      />
 
-      {/* Pinned hero card — cockpit language: transparent surface, fuchsia
-          bracket corners, no plate. Click still routes to the campaign brief. */}
-      <section
-        onClick={() => pinned.cta && go(pinned.cta.url)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if ((e.key === "Enter" || e.key === " ") && pinned.cta) {
-            e.preventDefault();
-            go(pinned.cta.url);
-          }
-        }}
-        className="library-card group relative cursor-pointer bg-transparent p-6"
-      >
-        <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
-        <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
-        <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
-        <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
-
-        <div className="relative z-10 flex items-start gap-4">
-          <div className="grid h-12 w-12 shrink-0 place-items-center text-fuchsia">
-            <pinned.Icon className="h-7 w-7" strokeWidth={1.75} />
-          </div>
-          <div className="flex flex-1 flex-col gap-1.5">
-            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia">
-              ▸ {pinned.eyebrow}
-            </div>
-            <h2 className="font-display text-[20px] font-semibold leading-tight tracking-[-0.015em] text-ink">
-              {pinned.title}
-            </h2>
-            <p className="font-sans text-[13.5px] leading-relaxed text-text-secondary">
-              {pinned.body}
-            </p>
-            {pinned.cta && (
-              <span className="mt-2 inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia transition-transform group-hover:translate-x-0.5">
-                {pinned.cta.label}
-              </span>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Feed header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia">
-          <CalendarClock className="h-3 w-3" />
-          recent posts
-        </div>
-        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
-          {feed.length} posts
-        </span>
-      </div>
-
-      {/* Feed — each post becomes its own cockpit card. No row dividers, no
-          shared plate; brackets do the framing. */}
-      <ul className="flex flex-col gap-4">
-        {feed.map((p) => (
-          <li key={p.id}>
-            <button
-              type="button"
-              onClick={() => p.cta && go(p.cta.url)}
-              className="library-card group relative flex w-full items-start gap-4 bg-transparent p-5 text-left"
-            >
-              <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
-              <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
-              <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
-              <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
-
-              <div className="relative z-10 grid h-10 w-10 shrink-0 place-items-center text-fuchsia">
-                <p.Icon className="h-5 w-5" strokeWidth={1.75} />
-              </div>
-              <div className="relative z-10 flex flex-1 flex-col gap-1">
-                <div className="flex flex-wrap items-center gap-2 font-mono text-[9.5px] uppercase tracking-[0.14em] text-text-tertiary">
-                  <span className="text-fuchsia">{p.tag}</span>
-                  <span>·</span>
-                  <span>{p.posted_at}</span>
-                </div>
-                <h3 className="font-display text-[15.5px] font-semibold leading-tight tracking-[-0.01em] text-ink">
-                  {p.title}
-                </h3>
-                <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-                  {p.body}
-                </p>
-                {p.cta && (
-                  <span className="mt-1 inline-flex items-center font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia transition-transform group-hover:translate-x-0.5">
-                    {p.cta.label}
-                  </span>
-                )}
-              </div>
-            </button>
-          </li>
-        ))}
-      </ul>
-
-      {/* v0.6.19 — Whop live chat opens in the in-app browser panel (the
-          same right-side Tauri webview Browse Rewards uses), NOT the system
-          browser. Cockpit pass: transparent surface, bracket corners, no
-          dashed-border plate. */}
-      <section className="library-card relative flex flex-col gap-2 bg-transparent p-5">
-        <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
-        <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
-        <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
-        <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
-
-        <div className="relative z-10 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia">
-          <Flame className="h-3 w-3" />
-          live chat
-        </div>
-        <p className="relative z-10 font-sans text-[13px] leading-relaxed text-text-secondary">
-          The live conversation — bounty wins, "what worked this week", payout milestones — opens right here, inside Liquid Clips. Your Whop session is already authed.
-        </p>
-        <div className="relative z-10 mt-1 flex flex-wrap items-center gap-2">
+      {error && (
+        <div className="rounded-2xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 p-4">
+          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--color-danger)]">
+            couldn&apos;t load rooms
+          </p>
+          <pre className="mt-2 max-h-[120px] overflow-auto rounded-lg border border-line bg-paper-warm/40 p-2.5 font-mono text-[11px] text-text-secondary">
+            {error}
+          </pre>
           <button
-            type="button"
-            onClick={() => void openBrowsePanel(WHOP_COMMUNITY_URL)}
-            className="inline-flex items-center gap-2 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-semibold text-white shadow-[0_0_18px_rgba(255,26,140,0.45)] transition-all hover:bg-fuchsia-bright"
+            onClick={() => void fetchChannels()}
+            className="mt-3 rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-text-secondary hover:border-fuchsia hover:text-fuchsia"
           >
-            Open chat in-app →
-          </button>
-          <button
-            type="button"
-            onClick={() => go(WHOP_COMMUNITY_URL)}
-            className="inline-flex items-center gap-2 rounded-full border border-line bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary transition-colors hover:border-fuchsia hover:text-fuchsia"
-          >
-            Or open in system browser ↗
+            Retry
           </button>
         </div>
-      </section>
+      )}
+
+      {!grouped && !error && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="h-[150px] animate-pulse rounded-2xl border border-line bg-paper-elev/40"
+            />
+          ))}
+        </div>
+      )}
+
+      {grouped &&
+        (Object.keys(SECTION_META) as SectionKey[]).map((key) => {
+          const rooms = grouped[key];
+          if (!rooms || rooms.length === 0) return null;
+          return (
+            <Section
+              key={key}
+              section={key}
+              rooms={rooms}
+              isPremium={isPremium}
+            />
+          );
+        })}
     </div>
   );
+}
+
+function Header({ sub }: { sub: string }) {
+  return (
+    <header className="flex flex-col gap-2">
+      <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-fuchsia">
+        <MessageCircle className="h-3 w-3" />
+        community rooms
+      </div>
+      <h1 className="font-display text-[28px] font-semibold leading-tight tracking-[-0.025em] text-ink">
+        Tier-gated rooms by purpose.
+      </h1>
+      <p className="font-sans text-[14px] leading-relaxed text-text-secondary">
+        Free Clipper Lobby for onboarding. Premium Rewards HQ for the
+        high-RPM drops. Affiliate Growth Room for 50% MRR strategy. Mission
+        rooms for each Daniel-owned brand and sponsor campaign.
+      </p>
+      <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
+        {sub}
+      </p>
+    </header>
+  );
+}
+
+function Section({
+  section,
+  rooms,
+  isPremium,
+}: {
+  section: SectionKey;
+  rooms: Channel[];
+  isPremium: boolean;
+}) {
+  const { label, sub, Icon } = SECTION_META[section];
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-fuchsia">
+          <Icon className="h-3 w-3" />
+          {label}
+        </div>
+        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+          {sub}
+        </span>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {rooms.map((c) => (
+          <ChannelCard key={c.id} c={c} isPremium={isPremium} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ChannelCard({ c, isPremium }: { c: Channel; isPremium: boolean }) {
+  const locked =
+    !isPremium && (c.required_tier === "paid" || c.required_tier === "paid_admin");
+  const coming = !c.whop_channel_id;
+
+  const openRoom = () => {
+    if (!c.whop_channel_id) return;
+    void openBrowsePanel(whopChatUrl(c.whop_channel_id));
+  };
+
+  const upgrade = () => {
+    void openAuthPanel("upgrade");
+  };
+
+  return (
+    <article
+      className="library-card group relative flex flex-col gap-3 bg-transparent p-5"
+      data-hot={locked ? "false" : "true"}
+    >
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
+
+      <div className="relative z-10 flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="grid h-10 w-10 shrink-0 place-items-center text-fuchsia">
+            <RoomIcon section={c.section as SectionKey} />
+          </div>
+          <div className="flex flex-col">
+            <h3 className="font-display text-[16px] font-semibold leading-tight tracking-[-0.01em] text-ink">
+              {c.name}
+            </h3>
+            <Tags c={c} />
+          </div>
+        </div>
+        <TierPill required_tier={c.required_tier} adminOnly={c.is_admin_only} />
+      </div>
+
+      <p className="relative z-10 font-sans text-[13px] leading-relaxed text-text-secondary">
+        {c.purpose ?? "—"}
+      </p>
+
+      <div className="relative z-10 mt-1 flex flex-wrap items-center justify-between gap-2">
+        {locked ? (
+          <>
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+              upgrade to unlock this room
+            </span>
+            <button
+              type="button"
+              onClick={upgrade}
+              className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-fuchsia-bright"
+            >
+              Upgrade →
+            </button>
+          </>
+        ) : coming ? (
+          <>
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+              Whop chat feed not provisioned yet
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
+              Coming soon
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+              opens in-app · Whop session authed
+            </span>
+            <button
+              type="button"
+              onClick={openRoom}
+              className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia/40 bg-fuchsia-soft/20 px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-fuchsia-deep transition-colors hover:border-fuchsia hover:bg-fuchsia hover:text-white"
+            >
+              Open chat →
+            </button>
+          </>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function Tags({ c }: { c: Channel }) {
+  const pieces: string[] = [];
+  if (c.business_unit) pieces.push(c.business_unit.replace(/_/g, " "));
+  if (c.mission_lane) pieces.push(c.mission_lane.replace(/_/g, " "));
+  if (pieces.length === 0) return null;
+  return (
+    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+      {pieces.join(" · ")}
+    </span>
+  );
+}
+
+function TierPill({
+  required_tier,
+  adminOnly,
+}: {
+  required_tier: string;
+  adminOnly: boolean;
+}) {
+  if (adminOnly) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-line bg-paper px-2.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-text-tertiary">
+        admin only
+      </span>
+    );
+  }
+  if (required_tier === "free" || required_tier === "free_paid") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-line bg-paper px-2.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-text-secondary">
+        open
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-2.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_28px_-12px_rgba(255,26,140,0.55)]">
+      <span className="inline-block h-1.5 w-1.5 rounded-full bg-white" />
+      premium
+    </span>
+  );
+}
+
+function RoomIcon({ section }: { section: SectionKey }) {
+  if (section === "announcements") return <Bell className="h-5 w-5" strokeWidth={1.75} />;
+  if (section === "free_lobby") return <Sparkles className="h-5 w-5" strokeWidth={1.75} />;
+  if (section === "paid_core") return <Crown className="h-5 w-5" strokeWidth={1.75} />;
+  return <Flame className="h-5 w-5" strokeWidth={1.75} />;
 }
