@@ -59,7 +59,7 @@ export default async function EmbedEarnPage() {
   // markup deterministic; the carousel never has to render a "loading" state.
   const campaigns = await fetchCampaigns();
 
-  // v0.7.55 — layout matches demo-pages.html lines 338-438. Top affiliate
+  // v0.7.54 — layout matches demo-pages.html lines 338-438. Top affiliate
   // strip drives the headline CTA; ConnectionBadge stays as a secondary
   // pill so the link state is still verifiable here; cinematic hero
   // carousel replaces the grid; BountyList + ManualEntry kept below per
@@ -106,10 +106,16 @@ export default async function EmbedEarnPage() {
 // affiliate settings panel; when unlinked, the demo's "GET MY AFFILIATE
 // LINK" copy stays. Posts `lc:nav` so the desktop intercepts.
 function AffiliateStrip({ linkStatus }: { linkStatus: WhopLinkStatus }) {
+  // v0.7.54 P1-001 — "unknown" is the backend-unreachable state. Pre-fix
+  // we lied "GET MY AFFILIATE LINK →" as if the user was definitely
+  // unlinked. Now neutral copy that opens the affiliate panel so the user
+  // can see whatever state is canonical from there.
   const ctaLabel =
     linkStatus === "linked"
       ? "OPEN AFFILIATE DASHBOARD →"
-      : "GET MY AFFILIATE LINK →";
+      : linkStatus === "unknown"
+        ? "OPEN AFFILIATE PANEL →"
+        : "GET MY AFFILIATE LINK →";
   return (
     <div className="flex flex-col items-start gap-3 border-b border-line/40 px-6 py-4 md:flex-row md:items-center md:justify-between md:gap-6 md:px-8">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] uppercase tracking-[0.14em] md:text-[12px] md:tracking-[0.16em]">

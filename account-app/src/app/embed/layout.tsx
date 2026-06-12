@@ -46,7 +46,7 @@ export default async function EmbedLayout({
   const { userId } = await auth();
   const initialTier = userId ? await fetchInitialTier(userId) : null;
 
-  // v0.7.55 — hard-positioned shell. Prior version relied on a
+  // v0.7.54 — hard-positioned shell. Prior version relied on a
   // `body:has([data-embed-shell])` rule to hide the parent marketing <Nav>
   // (sticky z-50) and zero the parent <main> padding. When `:has()` failed
   // to apply in time (WebKit hydration race in the Tauri child webview), the

@@ -1,6 +1,6 @@
 "use client";
 
-// v0.7.55 — cinematic 2-col hero carousel. Replaces the prior video-grid +
+// v0.7.54 — cinematic 2-col hero carousel. Replaces the prior video-grid +
 // 4:1 banner-row split with a single carousel where each slide is the
 // editorial format from demo-pages.html (lines 338-438): left brand block
 // (logo · name · huge $RPM · pool · subtitle), right full-bleed banner
@@ -123,10 +123,28 @@ export function SponsoredCarousel({
     };
   }, [campaigns.length, onscreen]);
 
+  // v0.7.54 P0-002 — clamp idx back into range when the campaigns list
+  // shrinks under us (client re-fetch, Strict Mode race, hot-reload).
+  // Pre-fix: `campaigns[idx]` returned undefined and HeroSlide dereferenced
+  // `c.banner_url` → crash. Effect must precede the early-return so the
+  // setIdx fires on the same tick the list shrinks.
+  useEffect(() => {
+    if (idx >= campaigns.length && campaigns.length > 0) {
+      setIdx(0);
+    }
+  }, [campaigns.length, idx]);
+
   if (!campaigns || campaigns.length === 0) return null;
 
-  const current = campaigns[idx];
-  const liveCount = campaigns.filter((c) => !isComingSoon(c)).length;
+  const current = campaigns[Math.min(idx, campaigns.length - 1)];
+  // v0.7.54 P1-004 — "live" excludes both coming-soon AND closed. P2-004
+  // — when the count is 0 but the list is non-empty (every campaign is
+  // coming-soon or closed), say so honestly instead of "loading…".
+  const liveCount = campaigns.filter(
+    (c) => !isComingSoon(c) && c.status !== "closed",
+  ).length;
+  const liveLabel =
+    liveCount > 0 ? `${liveCount} live` : "all upcoming";
 
   return (
     <section ref={hostRef} className="flex flex-col gap-5">
@@ -136,7 +154,7 @@ export function SponsoredCarousel({
           sponsored rewards
         </div>
         <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
-          {liveCount > 0 ? `${liveCount} live` : "loading…"}
+          {liveLabel}
         </span>
       </header>
 
@@ -202,6 +220,13 @@ function HeroSlide({
   onClick: () => void;
 }) {
   const comingSoon = isComingSoon(c);
+  // v0.7.54 P1-004 — backend emits 5 statuses (coming_soon ·
+  // partially_funded · funded · live · closed). Pre-fix collapsed to
+  // (comingSoon ? "Coming soon" : "LIVE") so a `closed` campaign rendered
+  // as a fuchsia LIVE pill with a pulse dot. Three-way classification
+  // matches the wire: comingSoon → pill, closed → muted "Closed" pill,
+  // everything else (live / partially_funded / funded) → "LIVE".
+  const closed = c.status === "closed";
   const isVideo = !!c.banner_url && isVideoUrl(c.banner_url);
   // Per demo: huge fuchsia "$X RPM" headline. rpm_cents is on the wire as
   // integer cents; "$9 RPM" reads $9 per 1k views. For the Liquid Clips
@@ -226,6 +251,10 @@ function HeroSlide({
           {comingSoon ? (
             <span className="inline-flex w-fit items-center gap-1.5 self-start rounded-full border border-fuchsia/40 bg-fuchsia-soft/30 px-3 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-fuchsia-deep">
               Coming soon
+            </span>
+          ) : closed ? (
+            <span className="inline-flex w-fit items-center gap-1.5 self-start rounded-full border border-line bg-paper-elev px-3 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
+              Closed
             </span>
           ) : (
             <span className="inline-flex w-fit items-center gap-1.5 self-start rounded-full bg-fuchsia px-3 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_28px_-12px_rgba(255,26,140,0.55)]">
@@ -272,14 +301,16 @@ function HeroSlide({
             <button
               type="button"
               onClick={onClick}
-              disabled={locked}
+              disabled={locked || closed}
               className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition-all hover:bg-fuchsia-bright disabled:cursor-not-allowed disabled:opacity-50"
             >
               {locked
                 ? "Upgrade to unlock →"
-                : comingSoon
-                  ? "Notify me →"
-                  : c.cta_text || "Open campaign →"}
+                : closed
+                  ? "Campaign closed"
+                  : comingSoon
+                    ? "Notify me →"
+                    : c.cta_text || "Open campaign →"}
             </button>
             {c.duration_label && (
               <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">

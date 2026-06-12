@@ -261,17 +261,28 @@ export function resetActivation(): void {
  *  Best-effort across the keychain delete — if `keyring` is missing (the
  *  exact root cause that lands users here), we still clear the in-memory
  *  state so the surface unwedges. */
-export async function resetLoginSession(): Promise<void> {
+// v0.7.54 P1-008 — caller-visible result so the FailedLoginRescue button
+// can honestly report "Session reset" vs "Reset partial — keychain not
+// reachable". Pre-fix the swallowed catch lied: the button always read
+// "Session reset" even when the JWT was still on disk.
+export type ResetLoginResult = { ok: true } | { ok: false; reason: string };
+
+export async function resetLoginSession(): Promise<ResetLoginResult> {
   clearTimer();
   pendingChallenge = null;
+  let keychainOk = true;
+  let reason = "";
   try {
     await sidecar.secretDelete("LICENSE_JWT");
-  } catch {
-    /* sidecar / keyring unavailable — clearing in-memory state is still
-       the right move; the JWT (if any) is now orphaned but the next
-       activation overwrites it. */
+  } catch (e) {
+    // sidecar / keyring unavailable. We still clear the in-memory state
+    // (the JWT, if any, is now orphaned and the next activation will
+    // overwrite it) but tell the caller so the UI doesn't lie.
+    keychainOk = false;
+    reason = humanError(e);
   }
   emit({ kind: "idle" });
+  return keychainOk ? { ok: true } : { ok: false, reason };
 }
 
 /** v0.7.54 — BUG-003. Diagnostics blob the user can copy from the error

@@ -8,11 +8,15 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
-      // Embed surfaces are loaded inside the desktop app's Tauri child webview.
-      // They intentionally need to be presentable in that hosted context, so
-      // remove the blanket frame-deny for /embed/* while keeping it everywhere
-      // else. (Tauri webviews are not frames, but some WebKit partitions still
-      // consult these headers and a DENY can leave the surface blank.)
+      // Embed surfaces are loaded inside the desktop app's Tauri child webview
+      // — they need to be frame-presentable. Frame-deny goes on EVERYTHING
+      // ELSE via the `missing` cookie negation trick: the catch-all only
+      // matches paths that DON'T start with /embed/. v0.7.54 P0-001: prior
+      // version applied both rules in cascade (Next.js merges headers across
+      // matching sources, it does not pick the most-specific), so /embed/earn
+      // ended up with frame-ancestors 'none' AND frame-ancestors * — DENY
+      // won. Now: explicit non-embed source list keeps the deny global without
+      // touching the embed cascade.
       {
         source: "/embed/:path*",
         headers: [
@@ -20,7 +24,11 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: "/:path*",
+        // Match everything that isn't /embed/* (and isn't the Sentry tunnel
+        // route — leaving the deny off /monitoring stays a non-issue because
+        // Sentry never returns HTML). Negative lookahead via a regex-source
+        // rule, which Next.js supports for top-level header sources.
+        source: "/((?!embed/).*)",
         headers: [
           { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
           { key: "X-Frame-Options", value: "DENY" },
