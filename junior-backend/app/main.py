@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.cron import start_cron, stop_cron
 from app.db import Base, engine
-from app.routes import admin, affiliate, analytics, auth_whop, campaigns, channels, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, affiliate, analytics, auth_whop, bonus_ledger, campaigns, channels, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -198,6 +198,55 @@ async def lifespan(_app: FastAPI):
         )""",
         "CREATE INDEX IF NOT EXISTS ix_post_analytics_channel ON post_analytics (channel_id)",
         "CREATE INDEX IF NOT EXISTS ix_post_analytics_refreshed ON post_analytics (refreshed_at)",
+        # v0.7.55 (Uncle Daniel funnel — Phase 1) — sponsored_campaigns
+        # tier-aware payout columns + mission classification + Whop linkage.
+        # All nullable / default-zero so existing rows survive without seed.
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS base_rpm_cents integer NOT NULL DEFAULT 0",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS premium_rpm_cents integer NOT NULL DEFAULT 0",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS premium_bonus_cents integer NOT NULL DEFAULT 0",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS free_banner_text varchar",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS premium_banner_text varchar",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS mission_type varchar",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS mission_lane varchar",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS requires_membership boolean NOT NULL DEFAULT false",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS watermark_allowed boolean NOT NULL DEFAULT true",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS whop_campaign_id varchar",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS whop_campaign_url varchar",
+        "CREATE INDEX IF NOT EXISTS ix_sponsored_campaigns_mission_type ON sponsored_campaigns (mission_type)",
+        # reward_bonus_ledger — Phase 1 premium bonus tracker. Whop owns
+        # the submission flow + base $1 RPM payout; this ledger mirrors
+        # approved Whop submissions and tracks the +$4 RPM bonus due to
+        # paid users. Keyed by whop_submission_id (unique). Phase 2 will
+        # flip the mark-paid action to a Whop transfer; schema unchanged.
+        """CREATE TABLE IF NOT EXISTS reward_bonus_ledger (
+            id varchar PRIMARY KEY,
+            whop_submission_id varchar NOT NULL UNIQUE,
+            whop_bounty_id varchar,
+            whop_user_id varchar,
+            liquid_clips_user_id varchar REFERENCES users(id) ON DELETE SET NULL,
+            email varchar,
+            campaign_id varchar,
+            mission_lane varchar,
+            submitted_post_url varchar NOT NULL,
+            whop_status varchar NOT NULL DEFAULT 'approved',
+            approved_views integer NOT NULL DEFAULT 0,
+            membership_status_at_export varchar NOT NULL DEFAULT 'free',
+            export_watermark_status varchar NOT NULL DEFAULT 'unknown',
+            base_rpm_cents integer NOT NULL DEFAULT 0,
+            premium_bonus_rpm_cents integer NOT NULL DEFAULT 0,
+            base_payout_cents integer NOT NULL DEFAULT 0,
+            premium_bonus_due_cents integer NOT NULL DEFAULT 0,
+            total_effective_payout_cents integer NOT NULL DEFAULT 0,
+            bonus_payout_status varchar NOT NULL DEFAULT 'pending',
+            bonus_payout_notes varchar,
+            bonus_marked_paid_at timestamptz,
+            ledger_created_at timestamptz NOT NULL DEFAULT now(),
+            ledger_updated_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_reward_bonus_ledger_lcuser ON reward_bonus_ledger (liquid_clips_user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_reward_bonus_ledger_campaign ON reward_bonus_ledger (campaign_id)",
+        "CREATE INDEX IF NOT EXISTS ix_reward_bonus_ledger_status ON reward_bonus_ledger (bonus_payout_status)",
+        "CREATE INDEX IF NOT EXISTS ix_reward_bonus_ledger_whop_bounty ON reward_bonus_ledger (whop_bounty_id)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -261,6 +310,7 @@ app.include_router(affiliate.router)
 app.include_router(tiktok_verify.router)
 app.include_router(admin.router)
 app.include_router(campaigns.router)
+app.include_router(bonus_ledger.router)
 app.include_router(redirect.router)
 app.include_router(reward_clips.router)
 app.include_router(proxy_llm.router)

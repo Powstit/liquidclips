@@ -25,6 +25,12 @@ import { EMBED_MSG } from "@/lib/embed-auth";
 // Mirror of `desktop/src/lib/backend.ts` — keep in lockstep with the server
 // shape. Trimmed of the fields the embed never reads, but the wire fields are
 // preserved verbatim so a stale prop doesn't break decoding.
+//
+// v0.7.55 (Uncle Daniel funnel) — added tier-aware payout ladder fields:
+// base/premium RPM, banner copy per tier, mission classification, and
+// the per-caller derived `your_rpm_cents` + `is_premium_caller` from the
+// backend. New fields all optional / nullable so older campaign rows
+// without the ladder still render through the legacy `rpm_cents` path.
 export type SponsoredCampaign = {
   id: string;
   slug: string;
@@ -44,6 +50,20 @@ export type SponsoredCampaign = {
   min_lc_score: number;
   cta_text: string;
   sort_order: number;
+  // Funnel fields.
+  base_rpm_cents?: number;
+  premium_rpm_cents?: number;
+  premium_bonus_cents?: number;
+  free_banner_text?: string | null;
+  premium_banner_text?: string | null;
+  mission_type?: "uncle_daniel" | "viral_reaction" | "software_proof" | null;
+  mission_lane?: string | null;
+  requires_membership?: boolean;
+  watermark_allowed?: boolean;
+  whop_campaign_id?: string | null;
+  whop_campaign_url?: string | null;
+  your_rpm_cents?: number | null;
+  is_premium_caller?: boolean | null;
 };
 
 const AUTO_ADVANCE_MS = 6000;
@@ -228,12 +248,24 @@ function HeroSlide({
   // everything else (live / partially_funded / funded) → "LIVE".
   const closed = c.status === "closed";
   const isVideo = !!c.banner_url && isVideoUrl(c.banner_url);
-  // Per demo: huge fuchsia "$X RPM" headline. rpm_cents is on the wire as
-  // integer cents; "$9 RPM" reads $9 per 1k views. For the Liquid Clips
-  // Affiliate campaign rpm is 0 — fall back to a clean "50% MRR" badge so
-  // the slot never reads "$0 RPM".
+  // v0.7.55 (Uncle Daniel funnel) — tier-aware payout ladder.
+  // `your_rpm_cents` is the backend-derived per-caller value; when it's
+  // present we render the explicit ladder instead of the legacy single
+  // RPM headline. `is_premium_caller` drives which side of the ladder
+  // is the "yours" row.
+  const baseRpm = Math.max(0, Math.round((c.base_rpm_cents || 0) / 100));
+  const premiumRpm = Math.max(0, Math.round((c.premium_rpm_cents || 0) / 100));
+  const bonusRpm = Math.max(0, Math.round((c.premium_bonus_cents || 0) / 100));
+  const hasLadder = baseRpm > 0 && premiumRpm > 0;
+  const isPremium = c.is_premium_caller === true;
+  // Legacy headline fallback — used when ladder fields aren't seeded yet
+  // (older campaigns). Existing demo + design stays intact for those rows.
   const rpm = Math.max(0, Math.round((c.rpm_cents || 0) / 100));
   const budget = Math.max(0, Math.round((c.budget_cents || 0) / 100));
+  // Banner copy from the tier-specific column; fall back to subtitle so
+  // legacy campaigns without funnel copy still read sensibly.
+  const bannerText =
+    (isPremium ? c.premium_banner_text : c.free_banner_text) ?? c.subtitle ?? null;
 
   return (
     <article
@@ -272,28 +304,38 @@ function HeroSlide({
             </h2>
           </div>
 
-          <div className="flex items-baseline gap-3">
-            {rpm > 0 ? (
-              <>
-                <span className="font-display text-[56px] font-bold leading-none tracking-[-0.03em] text-fuchsia md:text-[68px]">
-                  ${rpm} RPM
-                </span>
-                {budget > 0 && (
-                  <span className="font-mono text-[13px] text-ink-soft md:text-[14px]">
-                    · ${budget.toLocaleString()} pool
+          {hasLadder ? (
+            <PayoutLadder
+              baseRpm={baseRpm}
+              premiumRpm={premiumRpm}
+              bonusRpm={bonusRpm}
+              isPremium={isPremium}
+              budget={budget}
+            />
+          ) : (
+            <div className="flex items-baseline gap-3">
+              {rpm > 0 ? (
+                <>
+                  <span className="font-display text-[56px] font-bold leading-none tracking-[-0.03em] text-fuchsia md:text-[68px]">
+                    ${rpm} RPM
                   </span>
-                )}
-              </>
-            ) : (
-              <span className="font-display text-[44px] font-bold leading-none tracking-[-0.03em] text-fuchsia md:text-[52px]">
-                50% MRR
-              </span>
-            )}
-          </div>
+                  {budget > 0 && (
+                    <span className="font-mono text-[13px] text-ink-soft md:text-[14px]">
+                      · ${budget.toLocaleString()} pool
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span className="font-display text-[44px] font-bold leading-none tracking-[-0.03em] text-fuchsia md:text-[52px]">
+                  50% MRR
+                </span>
+              )}
+            </div>
+          )}
 
-          {c.subtitle && (
+          {bannerText && (
             <p className="max-w-[420px] font-sans text-[14px] leading-relaxed text-ink-soft md:text-[15px]">
-              {c.subtitle}
+              {bannerText}
             </p>
           )}
 
@@ -310,7 +352,11 @@ function HeroSlide({
                   ? "Campaign closed"
                   : comingSoon
                     ? "Notify me →"
-                    : c.cta_text || "Open campaign →"}
+                    : !hasLadder
+                      ? c.cta_text || "Open campaign →"
+                      : isPremium
+                        ? "Submit through Whop →"
+                        : `Upgrade to unlock $${premiumRpm} RPM + 50% MRR →`}
             </button>
             {c.duration_label && (
               <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
@@ -375,6 +421,74 @@ function isVideoUrl(url: string): boolean {
  *  Either signal is enough to flip the surface to coming-soon UX. */
 function isComingSoon(c: SponsoredCampaign): boolean {
   return c.type === "coming_soon" || c.status === "coming_soon";
+}
+
+/* ── Payout ladder (v0.7.55 Uncle Daniel funnel) ─────────────────── */
+
+// Two-row ladder. The user's current tier row is the giant fuchsia
+// headline; the other row is the locked-or-unlocked secondary line.
+// For premium clippers the bonus row also surfaces "50% MRR unlocked".
+function PayoutLadder({
+  baseRpm,
+  premiumRpm,
+  bonusRpm,
+  isPremium,
+  budget,
+}: {
+  baseRpm: number;
+  premiumRpm: number;
+  bonusRpm: number;
+  isPremium: boolean;
+  budget: number;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-baseline gap-3">
+        <span className="font-display text-[56px] font-bold leading-none tracking-[-0.03em] text-fuchsia md:text-[68px]">
+          ${isPremium ? premiumRpm : baseRpm} RPM
+        </span>
+        <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-text-tertiary">
+          your rate
+        </span>
+        {budget > 0 && (
+          <span className="font-mono text-[12px] text-ink-soft md:text-[13px]">
+            · ${budget.toLocaleString()} pool
+          </span>
+        )}
+      </div>
+      {isPremium ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia/40 bg-fuchsia-soft/30 px-3 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-fuchsia-deep">
+            +50% MRR unlocked
+          </span>
+          {bonusRpm > 0 && (
+            <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
+              includes ${bonusRpm} premium bonus
+            </span>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-baseline gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper-elev px-3 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
+            <LockOutlineIcon />
+            +${bonusRpm} RPM premium
+          </span>
+          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
+            unlock at ${premiumRpm} total + 50% MRR
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LockOutlineIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect width="18" height="11" x="3" y="11" rx="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
 }
 
 function LockedOverlay() {
