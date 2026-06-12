@@ -334,6 +334,28 @@ async def lifespan(_app: FastAPI):
                 _logging.getLogger("junior.schema").warning(
                     "[schema] idempotent ALTER skipped: %s (%s)", _stmt, _e
                 )
+
+    # v0.7.55 — idempotent first-run seeds. Both seed scripts use
+    # `upsert` semantics keyed by slug, so they're safe to call on every
+    # boot. They only insert rows for slugs that don't exist yet; rows
+    # already populated via Admin HQ are left untouched. Wrapped in a
+    # broad try/except so a seed failure (e.g. transient DB blip mid-
+    # startup) doesn't take the whole app down.
+    try:
+        from scripts.seed_community_channels import main as _seed_channels  # type: ignore
+        _seed_channels()
+    except Exception as _e:  # noqa: BLE001
+        _logging.getLogger("junior.seed").warning(
+            "[seed] community_channels skipped: %s", _e
+        )
+    try:
+        from scripts.seed_uncle_daniel_campaigns import main as _seed_campaigns  # type: ignore
+        _seed_campaigns()
+    except Exception as _e:  # noqa: BLE001
+        _logging.getLogger("junior.seed").warning(
+            "[seed] uncle_daniel_campaigns skipped: %s", _e
+        )
+
     start_cron()
     try:
         yield
