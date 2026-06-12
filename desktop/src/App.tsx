@@ -210,6 +210,14 @@ export default function App() {
   // handled navigation.
   const channelConnectPendingRef = useRef(false);
   const channelConnectTimeoutRef = useRef<number | null>(null);
+  // v0.7.55 — on boot, push the user's persisted captions preference to
+  // the sidecar so the next pipeline call honors it. Without this sync,
+  // a user who turned captions OFF would silently see them back ON
+  // after every relaunch (sidecar default is ON in Full Polish mode).
+  useEffect(() => {
+    void import("./lib/captionsPref").then((m) => m.syncCaptionsFlag());
+  }, []);
+
   useEffect(() => {
     function onSettingsTab(e: Event) {
       const detail = (e as CustomEvent).detail;
