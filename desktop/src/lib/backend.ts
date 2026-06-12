@@ -67,11 +67,69 @@ function isWebPreview(): boolean {
   return !("__TAURI_INTERNALS__" in window);
 }
 
-async function licenseJwt(): Promise<string | null> {
-  // Sidecar reads the encrypted JWT out of the OS keychain. Returns null if
-  // the user hasn't activated yet — callers treat the missing token gracefully.
+// v0.7.56 P0 — Passive callers MAY NOT prompt the OS Keychain.
+//
+// The desktop used to fire ~10 keychain reads at boot (8 × secretsStatus
+// keys + licenseJwtRead + openaiKeyStatus); a freshly rebuilt/renamed
+// sidecar binary lacks the ACL grant for the existing keychain items, so
+// each read became a separate macOS password prompt. The fix splits every
+// caller into one of two buckets:
+//
+//   passive — boot, mount, focus refresh, background polling, embed
+//             callbacks, etc. Allowed to look at the in-memory cache and
+//             the presence-file mirror, but MUST NOT cause a keychain
+//             read. Returns null on cache miss.
+//
+//   explicit — surfaces the user just opened or actions they just clicked
+//              (NotificationSheet.load, PublishModal submit, maybeStartRun,
+//              chargeClipExport, ScheduleQueue actions, Settings save).
+//              Pass `{ allowKeychainRead: true }`; cache misses fall
+//              through to the real `sidecar.licenseJwtRead()` and a single
+//              macOS prompt is acceptable (this is "I clicked the thing").
+//
+// The cache is populated by the first successful explicit read and reused
+// for every subsequent call (passive or explicit) in the same session.
+// Callers that ROTATE the JWT (signOut, activation, JWT delete) call
+// `invalidateLicenseJwtCache()` so the next read pulls fresh.
+let _jwtCache: { value: string | null } | null = null;
+
+export function invalidateLicenseJwtCache(): void {
+  _jwtCache = null;
+}
+
+/** Synchronous, never-prompt accessor. Returns the cached JWT value if any
+ *  explicit caller has filled the cache this session; otherwise null. Use
+ *  this from embed callbacks, focus handlers, and other passive paths so
+ *  they get the real value when it's already known without ever firing a
+ *  Keychain prompt for users who haven't done an explicit auth action yet. */
+export function getCachedLicenseJwt(): string | null {
+  return _jwtCache?.value ?? null;
+}
+
+async function licenseJwt(opts: { allowKeychainRead?: boolean } = {}): Promise<string | null> {
+  // Memory cache wins — never re-prompt for the same value.
+  if (_jwtCache) return _jwtCache.value;
+  // Presence-first gate. Reading the presence-file mirror (rewritten by
+  // every secret_set / secret_delete) doesn't touch the Keychain, so it's
+  // safe from passive callers.
+  let present = false;
+  try {
+    ({ present } = await sidecar.licenseJwtPresence());
+  } catch {
+    return null;
+  }
+  if (!present) {
+    _jwtCache = { value: null };
+    return null;
+  }
+  // Presence says YES, but only explicit callers are allowed to actually
+  // open the Keychain. Passive callers (boot, focus refresh, embed
+  // auto-callbacks) return null — they will see "signed-out" UX until the
+  // user takes an action that legitimately needs the JWT.
+  if (!opts.allowKeychainRead) return null;
   try {
     const res = await sidecar.licenseJwtRead();
+    _jwtCache = { value: res.value };
     return res.value;
   } catch {
     return null;
@@ -177,9 +235,17 @@ function readHeader(headers: HeadersInit | undefined, name: string): string | nu
   return null;
 }
 
-async function authedFetch(path: string, init: RequestInit & { jwt?: string | null } = {}): Promise<Response> {
-  const { jwt: maybeJwt, headers, signal: callerSignal, ...rest } = init;
-  const jwt = maybeJwt ?? (await licenseJwt());
+async function authedFetch(
+  path: string,
+  init: RequestInit & { jwt?: string | null; allowKeychainRead?: boolean } = {},
+): Promise<Response> {
+  const { jwt: maybeJwt, allowKeychainRead, headers, signal: callerSignal, ...rest } = init;
+  // v0.7.56 P0 — passive callers (no `allowKeychainRead`) get a cache/
+  // presence-only license check; explicit callers may unlock the Keychain
+  // on cache miss. Either way, throws UnauthorizedError when no JWT is
+  // resolvable so the caller surfaces the sign-in CTA instead of a stuck
+  // request.
+  const jwt = maybeJwt ?? (await licenseJwt({ allowKeychainRead }));
   if (!jwt) {
     throw new UnauthorizedError("not activated — sign in to Liquid Clips to continue.");
   }

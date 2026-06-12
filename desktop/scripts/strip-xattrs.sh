@@ -21,6 +21,11 @@ xattr -cr python-sidecar/*.py 2>/dev/null || true
 xattr -cr python-sidecar/requirements.txt 2>/dev/null || true
 xattr -cr python-sidecar/bin/ 2>/dev/null || true
 xattr -cr python-sidecar/models/ 2>/dev/null || true
+# v0.7.56 — bundled sidecar (PyInstaller --onedir output). Hundreds of
+# native dylibs inside _internal/ each need codesigning during the Tauri
+# bundle phase; any FinderInfo/macl xattrs left over from PyInstaller's
+# writes would break that signing pass.
+xattr -cr python-sidecar/dist/ 2>/dev/null || true
 
 # Frontend assets
 xattr -cr src/ 2>/dev/null || true

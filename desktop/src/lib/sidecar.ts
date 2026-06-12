@@ -811,10 +811,27 @@ export const sidecar = {
   validateOpenaiKey: (): Promise<{ valid: boolean; error: string | null }> =>
     sidecarCall<{ valid: boolean; error: string | null }>("validate_openai_key"),
   // Restricted to LICENSE_JWT on the sidecar side — other secrets stay opaque.
+  //
+  // v0.7.56 P0 — KEYCHAIN PROMPT WARNING: this triggers a macOS Keychain
+  // password prompt on a freshly rebuilt/renamed sidecar binary (the new
+  // binary identity is not in the existing keychain item ACL). Only call
+  // after explicit user action (auth-panel open, embed lc:auth-request,
+  // sign-in click). DO NOT call from boot — use `licenseJwtPresence()`
+  // for the "is the user signed in?" UI signal instead.
   licenseJwtRead: () =>
     sidecarCall<{ name: "LICENSE_JWT"; value: string | null }>("secret_get", { name: "LICENSE_JWT" }),
+  // v0.7.56 P0 — boot-safe "is the user signed in?" check. Reads the
+  // presence-file mirror written by secret_set/delete (no keychain). Used
+  // by App.tsx boot so the nav copy flips without firing a Keychain prompt.
+  licenseJwtPresence: () =>
+    sidecarCall<{ present: boolean }>("license_jwt_presence"),
   secretSet: (name: SecretName, value: string) => sidecarCall<{ ok: true; name: SecretName }>("secret_set", { name, value }),
   secretDelete: (name: SecretName) => sidecarCall<{ ok: true; name: SecretName }>("secret_delete", { name }),
+  // v0.7.56 P0 — Settings "Repair keychain" action. Probes every keychain
+  // slot to rewrite the presence-file mirror. WILL trigger macOS Keychain
+  // prompts (~one per slot). Never call this from boot.
+  secretRepairPresence: () =>
+    sidecarCall<{ secrets: Record<SecretName, boolean> }>("secret_repair_presence"),
   // v0.7.55 P1-007 — clear the sidecar's 10-min watermark tier cache
   // so the next export re-queries /sync. Called when checkout completes
   // so a just-upgraded user gets a clean export immediately.

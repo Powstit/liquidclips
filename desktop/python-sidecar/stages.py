@@ -135,12 +135,19 @@ def _bundled_bin(name: str) -> str | None:
     Dev:        <repo>/python-sidecar/bin/<name>
     Prod .app:  <Resources>/_up_/python-sidecar/bin/<name>
                 (Tauri rewrites parent-traversal globs as `_up_`)
+    PyInstaller frozen bundle: sys._MEIPASS/bin/<name>
+                (v0.7.56 — bundled sidecar carries its own bin/ via PyInstaller
+                --add-data; the freeze surrogates __file__ so the Dev/Prod
+                paths above can't be resolved from inside the frozen module.)
     """
     here = Path(__file__).resolve().parent
     candidates = [
         here / "bin" / name,
         here.parent / "_up_" / "python-sidecar" / "bin" / name,
     ]
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.insert(0, Path(meipass) / "bin" / name)
     for c in candidates:
         if c.is_file() and os.access(c, os.X_OK):
             return str(c)
@@ -182,6 +189,12 @@ def _bundled_whisper_model_path() -> str | None:
         here / "models" / "faster-whisper-tiny",
         here.parent / "_up_" / "python-sidecar" / "models" / "faster-whisper-tiny",
     ]
+    # v0.7.56 — frozen bundle ships models inside the PyInstaller archive.
+    # sys._MEIPASS is the runtime root of the bundle, and build_sidecar.sh
+    # adds models/faster-whisper-tiny at its top level.
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.insert(0, Path(meipass) / "models" / "faster-whisper-tiny")
     required = ("model.bin", "config.json", "tokenizer.json", "vocabulary.txt")
     for c in candidates:
         if not all((c / fname).is_file() for fname in required):
@@ -1845,7 +1858,17 @@ def _liquid_lift_watermark_filter(out_w: int, out_h: int) -> str:
       • Static position — no x-oscillation (the wordmark is large enough
         to be uncroppable without destroying the subject)
     """
-    wm_path = Path(__file__).resolve().parent / "assets" / "liquid-clips-wordmark.png"
+    # v0.7.56 — frozen bundle ships assets/ at sys._MEIPASS/assets/.
+    wm_path = None
+    _here = Path(__file__).resolve().parent
+    _meipass = getattr(sys, "_MEIPASS", None)
+    for _root in ([Path(_meipass)] if _meipass else []) + [_here, _here.parent / "_up_" / "python-sidecar"]:
+        _candidate = _root / "assets" / "liquid-clips-wordmark.png"
+        if _candidate.is_file():
+            wm_path = _candidate
+            break
+    if wm_path is None:
+        wm_path = _here / "assets" / "liquid-clips-wordmark.png"
     # Width ≈ 89% of frame width (matches the approved v0.6.14 preview).
     wm_w = max(320, int(out_w * 0.89))
     margin_x = max(36, int(out_w * 0.055))
@@ -2026,9 +2049,16 @@ def _bundled_face_detector_path() -> str | None:
     env_path = os.environ.get("JUNIOR_FACE_DETECTOR")
     if env_path and os.path.isfile(env_path):
         return env_path
-    here = Path(__file__).resolve().parent / "bin" / "junior-face-detect"
-    if here.is_file() and os.access(here, os.X_OK):
-        return str(here)
+    # v0.7.56 — frozen bundle ships the Swift face-detect binary inside
+    # _MEIPASS/bin/. Fall through to the dev path when running unfrozen.
+    candidates: list[Path] = []
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(Path(meipass) / "bin" / "junior-face-detect")
+    candidates.append(Path(__file__).resolve().parent / "bin" / "junior-face-detect")
+    for p in candidates:
+        if p.is_file() and os.access(p, os.X_OK):
+            return str(p)
     return None
 
 

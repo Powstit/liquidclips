@@ -207,14 +207,20 @@ fn spawn_child(
     restart_count: Arc<Mutex<u32>>,
     exhausted: Arc<AtomicBool>,
 ) -> Result<ChildStdin> {
-    // The Python sidecar (whop_client.py for the Earn tab, stages.py for
-    // cloud transcribe) talks to the Junior Backend and falls back to
-    // http://localhost:8000 when JUNIOR_BACKEND_URL is unset. A Finder-
-    // launched .app inherits no such env, so without this injection those
-    // sidecar paths would hit localhost in production. Mirror the JS
-    // resolution in src/lib/backend.ts: an explicit override wins, else
-    // debug builds (`tauri dev`) use localhost and release builds use prod.
-    let python = find_python(&script_path)?;
+    // v0.7.56 P0 — resolve a packaged-sidecar binary instead of hunting
+    // for system Python + a dev venv. The Bundled variant is the production
+    // path: PyInstaller --onedir output that includes CPython + every pip
+    // dep + every native dylib. The Dev variant is `tauri dev` only and is
+    // gated behind cfg!(debug_assertions) at the resolver — release builds
+    // CANNOT reach Dev resolution. See find_sidecar_binding.
+    //
+    // Diagnostics are always written to
+    //   ~/Library/Application Support/Liquid Clips/logs/sidecar-startup.log
+    // before spawn so any failure is decodable without a debugger.
+    let binding = find_sidecar_binding(&script_path);
+    write_startup_log(&binding, &script_path);
+    let binding = binding.map_err(|e| anyhow!("sidecar binding resolution failed: {}", e))?;
+
     let backend_url = std::env::var("JUNIOR_BACKEND_URL").unwrap_or_else(|_| {
         if cfg!(debug_assertions) {
             "http://localhost:8000".to_string()
@@ -226,16 +232,33 @@ fn spawn_child(
         }
     });
 
-    let mut child = Command::new(&python)
-        .arg(&script_path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .env("JUNIOR_BACKEND_URL", &backend_url)
-        .env_remove("VIRTUAL_ENV") // let the venv set its own when invoked directly
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| anyhow!("failed to spawn python sidecar ({}): {}", python.display(), e))?;
+    let mut command = match &binding {
+        SidecarBinding::Bundled { binary } => {
+            let mut c = Command::new(binary);
+            c.stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .env("JUNIOR_BACKEND_URL", &backend_url)
+                .kill_on_drop(true);
+            c
+        }
+        SidecarBinding::Dev { python, script } => {
+            let mut c = Command::new(python);
+            c.arg(script)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .env("JUNIOR_BACKEND_URL", &backend_url)
+                .env_remove("VIRTUAL_ENV")
+                .kill_on_drop(true);
+            c
+        }
+    };
+    let mut child = command.spawn().map_err(|e| {
+        let detail = format!("failed to spawn sidecar ({:?}): {}", binding, e);
+        append_startup_log_line(&format!("[spawn-error] {}", detail));
+        anyhow!(detail)
+    })?;
 
     let stdin = child.stdin.take().ok_or_else(|| anyhow!("no stdin on sidecar"))?;
     let stdout = child.stdout.take().ok_or_else(|| anyhow!("no stdout on sidecar"))?;
@@ -311,11 +334,16 @@ fn spawn_child(
         });
     }
 
-    // Pump stderr to host stderr so Python tracebacks are visible during dev.
+    // Pump stderr to host stderr AND tee into the startup log so a cold-
+    // install failure leaves a readable trail for support. The log lives at
+    // ~/Library/Application Support/Liquid Clips/logs/sidecar-startup.log
+    // and is the single artifact a user is asked to share via the recovery
+    // card's "Open logs folder" / "Copy diagnostics" actions.
     tokio::spawn(async move {
         let mut reader = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = reader.next_line().await {
             eprintln!("[sidecar] {}", line);
+            append_startup_log_line(&format!("[stderr] {}", line));
         }
     });
 
@@ -483,48 +511,189 @@ impl SidecarState {
     }
 }
 
-fn find_python(script_path: &Path) -> Result<std::path::PathBuf> {
-    // Explicit override wins (used by the production PyInstaller bundle later).
-    if let Ok(path) = std::env::var("JUNIOR_PYTHON") {
-        return Ok(std::path::PathBuf::from(path));
-    }
-    // Prefer the project venv next to sidecar.py — that's where pinned deps live.
-    if let Some(parent) = script_path.parent() {
-        let venv = parent.join(".venv").join("bin").join("python");
-        if venv.is_file() {
-            return Ok(venv);
-        }
-    }
-    // Pre-PyInstaller fallback for locally-installed bundles: the dev venv at
-    // ~/Desktop/jnr/desktop/python-sidecar/.venv/bin/python. Sprint 9 replaces
-    // this with a real PyInstaller-bundled interpreter.
-    if let Some(home) = std::env::var_os("HOME") {
-        let dev_venv = std::path::PathBuf::from(home)
-            .join("Desktop/jnr/desktop/python-sidecar/.venv/bin/python");
-        if dev_venv.is_file() {
-            return Ok(dev_venv);
-        }
-    }
-    for candidate in ["python3.12", "python3.11", "python3"] {
-        if let Ok(p) = which::which(candidate) {
-            return Ok(p);
-        }
-    }
-    Err(anyhow!("no python3 interpreter found on PATH"))
+// v0.7.56 P0 — packaged sidecar resolution. Replaces find_python().
+//
+// Two variants:
+//   Bundled    = production path. PyInstaller --onedir binary shipped inside
+//                the .app at Resources/_up_/python-sidecar/dist/sidecar-bundle/
+//                liquid-clips-sidecar. Self-contained: includes CPython + every
+//                pip dep + every native dylib. No system Python needed.
+//   Dev        = `tauri dev` ONLY. Spawns the dev venv Python against
+//                python-sidecar/sidecar.py for fast hot-reload during local
+//                development. Gated behind cfg!(debug_assertions) so release
+//                builds NEVER fall through to this path.
+//
+// Daniel directive 2026-06-12: production must not search for JUNIOR_PYTHON,
+// any user-installed Python, or any dev-venv path. Bundled is the only
+// production option; any failure to resolve Bundled is a hard fail.
+#[derive(Debug, Clone)]
+pub enum SidecarBinding {
+    Bundled { binary: PathBuf },
+    Dev { python: PathBuf, script: PathBuf },
 }
 
-// Tiny `which` shim so we don't pull in the `which` crate just for this.
-mod which {
-    use anyhow::{anyhow, Result};
-    use std::path::PathBuf;
-    pub fn which(name: &str) -> Result<PathBuf> {
-        let path_var = std::env::var_os("PATH").ok_or_else(|| anyhow!("PATH unset"))?;
-        for dir in std::env::split_paths(&path_var) {
-            let candidate = dir.join(name);
-            if candidate.is_file() {
-                return Ok(candidate);
+fn find_sidecar_binding(script_path: &Path) -> Result<SidecarBinding> {
+    // --- Try the bundled binary first (always — production AND dev) -----
+    // Resolve relative to the script_path that lib.rs already located. The
+    // bundled binary sits at <python-sidecar>/dist/sidecar-bundle/liquid-clips-sidecar.
+    if let Some(sidecar_dir) = script_path.parent() {
+        let bundled = sidecar_dir
+            .join("dist")
+            .join("sidecar-bundle")
+            .join("liquid-clips-sidecar");
+        if bundled.is_file() {
+            return Ok(SidecarBinding::Bundled { binary: bundled });
+        }
+    }
+
+    // --- Dev fallback — debug builds only -------------------------------
+    // Keeps `tauri dev` working without forcing devs to rebuild the
+    // PyInstaller bundle on every change. Release builds skip this branch
+    // entirely so a release shipped without a bundled binary fails fast
+    // with a clear error instead of silently falling through to system
+    // Python.
+    if cfg!(debug_assertions) {
+        if let Some(parent) = script_path.parent() {
+            let venv = parent.join(".venv").join("bin").join("python");
+            if venv.is_file() {
+                return Ok(SidecarBinding::Dev {
+                    python: venv,
+                    script: script_path.to_path_buf(),
+                });
             }
         }
-        Err(anyhow!("{} not on PATH", name))
+    }
+
+    Err(anyhow!(
+        "no bundled sidecar at <script_path>/dist/sidecar-bundle/liquid-clips-sidecar; tried script={}",
+        script_path.display()
+    ))
+}
+
+// v0.7.56 P0 — diagnostics log location. Mirrors the path used by
+// sidecar.py method_health_check writability probe so support diagnostics
+// can hand a single absolute path to a user.
+fn startup_log_path() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    Some(
+        PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
+            .join("Liquid Clips")
+            .join("logs")
+            .join("sidecar-startup.log"),
+    )
+}
+
+fn append_startup_log_line(line: &str) {
+    let Some(path) = startup_log_path() else {
+        return;
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        use std::io::Write;
+        let _ = writeln!(f, "{}", line);
     }
 }
+
+// Writes a structured pre-spawn entry to the startup log. Always called
+// from spawn_child before the Command::spawn() so the log captures the
+// state even if spawn fails. Multiple spawns in a session (restart cap
+// retries) each append their own bracketed entry.
+fn write_startup_log(binding: &Result<SidecarBinding>, script_path: &Path) {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    let app_version = env!("CARGO_PKG_VERSION");
+    let host_arch = std::env::consts::ARCH;
+    let cwd = std::env::current_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| "<unknown>".to_string());
+    let resolved = match binding {
+        Ok(SidecarBinding::Bundled { binary }) => {
+            format!("Bundled {{ binary = {} }}", binary.display())
+        }
+        Ok(SidecarBinding::Dev { python, script }) => format!(
+            "Dev {{ python = {}, script = {} }}",
+            python.display(),
+            script.display()
+        ),
+        Err(e) => format!("UNRESOLVED ({})", e),
+    };
+
+    let mut entry = String::new();
+    entry.push_str("\n=========================================================\n");
+    entry.push_str(&format!("[sidecar-startup] ts={} app_version={} app_arch={}\n", ts, app_version, host_arch));
+    entry.push_str(&format!("  cwd        = {}\n", cwd));
+    entry.push_str(&format!("  script     = {}\n", script_path.display()));
+    entry.push_str(&format!("  resolved   = {}\n", resolved));
+
+    // For Bundled: run a few quick sanity checks the user-facing recovery
+    // surface can quote when explaining what went wrong. Cheap reads, no
+    // subprocess spawns yet — we don't want a hung shell here.
+    if let Ok(SidecarBinding::Bundled { binary }) = binding {
+        let exists = binary.is_file();
+        let executable = std::fs::metadata(binary)
+            .map(|m| {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    m.permissions().mode() & 0o111 != 0
+                }
+                #[cfg(not(unix))]
+                {
+                    let _ = m;
+                    true
+                }
+            })
+            .unwrap_or(false);
+        entry.push_str(&format!("  binary.exists     = {}\n", exists));
+        entry.push_str(&format!("  binary.executable = {}\n", executable));
+        // Codesign + quarantine subprocess probes. Each is non-fatal; the
+        // log just records whatever the OS says.
+        if exists {
+            let codesign = std::process::Command::new("/usr/bin/codesign")
+                .args(["--verify", "--verbose=2"])
+                .arg(binary)
+                .output()
+                .map(|o| {
+                    format!(
+                        "exit={}, stderr={}",
+                        o.status,
+                        String::from_utf8_lossy(&o.stderr).trim()
+                    )
+                })
+                .unwrap_or_else(|e| format!("probe failed: {}", e));
+            entry.push_str(&format!("  codesign --verify = {}\n", codesign));
+
+            let xattr = std::process::Command::new("/usr/bin/xattr")
+                .args(["-p", "com.apple.quarantine"])
+                .arg(binary)
+                .output()
+                .map(|o| {
+                    if o.status.success() {
+                        format!("quarantined: {}", String::from_utf8_lossy(&o.stdout).trim())
+                    } else {
+                        "no quarantine attr (good)".to_string()
+                    }
+                })
+                .unwrap_or_else(|e| format!("probe failed: {}", e));
+            entry.push_str(&format!("  xattr quarantine  = {}\n", xattr));
+        }
+    }
+
+    entry.push_str("---------------------------------------------------------\n");
+    append_startup_log_line(&entry);
+}
+
+// v0.7.56 P0 — the `which` shim that scanned PATH for python3 has been
+// removed alongside find_python(). The packaged sidecar binary makes
+// system-Python lookup obsolete in production, and the dev fallback in
+// find_sidecar_binding uses a fixed venv path instead of PATH scanning.
