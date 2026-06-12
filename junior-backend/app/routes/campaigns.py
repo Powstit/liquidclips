@@ -23,15 +23,26 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import SponsoredCampaign
+from app.features import _resolve_tier
+from app.models import SponsoredCampaign, User
 from app.routes.admin import AdminUser  # reuses the existing admin auth dependency
 
 router = APIRouter()
+
+# v0.7.55 (Uncle Daniel funnel) — tiers that unlock the premium RPM ladder.
+# Free is the only "base" tier; everything else gets the premium total.
+# _resolve_tier already maps legacy aliases (channel/growth → pro,
+# autopilot → agency) so the comparison stays clean.
+_PREMIUM_TIERS = {"solo", "pro", "agency"}
+
+
+def _is_premium(tier: str | None) -> bool:
+    return _resolve_tier(tier or "free") in _PREMIUM_TIERS
 
 
 # ── Pydantic ─────────────────────────────────────────────────────────
@@ -56,6 +67,23 @@ class CampaignOut(BaseModel):
     min_lc_score: int
     cta_text: str
     sort_order: int
+    # v0.7.55 (Uncle Daniel funnel) — tier-aware payout ladder fields.
+    base_rpm_cents: int
+    premium_rpm_cents: int
+    premium_bonus_cents: int
+    free_banner_text: str | None
+    premium_banner_text: str | None
+    mission_type: str | None
+    mission_lane: str | None
+    requires_membership: bool
+    watermark_allowed: bool
+    whop_campaign_id: str | None
+    whop_campaign_url: str | None
+    # Derived per-caller. Filled in by the public endpoint based on the
+    # caller's tier (or `base_rpm_cents` when no tier resolves). Admin
+    # endpoints return None here so the editor sees the source values.
+    your_rpm_cents: int | None = None
+    is_premium_caller: bool | None = None
 
 
 class CampaignCreate(BaseModel):
@@ -76,6 +104,20 @@ class CampaignCreate(BaseModel):
     min_lc_score: int = Field(75, ge=0, le=100)
     cta_text: str = Field("View Campaign Brief →", min_length=2, max_length=80)
     sort_order: int = Field(0)
+    # v0.7.55 — funnel fields. All default to 0/None so legacy create calls
+    # without these keys still succeed (the old single rpm_cents value
+    # carries them).
+    base_rpm_cents: int = Field(0, ge=0)
+    premium_rpm_cents: int = Field(0, ge=0)
+    premium_bonus_cents: int = Field(0, ge=0)
+    free_banner_text: str | None = Field(None, max_length=240)
+    premium_banner_text: str | None = Field(None, max_length=240)
+    mission_type: str | None = Field(None, pattern=r"^(uncle_daniel|viral_reaction|software_proof)$")
+    mission_lane: str | None = Field(None, max_length=60)
+    requires_membership: bool = False
+    watermark_allowed: bool = True
+    whop_campaign_id: str | None = Field(None, max_length=80)
+    whop_campaign_url: str | None = Field(None, max_length=300)
 
 
 class CampaignUpdate(BaseModel):
@@ -96,9 +138,42 @@ class CampaignUpdate(BaseModel):
     min_lc_score: int | None = Field(None, ge=0, le=100)
     cta_text: str | None = None
     sort_order: int | None = None
+    # v0.7.55 — funnel patches.
+    base_rpm_cents: int | None = Field(None, ge=0)
+    premium_rpm_cents: int | None = Field(None, ge=0)
+    premium_bonus_cents: int | None = Field(None, ge=0)
+    free_banner_text: str | None = None
+    premium_banner_text: str | None = None
+    mission_type: str | None = Field(None, pattern=r"^(uncle_daniel|viral_reaction|software_proof)$")
+    mission_lane: str | None = None
+    requires_membership: bool | None = None
+    watermark_allowed: bool | None = None
+    whop_campaign_id: str | None = None
+    whop_campaign_url: str | None = None
 
 
-def _serialize(c: SponsoredCampaign) -> dict[str, Any]:
+def _serialize(c: SponsoredCampaign, viewer_tier: str | None = None) -> dict[str, Any]:
+    """Serialize a campaign for the wire.
+
+    `viewer_tier` is the caller's normalized tier when known — public
+    `/campaigns` derives `your_rpm_cents` from it. Admin endpoints pass
+    None so the editor sees the source columns without per-caller
+    derivation.
+    """
+    is_premium: bool | None
+    your_rpm: int | None
+    if viewer_tier is None:
+        is_premium = None
+        your_rpm = None
+    else:
+        is_premium = _is_premium(viewer_tier)
+        # Falls back to legacy rpm_cents when base/premium aren't seeded yet.
+        if is_premium and c.premium_rpm_cents > 0:
+            your_rpm = c.premium_rpm_cents
+        elif (c.base_rpm_cents or 0) > 0:
+            your_rpm = c.base_rpm_cents
+        else:
+            your_rpm = c.rpm_cents
     return {
         "id": c.id,
         "slug": c.slug,
@@ -118,6 +193,20 @@ def _serialize(c: SponsoredCampaign) -> dict[str, Any]:
         "min_lc_score": c.min_lc_score,
         "cta_text": c.cta_text,
         "sort_order": c.sort_order,
+        # v0.7.55 funnel fields.
+        "base_rpm_cents": c.base_rpm_cents or 0,
+        "premium_rpm_cents": c.premium_rpm_cents or 0,
+        "premium_bonus_cents": c.premium_bonus_cents or 0,
+        "free_banner_text": c.free_banner_text,
+        "premium_banner_text": c.premium_banner_text,
+        "mission_type": c.mission_type,
+        "mission_lane": c.mission_lane,
+        "requires_membership": bool(c.requires_membership),
+        "watermark_allowed": bool(c.watermark_allowed),
+        "whop_campaign_id": c.whop_campaign_id,
+        "whop_campaign_url": c.whop_campaign_url,
+        "your_rpm_cents": your_rpm,
+        "is_premium_caller": is_premium,
     }
 
 
@@ -125,17 +214,35 @@ def _serialize(c: SponsoredCampaign) -> dict[str, Any]:
 
 
 @router.get("/campaigns")
-def list_campaigns(db: Annotated[Session, Depends(get_db)]) -> dict[str, Any]:
+def list_campaigns(
+    db: Annotated[Session, Depends(get_db)],
+    clerk_user_id: str | None = Query(default=None, description="Clerk user id to derive tier-aware your_rpm_cents from"),
+) -> dict[str, Any]:
     """Public list — every non-closed campaign, sorted. The desktop client
     filters visibility by user tier on its side (Sprint 4 gates the
-    invite-only banners with a locked variant + Upgrade CTA)."""
+    invite-only banners with a locked variant + Upgrade CTA).
+
+    v0.7.55 (Uncle Daniel funnel) — when `clerk_user_id` is passed, each
+    campaign carries `your_rpm_cents` derived from the caller's tier:
+    free → base_rpm_cents, premium (solo/pro/agency) → premium_rpm_cents.
+    Without the param the field is null so the UI knows to render the
+    ladder ("$1 free / $5 with LC") instead of a single locked value.
+    """
+    viewer_tier: str | None = None
+    if clerk_user_id:
+        user = db.query(User).filter(User.clerk_id == clerk_user_id).one_or_none()
+        if user:
+            viewer_tier = user.tier or "free"
     rows = (
         db.query(SponsoredCampaign)
         .filter(SponsoredCampaign.status != "closed")
         .order_by(SponsoredCampaign.sort_order.asc(), SponsoredCampaign.created_at.desc())
         .all()
     )
-    return {"campaigns": [_serialize(c) for c in rows]}
+    return {
+        "campaigns": [_serialize(c, viewer_tier=viewer_tier) for c in rows],
+        "viewer_tier": viewer_tier,
+    }
 
 
 # ── Admin ────────────────────────────────────────────────────────────

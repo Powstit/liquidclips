@@ -51,8 +51,20 @@ const READ_PATHS = [
   /^webhooks$/,
   /^postiz$/,
   /^bugs$/,
+  // v0.7.55 (Uncle Daniel funnel) — Phase 1 reward bonus ledger. Whop
+  // owns the submission + base $1 RPM; this ledger tracks the $4 premium
+  // bonus due to paid users only, keyed by whop_submission_id.
+  /^bonus-ledger$/,
 ];
-const WRITE_PATHS = [/^claims\/[^/]+\/expire$/, /^claims\/[^/]+\/resend$/, /^function-heatmap\/run$/, /^alerts\/[^/]+\/read$/];
+const WRITE_PATHS = [
+  /^claims\/[^/]+\/expire$/,
+  /^claims\/[^/]+\/resend$/,
+  /^function-heatmap\/run$/,
+  /^alerts\/[^/]+\/read$/,
+  // v0.7.55 — admin imports a Whop submission row + marks bonus paid.
+  /^bonus-ledger\/import$/,
+  /^bonus-ledger\/[^/]+\/mark-paid$/,
+];
 
 function pathAllowed(path: string, method: string): boolean {
   const list = method === "POST" ? WRITE_PATHS : READ_PATHS;

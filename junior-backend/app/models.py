@@ -606,5 +606,126 @@ class SponsoredCampaign(Base):
 
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
 
+    # v0.7.55 (Uncle Daniel funnel) — tier-aware payout ladder.
+    # `rpm_cents` (above) stays as the legacy single value the existing
+    # surfaces read; new surfaces read `base_rpm_cents` (free payout) +
+    # `premium_rpm_cents` (paid total). `premium_bonus_cents` is the
+    # admin-paid delta for reporting (= premium - base).
+    base_rpm_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    premium_rpm_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    premium_bonus_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Top-of-card copy per tier. Server-rendered so the wire stays
+    # cache-friendly; the Earn UI chooses which one to display from the
+    # caller's tier.
+    free_banner_text: Mapped[str | None] = mapped_column(String, nullable=True)
+    premium_banner_text: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Mission classification — `mission_type` is the high-level bucket
+    # (uncle_daniel | viral_reaction | software_proof | NULL=legacy);
+    # `mission_lane` is a free-form sub-label (training | main | proof | …).
+    mission_type: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    mission_lane: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Gating flags. `requires_membership` hides the campaign for free
+    # users (rendered as "Premium only" pill if listed). `watermark_allowed`
+    # lets free users participate via watermarked exports — separate from
+    # premium because some lanes are watermark-forbidden by sponsor.
+    requires_membership: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    watermark_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # Whop Content Reward linkage — both nullable in Phase 1 because the
+    # Whop campaign may not exist yet (admin pays the base $1 manually
+    # alongside the premium bonus until the Whop side is created).
+    whop_campaign_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    whop_campaign_url: Mapped[str | None] = mapped_column(String, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class RewardBonusLedger(Base):
+    """v0.7.55 (Uncle Daniel funnel — Phase 1) — premium bonus ledger
+    keyed by Whop submission id.
+
+    Whop is the source of truth for: bounty creation, post URL submission,
+    bot/fraud detection, view validation, approval/rejection, and the
+    base $1 RPM payout. Liquid Clips never re-implements any of that.
+
+    This ledger mirrors approved Whop submissions and tracks ONLY the
+    +$4 RPM PREMIUM BONUS due to paid users with no-watermark exports.
+    Free users have a row only if we want the audit trail (bonus_due=0
+    on those rows). Phase 2 will replace the manual mark-paid with a
+    Whop transfer via sub-merchant accounts; the schema doesn't change.
+
+    Distinct from `CampaignSubmission` (which is the older Whop bounty
+    proxy that didn't carry tier or bonus liability).
+    """
+
+    __tablename__ = "reward_bonus_ledger"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    # Whop side — primary correlation key. Unique because every Whop
+    # submission maps to exactly one ledger row.
+    whop_submission_id: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    whop_bounty_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    whop_user_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+
+    # Liquid Clips side — null when the clipper hasn't connected their
+    # Whop account to LC yet (Phase 1 admin can resolve manually).
+    liquid_clips_user_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    email: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # LC campaign correlation — references sponsored_campaigns.id (or .slug).
+    campaign_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    mission_lane: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    submitted_post_url: Mapped[str] = mapped_column(String, nullable=False)
+    # Whop's lifecycle: pending | claimed | submitted | approved | denied
+    # | expired | unclaimed | paid. We only mirror non-pending rows, but
+    # the field stays free-form so a new Whop state doesn't break decode.
+    whop_status: Mapped[str] = mapped_column(String, nullable=False, default="approved", index=True)
+
+    approved_views: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Snapshot of the user's membership state at the moment Whop approved
+    # the submission. Used to lock bonus liability against later changes.
+    membership_status_at_export: Mapped[str] = mapped_column(
+        String, nullable=False, default="free"
+    )
+    # true | false | unknown — watermark-free exports are the gate for the
+    # premium bonus on certain lanes (e.g. software_proof).
+    export_watermark_status: Mapped[str] = mapped_column(
+        String, nullable=False, default="unknown"
+    )
+
+    # Per-submission RPM snapshot in cents. Locks the rate at mirror time
+    # so a campaign edit later doesn't retroactively change what we owe.
+    base_rpm_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    premium_bonus_rpm_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Computed payout values in cents.
+    # base_payout = approved_views/1000 * base_rpm_cents (paid by Whop).
+    # premium_bonus_due = approved_views/1000 * premium_bonus_rpm_cents
+    # (paid by LC admin in Phase 1, paid by Whop transfer in Phase 2).
+    base_payout_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    premium_bonus_due_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_effective_payout_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # pending | paid | waived
+    bonus_payout_status: Mapped[str] = mapped_column(
+        String, nullable=False, default="pending", index=True
+    )
+    bonus_payout_notes: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    bonus_marked_paid_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    ledger_created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    ledger_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )

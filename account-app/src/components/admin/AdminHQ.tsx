@@ -129,6 +129,7 @@ const TABS = [
   "Billing",
   "Postiz",
   "Bugs",
+  "Bonus Ledger",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -280,6 +281,7 @@ export function AdminHQ({ adminEmail, initialOverview }: { adminEmail: string; i
         {tab === "Billing" && <BillingTab />}
         {tab === "Postiz" && <PostizTab />}
         {tab === "Bugs" && <BugsTab />}
+        {tab === "Bonus Ledger" && <BonusLedgerTab />}
       </div>
 
       <footer className="mt-14 border-t border-line pt-5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
@@ -1605,5 +1607,330 @@ function BugsTab() {
         </div>
       )}
     </Panel>
+  );
+}
+
+/* ── Bonus ledger tab (v0.7.55 Uncle Daniel funnel — Phase 1) ────── */
+// Whop owns submission flow + base $1 RPM. This tab tracks the +$4 RPM
+// premium bonus due to paid users with no-watermark exports. Rows are
+// mirrored from approved Whop submissions via the Import button.
+
+type AdminBonusLedgerRow = {
+  id: string;
+  whop_submission_id: string;
+  whop_bounty_id: string | null;
+  whop_user_id: string | null;
+  liquid_clips_user_id: string | null;
+  email: string;
+  campaign_id: string | null;
+  campaign_name: string | null;
+  mission_lane: string | null;
+  submitted_post_url: string;
+  whop_status: string;
+  approved_views: number;
+  membership_status_at_export: string;
+  export_watermark_status: string;
+  base_rpm_cents: number;
+  premium_bonus_rpm_cents: number;
+  base_payout_cents: number;
+  premium_bonus_due_cents: number;
+  total_effective_payout_cents: number;
+  bonus_payout_status: string;
+  bonus_payout_notes: string | null;
+  affiliate_referrals: number;
+  bonus_marked_paid_at: string | null;
+  ledger_created_at: string;
+};
+
+function BonusLedgerTab() {
+  const adminFetch = useAdminFetch();
+  const [rows, setRows] = useState<AdminBonusLedgerRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [missionFilter, setMissionFilter] = useState<string>("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const qs = new URLSearchParams();
+      if (statusFilter) qs.set("status", statusFilter);
+      if (missionFilter) qs.set("mission_lane", missionFilter);
+      const r = (await adminFetch(
+        `bonus-ledger${qs.toString() ? `?${qs.toString()}` : ""}`,
+      )) as { rows: AdminBonusLedgerRow[] };
+      setRows(r.rows);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e)); // allow-raw-error — admin-internal debug surface
+    }
+  }, [adminFetch, statusFilter, missionFilter]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function markPaid(row: AdminBonusLedgerRow) {
+    const viewsStr = window.prompt(
+      `Final approved view count for ${row.email || row.whop_user_id || row.whop_submission_id}?\n\nPost: ${row.submitted_post_url}`,
+      String(row.approved_views || 0),
+    );
+    if (viewsStr === null) return;
+    const approved_views = parseInt(viewsStr.trim(), 10);
+    if (!Number.isFinite(approved_views) || approved_views < 0) {
+      window.alert("Approved views must be a non-negative integer.");
+      return;
+    }
+    setBusyId(row.id);
+    try {
+      await adminFetch(`bonus-ledger/${row.id}/mark-paid`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ approved_views }),
+      });
+      await load();
+    } catch (e) {
+      window.alert(`Mark-paid failed: ${e instanceof Error ? e.message : String(e)}`); // allow-raw-error — admin-internal alert
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <Panel
+      title="Reward bonus ledger"
+      sub="Phase 1. Whop owns submission + base $1 RPM. This ledger tracks the +$4 premium bonus due to paid users with no-watermark exports. Click Import to mirror an approved Whop submission; Mark paid to record the bonus has been sent."
+      right={
+        <div className="flex items-center gap-2">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded-md border border-line bg-paper px-2 py-1 font-mono text-[11px] uppercase tracking-[0.1em] text-ink"
+          >
+            <option value="">all statuses</option>
+            <option value="pending">pending</option>
+            <option value="paid">paid</option>
+            <option value="waived">waived</option>
+          </select>
+          <select
+            value={missionFilter}
+            onChange={(e) => setMissionFilter(e.target.value)}
+            className="rounded-md border border-line bg-paper px-2 py-1 font-mono text-[11px] uppercase tracking-[0.1em] text-ink"
+          >
+            <option value="">all missions</option>
+            <option value="training">uncle daniel · training</option>
+            <option value="main">viral reaction · main</option>
+            <option value="proof">software proof</option>
+          </select>
+          <button
+            onClick={() => setShowImport((v) => !v)}
+            className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia"
+          >
+            {showImport ? "Close import" : "Import Whop row"}
+          </button>
+        </div>
+      }
+    >
+      {showImport && (
+        <BonusLedgerImport
+          onSaved={async () => {
+            setShowImport(false);
+            await load();
+          }}
+          adminFetch={adminFetch}
+        />
+      )}
+      {error && (
+        <p className="rounded-md border border-[#DC2626]/40 bg-[#DC2626]/5 px-3 py-2 font-mono text-[11px] text-[#F87171]">
+          {error}
+        </p>
+      )}
+      {!rows ? (
+        <p className="font-mono text-[11px] text-text-tertiary">loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="font-mono text-[11px] text-text-tertiary">no rows yet — import an approved Whop submission to populate</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full font-mono text-[11px]">
+            <thead className="border-b border-line text-text-tertiary">
+              <tr className="text-left">
+                <th className="px-2 py-2">whop_submission</th>
+                <th className="px-2 py-2">email</th>
+                <th className="px-2 py-2">membership</th>
+                <th className="px-2 py-2">watermark</th>
+                <th className="px-2 py-2">campaign</th>
+                <th className="px-2 py-2">lane</th>
+                <th className="px-2 py-2">post</th>
+                <th className="px-2 py-2 text-right">views</th>
+                <th className="px-2 py-2 text-right">base</th>
+                <th className="px-2 py-2 text-right">bonus due</th>
+                <th className="px-2 py-2 text-right">total eff.</th>
+                <th className="px-2 py-2 text-right">refs</th>
+                <th className="px-2 py-2">status</th>
+                <th className="px-2 py-2"> </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-b border-line/40">
+                  <td className="px-2 py-2 text-text-tertiary">{r.whop_submission_id.slice(0, 10)}…</td>
+                  <td className="px-2 py-2 text-ink">{r.email || "—"}</td>
+                  <td className="px-2 py-2 text-text-tertiary">{r.membership_status_at_export}</td>
+                  <td className="px-2 py-2 text-text-tertiary">{r.export_watermark_status}</td>
+                  <td className="px-2 py-2 text-ink">{r.campaign_name ?? r.campaign_id ?? "—"}</td>
+                  <td className="px-2 py-2 text-text-tertiary">{r.mission_lane ?? "—"}</td>
+                  <td className="px-2 py-2">
+                    <a
+                      href={r.submitted_post_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-fuchsia underline-offset-2 hover:underline"
+                    >
+                      open ↗
+                    </a>
+                  </td>
+                  <td className="px-2 py-2 text-right text-ink tabular-nums">{r.approved_views.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right text-ink tabular-nums">${(r.base_payout_cents / 100).toFixed(2)}</td>
+                  <td className="px-2 py-2 text-right text-ink tabular-nums">${(r.premium_bonus_due_cents / 100).toFixed(2)}</td>
+                  <td className="px-2 py-2 text-right text-ink tabular-nums">${(r.total_effective_payout_cents / 100).toFixed(2)}</td>
+                  <td className="px-2 py-2 text-right text-text-tertiary tabular-nums">{r.affiliate_referrals}</td>
+                  <td className="px-2 py-2"><Chip label={r.bonus_payout_status} /></td>
+                  <td className="px-2 py-2 text-right">
+                    {r.bonus_payout_status === "paid" ? (
+                      <span className="text-text-tertiary">{r.bonus_marked_paid_at?.slice(0, 10) ?? "paid"}</span>
+                    ) : (
+                      <button
+                        onClick={() => void markPaid(r)}
+                        disabled={busyId === r.id}
+                        className="rounded-full bg-fuchsia px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-white hover:bg-fuchsia-bright disabled:opacity-60"
+                      >
+                        {busyId === r.id ? "Saving…" : "Mark bonus paid"}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function BonusLedgerImport({
+  onSaved,
+  adminFetch,
+}: {
+  onSaved: () => Promise<void> | void;
+  adminFetch: (path: string, init?: RequestInit) => Promise<Json>;
+}) {
+  const [form, setForm] = useState({
+    whop_submission_id: "",
+    whop_bounty_id: "",
+    whop_user_id: "",
+    email: "",
+    campaign_id: "",
+    mission_lane: "",
+    submitted_post_url: "",
+    approved_views: "0",
+    membership_status_at_export: "free",
+    export_watermark_status: "unknown",
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    if (!form.whop_submission_id.trim() || !form.submitted_post_url.trim()) {
+      setError("whop_submission_id and submitted_post_url are required");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await adminFetch("bonus-ledger/import", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          approved_views: parseInt(form.approved_views || "0", 10),
+        }),
+      });
+      await onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e)); // allow-raw-error — admin-internal debug surface
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function field(name: keyof typeof form, label: string, opts?: { placeholder?: string; type?: string }) {
+    return (
+      <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+        {label}
+        <input
+          type={opts?.type ?? "text"}
+          value={form[name]}
+          placeholder={opts?.placeholder}
+          onChange={(e) => setForm((f) => ({ ...f, [name]: e.target.value }))}
+          className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink"
+        />
+      </label>
+    );
+  }
+
+  return (
+    <div className="mb-4 rounded-2xl border border-line bg-paper p-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        {field("whop_submission_id", "whop_submission_id *", { placeholder: "wsub_…" })}
+        {field("whop_bounty_id", "whop_bounty_id", { placeholder: "wbnt_…" })}
+        {field("whop_user_id", "whop_user_id", { placeholder: "wuser_…" })}
+        {field("email", "email", { placeholder: "clipper@example.com" })}
+        {field("campaign_id", "campaign_id or slug", { placeholder: "clip-uncle-daniel-content" })}
+        {field("mission_lane", "mission_lane", { placeholder: "training | main | proof" })}
+        {field("submitted_post_url", "submitted_post_url *", { placeholder: "https://…" })}
+        {field("approved_views", "approved_views", { type: "number" })}
+        <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+          membership_status_at_export
+          <select
+            value={form.membership_status_at_export}
+            onChange={(e) => setForm((f) => ({ ...f, membership_status_at_export: e.target.value }))}
+            className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink"
+          >
+            <option value="free">free</option>
+            <option value="solo">solo</option>
+            <option value="pro">pro</option>
+            <option value="agency">agency</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+          export_watermark_status
+          <select
+            value={form.export_watermark_status}
+            onChange={(e) => setForm((f) => ({ ...f, export_watermark_status: e.target.value }))}
+            className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink"
+          >
+            <option value="false">false (no watermark — bonus eligible)</option>
+            <option value="true">true (watermark present — bonus $0)</option>
+            <option value="unknown">unknown</option>
+          </select>
+        </label>
+      </div>
+      {error && (
+        <p className="mt-3 rounded-md border border-[#DC2626]/40 bg-[#DC2626]/5 px-3 py-2 font-mono text-[11px] text-[#F87171]">{error}</p>
+      )}
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          onClick={() => void submit()}
+          disabled={busy}
+          className="rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-white hover:bg-fuchsia-bright disabled:opacity-60"
+        >
+          {busy ? "Saving…" : "Import row"}
+        </button>
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+          base + bonus computed server-side at import
+        </span>
+      </div>
+    </div>
   );
 }

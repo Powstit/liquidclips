@@ -57,7 +57,11 @@ export default async function EmbedEarnPage() {
 
   // Public route — no auth needed for /campaigns. Server-side fetch keeps the
   // markup deterministic; the carousel never has to render a "loading" state.
-  const campaigns = await fetchCampaigns();
+  // v0.7.55 (Uncle Daniel funnel) — pass clerk_user_id so the backend
+  // derives `your_rpm_cents` + `is_premium_caller` per campaign and the
+  // carousel can paint the ladder ($1 free / $5 premium) without a
+  // client-side tier guess.
+  const campaigns = await fetchCampaigns(userId);
 
   // v0.7.54 — layout matches demo-pages.html lines 338-438. Top affiliate
   // strip drives the headline CTA; ConnectionBadge stays as a secondary
@@ -179,9 +183,12 @@ async function fetchAffiliate(clerkUserId: string): Promise<AffiliateInfo> {
   }
 }
 
-async function fetchCampaigns(): Promise<SponsoredCampaign[]> {
+async function fetchCampaigns(clerkUserId?: string): Promise<SponsoredCampaign[]> {
   try {
-    const r = await fetch(`${BACKEND_URL}/campaigns`, { cache: "no-store" });
+    const url = clerkUserId
+      ? `${BACKEND_URL}/campaigns?clerk_user_id=${encodeURIComponent(clerkUserId)}`
+      : `${BACKEND_URL}/campaigns`;
+    const r = await fetch(url, { cache: "no-store" });
     if (!r.ok) return [];
     const j = (await r.json()) as { campaigns?: SponsoredCampaign[] };
     return Array.isArray(j.campaigns) ? j.campaigns : [];

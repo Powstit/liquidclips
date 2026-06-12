@@ -32,7 +32,7 @@ from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -41,6 +41,7 @@ from app.db import engine, get_db
 from app.features import is_admin_email
 from app.models import (
     DesktopErrorEvent,
+    RewardBonusLedger,
     License,
     Notification,
     PendingWhopMembership,
@@ -48,6 +49,7 @@ from app.models import (
     PostAnalytic,
     Schedule,
     SocialChannel,
+    SponsoredCampaign,
     User,
     WebhookEvent,
     WebhookEventLog,
@@ -1310,3 +1312,292 @@ def bugs(
             "is an internal backend/clerk id used only for grouping."
         ),
     }
+
+
+# ── Reward bonus ledger (v0.7.55, Uncle Daniel funnel — Phase 1) ─────
+# Whop owns submission flow + base $1 RPM. LC tracks the $4 premium
+# bonus on rows mirrored from approved Whop submissions. Admin imports
+# manually here in Phase 1; Phase 2 wires a Whop webhook.
+
+
+class BonusLedgerImportPayload(BaseModel):
+    """Admin payload to mirror an approved Whop submission into the LC
+    bonus ledger. Whop has already approved + validated + paid the base
+    $1 RPM by the time this is called — we only record the bonus due."""
+    whop_submission_id: str = Field(..., min_length=1, max_length=80)
+    whop_bounty_id: str | None = Field(None, max_length=80)
+    whop_user_id: str | None = Field(None, max_length=80)
+    liquid_clips_user_id: str | None = Field(None, max_length=80)
+    email: str | None = Field(None, max_length=240)
+    campaign_id: str | None = Field(None, max_length=120)
+    mission_lane: str | None = Field(None, max_length=60)
+    submitted_post_url: str = Field(..., min_length=8, max_length=600)
+    whop_status: str = Field("approved", max_length=40)
+    approved_views: int = Field(0, ge=0)
+    membership_status_at_export: str = Field("free", max_length=40)
+    export_watermark_status: str = Field(
+        "unknown",
+        pattern=r"^(true|false|unknown)$",
+        description="'true' = export had watermark, 'false' = clean (premium bonus eligible).",
+    )
+    base_rpm_cents: int | None = Field(None, ge=0, description="Override campaign base RPM. Defaults to campaign value.")
+    premium_bonus_rpm_cents: int | None = Field(None, ge=0, description="Override campaign premium bonus per 1k. Defaults to campaign value.")
+    notes: str | None = Field(None, max_length=400)
+
+
+class BonusMarkPaidPayload(BaseModel):
+    approved_views: int | None = Field(None, ge=0, description="Update view count at payout time (optional).")
+    notes: str | None = Field(None, max_length=400)
+
+
+def _admin_serialize_ledger(
+    row: RewardBonusLedger,
+    user: User | None,
+    campaign: SponsoredCampaign | None,
+) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "whop_submission_id": row.whop_submission_id,
+        "whop_bounty_id": row.whop_bounty_id,
+        "whop_user_id": row.whop_user_id,
+        "liquid_clips_user_id": row.liquid_clips_user_id,
+        "email": row.email or (user.email if user else ""),
+        "campaign_id": row.campaign_id,
+        "campaign_name": campaign.name if campaign else None,
+        "mission_lane": row.mission_lane,
+        "submitted_post_url": row.submitted_post_url,
+        "whop_status": row.whop_status,
+        "approved_views": row.approved_views,
+        "membership_status_at_export": row.membership_status_at_export,
+        "export_watermark_status": row.export_watermark_status,
+        "base_rpm_cents": row.base_rpm_cents,
+        "premium_bonus_rpm_cents": row.premium_bonus_rpm_cents,
+        "base_payout_cents": row.base_payout_cents,
+        "premium_bonus_due_cents": row.premium_bonus_due_cents,
+        "total_effective_payout_cents": row.total_effective_payout_cents,
+        "bonus_payout_status": row.bonus_payout_status,
+        "bonus_payout_notes": row.bonus_payout_notes,
+        # Existing per-user counter incremented by Whop webhook on first
+        # trial→paid; use as the affiliate signal in the admin panel.
+        "affiliate_referrals": user.referred_paid_subs if user else 0,
+        "bonus_marked_paid_at": (
+            row.bonus_marked_paid_at.isoformat() if row.bonus_marked_paid_at else None
+        ),
+        "ledger_created_at": row.ledger_created_at.isoformat(),
+    }
+
+
+def _compute_ledger_amounts(
+    *,
+    approved_views: int,
+    base_rpm_cents: int,
+    premium_bonus_rpm_cents: int,
+    is_premium: bool,
+    watermark_status: str,
+) -> tuple[int, int, int]:
+    """Return (base_payout, premium_bonus_due, total_effective) in cents.
+
+    Premium bonus only accrues for paid users with a clean (no-watermark)
+    export — matches Daniel's payout_logic spec verbatim:
+      free_user   → base=$1 RPM, bonus=$0, total=$1 RPM
+      paid_user   → base=$1 RPM, bonus=$4 RPM, total=$5 RPM
+    `watermark_status === "true"` means the export HAD a watermark, so
+    bonus is zero regardless of tier.
+    """
+    base_payout = int((approved_views * base_rpm_cents) / 1000)
+    bonus_eligible = is_premium and watermark_status != "true"
+    bonus = (
+        int((approved_views * premium_bonus_rpm_cents) / 1000) if bonus_eligible else 0
+    )
+    return base_payout, bonus, base_payout + bonus
+
+
+@router.get("/bonus-ledger")
+def list_admin_bonus_ledger(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    status_filter: str | None = Query(default=None, alias="status", pattern=r"^(pending|paid|waived)$"),
+    mission_lane: str | None = Query(default=None, max_length=60),
+) -> dict[str, Any]:
+    """Admin ledger of every premium-bonus row mirrored from Whop.
+    Filterable by bonus payout status and mission lane so the unpaid
+    queue is one click away."""
+    q = db.query(RewardBonusLedger).order_by(RewardBonusLedger.ledger_created_at.desc())
+    if status_filter:
+        q = q.filter(RewardBonusLedger.bonus_payout_status == status_filter)
+    if mission_lane:
+        q = q.filter(RewardBonusLedger.mission_lane == mission_lane)
+    rows = q.limit(500).all()
+
+    user_ids = {r.liquid_clips_user_id for r in rows if r.liquid_clips_user_id}
+    campaign_ids = {r.campaign_id for r in rows if r.campaign_id}
+    users_by_id: dict[str, User] = (
+        {u.id: u for u in db.query(User).filter(User.id.in_(user_ids)).all()}
+        if user_ids
+        else {}
+    )
+    campaigns_by_id: dict[str, SponsoredCampaign] = (
+        {c.id: c for c in db.query(SponsoredCampaign).filter(SponsoredCampaign.id.in_(campaign_ids)).all()}
+        if campaign_ids
+        else {}
+    )
+    return {
+        "rows": [
+            _admin_serialize_ledger(
+                r,
+                users_by_id.get(r.liquid_clips_user_id) if r.liquid_clips_user_id else None,
+                campaigns_by_id.get(r.campaign_id) if r.campaign_id else None,
+            )
+            for r in rows
+        ],
+    }
+
+
+@router.post("/bonus-ledger/import")
+def import_whop_submission_to_ledger(
+    payload: BonusLedgerImportPayload,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    """Mirror an approved Whop submission into the bonus ledger. Idempotent
+    on `whop_submission_id`: a re-import patches the existing row instead
+    of duplicating. Computes base + bonus from per-row RPMs at mirror
+    time so the liability is locked against later campaign edits."""
+    existing = (
+        db.query(RewardBonusLedger)
+        .filter(RewardBonusLedger.whop_submission_id == payload.whop_submission_id)
+        .one_or_none()
+    )
+
+    campaign: SponsoredCampaign | None = None
+    if payload.campaign_id:
+        campaign = (
+            db.query(SponsoredCampaign)
+            .filter(
+                (SponsoredCampaign.id == payload.campaign_id)
+                | (SponsoredCampaign.slug == payload.campaign_id)
+            )
+            .one_or_none()
+        )
+
+    base_rpm = (
+        payload.base_rpm_cents
+        if payload.base_rpm_cents is not None
+        else ((campaign.base_rpm_cents or campaign.rpm_cents or 0) if campaign else 0)
+    )
+    premium_bonus_rpm = (
+        payload.premium_bonus_rpm_cents
+        if payload.premium_bonus_rpm_cents is not None
+        else (campaign.premium_bonus_cents if campaign else 0)
+    )
+    is_premium = payload.membership_status_at_export in {"solo", "pro", "agency"}
+    base_payout, bonus_due, total = _compute_ledger_amounts(
+        approved_views=payload.approved_views,
+        base_rpm_cents=base_rpm,
+        premium_bonus_rpm_cents=premium_bonus_rpm,
+        is_premium=is_premium,
+        watermark_status=payload.export_watermark_status,
+    )
+
+    if existing:
+        existing.whop_bounty_id = payload.whop_bounty_id
+        existing.whop_user_id = payload.whop_user_id
+        existing.liquid_clips_user_id = payload.liquid_clips_user_id
+        existing.email = payload.email
+        existing.campaign_id = payload.campaign_id
+        existing.mission_lane = payload.mission_lane
+        existing.submitted_post_url = payload.submitted_post_url
+        existing.whop_status = payload.whop_status
+        existing.approved_views = payload.approved_views
+        existing.membership_status_at_export = payload.membership_status_at_export
+        existing.export_watermark_status = payload.export_watermark_status
+        existing.base_rpm_cents = base_rpm
+        existing.premium_bonus_rpm_cents = premium_bonus_rpm
+        existing.base_payout_cents = base_payout
+        existing.premium_bonus_due_cents = bonus_due
+        existing.total_effective_payout_cents = total
+        if payload.notes:
+            existing.bonus_payout_notes = payload.notes
+        row = existing
+    else:
+        row = RewardBonusLedger(
+            whop_submission_id=payload.whop_submission_id,
+            whop_bounty_id=payload.whop_bounty_id,
+            whop_user_id=payload.whop_user_id,
+            liquid_clips_user_id=payload.liquid_clips_user_id,
+            email=payload.email,
+            campaign_id=payload.campaign_id,
+            mission_lane=payload.mission_lane,
+            submitted_post_url=payload.submitted_post_url,
+            whop_status=payload.whop_status,
+            approved_views=payload.approved_views,
+            membership_status_at_export=payload.membership_status_at_export,
+            export_watermark_status=payload.export_watermark_status,
+            base_rpm_cents=base_rpm,
+            premium_bonus_rpm_cents=premium_bonus_rpm,
+            base_payout_cents=base_payout,
+            premium_bonus_due_cents=bonus_due,
+            total_effective_payout_cents=total,
+            bonus_payout_status="pending",
+            bonus_payout_notes=payload.notes,
+        )
+        db.add(row)
+    db.commit()
+    db.refresh(row)
+
+    user = (
+        db.query(User).filter(User.id == row.liquid_clips_user_id).one_or_none()
+        if row.liquid_clips_user_id
+        else None
+    )
+    return {"row": _admin_serialize_ledger(row, user, campaign)}
+
+
+@router.post("/bonus-ledger/{row_id}/mark-paid")
+def mark_bonus_paid(
+    row_id: str,
+    payload: BonusMarkPaidPayload,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    """Admin records the premium bonus has been paid out of band.
+    Optionally updates approved_views if Whop revised the count after
+    import. Phase 2 will replace the side-effect with a Whop transfer."""
+    row = db.query(RewardBonusLedger).filter(RewardBonusLedger.id == row_id).one_or_none()
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"ledger row not found: {row_id}")
+
+    if payload.approved_views is not None and payload.approved_views != row.approved_views:
+        # Recompute liability if views changed.
+        is_premium = row.membership_status_at_export in {"solo", "pro", "agency"}
+        base_payout, bonus_due, total = _compute_ledger_amounts(
+            approved_views=payload.approved_views,
+            base_rpm_cents=row.base_rpm_cents,
+            premium_bonus_rpm_cents=row.premium_bonus_rpm_cents,
+            is_premium=is_premium,
+            watermark_status=row.export_watermark_status,
+        )
+        row.approved_views = payload.approved_views
+        row.base_payout_cents = base_payout
+        row.premium_bonus_due_cents = bonus_due
+        row.total_effective_payout_cents = total
+
+    row.bonus_payout_status = "paid"
+    if payload.notes:
+        row.bonus_payout_notes = payload.notes
+    row.bonus_marked_paid_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(row)
+
+    user = (
+        db.query(User).filter(User.id == row.liquid_clips_user_id).one_or_none()
+        if row.liquid_clips_user_id
+        else None
+    )
+    campaign = (
+        db.query(SponsoredCampaign).filter(SponsoredCampaign.id == row.campaign_id).one_or_none()
+        if row.campaign_id
+        else None
+    )
+    return {"row": _admin_serialize_ledger(row, user, campaign)}
+
