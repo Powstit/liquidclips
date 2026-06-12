@@ -20,15 +20,20 @@ export const WHOP_REWARDS_URL = "https://whop.com/discover/content-rewards/";
 // members get the joined experience with chat / forum / announcements
 // already routed in the left rail of Whop's own UI.
 //
-// v0.7.54 — flipped from /joined/jnremployee/ → /liquidclips/forums-…/app/.
-// The jnremployee Whop community is empty / deprecated; the canonical
-// destination is the LIVE forums module inside the Liquid Clips community
-// (Daniel-supplied URL, 2026-06-12) so first-time users land directly in a
-// commentable feed instead of the marketing landing. Every code path that
-// opens "community" reads this constant — keep it single-source so the
-// rebrand can't drift again.
-export const WHOP_COMMUNITY_URL =
-  "https://whop.com/liquidclips/forums-83fovyATgXDQpO/app/";
+// v0.7.55 — flipped from /forums-83fovyATgXDQpO/app/ → /liquidclips/ root.
+// The forums URL was the v0.7.54 default that Daniel pulled back from in
+// the community pre-push pass: when a CommunityChannel has no
+// whop_channel_id configured, the desktop falls back to this constant.
+// Routing every unconfigured room into the forums tab was misleading
+// (forum ≠ chat), so the fallback now goes to the canonical Liquid Clips
+// community landing where the user can pick the right room manually.
+// Per-room chat links (whop.com/c/<chat_feed_id>) are still constructed
+// inline by CommunityTab once admin pastes the chat_feed_XXX id.
+//
+// History:
+//   v0.7.54  /joined/jnremployee/ → /liquidclips/forums-…/app/
+//   v0.7.55  /liquidclips/forums-…/app/ → /liquidclips/
+export const WHOP_COMMUNITY_URL = "https://whop.com/liquidclips/";
 
 // --- singleton store -----------------------------------------------------
 //

@@ -2095,7 +2095,7 @@ function CommunityChannelsTab() {
   return (
     <Panel
       title="Community channels"
-      sub="Tier-gated rooms backed by Whop chat feeds. Sections: announcements · free_lobby · paid_core · mission."
+      sub="Tier-gated rooms backed by Whop chat feeds. Sections: announcements · free_lobby · paid_core · mission. Paste chat_feed_XXX from Whop into a row's whop_channel_id to route that room directly to chat — rooms without an id route paid users to the community landing instead."
       right={
         <button
           type="button"

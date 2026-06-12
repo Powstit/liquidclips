@@ -45,7 +45,7 @@ SEEDS: list[dict] = [
         "budget_cents": 500_000,      # $5,000 pool — opening allocation
         "funded_pct": 0,
         "duration_label": "Always on",
-        "whop_url": "https://whop.com/liquidclips/forums-83fovyATgXDQpO/app/",
+        "whop_url": "https://whop.com/liquidclips/",
         "banner_url": "https://api.jnremployee.com/static/campaigns/uncle-daniel.png",
         "eligibility": [
             "Open to every Liquid Clips user (free + paid).",
@@ -83,7 +83,7 @@ SEEDS: list[dict] = [
         "budget_cents": 1_000_000,
         "funded_pct": 0,
         "duration_label": "Ongoing",
-        "whop_url": "https://whop.com/liquidclips/forums-83fovyATgXDQpO/app/",
+        "whop_url": "https://whop.com/liquidclips/",
         "banner_url": "https://api.jnremployee.com/static/campaigns/viral-reaction.png",
         "eligibility": [
             "Paid priority — premium clippers get the $5 RPM ladder.",
@@ -118,7 +118,7 @@ SEEDS: list[dict] = [
         "budget_cents": 250_000,
         "funded_pct": 0,
         "duration_label": "Ongoing",
-        "whop_url": "https://whop.com/liquidclips/forums-83fovyATgXDQpO/app/",
+        "whop_url": "https://whop.com/liquidclips/",
         "banner_url": "https://api.jnremployee.com/static/campaigns/proof.png",
         "eligibility": [
             "Premium clippers only — proof clips need watermark-free exports.",
