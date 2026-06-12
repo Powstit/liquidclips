@@ -1313,8 +1313,20 @@ def stage_reframe(project: Project) -> dict[str, Any]:
                 # queries /sync and reads features.watermark. JUNIOR_FREE_WATERMARK
                 # env var is an override for local testing.
                 # Signature MUST match junior-backend/app/watermark_detector.py.
+                #
+                # v0.7.55 — animated "Made with Liquid Clips" overlay layered
+                # via _watermark_filter() so the pipeline always renders the
+                # best available watermark for free users, falling back to
+                # the legacy static wordmark if the MOV is missing. Paid
+                # users still get nothing. The clip-duration-aware mode of
+                # _watermark_filter() loops the overlay so a 3s clip still
+                # gets watermarked despite the 12s loop.
                 if _should_watermark():
-                    vf_after = f"{vf_after},{_liquid_lift_watermark_filter(out_w, out_h)}"
+                    _clip_seconds = max(
+                        0.1,
+                        float(clip.get("end", 0)) - float(clip.get("start", 0)),
+                    )
+                    vf_after = f"{vf_after},{_watermark_filter(out_w, out_h, _clip_seconds)}"
 
                 # Sprint #14 Voice enhancement — afftdn removes background hiss /
                 # noise via spectral gating; loudnorm normalises to EBU R128
@@ -1569,6 +1581,100 @@ def _should_watermark() -> bool:
         _WATERMARK_TIER_CACHE["result"] = True
         _WATERMARK_TIER_CACHE["checked_at"] = now
         return True
+
+
+def _watermark_filter(out_w: int, out_h: int, clip_seconds: float) -> str:
+    """v0.7.55 — dispatch to animated overlay when present, fall back to
+    static otherwise.
+
+    Wraps two paths:
+      • Animated: `_made_with_animated_watermark_filter` composites the
+        ProRes 4444 MOV (alpha-transparent, 12s loop) over the frame.
+        Used for free-tier exports that pass the alpha overlay shipped
+        in `assets/watermark/made-with-liquid-clips.mov`.
+      • Static fallback: `_liquid_lift_watermark_filter` — the existing
+        PNG wordmark. Used when the animated MOV is missing OR when the
+        clip is shorter than ~1s (the intro sting needs that long to
+        play; on a sub-1s clip we'd just see the bug entering then the
+        clip ends, which reads as a glitch).
+
+    Returns a single ffmpeg filter string ready to be appended to the
+    encoder's -vf chain. Caller already gated on `_should_watermark()`
+    so this is only reached for free-tier exports.
+
+    `clip_seconds` is the clip's true duration. We use it to:
+      (a) decide animated vs static (very short clips → static), and
+      (b) build a setpts loop on the overlay so a 3s clip doesn't see
+          the bug walk off and disappear at t=10.2.
+    """
+    animated_path = (
+        Path(__file__).resolve().parent
+        / "assets"
+        / "watermark"
+        / "made-with-liquid-clips.mov"
+    )
+    # Animated overlay needs at least a full intro (1s) + visible
+    # settled hold (~1.5s) to read coherently. Anything shorter falls
+    # back to the static wordmark.
+    if clip_seconds >= 2.5 and animated_path.exists():
+        try:
+            return _made_with_animated_watermark_filter(
+                out_w, out_h, clip_seconds, animated_path
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Filter-string construction shouldn't fail at runtime, but
+            # if it does the export must still ship. Log + fall back to
+            # the static path. Paid users are untouched (we never reach
+            # this function for paid via _should_watermark()).
+            import sys as _sys
+            _sys.stderr.write(
+                f"[watermark] animated overlay filter failed, falling back to static: {exc}\n"
+            )
+    return _liquid_lift_watermark_filter(out_w, out_h)
+
+
+def _made_with_animated_watermark_filter(
+    out_w: int,
+    out_h: int,
+    clip_seconds: float,
+    overlay_path: "Path",
+) -> str:
+    """Composite the animated MOV overlay onto the frame.
+
+    Anchored bottom-right with a margin matching the canonical static
+    watermark (~5.5% x, ~6.2% y from the bottom-right corner). Overlay
+    is rendered at ~32% of the output width — small enough to never
+    cover captions (which sit lower-center per the ASS subtitle layout)
+    or faces (which sit upper-center per the face-aware crop) but large
+    enough to read on a phone.
+
+    The overlay MOV is 12s long. On clips shorter than 12s, the loop
+    filter keeps it playing forward only — no wrap-around, no flicker.
+    On clips longer than 12s the loop is implicit (movie= loops by
+    default when the export duration exceeds the source).
+
+    Filter graph:
+      split=1[main]         keep the main video chain addressable
+      movie={path}:loop=0   read the MOV from disk, infinite loop
+        ,setpts=PTS-STARTPTS
+        ,scale=wm_w:-2     scale to ~32% of frame width
+        ,format=rgba       force RGBA so alpha survives overlay
+      [main][wm]overlay=    paint at the bottom-right corner
+    """
+    wm_w = max(280, int(out_w * 0.32))
+    margin_x = max(36, int(out_w * 0.055))
+    margin_y = max(72, int(out_h * 0.062))
+    # `loop=0` on movie= means infinite source loops, which combined
+    # with setpts=PTS-STARTPTS gives a clean wrap. Quote the path in
+    # case of spaces (none expected — assets/ is repo-controlled).
+    return (
+        f"split=1[main];"
+        f"movie={overlay_path}:loop=0,"
+        f"setpts=PTS-STARTPTS,"
+        f"scale={wm_w}:-2,"
+        f"format=rgba[wm];"
+        f"[main][wm]overlay=W-w-{margin_x}:H-h-{margin_y}:shortest=1"
+    )
 
 
 def _liquid_lift_watermark_filter(out_w: int, out_h: int) -> str:
