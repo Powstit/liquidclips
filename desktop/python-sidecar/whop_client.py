@@ -152,17 +152,25 @@ def _backend_url() -> str:
     return os.environ.get("JUNIOR_BACKEND_URL", "http://localhost:8000")
 
 
-def _license_jwt() -> str | None:
-    """Read the license JWT from the keychain. Used as Bearer auth against
-    junior-backend's /whop/* proxy endpoints."""
-    try:
-        from secrets_store import get_secret
-        return get_secret("LICENSE_JWT")
-    except Exception:
+def _normalize_license_jwt(license_jwt: str | None) -> str | None:
+    """Return a caller-provided JWT without touching the OS keychain.
+
+    v0.7.64: Whop reads can be triggered by passive Earn mounts/focus events.
+    They must never recover LICENSE_JWT from Python keyring. The desktop layer
+    passes an in-memory JWT only after an explicit auth action has primed it.
+    """
+    if not isinstance(license_jwt, str):
         return None
+    token = license_jwt.strip()
+    return token or None
 
 
-async def _backend_get(path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+async def _backend_get(
+    path: str,
+    params: dict[str, Any] | None = None,
+    *,
+    license_jwt: str | None = None,
+) -> dict[str, Any]:
     """GET against junior-backend with the license JWT as Bearer.
 
     We funnel Whop reads through the backend because Whop's public-graphql
@@ -170,11 +178,10 @@ async def _backend_get(path: str, params: dict[str, Any] | None = None) -> dict[
     an App API Key, which must stay server-side. The backend holds that key
     and proxies for us.
     """
-    jwt_token = _license_jwt()
+    jwt_token = _normalize_license_jwt(license_jwt)
     if not jwt_token:
         raise RuntimeError(
-            "No license JWT in keychain — sign in to Liquid Clips via "
-            "liquidclips.app/connect-desktop to activate the desktop first."
+            "No active desktop session — continue your session to load earnings."
         )
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
@@ -203,19 +210,19 @@ async def _backend_get(path: str, params: dict[str, Any] | None = None) -> dict[
 # canonical query strings live in junior-backend/app/routes/whop.py.
 
 
-async def list_bounties(*, first: int = 25) -> list[dict[str, Any]]:
+async def list_bounties(*, first: int = 25, license_jwt: str | None = None) -> list[dict[str, Any]]:
     first = max(1, min(int(first or 25), 25))
-    payload = await _backend_get("/whop/bounties", {"first": first})
+    payload = await _backend_get("/whop/bounties", {"first": first}, license_jwt=license_jwt)
     return payload.get("bounties", [])
 
 
-async def get_bounty(bounty_id: str) -> dict[str, Any] | None:
-    payload = await _backend_get(f"/whop/bounties/{bounty_id}")
+async def get_bounty(bounty_id: str, *, license_jwt: str | None = None) -> dict[str, Any] | None:
+    payload = await _backend_get(f"/whop/bounties/{bounty_id}", license_jwt=license_jwt)
     return payload.get("bounty")
 
 
-async def get_submission(submission_id: str) -> dict[str, Any] | None:
-    payload = await _backend_get(f"/whop/submissions/{submission_id}")
+async def get_submission(submission_id: str, *, license_jwt: str | None = None) -> dict[str, Any] | None:
+    payload = await _backend_get(f"/whop/submissions/{submission_id}", license_jwt=license_jwt)
     return payload.get("submission")
 
 
