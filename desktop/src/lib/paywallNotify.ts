@@ -1,5 +1,5 @@
 import { backend, type Tier } from "./backend";
-import { sidecar } from "./sidecar";
+import { getCachedLicenseJwt } from "./authStorage";
 
 // Session-level dedup so we don't spam the backend inbox.
 const sessionDedup = new Set<string>();
@@ -111,7 +111,10 @@ export async function notifyPaywall(
   sessionDedup.add(dedupKey);
 
   try {
-    const { value: jwt } = await sidecar.licenseJwtRead();
+    // v0.7.58 P0 — auth-keychain invariant. Paywall hit fires from a gated
+    // user click (e.g. trying a Pro feature on Free). Cache-only; cache
+    // miss = unauthed, nothing to notify.
+    const jwt = getCachedLicenseJwt();
     if (!jwt) return; // Unauthed users have nothing to notify
     await backend.notifications.create(jwt, {
       category: "paywall",

@@ -49,7 +49,27 @@ from pathlib import Path
 import keyring
 from keyring.errors import KeyringError
 
-SERVICE = "app.liquidclips.desktop"
+# ───── IRON GATE IG-014 (v0.7.58) — see desktop/docs/IRON_GATES.md ─────
+# Auth-keychain invariant: LICENSE_JWT lives under an auth-only SERVICE
+# namespace. BYO API keys + onboarding flags stay under the legacy SERVICE
+# namespace. This isolates the auth-token re-prompt loop from BYO key
+# storage so a rebuilt sidecar binary only forces re-sign-in, never
+# re-paste-OpenAI-key.
+#
+# Legacy LICENSE_JWT items under app.liquidclips.desktop are NEVER read
+# automatically. They are best-effort deleted on explicit sign-out / reset
+# (see `delete_secret` below). Existing items left untouched survive any
+# number of rebuilds without prompting.
+SERVICE_BYO = "app.liquidclips.desktop"
+SERVICE_AUTH = "app.liquidclips.auth.v1"
+# The previous namespace LICENSE_JWT used to live under. delete_secret
+# strips this on sign-out / reset so a freshly re-installed binary doesn't
+# re-prompt for the orphaned ACL.
+SERVICE_AUTH_LEGACY = "app.liquidclips.desktop"
+
+# Back-compat alias for external callers that imported SERVICE directly.
+# Maps to the BYO namespace, which holds every key EXCEPT LICENSE_JWT.
+SERVICE = SERVICE_BYO
 
 KNOWN_KEYS = (
     "OPENAI_API_KEY",
@@ -61,6 +81,13 @@ KNOWN_KEYS = (
     "PIXABAY_API_KEY",
     "GIPHY_API_KEY",
 )
+
+
+def _service_for(name: str) -> str:
+    """Route LICENSE_JWT to the auth-only namespace; everything else stays
+    under the BYO namespace. This is the single dispatch point — change
+    here, do not branch at call sites."""
+    return SERVICE_AUTH if name == "LICENSE_JWT" else SERVICE_BYO
 
 # Presence-file path. Lives next to the app data dir so it survives across
 # rebuilds and rebrands (the keychain ACL doesn't). All-false default if the
@@ -120,9 +147,14 @@ def get_secret(name: str) -> str | None:
     clip-run start). Calling this from boot triggers the macOS password prompt
     on rebuilt/renamed binaries. See `list_known_secrets()` for the boot-safe
     presence check.
+
+    Routes by name via `_service_for`: LICENSE_JWT → SERVICE_AUTH,
+    everything else → SERVICE_BYO. No fallback to legacy auth namespace —
+    `app.liquidclips.desktop` LICENSE_JWT items, if any exist, stay
+    orphaned until the user signs out / resets, which deletes them.
     """
     try:
-        return keyring.get_password(SERVICE, name)
+        return keyring.get_password(_service_for(name), name)
     except KeyringError:
         return None
 
@@ -131,15 +163,25 @@ def set_secret(name: str, value: str) -> None:
     if not value:
         delete_secret(name)
         return
-    keyring.set_password(SERVICE, name, value)
+    keyring.set_password(_service_for(name), name, value)
     _write_presence(name, True)
 
 
 def delete_secret(name: str) -> None:
     try:
-        keyring.delete_password(SERVICE, name)
+        keyring.delete_password(_service_for(name), name)
     except keyring.errors.PasswordDeleteError:
         pass  # nothing to delete is fine
+    # v0.7.58 — Sign-out / reset also strips the legacy LICENSE_JWT slot so
+    # a future rebuild doesn't re-prompt for the orphaned ACL. Best-effort,
+    # never raises out of the auth path. No-op for non-LICENSE_JWT names.
+    if name == "LICENSE_JWT" and SERVICE_AUTH_LEGACY != SERVICE_AUTH:
+        try:
+            keyring.delete_password(SERVICE_AUTH_LEGACY, name)
+        except keyring.errors.PasswordDeleteError:
+            pass
+        except KeyringError:
+            pass
     _write_presence(name, False)
 
 
@@ -161,6 +203,9 @@ def rebuild_presence_from_keychain() -> dict[str, bool]:
     presence file from the result. Triggers keychain prompts on rebuilt
     binaries — call ONLY from an explicit "repair keychain" user action,
     never from boot. Returns the resulting presence map.
+
+    Routes each key through `_service_for` so LICENSE_JWT is probed under
+    the auth-only namespace.
     """
     out: dict[str, bool] = {}
     for k in KNOWN_KEYS:

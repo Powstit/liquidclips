@@ -80,7 +80,11 @@ export function OnboardingOverlay({ onComplete, onOpenSettings, onTrySample }: O
       return;
     }
     if (index === 1) {
-      await activate();
+      // v0.7.59 — the CTA literally says "Sign in with browser", so the
+      // handler must open the system browser. Without { via: "browser" }
+      // activate() defaults to via: "panel" (embedded Tauri webview), which
+      // is the FirstRun "Sign in →" path — different surface, different UX.
+      await activate({ via: "browser" });
       return;
     }
     if (index === 2) {

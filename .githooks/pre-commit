@@ -1,6 +1,41 @@
 #!/usr/bin/env bash
-# Pre-commit gate — delegates to the existing humanError checker.
-# Keeps the .git/hooks/pre-commit symlink contract intact when
-# core.hooksPath is repointed to .githooks/.
-set -euo pipefail
-exec "$(/usr/bin/dirname "$0")/../desktop/scripts/check-humanError.sh" "$@"
+# Pre-commit gate — runs every desktop guardrail in sequence. Any single
+# guard failing aborts the commit.
+#
+#   1. check-humanError      — `String(e)` / `String(err)` regression guard.
+#   2. iron-gate-precommit   — refuses deletion of IRON GATE sentinels.
+#   3. assert-no-passive-keychain — auth-keychain invariant (IG-014).
+#   4. brand-kit-drift-check — token parity between index.css + demo HTML.
+#
+# Hook lives at `.githooks/pre-commit`; `git config core.hooksPath .githooks`
+# points the repo at it.
+set -uo pipefail
+# Resolve to ABSOLUTE paths up front so the per-guard `cd` doesn't break
+# relative references when we hop into desktop/.
+HOOK_DIR="$( cd "$(/usr/bin/dirname "$0")" && /bin/pwd )"
+REPO_ROOT="$( cd "$HOOK_DIR/.." && /bin/pwd )"
+DESKTOP_ROOT="$REPO_ROOT/desktop"
+DESKTOP_SCRIPTS="$DESKTOP_ROOT/scripts"
+
+run_guard() {
+  local cwd=$1
+  local script=$2
+  shift 2
+  if [ ! -x "$script" ]; then
+    return 0   # guard missing on this branch — skip rather than block.
+  fi
+  ( cd "$cwd" && "$script" "$@" )
+  local rc=$?
+  if [ $rc -ne 0 ]; then
+    /bin/echo "✗ pre-commit: $script failed (exit $rc)" >&2
+    exit $rc
+  fi
+}
+
+# check-humanError + iron-gate-precommit both walk staged diffs, so they
+# can run from repo root. brand-kit-drift-check + assert-no-passive-keychain
+# resolve paths relative to desktop/ — run them from there.
+run_guard "$REPO_ROOT"    "$DESKTOP_SCRIPTS/check-humanError.sh" "$@"
+run_guard "$REPO_ROOT"    "$DESKTOP_SCRIPTS/iron-gate-precommit.sh" "$@"
+run_guard "$DESKTOP_ROOT" "$DESKTOP_SCRIPTS/assert-no-passive-keychain.sh" "$@"
+run_guard "$DESKTOP_ROOT" "$DESKTOP_SCRIPTS/brand-kit-drift-check.sh" "$@"

@@ -12,7 +12,8 @@ import {
   type PublishedTarget,
   type SocialConnectionState,
 } from "../lib/backend";
-import { sidecar, humanError, type Clip } from "../lib/sidecar";
+import { requireCachedLicenseJwtOrThrow } from "../lib/authStorage";
+import { humanError, type Clip } from "../lib/sidecar";
 import { PlatformIcon } from "./PlatformIcon";
 import { InfoTip } from "./InfoTip";
 import { useTier, TIER_COPY, type PublishCapability } from "../lib/useTier";
@@ -252,10 +253,10 @@ export function PublishModal({
     setError(null);
     setPublishResult(null);
     try {
-      const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) {
-        throw new Error("Sign in to Liquid Clips first — use the Sign in button in the top bar.");
-      }
+      // v0.7.58 P0 — auth-keychain invariant. Publish submit is a user-click
+      // action, not one of the five explicit auth actions. Cache-only;
+      // surface RECONNECT_PROMPT_COPY via the thrown error.
+      const jwt = requireCachedLicenseJwtOrThrow();
 
       if (mode === "publish-now") {
         // Schedule v2 channel path: pickedChannelId → backend infers platform

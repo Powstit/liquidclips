@@ -18,11 +18,13 @@ import { X } from "lucide-react";
 
 export type AuthPanelMode = "sign-in" | "sign-up" | "upgrade" | "dashboard" | "payouts";
 
-// v0.7.54 — moved from account.jnremployee.com → account.liquidclips.app
-// so the URL bar inside the embedded auth webview reads liquidclips.app
-// end-to-end. Both hosts serve the same Next.js app via the satellite
-// cookie path; existing sessions still resolve.
-const ACCOUNT_HOST = "https://account.liquidclips.app";
+// v0.7.57 — Clerk primary domain swapped to bare apex `liquidclips.app`.
+// Embedded auth webview opens the apex; a marketing-edge rewrite in
+// liquidclips-marketing/next.config.ts proxies /sign-in, /sign-up,
+// /dashboard, /upgrade, /payouts (#dashboard hash) to the account-app
+// project. URL bar reads liquidclips.app end-to-end and Clerk JS sees
+// the primary domain on the client. Do NOT flip back to a subdomain.
+const ACCOUNT_HOST = "https://liquidclips.app";
 
 function urlFor(mode: AuthPanelMode): string {
   switch (mode) {

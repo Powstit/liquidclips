@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { backend, type NotificationDto } from "../lib/backend";
+import { getCachedLicenseJwt, requireCachedLicenseJwtOrThrow } from "../lib/authStorage";
 import { sidecar, humanError } from "../lib/sidecar";
 
 const CATEGORY_LABELS: Record<NotificationDto["category"], string> = {
@@ -37,14 +38,27 @@ export function NotificationSheet({ onClose }: { onClose: () => void }) {
 
   const load = useCallback(async () => {
     try {
-      const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) {
+      // v0.7.57 P0 — Cache-warm-only auto-load. Sheet open is NOT an explicit
+      // auth action, so it must never call sidecar.licenseJwtRead(). If the
+      // JWT cache is empty, surface a presence-aware recovery state — the
+      // user re-primes the cache by signing in (the only path allowed to
+      // touch the legacy Keychain item).
+      const cached = getCachedLicenseJwt();
+      if (!cached) {
+        let present = false;
+        try {
+          ({ present } = await sidecar.licenseJwtPresence());
+        } catch {
+          present = false;
+        }
         setError(
-          "Sign in to Liquid Clips to enable your inbox — use the Sign in button in the top bar."
+          present
+            ? "Please sign in again to load your inbox — use the Sign in button in the top bar."
+            : "Sign in to Liquid Clips to enable your inbox — use the Sign in button in the top bar."
         );
         return;
       }
-      const list = await backend.notifications.list(jwt, { limit: 50 });
+      const list = await backend.notifications.list(cached, { limit: 50 });
       setItems(list);
       setError(null);
     } catch (e) {
@@ -56,11 +70,14 @@ export function NotificationSheet({ onClose }: { onClose: () => void }) {
     void load();
   }, [load]);
 
+  // v0.7.58 P0 — auth-keychain invariant. Row-click actions are NOT among
+  // the five explicit auth actions; they must use the in-memory cache only.
+  // Cache miss surfaces RECONNECT_PROMPT_COPY in the action-error banner so
+  // the user knows to sign in again before retrying.
   async function markRead(n: NotificationDto) {
     if (n.read_at) return;
     try {
-      const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) return;
+      const jwt = requireCachedLicenseJwtOrThrow();
       await backend.notifications.markRead(jwt, n.id);
       setItems((cur) =>
         cur?.map((x) => (x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x)) ?? null,
@@ -73,8 +90,7 @@ export function NotificationSheet({ onClose }: { onClose: () => void }) {
 
   async function markAllRead() {
     try {
-      const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) return;
+      const jwt = requireCachedLicenseJwtOrThrow();
       await backend.notifications.markAllRead(jwt);
       const now = new Date().toISOString();
       setItems((cur) => cur?.map((x) => ({ ...x, read_at: x.read_at ?? now })) ?? null);
@@ -86,8 +102,7 @@ export function NotificationSheet({ onClose }: { onClose: () => void }) {
 
   async function dismiss(n: NotificationDto) {
     try {
-      const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) return;
+      const jwt = requireCachedLicenseJwtOrThrow();
       await backend.notifications.dismiss(jwt, n.id);
       setItems((cur) => cur?.filter((x) => x.id !== n.id) ?? null);
       setActionError(null);

@@ -41,7 +41,8 @@ import {
   type ConnectionPlatform,
   type SocialConnectionState,
 } from "../../lib/backend";
-import { sidecar, humanError, type Clip } from "../../lib/sidecar";
+import { getCachedLicenseJwt, requireCachedLicenseJwtOrThrow } from "../../lib/authStorage";
+import { humanError, type Clip } from "../../lib/sidecar";
 import { CheckCircle2, ChevronDown, Loader2, Send, Clock, ExternalLink, RefreshCw, Stethoscope } from "lucide-react";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
 import { prettyPlatform } from "../schedule/types";
@@ -138,19 +139,22 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
   // network round-trip per clip card on Workspace. Re-fetches on every
   // re-open so the chip list reflects connections added in Settings while
   // the drawer was closed (previously the `conn` dep made stale caches stick).
+  //
+  // v0.7.57 P0 — Cache-warm-only auto-load. Drawer open is NOT one of the
+  // four explicit auth actions, so it must never call licenseJwtRead. If
+  // the JWT cache is empty, render the drawer in a signed-in-not-loaded
+  // recovery state (sign-in copy + connect chips suppressed); the user
+  // re-primes the cache by signing in.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setConnLoadState({ kind: "loading" });
     void (async () => {
       try {
-        const { value: jwt } = await sidecar.licenseJwtRead();
-        if (cancelled) return;
-        if (!jwt) {
+        const cached = getCachedLicenseJwt();
+        if (!cached) {
+          if (cancelled) return;
           setAuthed(false);
-          // Treat "no JWT" as a cleanly-loaded empty state — the auth gate
-          // below renders the sign-in copy and the connect chips stay
-          // suppressed because authed === false.
           setConnLoadState({ kind: "loaded", conn: null });
           return;
         }
@@ -360,9 +364,14 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
     }
     setStatus({ kind: "busy" });
     try {
-      const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) {
-        setStatus({ kind: "error", message: "Sign in to Liquid Clips first." });
+      // v0.7.58 P0 — auth-keychain invariant. Schedule submit is a
+      // user-click action, not one of the five explicit auth actions.
+      // Cache-only; surface RECONNECT_PROMPT_COPY inline on miss.
+      let jwt: string;
+      try {
+        jwt = requireCachedLicenseJwtOrThrow();
+      } catch (err) {
+        setStatus({ kind: "error", message: (err as Error).message });
         return;
       }
       const scheduledAt = scheduledAtIso();
