@@ -89,7 +89,7 @@ import { recordAchievement } from "./lib/achievements";
 import { humanError, sidecar, subscribeSidecarDied, visibleStagesFor, pipelineStagesFor, backgroundStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type SecretName, type StageName } from "./lib/sidecar";
 import { useIngestEvents } from "./lib/useIngestEvents";
 import { useLiftEvents } from "./lib/useLiftEvents";
-import { backend, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
+import { backend, getCachedLicenseJwt, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
 import { initDeepLinks, setOnActivated } from "./lib/activation";
 import { HOSTED_LLM_ENABLED } from "./lib/flags";
 import { closeBrowsePanel, openBrowsePanel, reconcileBrowsePanel, useBrowsePanel, WHOP_COMMUNITY_URL, WHOP_REWARDS_URL } from "./lib/browse";
@@ -926,16 +926,16 @@ export default function App() {
     // the user to sign in rather than letting exports run uncapped/untracked
     // (the "free forever" bypass). Sign-in is free — it just makes them a known
     // user so the starter pass can be counted.
-    try {
-      const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) {
-        setNeedsActivation(true);
-        setView({ kind: "first-run" });
-        return false;
-      }
-    } catch {
-      // Keychain read failed — fall through to the quota check; if that also
-      // can't resolve a token the authed call will surface it.
+    //
+    // v0.7.58 P0 — auth-keychain invariant. Export click is NOT one of the
+    // five explicit auth actions; it must read the in-memory cache only.
+    // Empty cache routes the user to first-run sign-in, same as a literal
+    // signed-out state.
+    const cachedJwt = getCachedLicenseJwt();
+    if (!cachedJwt) {
+      setNeedsActivation(true);
+      setView({ kind: "first-run" });
+      return false;
     }
     // Clip selection runs on OpenAI until hosted AI ships (HOSTED_LLM_ENABLED).
     // If no key is resolvable (env / keychain / dev file), guide the user to add
@@ -1122,7 +1122,12 @@ export default function App() {
     // the create call idempotent for the same project slug.
     void (async () => {
       try {
-        const { value: jwt } = await sidecar.licenseJwtRead();
+        // v0.7.58 P0 — auth-keychain invariant. Post-pipeline notification
+        // create runs from a background-completion callback (the export
+        // pipeline that the user kicked off). Cache-only; empty cache means
+        // the inbox row simply isn't filed and the user sees no banner —
+        // the next explicit Sign in re-primes the cache.
+        const jwt = getCachedLicenseJwt();
         if (!jwt) return;
         const n = current.clips.length;
         await backend.notifications.create(jwt, {
@@ -1189,10 +1194,13 @@ export default function App() {
   // Resilient: no JWT / backend offline / network error → never blocks.
   async function chargeClipExport(count: number): Promise<boolean> {
     try {
-      const { value: jwt } = await sidecar.licenseJwtRead();
-      // Unactivated users are blocked at guardQuota() before the pipeline runs,
-      // so we shouldn't reach here without a JWT. If we somehow do, don't charge
-      // (no clips should exist) — the pre-run gate is the real enforcement.
+      // v0.7.58 P0 — auth-keychain invariant. Export charge runs from the
+      // post-pipeline callback chain initiated by the user's Export click.
+      // Cache-only; guardQuota already gated on the cache so this branch
+      // should always have a JWT in hand. Empty cache here means the user
+      // signed out mid-run — skip charging, the pre-run gate is the real
+      // enforcement.
+      const jwt = getCachedLicenseJwt();
       if (!jwt) return false;
       let remaining: number | null = null;
       for (let i = 0; i < count; i++) {

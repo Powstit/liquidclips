@@ -24,6 +24,7 @@ import {
   type RatioKey,
 } from "../../lib/sidecar";
 import { backend, humanizeBackendError } from "../../lib/backend";
+import { requireCachedLicenseJwtOrThrow, CachedJwtUnavailableError, RECONNECT_PROMPT_COPY } from "../../lib/authStorage";
 import type { CaptionStyleKey, CaptionPalette } from "../../lib/caption-styles";
 
 /** One row in the per-clip failure ledger surfaced by every action. */
@@ -110,10 +111,17 @@ export async function scheduleClips(
     return { ok: 0, failed, channelCount: 0 };
   }
 
-  const { value: jwt } = await sidecar.licenseJwtRead();
-  if (!jwt) {
+  // v0.7.58 P0 — auth-keychain invariant. Bulk schedule is a user-click
+  // action; cache-only. Cache miss surfaces RECONNECT_PROMPT_COPY per row.
+  let jwt: string;
+  try {
+    jwt = requireCachedLicenseJwtOrThrow();
+  } catch (err) {
+    const message = err instanceof CachedJwtUnavailableError
+      ? RECONNECT_PROMPT_COPY
+      : humanError(err);
     for (const idx of idxs) {
-      failed.push({ idx, message: "sign in to Liquid Clips first" });
+      failed.push({ idx, message });
     }
     return { ok: 0, failed, channelCount: channelIds.length };
   }

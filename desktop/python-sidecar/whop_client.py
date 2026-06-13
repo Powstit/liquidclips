@@ -173,8 +173,8 @@ async def _backend_get(path: str, params: dict[str, Any] | None = None) -> dict[
     jwt_token = _license_jwt()
     if not jwt_token:
         raise RuntimeError(
-            "No license JWT in keychain — sign in to Junior via "
-            "account.jnremployee.com to activate the desktop first."
+            "No license JWT in keychain — sign in to Liquid Clips via "
+            "liquidclips.app/connect-desktop to activate the desktop first."
         )
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:

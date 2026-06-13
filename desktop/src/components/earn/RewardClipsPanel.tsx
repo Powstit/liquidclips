@@ -3,10 +3,11 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { Copy as CopyIcon, QrCode as QrCodeIcon, RotateCw } from "lucide-react";
 import {
   backend,
+  getCachedLicenseJwt,
   UnauthorizedError,
   type RewardClipBlock,
 } from "../../lib/backend";
-import { humanError, sidecar } from "../../lib/sidecar";
+import { humanError } from "../../lib/sidecar";
 import { QrCode } from "../QrCode";
 import { InfoHint } from "../InfoHint";
 
@@ -30,13 +31,17 @@ export function RewardClipsPanel() {
   const [state, setState] = useState<FetchState>({ kind: "loading" });
 
   const load = useCallback(async () => {
+    // v0.7.57 P0 — Cache-warm-only auto-load. Earn open is NOT an explicit
+    // auth action, so this loader must never call licenseJwtRead. Empty
+    // cache → render the signed-out recovery state; the user re-primes the
+    // cache by signing in.
+    const cached = getCachedLicenseJwt();
+    if (!cached) {
+      setState({ kind: "signed-out" });
+      return;
+    }
     try {
-      const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) {
-        setState({ kind: "signed-out" });
-        return;
-      }
-      const clips = await backend.rewardClips.list(jwt);
+      const clips = await backend.rewardClips.list(cached);
       setState({ kind: "ok", clips });
     } catch (e) {
       if (e instanceof UnauthorizedError) {
