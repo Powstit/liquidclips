@@ -61,7 +61,7 @@ export default async function UpgradePage({
   const planId = process.env.NEXT_PUBLIC_WHOP_CHECKOUT_PLAN_ID ?? "";
   const returnUrl =
     process.env.NEXT_PUBLIC_WHOP_RETURN_URL ??
-    "https://account.liquidclips.app/checkout/complete";
+    "https://liquidclips.app/checkout/complete";
 
   return (
     <div className="min-h-screen bg-paper">

@@ -6,3 +6,4 @@ out
 
 # Sentry — source map auth token (never commit)
 .env.sentry-build-plugin
+.vercel

@@ -1,5 +1,11 @@
-export const accountUrl = "https://account.jnremployee.com";
-export const appUrl = "https://app.jnremployee.com";
+// v0.7.57 — Clerk primary swap. Customer auth lives at the bare apex
+// (liquidclips.app/sign-in, /dashboard, /upgrade etc.) via marketing-edge
+// rewrites in next.config.ts. accountUrl + appUrl point at the apex so any
+// outbound link from marketing copy reads `liquidclips.app` end-to-end.
+// partnerUrl is owned by Whop and stays on the jnremployee domain (Whop's
+// dashboard configuration, not a Clerk-auth surface).
+export const accountUrl = "https://liquidclips.app";
+export const appUrl = "https://liquidclips.app";
 export const partnerUrl = "https://partner.jnremployee.com";
 export const supportEmail = "hello@liquidclips.app";
 

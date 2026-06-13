@@ -1,12 +1,13 @@
 {
   "name": "junior-desktop",
   "private": true,
-  "version": "0.7.56",
+  "version": "0.7.63",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test:splash": "playwright test -c playwright.splash.config.ts",
+    "test:invariant": "node --test tests/no-passive-keychain.test.mjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },

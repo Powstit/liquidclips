@@ -94,7 +94,7 @@ export default function CheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "https://account.jnremployee.com";
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://liquidclips.app";
   const returnUrl = `${origin}/get${affiliateId ? `?a=${encodeURIComponent(affiliateId)}` : ""}`;
 
   // On a completed checkout, drive the TOP window to /get ourselves. The embed's

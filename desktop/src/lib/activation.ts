@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openSmart as openExternal } from "./openSmart";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { sidecar, humanError } from "./sidecar";
+import { primeLicenseJwtCache } from "./backend";
 import { recordWhopAuthEvent } from "./whop-iframe";
 
 // ───── IRON GATE IG-004 (v0.4.21 + v0.7.x) — see desktop/docs/IRON_GATES.md ─────
@@ -22,14 +23,18 @@ import { recordWhopAuthEvent } from "./whop-iframe";
 //      sidecar, and fire onActivated so the app flips to signed-in — no restart,
 //      no JWT pasting, and only the license secret is ever touched.
 
-// v0.7.54 — moved from account.jnremployee.com → account.liquidclips.app.
-// The account-app serves both hosts; the satellite-cookie path keeps Clerk
-// auth working without a re-auth for existing users. User-facing URL bar
-// now reads liquidclips.app end-to-end. The account-app's root layout
-// still pins Clerk primary to jnremployee.com (intentional, see comment
-// there) so users may STILL see jnremployee.com briefly mid-flow until
-// that primary host is flipped in a separate sweep.
-const CONNECT_URL = "https://account.liquidclips.app/connect-desktop";
+// v0.7.57 — Clerk primary domain swapped to bare apex `liquidclips.app`
+// (was account.jnremployee.com → briefly account.liquidclips.app satellite,
+// now liquidclips.app primary). Customer auth lives at the apex via a
+// marketing-edge rewrite (`liquidclips-marketing/next.config.ts`) that
+// proxies /sign-in, /sign-up, /connect-desktop, /dashboard, /upgrade,
+// /checkout, /api/desktop/* to the account-app project. User's URL bar
+// reads liquidclips.app end-to-end; client-side Clerk JS sees
+// window.location.host === "liquidclips.app" which matches the new Clerk
+// primary, so the "satellite domain" error that broke v0.7.54-v0.7.56 is
+// gone. Do NOT flip this back to account.jnremployee.com — the legacy
+// jnremployee Clerk primary was retired at the dashboard level.
+const CONNECT_URL = "https://liquidclips.app/connect-desktop";
 const TIMEOUT_MS = 5 * 60_000; // generous — sign-up in the browser can take a while
 
 export type ActivationStatus =
@@ -153,6 +158,12 @@ async function handleDeepLink(urls: string[]): Promise<void> {
     try {
       emit({ kind: "activating" });
       await sidecar.secretSet("LICENSE_JWT", token);
+      // v0.7.57 P0 — Connect-desktop callback is one of four explicit auth
+      // actions allowed to populate the in-memory JWT cache. Priming here
+      // means every passive surface (NotificationSheet, SchedulePage rail,
+      // RewardClipsPanel, ScheduleQueue, InlineScheduler drawer) auto-loads
+      // through getCachedLicenseJwt without re-reading the OS Keychain.
+      primeLicenseJwtCache(token);
     } catch (e) {
       // Clear pendingChallenge on keychain-write failure so a retry mints a
       // FRESH challenge instead of being silently de-duped against the stale
