@@ -2080,7 +2080,7 @@ dependencies = [
 
 [[package]]
 name = "junior-desktop"
-version = "0.7.57"
+version = "0.7.64"
 dependencies = [
  "anyhow",
  "serde",

@@ -107,6 +107,17 @@ const PATTERNS = [
 
 const ALL_FILES = listSourceFiles();
 
+const MOUNT_SENSITIVE_SURFACES = [
+  "src/components/NotificationSheet.tsx",
+  "src/components/schedule/SchedulePage.tsx",
+  "src/components/earn/RewardClipsPanel.tsx",
+  "src/components/ScheduleQueue.tsx",
+  "src/components/clips-feed/InlineScheduler.tsx",
+  "src/components/earn/EarnTab.tsx",
+  "src/components/Settings.tsx",
+  "src/contracts/useBountySwipe.ts",
+];
+
 test("auth-keychain invariant: no disallowed pattern outside approved files", () => {
   const violations = [];
   for (const file of ALL_FILES) {
@@ -130,14 +141,7 @@ test("auth-keychain invariant: no disallowed pattern outside approved files", ()
 });
 
 test("mount-sensitive surfaces never call licenseJwtRead", () => {
-  const surfaces = [
-    "src/components/NotificationSheet.tsx",
-    "src/components/schedule/SchedulePage.tsx",
-    "src/components/earn/RewardClipsPanel.tsx",
-    "src/components/ScheduleQueue.tsx",
-    "src/components/clips-feed/InlineScheduler.tsx",
-  ];
-  for (const surface of surfaces) {
+  for (const surface of MOUNT_SENSITIVE_SURFACES) {
     const full = resolve(DESKTOP_ROOT, surface);
     const content = readFileSync(full, "utf8");
     const lines = nonCommentLines(content);
@@ -152,6 +156,31 @@ test("mount-sensitive surfaces never call licenseJwtRead", () => {
       );
     }
   }
+});
+
+test("passive UI surfaces never call keychain-capable Whop RPCs directly", () => {
+  const forbidden = [
+    { label: "sidecar.whopSessionStatus", regex: /sidecar\.whopSessionStatus\(/ },
+    { label: "sidecar.whopListBounties", regex: /sidecar\.whopListBounties\(/ },
+  ];
+  const violations = [];
+  for (const surface of MOUNT_SENSITIVE_SURFACES) {
+    const full = resolve(DESKTOP_ROOT, surface);
+    const content = readFileSync(full, "utf8");
+    const lines = nonCommentLines(content);
+    for (const { line, index } of lines) {
+      for (const f of forbidden) {
+        if (f.regex.test(line)) {
+          violations.push(`${surface}:${index} [${f.label}] ${line.trim()}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(
+    violations,
+    [],
+    "passive Whop RPCs found in mount-sensitive surfaces:\n" + violations.join("\n"),
+  );
 });
 
 test("mount-sensitive surfaces import cache-only auth helpers", () => {
@@ -170,6 +199,28 @@ test("mount-sensitive surfaces import cache-only auth helpers", () => {
       `${surface} does not import getCachedLicenseJwt — mount path can't gate safely`,
     );
   }
+});
+
+test("Whop passive status stays presence-only in the Python sidecar", () => {
+  const full = resolve(DESKTOP_ROOT, "python-sidecar/sidecar.py");
+  const content = readFileSync(full, "utf8");
+  const start = content.indexOf("def method_whop_session_status");
+  const end = content.indexOf("def method_whop_set_session_token", start);
+  assert.ok(start >= 0 && end > start, "method_whop_session_status block not found");
+  const block = content.slice(start, end);
+  assert.ok(
+    !/get_secret\(/.test(block),
+    "method_whop_session_status must not call get_secret() from a passive status path",
+  );
+  assert.ok(
+    !/token_source\(/.test(block),
+    "method_whop_session_status must not call token_source(); it can read keychain-backed Whop tokens",
+  );
+  assert.match(
+    block,
+    /list_known_secrets/,
+    "method_whop_session_status should use the presence mirror for passive status",
+  );
 });
 
 test("ScheduleQueue does not use polling intervals", () => {

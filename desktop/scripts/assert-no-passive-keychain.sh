@@ -45,6 +45,9 @@ EXCLUDE_GLOBS=(
   "--exclude-dir=__pycache__"
   "--exclude-dir=public"
   "--exclude=*.d.ts"
+  "--include=*.ts"
+  "--include=*.tsx"
+  "--include=*.py"
 )
 
 # Pattern set: each entry "pattern|label". A hit OUTSIDE the APPROVED
@@ -89,6 +92,45 @@ for entry in "${PATTERNS[@]}"; do
           /\**) continue ;;
           \#*) continue ;;
           \-\ *) continue ;;
+        esac
+        printf '%s:%s [%s] %s\n' "$path" "$lineno" "$label" "$trimmed" >> "$VIOLATIONS_FILE"
+      done
+done
+
+# v0.7.64 — semantic sidecar guard. The old regexes caught direct
+# licenseJwtRead/secret_get calls but missed passive UI code that called Whop
+# sidecar RPCs which then reached Python keyring. These files mount/open on
+# app launch, Earn open, Settings Account open, or passive refresh/focus paths.
+PASSIVE_UI_FILES=(
+  "src/components/NotificationSheet.tsx"
+  "src/components/schedule/SchedulePage.tsx"
+  "src/components/earn/RewardClipsPanel.tsx"
+  "src/components/ScheduleQueue.tsx"
+  "src/components/clips-feed/InlineScheduler.tsx"
+  "src/components/earn/EarnTab.tsx"
+  "src/components/Settings.tsx"
+  "src/contracts/useBountySwipe.ts"
+)
+PASSIVE_WHOP_PATTERNS=(
+  'sidecar\.whopSessionStatus\(|passive sidecar.whopSessionStatus caller'
+  'sidecar\.whopListBounties\(|passive sidecar.whopListBounties caller'
+)
+
+for entry in "${PASSIVE_WHOP_PATTERNS[@]}"; do
+  pat="${entry%%|*}"
+  label="${entry##*|}"
+  /usr/bin/grep -nE "$pat" "${PASSIVE_UI_FILES[@]}" 2>/dev/null \
+    | while IFS= read -r raw; do
+        path=$(printf '%s' "$raw" | /usr/bin/cut -d: -f1)
+        lineno=$(printf '%s' "$raw" | /usr/bin/cut -d: -f2)
+        content=$(printf '%s' "$raw" | /usr/bin/cut -d: -f3-)
+        trimmed=$(printf '%s' "$content" | /usr/bin/sed -E 's/^[[:space:]]+//')
+        case "$trimmed" in
+          //*) continue ;;
+          \*\*) continue ;;
+          \**) continue ;;
+          /\**) continue ;;
+          \#*) continue ;;
         esac
         printf '%s:%s [%s] %s\n' "$path" "$lineno" "$label" "$trimmed" >> "$VIOLATIONS_FILE"
       done

@@ -1,4 +1,4 @@
-// ship-lens v0.7.8: S1 — performSignOut now atomic-wipes every sensitive secret via performAtomicSignOutWipe (centralised in App.tsx) so handing the Mac to someone else doesn't leak OpenAI / Anthropic / Whop / Pexels / Pixabay / Giphy / onboarded keys; the Log-out confirm copy names the API-key clear explicitly. S2 — 5th left-rail tab "Connections" mounts AyrshareConnectionPanel + a per-channel status list (linked / pending_link / unlinked / error) sourced from listChannels() + whopSessionStatus(); Whop session source and Ayrshare profile-key presence both surface in the same pane. S3 — API-keys pane reads sidecar.openaiKeyStatus() on mount so the OPENAI_API_KEY green dot ALSO lights when the key is resolved via env-var (keychain empty was a silent UI lie). v0.7.7 carry-over: fix #9 meStatus discriminated union for expired sessions.
+// ship-lens v0.7.8: S1 — performSignOut now atomic-wipes every sensitive secret via performAtomicSignOutWipe (centralised in App.tsx) so handing the Mac to someone else doesn't leak OpenAI / Anthropic / Whop / Pexels / Pixabay / Giphy / onboarded keys; the Log-out confirm copy names the API-key clear explicitly. S2 — 5th left-rail tab "Connections" mounts AyrshareConnectionPanel + a per-channel status list (linked / pending_link / unlinked / error). S3 — API-keys pane reads sidecar.openaiKeyStatus() on mount so the OPENAI_API_KEY green dot ALSO lights when the key is resolved via env-var (keychain empty was a silent UI lie). v0.7.7 carry-over: fix #9 meStatus discriminated union for expired sessions.
 import { useEffect, useState } from "react";
 import { openSmart as openExternal } from "../lib/openSmart";
 // v0.7.45 — `openSmart` is used for filesystem-path opens (the "Open in
@@ -44,6 +44,8 @@ const LOG_PATH = "~/LiquidClips/projects/<slug>/.progress.json";
 // WhoAmISection also reads the union so its empty-state copy is honest.
 import { syncStatus, meStatus, meAffiliate, UnauthorizedError, type SyncStatus, type MeStatus, type MeStatusResult } from "../lib/backend";
 import { openAuthPanel } from "./auth/useAuthPanel";
+import { useActivation } from "../lib/activation";
+import { getCachedLicenseJwt } from "../lib/authStorage";
 import { applyUpdate, checkForUpdate, readLastUpdateCheck, type LastUpdateCheck, type UpdateState } from "../lib/updater";
 import { getTelemetryConsent, setTelemetryConsent } from "../lib/telemetry";
 import { resetIntroSeen } from "../lib/intro";
@@ -1233,7 +1235,8 @@ function SubscriptionAction({
 function WhoAmISection() {
   const [me, setMe] = useState<MeStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [whopSource, setWhopSource] = useState<string>("…");
+  const [desktopSession, setDesktopSession] = useState<string>("Checking…");
+  const { activate } = useActivation();
 
   useEffect(() => {
     void (async () => {
@@ -1242,12 +1245,19 @@ function WhoAmISection() {
       // here because the section's job is to print the backend's row, and
       // there's no row to print. The top-of-Settings re-activate banner
       // already nudges the user toward sign-in for both outcomes.
-      const [m, sess] = await Promise.all([
+      const cached = getCachedLicenseJwt();
+      const [m, presence] = await Promise.all([
         meStatus(),
-        sidecar.whopSessionStatus().catch(() => null),
+        sidecar.licenseJwtPresence().catch(() => ({ present: false })),
       ]);
       setMe(m.kind === "ok" ? m.data : null);
-      setWhopSource(sess?.source ?? "none");
+      setDesktopSession(
+        cached
+          ? "ready in this app session"
+          : presence.present
+          ? "saved session found — continue required"
+          : "not connected",
+      );
       setLoading(false);
     })();
   }, []);
@@ -1266,12 +1276,12 @@ function WhoAmISection() {
     return (
       <Section eyebrow="account" title="Who Liquid Clips thinks you are.">
         <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-          Couldn't reach the backend. Sign in to{" "}
+          Couldn't reach the backend. Continue your session to{" "}
           <a
-            onClick={() => openAuthPanel("sign-in")}
+            onClick={() => void activate({ via: "browser" })}
             className="cursor-pointer text-fuchsia hover:text-fuchsia-deep"
           >
-            your Liquid Clips account →
+            reconnect Liquid Clips →
           </a>
           {" "}then come back.
         </p>
@@ -1313,11 +1323,20 @@ function WhoAmISection() {
           label="Whop Content Rewards auth"
           value={
             me.whop_backend_key_configured
-              ? `backend app key · desktop session: ${whopSource}`
-              : `backend key missing — desktop session: ${whopSource}`
+              ? `backend app key · desktop session: ${desktopSession}`
+              : `backend key missing — desktop session: ${desktopSession}`
           }
         />
       </BracketFrame>
+      {desktopSession.includes("continue required") && (
+        <button
+          type="button"
+          onClick={() => void activate({ via: "browser" })}
+          className="mt-3 self-start rounded-full border border-fuchsia bg-fuchsia-soft/30 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep transition-colors hover:bg-fuchsia hover:text-paper"
+        >
+          Continue session →
+        </button>
+      )}
     </Section>
   );
 }

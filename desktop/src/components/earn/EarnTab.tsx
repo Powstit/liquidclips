@@ -55,6 +55,7 @@ import { useActivation } from "../../lib/activation";
 import { getCachedLicenseJwt } from "../../lib/authStorage";
 import { setOnUnauthorized } from "../../lib/backend";
 import { humanError, sidecar, type WhopBounty } from "../../lib/sidecar";
+import { listWhopBountiesWithCachedSession } from "../../lib/whopBounties";
 
 export type EarnTabProps = {
   onStartBounty: (bounty: WhopBounty) => void;
@@ -88,14 +89,9 @@ export function EarnTab({
   const { activate } = useActivation();
 
   const probe = useCallback(async () => {
-    // SAFE — all three calls are passive per IG-014.
-    // getCachedLicenseJwt is JS-memory only. licenseJwtPresence reads the
-    // plaintext presence-mirror file, NOT the OS Keychain. whopSessionStatus
-    // is a sidecar (Python) RPC that uses Python `keyring` — a separate
-    // keychain client identity that does NOT trigger the macOS "Liquid Clips
-    // wants to access keychain item LICENSE_JWT" prompt the way Tauri's JS
-    // secretGet would. IG-014 forbids JS-side passive keychain reads; it does
-    // NOT forbid trusting sidecar-side activation booleans.
+    // v0.7.64 — passive probe is limited to JS memory + presence mirror.
+    // Do not call Whop sidecar status here: it used to reach Python keyring
+    // through get_secret("LICENSE_JWT") and prompt macOS on Earn open/focus.
     const cached = getCachedLicenseJwt();
     if (cached) {
       setAuth({ kind: "ready" });
@@ -111,29 +107,6 @@ export function EarnTab({
     if (!present) {
       setAuth({ kind: "signed-out" });
       return;
-    }
-    // v0.7.63 — old-Earn readiness model restored.
-    //
-    // Pre-v0.7.63 this branch unconditionally set `refresh-needed` and forced
-    // the user through Refresh Session → browser → Clerk → deep-link on every
-    // cold launch, even when a valid LICENSE_JWT was sitting in the keychain
-    // from the previous session. The OLD working Earn (≤ 73d1a2c~1) avoided
-    // that loop by trusting the sidecar's activation status directly — the
-    // bounty list and AffiliateHero data path goes sidecar → backend proxy,
-    // so a JS-visible JWT is not required to render the data UI.
-    //
-    // Restore that behaviour: if the sidecar confirms `junior_activated`,
-    // flip to "ready" without insisting on the JS cache being primed. The
-    // user still gets the Refresh banner if the sidecar says NOT activated
-    // (or if the call fails — recoverable, manual path stays available).
-    try {
-      const s = await sidecar.whopSessionStatus();
-      if (s?.junior_activated) {
-        setAuth({ kind: "ready" });
-        return;
-      }
-    } catch {
-      /* sidecar unreachable — fall through to refresh-needed banner */
     }
     setAuth({ kind: "refresh-needed" });
   }, []);
@@ -187,7 +160,7 @@ export function EarnTab({
             data-testid="earn-surface-marker"
             className="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia"
           >
-            EARN SURFACE: native EarnTab v0.7.63
+            EARN SURFACE: native EarnTab v0.7.64
           </div>
 
           {/* State-aware banner. Single source of truth for the top CTA. */}
@@ -266,12 +239,13 @@ function SignInBanner({ onSignIn }: { onSignIn: () => void }) {
 function RefreshSessionBanner({ onRefresh }: { onRefresh: () => void }) {
   return (
     <BannerShell tone="soft" testId="earn-banner-refresh">
-      <BannerEyebrow>refresh session</BannerEyebrow>
-      <BannerTitle>Refresh your session to load earnings.</BannerTitle>
+      <BannerEyebrow>continue session</BannerEyebrow>
+      <BannerTitle>Continue your session to load earnings.</BannerTitle>
       <BannerBody>
-        This confirms your account for this app session — takes a second.
+        This is a user-clicked auth check, so macOS will never be asked before
+        you choose to continue.
       </BannerBody>
-      <BannerCta onClick={onRefresh}>Refresh session →</BannerCta>
+      <BannerCta onClick={onRefresh}>Continue session →</BannerCta>
     </BannerShell>
   );
 }
@@ -380,7 +354,7 @@ function BountySection({
     if (auth.kind !== "ready") return; // gated by parent — don't fetch
     setData({ kind: "loading" });
     try {
-      const r = await sidecar.whopListBounties(30);
+      const r = await listWhopBountiesWithCachedSession(30);
       if (!r.authenticated) {
         setData({ kind: "unauthenticated-whop" });
         return;
@@ -422,9 +396,9 @@ function BountySection({
       {auth.kind === "refresh-needed" && (
         <FallbackCard
           eyebrow="locked"
-          title="Refresh your session to see live bounties."
-          body="One click and Liquid Clips will reload your campaigns and your bounty list."
-          ctaLabel="Refresh session →"
+          title="Continue your session to load earnings."
+          body="Sponsored campaigns stay visible. Live bounties load after you choose to continue."
+          ctaLabel="Continue session →"
           onCta={onSignIn}
         />
       )}
