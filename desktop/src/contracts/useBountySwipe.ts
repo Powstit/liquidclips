@@ -5,7 +5,8 @@
 // in v0.7.14.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { sidecar, humanError, type WhopBounty } from "../lib/sidecar";
+import { humanError, type WhopBounty } from "../lib/sidecar";
+import { listWhopBountiesWithCachedSession } from "../lib/whopBounties";
 
 const SAVED_KEY = "lc:bounty-swipe:saved-ids:v1";
 const SKIPPED_KEY = "lc:bounty-swipe:skipped-ids:v1";
@@ -58,7 +59,7 @@ export function useBountySwipe(): UseBountySwipeResult {
     setLoading(true);
     setError(null);
     try {
-      const r = await sidecar.whopListBounties(30);
+      const r = await listWhopBountiesWithCachedSession(30);
       if (cancelledRef.current) return;
       if (r.error) {
         setError(r.error);

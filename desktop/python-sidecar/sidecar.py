@@ -47,7 +47,7 @@ sys.dont_write_bytecode = True
 from project import CLIPS_HOME, Project
 import stages
 
-VERSION = "0.7.56"  # tracked to desktop app version — surfaces in startup log + method_ping
+VERSION = "0.7.64"  # tracked to desktop app version — surfaces in startup log + method_ping
 
 _HTTPS_CONTEXT: ssl.SSLContext | None = None
 
@@ -3420,8 +3420,15 @@ def method_whop_list_bounties(params: dict[str, Any]) -> dict[str, Any]:
     # publicBounties query has a hard complexity ceiling, so Earn should never
     # request a giant pool from the packaged sidecar.
     first = max(1, min(int(params.get("first") or 25), 25))
+    license_jwt = params.get("license_jwt")
+    if not isinstance(license_jwt, str) or not license_jwt.strip():
+        return {
+            "bounties": [],
+            "authenticated": False,
+            "error": "Continue your session to load earnings.",
+        }
     try:
-        bounties = asyncio.run(whop_client.list_bounties(first=first))
+        bounties = asyncio.run(whop_client.list_bounties(first=first, license_jwt=license_jwt))
         return {"bounties": bounties, "authenticated": True}
     except Exception as e:
         # Surface the backend's reason so EarnTab can show the manual paste
@@ -3439,10 +3446,13 @@ def method_whop_bounty(params: dict[str, Any]) -> dict[str, Any]:
     import asyncio
     import whop_client
     bounty_id = params.get("id")
+    license_jwt = params.get("license_jwt")
     if not isinstance(bounty_id, str) or not bounty_id:
         raise ValueError("whop_bounty requires id (str)")
+    if not isinstance(license_jwt, str) or not license_jwt.strip():
+        return {"bounty": None, "authenticated": False, "error": "Continue your session to load earnings."}
     try:
-        bounty = asyncio.run(whop_client.get_bounty(bounty_id))
+        bounty = asyncio.run(whop_client.get_bounty(bounty_id, license_jwt=license_jwt))
         return {"bounty": bounty, "authenticated": True}
     except Exception as e:
         return {"bounty": None, "authenticated": False, "error": str(e)}
@@ -3453,10 +3463,13 @@ def method_whop_submission(params: dict[str, Any]) -> dict[str, Any]:
     import asyncio
     import whop_client
     submission_id = params.get("id")
+    license_jwt = params.get("license_jwt")
     if not isinstance(submission_id, str) or not submission_id:
         raise ValueError("whop_submission requires id (str)")
+    if not isinstance(license_jwt, str) or not license_jwt.strip():
+        return {"submission": None, "authenticated": False, "error": "Continue your session to load earnings."}
     try:
-        submission = asyncio.run(whop_client.get_submission(submission_id))
+        submission = asyncio.run(whop_client.get_submission(submission_id, license_jwt=license_jwt))
         return {"submission": submission, "authenticated": True}
     except Exception as e:
         return {"submission": None, "authenticated": False, "error": str(e)}
@@ -3476,12 +3489,19 @@ def method_whop_session_status(_params: dict[str, Any]) -> dict[str, Any]:
       - source: legacy field == whop_desktop_oauth_source.
     """
     import whop_client
-    try:
-        from secrets_store import get_secret
-        has_license = bool(get_secret("LICENSE_JWT"))
-    except Exception:
-        has_license = False
-    source = whop_client.token_source()
+    from secrets_store import list_known_secrets
+    presence = list_known_secrets()
+    has_license = bool(presence.get("LICENSE_JWT", False))
+    if whop_client.has_session_token():
+        source = "iframe"
+    elif os.environ.get("WHOP_USER_TOKEN"):
+        source = "env_user"
+    elif bool(presence.get("JUNIOR_WHOP_TOKEN", False)):
+        source = "keychain"
+    elif os.environ.get("JUNIOR_DEV") == "1" and os.environ.get("WHOP_API_KEY"):
+        source = "seller_key"
+    else:
+        source = "none"
     return {
         "junior_activated": has_license,
         "whop_desktop_oauth_source": source,

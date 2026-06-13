@@ -1023,10 +1023,10 @@ export const sidecar = {
     sidecarCall<{ ok: true; authenticated: boolean }>("whop_set_session_token", { token }),
   whopClearSessionToken: () =>
     sidecarCall<{ ok: true }>("whop_clear_session_token"),
-  whopListBounties: (first = 30) =>
+  whopListBounties: (first = 30, licenseJwt?: string) =>
     sidecarCall<{ bounties: WhopBounty[]; authenticated: boolean; error?: string }>(
       "whop_list_bounties",
-      { first },
+      { first, ...(licenseJwt ? { license_jwt: licenseJwt } : {}) },
     ),
   whopBounty: (id: string) =>
     sidecarCall<{ bounty: WhopBounty | null; authenticated: boolean; error?: string }>(
