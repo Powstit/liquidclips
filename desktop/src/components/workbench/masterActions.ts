@@ -19,6 +19,7 @@
 
 import { sidecar, type Project, type Clip } from "../../lib/sidecar";
 import { backend, humanizeBackendError } from "../../lib/backend";
+import { requireCachedLicenseJwtOrThrow, CachedJwtUnavailableError, RECONNECT_PROMPT_COPY } from "../../lib/authStorage";
 import { globalWaitForBake } from "../../lib/useGlobalBakeEvents";
 import type { MasterAction, MasterActionResult, WindowId } from "./types";
 
@@ -185,12 +186,16 @@ export async function fanOut(
             });
             break;
           }
-          const { value: jwt } = await sidecar.licenseJwtRead();
-          if (!jwt) {
+          // v0.7.58 P0 — auth-keychain invariant. Bulk schedule action is
+          // a user click; cache-only. Cache miss = RECONNECT_PROMPT_COPY.
+          let jwt: string;
+          try {
+            jwt = requireCachedLicenseJwtOrThrow();
+          } catch (err) {
             failed.push({
               id,
               clipIdx: win.clipIdx,
-              reason: "sign in to Liquid Clips first",
+              reason: err instanceof CachedJwtUnavailableError ? RECONNECT_PROMPT_COPY : String(err),
             });
             break;
           }

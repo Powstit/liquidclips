@@ -479,6 +479,56 @@ Daniel set this up on 2026-06-02 and explicitly flagged that future agents (incl
 
 ---
 
+## IG-014 — Auth-Keychain Invariant (no passive Keychain reads)
+
+**Locked at:** v0.7.58
+**Canonical doc:** `desktop/docs/auth-keychain-invariant.md`
+**Files (the only files allowed to contain Keychain-capable patterns):**
+- `desktop/src/lib/authStorage.ts` — central module + dev-mode runtime guard.
+- `desktop/src/lib/activation.ts` — Connect-desktop callback (the one allowed write site for LICENSE_JWT under the new namespace).
+- `desktop/src/lib/sidecar.ts` — the RPC wrapper definition (never invoked passively).
+- `desktop/python-sidecar/secrets_store.py` — keychain dispatch + namespace split.
+- `desktop/python-sidecar/sidecar.py` — the `method_secret_*` handlers.
+- `desktop/python-sidecar/whop_client.py` — calls `_license_jwt()` from the explicit Whop activation surface.
+- `desktop/scripts/assert-no-passive-keychain.sh` — pre-commit gate.
+- `desktop/tests/no-passive-keychain.test.mjs` — static-assertion fixture.
+- `desktop/docs/auth-keychain-invariant.md` — canonical statement.
+- `desktop/docs/IRON_GATES.md` — gate registry (this file).
+- `CLAUDE.md` (repo root) — agent guide that references the invariant.
+- `desktop/src/components/NotificationBell.tsx` — JSDoc-only references to the prior pattern.
+
+**Why it exists:**
+macOS Keychain ACLs key on the signed-binary identity. Every release build produces a fresh signature, so the first time a rebuilt binary touches an item written by a prior binary, macOS prompts for the user's login password. Pre-v0.7.58 the desktop called `sidecar.licenseJwtRead()` from boot, mount, drawer-open, polling, focus, visibilitychange, AND every user submit handler — boot alone could stack ~10 prompts. Users perceived the app as broken / untrustworthy. Daniel's v0.7.58 directive: "Make this impossible to regress."
+
+**What survived the loop:**
+1. **Central `authStorage.ts` module.** Single source of truth. Exports `getCachedLicenseJwt` (safe sync accessor), `licenseJwtPresence` (presence-file mirror, no keychain), `requireCachedLicenseJwtOrThrow` + `CachedJwtUnavailableError` (safe sync accessor that throws when the cache is empty so submit handlers can surface `RECONNECT_PROMPT_COPY` inline), `primeLicenseJwtCache` / `invalidateLicenseJwtCache` (auth-action-only), and `readLicenseJwtForAuthAction({ explicitAuthAction: true, callerLabel })` (the ONE path that touches Keychain; dev-mode runtime guard throws on `explicitAuthAction !== true`).
+2. **Keychain SERVICE namespace split.** `LICENSE_JWT` lives under `app.liquidclips.auth.v1`. BYO API keys + onboarding flag stay under `app.liquidclips.desktop`. Dispatch in `secrets_store.py::_service_for`. `delete_secret("LICENSE_JWT")` strips BOTH the new namespace AND the legacy slot so explicit sign-out / reset cleans up after itself.
+3. **`scripts/assert-no-passive-keychain.sh` pre-commit gate.** Blocks any commit that re-introduces `licenseJwtRead(` / `allowKeychainRead: true` / `sidecar.secretGet` / `method_secret_get` / `keyring.get_password.*LICENSE_JWT` / `account.jnremployee.com` outside the approved-auth-files list. Pre-commit hook at `.githooks/pre-commit` runs the script with `cwd=desktop/`. No bypass.
+4. **`tests/no-passive-keychain.test.mjs` static-assertion fixture.** Runs as `npm run test:invariant`. Seven assertions: (a) no disallowed pattern outside approved files, (b) the five mount-sensitive surfaces never call `licenseJwtRead`, (c) those surfaces import `getCachedLicenseJwt`, (d) `ScheduleQueue` carries no polling intervals, (e) no `account.jnremployee.com` outside approved files, (f) `LICENSE_JWT` is namespaced under `app.liquidclips.auth.v1`, (g) `authStorage` exports the full safe-accessor surface.
+5. **Dev-mode runtime guard inside `readLicenseJwtForAuthAction`.** When `import.meta.env.DEV === true`, throws if `explicitAuthAction !== true`. Also logs `{ method, keyName, serviceNamespace, callerLabel, explicitAuthAction }` to the console so a regression is loud during local development.
+6. **Five-and-only-five allowed auth actions:** Sign in, Sign out, Reconnect account, Connect-desktop callback, Explicit "Reset login session". All other code paths use the cache.
+7. **`scripts/assert-no-passive-keychain.sh` portable to macOS bash 3.2.** No `mapfile`, no associative arrays — uses POSIX while-read loops and a temp-file violation accumulator.
+8. **No `useVisibilityInterval` / `setInterval` polling in `ScheduleQueue.tsx`.** Polling was the second-largest source of passive Keychain reads after mount. Removed entirely; manual refresh via the existing retry button (cache-only).
+9. **User-facing copy.** The reconnect string is canonical: `RECONNECT_PROMPT_COPY = "Please sign in again to reconnect your account."` Surfaces import this from `authStorage`; do not paraphrase. The legacy `account.jnremployee.com` URL was scrubbed from `whop_client.py:177` — the only user-visible occurrence outside the partner-dashboard CTA.
+
+**Do NOT:**
+- Add a new direct `sidecar.licenseJwtRead()` caller in any unapproved file. Pre-commit + test fixture will block the commit.
+- Pass `allowKeychainRead: true` to anything. That flag has been removed from `authedFetch`'s signature; reintroducing it is a regression.
+- Re-introduce `useVisibilityInterval` or any polling pattern that calls `void load()` — the queue refresh contract is "manual only."
+- Read the legacy `app.liquidclips.desktop` namespace for `LICENSE_JWT` from any code path. Legacy items stay orphaned until the user explicitly signs out / resets.
+- Rename the SERVICE constants (`SERVICE_AUTH`, `SERVICE_BYO`, `SERVICE_AUTH_LEGACY`) without coordinating across every approved file. The pre-commit gate and the test fixture both name them.
+- Bypass the dev-mode runtime guard by passing a literal `true` from a passive caller. The `callerLabel` is logged; a CI run will surface the regression.
+
+**Do:**
+- For mount / drawer-open / poll-free refresh paths: call `getCachedLicenseJwt()`. Empty → render reconnect UI using `RECONNECT_PROMPT_COPY`.
+- For submit / action / row-click paths: call `requireCachedLicenseJwtOrThrow()`. Catch `CachedJwtUnavailableError` and surface `err.message` inline (toast, banner, or per-row chip).
+- If adding a new sixth-allowed auth action: discuss with Daniel first. If green-lit, add the file to the approved list in BOTH `scripts/assert-no-passive-keychain.sh` AND `tests/no-passive-keychain.test.mjs` in the same commit, and use `readLicenseJwtForAuthAction({ explicitAuthAction: true, callerLabel: "auth.<flow>" })`.
+- Update `desktop/docs/auth-keychain-invariant.md` whenever the approved list changes — the doc is the canonical statement that the gate enforces.
+
+**Sign-off:** Daniel 2026-06-13 (v0.7.58 — quoted instruction: "Make this impossible to regress. This Keychain bug must become a permanent repo invariant, not something we 'remember'." Locked so the desktop's "10 password prompts at boot" failure mode can't re-emerge through a future refactor.)
+
+---
+
 ## Adding a new gate
 
 1. Pick the next free `IG-NNN`.

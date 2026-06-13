@@ -24,7 +24,7 @@ import { DirectPublishQueue } from "../upload/DirectPublishQueue";
 import { LocalQueue } from "../upload/LocalQueue";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
 import * as backend from "../../lib/backend";
-import { socialGetConnectionStrict, type SocialConnectionState, type ConnectionPlatform } from "../../lib/backend";
+import { getCachedLicenseJwt, socialGetConnectionStrict, type SocialConnectionState, type ConnectionPlatform } from "../../lib/backend";
 import { PUBLISHING_ENABLED } from "../../lib/flags";
 import { sidecar, type Project } from "../../lib/sidecar";
 
@@ -78,17 +78,29 @@ export function SchedulePage({
 
   // Hydrate the connected-platforms rail. Mirrors UploadTab's pattern:
   // require a license JWT, then fetch the Ayrshare connection state.
+  //
+  // v0.7.57 P0 — Cache-warm-only auto-load. SchedulePage open is NOT an
+  // explicit auth action, so this effect must never call licenseJwtRead.
+  // If the JWT cache is empty, fall back to the presence file (no keychain)
+  // and render the rail's "sign in to view" recovery state.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      try {
-        const { value: jwt } = await sidecar.licenseJwtRead();
-        if (cancelled) return;
-        if (!jwt) {
-          setAuthed(false);
-          return;
+      const cached = getCachedLicenseJwt();
+      if (!cached) {
+        let present = false;
+        try {
+          ({ present } = await sidecar.licenseJwtPresence());
+        } catch {
+          present = false;
         }
-        setAuthed(true);
+        if (cancelled) return;
+        setAuthed(present);
+        setConnection(null);
+        return;
+      }
+      if (!cancelled) setAuthed(true);
+      try {
         const state = await socialGetConnectionStrict();
         if (!cancelled) setConnection(state === "no-connection" ? null : state);
       } catch {

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useVisibilityInterval } from "../lib/useVisibilityInterval";
 import { openSmart as openExternal } from "../lib/openSmart";
 import { RefreshCw } from "lucide-react";
 import { backend, type ScheduleDto } from "../lib/backend";
+import { getCachedLicenseJwt, requireCachedLicenseJwtOrThrow } from "../lib/authStorage";
 import { sidecar, humanError } from "../lib/sidecar";
 import { PlatformIcon, type PlatformId } from "./PlatformIcon";
 import { HudChip } from "./cockpit/HudChip";
@@ -105,9 +105,9 @@ export function ScheduleQueue() {
   const [lastSuccessfulLoad, setLastSuccessfulLoad] = useState<number | null>(null);
   /** Per-row inline retry indicator after a cancel failure. */
   const [cancelError, setCancelError] = useState<Record<string, string>>({});
-  /** Tick once a minute so the "showing cached data" caption keeps updating
-   *  even when the network is wedged and refreshes never succeed. */
-  const [, setTick] = useState(0);
+  // v0.7.57 P0 — Minute-tick state retired alongside the visibility-poll
+  // that drove it. The "X ago" caption now refreshes only on user-triggered
+  // re-renders (Cancel / Retry / re-mount) which is honest about staleness.
   // Branded confirm replaces window.confirm() — the native dialog blocked
   // the Tauri webview thread on cancel and broke the cockpit voice.
   const [confirmCancelRow, setConfirmCancelRow] = useState<ScheduleDto | null>(null);
@@ -116,16 +116,27 @@ export function ScheduleQueue() {
   const loadGen = useRef(0);
   const load = useCallback(async () => {
     const myGen = ++loadGen.current;
-    try {
-      const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) {
-        if (loadGen.current !== myGen) return;
-        setError(
-          "Sign in to Liquid Clips to see your queue — use the Sign in button in the top bar.",
-        );
-        return;
+    // v0.7.57 P0 — Cache-warm-only auto-load. Queue load is NOT an explicit
+    // auth action; it must never call licenseJwtRead. Empty cache → render
+    // the recovery state; the user re-primes the cache by signing in.
+    const cached = getCachedLicenseJwt();
+    if (!cached) {
+      if (loadGen.current !== myGen) return;
+      let present = false;
+      try {
+        ({ present } = await sidecar.licenseJwtPresence());
+      } catch {
+        present = false;
       }
-      const list = await backend.schedules.list(jwt, { limit: 100 });
+      setError(
+        present
+          ? "Please sign in again to see your queue — use the Sign in button in the top bar."
+          : "Sign in to Liquid Clips to see your queue — use the Sign in button in the top bar.",
+      );
+      return;
+    }
+    try {
+      const list = await backend.schedules.list(cached, { limit: 100 });
       if (loadGen.current !== myGen) return;
       // Sort by scheduled time ascending so the queue reads chronologically.
       const sorted = [...list].sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime());
@@ -139,31 +150,23 @@ export function ScheduleQueue() {
     }
   }, []);
 
-  // v0.7.48 — Visibility-aware polling: pauses when user switches tabs
-  // so background tabs don't burn CPU on refreshes they can't see.
+  // v0.7.57 P0 — Polling removed entirely. Per Daniel's directive: no 30 s
+  // polling, no visibility polling — manual refresh only via the inline
+  // retry button (success path: user navigates away and back to re-mount).
   useEffect(() => { void load(); }, [load]);
-  useVisibilityInterval(() => void load(), 30_000);
-
-  // Re-render the "X ago" caption once a minute so stale-data warnings
-  // don't lie about how stale the data is.
-  // v0.7.48 — Visibility-aware tick: pauses in background tabs.
-  useVisibilityInterval(() => setTick((t) => t + 1), 60_000);
 
   function cancel(row: ScheduleDto) {
     setConfirmCancelRow(row);
   }
 
+  // v0.7.58 P0 — auth-keychain invariant. Cancel + Retry are row-click
+  // actions, not auth actions; they must use the in-memory cache only.
+  // requireCachedLicenseJwtOrThrow surfaces RECONNECT_PROMPT_COPY directly
+  // via the caught error message.
   async function performCancel(row: ScheduleDto) {
-    // Whole body wrapped in try/catch so a backend reject, JWT read failure,
-    // or network blip surfaces as a per-row error chip instead of an
-    // unhandled rejection.
     setCancelBusy(true);
     try {
-      const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) {
-        setCancelError((cur) => ({ ...cur, [row.id]: "Sign in to cancel scheduled posts." }));
-        return;
-      }
+      const jwt = requireCachedLicenseJwtOrThrow();
       await backend.schedules.cancel(jwt, row.id);
       setCancelError((cur) => {
         const next = { ...cur };
@@ -183,11 +186,7 @@ export function ScheduleQueue() {
   async function retry(row: ScheduleDto) {
     setRetrying((s) => new Set(s).add(row.id));
     try {
-      const { value: jwt } = await sidecar.licenseJwtRead();
-      if (!jwt) {
-        setCancelError((cur) => ({ ...cur, [row.id]: "Sign in to retry failed posts." }));
-        return;
-      }
+      const jwt = requireCachedLicenseJwtOrThrow();
       await backend.schedules.retry(jwt, row.id);
       void load();
     } catch (e) {
