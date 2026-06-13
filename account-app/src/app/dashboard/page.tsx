@@ -18,7 +18,7 @@ const FALLBACK_AFFILIATE: AffiliateData = {
   partner_dashboard_url: "https://partner.jnremployee.com",
   payout_provider: "stripe_connect",
   payout_status: "setup_required",
-  payout_setup_url: "https://account.jnremployee.com/dashboard#payouts",
+  payout_setup_url: "https://liquidclips.app/dashboard#payouts",
 };
 
 const FALLBACK_PAYMENTS: PaymentVisibility = {
@@ -27,7 +27,7 @@ const FALLBACK_PAYMENTS: PaymentVisibility = {
     label: "Liquid Clips subscription",
     provider: "Stripe via Clerk",
     status: "unknown",
-    manage_url: "https://account.jnremployee.com/dashboard",
+    manage_url: "https://liquidclips.app/dashboard",
     helper: "Manage your app plan and payment method from your Liquid Clips account.",
     in_app: true,
   },
@@ -45,7 +45,7 @@ const FALLBACK_PAYMENTS: PaymentVisibility = {
     label: "Affiliate commissions",
     provider: "Stripe Connect",
     status: "setup_required",
-    manage_url: "https://account.jnremployee.com/dashboard#payouts",
+    manage_url: "https://liquidclips.app/dashboard#payouts",
     helper: "No Whop affiliate account is linked. Set up Stripe Connect so Liquid Clips can pay affiliate commissions directly.",
     in_app: false,
   },
