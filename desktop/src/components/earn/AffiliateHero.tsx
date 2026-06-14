@@ -268,7 +268,7 @@ function SignedOutCard({ onSignIn }: { onSignIn?: () => void }) {
     <Shell>
       <Eyebrow>your referral business</Eyebrow>
       <h2 className="mt-2 font-display text-[22px] font-semibold leading-tight tracking-[-0.02em] text-ink">
-        Activate Liquid Clips to see your earnings.
+        Sign in to Liquid Clips to see your earnings.
       </h2>
       <p className="mt-1 max-w-[520px] font-sans text-[13px] leading-relaxed text-text-secondary">
         Solo+ subscribers earn 50% recurring on every customer they refer.
@@ -277,9 +277,9 @@ function SignedOutCard({ onSignIn }: { onSignIn?: () => void }) {
       {onSignIn && (
         <button
           onClick={onSignIn}
-          className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+          className="btn-primary mt-4"
         >
-          Sign in →
+          Sign in to Liquid Clips →
         </button>
       )}
     </Shell>
@@ -300,7 +300,7 @@ function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void 
       </p>
       <button
         onClick={onRetry}
-        className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
+        className="btn-secondary mt-3"
       >
         <RotateCw className="h-3.5 w-3.5" strokeWidth={2} />
         Retry
@@ -364,13 +364,13 @@ function TrialCard({ customer }: { customer: AffiliateCustomer }) {
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
           onClick={() => void safeOpen("https://account.liquidclips.app/upgrade", setOpenError)}
-          className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+          className="btn-primary"
         >
           See plans →
         </button>
         <button
           onClick={() => void safeOpen("https://liquidclips.app/refer", setOpenError)}
-          className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
+          className="btn-secondary"
         >
           How the referral program works ↗
         </button>
@@ -401,15 +401,15 @@ function LapsedCard({ customer: _customer }: { customer: AffiliateCustomer }) {
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
           onClick={() => void safeOpen("https://account.liquidclips.app/upgrade", setOpenError)}
-          className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+          className="btn-primary"
         >
           Reactivate →
         </button>
         <button
-          // v0.7.54 P1-002 — partner.liquidclips.app is not live yet; keep
-// jnremployee.com for this one CTA until the partner sub-domain ships.
-onClick={() => void safeOpen("https://partner.jnremployee.com", setOpenError)}
-          className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
+          // v0.7.68 — partner.liquidclips.app is the canonical partner
+// dashboard domain; account-app already uses it as its fallback.
+onClick={() => void safeOpen("https://partner.liquidclips.app", setOpenError)}
+          className="btn-secondary"
         >
           <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
           Open partner dashboard
@@ -486,14 +486,14 @@ function WhopFetchFailedCard({
           disabled={locked}
           aria-disabled={locked}
           title={locked ? "Server still down — please wait" : undefined}
-          className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep disabled:cursor-not-allowed disabled:opacity-50"
+          className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"
         >
           <RotateCw className="h-3.5 w-3.5" strokeWidth={2} />
           Retry
         </button>
         <button
           onClick={() => void safeOpen(setupUrl, setOpenError)}
-          className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
+          className="btn-primary"
         >
           {stripeConnect ? "Set up Stripe Connect" : "Open partner dashboard"}
           <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
@@ -609,8 +609,8 @@ function Dashboard({
             <span className="text-ink">Payment past due</span> &mdash; earnings paused until your card is fixed.
           </p>
           <button
-            onClick={() => void safeOpen("https://account.liquidclips.app/billing", setOpenError)}
-            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-3.5 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
+            onClick={() => void safeOpen("https://account.liquidclips.app/dashboard", setOpenError)}
+            className="btn-primary px-3.5 py-1.5 text-[12px]"
           >
             Fix payment →
           </button>
@@ -636,7 +636,7 @@ function Dashboard({
                 setOpenError,
               )
             }
-            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-3.5 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+            className="btn-primary px-3.5 py-1.5 text-[12px]"
           >
             Connect Stripe →
           </button>
@@ -726,7 +726,7 @@ function Dashboard({
                 setOpenError,
               )
             }
-            className="inline-flex items-center gap-1.5 font-sans text-[12px] font-medium text-text-secondary hover:text-fuchsia-deep"
+            className="btn-ghost gap-1.5 px-2 py-1 text-[12px]"
           >
             {affiliate.payout_provider === "stripe_connect"
               ? "Manage Stripe payouts"

@@ -16,24 +16,47 @@
 //   • Non-Whop exports
 //   • Pure LC surfaces
 
+import { openSmart } from "../lib/openSmart";
+
 export function PoweredByWhop({
   size = "sm",
   className = "",
+  onClick = () => openSmart("https://whop.com/liquidclips/"),
 }: {
   size?: "xs" | "sm";
   className?: string;
+  /** Option A — clickable attribution. Omit to render non-interactive. */
+  onClick?: (() => void) | null;
 }) {
   const textSize = size === "xs" ? "text-[9px]" : "text-[10px]";
   const iconSize = size === "xs" ? 10 : 12;
-  return (
-    <span
-      className={`inline-flex items-center gap-1 font-mono ${textSize} uppercase tracking-[0.14em] text-text-tertiary ${className}`}
-      aria-label="Powered by Whop"
-    >
+  const body = (
+    <>
       powered by
       <WhopMark size={iconSize} />
       whop
-    </span>
+    </>
+  );
+  if (!onClick) {
+    // Powered-by attribution, intentionally non-interactive.
+    return (
+      <span
+        className={`inline-flex items-center gap-1 font-mono ${textSize} uppercase tracking-[0.14em] text-text-tertiary ${className}`}
+        aria-label="Powered by Whop"
+      >
+        {body}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex cursor-pointer items-center gap-1 font-mono ${textSize} uppercase tracking-[0.14em] text-text-tertiary transition-colors hover:text-ink ${className}`}
+      aria-label="Powered by Whop"
+    >
+      {body}
+    </button>
   );
 }
 

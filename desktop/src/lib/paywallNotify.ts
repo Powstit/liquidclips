@@ -80,7 +80,9 @@ const FEATURE_COPY: Record<
  * notification into the backend inbox so serious clippers see a
  * persistent, actionable upgrade prompt instead of a silent block.
  *
- * Call this right before openAuthPanel("upgrade") at every feature gate.
+ * Call this right before openUpgradeWhenSignedIn() at every feature gate.
+ * Do not call openAuthPanel("upgrade") directly — that can strand signed-out
+ * users in a web-only paywall.
  */
 export async function notifyPaywall(
   feature: PaywallFeature,

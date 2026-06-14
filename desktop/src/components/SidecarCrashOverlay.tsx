@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { relaunch } from "@tauri-apps/plugin-process";
-import invaderSrc from "../assets/icons/connections/library-bug.png";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { openSmart as openExternal } from "../lib/openSmart";
 
 // ──────────────────────────────────────────────────────────────────────
 // SidecarCrashOverlay
@@ -11,12 +12,8 @@ import invaderSrc from "../assets/icons/connections/library-bug.png";
 // transcribe, cut, reframe, or read projects. So instead of letting the
 // user keep clicking inert buttons we surface a clear, single moment:
 //
-//   "Liquid Clips needs to restart."
-//   Restart Liquid Clips (primary) | Try to continue (secondary)
-//
-// "Try to continue" is intentional — the user may have an in-progress
-// preview/playback that doesn't need RPC and we don't want to bulldoze
-// them. They get reduced functionality until they restart manually.
+//   "We lost connection to the engine."
+//   Retry / Restart Liquid Clips / Email support
 //
 // Wiring: this component listens for the `subscribeSidecarDied` event
 // being added (in parallel by another agent) to `lib/sidecar.ts`. It
@@ -29,6 +26,9 @@ import invaderSrc from "../assets/icons/connections/library-bug.png";
 // host. Zero props.
 // ──────────────────────────────────────────────────────────────────────
 
+const SUPPORT_EMAIL = "hello@liquidclips.app";
+const SUPPORT_SUBJECT = "Liquid Clips engine connection lost";
+
 type CrashEvent = {
   exit_code?: number | null;
   recovered?: boolean;
@@ -38,6 +38,7 @@ export function SidecarCrashOverlay() {
   const [crashed, setCrashed] = useState<CrashEvent | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const [emailFallback, setEmailFallback] = useState(false);
   const restartBtnRef = useRef<HTMLButtonElement | null>(null);
   const headlineId = useId();
 
@@ -102,9 +103,9 @@ export function SidecarCrashOverlay() {
     return () => window.clearTimeout(id);
   }, [visible]);
 
-  // Keyboard: Esc → "Try to continue" (matches secondary button); Enter or
-  // Cmd-R → Restart. Captured at the window level so the overlay is the
-  // top-priority shortcut target while it's mounted.
+  // Keyboard: Esc → dismiss; Enter or Cmd-R → Restart. Captured at the
+  // window level so the overlay is the top-priority shortcut target while
+  // it's mounted.
   useEffect(() => {
     if (!visible) return;
     function onKey(e: KeyboardEvent) {
@@ -152,11 +153,34 @@ export function SidecarCrashOverlay() {
     });
   }
 
-  if (!visible) return null;
+  async function onEmailSupport() {
+    const body = encodeURIComponent(
+      "What were you doing when this happened?\n\n\n" +
+        "--- context (please keep) ---\n" +
+        `Exit code: ${crashed?.exit_code ?? "unknown"}\n`,
+    );
+    const mailtoUrl = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(SUPPORT_SUBJECT)}&body=${body}`;
 
-  const exitCode = crashed?.exit_code;
-  const exitCodeLabel =
-    exitCode === undefined || exitCode === null ? "unknown" : String(exitCode);
+    try {
+      await openExternal(mailtoUrl);
+    } catch {
+      const fallback = [
+        SUPPORT_EMAIL,
+        `Subject: ${SUPPORT_SUBJECT}`,
+        "",
+        decodeURIComponent(body).replace(/\+/g, " "),
+      ].join("\n");
+      try {
+        await writeText(fallback);
+        setEmailFallback(true);
+        window.setTimeout(() => setEmailFallback(false), 4000);
+      } catch {
+        /* silent */
+      }
+    }
+  }
+
+  if (!visible) return null;
 
   return (
     <div
@@ -165,32 +189,24 @@ export function SidecarCrashOverlay() {
       aria-labelledby={headlineId}
       className="fixed inset-0 z-[300] grid place-items-center"
     >
-      {/* Backdrop — paper at 80% opacity, blur for depth. Click does NOT
-          dismiss; the user must make an explicit choice. */}
+      {/* Backdrop — paper base with optional offline atmosphere plate.
+          If `src/assets/atmospheres/state-offline.png` is added, drop it
+          into the `.deck-atmosphere-offline` layer below. */}
+      <div aria-hidden="true" className="absolute inset-0 bg-paper">
+        <div
+          aria-hidden="true"
+          className="deck-atmosphere deck-atmosphere-offline"
+        />
+      </div>
       <div
         aria-hidden="true"
         className="absolute inset-0 bg-paper/80 backdrop-blur-md"
       />
 
-      {/* Centered card — cockpit-frame styling with fuchsia HUD brackets. */}
-      <div className="relative w-[min(560px,92vw)] rounded-2xl bg-paper-elev/95 p-7 shadow-[0_24px_80px_rgba(255,26,140,0.25)]">
-        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
-        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
-        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
-        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
-
+      {/* Centered card */}
+      <div className="relative w-[min(560px,92vw)] rounded-2xl border border-line bg-paper-elev/95 p-7 shadow-[0_24px_80px_rgba(255,26,140,0.25)]">
         <div className="flex flex-col items-center text-center">
-          <img
-            src={invaderSrc}
-            alt=""
-            aria-hidden="true"
-            width={96}
-            height={96}
-            className="h-24 w-24 object-contain"
-            style={{ filter: "drop-shadow(0 8px 24px rgba(255,26,140,0.55))" }}
-          />
-
-          <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep">
+          <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep">
             sidecar offline
           </div>
 
@@ -198,35 +214,46 @@ export function SidecarCrashOverlay() {
             id={headlineId}
             className="mt-2 font-display text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink"
           >
-            Liquid Clips needs to restart
+            We lost connection to the engine.
           </h2>
 
           <p className="mt-3 max-w-[420px] font-sans text-[14px] leading-relaxed text-text-secondary">
-            The processing helper stopped responding. Your projects are safe on
-            disk. Click Restart to reload — your library will be exactly as you
-            left it.
+            Liquid Clips couldn&apos;t talk to its background helper. This
+            usually fixes itself in a few seconds. If it doesn&apos;t, restart
+            the app.
           </p>
 
-          <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-            Exit code: {exitCodeLabel}
-          </p>
+          {emailFallback && (
+            <p className="mt-3 font-sans text-[13px] text-fuchsia-deep">
+              Couldn&apos;t open your mail app. Support email copied to
+              clipboard.
+            </p>
+          )}
 
           <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
             <button
               ref={restartBtnRef}
               onClick={doRestart}
               disabled={restarting}
-              className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn-primary"
             >
-              {restarting ? "Restarting…" : "Restart Liquid Clips"}
+              {restarting ? "Restarting…" : "Retry"}
             </button>
             <button
-              onClick={() => setDismissed(true)}
-              className="rounded-full border border-line bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
+              onClick={doRestart}
+              disabled={restarting}
+              className="btn-secondary"
             >
-              Try to continue
+              Restart Liquid Clips
             </button>
           </div>
+
+          <button
+            onClick={() => void onEmailSupport()}
+            className="mt-4 font-sans text-[12px] text-text-tertiary underline-offset-2 transition-colors hover:text-fuchsia-deep hover:underline"
+          >
+            Email support
+          </button>
 
           <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
             Enter to restart · Esc to continue

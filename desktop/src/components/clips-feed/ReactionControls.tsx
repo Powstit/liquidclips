@@ -20,7 +20,11 @@
 // the cockpit's vertical budget stays narrow.
 
 import { useEffect, useRef, useState } from "react";
-import { AudioLines, Lock, Volume2, VolumeX } from "lucide-react";
+import { AudioLines, Lock, Sparkles, Volume2, VolumeX, Wand2 } from "lucide-react";
+
+function showReactionToast(kind: "success" | "error" | "info", message: string) {
+  window.dispatchEvent(new CustomEvent("lc:toast", { detail: { kind, message } }));
+}
 import {
   sidecar,
   humanError,
@@ -34,7 +38,7 @@ import {
 } from "../../lib/sidecar";
 import { useReactionBakeProgress } from "../../lib/useReactionBakeProgress";
 import { useTier } from "../../lib/useTier";
-import { openAuthPanel } from "../auth/useAuthPanel";
+import { openUpgradeWhenSignedIn } from "../../lib/upgradeWithAuth";
 import { pickOverlaySource } from "../OverlaySourcePicker";
 import { LAYOUTS, LayoutIcon, type LayoutKey } from "./LayoutIcon";
 import { ReactionCellPreview } from "./ReactionCellPreview";
@@ -73,6 +77,12 @@ export function ReactionControls({
   // instead of firing a bake. "Full" (none) stays free — base state.
   const tier = useTier();
   const isFreeTier = tier.tier === "free";
+  // SECTION E/F — keep a live ref to the latest tier so async handlers can
+  // re-check it after an explicit refresh without waiting for a re-render.
+  const tierRef = useRef(tier);
+  useEffect(() => {
+    tierRef.current = tier;
+  }, [tier]);
 
   // State owned by this component — reset whenever the focused clip changes
   // (clipIdx) or the underlying overlay shape mutates externally.
@@ -131,35 +141,52 @@ export function ReactionControls({
   // forget; completion / error arrive via Tauri events. We filter by slug+idx
   // so only events for THIS clip update our state.
   const activeBakeKeyRef = useRef<{ slug: string; clipIdx: number } | null>(null);
+  // SECTION E/F — keep slug/clipIdx/onProjectChange in refs so the listener
+  // effect does NOT re-subscribe every time the parent passes a new callback.
+  // Re-subscription created a race window where a fast bake_complete could
+  // arrive while no listener was attached, leaving busy stuck true forever.
+  const slugRef = useRef(slug);
+  const clipIdxRef = useRef(clipIdx);
+  const onProjectChangeRef = useRef(onProjectChange);
+  useEffect(() => {
+    slugRef.current = slug;
+    clipIdxRef.current = clipIdx;
+    onProjectChangeRef.current = onProjectChange;
+  }, [slug, clipIdx, onProjectChange]);
+
   useEffect(() => {
     let unlistenComplete: (() => void) | undefined;
     let unlistenError: (() => void) | undefined;
+    let mounted = true;
 
     (async () => {
       unlistenComplete = await onBakeComplete((payload: BakeComplete) => {
-        if (payload.slug !== slug || payload.idx !== clipIdx) return;
+        if (!mounted) return;
+        if (payload.slug !== slugRef.current || payload.idx !== clipIdxRef.current) return;
         if (
           activeBakeKeyRef.current &&
-          activeBakeKeyRef.current.slug === slug &&
-          activeBakeKeyRef.current.clipIdx === clipIdx
+          activeBakeKeyRef.current.slug === slugRef.current &&
+          activeBakeKeyRef.current.clipIdx === clipIdxRef.current
         ) {
           activeBakeKeyRef.current = null;
         }
         stopBakeProgress();
         setBusy(false);
         setPendingLayout(null);
-        onProjectChange(payload.project);
+        onProjectChangeRef.current(payload.project);
         setOverlaySaveState("saved");
+        showReactionToast("success", "Reaction added to clip.");
         window.setTimeout(() => {
           setOverlaySaveState((s) => (s === "saved" ? "idle" : s));
         }, 1500);
       });
       unlistenError = await onBakeError((payload: BakeError) => {
-        if (payload.slug !== slug || payload.idx !== clipIdx) return;
+        if (!mounted) return;
+        if (payload.slug !== slugRef.current || payload.idx !== clipIdxRef.current) return;
         if (
           activeBakeKeyRef.current &&
-          activeBakeKeyRef.current.slug === slug &&
-          activeBakeKeyRef.current.clipIdx === clipIdx
+          activeBakeKeyRef.current.slug === slugRef.current &&
+          activeBakeKeyRef.current.clipIdx === clipIdxRef.current
         ) {
           activeBakeKeyRef.current = null;
         }
@@ -173,20 +200,45 @@ export function ReactionControls({
         setActionError(payload.message);
         setOverlaySaveError(payload.message);
         setOverlaySaveState("idle");
+        showReactionToast("error", `Reaction failed — ${payload.message.slice(0, 120)}`);
       });
     })();
 
     return () => {
+      mounted = false;
       unlistenComplete?.();
       unlistenError?.();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, clipIdx, onProjectChange]);
+  }, []);
 
   // v0.8.0 — Fire-and-forget background bake. The event listener above
   // handles completion / error so the UI never blocks during ffmpeg.
   async function applyLayout(kind: LayoutKey, opts?: { forcePick?: boolean }) {
     if (busy) return;
+
+    // SECTION E/F — explicit reaction action: refresh tier if we only have a
+    // stale localStorage cache. Prevents paid/admin users from being blocked
+    // by a cold-boot "free" flash when the auth-ready event fired before this
+    // component mounted. Opening a clip / clicking a layout tile is an explicit
+    // user action, so the refresh is not passive.
+    if (tierRef.current.tier === "free" && !tierRef.current.status) {
+      await tier.refreshTier();
+    }
+
+    // SECTION E — centralised Solo+ moat. Free users see the locked preview
+    // but cannot commit a paid layout. This gate is shared by the layout tiles
+    // and the Assets shortcut so neither path accidentally bypasses the moat.
+    const currentTier = tierRef.current.tier;
+    const layoutDef = LAYOUTS.find((i) => i.key === kind);
+    const isLocked = currentTier === "free" && layoutDef && layoutDef.key !== "none";
+    if (isLocked) {
+      import("../../lib/paywallNotify").then(({ notifyPaywall }) =>
+        notifyPaywall("reaction_layout", currentTier),
+      );
+      openUpgradeWhenSignedIn();
+      return;
+    }
+
     setPendingLayout(kind);
     setBusy(true);
     setActionError(null);
@@ -209,6 +261,7 @@ export function ReactionControls({
           }
           source = pick.path;
         }
+        showReactionToast("info", "Adding reaction…");
         activeBakeKeyRef.current = { slug, clipIdx };
         await sidecar.startOverlayBake(slug, clipIdx, {
           type: kind as OverlayType,
@@ -221,7 +274,9 @@ export function ReactionControls({
       stopBakeProgress();
       setBusy(false);
       setPendingLayout(null);
-      setActionError(humanError(e));
+      const msg = humanError(e);
+      showReactionToast("error", `Reaction failed — ${msg.slice(0, 120)}`);
+      setActionError(msg);
     }
   }
 
@@ -264,6 +319,31 @@ export function ReactionControls({
   // is unnecessary because Frame module mounts its own tiles. ReactionControls
   // owns the source + audio + offset + per-clip layout tiles in both modes.
 
+  // SECTION E — visible Assets/Reactions entry point. Paid users jump straight
+  // into the source picker with a sensible default layout; free users get a
+  // browse-only picker so they can preview provider tabs before upgrading.
+  async function browseAssets() {
+    if (busy) return;
+
+    // SECTION E/F — same stale-tier guard as applyLayout. Refresh once if the
+    // only tier we have is a cold cache, then decide whether to show the
+    // browse-only picker or the full paid flow.
+    if (tierRef.current.tier === "free" && !tierRef.current.status) {
+      await tier.refreshTier();
+    }
+
+    if (tierRef.current.tier === "free") {
+      const pick = await pickOverlaySource({ project, excludeIdx: clipIdx });
+      if (pick.kind === "cancel") return;
+      import("../../lib/paywallNotify").then(({ notifyPaywall }) =>
+        notifyPaywall("reaction_layout", tierRef.current.tier),
+      );
+      openUpgradeWhenSignedIn();
+      return;
+    }
+    void applyLayout(layout === "none" ? "stack-bottom" : layout, { forcePick: true });
+  }
+
   const tileGridCols = compact ? "grid-cols-4" : "grid-cols-3 sm:grid-cols-4";
 
   return (
@@ -286,6 +366,22 @@ export function ReactionControls({
                 Add a second clip. Stack, split, or PiP.
               </p>
             </div>
+            <button
+              type="button"
+              onClick={() => void browseAssets()}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia/40 bg-fuchsia-soft/20 px-3 py-1.5 font-display text-[11px] font-semibold text-fuchsia transition-colors hover:bg-fuchsia-soft/30 disabled:opacity-50"
+            >
+              <Sparkles size={12} strokeWidth={2.4} />
+              Assets
+            </button>
+            <span
+              className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-full border border-paper/15 bg-paper/5 px-3 py-1.5 font-display text-[11px] font-semibold text-paper/40"
+              title="Auto reaction suggestions are coming soon. Use Assets to search GIPHY, Pexels, or Pixabay."
+            >
+              <Wand2 size={12} strokeWidth={2.4} />
+              Suggest reactions
+            </span>
           </div>
         )}
 
@@ -309,7 +405,7 @@ export function ReactionControls({
                     import("../../lib/paywallNotify").then(({ notifyPaywall }) =>
                       notifyPaywall("reaction_layout", tier.tier),
                     );
-                    openAuthPanel("upgrade");
+                    openUpgradeWhenSignedIn();
                     return;
                   }
                   void applyLayout(item.key);

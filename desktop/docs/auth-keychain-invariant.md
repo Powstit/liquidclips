@@ -45,12 +45,12 @@ The invariant collapses every code path into one of two buckets:
   in-memory cache via `getCachedLicenseJwt()` or throws
   `CachedJwtUnavailableError` via `requireCachedLicenseJwtOrThrow()`.
   Never touches the Keychain.
-* **Allowed (the five explicit auth actions).** Calls
+* **Allowed (the six explicit auth actions).** Calls
   `readLicenseJwtForAuthAction({ explicitAuthAction: true, callerLabel })`,
   which is the only path that hits `sidecar.licenseJwtRead`. A successful
   read primes the cache for the rest of the session.
 
-The five allowed actions:
+The six allowed actions:
 
 1. **Sign in** — `activation.ts.startActivation` opens the auth panel; the
    resulting deep-link `liquidclips://activate?token=…` lands in
@@ -62,6 +62,10 @@ The five allowed actions:
 4. **Connect-desktop callback** — same code path as Sign in.
 5. **Explicit "Reset login session"** — `activation.resetLoginSession` →
    `sidecar.secretDelete("LICENSE_JWT")` + `invalidateLicenseJwtCache`.
+6. **Cold-boot resume session** — `authStorage.resumeSessionFromKeychainIfPresent()`
+   checks the presence mirror; if a JWT is stored, it reads it once, primes
+   the cache, and dispatches `lc:desktop-auth-ready`. This is the only
+   automatic read permitted, and it runs only when presence is true.
 
 ## Approved auth files
 
@@ -108,7 +112,7 @@ If you're adding a surface that needs a JWT:
 * **Submit / action / row-click paths**: call
   `requireCachedLicenseJwtOrThrow()`. Catch `CachedJwtUnavailableError`
   and surface `err.message` (which IS `RECONNECT_PROMPT_COPY`) inline.
-* **A new sixth-allowed auth action**: that requires a directive change.
+* **A new seventh-allowed auth action**: that requires a directive change.
   Discuss with the owner first; if green-lit, add the file to the
   approved list in both the pre-commit script and this doc, and use
   `readLicenseJwtForAuthAction({ explicitAuthAction: true,

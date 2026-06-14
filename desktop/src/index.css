@@ -330,6 +330,101 @@ pre {
 }
 
 /* =========================================================================
+   v0.7.77 — Lane 1 shared button taxonomy.
+   Primary / secondary / ghost / destructive / locked. All lanes should
+   compose from these classes so CTAs stay visually consistent.
+   ========================================================================= */
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-semibold text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] disabled:cursor-not-allowed disabled:opacity-50;
+}
+.btn-secondary {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep disabled:cursor-not-allowed disabled:opacity-50;
+}
+.btn-ghost {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-full bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-text-secondary transition-colors hover:border-fuchsia hover:text-ink disabled:cursor-not-allowed disabled:opacity-50;
+}
+.btn-danger {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-full border border-transparent bg-transparent px-3 py-1.5 font-sans text-[12px] font-medium text-text-secondary transition-colors hover:border-[var(--color-danger)] hover:text-[var(--color-danger)] disabled:cursor-not-allowed disabled:opacity-50;
+}
+.btn-locked {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-full border border-fuchsia/50 bg-fuchsia-soft/30 px-4 py-2 font-sans text-[13px] font-semibold text-fuchsia-deep transition-colors hover:bg-fuchsia-soft/50;
+}
+
+/* =========================================================================
+   v0.7.77 — Lane 1 shared empty / loading / error state classes.
+   Consumed by Lane 5 surfaces; defined here so the visual contract is
+   authored once and reused everywhere.
+   ========================================================================= */
+.skeleton {
+  @apply animate-pulse rounded bg-paper-elev/60;
+}
+.empty-state {
+  @apply rounded-2xl border border-dashed border-line bg-paper-elev/40 p-6;
+}
+.error-banner {
+  @apply flex items-center justify-between gap-3 rounded-2xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-3 font-sans text-[13px] text-[var(--color-danger)];
+}
+
+/* =========================================================================
+   v0.7.77 — Lane 1 deck atmosphere plates.
+   A dedicated wrapper class so the plate sits behind content without
+   colliding with the existing .deck top-edge band (::before / ::after).
+   Plates live in src/assets/atmospheres/; if a file is missing the browser
+   simply renders nothing (graceful absence).
+   ========================================================================= */
+.deck-atmosphere {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+.deck-atmosphere::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 600ms ease;
+}
+.deck-atmosphere[data-ready="true"]::before {
+  opacity: 1;
+}
+/* Per-deck plates — opacity set per the BRAND_ATMOSPHERE_QUEUE table. */
+.deck-atmosphere-workspace::before {
+  background-image: url("../assets/atmospheres/atmosphere-workspace.png");
+  opacity: 0.18;
+}
+.deck-atmosphere-clips::before {
+  background-image: url("../assets/atmospheres/atmosphere-library.png");
+  opacity: 0.14;
+}
+.deck-atmosphere-earn::before {
+  background-image: url("../assets/atmospheres/atmosphere-earn.png");
+  opacity: 0.20;
+}
+.deck-atmosphere-schedule::before {
+  background-image: url("../assets/atmospheres/atmosphere-schedule.png");
+  opacity: 0.16;
+}
+.deck-atmosphere-settings::before {
+  background-image: url("../assets/atmospheres/atmosphere-settings.png");
+  opacity: 0.10;
+}
+.deck-atmosphere-community::before {
+  background-image: url("../assets/atmospheres/atmosphere-workspace.png");
+  opacity: 0.12;
+}
+.deck-atmosphere-learn::before {
+  background-image: url("../assets/atmospheres/atmosphere-library.png");
+  opacity: 0.12;
+}
+/* Keep RoomShell content above the atmosphere plate. */
+.cockpit-room-wrap { position: relative; }
+.cockpit-room-wrap > .deck-atmosphere ~ * { position: relative; z-index: 1; }
+
+/* =========================================================================
    v0.6.0 — Side nav rail
    Fixed 64px-wide left column. Replaces the horizontal NavTab strip in
    App.tsx. Brand tokens only (--color-fuchsia / --color-ink / --color-paper /
@@ -863,6 +958,73 @@ pre {
   .lc-sidenav-tooltip {
     display: none;
   }
+}
+
+/* =====================================================================
+   v0.7.77 — Lane 1 rail micro-states.
+   Small dot / progress ring badges on nav items. Positioned over the
+   custom badge image (which is 56×56px in the default rail).
+   ===================================================================== */
+.lc-sidenav-badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 2;
+}
+/* 6px status dot anchored bottom-right of the badge image. */
+.lc-sidenav-dot {
+  position: absolute;
+  right: 18px;
+  bottom: 14px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-fuchsia);
+  box-shadow: 0 0 8px var(--color-fuchsia);
+}
+.lc-sidenav-dot[data-tone="amber"] {
+  background: #f59e0b;
+  box-shadow: 0 0 8px #f59e0b;
+}
+/* Collapsed rail re-centers the badge image to 36×36; nudge the dot in. */
+.lc-sidenav[data-collapsed="true"] .lc-sidenav-dot {
+  right: 10px;
+  bottom: 8px;
+}
+/* 16px indeterminate progress ring around the badge image. */
+.lc-sidenav-progress {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: var(--color-fuchsia);
+  border-right-color: var(--color-fuchsia);
+  animation: lc-sidenav-spin 1.2s linear infinite;
+  filter: drop-shadow(0 0 6px var(--color-fuchsia));
+}
+.lc-sidenav[data-collapsed="true"] .lc-sidenav-progress {
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+}
+@keyframes lc-sidenav-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lc-sidenav-progress { animation: none !important; }
+}
+/* Collapsed rail tooltips: ensure they still reveal on hover even though
+   the persistent label is hidden. The existing .lc-sidenav-tooltip rule
+   already handles this; this rule just makes the intent explicit. */
+.lc-sidenav[data-collapsed="true"] .lc-sidenav-item:hover .lc-sidenav-tooltip {
+  opacity: 1;
 }
 
 /* =====================================================================

@@ -8,7 +8,7 @@ import { openSmart as openExternal } from "../lib/openSmart";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { CheckCircle2, FolderOpen, Plus, Film, Sparkles, Loader2, Lock } from "lucide-react";
 import { EmptyState } from "./brand";
-import { openAuthPanel } from "./auth/useAuthPanel";
+import { openUpgradeWhenSignedIn } from "../lib/upgradeWithAuth";
 import type { Project, RatioKey } from "../lib/sidecar";
 import { ClipPreview } from "./ClipPreview";
 import { DripCalendar } from "./DripCalendar";
@@ -252,9 +252,16 @@ export function ResultsGrid({
 
       <BountySubmissionCapture project={project} />
 
-      <div className="mb-4">
-        <CampaignContextStrip />
-      </div>
+      {/* v0.7.71 — CampaignContextStrip is the manual-brief context surface.
+          Bounty projects already render BountyWorkspaceHeader, which IS the
+          campaign context for that lane. Mounting both meant every bounty
+          project also said "no campaign attached" — confusing copy. When
+          whop_bounty_id is set, the manual strip is suppressed. */}
+      {!project.whop_bounty_id && (
+        <div className="mb-4">
+          <CampaignContextStrip />
+        </div>
+      )}
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-4">
@@ -345,7 +352,7 @@ export function ResultsGrid({
                   import("../lib/paywallNotify").then(({ notifyPaywall }) =>
                     notifyPaywall("generate_more_clips", tier.tier),
                   );
-                  openAuthPanel("upgrade");
+                  openUpgradeWhenSignedIn();
                 }}
                 title="Re-run the AI picker — unlocks at Solo"
                 className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-soft bg-fuchsia-soft/30 px-4 py-2.5 font-sans text-[13px] font-medium text-fuchsia-deep transition-colors hover:border-fuchsia hover:bg-fuchsia-soft/50"

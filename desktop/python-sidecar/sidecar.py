@@ -601,6 +601,21 @@ def method_list_projects(params: dict[str, Any]) -> dict[str, Any]:
                 "reacted_count": reacted_count,
                 "whop_bounty_id": data.get("whop_bounty_id"),
                 "whop_bounty_title": data.get("whop_bounty_title"),
+                # v0.7.71 — surface the bounty payout/currency to the
+                # Projects tab so Earn bounty project cards can show RPM
+                # without re-querying Whop. Stamped into project.json by
+                # the bounty-setup flow alongside whop_bounty_id/title.
+                "whop_bounty_reward_per_unit": data.get("whop_bounty_reward_per_unit"),
+                "whop_bounty_currency": data.get("whop_bounty_currency"),
+                # v0.7.73 — Project Manager. User-facing type when set by
+                # the New Project flow ("Manual" / "Content" / "Client" /
+                # "Import"). Legacy projects emit None and the UI falls
+                # back to the heuristic classifier.
+                "project_type": data.get("project_type"),
+                # v0.7.73 — surface goal/outcome (the existing `brief`
+                # field) on the summary so ProjectCard can render it
+                # without paying the full getProject roundtrip.
+                "goal": data.get("brief"),
                 "archived": is_archived,
                 "archived_at": archived_marker.stat().st_mtime if is_archived else None,
                 "cover_thumb_path": cover_thumb_path,
@@ -3440,6 +3455,57 @@ def method_whop_list_bounties(params: dict[str, Any]) -> dict[str, Any]:
         }
 
 
+def method_create_blank_project(params: dict[str, Any]) -> dict[str, Any]:
+    """v0.7.73 — Create a fresh blank Project from the Projects → New Project
+    flow. No source media required. Returns the new project's slug so the UI
+    can route directly into ProjectDetail.
+    """
+    from project import Project
+
+    name = params.get("name")
+    project_type = params.get("project_type") or "Manual"
+    goal = params.get("goal")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("create_blank_project requires a non-empty name")
+    if not isinstance(project_type, str) or not project_type.strip():
+        project_type = "Manual"
+    if goal is not None and not isinstance(goal, str):
+        goal = None
+    proj = Project.create_blank(
+        name=name,
+        project_type=project_type,
+        goal=goal,
+    )
+    return {"slug": proj.slug, "root": str(proj.root)}
+
+
+def method_whop_list_public_bounties(params: dict[str, Any]) -> dict[str, Any]:
+    """v0.7.68 — Public bounty discovery. Unauthenticated end-to-end.
+
+    No LICENSE_JWT, no JUNIOR_WHOP_TOKEN, no Keychain read, no
+    token_source(). The backend's /whop/bounties/public route holds the
+    server-side Whop App API Key and returns the Campaign A (non-Partner)
+    view with a shared 60s cache + IP rate limit.
+
+    Used by the desktop's Earn Available tab on cold launch so bounties
+    show before the user clicks Unlock. Personal/Partner bounties layer
+    in via the existing method_whop_list_bounties once a JWT is cached.
+    """
+    import asyncio
+    import whop_client
+    first = max(1, min(int(params.get("first") or 25), 25))
+    try:
+        bounties = asyncio.run(whop_client.list_public_bounties(first=first))
+        return {"bounties": bounties, "authenticated": False, "source": "public"}
+    except Exception as e:
+        return {
+            "bounties": [],
+            "authenticated": False,
+            "source": "public",
+            "error": str(e),
+        }
+
+
 def method_whop_bounty(params: dict[str, Any]) -> dict[str, Any]:
     """Full detail for one bounty. Same auth posture as list_bounties —
     license-JWT-gated server-side, no local Whop token required."""
@@ -4620,7 +4686,9 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "get_youtube_extras": method_get_youtube_extras,
     "update_youtube_extras": method_update_youtube_extras,
     "predict_time": method_predict_time,
+    "create_blank_project": method_create_blank_project,
     "whop_list_bounties": method_whop_list_bounties,
+    "whop_list_public_bounties": method_whop_list_public_bounties,
     "whop_bounty": method_whop_bounty,
     "whop_submission": method_whop_submission,
     "whop_session_status": method_whop_session_status,

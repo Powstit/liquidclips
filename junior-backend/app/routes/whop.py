@@ -25,10 +25,11 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import deque
 from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -264,6 +265,72 @@ def _normalize_bounty(node: dict[str, Any]) -> dict[str, Any]:
 # --- endpoints -----------------------------------------------------------
 
 
+# v0.7.68 — public bounty discovery. The desktop's Earn Available tab loads
+# this unauthenticated so a cold-launched user sees bounties without going
+# through the connect-desktop unlock. Three protections keep this safe:
+#   1. Shared cache key (`bounties:public:{first}`) — at most one Whop GQL
+#      call per `_BOUNTY_LIST_TTL` globally, regardless of caller count.
+#   2. IP rate-limit (sliding window in-process; sized so a noisy client
+#      can't drown the proxy but a real user opening Earn 30x/min is fine).
+#   3. Public view = non-Partner Campaign A only. Campaign B (Partner-only)
+#      stays gated behind the authenticated endpoint.
+#
+# TODO(v0.7.70+): `_PUBLIC_RATE_BUCKETS` grows unbounded across distinct IPs
+# (bug-hunt-lens BE1). Slow growth on a 1-replica process that restarts every
+# deploy, so acceptable for v0.7.68 ship. Add an LRU/periodic-sweep eviction
+# once we observe real IP churn.
+_PUBLIC_RATE_WINDOW_SEC = 60.0
+_PUBLIC_RATE_MAX_REQUESTS = 30
+_PUBLIC_RATE_BUCKETS: dict[str, deque[float]] = {}
+
+
+def _client_ip_for_rate_limit(request: Request) -> str:
+    """v0.7.69 — honor `X-Forwarded-For` so Railway/Cloudflare proxy traffic
+    is bucketed by actual client IP, not the single proxy hop (bug-hunt BE3).
+    Falls back to `request.client.host` when no proxy header is present
+    (local dev, direct hits).
+    """
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        # First entry is the original client; the rest are proxy chain.
+        return fwd.split(",")[0].strip() or "unknown"
+    return request.client.host if request.client else "unknown"
+
+
+def _public_rate_limit_check(client_ip: str) -> None:
+    now = time.time()
+    bucket = _PUBLIC_RATE_BUCKETS.setdefault(client_ip, deque())
+    cutoff = now - _PUBLIC_RATE_WINDOW_SEC
+    while bucket and bucket[0] < cutoff:
+        bucket.popleft()
+    if len(bucket) >= _PUBLIC_RATE_MAX_REQUESTS:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Slow down — too many public bounty requests from this IP.",
+        )
+    bucket.append(now)
+
+
+def _filter_public_only(bounties: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Public bounty view — mirrors `_filter_partner_only` for a non-Partner.
+
+    Whop's `publicBounties` query already returns Whop's publicly-discoverable
+    surface, so the default is pass-through. When `WHOP_CAMPAIGN_B_ID` is set
+    on Railway, the Partner-only Campaign B is stripped by experience.id so
+    it does not leak through the anonymous public route. If the env is unset
+    (the pre-Step-8 state — Campaign B doesn't exist on Whop yet), there's
+    nothing to filter and the unmodified Whop list is returned.
+    """
+    settings = get_settings()
+    campaign_b = (settings.whop_campaign_b_id or "").strip()
+    if not campaign_b:
+        return bounties
+    return [
+        b for b in bounties
+        if not (isinstance(b.get("experience"), dict) and b["experience"].get("id") == campaign_b)
+    ]
+
+
 def _filter_partner_only(bounties: list[dict[str, Any]], user: User) -> list[dict[str, Any]]:
     """Partner Engine — hide the dedicated-channel ($10 RPM) campaign from
     non-Partners. Partner status is local (user.partner_unlocked_at set by
@@ -284,6 +351,43 @@ def _filter_partner_only(bounties: list[dict[str, Any]], user: User) -> list[dic
         b for b in bounties
         if not (isinstance(b.get("experience"), dict) and b["experience"].get("id") == campaign_b)
     ]
+
+
+@router.get("/bounties/public")
+async def list_public_bounties(
+    request: Request,
+    first: int = 30,
+) -> dict[str, Any]:
+    """v0.7.68 — public bounty discovery for the desktop Earn Available tab.
+
+    No LICENSE_JWT, no Whop OAuth, no Keychain. Returns the non-Partner
+    Campaign A view via the server-side App API Key. Cached for
+    `_BOUNTY_LIST_TTL` under a single shared key so concurrent callers
+    don't fan out to Whop. Per-IP sliding-window rate limit prevents one
+    client from drowning the proxy.
+
+    The desktop layers the authenticated `/whop/bounties` response on top
+    of this when a cached JWT is available, so Partners still see their
+    full list after explicit unlock.
+    """
+    client_ip = _client_ip_for_rate_limit(request)
+    _public_rate_limit_check(client_ip)
+    first = _clamp_bounty_list_first(first)
+    cache_key = f"bounties:public:{first}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return {"bounties": cached, "source": "cache"}
+
+    data = await _whop_gql(_LIST_BOUNTIES, {"first": first})
+    edges = (data.get("publicBounties") or {}).get("edges") or []
+    bounties = [_normalize_bounty(edge["node"]) for edge in edges if edge and edge.get("node")]
+    filtered = _filter_public_only(bounties)
+    _cache_put(cache_key, filtered, _BOUNTY_LIST_TTL)
+    log.info(
+        "[whop_proxy] list_public_bounties ip=%s count=%d",
+        client_ip, len(filtered),
+    )
+    return {"bounties": filtered, "source": "live"}
 
 
 @router.get("/bounties")

@@ -30,6 +30,7 @@ export function RoomShell({
   roomKey,
   children,
   align = "center",
+  atmosphere,
 }: {
   roomKey: string;
   children: ReactNode;
@@ -51,6 +52,17 @@ export function RoomShell({
   // two-layer block-scroller + min-h-full pattern; this gate locks the
   // cross-axis alignment options.
   align?: "center" | "top" | "stretch";
+  /** Lane 1 — per-deck atmosphere plate. Maps to `.deck-atmosphere-*`
+   *  CSS hooks in index.css. Safe to pass even when the plate asset is
+   *  not on disk (background-image gracefully renders nothing). */
+  atmosphere?:
+    | "workspace"
+    | "clips"
+    | "earn"
+    | "schedule"
+    | "settings"
+    | "community"
+    | "learn";
 }) {
   const reduced = useReducedMotion();
   const innerAlign =
@@ -66,6 +78,13 @@ export function RoomShell({
       exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.98, filter: "blur(6px)" }}
       transition={reduced ? { duration: 0.14 } : { type: "spring", stiffness: 260, damping: 28 }}
     >
+      {atmosphere && (
+        <div
+          aria-hidden="true"
+          className={`deck-atmosphere deck-atmosphere-${atmosphere}`}
+          data-ready="true"
+        />
+      )}
       <div
         className={`flex min-h-full w-full justify-center ${innerAlign}`}
       >

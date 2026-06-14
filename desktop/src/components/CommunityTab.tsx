@@ -36,7 +36,7 @@ import {
 } from "lucide-react";
 import { openBrowsePanel, WHOP_COMMUNITY_URL } from "../lib/browse";
 import { humanError } from "../lib/sidecar";
-import { openAuthPanel } from "./auth/useAuthPanel";
+import { openUpgradeWhenSignedIn } from "../lib/upgradeWithAuth";
 import { PoweredByWhop } from "./PoweredByWhop";
 import { useTier } from "../lib/useTier";
 
@@ -95,10 +95,11 @@ const SECTION_META: Record<SectionKey, { label: string; sub: string; Icon: Lucid
   },
 };
 
-// Whop chat feed URLs follow chat.whop.com/<channel_id>. We open them in
-// the in-app browse panel so the user never leaves Liquid Clips.
-function whopChatUrl(channelId: string): string {
-  return `https://whop.com/c/${channelId}`;
+// Whop chat feed URLs follow whop.com/c/<chat_feed_id>. The backend field
+// is `whop_channel_id` (not the room's internal UUID). We open them in the
+// in-app browse panel so the user never leaves Liquid Clips.
+function whopChatUrl(whopChannelId: string): string {
+  return `https://whop.com/c/${whopChannelId}`;
 }
 
 export function CommunityTab() {
@@ -159,16 +160,16 @@ export function CommunityTab() {
       />
 
       {error && (
-        <div className="rounded-2xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 p-4">
-          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--color-danger)]">
-            couldn&apos;t load rooms
-          </p>
-          <pre className="mt-2 max-h-[120px] overflow-auto rounded-lg border border-line bg-paper-warm/40 p-2.5 font-mono text-[11px] text-text-secondary">
-            {error}
-          </pre>
+        <div className="error-banner">
+          <div className="flex flex-col gap-1">
+            <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)]">
+              Couldn&apos;t load rooms
+            </p>
+            <p className="font-sans text-[12px]">{error}</p>
+          </div>
           <button
             onClick={() => void fetchChannels()}
-            className="mt-3 rounded-full border border-line bg-paper px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-text-secondary hover:border-fuchsia hover:text-fuchsia"
+            className="btn-ghost"
           >
             Retry
           </button>
@@ -178,11 +179,27 @@ export function CommunityTab() {
       {!grouped && !error && (
         <div className="grid gap-3 sm:grid-cols-2">
           {[0, 1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-[150px] animate-pulse rounded-2xl border border-line bg-paper-elev/40"
-            />
+            <div key={i} className="skeleton h-[150px] rounded-2xl border border-line" />
           ))}
+        </div>
+      )}
+
+      {grouped && channels && channels.length === 0 && !error && (
+        <div className="empty-state flex flex-col items-start gap-4">
+          <div className="flex flex-col gap-1">
+            <h2 className="font-display text-[20px] font-semibold text-ink">
+              No rooms available right now.
+            </h2>
+            <p className="max-w-md font-sans text-[13px] leading-relaxed text-text-secondary">
+              The Liquid Clips community lives on Whop. Open Whop to join the conversation.
+            </p>
+          </div>
+          <button
+            onClick={() => void openBrowsePanel(WHOP_COMMUNITY_URL)}
+            className="btn-primary"
+          >
+            Open Whop community →
+          </button>
         </div>
       )}
 
@@ -302,7 +319,7 @@ function ChannelCard({ c, isPremium }: { c: Channel; isPremium: boolean }) {
   };
 
   const upgrade = () => {
-    void openAuthPanel("upgrade");
+    openUpgradeWhenSignedIn();
   };
 
   return (

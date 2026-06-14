@@ -8,6 +8,7 @@ import {
   type RewardClipBlock,
 } from "../../lib/backend";
 import { humanError } from "../../lib/sidecar";
+import { useActivation } from "../../lib/activation";
 import { QrCode } from "../QrCode";
 import { InfoHint } from "../InfoHint";
 
@@ -29,6 +30,7 @@ type FetchState =
 
 export function RewardClipsPanel() {
   const [state, setState] = useState<FetchState>({ kind: "loading" });
+  const { activate } = useActivation();
 
   const load = useCallback(async () => {
     // v0.7.57 P0 — Cache-warm-only auto-load. Earn open is NOT an explicit
@@ -82,18 +84,29 @@ export function RewardClipsPanel() {
       {state.kind === "loading" && <SkeletonRows />}
 
       {state.kind === "signed-out" && (
-        <EmptyShell hint="Sign in to see your reward clips." />
+        <div className="empty-state">
+          <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+            Connect your Whop account to see clips you&apos;ve submitted to brand campaigns.
+          </p>
+          <button
+            type="button"
+            onClick={() => void activate({ via: "browser" })}
+            className="btn-primary mt-3"
+          >
+            Sign in to Liquid Clips →
+          </button>
+        </div>
       )}
 
       {state.kind === "error" && (
-        <div className="rounded-2xl border border-line bg-paper-warm/30 p-5">
-          <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+        <div className="error-banner flex-col items-start">
+          <p className="font-sans text-[13px] leading-relaxed">
             Couldn&apos;t load reward clips: {state.message}
           </p>
           <button
             type="button"
             onClick={() => void load()}
-            className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep"
+            className="btn-secondary mt-2 px-3 py-1 text-[12px]"
           >
             <RotateCw className="h-3.5 w-3.5" strokeWidth={2} />
             Retry
@@ -102,7 +115,7 @@ export function RewardClipsPanel() {
       )}
 
       {state.kind === "ok" && state.clips.length === 0 && (
-        <div className="rounded-2xl border border-line bg-paper-warm/30 p-5">
+        <div className="empty-state">
           <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
             Reward Clip links appear here after you create tracking links for Content
             Reward clips. Your main referral QR above works now.
@@ -269,19 +282,12 @@ function SkeletonRows() {
     <div className="flex flex-col gap-2">
       {[0, 1].map((i) => (
         <div key={i} className="rounded-2xl border border-line bg-paper-warm/30 p-4">
-          <div className="h-4 w-40 animate-pulse rounded-md bg-line" />
-          <div className="mt-2 h-3 w-24 animate-pulse rounded-md bg-line/60" />
-          <div className="mt-4 h-9 w-full animate-pulse rounded-xl bg-line/40" />
+          <div className="skeleton h-4 w-40 rounded-md" />
+          <div className="skeleton mt-2 h-3 w-24 rounded-md opacity-70" />
+          <div className="skeleton mt-4 h-9 w-full rounded-xl opacity-50" />
         </div>
       ))}
     </div>
   );
 }
 
-function EmptyShell({ hint }: { hint: string }) {
-  return (
-    <div className="rounded-2xl border border-line bg-paper-warm/30 p-5">
-      <p className="font-sans text-[13px] leading-relaxed text-text-secondary">{hint}</p>
-    </div>
-  );
-}

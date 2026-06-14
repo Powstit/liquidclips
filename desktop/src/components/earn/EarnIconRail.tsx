@@ -13,11 +13,11 @@ import type { EarnTab as EarnSubTab } from "./types";
 const ITEMS: Array<{ id: EarnSubTab; label: string; chip: string; icon: ReactNode }> = [
   { id: "available",   label: "Open campaigns", chip: "Open",   icon: <Target size={14} /> },
   { id: "in_progress", label: "In progress",    chip: "Doing",  icon: <Clock4 size={14} /> },
-  { id: "submissions", label: "Submissions",    chip: "SUB",    icon: <Send size={14} /> },
-  { id: "payouts",     label: "Payouts",        chip: "PAY",    icon: <Wallet size={14} /> },
+  { id: "submissions", label: "Your submissions", chip: "SUB",    icon: <Send size={14} /> },
+  { id: "payouts",     label: "Your payouts",   chip: "PAY",    icon: <Wallet size={14} /> },
   // Task #69 — "Top affiliates" → "Top allies" per RPO vocab. Sub-tab id
   // ("leaderboard") + chip ("Top") stay; only the hover label flips.
-  { id: "leaderboard", label: "Top allies", chip: "Top",    icon: <Trophy size={14} /> },
+  { id: "leaderboard", label: "Leaderboard", chip: "Top",    icon: <Trophy size={14} /> },
 ];
 
 export function EarnIconRail({

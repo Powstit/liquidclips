@@ -74,7 +74,7 @@ export function DirectPublishQueue({
   onOpenSchedule,
 }: {
   /** Bubble up to the host (UploadTab) which already knows how to route
-   *  the user to Settings → Connections. */
+   *  the user to Schedule → Loadout. */
   onOpenSettings: () => void;
   /** Promote uploaded clips into the normal project editor so both lanes
    *  share reaction / stack / split / schedule / publish. */
@@ -373,7 +373,7 @@ export function DirectPublishQueue({
         <button
           type="button"
           onClick={pickFiles}
-          className="group inline-flex items-center gap-2 rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[13px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+          className="btn-primary group gap-2 px-5 py-2.5"
         >
           <Plus className="h-4 w-4" strokeWidth={2.25} />
           Browse for a finished clip
@@ -385,7 +385,7 @@ export function DirectPublishQueue({
           type="button"
           onClick={() => void pasteFromClipboard()}
           title="Paste clip path from clipboard (⌘V)"
-          className="inline-flex items-center gap-2 rounded-full border border-fuchsia/40 bg-transparent px-4 py-2.5 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia"
+          className="btn-secondary gap-2 px-4 py-2.5"
         >
           <ClipboardPaste className="h-4 w-4" strokeWidth={2} />
           Paste clip
@@ -412,19 +412,21 @@ export function DirectPublishQueue({
       {connectionError && (
         // A connection-state fetch failure used to render as "no platforms
         // connected" in each card — a lie. Surface it explicitly so the
-        // user knows to check Settings rather than re-link.
-        <div className="mt-3 flex items-start gap-2 rounded-xl border border-fuchsia-deep/40 bg-fuchsia-deep/10 px-3 py-2.5 font-sans text-[12px] text-ink">
-          <AlertTriangle className="mt-[2px] h-3.5 w-3.5 shrink-0 text-fuchsia-deep" strokeWidth={2.25} />
-          <span>
-            Couldn&rsquo;t reach social-platform status &mdash; check{" "}
-            <button
-              type="button"
-              onClick={onOpenSchedule ?? onOpenSettings}
-              className="underline decoration-dashed underline-offset-2 hover:text-fuchsia-deep"
-            >
-              Settings &rarr; Channels
-            </button>
-            .
+        // user knows to check Schedule rather than re-link.
+        <div className="error-banner mt-3">
+          <span className="flex items-start gap-2">
+            <AlertTriangle className="mt-[2px] h-4 w-4 shrink-0" strokeWidth={2.25} />
+            <span>
+              Couldn&rsquo;t reach social-platform status &mdash; check{" "}
+              <button
+                type="button"
+                onClick={onOpenSchedule ?? onOpenSettings}
+                className="underline decoration-dashed underline-offset-2 hover:text-ink"
+              >
+                Schedule &rarr; Loadout
+              </button>
+              .
+            </span>
           </span>
         </div>
       )}

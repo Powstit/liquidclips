@@ -1,11 +1,12 @@
 import { useState } from "react";
+import { MailIcon, Copy } from "lucide-react";
 import { openSmart as openExternal } from "../lib/openSmart";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 // Shared failure UI for the two pipeline-style errors (lift-failed + pipeline
 // failed). Beta-gate dignity: every error screen offers Retry, Copy error,
-// Email support, and surfaces where the logs live so a clipper has somewhere
-// to go besides quitting.
+// Copy support email, Email support, and surfaces where the logs live so a
+// clipper has somewhere to go besides quitting.
 
 // v0.7.54 — canonical Liquid Clips support inbox (mirrors marketing site
 // `liquidclips-marketing/src/lib/site.ts:supportEmail`).
@@ -37,19 +38,34 @@ export function FailureCard({
   subject: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const [copiedSupport, setCopiedSupport] = useState(false);
+  const [emailFallback, setEmailFallback] = useState(false);
 
-  async function onCopyError() {
-    const payload = [
-      heading,
+  function buildErrorPayload() {
+    return [heading, url ? `URL: ${url}` : "", logHint || "", "", error]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  function buildSupportPayload() {
+    return [
+      SUPPORT_EMAIL,
+      `Subject: ${subject}`,
+      "",
+      "What were you doing when this happened?",
+      "",
+      "--- error (please keep) ---",
       url ? `URL: ${url}` : "",
       logHint || "",
-      "",
       error,
     ]
       .filter(Boolean)
       .join("\n");
+  }
+
+  async function onCopyError() {
     try {
-      await writeText(payload);
+      await writeText(buildErrorPayload());
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
     } catch {
@@ -57,7 +73,17 @@ export function FailureCard({
     }
   }
 
-  function onEmailSupport() {
+  async function onCopySupportEmail() {
+    try {
+      await writeText(buildSupportPayload());
+      setCopiedSupport(true);
+      window.setTimeout(() => setCopiedSupport(false), 1800);
+    } catch {
+      /* silent */
+    }
+  }
+
+  async function onEmailSupport() {
     const body = encodeURIComponent(
       "What were you doing when this happened?\n\n\n" +
         "--- error (please keep) ---\n" +
@@ -65,73 +91,97 @@ export function FailureCard({
         (logHint ? `${logHint}\n` : "") +
         `\n${error}\n`,
     );
-    const url2 = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${body}`;
-    void openExternal(url2).catch(() => undefined);
+    const mailtoUrl = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${body}`;
+
+    try {
+      await openExternal(mailtoUrl);
+    } catch {
+      // No mail client available — copy the support email + prefilled subject
+      // / body to the clipboard and surface inline microcopy.
+      try {
+        await writeText(buildSupportPayload());
+        setEmailFallback(true);
+        window.setTimeout(() => setEmailFallback(false), 4000);
+      } catch {
+        /* silent */
+      }
+    }
   }
 
   return (
-    <div className="library-card relative w-full max-w-[720px] bg-transparent p-6">
-      <span className="library-card-corner-tl" aria-hidden="true" />
-      <span className="library-card-corner-tr" aria-hidden="true" />
-      <span className="library-card-corner-bl" aria-hidden="true" />
-      <span className="library-card-corner-br" aria-hidden="true" />
-      <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--color-danger)]">
-        {eyebrow}
-      </div>
-      <h2 className="mt-2 font-display text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink">
-        {heading}
-      </h2>
-      {url && (
-        <p className="mt-1 truncate font-mono text-[11px] text-text-tertiary">{url}</p>
-      )}
-
-      <div className="cockpit-frame relative mt-4 rounded-xl bg-transparent">
-        <span className="cockpit-tile-corner-tl" aria-hidden="true" />
-        <span className="cockpit-tile-corner-tr" aria-hidden="true" />
-        <span className="cockpit-tile-corner-bl" aria-hidden="true" />
-        <span className="cockpit-tile-corner-br" aria-hidden="true" />
-        <pre className="max-h-[260px] overflow-auto rounded-xl bg-transparent p-3 font-mono text-[11px] leading-relaxed text-text-secondary">{error}</pre>
+    <div className="w-full max-w-[720px] space-y-4">
+      {/* Danger header */}
+      <div className="error-banner">
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.14em]">
+            {eyebrow}
+          </div>
+          <h2 className="mt-0.5 font-display text-[20px] font-semibold leading-tight tracking-[-0.02em]">
+            {heading}
+          </h2>
+          {url && (
+            <p className="mt-0.5 truncate font-mono text-[11px] opacity-80">
+              {url}
+            </p>
+          )}
+        </div>
       </div>
 
-      {logHint && (
-        <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-          {logHint}
-        </p>
-      )}
+      {/* Error detail block */}
+      <div className="empty-state space-y-3">
+        <pre className="max-h-[260px] overflow-auto rounded-xl bg-paper/60 p-3 font-mono text-[11px] leading-relaxed text-text-secondary">
+          {error}
+        </pre>
 
-      {note && (
-        <p className="mt-3 font-sans text-[13px] leading-relaxed text-text-secondary">
-          {note}
-        </p>
-      )}
-
-      <div className="mt-5 flex flex-wrap items-center gap-2">
-        {onRetry && (
-          <button
-            onClick={onRetry}
-            className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white hover:bg-fuchsia-bright"
-          >
-            {retryLabel}
-          </button>
+        {logHint && (
+          <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+            {logHint}
+          </p>
         )}
-        <button
-          onClick={() => void onCopyError()}
-          className="rounded-full border border-line bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
-        >
-          {copied ? "Copied ✓" : "Copy error"}
-        </button>
-        <button
-          onClick={onEmailSupport}
-          className="rounded-full border border-line bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
-        >
-          Email support →
-        </button>
-        <button
-          onClick={onDismiss}
-          className="rounded-full border border-line bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-text-secondary hover:border-line hover:text-ink"
-        >
-          {dismissLabel}
-        </button>
+
+        {note && (
+          <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+            {note}
+          </p>
+        )}
+
+        {emailFallback && (
+          <p className="font-sans text-[13px] text-fuchsia-deep">
+            Couldn&apos;t open your mail app. Support email copied to clipboard.
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          {onRetry && (
+            <button onClick={onRetry} className="btn-primary">
+              {retryLabel}
+            </button>
+          )}
+          <button
+            onClick={() => void onCopyError()}
+            className="btn-secondary inline-flex items-center gap-1.5"
+          >
+            <Copy className="h-3.5 w-3.5" />
+            {copied ? "Copied ✓" : "Copy error"}
+          </button>
+          <button
+            onClick={() => void onCopySupportEmail()}
+            className="btn-secondary inline-flex items-center gap-1.5"
+          >
+            <MailIcon className="h-3.5 w-3.5" />
+            {copiedSupport ? "Copied ✓" : "Copy support email"}
+          </button>
+          <button
+            onClick={onEmailSupport}
+            className="btn-secondary inline-flex items-center gap-1.5"
+          >
+            <MailIcon className="h-3.5 w-3.5" />
+            Email support →
+          </button>
+          <button onClick={onDismiss} className="btn-secondary">
+            {dismissLabel}
+          </button>
+        </div>
       </div>
     </div>
   );

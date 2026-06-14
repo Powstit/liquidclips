@@ -9,7 +9,7 @@ import { useState } from "react";
 import { openSmart as openExternal } from "../../lib/openSmart";
 import type { WhopBounty } from "../../lib/sidecar";
 import { PlatformIcon } from "../PlatformIcon";
-import { Sparkles, Users, Wallet, ArrowRight } from "lucide-react";
+import { Sparkles, Users, ArrowRight } from "lucide-react";
 import { openBrowsePanel } from "../../lib/browse";
 import { BROWSE_PANEL_ENABLED } from "../../lib/flags";
 import {
@@ -18,7 +18,6 @@ import {
   effortFor,
   fitScore,
   formatPayout,
-  formatBudget,
   opportunityLabel,
   opportunityScore,
   whopBountyUrl,
@@ -30,11 +29,18 @@ export function BountyCard({
   connectedPlatforms,
   onOpen,
   onStart,
+  startLabel,
+  startTitle,
 }: {
   bounty: WhopBounty;
   connectedPlatforms: ConnectedPlatform[];
   onOpen: () => void;
   onStart: () => void;
+  // v0.7.68 — inline gating for "Unlock to start this bounty" copy when a
+  // public-feed card is shown to a cold-launched user with no cached JWT.
+  // Defaults to "Start" so existing callers are unaffected.
+  startLabel?: string;
+  startTitle?: string;
 }) {
   const platforms = allowedPlatforms(bounty);
   const fit = fitScore(bounty, connectedPlatforms);
@@ -55,7 +61,7 @@ export function BountyCard({
 
   return (
     <article
-      className="library-card group relative flex h-full flex-col gap-3 bg-transparent p-4"
+      className="library-card group relative flex h-full flex-col gap-3 bg-transparent p-4 transition-all duration-200 hover:ring-1 hover:ring-fuchsia/40"
       data-hot={hot ? "true" : "false"}
     >
       {/* v0.6.38 — Cockpit cards: transparent fill, fuchsia HUD bracket
@@ -110,16 +116,18 @@ export function BountyCard({
         </p>
       </div>
 
-      {/* Compact stats: spots / budget / platform icons */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
-        <span className="inline-flex items-center gap-1">
-          <Users size={11} strokeWidth={2} />
-          <span className="tabular-nums text-ink">{spotsRemaining}</span>
-          <span>spots</span>
+      {/* Compact stats: RPM / spots / status / platform icons */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1 rounded-full border border-fuchsia/30 bg-fuchsia-soft/30 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-fuchsia-deep">
+          {formatPayout(bounty)}
         </span>
-        <span className="inline-flex items-center gap-1">
-          <Wallet size={11} strokeWidth={2} />
-          <span className="tabular-nums text-ink">{formatBudget(bounty)}</span>
+        <span className="inline-flex items-center gap-1 rounded-full border border-line bg-paper px-2 py-0.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
+          <Users size={10} strokeWidth={2} />
+          <span className="tabular-nums text-ink">{spotsRemaining}</span>
+          <span>left</span>
+        </span>
+        <span className="inline-flex items-center gap-1 rounded-full border border-line bg-paper px-2 py-0.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-secondary">
+          {spotsRemaining > 0 ? "Live" : "Closed"}
         </span>
         <span className="ml-auto inline-flex items-center gap-1">
           {platforms.map((p) => (
@@ -150,14 +158,15 @@ export function BountyCard({
             }
           }}
           disabled={starting}
-          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-fuchsia px-3 py-1.5 font-sans text-[12px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] disabled:opacity-60 disabled:cursor-not-allowed"
+          title={startTitle}
+          className={`flex-1 ${startLabel === "Unlock to start" ? "btn-locked" : "btn-primary"}`}
         >
-          {starting ? "Starting…" : "Start"}
+          {starting ? "Starting…" : (startLabel ?? "Start")}
           {!starting && <ArrowRight size={12} strokeWidth={2.25} />}
         </button>
         <button
           onClick={onOpen}
-          className="rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-[12px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
+          className="btn-secondary"
           title="Open card details"
         >
           Details
@@ -186,7 +195,7 @@ export function BountyCard({
               }
             }}
             disabled={briefBusy}
-            className="rounded-full border border-line bg-paper px-3 py-1.5 font-sans text-[12px] font-medium text-text-secondary hover:border-fuchsia hover:text-fuchsia-deep disabled:opacity-60 disabled:cursor-not-allowed"
+            className="btn-secondary disabled:opacity-60"
             title="Open the brand's brief in the side panel"
           >
             {briefBusy ? "Opening…" : "Brief"}

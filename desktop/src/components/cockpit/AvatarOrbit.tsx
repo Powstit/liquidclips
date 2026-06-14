@@ -19,8 +19,9 @@ import { useAvatar, avatarSrc, initialsOf } from "../../lib/avatar";
 // Settings.tsx for the expired-banner UX, so the orbit stays on the legacy
 // shim to preserve its `MeStatus | null` shape.
 import { meStatusLegacy, meAffiliate, UnauthorizedError, type MeStatus, type AffiliateMeResponse } from "../../lib/backend";
+import { getCachedLicenseJwt } from "../../lib/authStorage";
 import { fmtUsd } from "../../lib/payoutsAggregations";
-import { openAuthPanel } from "../auth/useAuthPanel";
+import { useActivation } from "../../lib/activation";
 
 type SidecarStatus = "starting" | "ready" | "failed";
 type Tier = "free" | "solo" | "pro" | "agency" | "growth" | "autopilot" | null;
@@ -46,21 +47,67 @@ export function AvatarOrbit({
   // the lifetime chip as $0 silently; an expired-session paying user got no
   // nudge to re-activate. Now the chip becomes a Re-activate CTA.
   const [sessionExpired, setSessionExpired] = useState(false);
+  const { activate } = useActivation();
 
   useEffect(() => {
-    void refresh();
-    void meStatusLegacy().then(setMe).catch(() => setMe(null));
-    void meAffiliate()
-      .then((data) => {
-        setAff(data);
-        setSessionExpired(false);
-      })
-      .catch((e) => {
+    function load(): void {
+      void refresh();
+      // SECTION A fix — never treat an empty in-memory JWT cache as an expired
+      // session. On cold boot the cache is empty until
+      // resumeSessionFromKeychainIfPresent() finishes, so an unguarded
+      // meAffiliate() call throws UnauthorizedError and sticks the Reactivate
+      // chip before the real auth state is known.
+      const jwt = getCachedLicenseJwt();
+      if (!jwt) {
+        setMe(null);
         setAff(null);
-        if (e instanceof UnauthorizedError) {
-          setSessionExpired(true);
-        }
-      });
+        setSessionExpired(false);
+        return;
+      }
+      void meStatusLegacy().then(setMe).catch(() => setMe(null));
+      void meAffiliate()
+        .then((data) => {
+          setAff(data);
+          setSessionExpired(false);
+        })
+        .catch((e) => {
+          setAff(null);
+          if (e instanceof UnauthorizedError) {
+            setSessionExpired(true);
+          } else {
+            // Non-auth failure (network/backend offline) should not leave the
+            // user staring at a permanent Reactivate chip.
+            setSessionExpired(false);
+          }
+        });
+    }
+    load();
+    // v0.7.75 RC-2 — Re-fetch on auth/tier events so a sticky `sessionExpired`
+    // flag from a cold-launch UnauthorizedError clears as soon as the user
+    // unlocks via Continue session (lc:desktop-auth-ready) or the app
+    // resyncs tier (lc:tier-refresh). Without this the Reactivate chip
+    // hangs in the top-right until next window focus.
+    const onAuthReady = (): void => {
+      setSessionExpired(false);
+      load();
+    };
+    window.addEventListener("lc:desktop-auth-ready", onAuthReady);
+    window.addEventListener("lc:tier-refresh", onAuthReady);
+    // SECTION A fallback — if the boot-time auth-ready/tier-refresh events were
+    // missed (e.g. AvatarOrbit was not mounted during the splash), re-probe
+    // when the user returns to the app. This is a cache-only read, so it never
+    // triggers a Keychain prompt.
+    function onVisibilityChange(): void {
+      if (document.visibilityState === "visible") {
+        load();
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("lc:desktop-auth-ready", onAuthReady);
+      window.removeEventListener("lc:tier-refresh", onAuthReady);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [refresh]);
 
   const email = me?.email ?? null;
@@ -121,13 +168,13 @@ export function AvatarOrbit({
           tabIndex={0}
           onClick={(ev) => {
             ev.stopPropagation();
-            openAuthPanel("sign-in");
+            void activate();
           }}
           onKeyDown={(ev) => {
             if (ev.key === "Enter" || ev.key === " ") {
               ev.preventDefault();
               ev.stopPropagation();
-              openAuthPanel("sign-in");
+              void activate();
             }
           }}
           className="avatar-orbit-chip cursor-pointer"

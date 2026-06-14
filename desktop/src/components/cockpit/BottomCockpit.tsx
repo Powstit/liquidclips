@@ -17,7 +17,7 @@
 //   DELEGATE — Caption Edit → CaptionDrawer (onOpenCaptions),
 //              Source Change → pickOverlaySource (inside ReactionControls),
 //              Publish/Schedule popover empty state → onConnectChannels →
-//                Settings → Connections (DON'T inline channel CRUD here),
+//                Schedule → Loadout (DON'T inline channel CRUD here),
 //              Routes alt → schedule popover, ⋮ menu items → modals/routes.
 //   WATCH   — clip.overlay.bake_status (server writes "error" on ffmpeg
 //             fail; pending phase is client-side via reactionBakingAt
@@ -43,7 +43,7 @@ import {
 } from "lucide-react";
 import { humanError, sidecar, type Project } from "../../lib/sidecar";
 import { useTier } from "../../lib/useTier";
-import { openAuthPanel } from "../auth/useAuthPanel";
+import { openUpgradeWhenSignedIn } from "../../lib/upgradeWithAuth";
 import {
   CAPTION_STYLES,
   CAPTION_STYLE_KEYS,
@@ -186,7 +186,7 @@ export function BottomCockpit({
       import("../../lib/paywallNotify").then(({ notifyPaywall }) =>
         notifyPaywall("reaction_layout_retry", cockpitTier.tier),
       );
-      openAuthPanel("upgrade");
+      openUpgradeWhenSignedIn();
       return;
     }
     const ov = focusedClip.overlay;
@@ -757,7 +757,23 @@ function StatusStrip({
           )}
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Project</DropdownMenuLabel>
-          <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent("lc:open-brief"))}>
+          <DropdownMenuItem
+            onClick={() => {
+              if (project.whop_bounty_url) {
+                window.dispatchEvent(
+                  new CustomEvent("lc:open-brief", {
+                    detail: { url: project.whop_bounty_url },
+                  }),
+                );
+              } else {
+                window.dispatchEvent(
+                  new CustomEvent("lc:toast", {
+                    detail: { kind: "info", message: "No Whop brief is attached to this project." },
+                  }),
+                );
+              }
+            }}
+          >
             Brief
             <DropdownMenuShortcut>B</DropdownMenuShortcut>
           </DropdownMenuItem>
@@ -782,7 +798,7 @@ function StatusStrip({
           <DropdownMenuLabel>Navigation</DropdownMenuLabel>
           {onOpenSettings && (
             <DropdownMenuItem onClick={onOpenSettings}>
-              Settings → Connections
+              Schedule → Loadout
             </DropdownMenuItem>
           )}
           <DropdownMenuItem

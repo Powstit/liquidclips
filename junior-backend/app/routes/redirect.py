@@ -1,7 +1,8 @@
 """GET /r/{tracking_id} — public tracking-link resolver.
 
-Resolves a Junior tracking link to its destination URL, sets first-touch
-attribution cookies on `.jnremployee.com`, and best-effort logs a click row.
+Resolves a Liquid Clips tracking link to its destination URL, sets first-touch
+attribution cookies on `.liquidclips.app` (env-overridable via
+`ATTRIBUTION_COOKIE_DOMAIN`), and best-effort logs a click row.
 
 Privacy posture:
   - No raw IP is ever stored. We sha256 the client IP with a daily-rotating
@@ -90,16 +91,20 @@ def _referer_host(ref: str | None) -> str | None:
 
 
 def _cookie_domain() -> str | None:
-    # Set on the apex so account.jnremployee.com / partner.jnremployee.com /
-    # jnremployee.com all see the same first-touch attribution cookies.
-    # Local dev (settings default api host) gets None → cookie binds to the
-    # current host, which is fine.
-    site = get_settings().public_site_url
+    # v0.7.69 — env-driven with safe default `.liquidclips.app`. Set on the
+    # apex so account.liquidclips.app / partner.liquidclips.app / the bare
+    # apex all see the same first-touch attribution cookies. Override per-env
+    # via `ATTRIBUTION_COOKIE_DOMAIN`. Set to "" (empty string) for local dev
+    # so the cookie binds to the current host instead of failing on `.localhost`.
+    settings = get_settings()
+    configured = (settings.attribution_cookie_domain or "").strip()
+    if configured:
+        return configured
+    # Fallback: derive from public_site_url. Localhost dev still gets None.
+    site = settings.public_site_url
     host = urlparse(site).hostname if site else None
     if not host or host in ("localhost", "127.0.0.1"):
         return None
-    # Strip leading subdomain — `api.jnremployee.com` → `.jnremployee.com`,
-    # while a bare `jnremployee.com` becomes `.jnremployee.com`.
     parts = host.split(".")
     if len(parts) >= 2:
         return "." + ".".join(parts[-2:])

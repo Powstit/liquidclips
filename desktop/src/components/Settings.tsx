@@ -1,29 +1,47 @@
-// ship-lens v0.7.8: S1 — performSignOut now atomic-wipes every sensitive secret via performAtomicSignOutWipe (centralised in App.tsx) so handing the Mac to someone else doesn't leak OpenAI / Anthropic / Whop / Pexels / Pixabay / Giphy / onboarded keys; the Log-out confirm copy names the API-key clear explicitly. S2 — 5th left-rail tab "Connections" mounts AyrshareConnectionPanel + a per-channel status list (linked / pending_link / unlinked / error). S3 — API-keys pane reads sidecar.openaiKeyStatus() on mount so the OPENAI_API_KEY green dot ALSO lights when the key is resolved via env-var (keychain empty was a silent UI lie). v0.7.7 carry-over: fix #9 meStatus discriminated union for expired sessions.
+// Lane 5 redesign — Settings.tsx
+// Calm, premium, customer-facing utility surface. Four tabs only:
+// Account / API keys / Privacy / About.
+//
+// Key invariants preserved:
+//   * performAtomicSignOutWipe is the single source of truth for sign-out.
+//   * openUpgradeWhenSignedIn() gates the upgrade CTA for signed-out users.
+//   * activate({ via: "browser" }) drives re-activation.
+//   * API-key status reads (sidecar.secretsStatus / sidecar.openaiKeyStatus)
+//     are deferred until the API keys tab is opened — no passive Keychain
+//     prompt when Settings mounts.
+
 import { useEffect, useState } from "react";
 import { openSmart as openExternal } from "../lib/openSmart";
-// v0.7.45 — `openSmart` is used for filesystem-path opens (the "Open in
-// Finder" chip below). Plain `shell.open` rejects `/Users/...` paths
-// against its built-in mailto/tel/https regex and surfaces a red banner.
-import { openSmart } from "../lib/openSmart";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { Camera, Trash2, User, Key, Info, Activity, ChevronLeft, Droplet } from "lucide-react";
+import { Camera, Trash2, User, Key, Shield, Info, ChevronLeft, Droplet, Mail, Copy } from "lucide-react";
 import { sidecar, humanError, type HardwareInfo, type SecretName } from "../lib/sidecar";
 import { useAvatar, avatarSrc, initialsOf } from "../lib/avatar";
-// v0.7.8 S1 — single source of truth for sign-out side-effects. Settings'
-// own performSignOut used to call sidecar.secretDelete("LICENSE_JWT") in
-// isolation; without this import, BYO API keys + onboarded flag remained on
-// the keychain when a user signed out from Settings (same leak the AvatarPanel
-// path had). One helper, both call sites.
 import { performAtomicSignOutWipe } from "../App";
 import { useTier } from "../lib/useTier";
 
-// Single source of truth — pulled from package.json so a stale constant can't
-// land in the Settings → About row again after a ship.
 import pkg from "../../package.json";
-// v0.6.4 — painted cover retired (Whop-pattern Settings is strict utility).
-// import settingsCover from "../assets/decks/settings.png";
+import {
+  syncStatus,
+  meStatus,
+  meAffiliate,
+  UnauthorizedError,
+  type SyncStatus,
+  type MeStatus,
+  type MeStatusResult,
+} from "../lib/backend";
+import { openAuthPanel } from "./auth/useAuthPanel";
+import { openUpgradeWhenSignedIn } from "../lib/upgradeWithAuth";
+import { useActivation } from "../lib/activation";
+import { getCachedLicenseJwt } from "../lib/authStorage";
+import { applyUpdate, checkForUpdate, readLastUpdateCheck, type LastUpdateCheck, type UpdateState } from "../lib/updater";
+import { getTelemetryConsent, setTelemetryConsent } from "../lib/telemetry";
+import { resetIntroSeen } from "../lib/intro";
+import { BadgeShelf } from "./BadgeShelf";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { MadeWithLiquidClips } from "./brand/MadeWithLiquidClips";
+
 const APP_VERSION: string = pkg.version;
 const SUPPORT_EMAIL = "hello@liquidclips.app";
 type BuildEnv = ImportMetaEnv & {
@@ -38,34 +56,13 @@ const BUILD_HASH =
   import.meta.env.MODE;
 const CLIP_STORAGE_PATH = "~/LiquidClips/";
 const LOG_PATH = "~/LiquidClips/projects/<slug>/.progress.json";
-// v0.7.7 ship-lens fix #9 — Settings owns the surface where the meStatus
-// discriminated union actually matters. The "expired" case fires the
-// fuchsia re-activate banner; "signed-out" keeps the existing Sign-in copy.
-// WhoAmISection also reads the union so its empty-state copy is honest.
-import { syncStatus, meStatus, meAffiliate, UnauthorizedError, type SyncStatus, type MeStatus, type MeStatusResult } from "../lib/backend";
-import { openAuthPanel } from "./auth/useAuthPanel";
-import { useActivation } from "../lib/activation";
-import { getCachedLicenseJwt } from "../lib/authStorage";
-import { applyUpdate, checkForUpdate, readLastUpdateCheck, type LastUpdateCheck, type UpdateState } from "../lib/updater";
-import { getTelemetryConsent, setTelemetryConsent } from "../lib/telemetry";
-import { resetIntroSeen } from "../lib/intro";
-import { BadgeShelf } from "./BadgeShelf";
-import { HudChip } from "./cockpit/HudChip";
-import { ConfirmDialog } from "./ConfirmDialog";
 
-// Settings panel per spec §3.8 screen 8 — one scrollable page.
-// Opens as a modal sheet from the gear icon in the header.
+const WHOP_MANAGE_URL = "https://whop.com/liquidclips";
 
 type Tier = "free" | "solo" | "growth" | "autopilot";
 
-// v0.7.54 — jnremployee Whop product is deprecated; liquidclips is the
-// active hub (same canonical URL as the in-app Community tab).
-const WHOP_MANAGE_URL = "https://whop.com/liquidclips";
+type SettingsCategory = "account" | "api-keys" | "privacy" | "about";
 
-// v0.6.4 — Strict-utility (Whop-pattern) Settings.
-// Categories drive what the right pane shows; left rail switches between
-// them. No painted decoration inside chrome (the v0.6.3 cover hero retired).
-type SettingsCategory = "account" | "keys" | "about" | "diagnostics";
 type DepsInfo = {
   ok: boolean;
   missing: string[];
@@ -75,32 +72,48 @@ type DepsInfo = {
 
 const CATEGORY_LABELS: Record<SettingsCategory, string> = {
   account: "Account",
-  keys: "API keys",
+  "api-keys": "API keys",
+  privacy: "Privacy",
   about: "About",
-  diagnostics: "Diagnostics",
 };
 
 const CATEGORY_ICONS: Record<SettingsCategory, React.ComponentType<{ className?: string }>> = {
   account: User,
-  keys: Key,
+  "api-keys": Key,
+  privacy: Shield,
   about: Info,
-  diagnostics: Activity,
 };
 
-export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: { onClose: () => void; onSignOut?: () => void; onOpenSchedule?: (subtab?: "queue" | "channels" | "analytics") => void; tier?: Tier }) {
+const PROVIDER_KEYS: SecretName[] = [
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "GIPHY_API_KEY",
+  "PEXELS_API_KEY",
+  "PIXABAY_API_KEY",
+];
+
+export function Settings({
+  onClose,
+  onSignOut,
+  onOpenSchedule,
+  tier = "free",
+  initialTab,
+}: {
+  onClose: () => void;
+  onSignOut?: () => void;
+  onOpenSchedule?: (subtab?: "queue" | "channels" | "analytics") => void;
+  tier?: Tier;
+  initialTab?: SettingsCategory;
+}) {
   const { resolved } = useTier();
-  // onOpenSchedule is used by the lc:settings-open-tab listener for the
-  // "channels" route (Schedule → Channels), which replaced Settings → Connections
-  // in v0.7.40.
+  const [category, setCategory] = useState<SettingsCategory>(initialTab ?? "account");
+
+  // API keys — loaded only when the tab opens.
   const [secrets, setSecrets] = useState<Record<SecretName, boolean> | null>(null);
-  // v0.7.8 S3 — openaiKeyStatus reports "is there ANY resolvable OpenAI key"
-  // (env var → keychain → dev file). Pre-fix Settings only checked the
-  // keychain via secretsStatus(); a user with OPENAI_API_KEY exported in
-  // their shell / .env saw a RED dot for OPENAI_API_KEY despite every
-  // pipeline call working — silent UI lie. Tracked independently so the
-  // truth-source of "available" can light the green dot, and a "via env
-  // var" suffix surfaces when the keychain leg is empty.
   const [openaiAvailable, setOpenaiAvailable] = useState<boolean | null>(null);
+  const [keysLoading, setKeysLoading] = useState(false);
+  const [keysError, setKeysError] = useState<string | null>(null);
+
   const [hw, setHw] = useState<HardwareInfo | null>(null);
   const [editingKey, setEditingKey] = useState<SecretName | null>(null);
   const [draftValue, setDraftValue] = useState("");
@@ -112,83 +125,90 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
   const [depsError, setDepsError] = useState<string | null>(null);
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   const [introReset, setIntroReset] = useState(false);
-  // v0.6.3 — /me load for the compact header + WhoAmI section.
   const [me, setMe] = useState<MeStatus | null>(null);
-  // v0.7.7 ship-lens fix #9 — Track whether the most recent /me failed because
-  // the JWT was rejected (expired) vs. there was never a token. The fuchsia
-  // re-activate banner mounts when this flips true. "signed-out" stays
-  // identical to the prior `me === null` behaviour.
   const [sessionExpired, setSessionExpired] = useState(false);
-  // v0.6.4 — Whop-pattern left-rail / right-pane layout.
-  const [category, setCategory] = useState<SettingsCategory>("account");
-  // v0.7.30 (IG-006 Bug 1 fix) — Listen for "open this specific tab"
-  // requests dispatched by the cockpit's "Connect a channel →" button.
-  // Routes users straight to Connections without a manual tab hunt.
+  const [home, setHome] = useState<string | null>(null);
+  const [secretErrors, setSecretErrors] = useState<Record<string, string>>({});
+  const [clipboardError, setClipboardError] = useState<string | null>(null);
+  const [bootErrors, setBootErrors] = useState<string[]>([]);
+
+  const [confirmApplyUpdateOpen, setConfirmApplyUpdateOpen] = useState(false);
+  const [confirmClearSecret, setConfirmClearSecret] = useState<SecretName | null>(null);
+  const [confirmSignOutOpen, setConfirmSignOutOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  const { activate } = useActivation();
+
+  // Respond to external "open this tab" requests.
   useEffect(() => {
     function onOpenTab(e: Event) {
       const ce = e as CustomEvent<{ tab?: string }>;
       const tab = ce.detail?.tab;
-      // v0.7.42 social-audit fix — "channels" routes to Schedule → Channels
-      // (the canonical surface since Settings → Connections was removed).
       if (tab === "channels") {
         onOpenSchedule?.("channels");
         onClose();
         return;
       }
-      if (tab && (["account", "keys", "about", "diagnostics"] as SettingsCategory[]).includes(tab as SettingsCategory)) {
+      if (tab === "keys" || tab === "api-keys") {
+        setCategory("api-keys");
+        return;
+      }
+      if (tab && (["account", "privacy", "about"] as SettingsCategory[]).includes(tab as SettingsCategory)) {
         setCategory(tab as SettingsCategory);
       }
     }
     window.addEventListener("lc:settings-open-tab", onOpenTab as EventListener);
     return () => window.removeEventListener("lc:settings-open-tab", onOpenTab as EventListener);
   }, [onClose, onOpenSchedule]);
-  // Lens-pass additions —
-  // (1) home dir resolved via Tauri path API rather than the broken
-  //     hardcoded "/Users" string used by the "Open in Finder" button.
-  const [home, setHome] = useState<string | null>(null);
-  // (5) row-level secret errors so a failed keychain write isn't silent.
-  const [secretErrors, setSecretErrors] = useState<Record<string, string>>({});
-  // (6) clipboard copy failures.
-  const [clipboardError, setClipboardError] = useState<string | null>(null);
-  // (8) boot errors surfaced as a top-of-pane banner instead of swallowed.
-  const [bootErrors, setBootErrors] = useState<string[]>([]);
-  // Branded confirm primitives — kill the three native `confirm()` calls
-  // that block the Tauri webview thread + break the cockpit voice. Each one
-  // is a tiny dedicated state slot rather than a shared "pending action"
-  // string so the JSX stays explicit and TS knows the shape per dialog.
-  const [confirmApplyUpdateOpen, setConfirmApplyUpdateOpen] = useState(false);
-  const [confirmClearSecret, setConfirmClearSecret] = useState<SecretName | null>(null);
-  const [confirmSignOutOpen, setConfirmSignOutOpen] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
+
+  // Auth/session state.
   useEffect(() => {
-    // v0.7.7 ship-lens fix #9 — Consume the discriminated union. "ok" populates
-    // the user header + WhoAmI; "expired" raises the re-activate banner;
-    // "signed-out" preserves the original null-render (caller already shows
-    // a Sign-in prompt). Failures from the awaited Promise itself are
-    // treated as signed-out; the meStatus() implementation already collapses
-    // its own thrown transports into kind: "signed-out".
-    void meStatus()
-      .then((r: MeStatusResult) => {
-        if (r.kind === "ok") {
-          setMe(r.data);
-          setSessionExpired(false);
-        } else if (r.kind === "expired") {
-          setMe(null);
-          setSessionExpired(true);
-        } else {
-          setMe(null);
-          setSessionExpired(false);
-        }
-      })
-      .catch(() => {
+    function load(): void {
+      const jwt = getCachedLicenseJwt();
+      if (!jwt) {
         setMe(null);
         setSessionExpired(false);
-      });
+        return;
+      }
+      void meStatus()
+        .then((r: MeStatusResult) => {
+          if (r.kind === "ok") {
+            setMe(r.data);
+            setSessionExpired(false);
+          } else if (r.kind === "expired") {
+            setMe(null);
+            setSessionExpired(true);
+          } else {
+            setMe(null);
+            setSessionExpired(false);
+          }
+        })
+        .catch(() => {
+          setMe(null);
+          setSessionExpired(false);
+        });
+    }
+    load();
+    const onAuthReady = (): void => {
+      setSessionExpired(false);
+      load();
+    };
+    window.addEventListener("lc:desktop-auth-ready", onAuthReady);
+    window.addEventListener("lc:tier-refresh", onAuthReady);
+    function onVisibilityChange(): void {
+      if (document.visibilityState === "visible") {
+        load();
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("lc:desktop-auth-ready", onAuthReady);
+      window.removeEventListener("lc:tier-refresh", onAuthReady);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, []);
 
-  // Resolve the user's real home directory once. The "Open in Finder" chip
-  // depended on a hardcoded "/Users" path which targets the wrong folder on
-  // every Mac — read Tauri's homeDir() and cache it.
+  // Resolve home dir once for the "Open in Finder" action.
   useEffect(() => {
     let cancelled = false;
     void import("@tauri-apps/api/path")
@@ -204,10 +224,67 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
     };
   }, []);
 
+  // Boot-time probes that do NOT touch keychain-backed secrets.
+  useEffect(() => {
+    void sidecar
+      .hardwareInfo()
+      .then(setHw)
+      .catch((e) => setBootErrors((errs) => [...errs, `hardware: ${humanError(e)}`]));
+    void sidecar
+      .checkDeps()
+      .then(setDeps)
+      .catch((e) => setDepsError(humanError(e)));
+    const jwt = getCachedLicenseJwt();
+    if (jwt) {
+      void syncStatus()
+        .then(setSync)
+        .catch((e) => setBootErrors((errs) => [...errs, `sync: ${humanError(e)}`]))
+        .finally(() => setSyncChecked(true));
+    } else {
+      setSync(null);
+      setSyncChecked(true);
+    }
+    void onCheckForUpdate();
+  }, []);
+
+  // API keys tab: secrets + OpenAI env-var resolution are loaded only here.
+  useEffect(() => {
+    if (category !== "api-keys") return;
+    if (keysLoading || secrets !== null) return;
+    setKeysLoading(true);
+    setKeysError(null);
+    Promise.all([
+      sidecar
+        .secretsStatus()
+        .then((r) => setSecrets(r.secrets))
+        .catch((e) => {
+          setKeysError(`Couldn't read keychain status: ${humanError(e)}`);
+          setBootErrors((errs) => [...errs, `secrets: ${humanError(e)}`]);
+        }),
+      sidecar
+        .openaiKeyStatus()
+        .then((r) => setOpenaiAvailable(r.available))
+        .catch(() => setOpenaiAvailable(null)),
+    ]).finally(() => setKeysLoading(false));
+  }, [category, keysLoading, secrets]);
+
+  async function refreshSecrets() {
+    try {
+      const r = await sidecar.secretsStatus();
+      setSecrets(r.secrets);
+      try {
+        const o = await sidecar.openaiKeyStatus();
+        setOpenaiAvailable(o.available);
+      } catch {
+        setOpenaiAvailable(null);
+      }
+    } catch (e) {
+      setKeysError(`Couldn't refresh keychain status: ${humanError(e)}`);
+    }
+  }
+
   async function onCheckForUpdate() {
     setUpdateState({ kind: "checking" });
-    // (11) Race the updater against a 10s timeout so a hung manifest server
-    // doesn't leave the chip stuck on "Checking…" forever.
     const timeout = new Promise<UpdateState>((resolve) =>
       window.setTimeout(
         () =>
@@ -225,9 +302,6 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
 
   function onApplyUpdate() {
     if (updateState.kind !== "available") return;
-    // (3) Branded confirm before the one-click app restart. During a demo a
-    // stray misclick on this chip would otherwise quit + relaunch
-    // mid-recording. ConfirmDialog handles Esc + click-outside to cancel.
     setConfirmApplyUpdateOpen(true);
   }
 
@@ -240,17 +314,31 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
   async function performSignOut() {
     if (signingOut) return;
     setSigningOut(true);
-    // v0.7.8 S1 — single atomic wipe call. Pre-fix this only deleted
-    // LICENSE_JWT, leaving every BYO API key (OpenAI / Anthropic / Whop /
-    // Pexels / Pixabay / Giphy) and the LIQUIDCLIPS_ONBOARDED flag on the
-    // keychain — the next user on the Mac would inherit the prior user's
-    // billing surface. performAtomicSignOutWipe also resets telemetry
-    // consent + clears the avatar Zustand store so the orbit doesn't bleed
-    // the prior face into the next session.
     await performAtomicSignOutWipe();
-    // (17) Run onSignOut BEFORE onClose. Closing first unmounts the drawer
-    // and would race with the app-level sign-out handler that may want to
-    // re-open it (e.g. to show a sign-in prompt).
+
+    // Best-effort partial-wipe detection: if LICENSE_JWT presence still
+    // reports true, at least one keychain item survived. Use the presence
+    // mirror so we don't trigger a Keychain read.
+    let partial = false;
+    try {
+      const presence = await sidecar.licenseJwtPresence();
+      partial = presence.present;
+    } catch {
+      partial = true;
+    }
+
+    if (partial) {
+      window.dispatchEvent(
+        new CustomEvent("lc:toast", {
+          detail: {
+            kind: "error",
+            message:
+              "Some items couldn't be cleared from your Keychain. Open Keychain Access to remove them manually.",
+          },
+        }),
+      );
+    }
+
     try {
       await onSignOut?.();
     } finally {
@@ -260,54 +348,13 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
     }
   }
 
-  useEffect(() => {
-    // (8) Catch each boot probe independently. Previously a failure on any
-    // one of these would silently swallow the rest in the same .then chain
-    // and leave the right pane half-populated with no signal.
-    void sidecar
-      .secretsStatus()
-      .then((r) => setSecrets(r.secrets))
-      .catch((e) => setBootErrors((errs) => [...errs, `secrets: ${humanError(e)}`]));
-    // v0.7.8 S3 — separate "is any OpenAI key resolvable" probe. Result
-    // flows into the SecretRow's `presentOverride` for OPENAI_API_KEY so
-    // env-var-only users see the green dot. Failure leaves it null — the
-    // keychain check still drives the dot, matching pre-v0.7.8 behaviour.
-    void sidecar
-      .openaiKeyStatus()
-      .then((r) => setOpenaiAvailable(r.available))
-      .catch(() => setOpenaiAvailable(null));
-    void sidecar
-      .hardwareInfo()
-      .then(setHw)
-      .catch((e) => setBootErrors((errs) => [...errs, `hardware: ${humanError(e)}`]));
-    void sidecar
-      .checkDeps()
-      .then(setDeps)
-      .catch((e) => setDepsError(humanError(e)));
-    void syncStatus()
-      .then(setSync)
-      .catch((e) => setBootErrors((errs) => [...errs, `sync: ${humanError(e)}`]))
-      .finally(() => setSyncChecked(true));
-    void onCheckForUpdate();
-  }, []);
-
   async function saveSecret(name: SecretName) {
     if (!draftValue.trim()) return;
-    // ship-lens v0.7.7 fix #6: validate OPENAI_API_KEY against the live API
-    // BEFORE persisting to keychain. The pre-v0.7.7 behaviour was to write
-    // any string and light the green dot — a paste-typo or revoked key
-    // produced a "saved" UI lie that only revealed itself mid-pipeline run.
-    // For other secret types (LICENSE_JWT, BYO Anthropic, source-image
-    // creds), no validation exists so we keep the write-first behaviour.
     try {
       await sidecar.secretSet(name, draftValue.trim());
       if (name === "OPENAI_API_KEY") {
         const result = await sidecar.validateOpenaiKey();
         if (!result.valid) {
-          // Surface the rejection inline, clear the key from keychain so the
-          // green dot doesn't lie about an invalid value being "stored", and
-          // leave the editor open with the original draft so the user can
-          // correct it.
           await sidecar.secretDelete(name).catch(() => undefined);
           const refreshed = await sidecar.secretsStatus();
           setSecrets(refreshed.secrets);
@@ -326,18 +373,13 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
         delete next[name];
         return next;
       });
-      const refreshed = await sidecar.secretsStatus();
-      setSecrets(refreshed.secrets);
+      await refreshSecrets();
     } catch (e) {
       setSecretErrors((prev) => ({ ...prev, [name]: humanError(e) }));
     }
   }
 
   function clearSecret(name: SecretName) {
-    // (5) Destructive confirm for keys whose absence breaks the whole clip
-    // pipeline or the activation gate. Without this a single misclick on
-    // OPENAI_API_KEY's "Clear" button silently nukes selection runs. For
-    // non-critical keys we skip the modal entirely.
     if (name === "OPENAI_API_KEY" || name === "LICENSE_JWT") {
       setConfirmClearSecret(name);
       return;
@@ -354,16 +396,13 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
         delete next[name];
         return next;
       });
-      const refreshed = await sidecar.secretsStatus();
-      setSecrets(refreshed.secrets);
+      await refreshSecrets();
     } catch (e) {
       setSecretErrors((prev) => ({ ...prev, [name]: humanError(e) }));
     }
   }
 
   async function copyDiagnostics() {
-    // (6) Don't swallow clipboard errors — surface "couldn't copy" inline so
-    // the user knows to select the dump manually.
     const dump = buildDiagnosticsMarkdown({ deps, depsError, hw, sync, me });
     try {
       await writeText(dump);
@@ -375,9 +414,6 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
     }
   }
 
-  // (4) Esc closes the drawer for keyboard-only users. Previously the drawer
-  // had no Esc handler, no role="dialog" and no aria-modal — a keyboard user
-  // could open Settings and get trapped with no obvious exit.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -391,402 +427,113 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
 
   return (
     <>
-    <div className="flex h-full w-full flex-col bg-paper">
-      {/* v0.7.14 — K3: Settings Full-Screen Panel.
-          Converted from modal slide-out to full-page mount inside the cockpit.
-          Left rail + right content pane. No overlay wrapper.
-          ship-lens v0.7.13: outer Fragment wraps the ConfirmDialogs that
-          live as siblings outside the panel. */}
-        {/* v0.6.4 — Whop-pattern compact header. No painted cover, no glow,
-            no animation. Single line: initials + name + tier + email +
-            close. Stays calm — Settings is a utility surface, not theatre. */}
+      <div className="flex h-full w-full flex-col bg-paper">
         <SettingsCompactHeader me={me} sync={sync} tier={tier} resolved={resolved} onClose={onClose} />
 
-        {/* Two-column body: left rail of categories, right pane shows the
-            active category's content. Single page, no subpages, no back
-            button. Inner pane keeps its own scroll. */}
         <div className="flex min-h-0 flex-1 flex-row">
           <SettingsLeftRail active={category} onSelect={setCategory} />
-          {/* (12) `key={category}` removed — it was forcing a full remount on
-              every tab switch which made AffiliatePayoutsSection re-fetch and
-              flash its loading state. React reconciles children correctly per
-              tab without the key. (19) `pb-24` keeps the last item clear of
-              the sticky footer on short windows. */}
-          <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto px-7 py-7 pb-24">
-          {bootErrors.length > 0 && (
-            <div className="rounded-lg border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 px-3 py-2 font-mono text-[11px] text-[var(--color-danger)]">
-              Some Settings data couldn't load — Liquid Clips helper may be restarting.
-              <span className="block text-text-tertiary normal-case">
-                {bootErrors.join(" · ")}
-              </span>
-            </div>
-          )}
-          {/* v0.7.49 — Free-tier watermark banner. The watermark itself is
-              already burned server-authoritatively at stages.py:_should_watermark;
-              this banner makes the constraint visible so the upsell beat is
-              concrete: "your clips ship with our wordmark today, here's the
-              path to clean exports." Hidden the moment the user upgrades. */}
-          {(sync?.tier ?? tier) === "free" && (
-            <div className="relative overflow-hidden rounded-2xl border border-fuchsia-soft bg-gradient-to-br from-fuchsia-soft/30 via-paper to-paper px-5 py-4">
-              <div className="flex items-start gap-3.5">
-                <div className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-fuchsia/40 bg-paper shadow-[var(--glow-sm)]">
-                  <Droplet className="h-5 w-5 text-fuchsia" strokeWidth={2.2} />
-                </div>
-                <div className="flex-1">
-                  <div className="font-display text-[15px] font-semibold leading-tight text-ink">
-                    Your exports include the Liquid Clips wordmark.
-                  </div>
-                  <p className="mt-1 font-sans text-[13px] leading-snug text-text-secondary">
-                    Free tier burns a corner watermark on every clip you publish or save. Upgrade to Solo for clean exports plus 1-click publish on connected channels.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => openAuthPanel("upgrade")}
-                  className="shrink-0 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-semibold text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
-                >
-                  Upgrade to Solo
+
+          <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-7 py-7 pb-24">
+            {bootErrors.length > 0 && (
+              <div className="error-banner">
+                <span>
+                  Some Settings data couldn't load — Liquid Clips helper may be restarting.
+                  <span className="block text-text-tertiary normal-case">{bootErrors.join(" · ")}</span>
+                </span>
+              </div>
+            )}
+
+            {sessionExpired && (
+              <div className="rounded-2xl border border-fuchsia/50 bg-fuchsia-soft/40 px-4 py-3 text-fuchsia-deep">
+                <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia">session expired</span>
+                <p className="mt-1 font-sans text-[13px] leading-snug">
+                  Your session expired — re-activate this device to keep publishing, scheduling, and earning.
+                </p>
+                <button type="button" onClick={() => void activate()} className="btn-primary mt-3">
+                  Re-activate this device →
                 </button>
               </div>
-            </div>
-          )}
-          {/* v0.7.7 ship-lens fix #9 — the JWT was present but rejected by
-              /me. Before this fix Settings rendered the same "Sign in to
-              your Liquid Clips account" copy whether the user was a fresh
-              install OR a paying user whose token had aged out — they
-              looked identical because meStatus() collapsed both into null.
-              Banner only mounts when meStatus() returned kind: "expired",
-              so the signed-out case keeps the original prompt path. */}
-          {sessionExpired && (
-            <div
-              role="alert"
-              className="flex flex-col gap-2 rounded-lg border border-fuchsia/50 bg-fuchsia-soft/40 px-4 py-3 text-fuchsia-deep"
-            >
-              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia">
-                session expired
-              </span>
-              <p className="font-sans text-[13px] leading-snug">
-                Your session expired — re-activate this device to keep
-                publishing, scheduling, and earning.
-              </p>
-              <button
-                type="button"
-                onClick={() => openAuthPanel("sign-in")}
-                className="self-start rounded-full bg-fuchsia px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-white transition-colors hover:bg-fuchsia-bright"
-              >
-                Re-activate this device →
-              </button>
-            </div>
-          )}
-          {category === "account" && (
-            <>
-              <Section eyebrow="profile" title="Your face on the orbit.">
-                <ProfileAvatarRow email={me?.email ?? null} />
-              </Section>
-
-              <Section eyebrow="achievements" title="Your earned badges.">
-                <BadgeShelf />
-              </Section>
-
-              <Section eyebrow="class" title="Class + subscription">
-                <Row
-                  label="Class"
-                  value={
-                    !resolved
-                      ? "Checking…"
-                      : sync
-                      ? (sync.tier === "free" ? "Free · Try" : capitalise(sync.tier))
-                      : (tier === "free" ? "Free · Try" : capitalise(tier))
-                  }
-                />
-                {sync?.paid_until && (
-                  <Row
-                    label={sync.subscription_status === "canceled" ? "Access until" : "Renews"}
-                    value={new Date(sync.paid_until).toLocaleDateString()}
-                  />
-                )}
-                <SubscriptionAction syncChecked={syncChecked} sync={sync} />
-                <p className="font-mono text-[11px] text-text-tertiary">
-                  {!syncChecked
-                    ? "Checking activation…"
-                    : !sync
-                    ? "Not activated — click Sign in to activate this device."
-                    : sync.billing_provider === "whop"
-                    ? "Whop holds your card. Cancel / update card / change plan all happen there."
-                    : "Manage plan + payment method on your account page."}
-                </p>
-              </Section>
-            </>
-          )}
-
-          {category === "keys" && (
-          <Section eyebrow="api keys" title="Bring your own.">
-            <p className="font-sans text-[13px] text-text-secondary">
-              <strong className="text-ink">An OpenAI key is required for clip selection</strong> on
-              every plan today — Liquid Clips runs locally and hosted AI (no key needed) is in private beta.
-              Stored encrypted in your OS keychain, decrypted in-memory at call time.
-              Never sent to our servers, never logged.
-            </p>
-            {secrets && (
-              <div className="flex flex-col gap-2">
-                {(Object.keys(secrets) as SecretName[]).map((name) => {
-                  // v0.7.8 S3 — env-var resolution flows into the green dot
-                  // for OPENAI_API_KEY only. Other secrets (BYO Anthropic,
-                  // license JWT, etc.) keep the keychain-only signal. The
-                  // suffix renders when keychain is empty but env-var
-                  // resolution says present, so the user knows the dot is
-                  // lit by something they can't manage from this pane.
-                  const isOpenai = name === "OPENAI_API_KEY";
-                  const keychainPresent = secrets[name];
-                  const effectivePresent =
-                    isOpenai && openaiAvailable === true
-                      ? true
-                      : keychainPresent;
-                  const sourceSuffix =
-                    isOpenai && !keychainPresent && openaiAvailable === true
-                      ? "via env var"
-                      : null;
-                  return (
-                    <SecretRow
-                      key={name}
-                      name={name}
-                      present={effectivePresent}
-                      sourceSuffix={sourceSuffix}
-                      editing={editingKey === name}
-                      draftValue={draftValue}
-                      errorMessage={secretErrors[name] ?? null}
-                      onEdit={() => {
-                        setEditingKey(name);
-                        setDraftValue("");
-                      }}
-                      onDraftChange={setDraftValue}
-                      onCancel={() => {
-                        setEditingKey(null);
-                        setDraftValue("");
-                      }}
-                      onSave={() => void saveSecret(name)}
-                      onClear={() => void clearSecret(name)}
-                    />
-                  );
-                })}
-              </div>
             )}
-          </Section>
-          )}
 
-          {category === "account" && <AffiliatePayoutsSection />}
-
-          {category === "diagnostics" && (
-            <DiagnosticsSection
-              deps={deps}
-              depsError={depsError}
-              hw={hw}
-              copied={diagnosticsCopied}
-              clipboardError={clipboardError}
-              onCopy={() => void copyDiagnostics()}
-            />
-          )}
-
-          {category === "about" && (
-          <Section eyebrow="output folder" title="Where Liquid Clips writes everything.">
-            <Row label="Folder" value={CLIP_STORAGE_PATH} mono />
-            <p className="font-sans text-[13px] text-text-secondary">
-              Every project gets its own subfolder with source, audio, transcript, clips, thumbnails,
-              and metadata. Open it any time and find every asset the app made.
-            </p>
-            {/* (1) Use the real home dir resolved at mount instead of the
-                hardcoded "/Users" string that opened the wrong folder. */}
-            <HudChip
-              active={false}
-              onClick={() => {
-                if (!home) return;
-                // v0.7.45 — Was `openExternal` (shell plugin); the
-                // `/Users/.../LiquidClips` path failed shell's URL regex and
-                // raised a red banner. `openSmart` routes paths through
-                // the opener plugin instead.
-                void openSmart(`${home}/LiquidClips`);
-              }}
-              disabled={!home}
-            >
-              {home ? "Open in Finder →" : "Locating folder…"}
-            </HudChip>
-          </Section>
-          )}
-
-          {category === "about" && (
-          <Section eyebrow="captions" title="One default style.">
-            <p className="font-sans text-[13px] text-text-secondary">
-              Helvetica, white text, thick black outline, vertical-friendly margin. Burned into
-              every clip in stage 6.
-            </p>
-            <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-              Multi-style presets land in v1.1
-            </p>
-          </Section>
-          )}
-
-          {category === "about" && (
-          <Section eyebrow="updates" title="Liquid Clips updates itself.">
-            <p className="font-sans text-[13px] text-text-secondary">
-              Liquid Clips checks the signed update manifest every time the app opens. Settings runs the same check
-              again so you can verify the current install without guessing.
-            </p>
-            <div className="flex flex-wrap items-center gap-3">
-              <HudChip
-                active={updateState.kind === "available"}
-                onClick={() => void onCheckForUpdate()}
-                disabled={updateState.kind === "checking" || updateState.kind === "downloading" || updateState.kind === "installing"}
-              >
-                {updateState.kind === "checking" ? "Checking…" : "Check for updates"}
-              </HudChip>
-              {updateState.kind === "up-to-date" && (
-                <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-                  ● up to date
-                </span>
-              )}
-              {updateState.kind === "available" && (
-                <>
-                  <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
-                    ● {updateState.update.version} ready
-                  </span>
-                  <HudChip active onClick={() => void onApplyUpdate()}>
-                    Install + relaunch →
-                  </HudChip>
-                </>
-              )}
-              {updateState.kind === "downloading" && (
-                <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary">
-                  ↓ downloading…
-                  {updateState.total ? ` ${Math.round((updateState.downloaded / updateState.total) * 100)}%` : ""}
-                </span>
-              )}
-              {updateState.kind === "installing" && (
-                <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
-                  installing — Liquid Clips will relaunch
-                </span>
-              )}
-              {updateState.kind === "error" && (
-                <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--color-danger)]">
-                  {updateState.message}
-                </span>
-              )}
-            </div>
-            {lastUpdateCheck && (
-              <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-                Last manifest check: {new Date(lastUpdateCheck.checkedAt).toLocaleString()}
-                {" · "}
-                {lastUpdateCheck.kind === "available"
-                  ? `update ${lastUpdateCheck.version} ready`
-                  : lastUpdateCheck.kind === "up-to-date"
-                  ? "up to date"
-                  : "error"}
-              </p>
+            {category === "account" && (
+              <AccountTab
+                me={me}
+                sync={sync}
+                syncChecked={syncChecked}
+                tier={tier}
+                onSignOut={() => setConfirmSignOutOpen(true)}
+              />
             )}
-          </Section>
-          )}
 
-          {category === "about" && (
-          <Section eyebrow="about" title='"Made with Liquid Clips" + privacy.'>
-            <Toggle
-              label="Send anonymous telemetry (no video content, no transcripts)"
-              defaultOn={false}
-              initial={() => getTelemetryConsent()}
-              onChange={(next) => setTelemetryConsent(next)}
-            />
-            <div className="flex flex-wrap items-center gap-2 border-t border-line/60 pt-3">
-              <span className="inline-flex items-center rounded-full border border-fuchsia/60 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia">
-                v{APP_VERSION}
-              </span>
-              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-                build · {BUILD_HASH}
-              </span>
-              <HudChip
-                active={introReset}
-                onClick={() => {
+            {category === "api-keys" && (
+              <ApiKeysTab
+                secrets={secrets}
+                openaiAvailable={openaiAvailable}
+                loading={keysLoading}
+                error={keysError}
+                editingKey={editingKey}
+                draftValue={draftValue}
+                secretErrors={secretErrors}
+                onEdit={(name) => {
+                  setEditingKey(name);
+                  setDraftValue("");
+                }}
+                onDraftChange={setDraftValue}
+                onCancel={() => {
+                  setEditingKey(null);
+                  setDraftValue("");
+                }}
+                onSave={(name) => void saveSecret(name)}
+                onClear={(name) => void clearSecret(name)}
+              />
+            )}
+
+            {category === "privacy" && <PrivacyTab />}
+
+            {category === "about" && (
+              <AboutTab
+                hw={hw}
+                home={home}
+                updateState={updateState}
+                lastUpdateCheck={lastUpdateCheck}
+                onCheckForUpdate={() => void onCheckForUpdate()}
+                onApplyUpdate={() => void onApplyUpdate()}
+                deps={deps}
+                depsError={depsError}
+                diagnosticsCopied={diagnosticsCopied}
+                clipboardError={clipboardError}
+                onCopyDiagnostics={() => void copyDiagnostics()}
+                introReset={introReset}
+                onResetIntro={() => {
                   resetIntroSeen();
                   setIntroReset(true);
                 }}
-              >
-                {/* (13) Old copy "Watch intro again →" implied immediate
-                    playback. The intro only fires on next launch — say so. */}
-                {introReset ? "Intro ready to replay" : "Plays on next launch →"}
-              </HudChip>
-              <button
-                type="button"
-                onClick={() => void openExternal(`mailto:${SUPPORT_EMAIL}`)}
-                className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia hover:text-fuchsia-deep"
-              >
-                {SUPPORT_EMAIL}
-              </button>
-            </div>
-            {hw && <Row label="Machine" value={`${hw.ram_gb}GB RAM · ${hw.cpu_count} CPU · ${hw.free_disk_gb}GB free`} />}
-            <div className="flex flex-wrap gap-3 pt-1">
-              <a
-                onClick={() => void openExternal("https://liquidclips.app/privacy")}
-                className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia hover:text-fuchsia-deep"
-              >
-                Privacy policy →
-              </a>
-              <a
-                onClick={() => void openExternal("https://liquidclips.app/terms")}
-                className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia hover:text-fuchsia-deep"
-              >
-                Terms →
-              </a>
-            </div>
-          </Section>
-          )}
-
-          {category === "account" && <WhoAmISection />}
-
-          {category === "about" && <SupportSection />}
-
-          {/* v0.6.3 — Sign-out moved to the anchored bottom-bar so it's
-              always reachable without scrolling. Right-pane scroll wrap
-              below. */}
+              />
+            )}
           </div>
         </div>
-
-        {/* v0.6.3 — Anchored bottom bar. Discord pattern: bold red Log Out
-            button + monospace version chip. Sticky so it survives the
-            scroll list above. */}
-        <SettingsBottomBar
-          onSignOut={() => setConfirmSignOutOpen(true)}
-        />
       </div>
+
       <ConfirmDialog
         open={confirmApplyUpdateOpen}
         tone="neutral"
         title="Install update now?"
-        body={
-          <>
-            Liquid Clips will quit and relaunch. Any unsaved Workspace state
-            will be lost.
-          </>
-        }
+        body={<>Liquid Clips will quit and relaunch. Any unsaved Workspace state will be lost.</>}
         confirmLabel="Install and relaunch"
         onCancel={() => setConfirmApplyUpdateOpen(false)}
-        onConfirm={() => { void performApplyUpdate(); }}
+        onConfirm={() => {
+          void performApplyUpdate();
+        }}
       />
       <ConfirmDialog
         open={confirmClearSecret !== null}
         tone="destructive"
-        title={
-          confirmClearSecret === "OPENAI_API_KEY"
-            ? "Clear OPENAI_API_KEY?"
-            : "Clear LICENSE_JWT?"
-        }
+        title={confirmClearSecret === "OPENAI_API_KEY" ? "Clear OpenAI key?" : "Clear license session?"}
         body={
           confirmClearSecret === "OPENAI_API_KEY" ? (
-            <>
-              The clip-selection pipeline needs this key — every Workspace run
-              will fail until you paste it back in.
-            </>
+            <>The clip-selection pipeline needs this key — every Workspace run will fail until you paste it back in.</>
           ) : (
-            <>
-              You&apos;ll be signed out of Liquid Clips and will need to
-              activate this device again.
-            </>
+            <>You'll be signed out of Liquid Clips and will need to activate this device again.</>
           )
         }
         confirmLabel="Clear key"
@@ -804,34 +551,45 @@ export function Settings({ onClose, onSignOut, onOpenSchedule, tier = "free" }: 
         title="Sign out and forget your API keys on this Mac?"
         body={
           <>
-            We&apos;ll clear your Liquid Clips session AND every API key you
-            stored in the keychain on this machine — OpenAI, Anthropic, Whop,
-            Pexels, Pixabay, Giphy. Useful if you&apos;re handing the Mac to
-            someone else. You&apos;ll paste your keys back in next time you
-            sign in.
+            We'll clear your Liquid Clips session and every API key you stored in the keychain on this machine —
+            OpenAI, Anthropic, Whop, Pexels, Pixabay, Giphy. Useful if you're handing the Mac to someone else. You'll
+            paste your keys back in next time you sign in.
           </>
         }
         confirmLabel="Sign out + clear keys"
         busy={signingOut}
-        onCancel={() => { if (!signingOut) setConfirmSignOutOpen(false); }}
-        onConfirm={() => { void performSignOut(); }}
+        onCancel={() => {
+          if (!signingOut) setConfirmSignOutOpen(false);
+        }}
+        onConfirm={() => {
+          void performSignOut();
+        }}
       />
     </>
   );
 }
 
-function Section({ eyebrow, title, children }: { eyebrow: string; title: string; children: React.ReactNode }) {
-  // v0.6.39 cockpit pass — transparent panel, fuchsia HUD bracket corners,
-  // no plate. Section is the main reusable "category card" in Settings, so
-  // changing here covers Account / API keys / About at once.
+// ─────────────────────────────────────────────────────────────────────────────
+// Tab primitives
+// ─────────────────────────────────────────────────────────────────────────────
+
+function TabHeader({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle: string }) {
   return (
-    <section className="relative flex flex-col gap-3 p-5">
-      <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
-      <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
-      <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
-      <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
-      <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia">{eyebrow}</div>
-      <h3 className="font-display text-[20px] font-semibold tracking-[-0.015em] text-ink">{title}</h3>
+    <div className="flex flex-col gap-1">
+      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia">{eyebrow}</span>
+      <h2 className="font-display text-[22px] font-semibold tracking-[-0.015em] text-ink">{title}</h2>
+      <p className="font-sans text-[13px] text-text-secondary">{subtitle}</p>
+    </div>
+  );
+}
+
+function Section({ eyebrow, title, children }: { eyebrow: string; title: string; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-3 rounded-2xl border border-line/40 bg-paper-elev/40 p-5">
+      <div className="flex flex-col gap-1">
+        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia">{eyebrow}</span>
+        <h3 className="font-display text-[18px] font-semibold tracking-[-0.01em] text-ink">{title}</h3>
+      </div>
       {children}
     </section>
   );
@@ -839,29 +597,266 @@ function Section({ eyebrow, title, children }: { eyebrow: string; title: string;
 
 function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="flex items-center justify-between border-t border-line/60 pt-2">
+    <div className="flex items-center justify-between gap-3 border-t border-line/60 pt-2 first:border-t-0 first:pt-0">
       <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-tertiary">{label}</span>
       <span className={mono ? "font-mono text-[12px] text-ink" : "font-sans text-[14px] text-ink"}>{value}</span>
     </div>
   );
 }
 
-function BracketFrame({ children }: { children: React.ReactNode }) {
+function DebugRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="relative flex flex-col gap-2 p-3">
-      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
-      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
-      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
-      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
-      {children}
+    <div className="flex items-center justify-between gap-3 border-t border-line/60 pt-1 first:border-t-0 first:pt-0">
+      <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">{label}</span>
+      <span className={`truncate ${mono ? "font-mono text-[11px]" : "font-sans text-[12px]"} text-ink`} title={value}>
+        {value}
+      </span>
     </div>
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Account tab
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AccountTab({
+  me,
+  sync,
+  syncChecked,
+  tier,
+  onSignOut,
+}: {
+  me: MeStatus | null;
+  sync: SyncStatus | null;
+  syncChecked: boolean;
+  tier: Tier;
+  onSignOut: () => void;
+}) {
+  const effectiveTier = (sync?.tier ?? me?.effective_tier ?? tier) as Tier;
+  const isPaid = effectiveTier !== "free";
+  const isWhop = sync?.billing_provider === "whop";
+  const { activate } = useActivation();
+  const signedIn = !!me;
+
+  return (
+    <div className="flex flex-col gap-6">
+      <TabHeader eyebrow="Account" title="Your account" subtitle="Manage your plan, profile, and session." />
+
+      {!isPaid && (
+        <div className="relative overflow-hidden rounded-2xl border border-fuchsia-soft bg-gradient-to-br from-fuchsia-soft/30 via-paper to-paper px-5 py-4">
+          <div className="flex items-start gap-3.5">
+            <div className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-fuchsia/40 bg-paper shadow-[var(--glow-sm)]">
+              <Droplet className="h-5 w-5 text-fuchsia" strokeWidth={2.2} />
+            </div>
+            <div className="flex-1">
+              <div className="font-display text-[15px] font-semibold leading-tight text-ink">
+                Your exports include the Liquid Clips wordmark.
+              </div>
+              <p className="mt-1 font-sans text-[13px] leading-snug text-text-secondary">
+                Free tier burns a corner watermark on every clip you publish or save. Upgrade to Solo for clean exports
+                plus 1-click publish on connected channels.
+              </p>
+            </div>
+            <button type="button" onClick={() => openUpgradeWhenSignedIn()} className="btn-primary shrink-0">
+              Upgrade to Solo
+            </button>
+          </div>
+        </div>
+      )}
+
+      <Section eyebrow="Profile" title="Your face on the orbit">
+        <ProfileAvatarRow email={me?.email ?? null} />
+      </Section>
+
+      <Section eyebrow="Achievements" title="Your earned badges">
+        <BadgeShelf />
+      </Section>
+
+      <Section eyebrow="Plan" title="Class + subscription">
+        <div className="flex flex-col gap-3">
+          <Row label="Class" value={!syncChecked ? "Checking…" : capitalise(effectiveTier)} />
+          {sync?.paid_until && (
+            <Row
+              label={sync.subscription_status === "canceled" ? "Access until" : "Renews"}
+              value={new Date(sync.paid_until).toLocaleDateString()}
+            />
+          )}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                if (isWhop) {
+                  void openExternal(WHOP_MANAGE_URL);
+                } else if (sync) {
+                  openAuthPanel("dashboard");
+                } else {
+                  openUpgradeWhenSignedIn();
+                }
+              }}
+              disabled={!syncChecked}
+              className="btn-secondary"
+            >
+              {!syncChecked
+                ? "Checking…"
+                : isWhop
+                  ? "Manage subscription on Whop →"
+                  : sync
+                    ? "Manage subscription →"
+                    : "Upgrade →"}
+            </button>
+            {signedIn && (
+              <button type="button" onClick={() => void onSignOut()} className="btn-danger">
+                Sign out
+              </button>
+            )}
+          </div>
+          <p className="font-mono text-[11px] text-text-tertiary">
+            {!syncChecked
+              ? "Checking activation…"
+              : !sync
+                ? "Not activated — click Upgrade to activate this device."
+                : isWhop
+                  ? "Whop holds your card. Cancel / update card / change plan all happen there."
+                  : "Manage plan + payment method on your account page."}
+          </p>
+        </div>
+      </Section>
+
+      {!signedIn && (
+        <Section eyebrow="Session" title="Activate this device">
+          <p className="font-sans text-[13px] text-text-secondary">
+            Sign in to sync your subscription, publish clips, and connect social channels.
+          </p>
+          <button type="button" onClick={() => void activate({ via: "browser" })} className="btn-primary self-start">
+            Sign in to Liquid Clips →
+          </button>
+        </Section>
+      )}
+
+      <AffiliatePayoutsSection />
+      <WhoAmISection />
+    </div>
+  );
+}
+
+function capitalise(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API keys tab
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ApiKeysTab({
+  secrets,
+  openaiAvailable,
+  loading,
+  error,
+  editingKey,
+  draftValue,
+  secretErrors,
+  onEdit,
+  onDraftChange,
+  onCancel,
+  onSave,
+  onClear,
+}: {
+  secrets: Record<SecretName, boolean> | null;
+  openaiAvailable: boolean | null;
+  loading: boolean;
+  error: string | null;
+  editingKey: SecretName | null;
+  draftValue: string;
+  secretErrors: Record<string, string>;
+  onEdit: (name: SecretName) => void;
+  onDraftChange: (v: string) => void;
+  onCancel: () => void;
+  onSave: (name: SecretName) => void;
+  onClear: (name: SecretName) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-6">
+      <TabHeader
+        eyebrow="API keys"
+        title="Bring your own keys"
+        subtitle="Stored encrypted in your OS keychain and decrypted in-memory at call time. Never sent to our servers."
+      />
+
+      <div className="rounded-2xl border border-line/40 bg-paper-elev/40 p-5">
+        <p className="font-sans text-[13px] text-text-secondary">
+          <strong className="text-ink">An OpenAI key is required for clip selection</strong> on every plan today —
+          Liquid Clips runs locally and hosted AI (no key needed) is in private beta.
+        </p>
+
+        {loading && (
+          <div className="mt-4 flex flex-col gap-2">
+            {PROVIDER_KEYS.map((name) => (
+              <div key={name} className="skeleton h-10 w-full" />
+            ))}
+          </div>
+        )}
+
+        {error && (
+          <div className="error-banner mt-4">
+            <span>{error}</span>
+          </div>
+        )}
+
+        {!loading && !error && secrets && (
+          <div className="mt-4 flex flex-col gap-2">
+            {PROVIDER_KEYS.map((name) => {
+              const isOpenai = name === "OPENAI_API_KEY";
+              const keychainPresent = secrets[name];
+              const effectivePresent = isOpenai && openaiAvailable === true ? true : keychainPresent;
+              const sourceSuffix = isOpenai && !keychainPresent && openaiAvailable === true ? "via env var" : null;
+              const status: "set" | "env" | "unset" = effectivePresent
+                ? sourceSuffix
+                  ? "env"
+                  : "set"
+                : "unset";
+              return (
+                <SecretRow
+                  key={name}
+                  name={name}
+                  status={status}
+                  editing={editingKey === name}
+                  draftValue={draftValue}
+                  errorMessage={secretErrors[name] ?? null}
+                  onEdit={() => onEdit(name)}
+                  onDraftChange={onDraftChange}
+                  onCancel={onCancel}
+                  onSave={() => onSave(name)}
+                  onClear={() => onClear(name)}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function providerLabel(name: SecretName): string {
+  switch (name) {
+    case "OPENAI_API_KEY":
+      return "OpenAI";
+    case "ANTHROPIC_API_KEY":
+      return "Anthropic";
+    case "GIPHY_API_KEY":
+      return "GIPHY";
+    case "PEXELS_API_KEY":
+      return "Pexels";
+    case "PIXABAY_API_KEY":
+      return "Pixabay";
+    default:
+      return name;
+  }
+}
+
 function SecretRow({
   name,
-  present,
-  sourceSuffix,
+  status,
   editing,
   draftValue,
   errorMessage,
@@ -872,11 +867,7 @@ function SecretRow({
   onClear,
 }: {
   name: SecretName;
-  present: boolean;
-  /** v0.7.8 S3 — muted "via env var" suffix shown next to "stored" when the
-   *  key is resolvable but the keychain leg is empty. Renders only when
-   *  callers explicitly pass it, so non-OpenAI rows are unaffected. */
-  sourceSuffix?: string | null;
+  status: "set" | "env" | "unset";
   editing: boolean;
   draftValue: string;
   errorMessage: string | null;
@@ -888,8 +879,8 @@ function SecretRow({
 }) {
   if (editing) {
     return (
-      <div className="border-t border-line/60 pt-3">
-        <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-fuchsia">{name}</div>
+      <div className="rounded-xl border border-line/60 bg-paper p-3">
+        <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-fuchsia">{providerLabel(name)}</div>
         <input
           type="password"
           autoFocus
@@ -897,9 +888,6 @@ function SecretRow({
           spellCheck={false}
           value={draftValue}
           onChange={(e) => onDraftChange(e.target.value)}
-          // (9) Enter submits, Esc cancels — match every other password
-          // field's keyboard contract so power users aren't forced to mouse
-          // over to the Save chip.
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
@@ -910,228 +898,101 @@ function SecretRow({
               onCancel();
             }
           }}
-          placeholder={name === "OPENAI_API_KEY" ? "sk-proj-..." : "your key"}
+          placeholder={name === "OPENAI_API_KEY" ? "sk-proj-…" : "your key"}
           className="mt-2 w-full border-b border-line bg-transparent px-0 py-2 font-mono text-[12px] text-ink outline-none placeholder:text-text-tertiary focus:border-fuchsia"
         />
         <div className="mt-3 flex gap-2">
-          <HudChip active onClick={onSave}>
+          <button type="button" onClick={onSave} className="btn-primary">
             Save
-          </HudChip>
-          <HudChip active={false} onClick={onCancel}>
+          </button>
+          <button type="button" onClick={onCancel} className="btn-secondary">
             Cancel
-          </HudChip>
+          </button>
         </div>
-        {/* (5) Surface keychain write errors inline so the user sees them. */}
-        {errorMessage && (
-          <p className="mt-2 font-mono text-[11px] text-[var(--color-danger)]">{errorMessage}</p>
-        )}
+        {errorMessage && <p className="mt-2 font-mono text-[11px] text-[var(--color-danger)]">{errorMessage}</p>}
       </div>
     );
   }
+
+  const dotClass =
+    status === "set"
+      ? "bg-emerald-500"
+      : status === "env"
+        ? "bg-[#f59e0b]"
+        : "bg-text-tertiary";
+
   return (
-    <div className="flex flex-col gap-1 border-t border-line/60 pt-2">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 font-mono text-[12px]">
-          <span
-            className={`inline-block h-1.5 w-1.5 rounded-full ${present ? "bg-fuchsia" : "bg-text-tertiary"}`}
-          />
-          <span className="text-ink">{name}</span>
-          <span className="text-text-tertiary">{present ? "stored" : "not set"}</span>
-          {sourceSuffix && (
-            <span className="text-text-tertiary/70 italic">· {sourceSuffix}</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <HudChip active={false} onClick={onEdit}>
-            {present ? "Replace" : "Add"}
-          </HudChip>
-          {present && (
-            <HudChip active={false} onClick={onClear}>
-              Clear
-            </HudChip>
-          )}
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-line/60 bg-paper px-3 py-2.5 transition-colors hover:border-fuchsia hover:bg-fuchsia-soft/20">
+      <div className="flex items-center gap-3">
+        <span className={`inline-block h-2 w-2 rounded-full ${dotClass}`} aria-hidden="true" />
+        <div className="flex flex-col">
+          <span className="font-sans text-[13px] font-medium text-ink">{providerLabel(name)}</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+            {status === "set" ? "Stored in keychain" : status === "env" ? "Set via env var" : "Not set"}
+          </span>
         </div>
       </div>
-      {errorMessage && (
-        <p className="font-mono text-[11px] text-[var(--color-danger)]">{errorMessage}</p>
-      )}
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onEdit} className="btn-secondary">
+          {status === "unset" ? "Add key" : "Edit"}
+        </button>
+        {status !== "unset" && (
+          <button type="button" onClick={onClear} className="btn-danger">
+            Remove
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Privacy tab
+// ─────────────────────────────────────────────────────────────────────────────
 
-// Affiliate payouts explainer (Daniel feedback 2026-06-01) — crystal clear
-// "how you get paid" by RAIL. Whop users see Whop's process. Stripe Connect
-// users see Stripe's bank-capture flow + their current status. Not-yet-signed-
-// in users see a generic "how it works" explainer.
-function AffiliatePayoutsSection() {
-  type Aff = Awaited<ReturnType<typeof meAffiliate>>;
-  const [data, setData] = useState<Aff | null>(null);
-  const [loading, setLoading] = useState(true);
-  // (7) Distinguish "signed out" (UnauthorizedError → null data, generic
-  // copy) from "backend errored" (5xx → show retry button). Previously every
-  // failure rendered the generic "sign in to see your setup" copy, which
-  // hid real outages behind a misleading prompt.
-  const [affiliateError, setAffiliateError] = useState<string | null>(null);
-
-  function fetchAffiliate() {
-    setLoading(true);
-    setAffiliateError(null);
-    let cancelled = false;
-    void meAffiliate()
-      .then((d) => {
-        if (!cancelled) {
-          setData(d);
-          setLoading(false);
-        }
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        if (e instanceof UnauthorizedError) {
-          setData(null);
-        } else {
-          setAffiliateError(humanError(e));
-        }
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }
-
-  useEffect(() => fetchAffiliate(), []);
-
-  if (loading) {
-    return (
-      <Section eyebrow="affiliate payouts" title="How you get paid.">
-        <p className="font-mono text-[11px] text-text-tertiary">Reading your account<span className="blink">_</span></p>
-      </Section>
-    );
-  }
-
-  if (affiliateError) {
-    return (
-      <Section eyebrow="affiliate payouts" title="How you get paid.">
-        <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-          Couldn't reach payouts — {affiliateError}
-        </p>
-        <div className="mt-2">
-          <HudChip active onClick={() => fetchAffiliate()}>
-            Retry →
-          </HudChip>
-        </div>
-      </Section>
-    );
-  }
-
-  // Not signed in / no JWT → generic explainer
-  if (!data) {
-    return (
-      <Section eyebrow="affiliate payouts" title="How you get paid.">
-        <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-          Liquid Clips pays affiliates two ways. If you signed up via Whop, payouts run through Whop on their schedule. If you signed up via Clerk, you connect a bank account through Stripe and payouts arrive on Stripe's schedule. Sign in to see your specific setup.
-        </p>
-      </Section>
-    );
-  }
-
-  const aff = data.affiliate;
-  const customer = data.customer;
-  const isWhop = aff.payout_provider === "whop";
-  const isStripe = aff.payout_provider === "stripe_connect";
-  const earned = aff.total_referral_earnings_usd
-    ? `$${Number(aff.total_referral_earnings_usd).toFixed(2)}`
-    : "$0";
-
-  if (isWhop) {
-    return (
-      <Section eyebrow="affiliate payouts · whop rail" title="How you get paid through Whop.">
-        <BracketFrame>
-          <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-fuchsia">
-            you're on the whop rail
-          </p>
-          <p className="mt-2 font-sans text-[14px] leading-relaxed text-ink">
-            Whop tracks every paid referral on your link and pays you <strong>50% recurring</strong> on every customer you refer to Liquid Clips, for the lifetime of their subscription.
-          </p>
-          <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
-            Lifetime earned: <span className="font-medium text-ink">{earned}</span>. Whop holds your KYC + bank details and runs payouts on their schedule (typically monthly, after a hold period for chargebacks). You don't enter bank details with Liquid Clips — Whop owns that surface.
-          </p>
-        </BracketFrame>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <HudChip active onClick={() => void openExternal(aff.partner_dashboard_url)}>
-            Open Whop partner dashboard →
-          </HudChip>
-          <HudChip active={false} onClick={() => void openExternal("https://whop.com/dashboard/payouts")}>
-            Manage card + payout settings →
-          </HudChip>
-        </div>
-        <p className="mt-2 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
-          your referral link · {aff.referral_url ?? "open dashboard to copy"}
-        </p>
-      </Section>
-    );
-  }
-
-  if (isStripe) {
-    const needsBank = aff.payout_status === "setup_required";
-    return (
-      <Section eyebrow="affiliate payouts · stripe connect" title="How you get paid through Stripe.">
-        <BracketFrame>
-          <p className={`font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] ${needsBank ? "text-fuchsia" : "text-text-tertiary"}`}>
-            you're on the stripe connect rail
-          </p>
-          <p className="mt-2 font-sans text-[14px] leading-relaxed text-ink">
-            Liquid Clips pays you <strong>50% recurring</strong> on every customer you refer, the lifetime of their subscription. Bank details + KYC run through Stripe Connect Express — Stripe holds the credentials, not us.
-          </p>
-          {needsBank ? (
-            <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
-              <strong className="text-fuchsia-deep">Action needed:</strong> set up your bank account so commissions have somewhere to land. Stripe handles the entire flow on their hosted onboarding (name, address, SSN/ID where required, account number, sort code). Takes ~3 minutes.
-            </p>
-          ) : (
-            <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
-              Bank setup is complete. Lifetime earned: <span className="font-medium text-ink">{earned}</span>. Stripe runs payouts on their standard schedule (every 2-7 days depending on your country, after a 7-day rolling hold for new accounts).
-            </p>
-          )}
-        </BracketFrame>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <HudChip
-            active={needsBank}
-            onClick={() => {
-              // Two-track: Stripe Connect Express links (aff.payout_setup_url)
-              // are single-use Stripe-hosted URLs; they need a real browser to
-              // hold the auth state across the Connect dance, so we open them
-              // externally. The dashboard hash anchor lives on account-app
-              // (same Clerk session as the rest of the app), so it's fine to
-              // host in the in-app auth panel.
-              if (aff.payout_setup_url) {
-                void openExternal(aff.payout_setup_url);
-              } else {
-                openAuthPanel("payouts");
-              }
-            }}
-          >
-            {needsBank ? "Set up Stripe payouts →" : "Manage Stripe payouts →"}
-          </HudChip>
-        </div>
-        {customer.referrer_affiliate_id && (
-          <p className="mt-2 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
-            referred by · {customer.referrer_affiliate_id}
-          </p>
-        )}
-      </Section>
-    );
-  }
-
-  // Fallback — shouldn't normally fire
+function PrivacyTab() {
   return (
-    <Section eyebrow="affiliate payouts" title="How you get paid.">
-      <p className="font-sans text-[13px] text-text-secondary">
-        We couldn't determine your payout rail. Try signing out and back in, or open your account dashboard to review payouts.
-      </p>
-    </Section>
+    <div className="flex flex-col gap-6">
+      <TabHeader
+        eyebrow="Privacy"
+        title="Your data stays yours"
+        subtitle="Control what Liquid Clips collects and how your clips are handled."
+      />
+
+      <Section eyebrow="Telemetry" title="Anonymous usage data">
+        <p className="font-sans text-[13px] text-text-secondary">
+          Help us improve Liquid Clips by sharing anonymous usage stats. We never collect video content, transcripts,
+          or API keys.
+        </p>
+        <Toggle
+          label="Send anonymous telemetry"
+          defaultOn={false}
+          initial={() => getTelemetryConsent()}
+          onChange={(next) => setTelemetryConsent(next)}
+        />
+      </Section>
+
+      <Section eyebrow="Data & storage" title="Local-first by default">
+        <p className="font-sans text-[13px] text-text-secondary">
+          Your source videos, clips, thumbnails, and project metadata live in{" "}
+          <code className="rounded bg-paper px-1 py-0.5 font-mono text-[11px] text-ink">~/LiquidClips</code>. API keys
+          are encrypted in macOS Keychain and only decrypted in memory when needed.
+        </p>
+      </Section>
+
+      <Section eyebrow="Policies" title="Legal">
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => void openExternal("https://liquidclips.app/privacy")} className="btn-ghost">
+            Privacy policy →
+          </button>
+          <button type="button" onClick={() => void openExternal("https://liquidclips.app/terms")} className="btn-ghost">
+            Terms of service →
+          </button>
+        </div>
+      </Section>
+    </div>
   );
 }
-
 
 function Toggle({
   label,
@@ -1141,10 +1002,7 @@ function Toggle({
 }: {
   label: string;
   defaultOn: boolean;
-  /** Read once on mount to hydrate from persisted state (e.g. localStorage).
-   * If provided, takes precedence over defaultOn. */
   initial?: () => boolean;
-  /** Fired on every flip with the new boolean. Use to persist. */
   onChange?: (next: boolean) => void;
 }) {
   const [on, setOn] = useState<boolean>(() => (initial ? initial() : defaultOn));
@@ -1161,14 +1019,12 @@ function Toggle({
       role="switch"
       aria-checked={on}
       onClick={flip}
-      className="flex items-center justify-between gap-3 border-t border-line/60 pt-2 text-left"
+      className="flex items-center justify-between gap-3 border-t border-line/60 pt-3 text-left"
     >
       <span className="font-sans text-[13px] text-ink">{label}</span>
       <span
         aria-hidden="true"
-        className={`relative inline-block h-[20px] w-[36px] rounded-full transition-colors ${
-          on ? "bg-fuchsia" : "bg-line"
-        }`}
+        className={`relative inline-block h-[20px] w-[36px] rounded-full transition-colors ${on ? "bg-fuchsia" : "bg-line"}`}
       >
         <span
           className={`absolute top-[2px] inline-block h-[16px] w-[16px] rounded-full bg-paper transition-transform ${
@@ -1180,181 +1036,224 @@ function Toggle({
   );
 }
 
-function capitalise(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// About tab
+// ─────────────────────────────────────────────────────────────────────────────
 
-function SubscriptionAction({
-  syncChecked,
-  sync,
+function AboutTab({
+  hw,
+  home,
+  updateState,
+  lastUpdateCheck,
+  onCheckForUpdate,
+  onApplyUpdate,
+  deps,
+  depsError,
+  diagnosticsCopied,
+  clipboardError,
+  onCopyDiagnostics,
+  introReset,
+  onResetIntro,
 }: {
-  syncChecked: boolean;
-  sync: SyncStatus | null;
+  hw: HardwareInfo | null;
+  home: string | null;
+  updateState: UpdateState;
+  lastUpdateCheck: LastUpdateCheck | null;
+  onCheckForUpdate: () => void;
+  onApplyUpdate: () => void;
+  deps: DepsInfo | null;
+  depsError: string | null;
+  diagnosticsCopied: boolean;
+  clipboardError: string | null;
+  onCopyDiagnostics: () => void;
+  introReset: boolean;
+  onResetIntro: () => void;
 }) {
-  // Three states:
-  //   1. activation unknown / no JWT yet → in-app upgrade panel (Clerk sign-up +
-  //      checkout). Opens the Clerk-routed /upgrade page in the desktop's
-  //      auth_panel webview so the user never leaves Liquid Clips.
-  //   2. Whop-signup user → Whop's hosted manage page (PCI + retention live there);
-  //      Whop's cookie domain isn't ours so we still external-open this one.
-  //   3. Clerk direct-signup user → in-app /dashboard panel (Clerk session
-  //      persists in the auth_panel webview).
-  const isWhop = sync?.billing_provider === "whop";
-  const label = !syncChecked
-    ? "Checking…"
-    : isWhop
-    ? "Manage subscription on Whop →"
-    : sync
-    ? "Manage subscription →"
-    : "Upgrade →";
-
   return (
-    <button
-      onClick={() => {
-        if (isWhop) {
-          void openExternal(WHOP_MANAGE_URL);
-        } else if (sync) {
-          openAuthPanel("dashboard");
-        } else {
-          openAuthPanel("upgrade");
-        }
-      }}
-      disabled={!syncChecked}
-      className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia disabled:opacity-50"
-    >
-      {label}
-    </button>
+    <div className="flex flex-col gap-6">
+      <TabHeader
+        eyebrow="About"
+        title="Liquid Clips"
+        subtitle={`Version ${APP_VERSION} · Build ${BUILD_HASH}`}
+      />
+
+      <div className="flex flex-col items-start gap-3 rounded-2xl border border-line/40 bg-paper-elev/40 p-5">
+        <MadeWithLiquidClips className="h-12 w-[240px]" />
+        <p className="font-sans text-[13px] text-text-secondary">
+          Made for creators who want clean, fast clips without the manual grind.
+        </p>
+      </div>
+
+      <SupportEmailSection />
+
+      <Section eyebrow="Output folder" title="Where Liquid Clips writes everything">
+        <Row label="Folder" value={CLIP_STORAGE_PATH} mono />
+        <p className="font-sans text-[13px] text-text-secondary">
+          Every project gets its own subfolder with source, audio, transcript, clips, thumbnails, and metadata.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            if (!home) return;
+            void openExternal(`${home}/LiquidClips`);
+          }}
+          disabled={!home}
+          className="btn-secondary self-start"
+        >
+          {home ? "Open in Finder →" : "Locating folder…"}
+        </button>
+      </Section>
+
+      <Section eyebrow="Captions" title="One default style">
+        <p className="font-sans text-[13px] text-text-secondary">
+          Helvetica, white text, thick black outline, vertical-friendly margin. Burned into every clip in stage 6.
+        </p>
+        <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+          Multi-style presets land in v1.1
+        </p>
+      </Section>
+
+      <Section eyebrow="Updates" title="Liquid Clips updates itself">
+        <p className="font-sans text-[13px] text-text-secondary">
+          Liquid Clips checks the signed update manifest every time the app opens. Run the check again here to verify
+          the current install.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={onCheckForUpdate}
+            disabled={updateState.kind === "checking" || updateState.kind === "downloading" || updateState.kind === "installing"}
+            className="btn-secondary"
+          >
+            {updateState.kind === "checking" ? "Checking…" : "Check for updates"}
+          </button>
+          {updateState.kind === "up-to-date" && (
+            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">● up to date</span>
+          )}
+          {updateState.kind === "available" && (
+            <>
+              <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
+                ● {updateState.update.version} ready
+              </span>
+              <button type="button" onClick={onApplyUpdate} className="btn-primary">
+                Install + relaunch →
+              </button>
+            </>
+          )}
+          {updateState.kind === "downloading" && (
+            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary">
+              ↓ downloading…
+              {updateState.total ? ` ${Math.round((updateState.downloaded / updateState.total) * 100)}%` : ""}
+            </span>
+          )}
+          {updateState.kind === "installing" && (
+            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
+              installing — Liquid Clips will relaunch
+            </span>
+          )}
+          {updateState.kind === "error" && (
+            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--color-danger)]">
+              {updateState.message}
+            </span>
+          )}
+        </div>
+        {lastUpdateCheck && (
+          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+            Last manifest check: {new Date(lastUpdateCheck.checkedAt).toLocaleString()}
+            {" · "}
+            {lastUpdateCheck.kind === "available"
+              ? `update ${lastUpdateCheck.version} ready`
+              : lastUpdateCheck.kind === "up-to-date"
+                ? "up to date"
+                : "error"}
+          </p>
+        )}
+      </Section>
+
+      <Section eyebrow="Intro" title="Replay the welcome tour">
+        <p className="font-sans text-[13px] text-text-secondary">
+          The intro tour will play the next time you launch Liquid Clips.
+        </p>
+        <button type="button" onClick={onResetIntro} className="btn-secondary self-start">
+          {introReset ? "Intro ready to replay" : "Replay on next launch →"}
+        </button>
+      </Section>
+
+      <DiagnosticsSection
+        deps={deps}
+        depsError={depsError}
+        hw={hw}
+        copied={diagnosticsCopied}
+        clipboardError={clipboardError}
+        onCopy={onCopyDiagnostics}
+      />
+
+      {hw && (
+        <Section eyebrow="Machine" title="Hardware snapshot">
+          <Row label="Machine" value={`${hw.ram_gb}GB RAM · ${hw.cpu_count} CPU · ${hw.free_disk_gb}GB free`} />
+        </Section>
+      )}
+    </div>
   );
 }
 
+function SupportEmailSection() {
+  const [copied, setCopied] = useState(false);
+  const [fallbackMessage, setFallbackMessage] = useState<string | null>(null);
 
-// "Who am I?" — surfaces the backend's canonical view of the current user so
-// there's no ambiguity between Clerk metadata, the desktop's keychain state,
-// and what the server actually believes. Hits /me which applies admin
-// override + reports billing provider truthfully.
-function WhoAmISection() {
-  const [me, setMe] = useState<MeStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [desktopSession, setDesktopSession] = useState<string>("Checking…");
-  const { activate } = useActivation();
-
-  useEffect(() => {
-    void (async () => {
-      // v0.7.7 ship-lens fix #9 — WhoAmI also reads the discriminated union;
-      // an expired token shows the same "Couldn't reach the backend" state
-      // here because the section's job is to print the backend's row, and
-      // there's no row to print. The top-of-Settings re-activate banner
-      // already nudges the user toward sign-in for both outcomes.
-      const cached = getCachedLicenseJwt();
-      const [m, presence] = await Promise.all([
-        meStatus(),
-        sidecar.licenseJwtPresence().catch(() => ({ present: false })),
-      ]);
-      setMe(m.kind === "ok" ? m.data : null);
-      setDesktopSession(
-        cached
-          ? "ready in this app session"
-          : presence.present
-          ? "saved session found — continue required"
-          : "not connected",
-      );
-      setLoading(false);
-    })();
-  }, []);
-
-  if (loading) {
-    return (
-      <Section eyebrow="account" title="Who Liquid Clips thinks you are.">
-        <p className="font-mono text-[12px] text-text-tertiary">
-          Reading from backend<span className="blink">_</span>
-        </p>
-      </Section>
-    );
+  async function copyEmail() {
+    try {
+      await writeText(SUPPORT_EMAIL);
+      setCopied(true);
+      setFallbackMessage("Support email copied to clipboard.");
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch (e) {
+      setFallbackMessage(`Couldn't copy email: ${humanError(e)}`);
+    }
   }
 
-  if (!me) {
-    return (
-      <Section eyebrow="account" title="Who Liquid Clips thinks you are.">
-        <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-          Couldn't reach the backend. Continue your session to{" "}
-          <a
-            onClick={() => void activate({ via: "browser" })}
-            className="cursor-pointer text-fuchsia hover:text-fuchsia-deep"
-          >
-            reconnect Liquid Clips →
-          </a>
-          {" "}then come back.
-        </p>
-      </Section>
-    );
+  async function openMail() {
+    const subject = encodeURIComponent("Liquid Clips support");
+    const body = encodeURIComponent("Hi Liquid Clips team,\n\n");
+    const url = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
+    try {
+      await openExternal(url);
+      setFallbackMessage(null);
+    } catch {
+      try {
+        await writeText(SUPPORT_EMAIL);
+        setFallbackMessage("Couldn't open your mail app. Support email copied to clipboard.");
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1800);
+      } catch (copyErr) {
+        setFallbackMessage(`Couldn't open mail app or copy email (${humanError(copyErr)}).`);
+      }
+    }
   }
 
   return (
-    <Section eyebrow="account" title="Who Liquid Clips thinks you are.">
-      <p className="font-sans text-[12px] text-text-secondary">
-        Source of truth: junior-backend. Use this row when something looks off
-        — backend wins over Clerk metadata or anything cached locally.
+    <Section eyebrow="Support" title="Stuck on something? We're here.">
+      <p className="font-sans text-[13px] text-text-secondary">
+        Reach out and we'll get back to you within a working day.
       </p>
-      <BracketFrame>
-        <DebugRow label="Email" value={me.email ?? "—"} />
-        <DebugRow label="Backend user id" value={me.backend_user_id} mono />
-        <DebugRow label="Clerk id" value={me.clerk_id ?? "—"} mono />
-        <DebugRow label="Whop user id" value={me.whop_user_id ?? "—"} mono />
-        <DebugRow label="Affiliate id" value={me.affiliate_id ?? "—"} mono />
-        <DebugRow
-          label="Effective tier"
-          value={`${me.effective_tier}${
-            me.admin_override ? " · admin override" : ""
-          }${me.effective_founder ? " · founder" : ""}`}
-        />
-        <DebugRow label="Raw tier (db)" value={`${me.raw_tier}${me.raw_founder ? " · founder" : ""}`} />
-        <DebugRow label="Subscription" value={me.subscription_status} />
-        <DebugRow label="Billing provider" value={me.billing_provider} />
-        <DebugRow
-          label="Account limit"
-          value={
-            me.account_limit >= 9999
-              ? "unlimited"
-              : `${me.account_limit}${me.extra_accounts_purchased > 0 ? ` · +${me.extra_accounts_purchased} extra account${me.extra_accounts_purchased === 1 ? "" : "s"}` : ""}`
-          }
-        />
-        <DebugRow label="Clips exported (lifetime)" value={String(me.clips_created)} />
-        <DebugRow
-          label="Whop Content Rewards auth"
-          value={
-            me.whop_backend_key_configured
-              ? `backend app key · desktop session: ${desktopSession}`
-              : `backend key missing — desktop session: ${desktopSession}`
-          }
-        />
-      </BracketFrame>
-      {desktopSession.includes("continue required") && (
-        <button
-          type="button"
-          onClick={() => void activate({ via: "browser" })}
-          className="mt-3 self-start rounded-full border border-fuchsia bg-fuchsia-soft/30 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep transition-colors hover:bg-fuchsia hover:text-paper"
-        >
-          Continue session →
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => void openMail()} className="btn-primary">
+          <Mail className="h-4 w-4" />
+          Email support
         </button>
-      )}
+        <button type="button" onClick={() => void copyEmail()} className="btn-secondary">
+          <Copy className="h-4 w-4" />
+          {copied ? "Copied" : "Copy support email"}
+        </button>
+      </div>
+      {fallbackMessage && <p className="font-mono text-[11px] text-text-secondary">{fallbackMessage}</p>}
     </Section>
   );
 }
 
-
-function DebugRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex items-center justify-between gap-3 border-t border-line/60 pt-1 first:border-t-0 first:pt-0">
-      <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">{label}</span>
-      <span
-        className={`truncate ${mono ? "font-mono text-[11px]" : "font-sans text-[12px]"} text-ink`}
-        title={value}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Diagnostics
+// ─────────────────────────────────────────────────────────────────────────────
 
 function DiagnosticsSection({
   deps,
@@ -1371,9 +1270,6 @@ function DiagnosticsSection({
   clipboardError: string | null;
   onCopy: () => void;
 }) {
-  // (15) Sidecar "starting" should not stick forever. If deps + depsError are
-  // both still null 10s after mount, surface a recoverable "couldn't reach
-  // sidecar" with a Restart button that relaunches the app.
   const [sidecarStarting, setSidecarStarting] = useState(false);
   useEffect(() => {
     if (deps !== null || depsError !== null) {
@@ -1387,46 +1283,39 @@ function DiagnosticsSection({
   const sidecarStatus = depsError
     ? "failed"
     : deps
-    ? deps.ok
-      ? "ready"
-      : "failed"
-    : sidecarStarting
-    ? "unreachable"
-    : "starting";
+      ? deps.ok
+        ? "ready"
+        : "failed"
+      : sidecarStarting
+        ? "unreachable"
+        : "starting";
   const missing = deps?.missing ?? [];
   const errors = deps?.errors ? Object.entries(deps.errors) : [];
 
   return (
     <>
-      <Section eyebrow="diagnostics" title="Sidecar + local machine.">
-        <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
+      <Section eyebrow="Diagnostics" title="Sidecar + local machine">
+        <p className="font-sans text-[13px] text-text-secondary">
           Copy this when support needs the exact local state behind a failed run.
         </p>
-        <BracketFrame>
+        <div className="rounded-xl border border-line/60 bg-paper p-3">
           <DebugRow label="Sidecar" value={sidecarStatus} />
           <DebugRow label="Python" value={deps?.python ?? (depsError ? "unavailable" : "checking")} mono />
           <DebugRow label="Clip storage" value={CLIP_STORAGE_PATH} mono />
           <DebugRow label="Logs" value={LOG_PATH} mono />
-        </BracketFrame>
+        </div>
         {sidecarStarting && !deps && !depsError && (
-          <BracketFrame>
+          <div className="rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 p-3">
             <p className="font-mono text-[11px] text-[var(--color-danger)]">
               Couldn't reach sidecar — try restarting Liquid Clips.
             </p>
-            <div className="mt-2">
-              <HudChip
-                active
-                onClick={() => {
-                  void relaunch();
-                }}
-              >
-                Restart Liquid Clips →
-              </HudChip>
-            </div>
-          </BracketFrame>
+            <button type="button" onClick={() => void relaunch()} className="btn-secondary mt-2">
+              Restart Liquid Clips →
+            </button>
+          </div>
         )}
         {(missing.length > 0 || errors.length > 0 || depsError) && (
-          <BracketFrame>
+          <div className="rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 p-3">
             <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-danger)]">
               missing python modules
             </p>
@@ -1435,7 +1324,8 @@ function DiagnosticsSection({
               <ul className="flex flex-col gap-1">
                 {missing.map((name) => (
                   <li key={name} className="font-mono text-[11px] text-[var(--color-danger)]">
-                    {name}{deps?.errors[name] ? `: ${deps.errors[name]}` : ""}
+                    {name}
+                    {deps?.errors[name] ? `: ${deps.errors[name]}` : ""}
                   </li>
                 ))}
               </ul>
@@ -1449,27 +1339,22 @@ function DiagnosticsSection({
                   {name}: {message}
                 </p>
               ))}
-          </BracketFrame>
+          </div>
         )}
-        <HudChip active={copied} onClick={onCopy}>
+        <button type="button" onClick={onCopy} className="btn-secondary self-start">
           {copied ? "Copied diagnostics" : "Copy diagnostics to clipboard"}
-        </HudChip>
-        {/* (6) Clipboard write failures surface here instead of being eaten. */}
-        {clipboardError && (
-          <p className="font-mono text-[11px] text-[var(--color-danger)]">
-            Couldn't copy — try selecting the dump manually. ({clipboardError})
-          </p>
-        )}
+        </button>
+        {clipboardError && <p className="font-mono text-[11px] text-[var(--color-danger)]">{clipboardError}</p>}
       </Section>
 
-      <Section eyebrow="hardware" title="Read-only hardware snapshot.">
-        <BracketFrame>
+      <Section eyebrow="Hardware" title="Read-only hardware snapshot">
+        <div className="rounded-xl border border-line/60 bg-paper p-3">
           <DebugRow label="Platform" value={hw?.platform ?? "checking"} />
           <DebugRow label="RAM" value={hw ? `${hw.ram_gb} GB` : "checking"} />
           <DebugRow label="CPU" value={hw ? `${hw.cpu_count} logical` : "checking"} />
           <DebugRow label="Free disk" value={hw ? `${hw.free_disk_gb} GB` : "checking"} />
           <DebugRow label="Warnings" value={hw?.warnings?.length ? hw.warnings.join(", ") : "none"} />
-        </BracketFrame>
+        </div>
       </Section>
     </>
   );
@@ -1488,12 +1373,15 @@ function buildDiagnosticsMarkdown({
   sync: SyncStatus | null;
   me: MeStatus | null;
 }): string {
-  const sidecarStatus = depsError ? "failed" : deps ? deps.ok ? "ready" : "failed" : "starting";
+  const sidecarStatus = depsError ? "failed" : deps ? (deps.ok ? "ready" : "failed") : "starting";
   const ua = typeof navigator !== "undefined" ? navigator.userAgent : "n/a";
   const missing = deps?.missing?.length ? deps.missing.join(", ") : "none";
-  const errors = deps?.errors && Object.keys(deps.errors).length
-    ? Object.entries(deps.errors).map(([name, message]) => `- ${name}: ${message}`).join("\n")
-    : "- none";
+  const errors =
+    deps?.errors && Object.keys(deps.errors).length
+      ? Object.entries(deps.errors)
+          .map(([name, message]) => `- ${name}: ${message}`)
+          .join("\n")
+      : "- none";
 
   return [
     "# Liquid Clips diagnostics",
@@ -1530,119 +1418,284 @@ function buildDiagnosticsMarkdown({
   ].join("\n");
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Affiliate payouts
+// ─────────────────────────────────────────────────────────────────────────────
 
-// Beta dignity: a place to email support and copy diagnostic info into the
-// clipboard so a user can paste it back into the email. Logs live in
-// ~/LiquidClips/ — the project folder + .progress.json per run — so we point
-// users there for full traces rather than shipping log files to the
-// clipboard (privacy + size).
-function SupportSection() {
-  const [copied, setCopied] = useState(false);
-  const [hw, setHw] = useState<HardwareInfo | null>(null);
-  // (6) Surface clipboard write failures inline instead of silent fail.
-  const [copyError, setCopyError] = useState<string | null>(null);
-  // (14) When `mailto:` has no registered handler `openExternal` rejects
-  // silently — fall back to copying the dump to clipboard + telling the user
-  // to paste it into a support email.
-  const [reportFallback, setReportFallback] = useState<string | null>(null);
+function AffiliatePayoutsSection() {
+  type Aff = Awaited<ReturnType<typeof meAffiliate>>;
+  const [data, setData] = useState<Aff | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [affiliateError, setAffiliateError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void sidecar.hardwareInfo().then(setHw).catch(() => undefined);
-  }, []);
-
-  async function buildDiagnostic(): Promise<string> {
-    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "n/a";
-    const lines = [
-      `Liquid Clips version: ${APP_VERSION}`,
-      `Platform: ${hw?.platform ?? "unknown"}`,
-      `RAM: ${hw?.ram_gb ?? "?"} GB · CPUs: ${hw?.cpu_count ?? "?"} · Free disk: ${hw?.free_disk_gb ?? "?"} GB`,
-      hw?.warnings?.length ? `Warnings: ${hw.warnings.join(", ")}` : "",
-      `Logs folder: ~/LiquidClips/projects/<slug>/.progress.json (per run)`,
-      `User agent: ${ua}`,
-      `Time: ${new Date().toISOString()}`,
-    ].filter(Boolean);
-    return lines.join("\n");
+  function fetchAffiliate() {
+    setLoading(true);
+    setAffiliateError(null);
+    let cancelled = false;
+    void meAffiliate()
+      .then((d) => {
+        if (!cancelled) {
+          setData(d);
+          setLoading(false);
+        }
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        if (e instanceof UnauthorizedError) {
+          setData(null);
+        } else {
+          setAffiliateError(humanError(e));
+        }
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }
 
-  async function onCopyDiagnostic() {
-    try {
-      const dump = await buildDiagnostic();
-      await writeText(dump);
-      setCopyError(null);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
-    } catch (e) {
-      setCopyError(humanError(e));
-    }
-  }
+  useEffect(() => fetchAffiliate(), []);
 
-  async function onReportIssue() {
-    const dump = await buildDiagnostic();
-    const subject = encodeURIComponent(`Liquid Clips ${APP_VERSION} — issue report`);
-    const body = encodeURIComponent(
-      "Describe what you were doing when the issue happened:\n\n\n" +
-        "--- diagnostic (please keep) ---\n" +
-        dump +
-        "\n",
+  if (loading) {
+    return (
+      <Section eyebrow="Affiliate payouts" title="How you get paid">
+        <div className="flex flex-col gap-2">
+          <div className="skeleton h-4 w-3/4" />
+          <div className="skeleton h-4 w-1/2" />
+        </div>
+      </Section>
     );
-    const url = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
-    try {
-      await openExternal(url);
-      setReportFallback(null);
-    } catch {
-      // No mail client registered. Copy the dump to clipboard instead so
-      // the user has something to paste into a support email manually.
-      try {
-        await writeText(dump);
-        setReportFallback(
-          `No default mail client — diagnostic copied to clipboard instead, paste into ${SUPPORT_EMAIL}`,
-        );
-      } catch (copyErr) {
-        setReportFallback(
-          `Couldn't open mail client or copy diagnostic (${humanError(copyErr)}) — email ${SUPPORT_EMAIL} manually.`,
-        );
-      }
-    }
+  }
+
+  if (affiliateError) {
+    return (
+      <Section eyebrow="Affiliate payouts" title="How you get paid">
+        <p className="font-sans text-[13px] text-text-secondary">Couldn't reach payouts — {affiliateError}</p>
+        <button type="button" onClick={() => fetchAffiliate()} className="btn-secondary self-start">
+          Retry →
+        </button>
+      </Section>
+    );
+  }
+
+  if (!data) {
+    return (
+      <Section eyebrow="Affiliate payouts" title="How you get paid">
+        <p className="font-sans text-[13px] text-text-secondary">
+          Liquid Clips pays affiliates two ways. If you signed up via Whop, payouts run through Whop on their schedule.
+          If you signed up via Clerk, you connect a bank account through Stripe and payouts arrive on Stripe's schedule.
+          Sign in to see your specific setup.
+        </p>
+      </Section>
+    );
+  }
+
+  const aff = data.affiliate;
+  const customer = data.customer;
+  const isWhop = aff.payout_provider === "whop";
+  const isStripe = aff.payout_provider === "stripe_connect";
+  const earned = aff.total_referral_earnings_usd
+    ? `$${Number(aff.total_referral_earnings_usd).toFixed(2)}`
+    : "$0";
+
+  if (isWhop) {
+    return (
+      <Section eyebrow="Affiliate payouts · Whop" title="How you get paid through Whop">
+        <div className="rounded-xl border border-line/60 bg-paper p-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia">you're on the whop rail</p>
+          <p className="mt-2 font-sans text-[14px] leading-relaxed text-ink">
+            Whop tracks every paid referral on your link and pays you <strong>50% recurring</strong> on every customer
+            you refer to Liquid Clips, for the lifetime of their subscription.
+          </p>
+          <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
+            Lifetime earned: <span className="font-medium text-ink">{earned}</span>. Whop holds your KYC + bank details
+            and runs payouts on their schedule.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => void openExternal(aff.partner_dashboard_url)} className="btn-secondary">
+            Open Whop partner dashboard →
+          </button>
+          <button
+            type="button"
+            onClick={() => void openExternal("https://whop.com/dashboard/payouts")}
+            className="btn-ghost"
+          >
+            Manage payout settings →
+          </button>
+        </div>
+        <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+          your referral link · {aff.referral_url ?? "open dashboard to copy"}
+        </p>
+      </Section>
+    );
+  }
+
+  if (isStripe) {
+    const needsBank = aff.payout_status === "setup_required";
+    return (
+      <Section eyebrow="Affiliate payouts · Stripe" title="How you get paid through Stripe">
+        <div className="rounded-xl border border-line/60 bg-paper p-3">
+          <p className={`font-mono text-[10px] uppercase tracking-[0.12em] ${needsBank ? "text-fuchsia" : "text-text-tertiary"}`}>
+            you're on the stripe connect rail
+          </p>
+          <p className="mt-2 font-sans text-[14px] leading-relaxed text-ink">
+            Liquid Clips pays you <strong>50% recurring</strong> on every customer you refer, the lifetime of their
+            subscription. Bank details + KYC run through Stripe Connect Express.
+          </p>
+          {needsBank ? (
+            <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
+              <strong className="text-fuchsia-deep">Action needed:</strong> set up your bank account so commissions
+              have somewhere to land.
+            </p>
+          ) : (
+            <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
+              Bank setup is complete. Lifetime earned: <span className="font-medium text-ink">{earned}</span>. Stripe
+              runs payouts on their standard schedule.
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (aff.payout_setup_url) {
+              void openExternal(aff.payout_setup_url);
+            } else {
+              openAuthPanel("payouts");
+            }
+          }}
+          className={needsBank ? "btn-primary self-start" : "btn-secondary self-start"}
+        >
+          {needsBank ? "Set up Stripe payouts →" : "Manage Stripe payouts →"}
+        </button>
+        {customer.referrer_affiliate_id && (
+          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+            referred by · {customer.referrer_affiliate_id}
+          </p>
+        )}
+      </Section>
+    );
   }
 
   return (
-    <Section eyebrow="support" title="Stuck on something? We're here.">
-      <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-        Report an issue and we'll get back to you within a working day.
-        Diagnostic info auto-fills so we can debug without a 20-question thread.
+    <Section eyebrow="Affiliate payouts" title="How you get paid">
+      <p className="font-sans text-[13px] text-text-secondary">
+        We couldn't determine your payout rail. Try signing out and back in, or open your account dashboard to review
+        payouts.
       </p>
-      <div className="flex flex-wrap items-center gap-2">
-        <HudChip active onClick={() => void onReportIssue()}>
-          Report an issue →
-        </HudChip>
-        <HudChip active={copied} onClick={() => void onCopyDiagnostic()}>
-          {copied ? "Copied" : "Copy diagnostic"}
-        </HudChip>
-        <a
-          onClick={() => void openExternal(`mailto:${SUPPORT_EMAIL}`)}
-          className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary hover:text-fuchsia-deep"
-        >
-          {SUPPORT_EMAIL}
-        </a>
-      </div>
-      {copyError && (
-        <p className="font-mono text-[11px] text-[var(--color-danger)]">
-          Couldn't copy — try selecting the dump manually. ({copyError})
+    </Section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Who am I
+// ─────────────────────────────────────────────────────────────────────────────
+
+function WhoAmISection() {
+  const [me, setMe] = useState<MeStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [desktopSession, setDesktopSession] = useState<string>("Checking…");
+  const { activate } = useActivation();
+
+  useEffect(() => {
+    void (async () => {
+      const cached = getCachedLicenseJwt();
+      const [m, presence] = await Promise.all([
+        meStatus(),
+        sidecar.licenseJwtPresence().catch(() => ({ present: false })),
+      ]);
+      setMe(m.kind === "ok" ? m.data : null);
+      setDesktopSession(
+        cached
+          ? "ready in this app session"
+          : presence.present
+            ? "saved session found — continue required"
+            : "not connected",
+      );
+      setLoading(false);
+    })();
+  }, []);
+
+  if (loading) {
+    return (
+      <Section eyebrow="Account" title="Who Liquid Clips thinks you are">
+        <div className="flex flex-col gap-2">
+          <div className="skeleton h-4 w-1/2" />
+          <div className="skeleton h-4 w-3/4" />
+        </div>
+      </Section>
+    );
+  }
+
+  if (!me) {
+    return (
+      <Section eyebrow="Account" title="Who Liquid Clips thinks you are">
+        <p className="font-sans text-[13px] text-text-secondary">
+          Couldn't reach the backend.{" "}
+          <button type="button" onClick={() => void activate({ via: "browser" })} className="btn-ghost px-1 py-0">
+            Reconnect Liquid Clips →
+          </button>{" "}
+          then come back.
         </p>
-      )}
-      {reportFallback && (
-        <p className="font-mono text-[11px] text-text-secondary">{reportFallback}</p>
+      </Section>
+    );
+  }
+
+  return (
+    <Section eyebrow="Account" title="Who Liquid Clips thinks you are">
+      <p className="font-sans text-[12px] text-text-secondary">
+        Source of truth: Liquid Clips backend. Use this when something looks off — backend wins over Clerk metadata or
+        anything cached locally.
+      </p>
+      <div className="rounded-xl border border-line/60 bg-paper p-3">
+        <DebugRow label="Email" value={me.email ?? "—"} />
+        <DebugRow label="Backend user id" value={me.backend_user_id} mono />
+        <DebugRow label="Clerk id" value={me.clerk_id ?? "—"} mono />
+        <DebugRow label="Whop user id" value={me.whop_user_id ?? "—"} mono />
+        <DebugRow label="Affiliate id" value={me.affiliate_id ?? "—"} mono />
+        <DebugRow
+          label="Effective tier"
+          value={`${me.effective_tier}${me.admin_override ? " · admin override" : ""}${
+            me.effective_founder ? " · founder" : ""
+          }`}
+        />
+        <DebugRow label="Raw tier (db)" value={`${me.raw_tier}${me.raw_founder ? " · founder" : ""}`} />
+        <DebugRow label="Subscription" value={me.subscription_status} />
+        <DebugRow label="Billing provider" value={me.billing_provider} />
+        <DebugRow
+          label="Account limit"
+          value={
+            me.account_limit >= 9999
+              ? "unlimited"
+              : `${me.account_limit}${
+                  me.extra_accounts_purchased > 0
+                    ? ` · +${me.extra_accounts_purchased} extra account${me.extra_accounts_purchased === 1 ? "" : "s"}`
+                    : ""
+                }`
+          }
+        />
+        <DebugRow label="Clips exported (lifetime)" value={String(me.clips_created)} />
+        <DebugRow
+          label="Whop Content Rewards auth"
+          value={
+            me.whop_backend_key_configured
+              ? `backend app key · desktop session: ${desktopSession}`
+              : `backend key missing · desktop session: ${desktopSession}`
+          }
+        />
+      </div>
+      {desktopSession.includes("continue required") && (
+        <button type="button" onClick={() => void activate({ via: "browser" })} className="btn-secondary self-start">
+          Continue session →
+        </button>
       )}
     </Section>
   );
 }
 
-// =====================================================================
-// v0.6.3 — Discord-pattern Settings hero + anchored bottom bar.
-// =====================================================================
+// ─────────────────────────────────────────────────────────────────────────────
+// Header + rail
+// ─────────────────────────────────────────────────────────────────────────────
 
-// v0.6.4 — Strict-utility compact header. Single line, no painted cover,
-// no idle animation. Whop-pattern: identity surface + close action only.
 function SettingsCompactHeader({
   me,
   sync,
@@ -1670,22 +1723,14 @@ function SettingsCompactHeader({
         .join("") || "?"
     : "?";
   const effectiveTier = (sync?.tier ?? me?.effective_tier ?? tier) as string;
-  const tierLabel = !resolved ? "checking…" : (effectiveTier === "free" ? "tier · free" : `tier · ${effectiveTier}`);
+  const tierLabel = !resolved ? "checking…" : effectiveTier === "free" ? "tier · free" : `tier · ${effectiveTier}`;
 
-  // (16) Read the uploaded avatar from the shared store so the header thumb
-  // matches what shows in the cockpit orbit. Falls back to initials when no
-  // upload exists yet.
   const avatarUrl = useAvatar((s) => s.url);
   const avatarBustKey = useAvatar((s) => s.bustKey);
   const renderedAvatar = avatarSrc({ url: avatarUrl, bustKey: avatarBustKey });
 
   return (
     <header className="flex shrink-0 items-center gap-3 border-b border-line bg-paper px-6 py-4">
-      {/* v0.7.32 — Left back chevron. Daniel's image #14 feedback: the
-          existing right-side "Close" wasn't discoverable as a way out.
-          Left-aligned back affordance catches the LTR scan pattern AND
-          mirrors macOS conventions for drawer escape. Both routes still
-          fire the same onClose. */}
       <button
         onClick={onClose}
         aria-label="Back to Workspace"
@@ -1699,31 +1744,19 @@ function SettingsCompactHeader({
         className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-gradient-to-br from-fuchsia to-fuchsia-deep font-display text-[14px] font-bold text-white"
       >
         {renderedAvatar ? (
-          <img
-            src={renderedAvatar}
-            alt=""
-            className="h-full w-full object-cover"
-            draggable={false}
-          />
+          <img src={renderedAvatar} alt="" className="h-full w-full object-cover" draggable={false} />
         ) : (
           initials
         )}
       </div>
       <div className="flex min-w-0 flex-1 flex-col leading-tight">
-        <span className="truncate font-display text-[15px] font-semibold tracking-[-0.01em] text-ink">
-          {displayName}
-        </span>
+        <span className="truncate font-display text-[15px] font-semibold tracking-[-0.01em] text-ink">{displayName}</span>
         <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-          <span className="rounded-full border border-fuchsia/60 px-2 py-[1px] text-fuchsia">
-            {tierLabel}
-          </span>
+          <span className="rounded-full border border-fuchsia/60 px-2 py-[1px] text-fuchsia">{tierLabel}</span>
           {email ? <span className="truncate lowercase tracking-[0.04em] text-text-secondary">{email}</span> : null}
         </div>
       </div>
-      <button
-        onClick={onClose}
-        className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary hover:border-fuchsia hover:text-ink"
-      >
+      <button type="button" onClick={onClose} className="btn-secondary">
         Close
       </button>
     </header>
@@ -1737,12 +1770,9 @@ function SettingsLeftRail({
   active: SettingsCategory;
   onSelect: (c: SettingsCategory) => void;
 }) {
-  const items: SettingsCategory[] = ["account", "keys", "about", "diagnostics"];
+  const items: SettingsCategory[] = ["account", "api-keys", "privacy", "about"];
   return (
     <nav
-      // v0.7.32 — bg-transparent let the underlying cockpit sub-rail bleed
-      // through (Daniel's image #14 squashed-left-rail report). Solid bg-paper
-      // makes the Settings rail its own opaque surface.
       className="flex w-[200px] shrink-0 flex-col gap-1 border-r border-line bg-paper px-3 py-5"
       aria-label="Settings categories"
     >
@@ -1756,8 +1786,8 @@ function SettingsLeftRail({
             onClick={() => onSelect(c)}
             className={
               isActive
-                ? "flex items-center gap-3 px-3 py-2.5 font-sans text-[13px] font-semibold text-ink"
-                : "flex items-center gap-3 px-3 py-2.5 font-sans text-[13px] text-text-secondary transition-colors hover:text-ink"
+                ? "flex items-center gap-3 rounded-lg px-3 py-2.5 font-sans text-[13px] font-semibold text-ink"
+                : "flex items-center gap-3 rounded-lg px-3 py-2.5 font-sans text-[13px] text-text-secondary transition-colors hover:bg-paper-elev/40 hover:text-ink"
             }
             aria-current={isActive ? "page" : undefined}
           >
@@ -1779,25 +1809,10 @@ function SettingsLeftRail({
   );
 }
 
-function SettingsBottomBar({ onSignOut }: { onSignOut: () => void | Promise<void> }) {
-  return (
-    <footer className="sticky bottom-0 z-10 flex items-center justify-between gap-4 border-t border-line bg-paper/85 px-6 py-4 backdrop-blur-[20px]">
-      <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-        v{APP_VERSION} · all systems go
-      </span>
-      <button
-        onClick={() => void onSignOut()}
-        className="lc-settings-logout rounded-full bg-[var(--color-danger)] px-5 py-2 font-sans text-[13px] font-semibold text-white shadow-[0_0_18px_rgba(220,38,38,0.4)] transition-all hover:bg-[#B91C1C] hover:shadow-[0_0_28px_rgba(220,38,38,0.65)]"
-      >
-        Log out
-      </button>
-    </footer>
-  );
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Avatar upload row
+// ─────────────────────────────────────────────────────────────────────────────
 
-// v0.6.35 — Avatar upload row. Drives the same useAvatar store the cockpit
-// AvatarOrbit + AvatarPanel + RankStrip all read from, so a save here lights
-// up every surface instantly via the bustKey counter.
 function ProfileAvatarRow({ email }: { email: string | null }) {
   const url = useAvatar((s) => s.url);
   const bustKey = useAvatar((s) => s.bustKey);
@@ -1813,8 +1828,6 @@ function ProfileAvatarRow({ email }: { email: string | null }) {
     if (loading) return;
     const picked = await openFileDialog({
       multiple: false,
-      // (10) Include HEIC — iPhone screenshots default to HEIC and were
-      // silently filtered out of the picker.
       filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "heic"] }],
     });
     if (typeof picked === "string") {
@@ -1835,7 +1848,9 @@ function ProfileAvatarRow({ email }: { email: string | null }) {
             alt=""
             className="h-full w-full object-cover"
             draggable={false}
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
           />
         ) : (
           <span className="flex h-full w-full items-center justify-center font-display text-[20px] font-bold text-white">
@@ -1845,33 +1860,21 @@ function ProfileAvatarRow({ email }: { email: string | null }) {
       </div>
       <div className="flex flex-1 flex-col gap-2">
         <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-          Your avatar shows on the cockpit orbit (top-right) and inside the HUD panel. PNG / JPG / WEBP, resized to 256px.
+          Your avatar shows on the cockpit orbit and inside the HUD panel. PNG / JPG / WEBP, resized to 256px.
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void pick()}
-            disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-transparent px-3.5 py-2 font-sans text-[12px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia disabled:cursor-wait disabled:opacity-50"
-          >
+          <button type="button" onClick={() => void pick()} disabled={loading} className="btn-secondary">
             <Camera className="h-3.5 w-3.5" strokeWidth={2} />
             {renderedSrc ? "Replace" : "Upload"}
           </button>
           {renderedSrc && (
-            <button
-              type="button"
-              onClick={() => void clearAvatar()}
-              disabled={loading}
-              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-transparent px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary transition-colors hover:border-[var(--color-danger)] hover:text-[var(--color-danger)] disabled:cursor-wait disabled:opacity-50"
-            >
+            <button type="button" onClick={() => void clearAvatar()} disabled={loading} className="btn-danger">
               <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
               Remove
             </button>
           )}
         </div>
-        {error && (
-          <p className="font-mono text-[11px] text-[var(--color-danger)]">{error}</p>
-        )}
+        {error && <p className="font-mono text-[11px] text-[var(--color-danger)]">{error}</p>}
       </div>
     </div>
   );

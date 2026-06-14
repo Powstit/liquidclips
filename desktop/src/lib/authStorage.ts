@@ -21,6 +21,8 @@
 //     • Reconnect account
 //     • Connect-desktop callback (activation.ts deep-link handler)
 //     • Explicit "Reset login session" button
+//     • Cold-boot resume session (only when presence mirror says a JWT
+//       exists; one read, then cached for the rest of the session)
 //
 // HOW THIS IS ENFORCED:
 //   1. `scripts/assert-no-passive-keychain.sh` — pre-commit gate. Blocks
@@ -39,7 +41,7 @@
 //   • Submit / action paths that need the JWT: call
 //     `requireCachedLicenseJwtOrThrow()`. Catch `CachedJwtUnavailableError`
 //     and surface the reconnect copy inline (toast / banner / form error).
-//   • If you genuinely need to read Keychain (you are one of the 5 allowed
+//   • If you genuinely need to read Keychain (you are one of the 6 allowed
 //     auth actions): call `readLicenseJwtForAuthAction({ explicitAuthAction:
 //     true, callerLabel: "auth.<your-flow>" })`. This is the ONLY path that
 //     touches Keychain. Add your file to the approved-auth-files list in
@@ -63,7 +65,7 @@ export class CachedJwtUnavailableError extends Error {
   }
 }
 
-// In-memory JWT cache. Populated ONLY by the four explicit auth actions via
+// In-memory JWT cache. Populated ONLY by the explicit auth actions via
 // `primeLicenseJwtCache`. Cleared by `invalidateLicenseJwtCache`. Never
 // touches localStorage / disk — restart = re-sign-in.
 let _jwtCache: { value: string | null } | null = null;
@@ -93,6 +95,28 @@ export async function licenseJwtPresence(): Promise<boolean> {
   }
 }
 
+/** AUTH-ACTION ONLY — cold-boot session resume.
+ *
+ *  When the presence mirror says a JWT is stored but the in-memory cache is
+ *  empty (normal after an app restart), this performs the ONE allowed
+ *  Keychain read for the boot sequence, primes the cache, and dispatches
+ *  `lc:desktop-auth-ready` so every surface refreshes from the now-cached
+ *  JWT. On a properly signed / installed app this read is silent; on a
+ *  freshly rebuilt / renamed sidecar binary macOS may show its one-time
+ *  access prompt.
+ *
+ *  Returns `true` only if a JWT is now cached. Returns `false` if there was
+ *  no presence or the read failed, so the UI can fall back to signed-out. */
+export async function resumeSessionFromKeychainIfPresent(): Promise<boolean> {
+  const present = await licenseJwtPresence();
+  if (!present) return false;
+  const jwt = await readLicenseJwtForAuthAction({
+    explicitAuthAction: true,
+    callerLabel: "boot.resume-session",
+  });
+  return jwt !== null;
+}
+
 /** SAFE — synchronous cache-required accessor. Throws
  *  `CachedJwtUnavailableError` if the cache is empty. NEVER triggers a
  *  Keychain prompt.
@@ -107,17 +131,31 @@ export function requireCachedLicenseJwtOrThrow(): string {
 }
 
 /** AUTH-ACTION ONLY — prime the in-memory cache from a known-good JWT
- *  obtained by one of the five explicit auth actions:
+ *  obtained by one of the explicit auth actions:
  *    • Sign in (activation.ts → `handleDeepLink`)
  *    • Sign out (the rare "sign back in immediately" path)
  *    • Reconnect account
  *    • Connect-desktop callback (same handler as Sign in today)
  *    • Explicit "Reset login session" + re-mint
+ *    • Cold-boot resume session (`resumeSessionFromKeychainIfPresent`)
  *
  *  Do NOT call this from a passive caller. Surfaces should read from
- *  `getCachedLicenseJwt()` instead. */
+ *  `getCachedLicenseJwt()` instead.
+ *
+ *  v0.7.66 — also dispatches `lc:desktop-auth-ready` so passive surfaces
+ *  (EarnTab, etc.) can wake from their "Continue session" state without
+ *  polling or touching the OS Keychain. Listeners must still call
+ *  `getCachedLicenseJwt()` to read the value — the event is a signal,
+ *  not a payload. */
 export function primeLicenseJwtCache(jwt: string): void {
   _jwtCache = { value: jwt };
+  if (typeof window !== "undefined") {
+    try {
+      window.dispatchEvent(new CustomEvent("lc:desktop-auth-ready"));
+    } catch {
+      /* event dispatch is best-effort — never let it block the cache write */
+    }
+  }
 }
 
 /** AUTH-ACTION ONLY — wipe the in-memory cache. Call sites:
@@ -126,9 +164,19 @@ export function primeLicenseJwtCache(jwt: string): void {
  *    • 401 self-heal path in `authedFetch` (token rejected by backend)
  *
  *  Forces the next surface mount to render the reconnect UI rather than
- *  acting on a stale token. */
+ *  acting on a stale token.
+ *
+ *  v0.7.66 — also dispatches `lc:desktop-auth-invalidated` so passive
+ *  surfaces can roll back to their reconnect state without polling. */
 export function invalidateLicenseJwtCache(): void {
   _jwtCache = null;
+  if (typeof window !== "undefined") {
+    try {
+      window.dispatchEvent(new CustomEvent("lc:desktop-auth-invalidated"));
+    } catch {
+      /* event dispatch is best-effort */
+    }
+  }
 }
 
 /** AUTH-ACTION ONLY — the ONE path allowed to read the OS Keychain.
@@ -147,8 +195,9 @@ export function invalidateLicenseJwtCache(): void {
  *    • `src/lib/activation.ts` — Connect-desktop deep-link handler.
  *    • Auth panel sign-in flow (post-Clerk return path).
  *    • Explicit "Reset login session" + re-mint.
+ *    • `resumeSessionFromKeychainIfPresent()` — cold-boot resume.
  *
- *  The dev-mode guard throws if `explicitAuthAction !== true`. CI script
+ *  The dev-mode guard throws if `explicitAuthAction` !== true. CI script
  *  and test fixture block any caller outside the approved auth files. */
 export async function readLicenseJwtForAuthAction(opts: {
   explicitAuthAction: true;

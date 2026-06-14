@@ -5,7 +5,14 @@ import { TestimonialPanel } from "@/components/TestimonialPanel";
 // proof testimonials. Left column stays on its own on narrower screens so the
 // auth form never gets pushed below the fold.
 
-export default function SignInPage() {
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ redirect_url?: string; redirect?: string }>;
+}) {
+  const { redirect_url, redirect } = await searchParams;
+  const returnTo = redirect_url || redirect || "/dashboard";
+
   return (
     <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[1fr_1.1fr]">
       <section className="flex flex-col items-center justify-center gap-7 bg-paper px-6 py-12 sm:py-20">
@@ -27,7 +34,10 @@ export default function SignInPage() {
             <em className="not-italic text-fuchsia">junior</em>.
           </h1>
 
-          <SignIn fallbackRedirectUrl="/dashboard" signUpUrl="/sign-up" />
+          <SignIn
+            fallbackRedirectUrl={returnTo}
+            signUpUrl={`/sign-up?redirect_url=${encodeURIComponent(returnTo)}`}
+          />
         </div>
       </section>
 

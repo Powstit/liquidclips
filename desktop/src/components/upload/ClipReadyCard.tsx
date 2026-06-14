@@ -25,11 +25,13 @@ import type { DirectPublishQueueItem } from "../../lib/sidecar";
 import type { SocialConnectionState } from "../../lib/backend";
 import { ConnectFirstPrompt } from "./ConnectFirstPrompt";
 import { prettyPlatform } from "../schedule/types";
+import { PlatformIcon } from "../PlatformIcon";
 
 export type ClipReadyAction = "edit" | "publish-now" | "schedule-one";
 
-// Platform-circle glyph. Lucide where it ships a brand mark, monospace
-// initial otherwise. 28px tiles, no extra sprite assets.
+// Platform-circle glyph. Lucide where it ships a brand mark; canonical
+// monochrome PlatformIcon for TikTok / X so the row doesn't fall back to a
+// text initial on those platforms. 28px tiles, no extra sprite assets.
 function PlatformGlyph({ platform }: { platform: string }) {
   const cls = "h-3.5 w-3.5";
   switch (platform) {
@@ -40,9 +42,9 @@ function PlatformGlyph({ platform }: { platform: string }) {
     case "linkedin":
       return <Linkedin className={cls} strokeWidth={2} />;
     case "tiktok":
-      return <span className="font-mono text-[11px] font-semibold leading-none">T</span>;
+      return <PlatformIcon id="tiktok" className={cls} />;
     case "x":
-      return <span className="font-mono text-[11px] font-semibold leading-none">X</span>;
+      return <PlatformIcon id="x" className={cls} />;
     case "threads":
       return <span className="font-mono text-[11px] font-semibold leading-none">@</span>;
     default:

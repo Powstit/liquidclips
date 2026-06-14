@@ -76,9 +76,10 @@ import {
   invalidateLicenseJwtCache,
   primeLicenseJwtCache,
   RECONNECT_PROMPT_COPY,
+  resumeSessionFromKeychainIfPresent,
 } from "./authStorage";
 
-export { getCachedLicenseJwt, invalidateLicenseJwtCache, primeLicenseJwtCache };
+export { getCachedLicenseJwt, invalidateLicenseJwtCache, primeLicenseJwtCache, resumeSessionFromKeychainIfPresent };
 
 // Central "license rejected" hook. App.tsx registers a handler that flips the
 // app to signed-out + shows the activation prompt. Fired once per 401 from ANY
@@ -386,6 +387,9 @@ export type RewardClipPatchInput = {
 };
 
 // v0.7.0 (Sprint 2) — Sponsored Rewards. Mirrors junior-backend/app/routes/campaigns.py.
+// v0.7.77 SECTION C1 correction — added whop_campaign_url + your_rpm_cents so
+// the desktop can route reward CTAs to the specific campaign destination when
+// available, instead of falling back to a generic or stale community URL.
 export type SponsoredCampaign = {
   id: string;
   slug: string;
@@ -398,6 +402,7 @@ export type SponsoredCampaign = {
   budget_cents: number;
   funded_pct: number;
   duration_label: string | null;
+  /** Generic Whop destination — often the Liquid Clips community page. */
   whop_url: string;
   banner_url: string | null;
   eligibility: string[];
@@ -405,6 +410,22 @@ export type SponsoredCampaign = {
   min_lc_score: number;
   cta_text: string;
   sort_order: number;
+  /** Specific campaign brief/bounty URL — preferred over whop_url. */
+  whop_campaign_url?: string | null;
+  /** Per-caller derived RPM (free base / premium ladder). */
+  your_rpm_cents?: number | null;
+  /** Whether the caller is on a premium tier (solo/pro/agency). */
+  is_premium_caller?: boolean | null;
+  base_rpm_cents?: number;
+  premium_rpm_cents?: number;
+  premium_bonus_cents?: number;
+  free_banner_text?: string | null;
+  premium_banner_text?: string | null;
+  mission_type?: string | null;
+  mission_lane?: string | null;
+  requires_membership?: boolean;
+  watermark_allowed?: boolean;
+  whop_campaign_id?: string | null;
 };
 
 export const backend = {
@@ -482,7 +503,7 @@ export const backend = {
     if (res.status === 412) {
       // Backend: no social_connections row yet. Surface a clear next step
       // instead of dumping the raw 412 body to the user.
-      throw new Error("Connect a social profile in Settings → Connections before publishing.");
+      throw new Error("Connect a social profile in Schedule → Loadout before publishing.");
     }
     if (!res.ok) {
       // finding #9: distinguish 5xx (retry / offline UI) from 4xx (user-actionable)
@@ -907,7 +928,9 @@ export type TierName = Tier;
 // callers should fall back to the last-known tier persisted via these helpers.
 // They're best-effort; localStorage failures (private browsing, quota) just
 // log and continue.
-const CACHED_TIER_KEY = "junior:cached-tier:v1";
+// SECTION A — unified with useTier.ts + App.tsx so a successful /sync writes
+// the same localStorage key that seeds cold-boot tier state.
+const CACHED_TIER_KEY = "lc:cached_tier";
 
 export function readCachedTier(): TierName | null {
   if (typeof window === "undefined") return null;
@@ -1061,7 +1084,7 @@ export type AffiliateBlock = {
   monthly_recurring_revenue_usd: string | null;
   total_referral_earnings_usd: string | null;
   qualification: AffiliateQualification | null;
-  partner_dashboard_url: string;       // always present; fallback host is partner.jnremployee.com (partner.liquidclips.app subdomain not provisioned yet, see v0.7.54 P1-002)
+  partner_dashboard_url: string;       // always present; canonical fallback is partner.liquidclips.app
   payout_provider: "whop" | "stripe_connect" | string;
   payout_status: "ready" | "setup_required" | "unavailable" | string;
   payout_setup_url: string;
@@ -1199,9 +1222,9 @@ export async function meStatusLegacy(): Promise<MeStatus | null> {
 
 // ── Social connections (P1 — Ayrshare) ─────────────────────────────────
 //
-// One profile key per user. Set via Settings → Connections; PublishModal
+// One profile key per user. Set via Schedule → Loadout; PublishModal
 // reads `platforms` to pre-fill checkboxes and 412s the user back to
-// Settings if they try to publish without one.
+// Schedule → Loadout if they try to publish without one.
 
 // ── Sponsored Campaigns + Submissions (sprint #14c) ─────────────────────
 // Minecraft Story Clip Challenge is the first wrapped campaign. Clipper

@@ -197,6 +197,9 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         # Per-arch native build. Each matrix runner builds its own slice; the
         # brew sidecar fetched earlier in this job is the matching arch. We do
         # not lipo a universal binary — instead we publish two DMGs.
