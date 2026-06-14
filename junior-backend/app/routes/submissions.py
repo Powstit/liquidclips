@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db import get_db
 from app.deps import current_user
 from app.mailer import (
@@ -263,7 +264,7 @@ def create_submission(
                 detail={
                     "code": "watermark_detected",
                     "message": wm.reason,
-                    "upgrade_url": "https://account.jnremployee.com/upgrade?reason=watermark",
+                    "upgrade_url": f"{get_settings().account_site_url}/upgrade?reason=watermark",
                     "submission_id": row.id,
                 },
             )

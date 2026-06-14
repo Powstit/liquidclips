@@ -25,6 +25,7 @@ import {
 import heroImg from "../../assets/minecraft/hero.png";
 import momentsGrid from "../../assets/minecraft/moments-grid.png";
 import { track } from "../../lib/analytics";
+import { rememberSubmissionId } from "./EarnTab";
 
 const MOMENT_LABELS: Record<MomentType, string> = {
   betrayal: "Betrayal",
@@ -113,6 +114,7 @@ export function SubmissionPortal({ onClose }: { onClose: () => void }) {
         disclosure_confirmed: disclosureConfirmed,
       });
       track("mc_submission_accepted", { campaign_id: campaign.id, moment_type: momentType });
+      rememberSubmissionId(result.id);
       setState({ kind: "success", submissionId: result.id });
     } catch (e) {
       if (e instanceof WatermarkDetectedError) {
@@ -238,7 +240,7 @@ function NoCampaign({ onClose }: { onClose: () => void }) {
       </p>
       <button
         onClick={onClose}
-        className="mt-5 rounded-full bg-ink px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia"
+        className="btn-primary mt-5"
       >
         Close
       </button>
@@ -397,7 +399,7 @@ function FormBody({
         type="button"
         onClick={onSubmit}
         disabled={!canSubmit || submitting}
-        className="inline-flex items-center justify-center gap-2 rounded-full bg-fuchsia px-6 py-3 font-sans text-[14px] font-medium text-paper transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] disabled:opacity-40 disabled:cursor-not-allowed"
+        className="btn-primary items-center justify-center gap-2 disabled:opacity-40"
       >
         {submitting ? (
           <><Loader2 size={14} className="animate-spin" /> Checking your clip…</>
@@ -439,14 +441,14 @@ function WatermarkedState({
             track("mc_upgrade_cta_clicked", { source: "watermark_rejected" });
             void openExternal(upgradeUrl);
           }}
-          className="inline-flex items-center gap-2 rounded-full bg-fuchsia px-6 py-3 font-sans text-[14px] font-medium text-paper hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+          className="btn-primary items-center gap-2"
         >
           Upgrade to remove watermark
           <ExternalLink size={14} strokeWidth={2.25} />
         </button>
         <button
           onClick={onBack}
-          className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-tertiary hover:text-ink"
+          className="btn-ghost"
         >
           Back to form
         </button>
@@ -486,13 +488,13 @@ function SuccessState({
       <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
         <button
           onClick={onClose}
-          className="rounded-full border border-line bg-paper px-5 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia"
+          className="btn-secondary"
         >
           Close
         </button>
         <button
           onClick={onSubmitAnother}
-          className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright"
+          className="btn-primary"
         >
           Submit another clip
         </button>

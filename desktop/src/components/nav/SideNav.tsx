@@ -29,6 +29,7 @@ const COLLAPSE_KEY = "lc:sidenav:collapsed";
 export type SideNavKey =
   | "workspace"
   | "library"
+  | "projects"
   | "earn"
   | "learn"
   | "schedule"
@@ -39,10 +40,26 @@ export function SideNav({
   activeKey,
   onSelect,
   onOpenSettings,
+  workspaceProgress = false,
+  libraryDot = false,
+  earnDot = false,
+  settingsDot = false,
 }: {
   activeKey: SideNavKey | null;
   onSelect: (key: Exclude<SideNavKey, "settings">) => void;
   onOpenSettings: () => void;
+  /** Lane 1 — workspace item shows an animated progress ring while a
+   *  pipeline is running. */
+  workspaceProgress?: boolean;
+  /** Lane 1 — library item shows a fuchsia dot when new clips have landed
+   *  since the last visit. */
+  libraryDot?: boolean;
+  /** Lane 1 — earn item shows a fuchsia dot when unseen personal bounties
+   *  are available. */
+  earnDot?: boolean;
+  /** Lane 1 — settings item shows an amber dot when the app needs attention
+   *  (missing OpenAI key, channel error, etc.). */
+  settingsDot?: boolean;
 }) {
   // v0.6.35 — Persisted collapse state. The 2× icons make the rail richer
   // but also wider; collapsing reverts to a tighter icon-only column for
@@ -96,6 +113,7 @@ export function SideNav({
           onClick={() => onSelect("workspace")}
           iconSrc={workspaceBadge}
           dataTour="workstation"
+          badge={workspaceProgress ? "progress" : undefined}
         />
         <SideNavItem
           label="Library"
@@ -103,6 +121,18 @@ export function SideNav({
           onClick={() => onSelect("library")}
           iconSrc={libraryBadge}
           dataTour="clips-grid"
+          badge={libraryDot ? "dot" : undefined}
+        />
+        {/* v0.7.71 — Projects sits beside Library so the rail surfaces both
+            mental models: casual outputs (Library) and organised workspaces
+            (Projects). Reuses libraryBadge until a dedicated Projects badge
+            ships; the icon polish is deferred to a later pass. */}
+        <SideNavItem
+          label="Projects"
+          active={activeKey === "projects"}
+          onClick={() => onSelect("projects")}
+          iconSrc={libraryBadge}
+          dataTour="projects-grid"
         />
         <SideNavItem
           label="Earn"
@@ -110,6 +140,7 @@ export function SideNav({
           onClick={() => onSelect("earn")}
           iconSrc={earnBadge}
           dataTour="earn"
+          badge={earnDot ? "dot" : undefined}
         />
         <SideNavItem
           label="Learn"
@@ -140,6 +171,7 @@ export function SideNav({
           active={activeKey === "settings"}
           onClick={onOpenSettings}
           iconSrc={settingsBadge}
+          badge={settingsDot ? "dot-amber" : undefined}
         />
       </div>
     </aside>

@@ -30,7 +30,7 @@ import {
   type EarnPanelMessage,
 } from "../../lib/earn_panel";
 import { humanError, sidecar, type WhopBounty } from "../../lib/sidecar";
-import { openAuthPanel } from "../auth/useAuthPanel";
+import { openUpgradeWhenSignedIn } from "../../lib/upgradeWithAuth";
 import { openSmart as openExternal } from "../../lib/openSmart";
 import { getCachedLicenseJwt } from "../../lib/backend";
 
@@ -46,9 +46,9 @@ import { getCachedLicenseJwt } from "../../lib/backend";
 const EMBED_FIRST_PAINT_BUDGET_MS = 10_000;
 
 // External fallback URL the recovery card's "Open in browser" CTA points to.
-// Uses the public /earn page (not the embed variant) so the user lands on a
-// signed-in-rewardable surface even when our shell webview can't render it.
-const EMBED_BROWSER_FALLBACK_URL = "https://account.liquidclips.app/earn";
+// The hosted /earn route is retired; /embed/earn is the live fallback while the
+// native Earn surface remains the primary path.
+const EMBED_BROWSER_FALLBACK_URL = "https://account.liquidclips.app/embed/earn";
 
 /** Source of truth for "what submissions has THIS desktop captured?" lives
  *  in `localStorage["junior:my-whop-submissions:v1"]` (see EarnTab.ts's
@@ -281,18 +281,14 @@ export function EarnPanelMount({ onStartBounty, onNav, userTier }: Props) {
           break;
         }
         case "lc:open-auth": {
-          // ship-lens v0.7.11: the embed renders a "Link your account"
-          // CTA when Clerk satellite cookies haven't been set yet (the
-          // server-side auth() in /embed/earn returns no userId). The CTA
-          // posts this message; we open the native auth panel which lands
-          // the user on Clerk's hosted page at account.liquidclips.app —
-          // signing in sets the satellite cookie + the panel auto-closes,
-          // and on close we destroy + reopen the earn webview so the
-          // embed re-renders authenticated.
-          const panel = (msg as { panel?: unknown }).panel === "upgrade"
-            ? "upgrade"
-            : "sign-in";
-          openAuthPanel(panel);
+          // v0.7.68 — sign-in / sign-up modes were removed from AuthPanel
+          // because they routed to Clerk pages that never issued a desktop
+          // LICENSE_JWT. The embed still requests "upgrade"; any legacy
+          // "sign-in" request is ignored.
+          const panel = (msg as { panel?: unknown }).panel;
+          if (panel === "upgrade") {
+            openUpgradeWhenSignedIn();
+          }
           break;
         }
         case "lc:start-bounty": {

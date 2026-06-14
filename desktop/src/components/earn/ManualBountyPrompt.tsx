@@ -104,8 +104,9 @@ export function ManualBountyPrompt({
         manual reward · beta fallback
       </div>
       <p className="mt-1 font-sans text-[12px] leading-relaxed text-text-secondary">
-        Paste the reward's details by hand and start clipping. Same pipeline,
-        same submission-capture flow — only the Content Rewards list is bypassed.
+        Paste a Whop brief link to start a manual bounty, or type the reward
+        details by hand. Same pipeline, same submission-capture flow — only the
+        Content Rewards list is bypassed.
       </p>
 
       <div className="mt-3 grid gap-2">
@@ -168,13 +169,13 @@ export function ManualBountyPrompt({
       <div className="mt-3 flex items-center gap-2">
         <button
           onClick={go}
-          className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright"
+          className="btn-primary"
         >
           Start clipping →
         </button>
         <button
           onClick={onCancel}
-          className="rounded-full bg-transparent px-4 py-2 font-sans text-[13px] font-medium text-text-secondary transition-colors hover:text-ink"
+          className="btn-ghost"
         >
           Cancel
         </button>

@@ -4,7 +4,6 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { ExternalLink, PanelRightOpen, Check, Copy } from "lucide-react";
 import type { WhopBounty } from "../../lib/sidecar";
 import { PlatformIcon } from "../PlatformIcon";
-import { HudChip } from "../cockpit/HudChip";
 import { allowedPlatforms, formatPayout, whopBountyUrl } from "./types";
 import { openBrowsePanel } from "../../lib/browse";
 import { BROWSE_PANEL_ENABLED } from "../../lib/flags";
@@ -20,10 +19,15 @@ export function BountyDetail({
   bounty,
   onBack,
   onStart,
+  isStarted = false,
 }: {
   bounty: WhopBounty;
   onBack: () => void;
   onStart: () => void;
+  /** v0.7.76 — When true, the action button reads "Resume Project →"
+   *  instead of "Start clipping →". Set by EarnTab when an active
+   *  (non-done) bounty project already exists for this whop_bounty_id. */
+  isStarted?: boolean;
 }) {
   const platforms = allowedPlatforms(bounty);
   const sym = bounty.currency === "GBP" ? "£" : bounty.currency === "USD" ? "$" : "";
@@ -55,12 +59,19 @@ export function BountyDetail({
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            {/* Status chip — Live / Coming Soon / Closed. Uses the cockpit
-                HudChip language so the detail view speaks the same chrome
-                as the Library filters. */}
-            <HudChip active onClick={() => {}}>
+            {/* v0.7.76 — Status is a label, not an action. Pre-fix this
+                was an `<HudChip onClick={() => {}}>` — a dead button that
+                bug-hunt-lens flagged in v0.7.70. Static span keeps the
+                cockpit chrome (fuchsia border + mono caps) without the
+                click affordance. */}
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia/60 bg-fuchsia-soft/30 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia-deep">
               {status}
-            </HudChip>
+            </span>
+            {isStarted && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-text-secondary">
+                started
+              </span>
+            )}
           </div>
           <h1 className="font-display text-[28px] font-semibold leading-tight tracking-[-0.025em] text-ink">
             {bounty.title}
@@ -91,7 +102,7 @@ export function BountyDetail({
                   setBriefOpenError("Couldn't open brief — copy link instead");
                 }
               }}
-              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-transparent px-3.5 py-2 font-sans text-[12px] font-medium text-text-secondary transition-colors hover:border-fuchsia hover:text-fuchsia-deep"
+              className="btn-secondary"
               title={BROWSE_PANEL_ENABLED
                 ? "Open the brand's brief in the side panel — clip alongside it."
                 : "Open the brand's brief on Whop. Use this when the source video lives in a discussion post Liquid Clips can't read directly."}
@@ -114,7 +125,7 @@ export function BountyDetail({
                       console.error("[bounty-detail] clipboard write failed:", e);
                     }
                   }}
-                  className="inline-flex items-center gap-1 rounded-full border border-line bg-paper px-2.5 py-0.5 font-sans text-[11px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
+                  className="btn-secondary px-2.5 py-0.5 text-[11px]"
                 >
                   {briefCopied ? <><Check size={11} strokeWidth={2.5} /> Copied</> : <><Copy size={11} strokeWidth={2.25} /> Copy link</>}
                 </button>
@@ -244,22 +255,33 @@ export function BountyDetail({
             }
           }}
           disabled={starting}
-          className="rounded-full bg-fuchsia px-6 py-3 font-sans text-[15px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-60 disabled:cursor-not-allowed"
+          className="btn-primary disabled:opacity-60"
         >
-          {starting ? "Starting…" : "Start clipping →"}
+          {starting
+            ? isStarted
+              ? "Resuming…"
+              : "Starting…"
+            : isStarted
+              ? "Resume Project →"
+              : "Start clipping →"}
         </button>
       </div>
       <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-        Liquid Clips imports the source, runs your pipeline, and tags every clip with this reward.
+        {isStarted
+          ? "You already started this bounty. Resume opens the project where your clips live."
+          : "Liquid Clips imports the source, runs your pipeline, and tags every clip with this reward."}
       </p>
     </div>
   );
 }
 
-// Live / Coming Soon / Closed — derived from the bounty's `status` plus
-// spots-left so a "live" bounty with zero spots reads as Closed without
-// needing a separate field from Whop.
+// Live / Coming Soon / Closed / Manual — derived from the bounty's `status`
+// plus spots-left so a "live" bounty with zero spots reads as Closed without
+// needing a separate field from Whop. Manual bounties bypass spots logic and
+// always read as "Manual" so clippers don't see a hand-typed bounty marked
+// "Closed" just because spotsRemaining synthesized to 0.
 function bountyStatusLabel(bounty: WhopBounty, spotsRemaining: number): string {
+  if (bounty.bountyType === "manual") return "Manual";
   const s = (bounty.status ?? "").toLowerCase();
   if (s === "draft" || s === "scheduled" || s === "upcoming") return "Coming Soon";
   if (s === "closed" || s === "ended" || s === "expired" || s === "completed") return "Closed";

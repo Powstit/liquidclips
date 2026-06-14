@@ -209,23 +209,32 @@ export function useTier(): TierState {
     setResolved(true);
   }, []);
 
-  // v0.7.56 P0 — Focus refresh removed.
+  // v0.7.77 SECTION A — Refresh tier when the auth cache is primed or the
+  // app explicitly broadcasts a tier change. These are explicit auth events,
+  // not passive focus/visibility signals, so they are safe to act on.
   //
-  // Window focus is a passive signal — macOS fires it the instant the new
-  // app window becomes active at cold-boot launch, and again every time
-  // the user Cmd-Tabs back from another app. Either would trigger
-  // `syncStatus()` → `authedFetch()` → `licenseJwt()` → Keychain on a
-  // freshly rebuilt/renamed sidecar binary. Daniel's directive: no
-  // automatic Keychain reads from passive callers.
+  // `lc:desktop-auth-ready` fires whenever the in-memory JWT cache is primed:
+  //   * cold-boot resume from `resumeSessionFromKeychainIfPresent()`
+  //   * connect-desktop deep-link return
+  //   * sign-in flow completion
+  // Without this listener, `useTier()` consumers keep the stale localStorage
+  // tier (e.g. "free") and paid/admin users see locked surfaces / upgrade
+  // walls after launch.
   //
-  // The Stripe-Checkout-came-back path that this used to cover is now
-  // handled by:
-  //   * `lc:tier-refresh` (dispatched by GlobalAuthPanel on close)
-  //   * the explicit `refreshTier()` callers in Settings save, post-
-  //     clip-run, and the upgrade flow's completion handler
-  // Cold-boot users keep the cached tier from localStorage until any of
-  // those explicit refresh paths run.
-  useEffect(() => undefined, []);
+  // `lc:tier-refresh` fires after checkout completion, Settings save, or any
+  // other path that already refreshed /sync and wants every consumer to sync.
+  useEffect(() => {
+    function onRefresh(): void {
+      const signal = { cancelled: false };
+      void doRefresh(signal);
+    }
+    window.addEventListener("lc:desktop-auth-ready", onRefresh);
+    window.addEventListener("lc:tier-refresh", onRefresh);
+    return () => {
+      window.removeEventListener("lc:desktop-auth-ready", onRefresh);
+      window.removeEventListener("lc:tier-refresh", onRefresh);
+    };
+  }, [doRefresh]);
 
   const refreshTier = useCallback(async (): Promise<void> => {
     const signal = { cancelled: false };

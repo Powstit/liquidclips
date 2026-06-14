@@ -34,6 +34,23 @@ step "Preflight"
 SRC_VER="$(plutil -p "$SRC/Contents/Info.plist" | awk -F'"' '/CFBundleShortVersionString/{print $4}')"
 ok "Source bundle: $SRC ($SRC_VER)"
 
+# v0.7.70 — Stale-sidecar guard. `npm run tauri build` does NOT recompile the
+# PyInstaller bundle; it copies whatever sits at python-sidecar/dist/sidecar-
+# bundle/liquid-clips-sidecar. If sidecar.py is newer than the binary, the
+# installed app will dispatch RPCs against an outdated METHODS dict and the
+# new methods silently 404 (caught us once in v0.7.68→.70 with the public
+# bounty path — TS bridge fired `whop_list_public_bounties` but the bundled
+# binary didn't have the method). Fix: run `bash python-sidecar/build_sidecar.sh`
+# before `npm run tauri build`. See docs/UI_PRESERVATION_INVENTORY.md.
+SIDECAR_PY="python-sidecar/sidecar.py"
+SIDECAR_BIN="python-sidecar/dist/sidecar-bundle/liquid-clips-sidecar"
+if [ -f "$SIDECAR_PY" ] && [ -f "$SIDECAR_BIN" ]; then
+  if [ "$SIDECAR_PY" -nt "$SIDECAR_BIN" ]; then
+    fail "stale sidecar bundle — $SIDECAR_PY is newer than $SIDECAR_BIN. Run: bash python-sidecar/build_sidecar.sh && npm run tauri build -- --bundles app"
+  fi
+  ok "sidecar bundle in sync with sidecar.py"
+fi
+
 # --- graceful quit, then SIGKILL holdouts -------------------------------
 if [ "$SKIP_QUIT" != "--skip-quit" ]; then
   step "Quitting running Liquid Clips.app"

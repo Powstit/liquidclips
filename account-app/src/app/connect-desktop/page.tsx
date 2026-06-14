@@ -154,7 +154,7 @@ export default function ConnectDesktopPage() {
         <WhopBanner state={whopUrlState} />
         <SignIn
           routing="hash"
-          signUpUrl="/sign-up"
+          signUpUrl={`/sign-up?redirect_url=${encodeURIComponent(back)}`}
           forceRedirectUrl={back}
           signUpForceRedirectUrl={back}
         />

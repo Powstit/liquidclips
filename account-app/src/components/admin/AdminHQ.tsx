@@ -1,6 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import {
+  AgentsTab,
+  APIToolsTab,
+  CostsRunwayTab,
+  CustomersTab,
+  EmployeesTab,
+  InboxTab,
+  IronGatesTab,
+  ReleasesTab,
+  ReportsTab,
+  RevenueTab,
+} from "./HQCommandTabs";
 
 // Read-only Admin HQ v0 — dense, utilitarian, on-brand (paper/ink + fuchsia).
 // All data is fetched THROUGH /api/admin/* proxy routes that re-check admin on
@@ -118,6 +130,18 @@ type Timeline = { user_id: string; email_masked: string; events: TimelineEvent[]
 
 const TABS = [
   "Overview",
+  "Revenue",
+  "Bugs",
+  "Iron Gates",
+  "Agents",
+  "Employees",
+  "APIs / Tools",
+  "Releases",
+  "Costs / Runway",
+  "Customers",
+  "Reports",
+  "Inbox",
+  // Existing admin-only tabs
   "Launch Health",
   "Function Heat Map",
   "Alerts",
@@ -128,7 +152,7 @@ const TABS = [
   "Usage",
   "Billing",
   "Postiz",
-  "Bugs",
+  "Telemetry",
   "Bonus Ledger",
   "Community Channels",
   "Missions",
@@ -236,7 +260,44 @@ function AdminStatusPill({ onOpen }: { onOpen: () => void }) {
 }
 
 // =====================================================================
-export function AdminHQ({ adminEmail, initialOverview }: { adminEmail: string; initialOverview: Overview | null }) {
+type AgentKeyConfig = {
+  auth: boolean;
+  projects: boolean;
+  earn: boolean;
+  ui: boolean;
+  codex: boolean;
+  claude: boolean;
+  hqInternal: boolean;
+};
+
+type ServiceConfig = {
+  openai: boolean;
+  kimi: boolean;
+  claude: boolean;
+  whop: boolean;
+  clerk: boolean;
+  stripe: boolean;
+  railway: boolean;
+  vercel: boolean;
+  supabase: boolean;
+  resend: boolean;
+  ayrshare: boolean;
+  postiz: boolean;
+  storage: boolean;
+  sentry: boolean;
+};
+
+export function AdminHQ({
+  adminEmail,
+  initialOverview,
+  agentKeyConfig,
+  serviceConfig,
+}: {
+  adminEmail: string;
+  initialOverview: Overview | null;
+  agentKeyConfig: AgentKeyConfig;
+  serviceConfig: ServiceConfig;
+}) {
   const [tab, setTab] = useState<Tab>("Overview");
 
   return (
@@ -245,10 +306,10 @@ export function AdminHQ({ adminEmail, initialOverview }: { adminEmail: string; i
         <div>
           <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia">
             <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-            admin hq · read-only
+            MRR protection dashboard
           </div>
           <h1 className="mt-2 font-display text-[clamp(28px,4vw,42px)] font-semibold leading-[1.05] tracking-[-0.03em] text-ink">
-            Liquid Clips control surface.
+            Liquid Clips HQ.
           </h1>
         </div>
         <div className="text-right font-mono text-[11px] text-text-tertiary">
@@ -274,6 +335,18 @@ export function AdminHQ({ adminEmail, initialOverview }: { adminEmail: string; i
 
       <div className="mt-7">
         {tab === "Overview" && <OverviewTab initial={initialOverview} />}
+        {tab === "Revenue" && <RevenueTab />}
+        {tab === "Bugs" && <BugCommandTab agentKeyConfig={agentKeyConfig} />}
+        {tab === "Iron Gates" && <IronGatesTab />}
+        {tab === "Agents" && <AgentsTab agentKeyConfig={agentKeyConfig} />}
+        {tab === "Employees" && <EmployeesTab />}
+        {tab === "APIs / Tools" && <APIToolsTab serviceConfig={serviceConfig} />}
+        {tab === "Releases" && <ReleasesTab />}
+        {tab === "Costs / Runway" && <CostsRunwayTab agentKeyConfig={agentKeyConfig} serviceConfig={serviceConfig} />}
+        {tab === "Customers" && <CustomersTab />}
+        {tab === "Reports" && <ReportsTab />}
+        {tab === "Inbox" && <InboxTab />}
+        {/* Existing admin-only tabs */}
         {tab === "Launch Health" && <LaunchHealthTab />}
         {tab === "Function Heat Map" && <FunctionHeatmapTab />}
         {tab === "Alerts" && <AlertsTab />}
@@ -284,7 +357,7 @@ export function AdminHQ({ adminEmail, initialOverview }: { adminEmail: string; i
         {tab === "Usage" && <UsageTab />}
         {tab === "Billing" && <BillingTab />}
         {tab === "Postiz" && <PostizTab />}
-        {tab === "Bugs" && <BugsTab />}
+        {tab === "Telemetry" && <BugsTab />}
         {tab === "Bonus Ledger" && <BonusLedgerTab />}
         {tab === "Community Channels" && <CommunityChannelsTab />}
         {tab === "Missions" && <MissionsTab />}
@@ -3074,5 +3147,494 @@ function AnnouncementForm({
         <button onClick={() => void save()} disabled={busy} className="ml-auto rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-white hover:bg-fuchsia-bright disabled:opacity-60">{busy ? "Saving…" : "Publish"}</button>
       </div>
     </div>
+  );
+}
+
+// =====================================================================
+// Bug Command Centre — MRR protection dashboard (v0 foundation)
+// =====================================================================
+// This tab is intentionally client-side + mock-data first. The backend has
+// DesktopErrorEvent telemetry (see BugsTab) but no agent-lane / bug-intake
+// table yet. When real bug intake is wired later, swap the static arrays
+// below for a fetch to /api/admin/bug-command/*.
+//
+// Security rules:
+//   - API keys are boolean flags passed from the server component. The real
+//     values live in env vars and never reach the browser.
+//   - The UI only ever shows "Configured" / "Missing".
+//   - No secrets, tokens, or full customer PII are rendered here.
+
+type BugStatus =
+  | "new"
+  | "assigned"
+  | "fixing"
+  | "ready for review"
+  | "passed"
+  | "failed"
+  | "parked";
+
+type BugSeverity =
+  | "P0 — stops payment"
+  | "P0 — stops paid access"
+  | "P0 — stops first action"
+  | "P1 — trust loss"
+  | "P1 — retention blocker"
+  | "P2 — polish";
+
+type BugSource = "user" | "app" | "agent" | "system";
+type BugSection = "Auth" | "Projects" | "Earn" | "D1" | "UI" | "Backend" | "Release";
+
+type Bug = {
+  id: string;
+  title: string;
+  description: string;
+  source: BugSource;
+  section: BugSection;
+  severity: BugSeverity;
+  appVersion: string;
+  status: BugStatus;
+  lane: LaneKey;
+  assignedAgent: string;
+  screenshotLink: string | null;
+  logLink: string | null;
+  ironGateChecklistLink: string | null;
+  latestAgentReport: string;
+  danielApprovalRequired: boolean;
+};
+
+type LaneStatus = "idle" | "assigned" | "fixing" | "waiting review" | "blocked" | "passed";
+
+type LaneKey =
+  | "auth"
+  | "projects"
+  | "earn"
+  | "onboarding"
+  | "ui"
+  | "backend"
+  | "release";
+
+type AgentLane = {
+  key: LaneKey;
+  name: string;
+  owner: string;
+  status: LaneStatus;
+  ironGateSection: string;
+  allowedFiles: string;
+  forbiddenFiles: string;
+  apiKeyFlag: keyof AgentKeyConfig;
+};
+
+const LANES: AgentLane[] = [
+  {
+    key: "auth",
+    name: "Auth / Account / Upgrade",
+    owner: "Auth Agent",
+    status: "fixing",
+    ironGateSection: "Section A — Auth / Account / Upgrade",
+    allowedFiles: "activation.ts, useTier.ts, Whop checkout routes",
+    forbiddenFiles: "FirstRun, Projects Manager, Earn Workflow",
+    apiKeyFlag: "auth",
+  },
+  {
+    key: "projects",
+    name: "Projects Manager",
+    owner: "Projects Agent",
+    status: "fixing",
+    ironGateSection: "Section B — Projects Manager",
+    allowedFiles: "Project views, project.json logic, asset grid",
+    forbiddenFiles: "Earn workflow, auth/tier gating, Library core",
+    apiKeyFlag: "projects",
+  },
+  {
+    key: "earn",
+    name: "Earn Workflow",
+    owner: "Earn Agent",
+    status: "assigned",
+    ironGateSection: "Section C — Earn Workflow",
+    allowedFiles: "Earn panels, bounty cards, SUB/PAY tabs",
+    forbiddenFiles: "Whop API routes, payout ledger mutations",
+    apiKeyFlag: "earn",
+  },
+  {
+    key: "onboarding",
+    name: "Upgrade + Self-Onboarding",
+    owner: "Onboarding Agent",
+    status: "waiting review",
+    ironGateSection: "Section A / D — Upgrade + UI Polish",
+    allowedFiles: "Upgrade page, WhopCheckoutEmbed, onboarding copy",
+    forbiddenFiles: "Backend Whop routes, license minting logic",
+    apiKeyFlag: "codex",
+  },
+  {
+    key: "ui",
+    name: "UI Polish",
+    owner: "UI Agent",
+    status: "fixing",
+    ironGateSection: "Section D — Earn + Projects UI Polish",
+    allowedFiles: "Tailwind tokens, card/button components, empty states",
+    forbiddenFiles: "Data flow hooks, backend routes, sidecar",
+    apiKeyFlag: "codex",
+  },
+  {
+    key: "backend",
+    name: "Backend",
+    owner: "Backend Agent",
+    status: "blocked",
+    ironGateSection: "Architecture / backend health gates",
+    allowedFiles: "Admin routes, feature flags, telemetry ingest",
+    forbiddenFiles: "Desktop customer flows, Railway deploy config",
+    apiKeyFlag: "hqInternal",
+  },
+  {
+    key: "release",
+    name: "Release / QA",
+    owner: "Release Agent",
+    status: "passed",
+    ironGateSection: "Global Iron Gate / launch health",
+    allowedFiles: "local-install.sh, test:invariant, health checks",
+    forbiddenFiles: "latest.json, release tags, customer flows",
+    apiKeyFlag: "hqInternal",
+  },
+];
+
+const MOCK_BUGS: Bug[] = [
+  {
+    id: "BUG-001",
+    title: "Reactivate still shown to signed-in admin",
+    description: "AvatarPanel and Settings render stale Reactivate CTA after login.",
+    source: "user",
+    section: "Auth",
+    severity: "P0 — stops paid access",
+    appVersion: "0.7.55",
+    status: "fixing",
+    lane: "auth",
+    assignedAgent: "Auth Agent",
+    screenshotLink: null,
+    logLink: null,
+    ironGateChecklistLink: "https://www.notion.so/iron-gate-auth",
+    latestAgentReport: "Located stale sessionExpired branch in AvatarPanel. Patch in review.",
+    danielApprovalRequired: true,
+  },
+  {
+    id: "BUG-002",
+    title: "Free user sees Projects Manager unlocked",
+    description: "Tier gate fails on cold launch before tier refresh completes.",
+    source: "system",
+    section: "Projects",
+    severity: "P0 — stops payment",
+    appVersion: "0.7.55",
+    status: "assigned",
+    lane: "projects",
+    assignedAgent: "Projects Agent",
+    screenshotLink: null,
+    logLink: null,
+    ironGateChecklistLink: "https://www.notion.so/iron-gate-projects",
+    latestAgentReport: "Reproduced on starter pass. useTier returns free before refresh.",
+    danielApprovalRequired: true,
+  },
+  {
+    id: "BUG-003",
+    title: "Duplicate Earn Projects for same bounty",
+    description: "Start Project creates a second active project instead of resuming.",
+    source: "agent",
+    section: "Earn",
+    severity: "P1 — retention blocker",
+    appVersion: "0.7.54",
+    status: "ready for review",
+    lane: "earn",
+    assignedAgent: "Earn Agent",
+    screenshotLink: null,
+    logLink: null,
+    ironGateChecklistLink: "https://www.notion.so/iron-gate-earn",
+    latestAgentReport: "Deduplication guard added to EarnPanelMount. Ready for hand-walk.",
+    danielApprovalRequired: false,
+  },
+  {
+    id: "BUG-004",
+    title: "Upgrade CTA opens dead page on signed-in free user",
+    description: "Signed-in free upgrade routes to /upgrade instead of Whop checkout embed.",
+    source: "user",
+    section: "Auth",
+    severity: "P0 — stops payment",
+    appVersion: "0.7.55",
+    status: "fixing",
+    lane: "onboarding",
+    assignedAgent: "Onboarding Agent",
+    screenshotLink: null,
+    logLink: null,
+    ironGateChecklistLink: "https://www.notion.so/iron-gate-upgrade",
+    latestAgentReport: "openUpgradeWhenSignedIn now points to account-app checkout.",
+    danielApprovalRequired: true,
+  },
+  {
+    id: "BUG-005",
+    title: "Earn cards still look like debug cockpit",
+    description: "Spacing, hierarchy and payout readability need polish.",
+    source: "agent",
+    section: "UI",
+    severity: "P2 — polish",
+    appVersion: "0.7.55",
+    status: "fixing",
+    lane: "ui",
+    assignedAgent: "UI Agent",
+    screenshotLink: null,
+    logLink: null,
+    ironGateChecklistLink: "https://www.notion.so/iron-gate-ui",
+    latestAgentReport: "Card refactor in progress. Empty states added.",
+    danielApprovalRequired: false,
+  },
+  {
+    id: "BUG-006",
+    title: "Admin proxy strips body on PATCH",
+    description: "Community channel edits return 422 because proxy drops JSON body.",
+    source: "system",
+    section: "Backend",
+    severity: "P1 — trust loss",
+    appVersion: "0.7.55",
+    status: "passed",
+    lane: "backend",
+    assignedAgent: "Backend Agent",
+    screenshotLink: null,
+    logLink: null,
+    ironGateChecklistLink: "https://www.notion.so/iron-gate-backend",
+    latestAgentReport: "Proxy now forwards body for PATCH/POST/DELETE. Verified in admin.",
+    danielApprovalRequired: false,
+  },
+  {
+    id: "BUG-007",
+    title: "local-install.sh not executable after build",
+    description: "Installer script permissions break fresh local install test.",
+    source: "system",
+    section: "Release",
+    severity: "P0 — stops first action",
+    appVersion: "0.7.55",
+    status: "passed",
+    lane: "release",
+    assignedAgent: "Release Agent",
+    screenshotLink: null,
+    logLink: null,
+    ironGateChecklistLink: "https://www.notion.so/iron-gate-release",
+    latestAgentReport: "chmod +x added to CI build step. Hand-walk passed.",
+    danielApprovalRequired: true,
+  },
+];
+
+const AGENT_REPORTS: { lane: LaneKey; at: string; summary: string }[] = [
+  { lane: "auth", at: "2026-06-14T09:30:00Z", summary: "Stale Reactivate branch isolated; patch under review." },
+  { lane: "projects", at: "2026-06-14T09:15:00Z", summary: "Tier race condition reproduced. Fix targets useTier initial state." },
+  { lane: "earn", at: "2026-06-14T08:45:00Z", summary: "Deduplication guard ready for Daniel hand-walk." },
+  { lane: "backend", at: "2026-06-14T08:00:00Z", summary: "PATCH body forwarding verified across all admin write paths." },
+];
+
+function severityTone(severity: BugSeverity): ChipTone {
+  if (severity.startsWith("P0")) return "fail";
+  if (severity.startsWith("P1")) return "pending";
+  return "gray";
+}
+
+function isActiveBug(status: BugStatus): boolean {
+  return status !== "passed" && status !== "parked";
+}
+
+function isBlockingPayment(severity: BugSeverity): boolean {
+  return severity === "P0 — stops payment" || severity === "P0 — stops paid access";
+}
+
+function isBlockingActivation(severity: BugSeverity): boolean {
+  return severity === "P0 — stops first action";
+}
+
+function isBlockingRetention(severity: BugSeverity): boolean {
+  return severity === "P1 — retention blocker";
+}
+
+function laneCounts(lane: LaneKey) {
+  const bugs = MOCK_BUGS.filter((b) => b.lane === lane);
+  const active = bugs.filter((b) => isActiveBug(b.status));
+  const p0 = bugs.filter((b) => b.severity.startsWith("P0"));
+  const p1 = bugs.filter((b) => b.severity.startsWith("P1"));
+  const p2 = bugs.filter((b) => b.severity.startsWith("P2"));
+  return { active, p0, p1, p2 };
+}
+
+function BugCommandTab({ agentKeyConfig }: { agentKeyConfig: AgentKeyConfig }) {
+  const [filterLane, setFilterLane] = useState<LaneKey | "all">("all");
+  const [filterStatus, setFilterStatus] = useState<BugStatus | "all">("all");
+
+  const openP0 = MOCK_BUGS.filter((b) => b.severity.startsWith("P0") && isActiveBug(b.status));
+  const blockingPayment = MOCK_BUGS.filter((b) => isBlockingPayment(b.severity) && isActiveBug(b.status));
+  const blockingActivation = MOCK_BUGS.filter((b) => isBlockingActivation(b.severity) && isActiveBug(b.status));
+  const blockingRetention = MOCK_BUGS.filter((b) => isBlockingRetention(b.severity) && isActiveBug(b.status));
+  const ironGatesNotPassed = LANES.filter((l) => l.status !== "passed").length;
+
+  const filteredBugs = MOCK_BUGS.filter((b) => {
+    if (filterLane !== "all" && b.lane !== filterLane) return false;
+    if (filterStatus !== "all" && b.status !== filterStatus) return false;
+    return true;
+  });
+
+  return (
+    <Panel
+      title="bug command centre · MRR protection"
+      sub="Tracks only bugs that block install, activation, payment, retention, or trust. Mock-data foundation — wire real intake later."
+      right={
+        <div className="flex flex-wrap gap-2">
+          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">lanes</span>
+          <Chip label={`${LANES.length}`} tone="gray" />
+          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">open bugs</span>
+          <Chip label={`${MOCK_BUGS.filter((b) => isActiveBug(b.status)).length}`} tone="gray" />
+        </div>
+      }
+    >
+      {/* Cards */}
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="rounded-2xl border border-line bg-paper p-4">
+          <div className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink">{openP0.length}</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">Open P0 bugs</div>
+        </div>
+        <div className="rounded-2xl border border-line bg-paper p-4">
+          <div className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink">{blockingPayment.length}</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">Blocking payment</div>
+        </div>
+        <div className="rounded-2xl border border-line bg-paper p-4">
+          <div className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink">{blockingActivation.length}</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">Blocking activation</div>
+        </div>
+        <div className="rounded-2xl border border-line bg-paper p-4">
+          <div className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink">{blockingRetention.length}</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">Blocking retention</div>
+        </div>
+        <div className="rounded-2xl border border-line bg-paper p-4">
+          <div className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink">{ironGatesNotPassed}</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">Iron Gates not passed</div>
+        </div>
+      </div>
+
+      {/* Agent lanes table */}
+      <div className="mb-6 overflow-x-auto">
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">agent lanes</div>
+        <table className="w-full border-collapse font-mono text-[11px]">
+          <thead>
+            <tr className="text-left text-text-tertiary">
+              {["lane", "owner", "status", "P0", "P1", "P2", "active", "API key", " Iron Gate section", "allowed files", "forbidden files"].map((h) => (
+                <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {LANES.map((lane) => {
+              const counts = laneCounts(lane.key);
+              return (
+                <tr key={lane.key} className="border-b border-line/40">
+                  <td className="px-2 py-2 text-ink">{lane.name}</td>
+                  <td className="px-2 py-2 text-text-secondary">{lane.owner}</td>
+                  <td className="px-2 py-2"><Chip label={lane.status} tone={lane.status === "passed" ? "ok" : lane.status === "blocked" ? "fail" : "pending"} /></td>
+                  <td className="px-2 py-2 text-text-secondary">{counts.p0.length}</td>
+                  <td className="px-2 py-2 text-text-secondary">{counts.p1.length}</td>
+                  <td className="px-2 py-2 text-text-secondary">{counts.p2.length}</td>
+                  <td className="px-2 py-2 text-text-secondary">{counts.active.length}</td>
+                  <td className="px-2 py-2">
+                    <BoolChip value={agentKeyConfig[lane.apiKeyFlag]} on="configured" off="missing" />
+                  </td>
+                  <td className="px-2 py-2 text-text-tertiary">{lane.ironGateSection}</td>
+                  <td className="max-w-[180px] px-2 py-2 text-text-secondary" title={lane.allowedFiles}>{lane.allowedFiles}</td>
+                  <td className="max-w-[180px] px-2 py-2 text-fuchsia-deep" title={lane.forbiddenFiles}>{lane.forbiddenFiles}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Recent agent reports */}
+      <div className="mb-6 rounded-2xl border border-line bg-paper p-4">
+        <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">recent agent reports</div>
+        <ul className="space-y-2">
+          {AGENT_REPORTS.map((r, i) => {
+            const lane = LANES.find((l) => l.key === r.lane);
+            return (
+              <li key={i} className="flex flex-wrap items-baseline gap-2 font-mono text-[11px]">
+                <span className="text-text-tertiary">{r.at.slice(0, 16).replace("T", " ")}</span>
+                <Chip label={lane?.owner ?? r.lane} tone="gray" />
+                <span className="text-ink">{r.summary}</span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      {/* Bug intake table / mock data */}
+      <div>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">bug intake</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
+              lane
+              <select
+                value={filterLane}
+                onChange={(e) => setFilterLane(e.target.value as LaneKey | "all")}
+                className="rounded border border-line bg-paper px-2 py-1 text-[11px] text-ink"
+              >
+                <option value="all">all</option>
+                {LANES.map((l) => (
+                  <option key={l.key} value={l.key}>{l.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
+              status
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value as BugStatus | "all")}
+                className="rounded border border-line bg-paper px-2 py-1 text-[11px] text-ink"
+              >
+                <option value="all">all</option>
+                {["new", "assigned", "fixing", "ready for review", "passed", "failed", "parked"].map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse font-mono text-[11px]">
+            <thead>
+              <tr className="text-left text-text-tertiary">
+                {["id", "title", "section", "severity", "status", "lane", "source", "version", "daniel approval", "report"].map((h) => (
+                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredBugs.map((b) => (
+                <tr key={b.id} className="border-b border-line/40 align-top hover:bg-paper-warm/60">
+                  <td className="px-2 py-2 text-text-tertiary">{b.id}</td>
+                  <td className="px-2 py-2 text-ink">
+                    <div className="max-w-[220px]">
+                      <div className="font-display text-[13px] font-semibold">{b.title}</div>
+                      <div className="mt-0.5 text-text-secondary">{b.description}</div>
+                    </div>
+                  </td>
+                  <td className="px-2 py-2"><Chip label={b.section} tone="gray" /></td>
+                  <td className="px-2 py-2"><Chip label={b.severity} tone={severityTone(b.severity)} /></td>
+                  <td className="px-2 py-2"><Chip label={b.status} tone={b.status === "passed" ? "ok" : b.status === "failed" ? "fail" : "pending"} /></td>
+                  <td className="px-2 py-2 text-text-secondary">{LANES.find((l) => l.key === b.lane)?.name ?? b.lane}</td>
+                  <td className="px-2 py-2 text-text-secondary">{b.source}</td>
+                  <td className="px-2 py-2 text-text-tertiary">{b.appVersion}</td>
+                  <td className="px-2 py-2"><BoolChip value={b.danielApprovalRequired} /></td>
+                  <td className="max-w-[260px] px-2 py-2 text-text-secondary" title={b.latestAgentReport}>{b.latestAgentReport}</td>
+                </tr>
+              ))}
+              {filteredBugs.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="px-2 py-4 font-mono text-[11px] text-text-tertiary">No bugs match the current filters.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </Panel>
   );
 }

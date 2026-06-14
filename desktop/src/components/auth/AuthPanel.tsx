@@ -16,20 +16,23 @@ import { X } from "lucide-react";
 // so a successful Stripe Checkout / new sign-in flips the tier immediately
 // without waiting for the next window-focus poll in useTier.
 
-export type AuthPanelMode = "sign-in" | "sign-up" | "upgrade" | "dashboard" | "payouts";
+// v0.7.68 — sign-in / sign-up modes removed. They routed through Clerk
+// sign-up/sign-in pages that minted a web session cookie but never issued
+// a desktop LICENSE_JWT, leaving Earn stuck in the signed-out state.
+// Re-activation now flows through useActivation() / connect-desktop.
+// AuthPanel only hosts post-activation surfaces: upgrade, dashboard, payouts.
+export type AuthPanelMode = "upgrade" | "dashboard" | "payouts";
 
 // v0.7.57 — Clerk primary domain swapped to bare apex `liquidclips.app`.
 // Embedded auth webview opens the apex; a marketing-edge rewrite in
-// liquidclips-marketing/next.config.ts proxies /sign-in, /sign-up,
-// /dashboard, /upgrade, /payouts (#dashboard hash) to the account-app
-// project. URL bar reads liquidclips.app end-to-end and Clerk JS sees
-// the primary domain on the client. Do NOT flip back to a subdomain.
+// liquidclips-marketing/next.config.ts proxies /dashboard, /upgrade,
+// /payouts (#dashboard hash) to the account-app project. URL bar reads
+// liquidclips.app end-to-end and Clerk JS sees the primary domain on the
+// client. Do NOT flip back to a subdomain.
 const ACCOUNT_HOST = "https://liquidclips.app";
 
 function urlFor(mode: AuthPanelMode): string {
   switch (mode) {
-    case "sign-in":  return `${ACCOUNT_HOST}/sign-in?redirect_url=/dashboard`;
-    case "sign-up":  return `${ACCOUNT_HOST}/sign-up?redirect_url=/dashboard`;
     case "upgrade":  return `${ACCOUNT_HOST}/upgrade`;
     case "dashboard":return `${ACCOUNT_HOST}/dashboard`;
     case "payouts":  return `${ACCOUNT_HOST}/dashboard#payouts`;
@@ -38,8 +41,6 @@ function urlFor(mode: AuthPanelMode): string {
 
 function titleFor(mode: AuthPanelMode): { eyebrow: string; heading: string } {
   switch (mode) {
-    case "sign-in":   return { eyebrow: "sign in",   heading: "Sign in to Liquid Clips" };
-    case "sign-up":   return { eyebrow: "create",    heading: "Create your Liquid Clips account" };
     case "upgrade":   return { eyebrow: "upgrade",   heading: "Unlock Liquid Clips" };
     case "dashboard": return { eyebrow: "account",   heading: "Your Liquid Clips account" };
     case "payouts":   return { eyebrow: "payouts",   heading: "Stripe payouts" };

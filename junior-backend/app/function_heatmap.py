@@ -106,8 +106,8 @@ def run_function_heatmap(*, notify: bool = False, source: str = "manual") -> dic
             _url_gate(client, "account_admin_gate", "Admin sign-in gate", f"{s.account_site_url.rstrip('/')}/admin", owner="account-app"),
             _url_gate(client, "web_demo", "Demo app", "https://app.jnremployee.com", owner="marketing"),
             _url_gate(client, "partner_app", "Affiliate sign-in", s.whop_partner_dashboard_url, owner="partner"),
-            _url_gate(client, "api_health", "Backend health", "https://api.jnremployee.com/health", owner="backend"),
-            _url_gate(client, "campaigns_public", "Campaign catalog", "https://api.jnremployee.com/campaigns", owner="backend"),
+            _url_gate(client, "api_health", "Backend health", f"{s.api_site_url.rstrip('/')}/health", owner="backend"),
+            _url_gate(client, "campaigns_public", "Campaign catalog", f"{s.api_site_url.rstrip('/')}/campaigns", owner="backend"),
         ])
 
         update_url = s.tauri_update_endpoint.strip()

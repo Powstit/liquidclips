@@ -19,13 +19,14 @@ function parseUsd(s: string | number | undefined | null): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-// Referral URL → Junior-owned checkout (account.jnremployee.com/checkout), which
-// embeds the Whop checkout and passes the affiliate code through as ?a=<id>. The
-// customer stays on a Junior-branded page (no generic Whop storefront), Whop still
-// attributes + pays the affiliate, and on completion returns to /get to link the
-// account. Override the base via NEXT_PUBLIC_WHOP_CHECKOUT_URL if needed.
+// Referral URL → Liquid Clips-owned checkout (account.liquidclips.app/checkout),
+// which embeds the Whop checkout and passes the affiliate code through as
+// ?a=<id>. The customer stays on a Liquid Clips-branded page (no generic Whop
+// storefront), Whop still attributes + pays the affiliate, and on completion
+// returns to /get to link the account. Override the base via
+// NEXT_PUBLIC_WHOP_CHECKOUT_URL if needed.
 function buildReferralUrl(affiliateId: string): string {
-  const base = process.env.NEXT_PUBLIC_WHOP_CHECKOUT_URL ?? "https://account.jnremployee.com/checkout";
+  const base = process.env.NEXT_PUBLIC_WHOP_CHECKOUT_URL ?? "https://account.liquidclips.app/checkout";
   const sep = base.includes("?") ? "&" : "?";
   return `${base}${sep}a=${affiliateId}`;
 }
@@ -55,7 +56,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
               <a href="/auth/whop/start" className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-paper hover:bg-fuchsia">
                 Try again →
               </a>
-              <a href="https://jnremployee.com/affiliates" className="rounded-full border border-line bg-paper px-5 py-3 text-sm font-medium text-ink hover:border-fuchsia">
+              <a href="https://liquidclips.app/affiliates" className="rounded-full border border-line bg-paper px-5 py-3 text-sm font-medium text-ink hover:border-fuchsia">
                 Back to /affiliates
               </a>
             </div>
@@ -279,7 +280,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
             {affiliate ? `aff_${affiliate.id.slice(4, 10)}… · ${affiliate.status}` : "syncing…"}
           </span>
           <div className="flex flex-wrap items-center gap-4">
-            <a className="text-fuchsia hover:underline" href="https://whop.com/jnremployee/forums-83fovyATgXDQpO/app/" target="_blank" rel="noopener noreferrer">
+            <a className="text-fuchsia hover:underline" href="https://whop.com/liquidclips" target="_blank" rel="noopener noreferrer">
               Join the build community →
             </a>
             <a className="text-fuchsia hover:underline" href="https://whop.com/dashboard" target="_blank" rel="noopener noreferrer">

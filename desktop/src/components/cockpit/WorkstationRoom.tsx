@@ -23,9 +23,8 @@
 //          additionally mounts a root-level GlobalToast that survives the
 //          empty → results transition triggered by handleImportDirect.
 
-import { useEffect, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
-import { Sparkles, Layers, ImageIcon, ScrollText } from "lucide-react";
+import { Sparkles, Layers, ImageIcon, ScrollText, FolderOpen } from "lucide-react";
 import { SponsoredBannerCarousel } from "../earn/SponsoredBannerCarousel";
 
 export function WorkstationRoom({
@@ -33,10 +32,14 @@ export function WorkstationRoom({
   onImport,
   onThumbnails,
   onScript,
+  onProjects,
+  projectsCount = null,
   dragHoverActive = false,
   dropError = null,
   userTier = null,
   importing = false,
+  displayName = null,
+  isCold = false,
 }: {
   /** Single-click Create: opens the compact URL/file portal. The portal
    *  auto-focuses its URL input — no second click to start typing. */
@@ -48,6 +51,15 @@ export function WorkstationRoom({
    *  is wiring this later; for now the onClick fires a "coming soon"
    *  toast via the parent so the surface stays informative, not dead. */
   onThumbnails?: () => void;
+  /** v0.7.72 — Projects tile. First-class destination for organised
+   *  workspaces alongside Create/Import. Parent owns navigation. */
+  onProjects?: () => void;
+  /** v0.7.73 — Optional count surfaced as the tile subtitle ("3 active").
+   *  Parent supplies it via a single sidecar.listProjects call at boot;
+   *  null = subtitle stays at the default "organise clips around goals".
+   *  Free/unsigned users get null (no count to show) — the Projects
+   *  click routes them to the locked screen regardless. */
+  projectsCount?: number | null;
   /** v0.7.1 — placeholder tile for the script / transcripts feature.
    *  Same pattern as onThumbnails: parent owns the toast. */
   onScript?: () => void;
@@ -67,14 +79,21 @@ export function WorkstationRoom({
    *  so a second click before the picker pops doesn't look like a no-op.
    *  Defaults to false so every existing caller compiles unchanged. */
   importing?: boolean;
+  /** Lane 1 — first name or display name from /me, used for the warm
+   *  "Welcome back" greeting. null/undefined falls back to generic copy. */
+  displayName?: string | null;
+  /** Lane 1 — true when the user has no prior projects/clips. Switches
+   *  the greeting to the cold-customer onboarding variant. */
+  isCold?: boolean;
 }) {
   const reduced = useReducedMotion();
-  const [greeting, setGreeting] = useState("");
 
-  // Tiny ambient — the eyebrow re-rolls on mount so each session lands with a
-  // slightly different feel without becoming a feature. No data, no risk of
-  // wrongness.
-  useEffect(() => {
+  // Lane 1 — cold-customer greeting. First-time / empty users get a clear
+  // onboarding headline; returning users get a warm "Welcome back" or the
+  // existing ambient greeting.
+  const greeting = (() => {
+    if (isCold) return "Welcome to Liquid Clips.";
+    if (displayName) return `Welcome back, ${displayName}.`;
     const lines = [
       "what are we making",
       "ready when you are",
@@ -82,8 +101,8 @@ export function WorkstationRoom({
       "studio's open",
       "your move",
     ];
-    setGreeting(lines[Math.floor(Math.random() * lines.length)] ?? lines[0]);
-  }, []);
+    return lines[Math.floor(Math.random() * lines.length)] ?? lines[0];
+  })();
 
   return (
     // ───── IRON GATE IG-008 (v0.7.43) — see docs/IRON_GATES.md ─────
@@ -110,7 +129,10 @@ export function WorkstationRoom({
           When the prop isn't wired the tile dims + becomes non-interactive
           so the surface still reads as "feature exists, not ready yet"
           instead of looking dead. */}
-      <div className="grid grid-cols-2 gap-8 sm:grid-cols-2 lg:grid-cols-4">
+      {/* v0.7.72 — Tile grid widened to 5 cols on lg so Projects becomes a
+          first-class home destination alongside Create/Import/Thumbnails/
+          Script. Stays 2-cols on narrow so the layout doesn't snap. */}
+      <div className="grid grid-cols-2 gap-8 sm:grid-cols-2 lg:grid-cols-5">
         <Tile
           layoutId="cockpit-create"
           icon={<Sparkles className="h-12 w-12" strokeWidth={1.5} />}
@@ -132,6 +154,20 @@ export function WorkstationRoom({
           busyLabel="preparing…"
         />
         <Tile
+          layoutId="cockpit-projects"
+          icon={<FolderOpen className="h-12 w-12" strokeWidth={1.5} />}
+          title="Projects"
+          subtitle={
+            projectsCount !== null && projectsCount > 0
+              ? `${projectsCount} active`
+              : "organise clips around goals"
+          }
+          onClick={onProjects ?? (() => undefined)}
+          disabled={!onProjects}
+          reduced={!!reduced}
+          delay={0.3}
+        />
+        <Tile
           layoutId="cockpit-thumbnails"
           icon={<ImageIcon className="h-12 w-12" strokeWidth={1.5} />}
           title="Thumbnails"
@@ -139,7 +175,7 @@ export function WorkstationRoom({
           onClick={onThumbnails ?? (() => undefined)}
           disabled={!onThumbnails}
           reduced={!!reduced}
-          delay={0.3}
+          delay={0.45}
         />
         <Tile
           layoutId="cockpit-script"
@@ -149,9 +185,15 @@ export function WorkstationRoom({
           onClick={onScript ?? (() => undefined)}
           disabled={!onScript}
           reduced={!!reduced}
-          delay={0.45}
+          delay={0.6}
         />
       </div>
+
+      {/* Lane 1 — always-visible drop hint so a cold customer knows they
+          can drag a file in, not just click the tiles. */}
+      <p className="-mt-6 font-mono text-[10px] uppercase tracking-[0.24em] text-text-tertiary">
+        or drop a video anywhere on this screen
+      </p>
 
       {/* v0.7.1 — Sponsored rewards banners surface on the home screen
           too, not just the Earn page. Reads campaigns from the live

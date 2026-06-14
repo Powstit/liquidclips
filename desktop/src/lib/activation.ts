@@ -236,7 +236,7 @@ export async function startActivation(opts?: { via?: "panel" | "browser" }): Pro
       message:
         via === "panel"
           ? "Couldn’t open the in-app sign-in panel. Try the browser fallback."
-          : "Couldn’t open your browser. Visit account.liquidclips.app/connect-desktop to sign in.",
+          : "Couldn’t open your browser. Visit https://liquidclips.app/connect-desktop to sign in.",
     });
     return;
   }

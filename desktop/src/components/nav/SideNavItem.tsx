@@ -37,6 +37,10 @@ type SideNavItemProps = SideNavItemBaseProps & {
    *  spotlight (`[data-tour="<key>"]`). Set per SideNav item where the tour
    *  expects to land. */
   dataTour?: string;
+  /** Lane 1 — rail micro-state badge. "progress" = animated ring around the
+   *  icon (workspace pipeline running). "dot" = small fuchsia status dot.
+   *  "dot-amber" = small amber warning dot (settings needs attention). */
+  badge?: "progress" | "dot" | "dot-amber";
 };
 
 export function SideNavItem({
@@ -46,6 +50,7 @@ export function SideNavItem({
   iconSrc,
   Icon,
   dataTour,
+  badge,
 }: SideNavItemProps) {
   // Local pulse trigger — toggled true on click, cleared on animation end.
   // Cheaper than re-mounting the bar; the keyframe handles the timing.
@@ -104,6 +109,16 @@ export function SideNavItem({
             aria-hidden="true"
           />
         )
+      )}
+      {/* Lane 1 rail micro-state badge. Progress ring sits around the icon;
+          status dot sits bottom-right of the badge image. */}
+      {badge === "progress" && <span aria-hidden="true" className="lc-sidenav-progress" />}
+      {(badge === "dot" || badge === "dot-amber") && (
+        <span
+          aria-hidden="true"
+          className="lc-sidenav-dot"
+          data-tone={badge === "dot-amber" ? "amber" : undefined}
+        />
       )}
       {/* Active label — small uppercase mono, always visible when active.
           When inactive, .lc-sidenav-tooltip surfaces this same label as a

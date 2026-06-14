@@ -61,5 +61,32 @@ export default async function AdminPage() {
     /* backend unreachable — the client tab will surface a refresh prompt */
   }
 
-  return <AdminHQ adminEmail={primaryEmail} initialOverview={initialOverview} />;
+  const agentKeyConfig = {
+    auth: !!process.env.KIMI_AUTH_AGENT_API_KEY,
+    projects: !!process.env.KIMI_PROJECTS_AGENT_API_KEY,
+    earn: !!process.env.KIMI_EARN_AGENT_API_KEY,
+    ui: !!process.env.KIMI_UI_AGENT_API_KEY,
+    codex: !!process.env.OPENAI_CODEX_AGENT_API_KEY,
+    claude: !!process.env.CLAUDE_AGENT_API_KEY,
+    hqInternal: !!process.env.HQ_INTERNAL_SECRET,
+  };
+
+  const serviceConfig = {
+    openai: !!process.env.OPENAI_API_KEY,
+    kimi: !!(process.env.KIMI_API_KEY || process.env.KIMI_AUTH_AGENT_API_KEY),
+    claude: !!(process.env.CLAUDE_API_KEY || process.env.CLAUDE_AGENT_API_KEY),
+    whop: !!process.env.WHOP_API_KEY,
+    clerk: !!process.env.CLERK_SECRET_KEY,
+    stripe: !!process.env.STRIPE_SECRET_KEY,
+    railway: !!process.env.RAILWAY_TOKEN,
+    vercel: !!process.env.VERCEL_TOKEN,
+    supabase: !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY),
+    resend: !!process.env.RESEND_API_KEY,
+    ayrshare: !!process.env.AYRSHARE_API_KEY,
+    postiz: !!process.env.POSTIZ_API_KEY,
+    storage: !!(process.env.AWS_ACCESS_KEY_ID || process.env.S3_ACCESS_KEY_ID || process.env.R2_ACCESS_KEY_ID),
+    sentry: !!process.env.SENTRY_AUTH_TOKEN,
+  };
+
+  return <AdminHQ adminEmail={primaryEmail} initialOverview={initialOverview} agentKeyConfig={agentKeyConfig} serviceConfig={serviceConfig} />;
 }

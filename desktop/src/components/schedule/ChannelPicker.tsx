@@ -31,7 +31,7 @@
 // stays reachable.
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Loader2, Plus } from "lucide-react";
+import { AlertTriangle, Plus } from "lucide-react";
 import { PlatformBadge, type PlatformId } from "../PlatformBadge";
 import * as backend from "../../lib/backend";
 import { humanError } from "../../lib/sidecar";
@@ -128,8 +128,10 @@ export function ChannelPicker({
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 font-mono text-[11px] text-text-tertiary">
-        <Loader2 className="h-3 w-3 animate-spin" /> loading channels…
+      <div className="flex flex-col gap-2">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="skeleton h-12 w-full rounded-lg" />
+        ))}
       </div>
     );
   }
@@ -140,13 +142,12 @@ export function ChannelPicker({
     // channels.
     return (
       <div className="flex flex-col items-start gap-3">
-        <div className="flex items-start gap-2 rounded-xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 px-4 py-3">
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[var(--color-danger)] mt-0.5" />
+        <div className="error-banner items-start">
           <div className="flex flex-col gap-0.5">
-            <p className="font-sans text-[12px] font-medium text-[var(--color-danger)]">
-              Couldn't load channels — open <strong>Schedule → Loadout</strong> to add one
+            <p className="font-sans text-[13px] font-medium">
+              Couldn&apos;t load channels — open <strong>Schedule → Loadout</strong> to add one
             </p>
-            <p className="font-mono text-[10px] text-[var(--color-danger)]/80">
+            <p className="font-mono text-[10px] opacity-80">
               {loadError}
             </p>
           </div>
@@ -159,9 +160,11 @@ export function ChannelPicker({
   if (filtered.length === 0) {
     return (
       <div className="flex flex-col items-start gap-3">
-        <p className="rounded-xl border border-dashed border-line bg-paper-warm/40 px-4 py-3 font-sans text-[12px] text-text-secondary">
-          No channels added yet. Open <strong>Schedule → Channels</strong> to add one.
-        </p>
+        <div className="empty-state">
+          <p className="font-sans text-[13px] text-text-secondary">
+            No channels added yet. Open <strong>Schedule → Loadout</strong> to add one.
+          </p>
+        </div>
         {onAddChannel && <AddChannelButton onClick={onAddChannel} />}
       </div>
     );
@@ -197,7 +200,7 @@ export function ChannelPicker({
                 onClick={manageHandler}
                 className="self-start font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep/90 underline-offset-2 hover:underline"
               >
-                Open Schedule → Channels
+                Open Schedule → Loadout
               </button>
             )}
           </div>
@@ -225,7 +228,7 @@ function AddChannelButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="mt-2 inline-flex items-center gap-1.5 self-start rounded-full border border-dashed border-fuchsia/40 bg-transparent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia transition-colors hover:border-fuchsia hover:text-fuchsia-bright"
+      className="btn-secondary mt-2 self-start border-dashed"
     >
       <Plus className="h-3 w-3" strokeWidth={2.25} />
       Add channel
@@ -247,31 +250,38 @@ function classifyStatus(channel: Channel): {
     case "active":
       return { tone: "ok", microcopy: null };
     case "paused":
-      return { tone: "muted", microcopy: "paused" };
+      return { tone: "muted", microcopy: "Paused" };
     case "pending_link":
-      return { tone: "warn", microcopy: "finish linking →" };
+      return { tone: "warn", microcopy: "Finish linking" };
     case "unlinked":
-      return { tone: "warn", microcopy: "disconnected · reconnect" };
+      return { tone: "muted", microcopy: "Disconnected" };
     case "error":
-      return { tone: "danger", microcopy: "reconnect" };
+      return { tone: "danger", microcopy: "Connection error" };
     case "deleted":
       // Filtered out before mount; mapping kept for switch exhaustiveness.
-      return { tone: "muted", microcopy: "deleted" };
+      return { tone: "muted", microcopy: "Removed" };
   }
 }
 
 const TONE_DOT: Record<StatusTone, string> = {
   ok: "bg-fuchsia shadow-[0_0_8px_rgba(255,26,140,0.7)]",
-  warn: "bg-fuchsia-deep shadow-[0_0_8px_rgba(255,102,184,0.7)]",
+  warn: "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.7)]",
   danger: "bg-[var(--color-danger)] shadow-[0_0_8px_rgba(220,38,38,0.7)]",
   muted: "bg-text-tertiary",
 };
 
-const TONE_HANDLE: Record<StatusTone, string> = {
-  ok: "text-text-tertiary",
-  warn: "text-fuchsia-deep",
+const CHIP_BG: Record<StatusTone, string> = {
+  ok: "",
+  warn: "bg-amber-400/15",
+  danger: "bg-[var(--color-danger)]/15",
+  muted: "bg-paper-elev",
+};
+
+const CHIP_TEXT: Record<StatusTone, string> = {
+  ok: "",
+  warn: "text-amber-400",
   danger: "text-[var(--color-danger)]",
-  muted: "text-text-tertiary",
+  muted: "text-text-secondary",
 };
 
 function toPlatformId(p: string): PlatformId | null {
@@ -314,14 +324,14 @@ function ChannelPickRow({
 
   return (
     <div
-      className={`flex items-center gap-3 rounded-md border px-3 py-2.5 transition-colors ${
+      className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
         on
-          ? "border-fuchsia bg-fuchsia/[0.05]"
-          : "border-line/60 bg-transparent hover:border-line"
+          ? "border-fuchsia bg-fuchsia-soft/20"
+          : "border-line/40 bg-paper-elev/40 hover:border-fuchsia hover:bg-fuchsia-soft/20"
       } ${disabled ? "opacity-60" : ""}`}
       title={
         channel.status === "error"
-          ? "Reconnect in Settings → Channels"
+          ? "Reconnect in Schedule → Loadout"
           : meta.microcopy ?? channel.handle ?? channel.label
       }
     >
@@ -342,16 +352,22 @@ function ChannelPickRow({
         </span>
       )}
 
-      {/* label + handle / microcopy */}
+      {/* label + handle / status chip */}
       <div className="flex min-w-0 flex-1 items-baseline gap-3">
         <span className="truncate font-sans text-[13px] font-medium text-ink">
           {channel.label}
         </span>
-        <span
-          className={`ml-auto truncate font-mono text-[10px] tracking-[0.04em] ${TONE_HANDLE[meta.tone]}`}
-        >
-          {meta.microcopy ?? displayHandle}
-        </span>
+        {meta.microcopy ? (
+          <span
+            className={`ml-auto truncate rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] ${CHIP_BG[meta.tone]} ${CHIP_TEXT[meta.tone]}`}
+          >
+            {meta.microcopy}
+          </span>
+        ) : (
+          <span className="ml-auto truncate font-mono text-[10px] tracking-[0.04em] text-text-tertiary">
+            {displayHandle}
+          </span>
+        )}
       </div>
 
       {/* pill toggle — wires to the single-select onToggle from picker props.
