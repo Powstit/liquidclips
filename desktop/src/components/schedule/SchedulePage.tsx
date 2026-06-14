@@ -1,6 +1,6 @@
 // Top-level Schedule page (Schedule v2).
 //
-// Three sub-tabs: Queue / Loadout / Analytics. Sub-tab is the source of
+// Three sub-tabs: Loadout / Queue / Analytics. Sub-tab is the source of
 // truth for what's rendered below the tab strip. Defaults to Loadout when
 // the user has zero channels (the empty state pulls them into the right
 // flow), otherwise Queue.
@@ -40,7 +40,7 @@ export function SchedulePage({
   initialSub,
 }: {
   onOpenWorkspace?: () => void;
-  /** Settings → Connections is where the user actually links accounts.
+  /** Schedule → Loadout is where the user actually links accounts.
    *  Optional — defaults to a no-op so Schedule doesn't crash if the host
    *  doesn't wire it. */
   onOpenSettings?: () => void;
@@ -49,7 +49,7 @@ export function SchedulePage({
    *  but DirectPublishQueue requires the prop. */
   onOpenProject?: (project: Project) => void;
   /** Analytics Phase 1 — when set, Schedule mounts on this sub-tab instead of
-   *  the default "queue". Used by deep-links from Settings → Connections
+   *  the default "queue". Used by deep-links from Schedule → Loadout
    *  ("view analytics") and ChannelCard ("analytics →"). Honored once, on
    *  mount — subsequent user tab clicks take over. */
   initialSub?: Sub;
@@ -124,20 +124,20 @@ export function SchedulePage({
           schedule
         </div>
         <h1 className="font-display text-[28px] font-semibold leading-tight tracking-[-0.02em] text-ink">
-          Schedule clips across your channels.
+          Plan your next post.
         </h1>
         <p className="font-sans text-[14px] leading-relaxed text-text-secondary">
-          Manage every social channel, queue posts to fire automatically, and see what's working — all from one place.
+          Manage every social channel, queue posts to fire automatically, and see what&apos;s working — all from one place.
         </p>
       </header>
 
       {/* Tab strip */}
       <div className="flex items-center gap-1 border-b border-line">
-        <TabButton id="queue" current={sub} setCurrent={setSub} Icon={Calendar} label="Queue" />
         {/* Task #69 — "Channels" → "Loadout" per RPO vocab. The sub-tab
             id stays "channels" so navigation + analytics keys unchanged;
             only the visible label flips. See docs/RPO_VISUAL_LANGUAGE.md. */}
         <TabButton id="channels" current={sub} setCurrent={setSub} Icon={Layers} label="Loadout" />
+        <TabButton id="queue" current={sub} setCurrent={setSub} Icon={Calendar} label="Queue" />
         <TabButton id="analytics" current={sub} setCurrent={setSub} Icon={BarChart3} label="Analytics" />
       </div>
 
@@ -242,20 +242,18 @@ export function SchedulePage({
           )}
 
           {hasChannels === false && (
-            <div className="relative bg-transparent p-5">
-              <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
-              <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
-              <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
-              <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
-              <p className="font-display text-[15px] font-semibold text-ink">
-                You haven't added any channels yet.
-              </p>
-              <p className="mt-1 font-sans text-[13px] text-text-secondary">
-                Add a channel first, then you'll be able to schedule clips to it from the Workspace or directly here.
-              </p>
+            <div className="empty-state flex flex-col items-start gap-3">
+              <div className="flex flex-col gap-1">
+                <p className="font-display text-[15px] font-semibold text-ink">
+                  Add your first channel.
+                </p>
+                <p className="font-sans text-[13px] text-text-secondary">
+                  Connect a YouTube, TikTok, Instagram, or other social account to start scheduling posts.
+                </p>
+              </div>
               <button
                 onClick={() => setSub("channels")}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-ink px-4 py-2 font-sans text-[12px] font-medium text-paper hover:bg-fuchsia"
+                className="btn-primary"
               >
                 Go to Loadout →
               </button>

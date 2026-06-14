@@ -4,6 +4,7 @@ import { Carousel } from "@/components/Carousel";
 import { PricingCards } from "@/components/PricingCards";
 import { TrackOnMount, TrackedLink } from "@/components/Track";
 import { AffiliateCard, type AffiliateData, type AffiliateMeResponse, type PaymentVisibility } from "@/components/AffiliateCard";
+import { SignOutButton } from "@/components/SignOutButton";
 
 const FALLBACK_AFFILIATE: AffiliateData = {
   connected: false,
@@ -15,7 +16,7 @@ const FALLBACK_AFFILIATE: AffiliateData = {
   monthly_recurring_revenue_usd: null,
   total_referral_earnings_usd: null,
   qualification: null,
-  partner_dashboard_url: "https://partner.jnremployee.com",
+  partner_dashboard_url: "https://partner.liquidclips.app",
   payout_provider: "stripe_connect",
   payout_status: "setup_required",
   payout_setup_url: "https://liquidclips.app/dashboard#payouts",
@@ -186,7 +187,10 @@ export default async function DashboardPage() {
             sub={affiliateId ? `Referral · ${affiliateId}` : "Direct signup. No affiliate."}
             actions={[
               { label: "Manage plan", href: "#plans", primary: !isFree },
-              { label: "Sign out", href: "/sign-out" },
+              {
+                label: "Sign out",
+                render: (cls) => <SignOutButton className={cls}>Sign out</SignOutButton>,
+              },
             ]}
           />
           <Card
@@ -196,7 +200,7 @@ export default async function DashboardPage() {
             sub="Your Liquid Clips account is signed in with Google/email. Connect Whop separately to browse Content Rewards and track reward submissions — done from the desktop Earn tab."
             actions={[
               {
-                label: "Open Earn in desktop →",
+                label: "Download desktop app →",
                 href: "/download",
                 primary: true,
                 event: "whop_connect_clicked",
@@ -210,7 +214,7 @@ export default async function DashboardPage() {
             title="Clip paid Content Rewards."
             sub="Liquid Clips shows you live Whop Content Rewards, keeps the brief attached, and helps you make submission-ready clips — then you post and submit on Whop. New clippers can start with a 100-clip starter pass via an approved invite."
             actions={[
-              { label: "Open Earn in desktop →", href: "/download", primary: true },
+              { label: "Download desktop app →", href: "/download", primary: true },
             ]}
           />
           <Card
@@ -276,7 +280,7 @@ export default async function DashboardPage() {
           />
           <DebugLine
             label="Whop connection"
-            value="manage from desktop · Settings → Connections → Whop"
+            value="manage from desktop · Schedule → Loadout → Whop"
           />
         </div>
       </section>
@@ -347,13 +351,16 @@ function Stat({
 
 type Action = {
   label: string;
-  href: string;
+  href?: string;
   primary?: boolean;
   external?: boolean;
   // Optional PostHog event fired on click. Lets us instrument funnel CTAs
   // without turning the whole page into a client component.
   event?: import("@/lib/analytics").AnalyticsEvent;
   eventProperties?: Record<string, unknown>;
+  // Escape hatch for client-only actions (e.g. Clerk sign-out) that cannot be
+  // a plain <a> tag. Card will pass the computed pill className back.
+  render?: (className: string) => React.ReactNode;
 };
 
 function Card({
@@ -391,13 +398,20 @@ function Card({
                 : "rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia";
               const target = a.external ? "_blank" : undefined;
               const rel = a.external ? "noopener noreferrer" : undefined;
+              if (a.render) {
+                return (
+                  <span key={a.label} className="inline-flex">
+                    {a.render(cls)}
+                  </span>
+                );
+              }
               if (a.event) {
                 return (
                   <TrackedLink
-                    key={a.href + a.label}
+                    key={(a.href ?? "") + a.label}
                     event={a.event}
                     properties={a.eventProperties}
-                    href={a.href}
+                    href={a.href!}
                     target={target}
                     rel={rel}
                     className={cls}
@@ -408,8 +422,8 @@ function Card({
               }
               return (
                 <a
-                  key={a.href + a.label}
-                  href={a.href}
+                  key={(a.href ?? "") + a.label}
+                  href={a.href!}
                   target={target}
                   rel={rel}
                   className={cls}

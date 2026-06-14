@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app import ayrshare
+from app.config import get_settings
 from app.db import get_db
 from app.deps import current_user
 from app.features import is_admin_email
@@ -140,7 +141,7 @@ def _build_platform_link_url(profile_key: str, platform: str, channel_id: str | 
     # host isn't reachable — JWT path still works, just no auto-close.
     redirect_target = None
     if channel_id:
-        account_host = os.environ.get("ACCOUNT_SITE_URL", "https://account.jnremployee.com").rstrip("/")
+        account_host = get_settings().account_site_url.rstrip("/")
         redirect_target = f"{account_host}/channel-linked?cid={channel_id}"
 
     try:

@@ -200,6 +200,24 @@ impl SidecarState {
 /// `stdin` pointer held by SidecarState via the global OnceLock holder
 /// (STDIN_HOLDER). On restart cap exhaustion it marks the state exhausted
 /// so subsequent .call() invocations reject fast.
+/// Reaction provider API keys. These are injected at **build time** via
+/// `GIPHY_API_KEY`, `PEXELS_API_KEY`, and `PIXABAY_API_KEY` env vars so the
+/// public repo never contains literals. If a compile-time value is absent,
+/// the running app process env is checked as a dev fallback.
+fn reaction_api_key(name: &str) -> Option<String> {
+    let compiled: Option<&str> = match name {
+        "GIPHY_API_KEY" => option_env!("GIPHY_API_KEY"),
+        "PEXELS_API_KEY" => option_env!("PEXELS_API_KEY"),
+        "PIXABAY_API_KEY" => option_env!("PIXABAY_API_KEY"),
+        _ => None,
+    };
+    compiled
+        .map(String::from)
+        .or_else(|| std::env::var(name).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 fn spawn_child(
     app: AppHandle,
     script_path: PathBuf,
@@ -254,6 +272,15 @@ fn spawn_child(
             c
         }
     };
+    // Inject system-default reaction provider keys when they are available
+    // at compile time or runtime. These are gated behind the Earn/Pro
+    // paywall in the UI; the keys only enable the stock-media search tabs.
+    for key_name in ["GIPHY_API_KEY", "PEXELS_API_KEY", "PIXABAY_API_KEY"] {
+        if let Some(key) = reaction_api_key(key_name) {
+            command.env(key_name, key);
+        }
+    }
+
     let mut child = command.spawn().map_err(|e| {
         let detail = format!("failed to spawn sidecar ({:?}): {}", binding, e);
         append_startup_log_line(&format!("[spawn-error] {}", detail));

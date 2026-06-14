@@ -270,6 +270,63 @@ test("LICENSE_JWT secret is namespaced under app.liquidclips.auth.v1", () => {
   );
 });
 
+// v0.7.68 — public bounty discovery regression guard. The Available tab
+// must load Whop bounties without requiring `auth.kind === "ready"`, and
+// the public path must never touch a cached JWT, the Keychain, or any
+// private Whop method. Catches a regression to the v0.7.66 model where
+// the full-screen "Continue session" card blocked cold-launch discovery.
+test("public bounty discovery is unauth and contains no JWT references", () => {
+  const earnTab = readFileSync(
+    resolve(DESKTOP_ROOT, "src/components/earn/EarnTab.tsx"),
+    "utf8",
+  );
+  assert.match(
+    earnTab,
+    /listPublicWhopBounties\s*\(/,
+    "EarnTab must call listPublicWhopBounties on mount (public-first data model)",
+  );
+  // loadPublicBounties must NOT gate on auth.kind. We approximate by
+  // verifying the function body never sees the substring `auth.kind` —
+  // it operates entirely from the public proxy.
+  const loadPublicMatch = earnTab.match(
+    /const loadPublicBounties = useCallback\(async \(\) => \{[\s\S]*?\}, \[\]\);/,
+  );
+  assert.ok(
+    loadPublicMatch,
+    "loadPublicBounties must exist as a useCallback with empty deps (no auth.kind dep)",
+  );
+  assert.ok(
+    !/auth\.kind/.test(loadPublicMatch[0]),
+    "loadPublicBounties body must not reference auth.kind",
+  );
+
+  const helpers = readFileSync(
+    resolve(DESKTOP_ROOT, "src/lib/whopBounties.ts"),
+    "utf8",
+  );
+  const listPublicMatch = helpers.match(
+    /export async function listPublicWhopBounties[\s\S]*?\n\}/,
+  );
+  assert.ok(listPublicMatch, "listPublicWhopBounties export must exist");
+  const body = listPublicMatch[0];
+  for (const banned of [
+    "getCachedLicenseJwt",
+    "license_jwt",
+    "licenseJwt",
+    "JUNIOR_WHOP_TOKEN",
+    "whopListBounties",
+    "whopBounty(",
+    "whopSubmission(",
+    "secretSet",
+    "licenseJwtRead",
+  ]) {
+    assert.ok(
+      !body.includes(banned),
+      `listPublicWhopBounties must not reference ${banned} (public path stays auth-free)`,
+    );
+  }
+});
+
 test("authStorage exports the safe accessor surface", () => {
   const full = resolve(DESKTOP_ROOT, "src/lib/authStorage.ts");
   const content = readFileSync(full, "utf8");

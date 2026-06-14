@@ -30,7 +30,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { openSmart as openExternal } from "../../lib/openSmart";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { Plus, Loader2, RefreshCw } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 import * as backend from "../../lib/backend";
 import { humanError } from "../../lib/sidecar";
 import type { Channel } from "./types";
@@ -331,8 +331,10 @@ export function ChannelsManager({
 
   if (loading) {
     return (
-      <div className="grid place-items-center py-20">
-        <Loader2 className="h-7 w-7 animate-spin text-fuchsia" />
+      <div className="flex flex-col gap-2">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="skeleton h-12 w-full rounded-lg" />
+        ))}
       </div>
     );
   }
@@ -340,18 +342,16 @@ export function ChannelsManager({
   return (
     <div className="flex flex-col gap-6">
       {loadError && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 px-4 py-3">
+        <div className="error-banner">
           <div className="flex flex-col gap-1 min-w-0">
-            <p className="font-display text-[14px] font-semibold text-[var(--color-danger)]">
-              Couldn't load channels
+            <p className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)]">
+              Couldn&apos;t load channels
             </p>
-            <p className="truncate font-mono text-[11px] text-[var(--color-danger)]/80">
-              {loadError}
-            </p>
+            <p className="truncate font-sans text-[12px]">{loadError}</p>
           </div>
           <button
             onClick={() => void load()}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-danger)]/50 bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
+            className="btn-ghost"
           >
             <RefreshCw className="h-3 w-3" /> Retry
           </button>
@@ -359,13 +359,11 @@ export function ChannelsManager({
       )}
 
       {error && !loadError && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 px-4 py-3">
-          <p className="min-w-0 truncate font-mono text-[12px] text-[var(--color-danger)]">
-            {error}
-          </p>
+        <div className="error-banner">
+          <p className="min-w-0 truncate font-sans text-[13px]">{error}</p>
           <button
             onClick={() => setError(null)}
-            className="rounded-full border border-[var(--color-danger)]/40 bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
+            className="btn-ghost"
           >
             Dismiss
           </button>
@@ -377,25 +375,20 @@ export function ChannelsManager({
         // we don't know whether the user has channels or not.
         null
       ) : channels.length === 0 ? (
-        <div className="relative flex flex-col items-center gap-4 bg-transparent px-8 py-12 text-center">
-          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
-          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
-          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
-          <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
-          <span className="grid h-14 w-14 place-items-center rounded-full bg-fuchsia text-paper">
-            <Plus size={22} strokeWidth={2.5} />
-          </span>
-          <h2 className="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink">
-            Add your first channel
-          </h2>
-          <p className="max-w-md font-sans text-[14px] leading-relaxed text-text-secondary">
-            Each channel is one social account on one platform (one TikTok handle, one Reels handle, etc.). You can add as many as you need — same flow, repeated. We'll OAuth each one inside the app.
-          </p>
+        <div className="empty-state flex flex-col items-start gap-4">
+          <div className="flex flex-col gap-1">
+            <h2 className="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink">
+              Add your first channel.
+            </h2>
+            <p className="max-w-md font-sans text-[14px] leading-relaxed text-text-secondary">
+              Connect a YouTube, TikTok, Instagram, or other social account to start scheduling posts.
+            </p>
+          </div>
           <button
             onClick={() => setAddOpen(true)}
-            className="mt-2 inline-flex items-center gap-2 rounded-full bg-fuchsia px-6 py-3 font-sans text-[14px] font-medium text-paper hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+            className="btn-primary"
           >
-            <Plus size={16} strokeWidth={2.5} /> Add channel
+            Add channel →
           </button>
         </div>
       ) : (
@@ -406,7 +399,7 @@ export function ChannelsManager({
             </p>
             <button
               onClick={() => setAddOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-paper hover:bg-fuchsia-bright"
+              className="btn-primary"
             >
               <Plus size={14} strokeWidth={2.5} /> Add channel
             </button>

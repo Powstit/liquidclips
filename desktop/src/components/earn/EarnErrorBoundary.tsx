@@ -1,19 +1,18 @@
 // v0.7.56 P0 — Earn surface error boundary.
 //
-// Wraps EarnPanelMount so a React render exception (bad message shape from
-// the embed, hydration mismatch, a thrown effect cleanup) never leaves the
-// Earn tab as a pure black screen — the native child webview floats above
-// this container, so if the React tree crashes the page below is bare
-// (which the WKWebView would paint black on top of). When this boundary
-// catches an error, it explicitly hides — by virtue of the parent React
-// state still rendering — the recovery card with the same 4 CTAs the
-// EarnPanelMount uses for its own timeout fallback.
+// Catches React render exceptions inside the Earn deck and surfaces a
+// recoverable error card instead of a blank or crashed surface. The recovery
+// card gives the customer four clear actions: Retry, open the rewards page in
+// a browser, copy diagnostics, or reload the app. This boundary preserves the
+// native Earn shell feel even when an unexpected render failure occurs.
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { openSmart as openExternal } from "../../lib/openSmart";
 import { humanError } from "../../lib/sidecar";
 
-const EMBED_BROWSER_FALLBACK_URL = "https://account.liquidclips.app/earn";
+// Live fallback for the retired /earn route: /embed/earn is reachable while
+// native Earn is the primary surface.
+const EMBED_BROWSER_FALLBACK_URL = "https://account.liquidclips.app/embed/earn";
 
 type Props = { children: ReactNode };
 type State = { error: Error | null };
@@ -84,28 +83,28 @@ export class EarnErrorBoundary extends Component<Props, State> {
               <button
                 type="button"
                 onClick={this.handleRetry}
-                className="rounded-full bg-fuchsia px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-paper hover:opacity-90"
+                className="btn-primary"
               >
                 Retry
               </button>
               <button
                 type="button"
                 onClick={this.handleOpenInBrowser}
-                className="rounded-full border border-ink/15 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-primary hover:bg-ink/5"
+                className="btn-secondary"
               >
                 Open in browser
               </button>
               <button
                 type="button"
                 onClick={this.handleCopyDiagnostics}
-                className="rounded-full border border-ink/15 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-secondary hover:bg-ink/5"
+                className="btn-ghost"
               >
                 Copy diagnostics
               </button>
               <button
                 type="button"
                 onClick={this.handleReloadApp}
-                className="rounded-full border border-ink/15 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-secondary hover:bg-ink/5"
+                className="btn-danger"
               >
                 Reload app
               </button>

@@ -45,7 +45,8 @@ import {
   type AffiliateMeResponse,
   type LeaderboardResponse,
 } from "../../lib/backend";
-import { openAuthPanel } from "../auth/useAuthPanel";
+import { getCachedLicenseJwt } from "../../lib/authStorage";
+import { useActivation } from "../../lib/activation";
 import { sidecar, type LocalScheduleItem } from "../../lib/sidecar";
 import { useSubmissions } from "../../lib/submissions";
 import { fmtUsd } from "../../lib/payoutsAggregations";
@@ -107,12 +108,22 @@ export function AvatarPanel({
   // UnauthorizedError. Pre-fix every failure mapped to `aff === null` and
   // the panel rendered $0 stats with no nudge. Now the top of the panel
   // shows a fuchsia "Session expired — re-activate" banner the user can
-  // click to open the auth panel in sign-in mode.
+  // click to refresh the desktop session.
   const [sessionExpired, setSessionExpired] = useState(false);
+  const { activate } = useActivation();
   const { submissions } = useSubmissions();
 
-  useEffect(() => {
-    if (!open) return;
+  // SECTION A — central panel loader. Guards every authed call with the
+  // in-memory JWT cache so an empty cache is treated as "not ready / signed
+  // out", not "session expired forever".
+  const loadPanelData = useCallback((): void => {
+    const jwt = getCachedLicenseJwt();
+    if (!jwt) {
+      setMe(null);
+      setAff(null);
+      setSessionExpired(false);
+      return;
+    }
     void meStatusLegacy().then(setMe).catch(() => setMe(null));
     void meAffiliate()
       .then((data) => {
@@ -123,6 +134,8 @@ export function AvatarPanel({
         setAff(null);
         if (e instanceof UnauthorizedError) {
           setSessionExpired(true);
+        } else {
+          setSessionExpired(false);
         }
       });
     void leaderboardGet().then(setBoard).catch(() => setBoard(null));
@@ -134,7 +147,37 @@ export function AvatarPanel({
         setScheduled(pending.slice(0, 3));
       })
       .catch(() => setScheduled([]));
-  }, [open]);
+  }, []);
+
+  // v0.7.75 RC-2 — Listen for auth/tier events even when the panel is
+  // closed so the next open paints fresh state instead of a stale
+  // sessionExpired flag from a prior cold-launch UnauthorizedError.
+  // SECTION A — also re-load panel data when the panel is open, and add a
+  // visibility fallback in case the boot-time events were missed.
+  useEffect(() => {
+    const onAuthReady = (): void => {
+      setSessionExpired(false);
+      if (open) loadPanelData();
+    };
+    window.addEventListener("lc:desktop-auth-ready", onAuthReady);
+    window.addEventListener("lc:tier-refresh", onAuthReady);
+    function onVisibilityChange(): void {
+      if (document.visibilityState === "visible" && open) {
+        loadPanelData();
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("lc:desktop-auth-ready", onAuthReady);
+      window.removeEventListener("lc:tier-refresh", onAuthReady);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [open, loadPanelData]);
+
+  useEffect(() => {
+    if (!open) return;
+    loadPanelData();
+  }, [open, loadPanelData]);
 
   useEffect(() => {
     if (!open) return;
@@ -211,7 +254,7 @@ export function AvatarPanel({
                   type="button"
                   onClick={() => {
                     onClose();
-                    openAuthPanel("sign-in");
+                    void activate();
                   }}
                   className="flex w-full items-center justify-between gap-2 rounded-2xl border border-fuchsia/50 bg-fuchsia-soft/40 px-3 py-2.5 text-left transition-colors hover:bg-fuchsia-soft/60"
                   aria-label="Session expired — re-activate this device"

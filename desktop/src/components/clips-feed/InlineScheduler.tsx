@@ -600,7 +600,7 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
               })}
             </div>
             <p className="font-mono text-[11px] text-text-tertiary">
-              Or open Settings → Connections for the full list.
+              Or open Schedule → Channels for the full list.
             </p>
           </div>
         ) : hasChannels ? (
@@ -786,6 +786,15 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
         type="button"
         onClick={() => void submit()}
         disabled={status.kind === "busy" || selectedCount === 0}
+        title={
+          status.kind === "busy"
+            ? "Scheduling in progress…"
+            : selectedCount === 0
+              ? hasChannels
+                ? "Pick at least one active channel to schedule to."
+                : "Pick at least one platform to schedule to."
+              : undefined
+        }
         className="mt-1 inline-flex items-center justify-center gap-2 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-semibold text-white shadow-[0_0_22px_rgba(255,26,140,0.5)] transition-all hover:bg-fuchsia-bright disabled:opacity-40"
       >
         {status.kind === "busy" ? (
@@ -917,7 +926,7 @@ function chipViewFor(status: Channel["status"]): ChipView {
       return {
         kind: "error",
         badge: "reconnect",
-        hint: "Reconnect — open Settings → Connections if this persists",
+        hint: "Reconnect — open Schedule → Channels if this persists",
       };
     case "paused":
       return {

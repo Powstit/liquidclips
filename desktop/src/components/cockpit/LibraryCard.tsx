@@ -97,6 +97,27 @@ export function LibraryCard({
         project.archived ? "opacity-70 hover:opacity-100" : ""
       } ${selected && selectMode ? "ring-2 ring-fuchsia rounded-xl" : ""}`}
       data-archived={project.archived ? "true" : "false"}
+      draggable
+      // v0.7.73 — onDragStartCapture (not onDragStart) because motion's
+      // own onDragStart override narrows the event type to its pointer
+      // gesture, hiding dataTransfer. The capture-phase handler keeps
+      // React's native React.DragEvent shape with full HTML5 drag API.
+      onDragStartCapture={(e) => {
+        const payload = {
+          asset_path: project.cover_thumb_path || project.root,
+          asset_type: project.imported ? "render" : "clip",
+          source_project_slug: project.slug,
+        };
+        try {
+          e.dataTransfer.setData(
+            "application/x-liquidclips-asset",
+            JSON.stringify(payload),
+          );
+          e.dataTransfer.effectAllowed = "copyMove";
+        } catch {
+          /* dataTransfer can throw in rare browser states — drag falls back to no-op */
+        }
+      }}
     >
       {/* Four HUD bracket corners — same dashed fuchsia language as the
           Workstation tiles, just smaller for the card scale. */}
@@ -122,6 +143,7 @@ export function LibraryCard({
       <button
         type="button"
         onClick={selectMode ? onToggleSelect : onOpen}
+        onDoubleClick={selectMode ? undefined : onEdit}
         disabled={opening || busy}
         className="relative block aspect-[9/16] w-full overflow-hidden rounded-xl bg-transparent text-left disabled:cursor-wait"
         title={opening ? "Opening…" : selectMode ? "Select" : `Open ${project.source_filename}`}

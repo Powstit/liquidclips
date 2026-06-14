@@ -210,9 +210,50 @@ async def _backend_get(
 # canonical query strings live in junior-backend/app/routes/whop.py.
 
 
+async def _backend_get_public(
+    path: str,
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """v0.7.68 — GET against junior-backend WITHOUT a license JWT. Reserved
+    for public discovery endpoints (`/whop/bounties/public`) that the
+    backend explicitly exposes unauthenticated. Never sends an
+    Authorization header, never reads the keychain, never reads any cached
+    token. The desktop's Earn Available tab uses this on cold launch so
+    bounties show before the user clicks Unlock.
+    """
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            resp = await client.get(
+                f"{_backend_url()}{path}",
+                params=params or {},
+            )
+        except httpx.HTTPError as e:
+            raise RuntimeError(f"Couldn't reach junior-backend: {e}") from e
+    if resp.status_code == 429:
+        raise RuntimeError("Slow down — too many bounty requests from this app right now.")
+    if resp.status_code == 503:
+        raise RuntimeError(
+            "Backend says Whop API key isn't configured server-side yet. "
+            "Use the manual paste fallback."
+        )
+    if resp.status_code != 200:
+        snippet = resp.text[:200]
+        raise RuntimeError(f"Backend {resp.status_code}: {snippet}")
+    return resp.json()
+
+
 async def list_bounties(*, first: int = 25, license_jwt: str | None = None) -> list[dict[str, Any]]:
     first = max(1, min(int(first or 25), 25))
     payload = await _backend_get("/whop/bounties", {"first": first}, license_jwt=license_jwt)
+    return payload.get("bounties", [])
+
+
+async def list_public_bounties(*, first: int = 25) -> list[dict[str, Any]]:
+    """v0.7.68 — public bounty discovery feed. NO LICENSE_JWT,
+    NO JUNIOR_WHOP_TOKEN, NO Keychain, NO token_source(). Routes to the
+    backend's unauthenticated /whop/bounties/public proxy."""
+    first = max(1, min(int(first or 25), 25))
+    payload = await _backend_get_public("/whop/bounties/public", {"first": first})
     return payload.get("bounties", [])
 
 

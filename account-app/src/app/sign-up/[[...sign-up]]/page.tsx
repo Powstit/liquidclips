@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SignUp } from "@clerk/nextjs";
+import { useSearchParams } from "next/navigation";
 import { TestimonialPanel } from "@/components/TestimonialPanel";
 import { track } from "@/lib/analytics";
 
@@ -25,6 +26,8 @@ function readAffiliateRef(): string | null {
 export default function SignUpPage() {
   const [affiliateId, setAffiliateId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const searchParams = useSearchParams();
+  const redirectUrl = searchParams.get("redirect_url") || searchParams.get("redirect") || "/dashboard";
 
   useEffect(() => {
     const aff = readAffiliateRef();
@@ -67,8 +70,8 @@ export default function SignUpPage() {
           {ready && (
             <SignUp
               unsafeMetadata={affiliateId ? { affiliate_id: affiliateId } : undefined}
-              fallbackRedirectUrl="/dashboard"
-              signInUrl="/sign-in"
+              fallbackRedirectUrl={redirectUrl}
+              signInUrl={`/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`}
             />
           )}
         </div>

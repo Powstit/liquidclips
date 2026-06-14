@@ -397,7 +397,7 @@ function ConnectionBadge({ status }: { status: WhopLinkStatus }) {
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <a
-            href="https://whop.com/jnremployee"
+            href="https://whop.com/liquidclips"
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-white transition-colors hover:bg-fuchsia-bright"

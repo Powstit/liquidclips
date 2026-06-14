@@ -311,10 +311,10 @@ export function Splash({
         <button
           type="button"
           onClick={skipSplash}
-          aria-label="Skip splash"
-          className="absolute right-6 top-6 z-20 grid h-11 w-11 place-items-center rounded-full border border-fuchsia bg-paper/45 font-mono text-[14px] font-semibold text-paper shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
+          aria-label="Skip intro"
+          className="absolute right-6 top-6 z-20 rounded-full border border-fuchsia bg-paper/45 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
         >
-          →
+          Skip intro
         </button>
         {/* v0.7.8 fix E8 — tap-to-play overlay. Only renders when the
             initial play() promise was rejected (autoplay-blocked). The
@@ -371,10 +371,10 @@ export function Splash({
       <button
         type="button"
         onClick={skipSplash}
-        aria-label="Skip splash"
-        className="absolute right-6 top-6 z-20 grid h-11 w-11 place-items-center rounded-full border border-fuchsia bg-paper/45 font-mono text-[14px] font-semibold text-ink shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
+        aria-label="Skip intro"
+        className="absolute right-6 top-6 z-20 rounded-full border border-fuchsia bg-paper/45 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
       >
-        →
+        Skip intro
       </button>
 
       <div className="splash-mark-anim relative z-10 animate-[splash-mark-in_0.6s_ease-out]">

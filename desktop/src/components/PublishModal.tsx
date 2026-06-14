@@ -1,7 +1,7 @@
 // ship-lens v0.7.7: fix #4 — summarisePublish branches on `status` so failed platforms no longer render as "tiktok: null" claiming success.
 import { useEffect, useRef, useState } from "react";
-import { Globe } from "lucide-react";
-import { openAuthPanel } from "./auth/useAuthPanel";
+import { Globe, X } from "lucide-react";
+import { openUpgradeWhenSignedIn } from "../lib/upgradeWithAuth";
 import {
   backend,
   QuotaExceededError,
@@ -36,7 +36,7 @@ import { ConnectFirstPrompt } from "./upload/ConnectFirstPrompt";
  *
  *   1. Fetch the user's social connection state (GET /social/connections)
  *   2. If not connected → show a "Connect first" card with deep link to
- *      Settings → Connections
+ *      Schedule → Loadout
  *   3. If connected → render platform checkboxes from `state.platforms`
  *   4. Submit calls backend.publishNow which posts to /publish-now with the
  *      platform array. Backend returns per-platform PublishedTarget[].
@@ -52,18 +52,40 @@ import { ConnectFirstPrompt } from "./upload/ConnectFirstPrompt";
 
 export type PublishModalMode = "publish-now" | "schedule-one";
 
-const ALL_PLATFORM_LABELS: Record<ConnectionPlatform, { label: string; oneLine: string }> = {
+// The visual platform grid surfaces all social destinations a channel can be
+// created for, even though the legacy publish path only supports a subset.
+type GridPlatform = ConnectionPlatform | "linkedin" | "facebook";
+
+const ALL_PLATFORMS: GridPlatform[] = [
+  "youtube",
+  "tiktok",
+  "instagram",
+  "x",
+  "linkedin",
+  "facebook",
+];
+
+const LEGACY_PUBLISH_PLATFORMS: ConnectionPlatform[] = [
+  "youtube",
+  "tiktok",
+  "instagram",
+  "x",
+];
+
+const ALL_PLATFORM_LABELS: Record<GridPlatform, { label: string; oneLine: string }> = {
   youtube:   { label: "YouTube",   oneLine: "Vertical Shorts under 60s." },
   tiktok:    { label: "TikTok",    oneLine: "Up to 3min vertical." },
   instagram: { label: "Instagram", oneLine: "Reels + Feed posts." },
   x:         { label: "X",         oneLine: "Vertical or square under 2:20." },
+  linkedin:  { label: "LinkedIn",  oneLine: "Document posts and videos." },
+  facebook:  { label: "Facebook",  oneLine: "Reels + Feed videos." },
 };
 
 // Ayrshare may report platforms we don't render an icon for (LinkedIn, FB,
 // Threads, etc). Stay forward-compatible: any platform string we don't
 // recognise still gets a generic tile.
 function platformLabel(p: string): string {
-  const key = p.toLowerCase() as ConnectionPlatform;
+  const key = p.toLowerCase() as GridPlatform;
   return ALL_PLATFORM_LABELS[key]?.label ?? (p[0]?.toUpperCase() + p.slice(1));
 }
 
@@ -103,9 +125,9 @@ export function PublishModal({
   onClose: () => void;
   onDone: (msg: string) => void;
   // Wired by App.tsx — Settings is now only used for non-connection settings
-  // (API keys etc.); connection management lives under Schedule → Channels.
+  // (API keys etc.); connection management lives under Schedule → Loadout.
   onOpenSettings?: () => void;
-  /** Routes the "Connect a channel first" empty-state to Schedule → Channels,
+  /** Routes the "Connect a channel first" empty-state to Schedule → Loadout,
    *  the canonical surface for linked accounts since the Settings →
    *  Connections collapse in Phase 1. */
   onOpenSchedule?: () => void;
@@ -118,6 +140,8 @@ export function PublishModal({
   // modal switches from the legacy platform-multiselect to a ChannelPicker.
   const [channels, setChannels] = useState<Channel[]>([]);
   const [pickedChannelId, setPickedChannelId] = useState<string | null>(null);
+  const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
+  const [isSchedule, setIsSchedule] = useState(mode === "schedule-one");
   const [scheduleAt, setScheduleAt] = useState(() => {
     if (initialScheduledAt) {
       const parsed = new Date(initialScheduledAt);
@@ -137,6 +161,9 @@ export function PublishModal({
   // Guards `initialPlatforms` pre-selection so it runs once on the initial
   // channel load and never clobbers a subsequent user toggle.
   const didApplyInitialPlatformsRef = useRef(false);
+
+  const canSchedule = tier.can("schedule_one");
+  const canMultiPublish = tier.can("publish_now_multi");
 
   // Esc closes unless we're mid-publish — preserves the "this is real, don't
   // bail" feeling once a network call is in flight.
@@ -170,6 +197,8 @@ export function PublishModal({
         setConnection(state === "no-connection" ? null : state);
         const activeChannels = chs.filter((c: Channel) => c.status === "active");
         setChannels(activeChannels);
+        const firstConnectedPlatform = state !== "no-connection" ? state.platforms[0] ?? null : null;
+
         // v0.6.3 — "Schedule everywhere": tick every connected platform the
         // instant the connection state lands, so the user lands in the
         // modal with the broadcast already configured. Multi-platform
@@ -184,15 +213,17 @@ export function PublishModal({
         // `[]` = explicit "select nothing" (don't fall back to all). Any
         // platform with no matching active channel is silently ignored.
         // Channel-path state is a single `pickedChannelId`, so we pick the
-        // first matching active channel.
+        // first matching active channel and align the platform lens to it.
         if (initialPlatforms !== undefined && !didApplyInitialPlatformsRef.current) {
           didApplyInitialPlatformsRef.current = true;
           if (initialPlatforms.length === 0) {
             setPickedChannelId(null);
+            setSelectedPlatform(activeChannels[0]?.platform ?? initialPlatforms[0] ?? firstConnectedPlatform);
           } else {
             const wanted = new Set(initialPlatforms);
             const match = activeChannels.find((c) => wanted.has(c.platform));
             setPickedChannelId(match ? match.id : null);
+            setSelectedPlatform(match ? match.platform : (initialPlatforms[0] ?? activeChannels[0]?.platform ?? firstConnectedPlatform));
           }
         } else if (
           !didApplyInitialPlatformsRef.current &&
@@ -205,6 +236,12 @@ export function PublishModal({
           // deliberately deselects.
           didApplyInitialPlatformsRef.current = true;
           setPickedChannelId(activeChannels[0].id);
+          setSelectedPlatform(activeChannels[0].platform);
+        } else if (!didApplyInitialPlatformsRef.current) {
+          // No channels at all — still set a platform lens so the grid isn't
+          // empty on first paint.
+          didApplyInitialPlatformsRef.current = true;
+          setSelectedPlatform(firstConnectedPlatform);
         }
       } catch (e) {
         if (!cancelled) setError(humanError(e));
@@ -214,6 +251,17 @@ export function PublishModal({
     })();
     return () => { cancelled = true; };
   }, [hasCapability, prefillAll, mode, initialPlatforms]);
+
+  // If the user switches platform filters, clear a hidden channel selection
+  // so the CTA count doesn't lie about what's visible.
+  useEffect(() => {
+    if (pickedChannelId && selectedPlatform) {
+      const channel = channels.find((c) => c.id === pickedChannelId);
+      if (channel && channel.platform !== selectedPlatform) {
+        setPickedChannelId(null);
+      }
+    }
+  }, [selectedPlatform, channels, pickedChannelId]);
 
   const videoPath =
     clip.remix?.active_path?.vertical ||
@@ -226,10 +274,10 @@ export function PublishModal({
   function togglePick(platform: string) {
     setPicked((cur) => {
       const next = new Set(cur);
-      if (mode === "schedule-one") return new Set([platform]);
+      if (isSchedule) return new Set([platform]);
       if (next.has(platform)) {
         next.delete(platform);
-      } else if (!tier.can("publish_now_multi") && next.size >= 1) {
+      } else if (!canMultiPublish && next.size >= 1) {
         // Solo tier — single platform at a time. Replace selection rather
         // than reject so the click still "does something."
         return new Set([platform]);
@@ -258,7 +306,7 @@ export function PublishModal({
       // surface RECONNECT_PROMPT_COPY via the thrown error.
       const jwt = requireCachedLicenseJwtOrThrow();
 
-      if (mode === "publish-now") {
+      if (!isSchedule) {
         // Schedule v2 channel path: pickedChannelId → backend infers platform
         // + uses the channel's own Ayrshare profile_key. One call = one post
         // on one handle. To post to multiple handles, the user picks each
@@ -281,7 +329,7 @@ export function PublishModal({
             title: clip.title,
             description: clip.description,
             platforms: Array.from(picked).filter((p): p is ConnectionPlatform =>
-              p === "youtube" || p === "tiktok" || p === "x" || p === "instagram",
+              LEGACY_PUBLISH_PLATFORMS.includes(p as ConnectionPlatform),
             ),
           });
           const failed = results.filter(isFailedStatus).length;
@@ -328,12 +376,14 @@ export function PublishModal({
 
   if (!hasCapability) {
     return (
-      <UpgradeWall
-        onClose={onClose}
-        mode={mode}
-        currentTier={tier.tier}
-        requiredTier={tier.requiredTierFor(cap)}
-      />
+      <ModalShell onClose={onClose}>
+        <UpgradeWall
+          onClose={onClose}
+          mode={mode}
+          currentTier={tier.tier}
+          requiredTier={tier.requiredTierFor(cap)}
+        />
+      </ModalShell>
     );
   }
 
@@ -348,284 +398,460 @@ export function PublishModal({
   const hasNoLegacyProfile = !connection?.profile_key_set || platforms.length === 0;
   if (!connectionLoading && hasNoChannels && hasNoLegacyProfile) {
     return (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
-        onClick={onClose}
-      >
-        <div
-          className="flex w-full max-w-[520px] flex-col gap-5 rounded-2xl bg-paper p-7 shadow-2xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <ConnectFirstPrompt
-            variant="inline"
-            onOpenSchedule={() => {
-              onClose();
-              (onOpenSchedule ?? onOpenSettings)?.();
-            }}
-          />
-        </div>
-      </div>
+      <ModalShell onClose={onClose}>
+        <ConnectFirstPrompt
+          variant="inline"
+          onOpenSchedule={() => {
+            onClose();
+            (onOpenSchedule ?? onOpenSettings)?.();
+          }}
+        />
+      </ModalShell>
     );
   }
 
-  const headline = mode === "publish-now" ? "Send it." : "Send it later.";
-  const eyebrow = mode === "publish-now" ? "publish now" : "schedule one";
-  const cta = mode === "publish-now"
-    ? pickedChannelId
-      ? "Publish to channel →"
-      : `Publish to ${picked.size} platform${picked.size === 1 ? "" : "s"} →`
-    : pickedChannelId
-    ? "Schedule channel →"
-    : "Schedule →";
+  const targetCount = hasChannelSelection ? (pickedChannelId ? 1 : 0) : picked.size;
+  const headline = isSchedule
+    ? targetCount === 0
+      ? "Schedule a post"
+      : `Schedule ${targetCount} post${targetCount === 1 ? "" : "s"}`
+    : targetCount === 0
+      ? "Publish to channels"
+      : `Publish to ${targetCount} channel${targetCount === 1 ? "" : "s"}`;
+  const cta = isSchedule
+    ? targetCount === 0
+      ? "Schedule post"
+      : `Schedule ${targetCount} post${targetCount === 1 ? "" : "s"} →`
+    : targetCount === 0
+      ? "Publish"
+      : `Publish to ${targetCount} channel${targetCount === 1 ? "" : "s"} →`;
+
+  const submitDisabledReason = busy
+    ? isSchedule ? "Scheduling in progress…" : "Publishing in progress…"
+    : !videoPath
+      ? "This clip has no rendered file yet. Re-cut from the editor first."
+      : !hasTargetSelection
+        ? channels.length > 0
+          ? "Pick a channel to publish to."
+          : "Pick at least one platform to publish to."
+        : undefined;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
-      onClick={busy ? undefined : onClose}
-    >
-      <div
-        className="relative flex w-full max-w-[640px] flex-col gap-5 rounded-2xl bg-paper p-7 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-          <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-          {eyebrow}
-        </div>
-
-        <h2 className="font-display text-[28px] font-semibold leading-[1.1] tracking-[-0.025em] text-ink">
-          {headline}
-        </h2>
-
-        <div className="rounded-xl border border-line bg-paper-warm/40 p-4">
-          <div className="flex items-center gap-1.5">
-            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">clip</span>
-            <InfoTip text="Liquid Clips sends the vertical 9:16 render of this clip. If no vertical render exists, re-cut from the editor first." />
+    <ModalShell onClose={busy ? undefined : onClose}>
+      {/* header */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+            <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
+            Publish
           </div>
-          <h3 className="mt-1 font-display text-[16px] font-semibold leading-tight tracking-[-0.01em] text-ink">
-            {clip.title}
-          </h3>
-          {!videoPath && (
-            <p className="mt-1 font-mono text-[11px] text-[var(--color-danger)]">
-              No 9:16 render yet. Open the clip → Re-cut to produce a vertical file.
-            </p>
+          <h2 className="font-display text-[28px] font-semibold leading-[1.1] tracking-[-0.025em] text-ink">
+            {headline}
+          </h2>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={busy}
+          className="rounded-full p-2 text-text-tertiary transition-colors hover:bg-paper-warm/60 hover:text-ink disabled:opacity-50"
+          aria-label="Close"
+        >
+          <X className="h-5 w-5" strokeWidth={2} />
+        </button>
+      </div>
+
+      {/* clip / thumbnail preview */}
+      <div className="rounded-xl border border-line bg-paper-warm/40 p-4">
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">clip</span>
+          <InfoTip text="Liquid Clips sends the vertical 9:16 render of this clip. If no vertical render exists, re-cut from the editor first." />
+        </div>
+        <h3 className="mt-1 font-display text-[16px] font-semibold leading-tight tracking-[-0.01em] text-ink">
+          {clip.title}
+        </h3>
+        {!videoPath && (
+          <p className="mt-1 font-mono text-[11px] text-[var(--color-danger)]">
+            No 9:16 render yet. Open the clip → Re-cut to produce a vertical file.
+          </p>
+        )}
+      </div>
+
+      {/* schedule toggle */}
+      {canSchedule && (
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">when</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setIsSchedule(false)}
+              className={`btn-ghost ${
+                !isSchedule ? "border border-fuchsia text-ink" : ""
+              }`}
+            >
+              Now
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsSchedule(true)}
+              className={`btn-ghost ${
+                isSchedule ? "border border-fuchsia text-ink" : ""
+              }`}
+            >
+              Schedule
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* platform / channel section */}
+      <div>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+              {hasChannelSelection ? "which channel" : "which platform"}
+            </span>
+            <InfoTip text={
+              canMultiPublish
+                ? "Pick one or more platforms. Liquid Clips fans out to each via Ayrshare in one shot."
+                : "Solo posts to one platform at a time. Upgrade to Pro for multi-platform publishing."
+            } />
+          </div>
+          {connectionLoading ? (
+            <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
+              checking…
+            </span>
+          ) : (
+            <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
+              {hasChannelSelection
+                ? `${channels.length} channel${channels.length === 1 ? "" : "s"}`
+                : `${platforms.length} linked`}
+            </span>
           )}
         </div>
 
-        <div>
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5">
-              <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-                {mode === "publish-now" ? "where" : "which platform"}
-              </span>
-              <InfoTip text={
-                tier.can("publish_now_multi")
-                  ? "Pick one or more platforms. Liquid Clips fans out to each via Ayrshare in one shot."
-                  : "Solo posts to one platform at a time. Upgrade to Pro for multi-platform publishing."
-              } />
-            </div>
-            {connectionLoading ? (
-              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
-                checking…
-              </span>
-            ) : (
-              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
-                {platforms.length} linked
-              </span>
-            )}
-          </div>
-
-          {connectionLoading ? (
-            <p className="font-mono text-[12px] text-text-tertiary">
-              Reading your social profile<span className="blink">_</span>
-            </p>
-          ) : channels.length > 0 ? (
-            // Schedule v2 — channel picker (preferred). One click = one
-            // channel. Each channel posts via its own Ayrshare profile.
-            // onAddChannel surfaces a "+ Add channel" affordance at the
-            // bottom of the picker so the user can link a new account
-            // without abandoning the publish flow.
+        {connectionLoading ? (
+          <p className="font-mono text-[12px] text-text-tertiary">
+            Reading your social profile<span className="blink">_</span>
+          </p>
+        ) : hasChannelSelection ? (
+          // Schedule v2 — platform grid filters the compact channel list.
+          <div className="flex flex-col gap-4">
+            <PlatformGrid
+              variant="filter"
+              platforms={ALL_PLATFORMS}
+              selected={selectedPlatform}
+              onSelect={setSelectedPlatform}
+              channels={channels}
+              connection={connection}
+            />
             <ChannelPicker
               value={pickedChannelId}
               onChange={setPickedChannelId}
+              filterPlatform={selectedPlatform ?? undefined}
               onAddChannel={onOpenSettings ? () => {
                 onClose();
                 onOpenSettings();
               } : undefined}
             />
-          ) : (
-            // Legacy path — single Ayrshare profile via SocialConnection,
-            // multiselect platforms. Kept for users who haven't added a
-            // channel yet.
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {platforms.map((p) => (
-                <PlatformTile
-                  key={p}
-                  platform={p}
-                  picked={picked.has(p)}
-                  onPick={() => togglePick(p)}
-                  disabled={mode === "schedule-one" && p === "instagram"}
-                  disabledReason="Scheduling coming in v0.8"
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {mode === "schedule-one" && (
-          <div>
-            <div className="mb-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">when</div>
-            <input
-              type="datetime-local"
-              value={scheduleAt}
-              onChange={(e) => setScheduleAt(e.target.value)}
-              className="w-full rounded-lg border border-line bg-paper-warm/40 px-4 py-2.5 font-mono text-[13px] text-ink focus:border-fuchsia focus:outline-none"
-            />
-            <p className="mt-1.5 font-mono text-[10px] text-text-tertiary">
-              Your local time · {getTimezoneAbbr()}
-            </p>
           </div>
+        ) : (
+          // Legacy path — single Ayrshare profile via SocialConnection,
+          // multiselect platforms. Kept for users who haven't added a
+          // channel yet.
+          <PlatformGrid
+            variant="publish"
+            platforms={ALL_PLATFORMS}
+            selected={selectedPlatform}
+            picked={picked}
+            onToggle={togglePick}
+            connection={connection}
+          />
         )}
+      </div>
 
-        {error && <p className="font-mono text-[12px] text-[var(--color-danger)]">{error}</p>}
-
-        {publishResult && (
-          <div className="rounded-xl border border-line bg-paper-warm/40 p-4">
-            <div className={`flex items-center gap-2 font-sans text-[14px] font-medium ${
-              publishResult.severity === "success"
-                ? "text-green-400"
-                : publishResult.severity === "partial"
-                  ? "text-amber-400"
-                  : "text-[var(--color-danger)]"
-            }`}>
-              {publishResult.severity === "success" && (
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 13l4 4L19 7"/></svg>
-              )}
-              {publishResult.severity === "partial" && (
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 9v2m0 4h.01M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/></svg>
-              )}
-              {publishResult.severity === "failure" && (
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 18L18 6M6 6l12 12"/></svg>
-              )}
-              {publishResult.severity === "success" && "All posted"}
-              {publishResult.severity === "partial" && `${publishResult.results.filter(isFailedStatus).length} of ${publishResult.results.length} failed`}
-              {publishResult.severity === "failure" && "All failed"}
-            </div>
-            <div className="mt-2 flex flex-col gap-1">
-              {publishResult.results.map((r) => {
-                const failed = isFailedStatus(r);
-                const pid = r.platform as ConnectionPlatform;
-                const isKnownIcon = pid === "x" || pid === "youtube" || pid === "tiktok" || pid === "instagram";
-                return (
-                  <div key={r.platform} className={`flex items-center gap-2 font-mono text-[11px] ${failed ? "text-[var(--color-danger)]" : "text-green-400"}`}>
-                    {isKnownIcon ? (
-                      <PlatformIcon id={pid} className="h-3.5 w-3.5" />
-                    ) : (
-                      <Globe className="h-3.5 w-3.5" />
-                    )}
-                    <span>{summariseOne(r)}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        <div className="mt-2 flex items-center justify-end gap-3">
-          {publishResult ? (
-            <>
-              <button
-                onClick={() => {
-                  if (publishResult) {
-                    onDone(summarisePublish(publishResult.results));
-                  } else {
-                    onClose();
-                  }
-                }}
-                className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia"
-              >
-                Close
-              </button>
-              {publishResult.severity === "failure" && (
-                <button
-                  onClick={() => setPublishResult(null)}
-                  className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
-                >
-                  Retry
-                </button>
-              )}
-            </>
-          ) : (
-            <>
-              <button
-                onClick={onClose}
-                disabled={busy}
-                className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void submit()}
-                disabled={busy || !hasTargetSelection || !videoPath}
-                className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] disabled:opacity-50"
-              >
-                {busy ? (mode === "publish-now" ? "Publishing…" : "Scheduling…") : cta}
-              </button>
-            </>
-          )}
+      {isSchedule && (
+        <div>
+          <div className="mb-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">date & time</div>
+          <input
+            type="datetime-local"
+            value={scheduleAt}
+            onChange={(e) => setScheduleAt(e.target.value)}
+            className="w-full rounded-lg border border-line bg-paper-warm/40 px-4 py-2.5 font-mono text-[13px] text-ink focus:border-fuchsia focus:outline-none"
+          />
+          <p className="mt-1.5 font-mono text-[10px] text-text-tertiary">
+            Your local time · {getTimezoneAbbr()}
+          </p>
         </div>
+      )}
+
+      {error && (
+        <div className="error-banner">
+          <span>{error}</span>
+        </div>
+      )}
+
+      {publishResult && (
+        <div className="rounded-xl border border-line bg-paper-warm/40 p-4">
+          <div className={`flex items-center gap-2 font-sans text-[14px] font-medium ${
+            publishResult.severity === "success"
+              ? "text-fuchsia-deep"
+              : publishResult.severity === "partial"
+                ? "text-fuchsia-deep"
+                : "text-[var(--color-danger)]"
+          }`}>
+            {publishResult.severity === "success" && (
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 13l4 4L19 7"/></svg>
+            )}
+            {publishResult.severity === "partial" && (
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 9v2m0 4h.01M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/></svg>
+            )}
+            {publishResult.severity === "failure" && (
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 18L18 6M6 6l12 12"/></svg>
+            )}
+            {publishResult.severity === "success" && "All posted"}
+            {publishResult.severity === "partial" && `${publishResult.results.filter(isFailedStatus).length} of ${publishResult.results.length} failed`}
+            {publishResult.severity === "failure" && "All failed"}
+          </div>
+          <div className="mt-2 flex flex-col gap-1">
+            {publishResult.results.map((r) => {
+              const failed = isFailedStatus(r);
+              const pid = r.platform as GridPlatform;
+              const isKnownIcon: boolean =
+                pid === "x" || pid === "youtube" || pid === "tiktok" || pid === "instagram";
+              return (
+                <div key={r.platform} className={`flex items-center gap-2 font-mono text-[11px] ${failed ? "text-[var(--color-danger)]" : "text-fuchsia-deep"}`}>
+                  {isKnownIcon ? (
+                    <PlatformIcon id={pid as "youtube" | "tiktok" | "instagram" | "x"} className="h-3.5 w-3.5" />
+                  ) : (
+                    <Globe className="h-3.5 w-3.5" />
+                  )}
+                  <span>{summariseOne(r)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-2 flex items-center justify-end gap-3">
+        {publishResult ? (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                if (publishResult) {
+                  onDone(summarisePublish(publishResult.results));
+                } else {
+                  onClose();
+                }
+              }}
+              className="btn-secondary"
+            >
+              Close
+            </button>
+            {publishResult.severity === "failure" && (
+              <button
+                type="button"
+                onClick={() => setPublishResult(null)}
+                className="btn-primary"
+              >
+                Retry
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={busy}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void submit()}
+              disabled={busy || !hasTargetSelection || !videoPath}
+              title={submitDisabledReason}
+              className="btn-primary"
+            >
+              {busy ? (isSchedule ? "Scheduling…" : "Publishing…") : cta}
+            </button>
+          </>
+        )}
+      </div>
+    </ModalShell>
+  );
+}
+
+// ── modal shell — shared backdrop + card width ─────────────────────────
+
+function ModalShell({
+  onClose,
+  children,
+}: {
+  onClose?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md"
+      onClick={onClose}
+    >
+      <div
+        className="relative flex w-full max-w-[720px] flex-col gap-5 rounded-2xl bg-paper p-7 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
       </div>
     </div>
   );
 }
 
-// ── platform tile (simple — just shows platform name + checkbox) ───────
+// ── platform grid — visual deck of platform tiles ──────────────────────
+
+type PlatformGridVariant = "filter" | "publish";
+
+function PlatformGrid({
+  variant,
+  platforms,
+  selected,
+  onSelect,
+  picked,
+  onToggle,
+  channels,
+  connection,
+}: {
+  variant: "filter";
+  platforms: GridPlatform[];
+  selected: string | null;
+  onSelect: (p: string) => void;
+  picked?: never;
+  onToggle?: never;
+  channels: Channel[];
+  connection: SocialConnectionState | null;
+} | {
+  variant: "publish";
+  platforms: GridPlatform[];
+  selected?: string | null;
+  onSelect?: never;
+  picked: Set<string>;
+  onToggle: (p: string) => void;
+  channels?: never;
+  connection: SocialConnectionState | null;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      {platforms.map((p) => (
+        <PlatformTile
+          key={p}
+          platform={p}
+          variant={variant}
+          selected={selected === p}
+          picked={picked?.has(p) ?? false}
+          onClick={() => {
+            if (variant === "filter") {
+              onSelect?.(p);
+            } else {
+              onToggle?.(p);
+            }
+          }}
+          disabled={
+            variant === "filter"
+              ? !channels?.some((c) => c.platform === p)
+              : !LEGACY_PUBLISH_PLATFORMS.includes(p as ConnectionPlatform) ||
+                !connection?.platforms.includes(p)
+          }
+          disabledReason={
+            variant === "filter"
+              ? "No channel for this platform. Add one in Schedule → Loadout."
+              : !LEGACY_PUBLISH_PLATFORMS.includes(p as ConnectionPlatform)
+                ? "Direct publishing to this platform is coming soon."
+                : "Not connected. Link this platform in Schedule → Loadout first."
+          }
+          channels={variant === "filter" ? channels : undefined}
+          connection={connection}
+        />
+      ))}
+    </div>
+  );
+}
 
 function PlatformTile({
   platform,
+  variant,
+  selected,
   picked,
-  onPick,
+  onClick,
   disabled,
   disabledReason,
+  channels,
+  connection,
 }: {
-  platform: string;
+  platform: GridPlatform;
+  variant: PlatformGridVariant;
+  selected: boolean;
   picked: boolean;
-  onPick: () => void;
+  onClick: () => void;
   disabled?: boolean;
   disabledReason?: string;
+  channels?: Channel[];
+  connection: SocialConnectionState | null;
 }) {
-  const known = platform as ConnectionPlatform;
-  const label = ALL_PLATFORM_LABELS[known]?.label ?? platformLabel(platform);
-  const oneLine = ALL_PLATFORM_LABELS[known]?.oneLine ?? "Connected via Ayrshare.";
-  const isKnown = platform === "x" || platform === "youtube" || platform === "tiktok" || platform === "instagram";
-  const iconId = isKnown ? platform : null;
+  const label = ALL_PLATFORM_LABELS[platform]?.label ?? platformLabel(platform);
+  const oneLine = ALL_PLATFORM_LABELS[platform]?.oneLine ?? "Connected via Ayrshare.";
+  const isKnownIcon: boolean = platform === "x" || platform === "youtube" || platform === "tiktok" || platform === "instagram";
+  const active = variant === "filter"
+    ? (channels?.some((c) => c.platform === platform && c.status === "active") ?? false)
+    : (connection?.platforms.includes(platform) ?? false) && (connection?.connected ?? false) && (connection?.active ?? false);
+  const partial = variant === "filter"
+    ? (channels?.some((c) => c.platform === platform && c.status !== "active") ?? false) && !active
+    : (connection?.platforms.includes(platform) ?? false) && !active;
+  const statusTone = active ? "ok" : partial ? "warn" : "danger";
+  const isOn = variant === "filter" ? selected : picked;
+
   return (
     <button
-      onClick={disabled ? undefined : onPick}
-      title={disabled ? disabledReason : `Picked = ${picked ? "yes" : "no"}. ${oneLine}`}
-      aria-pressed={picked}
+      type="button"
+      onClick={disabled ? undefined : onClick}
+      title={disabled ? disabledReason : `${label} — ${oneLine}`}
+      aria-pressed={isOn}
       disabled={disabled}
       className={`group flex flex-col items-center justify-center gap-1.5 rounded-xl border px-3 py-4 transition-all ${
         disabled
           ? "border-line/40 bg-paper/60 text-text-tertiary cursor-not-allowed"
-          : picked
-            ? "border-fuchsia bg-fuchsia text-white shadow-[0_8px_24px_rgba(255,26,140,0.25)]"
+          : isOn
+            ? "border-fuchsia bg-fuchsia-soft/30 text-ink"
             : "border-line bg-paper text-ink hover:border-fuchsia"
       }`}
     >
-      {iconId ? (
-        <PlatformIcon id={iconId as "youtube" | "tiktok" | "instagram" | "x"} className="h-7 w-7" />
-      ) : (
-        <Globe className="h-7 w-7" />
-      )}
+      <div className="relative">
+        {isKnownIcon ? (
+          <PlatformIcon id={platform as "youtube" | "tiktok" | "instagram" | "x"} className="h-7 w-7" />
+        ) : (
+          <Globe className="h-7 w-7" />
+        )}
+        <span
+          aria-hidden
+          className={`absolute -right-1 -top-1 inline-block h-2 w-2 rounded-full border-2 border-paper ${
+            statusTone === "ok"
+              ? "bg-fuchsia"
+              : statusTone === "warn"
+                ? "bg-fuchsia-deep"
+                : "bg-[var(--color-danger)]"
+          }`}
+        />
+      </div>
       <span className="font-sans text-[12px] font-medium leading-none">{label}</span>
-      <span className={`font-mono text-[10px] uppercase leading-none tracking-[0.08em] ${picked ? "text-white/80" : disabled ? "text-text-tertiary" : "text-text-secondary"}`}>
-        {disabled ? "unavailable" : picked ? "selected" : "tap to pick"}
+      <span className={`font-mono text-[10px] uppercase leading-none tracking-[0.08em] ${isOn ? "text-text-secondary" : disabled ? "text-text-tertiary" : "text-text-secondary"}`}>
+        {disabled ? "not connected" : isOn ? "selected" : "tap to pick"}
       </span>
     </button>
   );
 }
 
-// ── upgrade wall — unchanged from prior version ────────────────────────
+// ── upgrade wall — premium paywall surface inside the publish modal ────
 
 function UpgradeWall({
   onClose,
@@ -638,74 +864,81 @@ function UpgradeWall({
   currentTier: Tier;
   requiredTier: Tier;
 }) {
-  const cur = TIER_COPY[currentTier];
   const req = TIER_COPY[requiredTier];
   const headline =
     mode === "publish-now"
       ? requiredTier === "solo"
         ? "Publishing is a Solo+ feature."
-        : "Multi-platform is on Pro+."
+        : "Multi-platform publishing is on Pro+."
       : "Scheduling is on Pro+.";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-md" onClick={onClose}>
-      <div
-        className="flex w-full max-w-[480px] flex-col gap-5 rounded-2xl bg-paper p-7 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-          <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-          {cur.name.toLowerCase()} · locked
+    <>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+            <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
+            Publish
+          </div>
+          <h2 className="font-display text-[28px] font-semibold leading-[1.1] tracking-[-0.025em] text-ink">
+            {headline}
+          </h2>
         </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full p-2 text-text-tertiary transition-colors hover:bg-paper-warm/60 hover:text-ink"
+          aria-label="Close"
+        >
+          <X className="h-5 w-5" strokeWidth={2} />
+        </button>
+      </div>
 
-        <h2 className="font-display text-[26px] font-semibold leading-[1.1] tracking-[-0.025em] text-ink">
-          {headline}
-        </h2>
+      <p className="font-sans text-[14px] leading-relaxed text-text-secondary">
+        {req.pitch}
+      </p>
 
-        <p className="font-sans text-[14px] leading-relaxed text-text-secondary">
-          {req.pitch}
-        </p>
-
-        <div className="rounded-xl border border-fuchsia-soft bg-fuchsia-soft/30 p-4">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
-                upgrade to
-              </div>
-              <h3 className="mt-1 font-display text-[18px] font-semibold tracking-[-0.01em] text-ink">
-                {req.name}
-              </h3>
+      <div className="rounded-xl border border-fuchsia-soft bg-fuchsia-soft/30 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
+              upgrade to
             </div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary">
-              {req.price}
-            </div>
+            <h3 className="mt-1 font-display text-[18px] font-semibold tracking-[-0.01em] text-ink">
+              {req.name}
+            </h3>
+          </div>
+          <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary">
+            {req.price}
           </div>
         </div>
-
-        <div className="flex items-center justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia"
-          >
-            Maybe later
-          </button>
-          <button
-            onClick={() => {
-              import("../lib/paywallNotify").then(({ notifyPaywall }) =>
-                notifyPaywall(
-                  mode === "publish-now" ? "publish_now" : "schedule_one",
-                  currentTier,
-                ),
-              );
-              openAuthPanel("upgrade");
-            }}
-            className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
-          >
-            Upgrade to {req.name} →
-          </button>
-        </div>
       </div>
-    </div>
+
+      <div className="flex items-center justify-end gap-3">
+        <button
+          type="button"
+          onClick={onClose}
+          className="btn-secondary"
+        >
+          Maybe later
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            import("../lib/paywallNotify").then(({ notifyPaywall }) =>
+              notifyPaywall(
+                mode === "publish-now" ? "publish_now" : "schedule_one",
+                currentTier,
+              ),
+            );
+            openUpgradeWhenSignedIn();
+          }}
+          className="btn-primary"
+        >
+          Upgrade to {req.name} →
+        </button>
+      </div>
+    </>
   );
 }
 

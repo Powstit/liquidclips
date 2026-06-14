@@ -68,11 +68,15 @@ import { FirstRun } from "./components/FirstRun";
 import { GlobalToastHost } from "./components/GlobalToastHost";
 import { JuniorLoader } from "./components/JuniorLoader";
 import { Splash } from "./components/Splash";
-import { NotificationBell } from "./components/NotificationBell";
 import { NotificationSheet } from "./components/NotificationSheet";
 // v0.6.41 — UploadTab + PayoutsTab retired in Sprint 1 consolidation.
 // Upload queues fold into SchedulePage; Payouts becomes an Earn sub-tab.
 import { LibraryTab } from "./components/library/LibraryTab";
+import { ProjectsTab } from "./components/projects/ProjectsTab";
+import { ProjectDetail } from "./components/projects/ProjectDetail";
+import { getDropTarget } from "./lib/dropContext";
+import { addMembership } from "./lib/projectMemberships";
+import { openUpgradeWhenSignedIn } from "./lib/upgradeWithAuth";
 import { InvadersOverlay } from "./components/invaders/InvadersOverlay";
 import { OnboardingOverlay } from "./components/onboarding/OnboardingOverlay";
 import { StudioTour } from "./components/onboarding/StudioTour";
@@ -81,6 +85,7 @@ import { closeInvaders } from "./lib/invaders/store";
 import { Settings } from "./components/Settings";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { AchievementToast } from "./components/AchievementToast";
+import { SidecarCrashOverlay } from "./components/SidecarCrashOverlay";
 import { AuthPanel } from "./components/auth/AuthPanel";
 import { useAuthPanel, closeAuthPanel } from "./components/auth/useAuthPanel";
 import { isAdminEmail } from "./lib/useTier";
@@ -89,7 +94,7 @@ import { recordAchievement } from "./lib/achievements";
 import { humanError, sidecar, subscribeSidecarDied, visibleStagesFor, pipelineStagesFor, backgroundStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type SecretName, type StageName } from "./lib/sidecar";
 import { useIngestEvents } from "./lib/useIngestEvents";
 import { useLiftEvents } from "./lib/useLiftEvents";
-import { backend, getCachedLicenseJwt, maybeCheckQuota, QuotaExceededError, setOnUnauthorized } from "./lib/backend";
+import { backend, getCachedLicenseJwt, maybeCheckQuota, meStatusLegacy, QuotaExceededError, resumeSessionFromKeychainIfPresent, setOnUnauthorized } from "./lib/backend";
 import { initDeepLinks, setOnActivated } from "./lib/activation";
 import { HOSTED_LLM_ENABLED } from "./lib/flags";
 import { closeBrowsePanel, openBrowsePanel, reconcileBrowsePanel, useBrowsePanel, WHOP_COMMUNITY_URL, WHOP_REWARDS_URL } from "./lib/browse";
@@ -127,6 +132,8 @@ type View =
   | { kind: "earn" }
   | { kind: "learn" }
   | { kind: "library" }
+  | { kind: "projects" }
+  | { kind: "project"; slug: string }
   | { kind: "schedule" }
   | { kind: "community" }
   | { kind: "bounty-setup"; bounty: WhopBounty }
@@ -150,6 +157,145 @@ export { inWhopIframe };
 
 export default function App() {
   const [view, setView] = useState<View>({ kind: "empty" });
+  // v0.7.76 F1 — Capture-into-Project breadcrumb (pill above Workstation).
+  // v0.7.77 Sprint 4 — `armedAt` lets the auto-attach subscription below
+  // distinguish projects that landed AFTER the user clicked Open Workspace
+  // from prior projects, so we never auto-attach the wrong import.
+  //
+  // When a user clicks Resume on a BLANK Project (no clips + no source
+  // path), ProjectDetail routes through here so the workstation surface
+  // can show a small "Capturing into <project> · back to project" pill.
+  // Cleared only on the back-to-project click — the pill persists
+  // across the ingest → results lifecycle so a user who imported can
+  // still navigate back.
+  //
+  // No pipeline change. IG-001 import pipeline still creates its own
+  // project per import; the Sprint 4 useEffect below reads the newest
+  // landed project on lc:library-refresh and writes memberships back
+  // to the capture project via the existing addMembership (no new RPCs).
+  const [activeCaptureContext, setActiveCaptureContext] = useState<
+    { slug: string; name: string; armedAt: number } | null
+  >(null);
+
+  // v0.7.77 Sprint 4 — Capture auto-attach.
+  //
+  // When the user clicks Open Workspace on a blank Project, we arm an
+  // `activeCaptureContext`. The IG-001 import pipeline still creates its
+  // OWN project per import (untouched). After it lands, the pipeline
+  // dispatches `lc:library-refresh` (`App.tsx ~2510` after handleImportDirect
+  // completes). This effect listens for that event WHILE capture is armed
+  // and writes one membership per resulting clip back to the capture
+  // project via the existing addMembership (idempotent on slug + path).
+  //
+  // Contract:
+  //   - Only fires while activeCaptureContext is non-null.
+  //   - Uses created_at > armedAt to ignore pre-existing projects.
+  //   - Tracks lastProcessedSlug so the same pipeline result is never
+  //     attached twice on rapid re-fires.
+  //   - addMembership is idempotent — re-attaching the same path bumps
+  //     updated_at instead of duplicating; we only toast the count of
+  //     FRESH attachments (created_at === updated_at).
+  //   - On user "back to project" click (capture cleared), cleanup
+  //     runs, listener detaches; in-flight async work completes but
+  //     its toast/dispatch are gated by cancelled.
+  //
+  // No new sidecar RPCs. No IG-001 pipeline change. No project factory
+  // change. Pure read-side aggregation.
+  useEffect(() => {
+    if (!activeCaptureContext) return;
+    const { slug: captureSlug, name: captureName, armedAt } = activeCaptureContext;
+    let cancelled = false;
+    let lastProcessedSlug: string | null = null;
+
+    async function tryAttach(): Promise<void> {
+      if (cancelled) return;
+      try {
+        const { projects } = await sidecar.listProjects(200, false);
+        if (cancelled) return;
+        // Newest project created strictly after capture armed, and not
+        // the capture project itself (which doesn't have a pipeline run).
+        // Note: ProjectLibrarySummary.created_at is seconds since epoch
+        // (Python time.time()); armedAt is ms (Date.now()). Convert.
+        const armedAtSec = armedAt / 1000;
+        const candidates = projects
+          .filter(
+            (p) =>
+              (p.created_at || 0) > armedAtSec &&
+              p.slug !== captureSlug &&
+              p.slug !== lastProcessedSlug,
+          )
+          .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        if (candidates.length === 0) return;
+        const newest = candidates[0];
+        // Record before fetch so a rapid second event doesn't double-process
+        // while this awaits getProject.
+        lastProcessedSlug = newest.slug;
+
+        const { project: full } = await sidecar.getProject(newest.slug);
+        if (cancelled) return;
+        const clips = full.clips || [];
+        if (clips.length === 0) {
+          // Project landed but its clips haven't been written yet — the
+          // next lc:library-refresh will retry. Reset lastProcessedSlug
+          // so the same project is reconsidered.
+          lastProcessedSlug = null;
+          return;
+        }
+
+        let added = 0;
+        for (const clip of clips) {
+          const path =
+            clip.vertical_path ||
+            clip.cut_path ||
+            clip.square_path ||
+            clip.portrait_path;
+          if (!path) continue;
+          const row = await addMembership({
+            project_slug: captureSlug,
+            asset_type: "clip",
+            asset_path: path,
+            source_project_slug: newest.slug,
+            clip_id: clip.slug,
+          });
+          if (row.created_at === row.updated_at) added += 1;
+        }
+        if (cancelled) return;
+        if (added > 0) {
+          try {
+            window.dispatchEvent(
+              new CustomEvent("lc:toast", {
+                detail: {
+                  kind: "info",
+                  message: `Added ${added} clip${added === 1 ? "" : "s"} to ${captureName} from Workspace.`,
+                },
+              }),
+            );
+          } catch {
+            /* best-effort */
+          }
+        }
+      } catch (e) {
+        // Never throw out of an event handler — this is a quality-of-life
+        // helper; if it fails, the user still has Add from Library as a
+        // manual fallback.
+        console.warn("[capture-auto-attach] failed:", humanError(e));
+      }
+    }
+
+    function onRefresh(): void {
+      void tryAttach();
+    }
+    window.addEventListener("lc:library-refresh", onRefresh);
+    // Also try once on arm — in case a pipeline already landed before
+    // this effect mounted (e.g. user rapidly opened a blank project
+    // mid-pipeline).
+    void tryAttach();
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("lc:library-refresh", onRefresh);
+    };
+  }, [activeCaptureContext]);
   // IRON GATE IG-010 — v0.8.0 non-blocking URL ingest. waitForIngest resolves
   // when the background-thread method_start_ingest_url emits ingest_complete,
   // or rejects on ingest_error / timeout. The sidecar dispatcher returns
@@ -187,6 +333,12 @@ export default function App() {
   // this flips true — gives the user a guaranteed window to play.
   const [splashAcked, setSplashAcked] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // v0.7.77 — Lane 1 integration patch: Settings deep-link tab. Surfaces
+  // that dispatch lc:settings-open-tab with a SettingsCategory tab land
+  // here so Settings opens on the right category.
+  const [settingsInitialTab, setSettingsInitialTab] = useState<
+    "account" | "api-keys" | "privacy" | "about" | undefined
+  >(undefined);
   // v0.7.31 — Thumbnail Studio surface (Cover Pack + AI Generate). Replaces
   // the v0.7.1 placeholder toast at the WorkstationRoom onThumbnails handler.
   // slug="" means no project context (Brand/Identity wizards still work,
@@ -230,6 +382,18 @@ export default function App() {
         }, 100);
         setScheduleInitialSub("channels");
         setView({ kind: "schedule" });
+        return;
+      }
+      // Lane 1 integration patch: route Settings-category tabs into Settings.
+      const settingsTabs: Array<"account" | "api-keys" | "privacy" | "about"> = [
+        "account",
+        "api-keys",
+        "privacy",
+        "about",
+      ];
+      if (settingsTabs.includes(detail?.tab)) {
+        setSettingsInitialTab(detail.tab);
+        setSettingsOpen(true);
       }
     }
     window.addEventListener("lc:settings-open-tab", onSettingsTab);
@@ -385,6 +549,104 @@ export default function App() {
     }
   });
 
+  // v0.7.73 — Active project count for the Workstation Projects tile
+  // subtitle. Single sidecar.listProjects fetch on tier-known + refresh
+  // when lc:library-refresh fires (covers new project creation, archive,
+  // delete). Free/null tier short-circuits to null so we don't waste a
+  // sidecar call rendering "0 active" on a locked tile.
+  const [projectsCount, setProjectsCount] = useState<number | null>(null);
+  useEffect(() => {
+    const isPaid = userTier === "pro" || userTier === "agency";
+    if (!isPaid) {
+      setProjectsCount(null);
+      return;
+    }
+    let cancelled = false;
+    function refresh(): void {
+      void sidecar
+        .listProjects(200, false)
+        .then(({ projects }) => {
+          if (cancelled) return;
+          setProjectsCount(projects.filter((p) => !p.archived).length);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setProjectsCount(null);
+        });
+    }
+    refresh();
+    const onLib = (): void => refresh();
+    window.addEventListener("lc:library-refresh", onLib);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("lc:library-refresh", onLib);
+    };
+  }, [userTier]);
+
+  // v0.7.77 — Lane 1: display name for the Workstation warm greeting.
+  // Cache-only /me read; clears on sign-out without touching Keychain.
+  const [displayName, setDisplayName] = useState<string | null>(null);
+
+  // v0.7.77 — Lane 1: library rail dot. Lights up when lc:library-refresh
+  // fires while the user is not on the Library surface; clears on visit.
+  const [libraryDot, setLibraryDot] = useState(false);
+  useEffect(() => {
+    function onLibraryRefresh(): void {
+      if (view.kind !== "library") setLibraryDot(true);
+    }
+    window.addEventListener("lc:library-refresh", onLibraryRefresh);
+    return () => window.removeEventListener("lc:library-refresh", onLibraryRefresh);
+  }, [view.kind]);
+  useEffect(() => {
+    if (view.kind === "library") setLibraryDot(false);
+  }, [view.kind]);
+
+  // v0.7.77 — Lane 1: AvatarOrbit notification badge. Cache-only inbox
+  // unread count; badge hides when count is zero. Never polls Keychain.
+  const [notificationCount, setNotificationCount] = useState(0);
+  useEffect(() => {
+    async function refreshCount(): Promise<void> {
+      const jwt = getCachedLicenseJwt();
+      if (!jwt) {
+        setNotificationCount(0);
+        return;
+      }
+      try {
+        const list = await backend.notifications.list(jwt, { limit: 99 });
+        const unread = list.filter((n) => !n.read_at).length;
+        setNotificationCount(unread);
+      } catch {
+        setNotificationCount(0);
+      }
+    }
+    if (signedIn) {
+      void refreshCount();
+    } else {
+      setNotificationCount(0);
+    }
+  }, [signedIn, inboxOpen]);
+
+  useEffect(() => {
+    if (!signedIn) {
+      setDisplayName(null);
+      return;
+    }
+    let cancelled = false;
+    void meStatusLegacy()
+      .then((me) => {
+        if (cancelled || !me?.email) return;
+        const name = me.email
+          .split("@")[0]
+          .replace(/[._-]+/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+        setDisplayName(name);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn]);
+
   // GlobalAuthPanel dispatches `lc:tier-refresh` on close (Clerk Stripe
   // Checkout success path). Without this listener the event was a
   // deadletter and an in-app upgrade never flipped the tier until next
@@ -402,6 +664,147 @@ export default function App() {
     }
     window.addEventListener("lc:tier-refresh", onTierRefresh);
     return () => window.removeEventListener("lc:tier-refresh", onTierRefresh);
+  }, []);
+
+  // v0.7.75 RC-3 — Cold-launch + auth-ready tier sync.
+  //
+  // The v0.7.74 FIX-2 only refreshed tier after `setOnActivated` fired
+  // (i.e. a fresh deep-link activation). But Daniel was already signed in
+  // at launch — JWT in keychain, presence file true, but in-memory cache
+  // empty. setOnActivated never fired, so userTier kept whatever stale
+  // value localStorage carried from the prior session (e.g. "free").
+  // Projects gate read "free" → locked screen for an admin user.
+  //
+  // Fix: run the same syncStatus + meStatusLegacy + admin-override flow
+  // whenever the JWT cache is primed — at boot (if seed JWT is already
+  // cached from this session) OR on lc:desktop-auth-ready (Continue
+  // session click, Connect-desktop deep-link return, anything that calls
+  // primeLicenseJwtCache). Dispatches lc:tier-refresh so sessionExpired-
+  // owning components (AvatarPanel/Orbit/Settings) clear their stale state.
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshTier(reason: string): Promise<void> {
+      try {
+        const { syncStatus, meStatusLegacy } = await import("./lib/backend");
+        const [s, me] = await Promise.all([
+          syncStatus(),
+          meStatusLegacy().catch(() => null),
+        ]);
+        if (cancelled) return;
+        const adminByEmail = isAdminEmail(me?.email);
+        const isAdmin =
+          s?.admin_override === true ||
+          s?.tier === "autopilot" ||
+          adminByEmail;
+        const nextTier = isAdmin ? "agency" : normalizeTier(s?.tier ?? null);
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.log("[TIER-DEBUG]", {
+            reason,
+            email: me?.email ?? null,
+            syncTier: s?.tier ?? null,
+            admin_override: s?.admin_override,
+            adminByEmail,
+            resolved: nextTier,
+          });
+        }
+        if (nextTier) {
+          setUserTier(nextTier);
+          try {
+            window.localStorage?.setItem("lc:cached_tier", nextTier);
+          } catch {
+            /* private mode / quota — non-fatal */
+          }
+        }
+        setRemainingExports(isAdmin ? null : (s?.remaining_exports ?? null));
+        // Cascade so every tier/session-expired listener clears stale state.
+        try {
+          window.dispatchEvent(
+            new CustomEvent("lc:tier-refresh", {
+              detail: { tier: nextTier },
+            }),
+          );
+        } catch {
+          /* best-effort */
+        }
+      } catch {
+        /* silent — next tick / focus will retry */
+      }
+    }
+    // Boot path: if JWT is already cached this session (rare on cold launch
+    // — usually empty until Continue session), refresh immediately.
+    void refreshTier("boot");
+    // Auth-ready path: every primeLicenseJwtCache call (Continue session,
+    // deep-link return) dispatches this. Always re-sync tier on arrival.
+    function onAuthReady(): void {
+      void refreshTier("auth-ready");
+    }
+    window.addEventListener("lc:desktop-auth-ready", onAuthReady);
+    // SECTION A fallback — if the boot-time auth-ready event was missed (e.g.
+    // components were not mounted during the splash), re-probe tier when the
+    // user returns to the app. Uses the in-memory cache only; no Keychain read.
+    function onVisibilityChange(): void {
+      if (document.visibilityState === "visible" && getCachedLicenseJwt()) {
+        void refreshTier("visibility");
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("lc:desktop-auth-ready", onAuthReady);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+  // v0.7.68 P0 — account-app checkout/complete posts `lc:checkout-complete`
+  // when a Whop/Stripe checkout succeeds. Without this listener the desktop
+  // never learns that the user paid in a standalone browser tab or in an
+  // auth-panel webview that doesn't fire its close handler. We treat the
+  // message as an explicit "I just paid" signal and refresh /sync.
+  useEffect(() => {
+    function onCheckoutMessage(event: MessageEvent) {
+      if (!isTrustedCheckoutOrigin(event.origin)) return;
+      const data = event.data as { type?: string; status?: string } | undefined;
+      if (data?.type === "lc:checkout-complete" && data?.status === "success") {
+        void refreshAccountTier();
+      }
+    }
+    window.addEventListener("message", onCheckoutMessage);
+    return () => window.removeEventListener("message", onCheckoutMessage);
+  }, []);
+  // Lane 1 integration patch: surfaces that dispatch the CustomEvent
+  // lc:checkout-complete (e.g., Lane 5 paywall flows) should trigger a
+  // tier refresh so the app re-evaluates gates immediately.
+  useEffect(() => {
+    function onCheckoutComplete(): void {
+      window.dispatchEvent(new CustomEvent("lc:tier-refresh"));
+    }
+    window.addEventListener("lc:checkout-complete", onCheckoutComplete);
+    return () => window.removeEventListener("lc:checkout-complete", onCheckoutComplete);
+  }, []);
+  // v0.7.68 P0 — BottomCockpit ⋮ menu dispatches these three events, but no
+  // listeners existed, so Brief / Add more clips / Earn were dead clicks.
+  // Wire them to real navigation/actions here.
+  useEffect(() => {
+    function onGoHome() {
+      setView({ kind: "empty" });
+    }
+    function onGoEarn() {
+      setView({ kind: "earn" });
+    }
+    function onOpenBrief(e: Event) {
+      const detail = (e as CustomEvent).detail as { url?: string } | undefined;
+      if (detail?.url) {
+        void openBrowsePanel(detail.url);
+      }
+    }
+    window.addEventListener("lc:go-home", onGoHome);
+    window.addEventListener("lc:go-earn", onGoEarn);
+    window.addEventListener("lc:open-brief", onOpenBrief);
+    return () => {
+      window.removeEventListener("lc:go-home", onGoHome);
+      window.removeEventListener("lc:go-earn", onGoEarn);
+      window.removeEventListener("lc:open-brief", onOpenBrief);
+    };
   }, []);
   // v0.6.18 — pipeline state lifted out of `view` so a user can navigate away
   // (Earn / Community / etc) and the pipeline keeps running in the background;
@@ -556,23 +959,32 @@ export default function App() {
           });
         }
         sidecar.preloadWhisper().catch(() => undefined);
-        // v0.7.56 P0 — Boot-safe "is the user signed in?" check.
+        // v0.7.77 SECTION A — Cold-boot session resume.
         //
-        // Used to call `sidecar.licenseJwtRead()` which fires `secret_get` →
-        // `keyring.get_password()` → macOS Keychain prompt on a freshly
-        // rebuilt/renamed sidecar binary. With other boot probes (8 keys via
-        // `secretsStatus()`, 1 via `openaiKeyStatus()`) this stacked into
-        // ~10 password prompts on first launch.
+        // Previous builds only checked `licenseJwtPresence()` (presence mirror,
+        // no Keychain read). That told the UI "a JWT exists" but left the
+        // in-memory cache empty, so every authed call (`/sync`, `/me`,
+        // `/me/affiliate`) immediately threw `UnauthorizedError`. Components
+        // interpreted that as an expired session and rendered the
+        // "Reactivate" chip / banner. Paid/admin users saw a locked app on
+        // every cold launch even though their license JWT was valid in the
+        // OS Keychain.
         //
-        // `licenseJwtPresence` reads a plaintext presence-file mirror that
-        // `secret_set`/`secret_delete` keep updated. No keychain access, no
-        // prompt. We only need a yes/no for nav copy here — the actual JWT
-        // value still comes from `licenseJwtRead()` later, called from the
-        // auth-panel open path and the embed's `lc:auth-request` (both
-        // explicit user actions, one expected prompt).
+        // Fix: when the presence mirror says a JWT exists, perform the ONE
+        // allowed Keychain read for the boot sequence via
+        // `resumeSessionFromKeychainIfPresent()`. It primes the in-memory
+        // cache and dispatches `lc:desktop-auth-ready`, which:
+        //   * clears `sessionExpired` in AvatarOrbit / AvatarPanel / Settings
+        //   * triggers App.tsx's tier-refresh effect (admin → agency)
+        //   * triggers `useTier()` consumers to re-fetch /sync
+        //
+        // On a properly signed / installed app this read is silent. On a
+        // freshly rebuilt / renamed sidecar binary macOS may show its one-time
+        // access prompt — unavoidable for Keychain-backed auth, and still far
+        // better than the prior ~10 stacked prompts.
         try {
-          const { present } = await sidecar.licenseJwtPresence();
-          setSignedIn(present);
+          const resumed = await resumeSessionFromKeychainIfPresent();
+          setSignedIn(resumed);
         } catch {
           setSignedIn(false);
         }
@@ -665,9 +1077,40 @@ export default function App() {
     setOnActivated(() => {
       setSignedIn(true);
       setNeedsActivation(false);
+      // v0.7.73 FIX-2 — post-login tier refresh. Previously this only
+      // updated remainingExports, so userTier stayed at whatever stale
+      // value was in localStorage. For admin/dev accounts the Projects
+      // Pro gate then showed the locked screen even after a successful
+      // sign-in (because cache said "free" pre-login). Now we re-sync
+      // tier with the SAME three-signal admin override useTier uses
+      // (admin_override / autopilot tier / isAdminEmail fallback) and
+      // broadcast lc:tier-refresh so AvatarPanel/Orbit/Settings clear
+      // their `sessionExpired` state on the same tick.
       void import("./lib/backend")
-        .then((m) => m.syncStatus())
-        .then((s) => setRemainingExports(s?.remaining_exports ?? null))
+        .then(async (m) => {
+          const [s, me] = await Promise.all([
+            m.syncStatus(),
+            m.meStatusLegacy().catch(() => null),
+          ]);
+          const adminByEmail = isAdminEmail(me?.email);
+          const isAdmin =
+            s?.admin_override === true ||
+            s?.tier === "autopilot" ||
+            adminByEmail;
+          const nextTier = isAdmin ? "agency" : normalizeTier(s?.tier ?? null);
+          if (nextTier) setUserTier(nextTier);
+          setRemainingExports(isAdmin ? null : (s?.remaining_exports ?? null));
+          // Cascade so every tier-listening surface re-checks.
+          try {
+            window.dispatchEvent(
+              new CustomEvent("lc:tier-refresh", {
+                detail: { tier: nextTier },
+              }),
+            );
+          } catch {
+            /* best-effort */
+          }
+        })
         .catch(() => undefined);
     });
 
@@ -778,6 +1221,43 @@ export default function App() {
         return;
       }
       const paths = event.payload?.paths ?? [];
+      // v0.7.73 — Projects file-drop reroute. If a ProjectDetail is the
+      // active drop target (via dropContext.setDropTarget), attach every
+      // dropped path as a membership for that project and skip the
+      // workstation ingest flow. Project membership is metadata-only — no
+      // file moves — so dropping 10 files in is a 10-row write, not 10
+      // pipeline starts. Preserves casual drop-to-workstation behaviour
+      // when no Project is the active target.
+      const projectTarget = getDropTarget();
+      if (projectTarget) {
+        let attached = 0;
+        for (const p of paths) {
+          if (typeof p !== "string" || !p) continue;
+          try {
+            await addMembership({
+              project_slug: projectTarget,
+              asset_type: "external",
+              asset_path: p,
+            });
+            attached += 1;
+          } catch (e) {
+            console.warn("[projects drop] addMembership failed:", e);
+          }
+        }
+        if (attached > 0) {
+          try {
+            window.dispatchEvent(new CustomEvent("lc:toast", {
+              detail: {
+                kind: "info",
+                message: `Added ${attached} file${attached === 1 ? "" : "s"} to project.`,
+              },
+            }));
+          } catch {
+            /* ignore */
+          }
+        }
+        return;
+      }
       const path = paths[0];
       if (!path) return;
       // v0.7.34 — Was silently truncating to paths[0]. Beta users dropping
@@ -944,7 +1424,15 @@ export default function App() {
       try {
         const { available } = await sidecar.openaiKeyStatus();
         if (!available) {
-          setView({ kind: "first-run" });
+          // v0.7.68 — This is an API-key problem, not an auth problem. Open
+          // Settings directly on the API-keys tab instead of sending the user
+          // through the FirstRun sign-in flow.
+          setSettingsOpen(true);
+          setTimeout(() => {
+            window.dispatchEvent(
+              new CustomEvent("lc:settings-open-tab", { detail: { tab: "keys" } }),
+            );
+          }, 0);
           return false;
         }
       } catch {
@@ -1438,6 +1926,9 @@ export default function App() {
     switch (view.kind) {
       case "library":
         return "library";
+      case "projects":
+      case "project":
+        return "projects";
       case "earn":
       case "bounty-setup":
         return "earn";
@@ -1469,6 +1960,10 @@ export default function App() {
     <MainShell>
       <SideNav
         activeKey={settingsOpen ? "settings" : sideNavActiveKey}
+        workspaceProgress={!!runningProject || view.kind === "downloading" || view.kind === "lifting"}
+        libraryDot={libraryDot}
+        earnDot={false}
+        settingsDot={false}
         onSelect={(key) => {
           switch (key) {
             case "workspace":
@@ -1476,6 +1971,9 @@ export default function App() {
               break;
             case "library":
               setView({ kind: "library" });
+              break;
+            case "projects":
+              setView({ kind: "projects" });
               break;
             case "earn":
               setView({ kind: "earn" });
@@ -1528,7 +2026,7 @@ export default function App() {
               if (raw === "failed") return "failed";
               return "starting";
             })()}
-            notificationCount={0}
+            notificationCount={notificationCount}
             tier={userTier}
             onOpen={() => setPanelOpen(true)}
           />
@@ -1551,7 +2049,7 @@ export default function App() {
             / today's leader signals. Fixed-position; below modals (z-20). */}
         <SignalLine />
         {view.kind === "library" && (
-          <RoomShell roomKey="library" align="top">
+          <RoomShell roomKey="library" align="top" atmosphere="clips">
             <LibraryTab
               onOpenProject={(project) => setView({ kind: "results", project })}
               onGoToWorkstation={() => setView({ kind: "empty" })}
@@ -1559,16 +2057,81 @@ export default function App() {
           </RoomShell>
         )}
 
+        {view.kind === "projects" && (
+          <RoomShell roomKey="library" align="top" atmosphere="clips">
+            <ProjectsTab
+              onOpenProjectDetail={(slug) => setView({ kind: "project", slug })}
+              onGoToEarn={() => setView({ kind: "earn" })}
+              onGoToWorkstation={() => setView({ kind: "empty" })}
+              onGoToLibrary={() => setView({ kind: "library" })}
+              // v0.7.73 FIX-1 — canonical upgrade helper routes through
+              // openUpgradeWhenSignedIn: gates on cached JWT, runs
+              // connect-desktop activate() first if signed-out, then opens
+              // the Whop checkout webview. Mirrors every other upgrade CTA
+              // in the app (Settings, ResultsGrid, PublishModal, etc.).
+              onUpgrade={() => openUpgradeWhenSignedIn()}
+              userTier={userTier}
+            />
+          </RoomShell>
+        )}
+
+        {view.kind === "project" && (
+          <RoomShell roomKey="library" align="top" atmosphere="clips">
+            <ProjectDetail
+              slug={view.slug}
+              onBack={() => setView({ kind: "projects" })}
+              onResume={(project) => {
+                // v0.7.76 F1 — Resume routing.
+                //
+                // A populated Project (has clips OR has a source path
+                // that was ingested) goes to the existing results view.
+                // A blank Project — created via Projects → New Project
+                // with no source — went to results too, but landed on
+                // an EMPTY results screen with no entry point. That was
+                // the "Add clip to Project is broken" dead-end.
+                //
+                // Now: blank → workstation (so user can paste / drop / pick)
+                //       with a capture-context pill so they remember which
+                //       Project they came from.
+                const hasClips =
+                  Array.isArray(project.clips) && project.clips.length > 0;
+                const hasSource =
+                  typeof project.source_path === "string" &&
+                  project.source_path.length > 0;
+                if (hasClips || hasSource) {
+                  setActiveCaptureContext(null);
+                  setView({ kind: "results", project });
+                } else {
+                  const name =
+                    project.whop_bounty_title ||
+                    project.source_filename ||
+                    project.slug;
+                  setActiveCaptureContext({
+                    slug: project.slug,
+                    name,
+                    armedAt: Date.now(),
+                  });
+                  setView({ kind: "empty" });
+                }
+              }}
+              userTier={userTier}
+              onGoToEarn={() => setView({ kind: "earn" })}
+              onGoToLibrary={() => setView({ kind: "library" })}
+              onUpgrade={() => openUpgradeWhenSignedIn()}
+            />
+          </RoomShell>
+        )}
+
         {view.kind === "learn" && (
-          <RoomShell roomKey="learn" align="top"><LearnTab /></RoomShell>
+          <RoomShell roomKey="learn" align="top" atmosphere="learn"><LearnTab /></RoomShell>
         )}
 
         {view.kind === "community" && (
-          <RoomShell roomKey="community" align="top"><CommunityTab /></RoomShell>
+          <RoomShell roomKey="community" align="top" atmosphere="community"><CommunityTab /></RoomShell>
         )}
 
         {view.kind === "schedule" && (
-          <RoomShell roomKey="schedule" align="top">
+          <RoomShell roomKey="schedule" align="top" atmosphere="schedule">
             <SchedulePage
               onOpenWorkspace={() => setView({ kind: "empty" })}
               initialSub={scheduleInitialSub}
@@ -1583,15 +2146,34 @@ export default function App() {
           // (EarnTab h-full → EarnPanelMount containerRef h-full → non-zero
           // ResizeObserver rect → webview visible). Without stretch the
           // container collapses to 0 and Earn looks blank. Do not change.
-          <RoomShell roomKey="earn" align="stretch">
+          <RoomShell roomKey="earn" align="stretch" atmosphere="earn">
           <EarnTab
             userTier={userTier}
             onSignIn={() => setView({ kind: "first-run" })}
             onStartBounty={(bounty) => {
-              // Route into a focused, bounty-specific setup screen — detected
-              // source URL, paste, or upload-local — instead of dumping the
-              // clipper into the generic drop flow.
-              setView({ kind: "bounty-setup", bounty });
+              // v0.7.71 — Resume-don't-recreate. If an active (non-done)
+              // project already exists for this whop_bounty_id, route the
+              // user back into that Project instead of spinning up a fresh
+              // bounty-setup screen. Treats the Project as the source of
+              // truth for the campaign's body of work. Falls through to the
+              // normal bounty-setup flow on the first-time path, on errors,
+              // or when every prior run for the bounty is `done`.
+              void (async () => {
+                try {
+                  const { projects } = await sidecar.listBountyProjects();
+                  const resumable = projects.find(
+                    (p) => p.whop_bounty_id === bounty.id && !p.done,
+                  );
+                  if (resumable) {
+                    const { project } = await sidecar.getProject(resumable.slug);
+                    setView({ kind: "results", project });
+                    return;
+                  }
+                } catch (e) {
+                  console.warn("[start-bounty] resume check failed:", e);
+                }
+                setView({ kind: "bounty-setup", bounty });
+              })();
             }}
             onResumeProject={(slug) => {
               void sidecar
@@ -1641,7 +2223,7 @@ export default function App() {
         )}
 
         {view.kind === "bounty-setup" && (
-          <RoomShell roomKey="bounty" align="top">
+          <RoomShell roomKey="bounty" align="top" atmosphere="earn">
             <BountySourceSetup
               bounty={view.bounty}
               detectedSources={extractSourceUrls(view.bounty.description)}
@@ -1663,10 +2245,38 @@ export default function App() {
           // RoomShell handles the camera-dolly entry; UploadPortal mounts
           // outside the shell so its layoutId morph from the Create tile
           // works across the AnimatePresence boundary.
-          <RoomShell roomKey="workstation">
+          <RoomShell roomKey="workstation" atmosphere="workspace">
+            {activeCaptureContext && (
+              // v0.7.76 F1 — Capture-into-Project breadcrumb. Fixed
+              // position so it does not affect RoomShell's height
+              // cascade (preserves IG-008 + IG-011 contracts). Clicking
+              // "back" returns to Project Detail and clears the context.
+              <div className="pointer-events-none fixed left-1/2 top-3 z-40 -translate-x-1/2">
+                <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-fuchsia/40 bg-paper-elev/95 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-text-secondary shadow-[var(--glow-sm)] backdrop-blur">
+                  <span className="text-fuchsia">capturing into</span>
+                  <span className="max-w-[180px] truncate text-ink">
+                    {activeCaptureContext.name}
+                  </span>
+                  <span className="text-text-tertiary">·</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const slug = activeCaptureContext.slug;
+                      setActiveCaptureContext(null);
+                      setView({ kind: "project", slug });
+                    }}
+                    className="text-text-secondary transition-colors hover:text-fuchsia-deep"
+                  >
+                    back to project
+                  </button>
+                </div>
+              </div>
+            )}
             <WorkstationRoom
               onCreate={() => setUploadPortal({ open: true, intent: "clips" })}
               onImport={() => void handleImportDirect()}
+              onProjects={() => setView({ kind: "projects" })}
+              projectsCount={projectsCount}
               onThumbnails={() => {
                 // v0.7.31 — Opens the ThumbnailStudio surface. No project
                 // context yet from the empty state, so we pass slug="" — the
@@ -1694,6 +2304,8 @@ export default function App() {
               dropError={dropError}
               userTier={userTier}
               importing={importing}
+              displayName={displayName}
+              isCold={!signedIn || (projectsCount !== null && projectsCount === 0)}
             />
           </RoomShell>
         )}
@@ -1855,8 +2467,10 @@ export default function App() {
                   // a centered Tauri child webview so the user never leaves
                   // Liquid Clips for billing. On close the panel refreshes
                   // /sync; if Stripe Checkout succeeded the quota wall lifts.
-                  void import("./components/auth/useAuthPanel").then((m) =>
-                    m.openAuthPanel("upgrade"),
+                  // v0.7.68 P0 — route signed-out users through activation
+                  // first so they don't pay without binding the desktop.
+                  void import("./lib/upgradeWithAuth").then((m) =>
+                    m.openUpgradeWhenSignedIn(),
                   );
                 }}
                 className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white hover:bg-fuchsia-bright"
@@ -2204,13 +2818,16 @@ export default function App() {
 
       {settingsOpen && (
         <Settings
+          initialTab={settingsInitialTab}
           onOpenSchedule={(subtab) => {
             setSettingsOpen(false);
+            setSettingsInitialTab(undefined);
             setScheduleInitialSub(subtab);
             setView({ kind: "schedule" });
           }}
           onClose={() => {
             setSettingsOpen(false);
+            setSettingsInitialTab(undefined);
             // Settings can change auth state — for example, the user activated
             // via /connect-desktop in another window or the JWT was rotated
             // by /sync. Re-poll so the top-nav indicator stays honest.
@@ -2252,10 +2869,6 @@ export default function App() {
           signedIn ? () => setConfirmSignOutOpen(true) : undefined
         }
       />
-      {/* NotificationBell is still referenced from a few legacy callers (Earn
-          empty state etc.); leaving the import in place even though the
-          cockpit header no longer surfaces it directly. */}
-      {false && <NotificationBell onOpen={() => setInboxOpen(true)} />}
       {/* Invaders overlay — portals to document.body so it's not affected by
           MainShell padding when the browse panel is open. Triggered manually
           from JuniorLoader / WorkingStage; auto-closes when the pipeline
@@ -2383,6 +2996,10 @@ export default function App() {
           host listens for `lc:toast` window events dispatched from anywhere
           in the tree (EarnPanelMount, App drop handlers, future surfaces). */}
       <GlobalToastHost />
+      {/* Full-screen panic UI when the Python sidecar dies mid-session.
+          Mounts once at root; it self-subscribes to sidecar:died and only
+          renders when a crash is reported. */}
+      <SidecarCrashOverlay />
     </MainShell>
   );
 }
@@ -2432,6 +3049,37 @@ function GlobalAuthPanel() {
 // useEffect and reflects it via setUserTier.
 function setUserTierGlobalEvent(tier: string) {
   window.dispatchEvent(new CustomEvent("lc:tier-refresh", { detail: { tier } }));
+}
+
+// v0.7.68 P0 — Origin guard for checkout-complete postMessage. Production
+// checkout lives on the Clerk primary domain (liquidclips.app) or its
+// historical account subdomain; localhost is allowed only in dev builds.
+function isTrustedCheckoutOrigin(origin: string): boolean {
+  if (origin === "https://liquidclips.app") return true;
+  if (origin === "https://account.liquidclips.app") return true;
+  if (import.meta.env.DEV && /^http:\/\/localhost(:\d+)?$/.test(origin)) return true;
+  return false;
+}
+
+// v0.7.68 P0 — Pull a fresh /sync + /me and broadcast the normalized tier.
+// Called by the checkout-complete listener and shared with manual recheck
+// flows. Mirrors the admin-fallback logic used at boot and in GlobalAuthPanel.
+async function refreshAccountTier(): Promise<void> {
+  try {
+    const m = await import("./lib/backend");
+    const [s, me] = await Promise.all([
+      m.syncStatus(),
+      m.meStatusLegacy().catch(() => null),
+    ]);
+    const isAdmin =
+      s?.admin_override === true ||
+      s?.tier === "autopilot" ||
+      isAdminEmail(me?.email);
+    const nextTier = isAdmin ? "agency" : normalizeTier(s?.tier ?? null);
+    if (nextTier) setUserTierGlobalEvent(nextTier);
+  } catch {
+    /* best-effort — caller should not block UX on failure */
+  }
 }
 
 // ship-lens v0.7.13 T1.1 — Root-level toast. Lives outside Cockpit + every

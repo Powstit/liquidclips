@@ -30,7 +30,7 @@ import type { PlatformId } from "../PlatformBadge";
 import type { ChannelStatus } from "../../lib/backend";
 import { RingButton } from "../cockpit/LibraryCard";
 import { useTier } from "../../lib/useTier";
-import { openAuthPanel } from "../auth/useAuthPanel";
+import { openUpgradeWhenSignedIn } from "../../lib/upgradeWithAuth";
 import type { Clip, OverlayType, Project, RatioKey } from "../../lib/sidecar";
 import { sidecar, humanError } from "../../lib/sidecar";
 import { useReactionBakeProgress } from "../../lib/useReactionBakeProgress";
@@ -43,6 +43,10 @@ import { PlatformBadge } from "../PlatformBadge";
 // lived in the above-thumb header row (cut per the mockup).
 // import { useCountUp } from "../../lib/useCountUp";
 import { ConfirmDialog } from "../ConfirmDialog";
+
+function showReactionToast(kind: "success" | "error" | "info", message: string) {
+  window.dispatchEvent(new CustomEvent("lc:toast", { detail: { kind, message } }));
+}
 
 // Self-contained card. Tap = play preview. Layout icons swap composition in
 // place. Copy buttons inline. "..." opens the side-door full editor for the
@@ -122,6 +126,12 @@ export const ClipCard = React.memo(function ClipCard({
   // around ReactionControls' Solo+ moat; mirroring the gate here closes
   // that surface so the conversion offer stays consistent everywhere.
   const clipCardTier = useTier();
+  // SECTION E/F — live tier ref so changeReaction can re-check after an
+  // explicit refresh without waiting for a re-render.
+  const clipCardTierRef = useRef(clipCardTier);
+  useEffect(() => {
+    clipCardTierRef.current = clipCardTier;
+  }, [clipCardTier]);
   // v0.7.46 — kebab menu retired in favour of the inline RingButton row
   // (Caption / Reaction / Copy / Editor / Remove). Removing the showMenu
   // state + refs and the dead MenuItem helper.
@@ -244,6 +254,7 @@ export const ClipCard = React.memo(function ClipCard({
           setBusy(false);
           return;
         }
+        showReactionToast("info", "Adding reaction…");
         await sidecar.startOverlayBake(slug, index - 1, {
           type: kind as OverlayType,
           source_path: pick.path,
@@ -258,8 +269,11 @@ export const ClipCard = React.memo(function ClipCard({
           setBusy(false);
           if (result.status === "complete") {
             onProjectChange(result.project);
+            showReactionToast("success", "Reaction added to clip.");
           } else if (!result.canceled) {
-            setCockpitError(`Layout swap failed — ${result.message.slice(0, 90)}`);
+            const msg = result.message;
+            setCockpitError(`Layout swap failed — ${msg.slice(0, 90)}`);
+            showReactionToast("error", `Reaction failed — ${msg.slice(0, 120)}`);
             window.setTimeout(() => setCockpitError(null), 4500);
           }
         })
@@ -268,6 +282,7 @@ export const ClipCard = React.memo(function ClipCard({
           setBusy(false);
           const msg = humanError(err);
           setCockpitError(`Layout swap failed — ${msg.slice(0, 90)}`);
+          showReactionToast("error", `Reaction failed — ${msg.slice(0, 120)}`);
           window.setTimeout(() => setCockpitError(null), 4500);
         });
     } catch (e) {
@@ -275,6 +290,7 @@ export const ClipCard = React.memo(function ClipCard({
       setBusy(false);
       const msg = humanError(e);
       setCockpitError(`Layout swap failed — ${msg.slice(0, 90)}`);
+      showReactionToast("error", `Reaction failed — ${msg.slice(0, 120)}`);
       window.setTimeout(() => setCockpitError(null), 4500);
     }
   }
@@ -289,11 +305,15 @@ export const ClipCard = React.memo(function ClipCard({
     // to skip the tier gate that lives on the cockpit's layout-tile grid,
     // letting free users bake paid layouts from any card. Match the same
     // Solo+ guard that ReactionControls enforces.
-    if (clipCardTier.tier === "free") {
+    // SECTION E/F — refresh tier if we only have a stale cache before gating.
+    if (clipCardTierRef.current.tier === "free" && !clipCardTierRef.current.status) {
+      await clipCardTier.refreshTier();
+    }
+    if (clipCardTierRef.current.tier === "free") {
       import("../../lib/paywallNotify").then(({ notifyPaywall }) =>
-        notifyPaywall("reaction_layout", clipCardTier.tier),
+        notifyPaywall("reaction_layout", clipCardTierRef.current.tier),
       );
-      openAuthPanel("upgrade");
+      openUpgradeWhenSignedIn();
       return;
     }
     const startingLayout: LayoutKey =
@@ -369,6 +389,7 @@ export const ClipCard = React.memo(function ClipCard({
     <article
       className={`group/clipcard library-card relative${ringClass}`}
       onClick={handleCardClick}
+      onDoubleClick={onOpenEditor}
       aria-selected={selectable ? !!selected : undefined}
     >
       {/* v0.7.32 FINAL — literal copy of the LibraryCard structure (which

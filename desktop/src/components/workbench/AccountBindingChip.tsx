@@ -35,7 +35,7 @@
 // EMPTY-STATE: when no channels exist at all, we don't dead-end the user
 // inside the popover. We surface Connect Instagram / Connect TikTok
 // buttons in-place (one-click connect, per the contract) AND a fallback
-// link to Settings → Connections for everything else.
+// link to Schedule → Loadout for everything else.
 //
 // PERSISTENCE: store.bindChannels writes through to localStorage via the
 // existing persistedSession debounce (Agent 1) — bindings survive reboot.
@@ -272,7 +272,7 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
             // like our error.
             emitToast(
               "error",
-              `${platformLabel(target.platform)} disconnected — reconnect from Settings`,
+              `${platformLabel(target.platform)} disconnected — reconnect from Schedule → Channels`,
             );
           } else if (target && target.status === "pending_link") {
             emitToast(
@@ -452,7 +452,7 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
             // an empty popover with no way forward. Per the Connect-channel
             // flow contract: one-click Connect Instagram / Connect TikTok
             // here, with an inline "Waiting for browser…" state + 90s
-            // timeout. Settings → Connections stays as the catch-all link
+            // timeout. Schedule → Loadout stays as the catch-all link
             // for other platforms / re-link / diagnose.
             <div className="flex flex-col gap-3">
               {connecting ? (
@@ -511,7 +511,7 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
                     </button>
                   </div>
                   <p className="font-mono text-[11px] text-text-tertiary">
-                    Need YouTube, X, or another platform? Open Settings → Connections.
+                    Need YouTube, X, or another platform? Open Schedule → Loadout.
                   </p>
                 </>
               )}
@@ -600,7 +600,7 @@ function rowViewFor(status: Channel["status"]): RowView {
       return {
         kind: "pending",
         badge: "finish linking",
-        hint: "Finish linking this channel in Settings before binding",
+        hint: "Finish linking this channel in Schedule → Channels before binding",
       };
     case "unlinked":
       // ship-lens v0.7.8 P1 — Platform-side revoke. NOT "pending" — the
@@ -608,19 +608,19 @@ function rowViewFor(status: Channel["status"]): RowView {
       return {
         kind: "unlinked",
         badge: "disconnected",
-        hint: "Disconnected — reconnect from Settings → Connections",
+        hint: "Disconnected — reconnect from Schedule → Channels",
       };
     case "error":
       return {
         kind: "error",
         badge: "reconnect",
-        hint: "This channel needs to be reconnected — open Settings → Connections",
+        hint: "This channel needs to be reconnected — open Schedule → Channels",
       };
     case "paused":
       return {
         kind: "paused",
         badge: "paused",
-        hint: "Paused — resume in Settings → Connections before binding",
+        hint: "Paused — resume in Schedule → Channels before binding",
       };
     default:
       return { kind: "unknown", badge: status, hint: `Status: ${status}` };

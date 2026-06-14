@@ -134,13 +134,13 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
           </span>
           <button
             onClick={editCaptured}
-            className="rounded-full border border-line bg-paper px-3 py-1 font-sans text-[11px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
+            className="btn-secondary px-3 py-1 text-[11px]"
           >
             Edit submission ID
           </button>
           <button
             onClick={clearCapturedState}
-            className="rounded-full border border-line bg-transparent px-3 py-1 font-sans text-[11px] font-medium text-text-secondary hover:border-[var(--color-danger)]/40 hover:text-[var(--color-danger)]"
+            className="btn-danger px-3 py-1 text-[11px]"
           >
             Clear submission
           </button>
@@ -203,14 +203,14 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
                   );
                 }
               }}
-              className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
+              className="btn-primary px-4 py-1.5 text-[12px]"
             >
               Open reward on Whop ↗
             </button>
           )}
           <button
             onClick={() => setOpen((v) => !v)}
-            className="rounded-full border border-line bg-paper px-3.5 py-1.5 font-sans text-[12px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia-deep"
+            className="btn-secondary px-3.5 py-1.5 text-[12px]"
           >
             {open ? "Cancel" : "I've submitted — paste link"}
           </button>
@@ -269,7 +269,7 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
             <button
               onClick={save}
               disabled={!draft.trim()}
-              className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-40"
+              className="btn-primary px-4 py-1.5 text-[12px] disabled:opacity-40"
             >
               Track this submission →
             </button>

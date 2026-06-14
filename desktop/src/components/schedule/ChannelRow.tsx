@@ -10,10 +10,10 @@
 //
 // Status semantics:
 //   active       → toggle ON, fuchsia dot, handle = @handle
-//   paused       → toggle OFF, dim dot,    handle = "paused"
-//   pending_link → toggle OFF, amber dot,  handle = "finish linking → "
-//   unlinked     → toggle OFF, amber dot,  handle = "disconnected · reconnect"
-//   error        → toggle OFF, red dot,    handle = "reconnect"
+//   paused       → toggle OFF, dim dot,    chip = "Paused"
+//   pending_link → toggle OFF, amber dot,  chip = "Finish linking"
+//   unlinked     → toggle OFF, amber dot,  chip = "Disconnected"
+//   error        → toggle OFF, red dot,    chip = "Connection error"
 //   deleted      → row hidden (manager filters before mount)
 import { useEffect, useRef, useState } from "react";
 import type { Channel } from "../../lib/backend";
@@ -34,19 +34,19 @@ function classifyStatus(channel: Channel): StatusMeta {
     case "active":
       return { tone: "ok", microcopy: null, on: true, primaryAction: "toggle" };
     case "paused":
-      return { tone: "muted", microcopy: "paused", on: false, primaryAction: "toggle" };
+      return { tone: "muted", microcopy: "Paused", on: false, primaryAction: "toggle" };
     case "pending_link":
-      return { tone: "warn", microcopy: "finish linking →", on: false, primaryAction: "link" };
+      return { tone: "warn", microcopy: "Finish linking", on: false, primaryAction: "link" };
     case "unlinked":
-      return { tone: "warn", microcopy: "disconnected · reconnect", on: false, primaryAction: "link" };
+      return { tone: "muted", microcopy: "Disconnected", on: false, primaryAction: "link" };
     case "error":
-      return { tone: "danger", microcopy: "reconnect", on: false, primaryAction: "link" };
+      return { tone: "danger", microcopy: "Connection error", on: false, primaryAction: "link" };
     case "deleted":
       // Unreachable in practice — ChannelsManager.handleDelete (line ~232)
       // filters the deleted channel out of state before re-render, so a
       // `deleted` row never mounts. The mapping is here to keep the switch
       // exhaustive against the Channel.status enum union.
-      return { tone: "muted", microcopy: "deleted", on: false, primaryAction: "toggle" };
+      return { tone: "muted", microcopy: "Removed", on: false, primaryAction: "toggle" };
   }
 }
 
@@ -75,16 +75,23 @@ function toPlatformId(p: string): PlatformId | null {
 
 const TONE_DOT: Record<StatusTone, string> = {
   ok: "bg-fuchsia shadow-[0_0_8px_rgba(255,26,140,0.7)]",
-  warn: "bg-fuchsia-deep shadow-[0_0_8px_rgba(255,102,184,0.7)]",
+  warn: "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.7)]",
   danger: "bg-[var(--color-danger)] shadow-[0_0_8px_rgba(220,38,38,0.7)]",
   muted: "bg-text-tertiary",
 };
 
-const TONE_HANDLE: Record<StatusTone, string> = {
-  ok: "text-text-tertiary",
-  warn: "text-fuchsia-deep",
+const CHIP_BG: Record<StatusTone, string> = {
+  ok: "",
+  warn: "bg-amber-400/15",
+  danger: "bg-[var(--color-danger)]/15",
+  muted: "bg-paper-elev",
+};
+
+const CHIP_TEXT: Record<StatusTone, string> = {
+  ok: "",
+  warn: "text-amber-400",
   danger: "text-[var(--color-danger)]",
-  muted: "text-text-tertiary",
+  muted: "text-text-secondary",
 };
 
 export function ChannelRow({
@@ -193,10 +200,10 @@ export function ChannelRow({
 
   return (
     <div
-      className={`group flex items-center gap-3 rounded-md border px-3 py-2.5 transition-colors ${
+      className={`group flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
         meta.on
-          ? "border-fuchsia bg-fuchsia/[0.05]"
-          : "border-line/60 bg-transparent hover:border-line"
+          ? "border-fuchsia bg-fuchsia-soft/20"
+          : "border-line/40 bg-paper-elev/40 hover:border-fuchsia hover:bg-fuchsia-soft/20"
       }`}
     >
       {/* status dot */}
@@ -212,17 +219,26 @@ export function ChannelRow({
         </div>
       )}
 
-      {/* label + handle / microcopy */}
+      {/* label + handle / status chip */}
       <div className="flex min-w-0 flex-1 items-baseline gap-3">
         <span className="truncate font-sans text-[13px] font-medium text-ink">
           {channel.label}
         </span>
-        <span
-          className={`ml-auto truncate font-mono text-[10px] tracking-[0.04em] ${TONE_HANDLE[meta.tone]}`}
-          title={meta.microcopy ?? displayHandle}
-        >
-          {meta.microcopy ?? displayHandle}
-        </span>
+        {meta.microcopy ? (
+          <span
+            className={`ml-auto truncate rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] ${CHIP_BG[meta.tone]} ${CHIP_TEXT[meta.tone]}`}
+            title={meta.microcopy}
+          >
+            {meta.microcopy}
+          </span>
+        ) : (
+          <span
+            className="ml-auto truncate font-mono text-[10px] tracking-[0.04em] text-text-tertiary"
+            title={displayHandle}
+          >
+            {displayHandle}
+          </span>
+        )}
       </div>
 
       {/* delete affordance — appears on hover, behind a confirm so a misclick

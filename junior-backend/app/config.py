@@ -49,10 +49,9 @@ class Settings(BaseSettings):
     # ?whop_disabled=1). Populate on Railway after registering the OAuth app.
     whop_oauth_client_id: str = ""
     whop_oauth_client_secret: str = ""
-    # Default targets the rebrand domain api.liquidclips.app. The legacy
-    # api.jnremployee.com still serves junior-backend today, so override on
-    # Railway via WHOP_OAUTH_REDIRECT_URI=https://api.jnremployee.com/auth/whop/callback
-    # until api.liquidclips.app is pointed at this Railway service + has TLS.
+    # Default targets the canonical backend domain api.liquidclips.app.
+    # Override on Railway via WHOP_OAUTH_REDIRECT_URI only if a custom domain
+    # is required; the canonical domain should be used in all new integrations.
     whop_oauth_redirect_uri: str = "https://api.liquidclips.app/auth/whop/callback"
 
     # License JWT signing — Ed25519. Generated on first boot if absent and
@@ -91,20 +90,26 @@ class Settings(BaseSettings):
     # /privacy /terms /unsubscribe etc. so creators can verify the brand in
     # any mail client.
     public_site_url: str = "https://liquidclips.app"
-    account_site_url: str = "https://account.jnremployee.com"
+    account_site_url: str = "https://account.liquidclips.app"
+    api_site_url: str = "https://api.liquidclips.app"
     app_download_url: str = "https://liquidclips.app/download"
     tauri_update_endpoint: str = "https://updates.liquidclips.app/latest.json"
     tauri_update_targets: str = "darwin-aarch64,darwin-x86_64"
-    whop_manage_url: str = "https://whop.com/jnremployee"
-    # partner.jnremployee.com was a planned subdomain that never had a Vercel
-    # deployment, so clicks from AffiliateHero / PayoutsTab landed on a
-    # Vercel DEPLOYMENT_NOT_FOUND. Pointing at the working jnremployee.com
-    # partner redirect chain (307 → /affiliates) until partner.jnremployee.com
-    # ships a real deployment. Override per-env on Railway via
-    # WHOP_PARTNER_DASHBOARD_URL when ready.
-    whop_partner_dashboard_url: str = "https://partner.jnremployee.com"
+    whop_manage_url: str = "https://whop.com/liquidclips"
+    # v0.7.68 P1 — partner.liquidclips.app is the canonical affiliate dashboard
+    # domain. The old partner.jnremployee.com redirect chain is deprecated and
+    # can land on a stale marketing page instead of the signed-in dashboard.
+    # Override per-env on Railway via WHOP_PARTNER_DASHBOARD_URL if needed.
+    whop_partner_dashboard_url: str = "https://partner.liquidclips.app"
     whop_payouts_url: str = "https://whop.com/dashboard/payouts"
-    stripe_connect_onboarding_url: str = "https://account.jnremployee.com/dashboard#payouts"
+
+    # v0.7.69 — first-touch attribution cookie domain for /r/{tracking_id}.
+    # Must be a leading-dot apex so account.liquidclips.app, partner.liquidclips.app
+    # and the bare apex all share the cookie. Set to empty string ("") to
+    # bind cookies to the current host (useful for local dev). Override per-env
+    # on Railway via ATTRIBUTION_COOKIE_DOMAIN.
+    attribution_cookie_domain: str = ".liquidclips.app"
+    stripe_connect_onboarding_url: str = "https://account.liquidclips.app/dashboard#payouts"
 
     # Stripe Connect — Express accounts for non-Whop affiliate payouts. When
     # stripe_secret_key is empty, the onboarding endpoint returns 503; Whop
@@ -112,8 +117,8 @@ class Settings(BaseSettings):
     stripe_secret_key: str = ""
     stripe_connect_webhook_secret: str = ""   # whsec_… for /webhooks/stripe-connect
     stripe_connect_default_country: str = "GB"
-    stripe_connect_return_url: str = "https://account.jnremployee.com/dashboard?stripe_return=1"
-    stripe_connect_refresh_url: str = "https://account.jnremployee.com/dashboard?stripe_refresh=1"
+    stripe_connect_return_url: str = "https://account.liquidclips.app/dashboard?stripe_return=1"
+    stripe_connect_refresh_url: str = "https://account.liquidclips.app/dashboard?stripe_refresh=1"
 
     # PostHog — observability only (funnel events, attribution debugging).
     # Backend uses the PROJECT key, same as the frontends — there's no need

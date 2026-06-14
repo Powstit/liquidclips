@@ -516,6 +516,15 @@ class Project:
     whop_bounty_spots_remaining: int | None = None
     whop_bounty_url: str | None = None
 
+    # v0.7.73 — Project Manager. Optional user-facing type carried in
+    # project.json so blank/manual projects can self-classify even when
+    # `whop_bounty_id` / `imported` heuristics aren't conclusive. Values used
+    # by the UI today: "Manual" | "Content" | "Client" | "Import" | "Earn".
+    # `None` keeps legacy projects unchanged — the UI falls back to the
+    # heuristic classifier (whop_bounty_id → Earn, imported → Import, else
+    # Manual).
+    project_type: str | None = None
+
     # ----- factories -----
 
     @classmethod
@@ -571,6 +580,56 @@ class Project:
             whop_bounty_creator=(bounty or {}).get("creator"),
             whop_bounty_spots_remaining=(bounty or {}).get("spotsRemaining"),
             whop_bounty_url=(bounty or {}).get("whopUrl"),
+        )
+        proj.save()
+        return proj
+
+    @classmethod
+    def create_blank(
+        cls,
+        name: str,
+        project_type: str = "Manual",
+        goal: str | None = None,
+        projects_root: Path | None = None,
+    ) -> "Project":
+        """v0.7.73 — Create a Project with NO source media.
+
+        Used by the Projects → New Project flow. Skips `_validate_source_path`
+        because the project has no source yet; `Project.load` already
+        tolerates `source_path == ""` (project.py:789-793), and downstream
+        stages tolerate an empty source via `clips=[]`. The user can attach
+        clips via project_memberships.json (cross-project references) or by
+        Resume → Import inside the workstation.
+        """
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("create_blank requires a non-empty name")
+        clean_name = name.strip()
+        clean_type = (project_type or "Manual").strip() or "Manual"
+
+        root_base = projects_root or (CLIPS_HOME / "projects")
+        root_base.mkdir(parents=True, exist_ok=True)
+        base_slug = slugify(clean_name) or "project"
+        base_slug = _validate_slug(base_slug)
+        candidate = root_base / base_slug
+        i = 2
+        while candidate.exists():
+            candidate = root_base / f"{base_slug}-{i}"
+            i += 1
+        _resolve_within(root_base, candidate.parent)
+        candidate.mkdir(parents=True)
+        for sub in SUBDIRS:
+            (candidate / sub).mkdir()
+
+        proj = cls(
+            id=uuid.uuid4().hex,
+            slug=candidate.name,
+            root=candidate,
+            source_path="",
+            source_filename=clean_name,
+            created_at=time.time(),
+            brief=goal,
+            intent="both",
+            project_type=clean_type,
         )
         proj.save()
         return proj
@@ -831,6 +890,7 @@ class Project:
             whop_bounty_creator=data.get("whop_bounty_creator"),
             whop_bounty_spots_remaining=data.get("whop_bounty_spots_remaining"),
             whop_bounty_url=data.get("whop_bounty_url"),
+            project_type=data.get("project_type"),
         )
 
     @staticmethod
@@ -1025,6 +1085,7 @@ class Project:
             "whop_bounty_creator": self.whop_bounty_creator,
             "whop_bounty_spots_remaining": self.whop_bounty_spots_remaining,
             "whop_bounty_url": self.whop_bounty_url,
+            "project_type": self.project_type,
             "stages": {s: self.stages[s].to_dict() for s in STAGES},
             "clips": self.clips,
         }
@@ -1054,6 +1115,7 @@ class Project:
             "whop_bounty_creator": self.whop_bounty_creator,
             "whop_bounty_spots_remaining": self.whop_bounty_spots_remaining,
             "whop_bounty_url": self.whop_bounty_url,
+            "project_type": self.project_type,
             "stages": {s: self.stages[s].to_dict() for s in STAGES},
             "clips": self.clips,
         }

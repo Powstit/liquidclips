@@ -188,8 +188,8 @@ export function AddChannelModal({
         setState({
           kind: "error",
           message: link_url
-            ? `Invalid link URL from server (${link_url.slice(0, 40)}…). Try again or contact support.`
-            : "Server returned an empty link URL. Try again or contact support.",
+            ? "The link we received didn’t look right. Try again or contact support."
+            : "We didn’t get a valid link. Try again or contact support.",
           channel,
         });
         return;
@@ -317,7 +317,7 @@ export function AddChannelModal({
               <button
                 onClick={() => void create()}
                 disabled={!label.trim()}
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-fuchsia px-6 py-3 font-sans text-[14px] font-medium text-paper hover:bg-fuchsia-bright disabled:opacity-40"
+                className="btn-primary"
               >
                 Continue → Link account
               </button>
@@ -354,9 +354,9 @@ export function AddChannelModal({
               </div>
               <button
                 onClick={() => void reopenBrowser(state.linkUrl)}
-                className="font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary hover:text-ink"
+                className="btn-ghost"
               >
-                browser tab closed by mistake? click to reopen
+                Browser tab closed? Reopen it
               </button>
             </>
           )}
@@ -387,7 +387,7 @@ export function AddChannelModal({
               </div>
               <button
                 onClick={() => { onCreated(state.channel); onClose(); }}
-                className="rounded-full bg-fuchsia px-6 py-3 font-sans text-[14px] font-medium text-paper hover:bg-fuchsia-bright"
+                className="btn-primary"
               >
                 Done
               </button>
@@ -415,7 +415,7 @@ export function AddChannelModal({
                 />
                 <button
                   onClick={continueWithoutVerification}
-                  className="rounded-full border border-line bg-paper px-6 py-2.5 font-sans text-[13px] font-medium text-ink hover:border-fuchsia"
+                  className="btn-secondary"
                 >
                   Continue without verification
                 </button>
@@ -434,7 +434,7 @@ export function AddChannelModal({
               )}
               <button
                 onClick={() => void retryFromError()}
-                className="rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-ink hover:border-fuchsia"
+                className="btn-secondary"
               >
                 Try again
               </button>
@@ -483,7 +483,7 @@ function StillPendingReopenButton({
         }
       }}
       disabled={busy}
-      className="rounded-full bg-fuchsia px-6 py-3 font-sans text-[14px] font-medium text-paper hover:bg-fuchsia-bright disabled:opacity-50"
+      className="btn-primary disabled:opacity-50"
     >
       {busy ? "Opening browser…" : "Open browser again"}
     </button>

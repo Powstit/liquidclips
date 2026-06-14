@@ -18,7 +18,7 @@ import { sidecar, RATIOS, humanError } from "../lib/sidecar";
 import { PlatformBadgePicker } from "./PlatformBadge";
 import { OverlayTemplateGallery } from "./OverlayTemplateGallery";
 import { useTier } from "../lib/useTier";
-import { openAuthPanel } from "./auth/useAuthPanel";
+import { openUpgradeWhenSignedIn } from "../lib/upgradeWithAuth";
 import { CopyButton } from "./CopyButton";
 import { InfoTip } from "./InfoTip";
 import { type LayoutKey } from "./clips-feed/LayoutIcon";
@@ -390,7 +390,7 @@ export function ClipPreview({
       import("../lib/paywallNotify").then(({ notifyPaywall }) =>
         notifyPaywall("overlay_template", clipPreviewTier.tier),
       );
-      openAuthPanel("upgrade");
+      openUpgradeWhenSignedIn();
       return;
     }
     const gen = rpcGenRef.current;
@@ -399,7 +399,17 @@ export function ClipPreview({
     try {
       // IRON GATE IG-010 — non-blocking. start_apply_overlay_template runs
       // ffmpeg on a daemon thread and emits bake_complete/bake_error.
-      await sidecar.startApplyOverlayTemplate(slug, index - 1, key);
+      // v0.7.77 E/F — the sidecar returns { project } synchronously when no
+      // source_path is supplied (it just stamps the template choice). Waiting
+      // for bake_complete in that branch hangs the UI for 5 minutes. Detect
+      // the synchronous response and refresh immediately.
+      const res = await sidecar.startApplyOverlayTemplate(slug, index - 1, key);
+      if (gen !== rpcGenRef.current) return;
+      if ("project" in res) {
+        onProjectChange(res.project);
+        setOverlayTplOpen(false);
+        return;
+      }
       const result = await waitForBake(slug, index - 1);
       if (gen !== rpcGenRef.current) return;
       if (result.status === "error") {

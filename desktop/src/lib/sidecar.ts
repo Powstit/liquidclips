@@ -561,6 +561,8 @@ export type Project = {
   source_filename: string;
   created_at: number;
   brief: string | null;
+  /** v0.7.73 — Project Manager. Optional. See ProjectLibrarySummary. */
+  project_type?: string | null;
   intent: Intent;
   whop_bounty_id: string | null;
   whop_bounty_title: string | null;
@@ -623,6 +625,20 @@ export type ProjectLibrarySummary = {
   reacted_count: number;
   whop_bounty_id: string | null;
   whop_bounty_title: string | null;
+  /** v0.7.71 — surfaced alongside whop_bounty_id/title so Projects-tab
+   *  cards can render an RPM chip without re-querying Whop. Optional for
+   *  back-compat with v0.7.70-and-earlier sidecar bundles that emitted
+   *  the v0.7.8 shape. */
+  whop_bounty_reward_per_unit?: number | null;
+  whop_bounty_currency?: string | null;
+  /** v0.7.73 — Project Manager. User-facing type when set by the New
+   *  Project flow ("Manual" / "Content" / "Client" / "Import"). Optional
+   *  for back-compat; UI falls back to the heuristic classifier when
+   *  absent (whop_bounty_id → Earn, imported → Import, else Manual). */
+  project_type?: string | null;
+  /** v0.7.73 — goal/outcome string (mirrors project.json's `brief`).
+   *  Optional; ProjectCard renders one line when present. */
+  goal?: string | null;
   archived: boolean;
   archived_at: number | null;
   cover_thumb_path: string | null;
@@ -773,6 +789,14 @@ export const sidecar = {
   runStage: (slug: string, stage: StageName) =>
     sidecarCall<{ project: Project }>("run_stage", { slug, stage }),
   getProject: (slug: string) => sidecarCall<{ project: Project }>("get_project", { slug }),
+  /** v0.7.73 — Create a fresh Project with no source media. Used by the
+   *  Projects → New Project flow. Returns the new slug + root path. */
+  createBlankProject: (input: { name: string; project_type?: string; goal?: string | null }) =>
+    sidecarCall<{ slug: string; root: string }>("create_blank_project", {
+      name: input.name,
+      project_type: input.project_type ?? "Manual",
+      goal: input.goal ?? null,
+    }),
   listProjects: (limit = 100, includeArchived = false) =>
     sidecarCall<{ projects: ProjectLibrarySummary[] }>("list_projects", { limit, include_archived: includeArchived }),
   setProjectArchived: (slug: string, archived: boolean) =>
@@ -1028,15 +1052,32 @@ export const sidecar = {
       "whop_list_bounties",
       { first, ...(licenseJwt ? { license_jwt: licenseJwt } : {}) },
     ),
-  whopBounty: (id: string) =>
+  // v0.7.68 — public bounty discovery. NO licenseJwt parameter by design.
+  // Routes to the backend's unauthenticated /whop/bounties/public proxy
+  // (Campaign A only, shared cache, IP rate limit). Earn Available calls
+  // this on cold launch so the cards render without an unlock click.
+  // v0.7.69 — default 25 to match the backend `_MAX_BOUNTY_LIST_FIRST`
+  // clamp; previously 30 was silently downgraded at three layers.
+  whopListPublicBounties: (first = 25) =>
+    sidecarCall<{
+      bounties: WhopBounty[];
+      authenticated: false;
+      source: "public";
+      error?: string;
+    }>("whop_list_public_bounties", { first }),
+  // v0.7.65 — `licenseJwt` is an additive optional param. The Python side
+  // (method_whop_bounty / method_whop_submission) already accepts it and
+  // returns a gated `{ authenticated: false, error: "Continue session…" }`
+  // when missing — no keyring read. Mirrors the whopListBounties wiring.
+  whopBounty: (id: string, licenseJwt?: string) =>
     sidecarCall<{ bounty: WhopBounty | null; authenticated: boolean; error?: string }>(
       "whop_bounty",
-      { id },
+      { id, ...(licenseJwt ? { license_jwt: licenseJwt } : {}) },
     ),
-  whopSubmission: (id: string) =>
+  whopSubmission: (id: string, licenseJwt?: string) =>
     sidecarCall<{ submission: WhopSubmission | null; authenticated: boolean; error?: string }>(
       "whop_submission",
-      { id },
+      { id, ...(licenseJwt ? { license_jwt: licenseJwt } : {}) },
     ),
   applyOverlay: (
     slug: string,
