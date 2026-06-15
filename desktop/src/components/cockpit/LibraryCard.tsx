@@ -67,6 +67,8 @@ export function LibraryCard({
   // missing (project archived, file moved, iCloud not downloaded). Falls
   // through to the existing bug-glyph fallback.
   const [thumbError, setThumbError] = useState(false);
+  // v0.7.77 polish — iPhone Springboard "lifted app" drag-source state.
+  const [isDragging, setIsDragging] = useState(false);
   const thumbSrc = project.cover_thumb_path && !thumbError
     ? convertFileSrc(project.cover_thumb_path)
     : null;
@@ -77,7 +79,13 @@ export function LibraryCard({
       layout
       layoutId={`lib-card-${project.slug}`}
       initial={reduced ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.94 }}
-      animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+      animate={
+        reduced
+          ? { opacity: 1 }
+          : isDragging
+            ? { opacity: 0.55, y: 0, scale: 0.92 }
+            : { opacity: 1, y: 0, scale: 1 }
+      }
       exit={reduced ? { opacity: 0 } : { opacity: 0, y: 14, scale: 0.94 }}
       transition={
         reduced
@@ -117,7 +125,9 @@ export function LibraryCard({
         } catch {
           /* dataTransfer can throw in rare browser states — drag falls back to no-op */
         }
+        setIsDragging(true);
       }}
+      onDragEnd={() => setIsDragging(false)}
     >
       {/* Four HUD bracket corners — same dashed fuchsia language as the
           Workstation tiles, just smaller for the card scale. */}

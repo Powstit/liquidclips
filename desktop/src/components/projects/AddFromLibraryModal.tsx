@@ -25,6 +25,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { CheckSquare, FileVideo, Search, Square, X } from "lucide-react";
 import {
@@ -303,8 +304,6 @@ export function AddFromLibraryModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, adding, visible, selected.size, onClose, onAdd]);
 
-  if (!open) return null;
-
   const showInitialEmpty =
     !loading && !error && entries.length === 0;
   const showSearchEmpty =
@@ -322,12 +321,9 @@ export function AddFromLibraryModal({
     filters.size > 0;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex flex-col bg-paper/95 backdrop-blur-md"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Add from Library"
-    >
+    <AnimatePresence>
+      {open && (
+        <AddFromLibraryShell>
       {/* Header */}
       <header className="flex shrink-0 items-start justify-between gap-3 border-b border-line/60 px-6 py-4">
         <div className="flex flex-col gap-0.5">
@@ -497,7 +493,32 @@ export function AddFromLibraryModal({
               : `Add ${selected.size} clip${selected.size === 1 ? "" : "s"} to ${currentProjectName} →`}
         </button>
       </footer>
-    </div>
+        </AddFromLibraryShell>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/** v0.7.77 — Full-viewport modal shell with motion entry (backdrop blur
+ *  fade + content fade-y) and exit via AnimatePresence. */
+function AddFromLibraryShell({ children }: { children: React.ReactNode }) {
+  const reduced = useReducedMotion();
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex flex-col bg-paper/95 backdrop-blur-md"
+      initial={reduced ? { opacity: 0 } : { opacity: 0, y: 14 }}
+      animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
+      exit={reduced ? { opacity: 0 } : { opacity: 0, y: 10 }}
+      transition={{
+        duration: reduced ? 0.12 : 0.24,
+        ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Add from Library"
+    >
+      {children}
+    </motion.div>
   );
 }
 
