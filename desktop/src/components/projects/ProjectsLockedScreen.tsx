@@ -39,7 +39,7 @@ export function ProjectsLockedScreen({
 
   return (
     <motion.div
-      className="mx-auto flex w-full max-w-[640px] flex-col gap-6 px-4 pt-6"
+      className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-8 pt-6 pb-10"
       role="region"
       aria-label="Projects locked"
       initial={{ opacity: 0 }}
@@ -47,7 +47,7 @@ export function ProjectsLockedScreen({
       transition={{ duration: reduced ? 0.12 : 0.24 }}
     >
       <motion.div
-        className="flex flex-col gap-2"
+        className="flex max-w-2xl flex-col gap-2"
         initial={{ opacity: 0, y: initialY }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...transition, delay: reduced ? 0 : 0.04 }}
@@ -55,10 +55,10 @@ export function ProjectsLockedScreen({
         <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia">
           projects · pro
         </span>
-        <h1 className="font-display text-[clamp(24px,3.4vw,30px)] font-semibold leading-[1.05] tracking-[-0.025em] text-ink">
+        <h1 className="mt-0.5 font-display text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] text-ink">
           Organise clips into campaigns, clients, and earning goals.
         </h1>
-        <p className="font-sans text-[14px] leading-relaxed text-text-secondary">
+        <p className="mt-2 max-w-xl font-sans text-[13px] leading-relaxed text-text-secondary">
           Projects are included with Liquid Clips Pro. Upgrade to organise
           your clips into workspaces, attach clips to campaigns, and manage
           earning Projects.
@@ -66,7 +66,7 @@ export function ProjectsLockedScreen({
       </motion.div>
 
       <motion.div
-        className="flex flex-wrap items-center gap-2"
+        className="flex flex-wrap items-center gap-3"
         initial={{ opacity: 0, y: initialY }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...transition, delay: reduced ? 0 : 0.12 }}
@@ -75,7 +75,7 @@ export function ProjectsLockedScreen({
           type="button"
           onClick={onUpgrade}
           aria-label="Upgrade to Liquid Clips Pro"
-          className="btn-primary focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+          className="inline-flex h-11 items-center gap-2 rounded-full bg-fuchsia px-6 font-sans text-sm font-semibold text-white shadow-[var(--glow-md)] transition-all hover:bg-fuchsia-bright focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
         >
           Upgrade to Pro →
         </button>
@@ -83,7 +83,7 @@ export function ProjectsLockedScreen({
           type="button"
           onClick={onBrowseEarn}
           aria-label="Browse public Earn bounties"
-          className="btn-secondary focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+          className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-paper px-6 font-sans text-sm font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
         >
           Browse Earn
         </button>
@@ -91,7 +91,7 @@ export function ProjectsLockedScreen({
           type="button"
           onClick={onOpenLibrary}
           aria-label="Open Library"
-          className="btn-secondary focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+          className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-paper px-6 font-sans text-sm font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
         >
           Open Library
         </button>

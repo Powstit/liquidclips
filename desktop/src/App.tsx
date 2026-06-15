@@ -94,7 +94,7 @@ import { recordAchievement } from "./lib/achievements";
 import { humanError, sidecar, subscribeSidecarDied, visibleStagesFor, pipelineStagesFor, backgroundStagesFor, onIngestProgress, onLiftProgress, type BountyContext, type IngestProgress, type Intent, type LiftProgress, type LiftTranscriptResult, type Project, type SecretName, type StageName } from "./lib/sidecar";
 import { useIngestEvents } from "./lib/useIngestEvents";
 import { useLiftEvents } from "./lib/useLiftEvents";
-import { backend, getCachedLicenseJwt, maybeCheckQuota, meStatusLegacy, QuotaExceededError, resumeSessionFromKeychainIfPresent, setOnUnauthorized } from "./lib/backend";
+import { backend, getCachedLicenseJwt, maybeCheckQuota, meStatusLegacy, QuotaExceededError, resumeSessionFromKeychainIfPresent, setOnUnauthorized, type ChannelPlatform } from "./lib/backend";
 import { initDeepLinks, setOnActivated } from "./lib/activation";
 import { HOSTED_LLM_ENABLED } from "./lib/flags";
 import { closeBrowsePanel, openBrowsePanel, reconcileBrowsePanel, useBrowsePanel, WHOP_COMMUNITY_URL, WHOP_REWARDS_URL } from "./lib/browse";
@@ -148,6 +148,11 @@ type View =
   | { kind: "results"; project: Project }
   | { kind: "canceled"; project: Project }
   | { kind: "failed"; project: Project; error: string };
+
+type ScheduleConnectRequest = {
+  platform: ChannelPlatform;
+  nonce: number;
+};
 
 // inWhopIframe lives in lib/whop-iframe.ts now so the same detection drives
 // both the iframe auth bridge and the IA decision. Re-exported here for
@@ -350,11 +355,12 @@ export default function App() {
     clips: import("./lib/sidecar").Clip[];
   }>({ open: false, slug: "", projectName: "", clips: [] });
   // Analytics Phase 1 — deep-link target for Schedule's sub-tab. Set by
-  // callers (Settings → Connections "view analytics", ChannelCard
+  // callers (Schedule → Channels "view analytics", ChannelCard
   // "analytics →") before flipping the view to "schedule" so SchedulePage
   // mounts on the right tab. Cleared after each consume so subsequent
   // navigations honor the default.
   const [scheduleInitialSub, setScheduleInitialSub] = useState<"queue" | "channels" | "analytics" | undefined>(undefined);
+  const [scheduleConnectRequest, setScheduleConnectRequest] = useState<ScheduleConnectRequest | null>(null);
   // v0.7.45 P3.c — BottomCockpit dispatches lc:settings-open-tab BEFORE
   // Settings mounts, so Settings.tsx never catches it. We add a root-level
   // listener that routes directly to Schedule → Channels, and a transient
@@ -371,17 +377,41 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    function isChannelPlatform(platform: unknown): platform is ChannelPlatform {
+      return (
+        platform === "tiktok" ||
+        platform === "instagram" ||
+        platform === "youtube" ||
+        platform === "x" ||
+        platform === "linkedin" ||
+        platform === "facebook" ||
+        platform === "threads"
+      );
+    }
+
+    function openScheduleChannels(connectPlatform?: unknown) {
+      channelConnectPendingRef.current = true;
+      if (channelConnectTimeoutRef.current) window.clearTimeout(channelConnectTimeoutRef.current);
+      channelConnectTimeoutRef.current = window.setTimeout(() => {
+        channelConnectPendingRef.current = false;
+        channelConnectTimeoutRef.current = null;
+      }, 2000);
+      setScheduleInitialSub("channels");
+      if (isChannelPlatform(connectPlatform)) {
+        setScheduleConnectRequest({ platform: connectPlatform, nonce: Date.now() });
+      }
+      setView({ kind: "schedule" });
+    }
+
+    function onOpenScheduleChannels(e: Event) {
+      const detail = (e as CustomEvent<{ connectPlatform?: unknown }>).detail;
+      openScheduleChannels(detail?.connectPlatform);
+    }
+
     function onSettingsTab(e: Event) {
       const detail = (e as CustomEvent).detail;
       if (detail?.tab === "channels") {
-        channelConnectPendingRef.current = true;
-        if (channelConnectTimeoutRef.current) window.clearTimeout(channelConnectTimeoutRef.current);
-        channelConnectTimeoutRef.current = window.setTimeout(() => {
-          channelConnectPendingRef.current = false;
-          channelConnectTimeoutRef.current = null;
-        }, 100);
-        setScheduleInitialSub("channels");
-        setView({ kind: "schedule" });
+        openScheduleChannels();
         return;
       }
       // Lane 1 integration patch: route Settings-category tabs into Settings.
@@ -397,7 +427,23 @@ export default function App() {
       }
     }
     window.addEventListener("lc:settings-open-tab", onSettingsTab);
-    return () => window.removeEventListener("lc:settings-open-tab", onSettingsTab);
+    window.addEventListener("lc:open-schedule-channels", onOpenScheduleChannels);
+    let unlistenSocialLinkClosed: (() => void) | null = null;
+    void listen("social_link_closed", () => {
+      openScheduleChannels();
+      window.dispatchEvent(new CustomEvent("lc:connections-mutated"));
+    }).then((unlisten) => {
+      unlistenSocialLinkClosed = unlisten;
+    }).catch(() => undefined);
+    return () => {
+      window.removeEventListener("lc:settings-open-tab", onSettingsTab);
+      window.removeEventListener("lc:open-schedule-channels", onOpenScheduleChannels);
+      unlistenSocialLinkClosed?.();
+      if (channelConnectTimeoutRef.current) {
+        window.clearTimeout(channelConnectTimeoutRef.current);
+        channelConnectTimeoutRef.current = null;
+      }
+    };
   }, []);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [submissionPortalOpen, setSubmissionPortalOpen] = useState(false);
@@ -528,9 +574,9 @@ export default function App() {
   // the export gate. Updated from /sync on boot and from each clip-exported
   // call so the "X free exports left" line stays honest within a session.
   // v0.6.36 — Read-side removed when UploadPortal stopped surfacing the
-  // free-tier counter inline. Setter retained for /sync side effects so the
-  // value stays current for any future surface that wants to gate on it.
-  const [, setRemainingExports] = useState<number | null>(null);
+  // free-tier counter inline. Restored P1 so Studio Home + UploadPortal can
+  // show the honest counter and guard exports at exactly zero.
+  const [remainingExports, setRemainingExports] = useState<number | null>(null);
   // v0.6.18 — user tier captured from /sync so SponsoredRewardsRow + the Earn
   // carousel can resolve visibility correctly (was hardcoded to "free" which
   // showed Agency/Pro users a locked banner for campaigns they could open).
@@ -683,7 +729,7 @@ export default function App() {
   // owning components (AvatarPanel/Orbit/Settings) clear their stale state.
   useEffect(() => {
     let cancelled = false;
-    async function refreshTier(reason: string): Promise<void> {
+    async function refreshTier(_reason: string): Promise<void> {
       try {
         const { syncStatus, meStatusLegacy } = await import("./lib/backend");
         const [s, me] = await Promise.all([
@@ -697,17 +743,6 @@ export default function App() {
           s?.tier === "autopilot" ||
           adminByEmail;
         const nextTier = isAdmin ? "agency" : normalizeTier(s?.tier ?? null);
-        if (import.meta.env.DEV) {
-          // eslint-disable-next-line no-console
-          console.log("[TIER-DEBUG]", {
-            reason,
-            email: me?.email ?? null,
-            syncTier: s?.tier ?? null,
-            admin_override: s?.admin_override,
-            adminByEmail,
-            resolved: nextTier,
-          });
-        }
         if (nextTier) {
           setUserTier(nextTier);
           try {
@@ -1278,7 +1313,20 @@ export default function App() {
       // and the user gets a ghost-portal-over-IntentPicker visual bug. We
       // close before the file-type check too so the inline drop-error toast
       // shown by WorkstationRoom isn't occluded by the modal.
+      // v0.7.78 — Script mode is URL-only (lift_transcript). A file drop onto
+      // the Script portal must be rejected with a clear message instead of
+      // silently routing into the clips pipeline.
       if (uploadPortal.open) {
+        if (uploadPortal.intent === "script") {
+          const message = "Script mode only accepts links — drop files on the Studio home or switch to Clips mode.";
+          setDropError(message);
+          try {
+            window.dispatchEvent(new CustomEvent("lc:toast", { detail: { kind: "error", message } }));
+          } catch {
+            /* ignore */
+          }
+          return;
+        }
         setUploadPortal((u) => ({ ...u, open: false }));
       }
       // Whitelist video extensions — Tauri will hand us folder paths or
@@ -1288,7 +1336,7 @@ export default function App() {
         // P0 #6 — was a silent console.warn; now surface so the user knows
         // why nothing happened. Also dispatch a `lc:toast` for the future
         // toast system to pick up.
-        const message = "Unsupported file. Drop MP4, MOV, MKV, or WEBM.";
+        const message = "Unsupported file. Drop a video (MP4 / MOV / MKV / WEBM / AVI / M4V) — or audio (MP3 / M4A / WAV) for Script lifts.";
         setDropError(message);
         try {
           window.dispatchEvent(new CustomEvent("lc:toast", { detail: { kind: "error", message } }));
@@ -2135,6 +2183,7 @@ export default function App() {
             <SchedulePage
               onOpenWorkspace={() => setView({ kind: "empty" })}
               initialSub={scheduleInitialSub}
+              initialConnectRequest={scheduleConnectRequest}
             />
           </RoomShell>
         )}
@@ -2273,7 +2322,15 @@ export default function App() {
               </div>
             )}
             <WorkstationRoom
-              onCreate={() => setUploadPortal({ open: true, intent: "clips" })}
+              onCreate={() => {
+                // v0.7.78 P0 — Starting a new Create flow should never compete
+                // with a stale Browse Rewards panel. If the panel is already
+                // open (from Earn / Community / BrowserEdgeTab), close it so
+                // the app is not squeezed and the user cannot confuse the
+                // right-side webview with the clipping flow.
+                void closeBrowsePanel().catch(() => undefined);
+                setUploadPortal({ open: true, intent: "clips" });
+              }}
               onImport={() => void handleImportDirect()}
               onProjects={() => setView({ kind: "projects" })}
               projectsCount={projectsCount}
@@ -2303,6 +2360,7 @@ export default function App() {
               dragHoverActive={dragHoverActive}
               dropError={dropError}
               userTier={userTier}
+              remainingExports={remainingExports}
               importing={importing}
               displayName={displayName}
               isCold={!signedIn || (projectsCount !== null && projectsCount === 0)}
@@ -2322,6 +2380,8 @@ export default function App() {
             // before the surface was retired.
             onPasteUrlScript={(url: string) => void _onLiftTranscript(url)}
             dragHoverActive={dragHoverActive}
+            userTier={userTier}
+            remainingExports={remainingExports}
           />
         )}
 
@@ -2444,21 +2504,18 @@ export default function App() {
         {view.kind === "quota" && (
           <div className="w-full max-w-[720px] rounded-3xl border border-fuchsia-soft bg-fuchsia-soft/30 p-7">
             <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
-              free starter pass used up
+              free starter pass used
             </div>
             <h2 className="mt-2 font-display text-[28px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">
-              Your 100 free clip exports — used up.
+              You&apos;ve used your 100 free clips.
             </h2>
             <p className="mt-2 max-w-[520px] font-sans text-[14px] leading-relaxed text-text-secondary">
-              {/* v0.7.55 P0-002 — locked tier vocabulary. The prior copy
-                  pushed Growth · $99.99 / Autopilot · $199.99, both
-                  retired in the v2 matrix. Liquid Clips Pro is the
-                  single Solo plan at $29.99/mo; the upsell talks the
-                  user-facing funnel (no watermark + the $5 RPM ladder
-                  + 50% MRR affiliate). */}
-              You&apos;ve exported 100 clips for free. Upgrade to Solo at $29.99/mo for unlimited
-              watermark-free exports, the $5 RPM premium reward ladder, the premium mission lanes,
-              and 50% MRR on every paid user you refer.
+              {/* v0.7.78 — Plain wording per 9.6 reconciliation. Earlier copy
+                  pushed $5 RPM + 50% MRR + premium mission lanes — jargon a
+                  cold customer can't parse in two seconds. Price stays on the
+                  primary CTA button so the wall stays informative without the
+                  body paragraph carrying the value-prop weight. */}
+              Upgrade to Solo for unlimited clean exports &mdash; no watermark.
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
               <button
@@ -2475,7 +2532,7 @@ export default function App() {
                 }}
                 className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white hover:bg-fuchsia-bright"
               >
-                Continue on Solo · $29.99/mo
+                Upgrade to Solo · $29.99/mo
               </button>
               {/* P1 #12 — "I've upgraded — recheck" escape hatch. The marketing
                   upgrade page opens in the browser; once they come back, a
@@ -2502,6 +2559,11 @@ export default function App() {
                     const nextTier = isAdmin ? "agency" : normalizeTier(s?.tier ?? null);
                     setUserTier(nextTier);
                     setRemainingExports(isAdmin ? null : (s?.remaining_exports ?? null));
+                    // P1 — broadcast the tier change so `useTier`, AvatarPanel,
+                    // and the watermark cache all invalidate on the same tick.
+                    window.dispatchEvent(
+                      new CustomEvent("lc:tier-refresh", { detail: { tier: nextTier } }),
+                    );
                     // Anything other than free unlocks — solo, pro, agency
                     // all bypass the 100-export wall.
                     if (nextTier && nextTier !== "free") {
@@ -2520,6 +2582,12 @@ export default function App() {
                 className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia"
               >
                 Close
+              </button>
+              <button
+                onClick={() => setSettingsOpen(true)}
+                className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia"
+              >
+                View account & watermark info
               </button>
             </div>
           </div>
@@ -2580,6 +2648,7 @@ export default function App() {
               if (channelConnectPendingRef.current === true) return;
               setSettingsOpen(true);
             }}
+            onOpenSchedule={() => { setScheduleInitialSub("channels"); setView({ kind: "schedule" }); }}
           />
         )}
         </Cockpit>
@@ -2854,6 +2923,7 @@ export default function App() {
         open={panelOpen}
         onClose={() => setPanelOpen(false)}
         tier={userTier}
+        remainingExports={remainingExports}
         refreshing={refreshingApp}
         onRefresh={() => void refreshApp()}
         onOpenNotifications={() => setInboxOpen(true)}

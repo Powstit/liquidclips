@@ -3,7 +3,7 @@
 // listener for sidecar:overlay_progress, tracks the latest payload, and
 // exposes start/stop so the caller controls the listening window.
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { onOverlayProgress, type OverlayProgress } from "./sidecar";
 
 export type ReactionBakeProgress = OverlayProgress | null;
@@ -31,6 +31,12 @@ export function useReactionBakeProgress() {
     unlistenRef.current?.();
     unlistenRef.current = null;
     setProgress(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      unlistenRef.current?.();
+    };
   }, []);
 
   return { progress, start, stop };

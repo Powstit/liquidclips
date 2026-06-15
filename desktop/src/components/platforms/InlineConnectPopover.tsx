@@ -56,7 +56,7 @@ export function InlineConnectPopover({
           if (cancelledRef.current || attempts > 60) {
             clearTimer();
             if (!cancelledRef.current) {
-              setState({ kind: "error", message: "Timed out — try again or finish in Settings → Channels." });
+              setState({ kind: "error", message: "Timed out — try again or finish in Schedule → Channels." });
             }
             return;
           }
@@ -73,7 +73,7 @@ export function InlineConnectPopover({
           }
         }, 1500);
       } else {
-        setState({ kind: "error", message: "No link returned — try Settings → Channels." });
+        setState({ kind: "error", message: "No link returned — try Schedule → Channels." });
       }
     } catch (e) {
       if (!cancelledRef.current) {

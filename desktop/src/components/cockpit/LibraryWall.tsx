@@ -151,11 +151,23 @@ export function LibraryWall({
           <div className="flex flex-col gap-1">
             <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia">library</span>
             <h1 className="font-display text-[28px] font-semibold leading-[1.05] tracking-[-0.025em] text-ink">
-              Previous edits.
+              Previously loved
             </h1>
           </div>
-          <div className="flex items-center gap-4">
-            <StatStrip stats={stats} />
+          {/* v0.7.78 — Search input moved into the header right (matches the
+              demo-pages.html library surface). StatStrip drops to the filter
+              row right. Cmd-K continues to target the same input via the
+              placeholder-prefix selector in LibraryTab. */}
+          <div className="flex items-center gap-3">
+            <label className="flex min-w-[240px] items-center gap-2 rounded-full border border-line bg-transparent px-3 py-2 focus-within:border-fuchsia">
+              <Search className="h-4 w-4 shrink-0 text-text-tertiary" strokeWidth={2} />
+              <input
+                value={query}
+                onChange={(e) => onQueryChange(e.target.value)}
+                placeholder="search clips, rewards, filenames"
+                className="min-w-0 flex-1 bg-transparent font-sans text-[13px] text-ink outline-none placeholder:text-text-tertiary"
+              />
+            </label>
             <button
               type="button"
               onClick={onRefresh}
@@ -177,8 +189,8 @@ export function LibraryWall({
         </header>
       )}
 
-      {/* Filter + search row. Filters on the left as HudChips, search on the
-          right as an inline pill. No card frame around either. */}
+      {/* Filter chips left, StatStrip right. Search moved to the header
+          above in v0.7.78 — this row carries filters + at-a-glance stats. */}
       <section className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-1.5">
           {LIBRARY_FILTERS.map((item) => {
@@ -199,15 +211,7 @@ export function LibraryWall({
             );
           })}
         </div>
-        <label className="flex min-w-[220px] items-center gap-2 rounded-full border border-line bg-transparent px-3 py-2 focus-within:border-fuchsia">
-          <Search className="h-4 w-4 shrink-0 text-text-tertiary" strokeWidth={2} />
-          <input
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="search clips, rewards, filenames"
-            className="min-w-0 flex-1 bg-transparent font-sans text-[13px] text-ink outline-none placeholder:text-text-tertiary"
-          />
-        </label>
+        <StatStrip stats={stats} />
       </section>
 
       {error && (

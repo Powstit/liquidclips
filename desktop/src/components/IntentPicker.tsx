@@ -160,7 +160,9 @@ export function IntentPicker({
         {OPTIONS.map((o) => (
           <button
             key={o.id}
-            onClick={() => onPick(o.id)}
+            onClick={() => {
+              onPick(o.id);
+            }}
             className="group flex items-center justify-between gap-4 rounded-full border border-line bg-paper px-5 py-3 text-left transition-all hover:border-fuchsia hover:bg-fuchsia-soft/30 hover:shadow-[0_8px_24px_rgba(255,26,140,0.12)]"
           >
             <div className="flex flex-col gap-0.5">

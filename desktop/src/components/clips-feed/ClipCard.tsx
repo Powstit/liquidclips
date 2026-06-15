@@ -29,14 +29,8 @@ import { AlertTriangle, Check, Copy, Edit3, MessageSquare, Sparkles, Trash2 } fr
 import type { PlatformId } from "../PlatformBadge";
 import type { ChannelStatus } from "../../lib/backend";
 import { RingButton } from "../cockpit/LibraryCard";
-import { useTier } from "../../lib/useTier";
-import { openUpgradeWhenSignedIn } from "../../lib/upgradeWithAuth";
-import type { Clip, OverlayType, Project, RatioKey } from "../../lib/sidecar";
-import { sidecar, humanError } from "../../lib/sidecar";
-import { useReactionBakeProgress } from "../../lib/useReactionBakeProgress";
-import { useGlobalBakeEvents } from "../../lib/useGlobalBakeEvents";
-import { type LayoutKey } from "./LayoutIcon";
-import { pickOverlaySource } from "../OverlaySourcePicker";
+import type { Clip, Project, RatioKey } from "../../lib/sidecar";
+import { sidecar } from "../../lib/sidecar";
 import { BountyFitPill } from "../earn/bounty-fit";
 import { PlatformBadge } from "../PlatformBadge";
 // v0.7.32 — useCountUp removed alongside the virality count-up pill that
@@ -44,13 +38,10 @@ import { PlatformBadge } from "../PlatformBadge";
 // import { useCountUp } from "../../lib/useCountUp";
 import { ConfirmDialog } from "../ConfirmDialog";
 
-function showReactionToast(kind: "success" | "error" | "info", message: string) {
-  window.dispatchEvent(new CustomEvent("lc:toast", { detail: { kind, message } }));
-}
-
-// Self-contained card. Tap = play preview. Layout icons swap composition in
-// place. Copy buttons inline. "..." opens the side-door full editor for the
-// rare power case. No modals required for the 90% review-and-ship flow.
+// Self-contained card. Tap = play preview. The reaction action opens the
+// editor so ReactionControls remains the single writer for clip.overlay.
+// Copy buttons inline. "..." opens the side-door full editor for the rare
+// power case. No modals required for the 90% review-and-ship flow.
 
 // v0.7.32 — formatHms() + viralityClass() removed. They were used by the
 // pre-mockup above-thumbnail header row (time-range + virality pill) that
@@ -122,23 +113,12 @@ export const ClipCard = React.memo(function ClipCard({
   onSelectClick?: (e: { meta: boolean; shift: boolean }) => void;
 }) {
   const [busy, setBusy] = useState(false);
-  // v0.7.49 — Tier gate. ClipCard's "R" Sparkles button was a live bypass
-  // around ReactionControls' Solo+ moat; mirroring the gate here closes
-  // that surface so the conversion offer stays consistent everywhere.
-  const clipCardTier = useTier();
-  // SECTION E/F — live tier ref so changeReaction can re-check after an
-  // explicit refresh without waiting for a re-render.
-  const clipCardTierRef = useRef(clipCardTier);
-  useEffect(() => {
-    clipCardTierRef.current = clipCardTier;
-  }, [clipCardTier]);
   // v0.7.46 — kebab menu retired in favour of the inline RingButton row
   // (Caption / Reaction / Copy / Editor / Remove). Removing the showMenu
   // state + refs and the dead MenuItem helper.
   // Cockpit error/feedback chip — live for ~3s on a transient failure
-  // (applyLayout, copyAll, remove). Doesn't replace the global toast host
-  // because the card-local error is contextual ("THIS clip's reaction
-  // didn't bake"); a top-of-window toast would orphan the cause.
+  // (copyAll, remove). Doesn't replace the global toast host because the
+  // card-local error is contextual; a top-of-window toast would orphan the cause.
   const [cockpitError, setCockpitError] = useState<string | null>(null);
   // Copy caption success → 1.5s "Copied" label flip so the clipper sees
   // their action landed without a system toast. Previously this swallowed
@@ -152,13 +132,6 @@ export const ClipCard = React.memo(function ClipCard({
   // Now we surface the message + a Reveal-in-Finder button so the clipper
   // can act. Null while the video is healthy.
   const [videoError, setVideoError] = useState<string | null>(null);
-  // P1 #12 — sidecar overlay_progress wired into the card so the fast-path
-  // applyLayout (which kicks off a ~5-30s ffmpeg bake) is no longer silent.
-  // Mirrors ReactionControls' pattern: start before applyOverlay, stop in
-  // finally. The inline strip renders below the existing cockpitError slot.
-  const { progress: bakeProgress, start: startBakeProgress, stop: stopBakeProgress } =
-    useReactionBakeProgress();
-  const { waitForBake } = useGlobalBakeEvents();
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const videoPath = useMemo(
@@ -191,8 +164,6 @@ export const ClipCard = React.memo(function ClipCard({
       // worth a second nested error UI inside the fallback overlay.
     }
   }
-
-  const currentLayout: LayoutKey = (clip.overlay?.type as LayoutKey) ?? "none";
 
   // Tiny hover-to-preview: start playing on pointer enter, pause + rewind on leave.
   // Hover-preview is OPT-IN — `previewMotionOn` defaults false. Without it,
@@ -238,88 +209,6 @@ export const ClipCard = React.memo(function ClipCard({
     v.currentTime = 0;
     v.muted = true;
   };
-
-  async function applyLayout(kind: LayoutKey) {
-    if (busy) return;
-    setBusy(true);
-    setCockpitError(null);
-    await startBakeProgress();
-    try {
-      if (kind === "none") {
-        await sidecar.startOverlayBake(slug, index - 1, null);
-      } else {
-        const pick = await pickOverlaySource({ project, excludeIdx: index - 1 });
-        if (pick.kind === "cancel") {
-          stopBakeProgress();
-          setBusy(false);
-          return;
-        }
-        showReactionToast("info", "Adding reaction…");
-        await sidecar.startOverlayBake(slug, index - 1, {
-          type: kind as OverlayType,
-          source_path: pick.path,
-          start_offset_s: 0,
-        });
-      }
-      // Fire-and-forget: the UI unblocks immediately; completion updates
-      // the project via the global bake listener.
-      waitForBake(slug, index - 1)
-        .then((result) => {
-          stopBakeProgress();
-          setBusy(false);
-          if (result.status === "complete") {
-            onProjectChange(result.project);
-            showReactionToast("success", "Reaction added to clip.");
-          } else if (!result.canceled) {
-            const msg = result.message;
-            setCockpitError(`Layout swap failed — ${msg.slice(0, 90)}`);
-            showReactionToast("error", `Reaction failed — ${msg.slice(0, 120)}`);
-            window.setTimeout(() => setCockpitError(null), 4500);
-          }
-        })
-        .catch((err) => {
-          stopBakeProgress();
-          setBusy(false);
-          const msg = humanError(err);
-          setCockpitError(`Layout swap failed — ${msg.slice(0, 90)}`);
-          showReactionToast("error", `Reaction failed — ${msg.slice(0, 120)}`);
-          window.setTimeout(() => setCockpitError(null), 4500);
-        });
-    } catch (e) {
-      stopBakeProgress();
-      setBusy(false);
-      const msg = humanError(e);
-      setCockpitError(`Layout swap failed — ${msg.slice(0, 90)}`);
-      showReactionToast("error", `Reaction failed — ${msg.slice(0, 120)}`);
-      window.setTimeout(() => setCockpitError(null), 4500);
-    }
-  }
-
-  // Reaction shortcut — re-pick the b-roll source for the CURRENT layout
-  // without forcing a layout change. If no layout is set, default to
-  // `pip-bl` (a sensible reaction starter) and open the picker so the
-  // clipper sees the source picker immediately. Aligned with the cockpit
-  // row's promise: every action visible, no modal dance.
-  async function changeReaction() {
-    // v0.7.49 — Bypass path closed. The ClipCard "R" Sparkles button used
-    // to skip the tier gate that lives on the cockpit's layout-tile grid,
-    // letting free users bake paid layouts from any card. Match the same
-    // Solo+ guard that ReactionControls enforces.
-    // SECTION E/F — refresh tier if we only have a stale cache before gating.
-    if (clipCardTierRef.current.tier === "free" && !clipCardTierRef.current.status) {
-      await clipCardTier.refreshTier();
-    }
-    if (clipCardTierRef.current.tier === "free") {
-      import("../../lib/paywallNotify").then(({ notifyPaywall }) =>
-        notifyPaywall("reaction_layout", clipCardTierRef.current.tier),
-      );
-      openUpgradeWhenSignedIn();
-      return;
-    }
-    const startingLayout: LayoutKey =
-      currentLayout !== "none" ? currentLayout : "pip-bl";
-    await applyLayout(startingLayout);
-  }
 
   async function copyAll() {
     const parts: string[] = [clip.title.trim()];
@@ -597,10 +486,10 @@ export const ClipCard = React.memo(function ClipCard({
             <MessageSquare className="h-3.5 w-3.5" strokeWidth={2} />
           </RingButton>
           <RingButton
-            onClick={() => void changeReaction()}
+            onClick={onOpenEditor}
             disabled={busy}
-            title={currentLayout === "none" ? "Add reaction b-roll (R)" : "Change reaction source (R)"}
-            ariaLabel={currentLayout === "none" ? "Add reaction" : "Change reaction"}
+            title="Add or edit reaction"
+            ariaLabel="Add or edit reaction"
           >
             <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
           </RingButton>
@@ -635,9 +524,9 @@ export const ClipCard = React.memo(function ClipCard({
           </RingButton>
         </div>
 
-        {/* Card-local error / status chip — surfaces failed layout swaps,
-            failed remove, etc. without orphaning the cause in a global
-            toast. Auto-clears after ~4.5s. */}
+        {/* Card-local error / status chip — surfaces failed remove, etc.
+            without orphaning the cause in a global toast. Auto-clears
+            after ~4.5s. */}
         {cockpitError && (
           <p
             role="alert"
@@ -645,35 +534,6 @@ export const ClipCard = React.memo(function ClipCard({
           >
             {cockpitError}
           </p>
-        )}
-
-        {/* P1 #12 — fast-path applyLayout bake progress. Inline tiny strip so
-            the user sees the ffmpeg pass instead of a spinning Reaction
-            button. Hides when no bake in flight or after the sidecar emits
-            stage "done". */}
-        {bakeProgress && bakeProgress.stage !== "done" && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="mt-1 space-y-1 rounded-md border border-fuchsia/30 bg-fuchsia-soft/15 px-2.5 py-1"
-          >
-            <div className="flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.12em] text-fuchsia-deep">
-              <span>
-                {bakeProgress.stage === "starting"
-                  ? "Starting bake…"
-                  : bakeProgress.ratio
-                  ? `Baking ${bakeProgress.ratio}…`
-                  : "Baking…"}
-              </span>
-              <span>{bakeProgress.pct}%</span>
-            </div>
-            <div className="h-1 w-full overflow-hidden rounded-full bg-paper">
-              <div
-                className="h-full rounded-full bg-fuchsia transition-all duration-300"
-                style={{ width: `${bakeProgress.pct}%` }}
-              />
-            </div>
-          </div>
         )}
       </div>
 

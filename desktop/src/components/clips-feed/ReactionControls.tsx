@@ -385,6 +385,11 @@ export function ReactionControls({
           </div>
         )}
 
+        {compact && (
+          <p className="mb-2 font-sans text-[11px] leading-snug text-text-secondary">
+            Add a second clip. Pick a layout, then a source.
+          </p>
+        )}
         <div className={`${compact ? "mt-0" : "mt-3"} grid ${tileGridCols} gap-1.5`}>
           {LAYOUTS.map((item) => {
             // v0.7.48 — Optimistic-active. While a bake is in flight,
@@ -496,8 +501,8 @@ export function ReactionControls({
             {hasSource
               ? `src: ${(clip.overlay?.source_path ?? "").split("/").pop()}`
               : layout === "none"
-              ? "pick a layout above, then a source"
-              : "no reaction source yet"}
+              ? "Step 1: pick a layout above"
+              : "Step 2: pick a source video"}
           </span>
           <button
             type="button"

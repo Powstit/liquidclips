@@ -44,13 +44,18 @@ export function ResultsGrid({
   onDropAnother,
   onProjectChange,
   onOpenSettings,
+  onOpenSchedule,
 }: {
   project: Project;
   onDropAnother: () => void;
   onProjectChange: (p: Project) => void;
-  // Sprint #3 — PublishModal needs a way to route the user to Settings →
-  // Connections when they hit publish without a connected Ayrshare profile.
+  /** Opens the general Settings panel. Used by BottomCockpit's ⋮ menu;
+   *  never used for social-connection routing (that goes through
+   *  onOpenSchedule → Schedule → Channels). */
   onOpenSettings?: () => void;
+  /** Routes disconnected-platform empty states and the "Add channel" affordance
+   *  to Schedule → Channels, the canonical connection surface. */
+  onOpenSchedule?: () => void;
 }) {
   const intent = project.intent ?? "both";
   // IRON GATE IG-010 — v0.8.0 non-blocking pick-more.
@@ -263,7 +268,16 @@ export function ResultsGrid({
         </div>
       )}
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      {/* v0.7.78 — Workbench header with bracket chrome + premium eyebrow +
+          truth-line + real readiness counter. The counter mirrors
+          PublishModal's publishability chain (file present + not mid-bake +
+          not in bake error) so the number is what the user can actually
+          ship right now. Free-tier "X of N visible" line preserved. */}
+      <div className="relative flex flex-wrap items-start justify-between gap-4 rounded-2xl px-4 py-4">
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
+        <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
         <div className="flex items-start gap-4">
           {(() => {
             const out = project.stages.ingest?.output as { poster_path?: string | null } | undefined;
@@ -285,19 +299,29 @@ export function ResultsGrid({
             ) : null;
           })()}
           <div>
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-soft bg-fuchsia-soft/30 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
+            <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia">
+              workbench
+            </span>
+            <div className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-fuchsia-soft bg-fuchsia-soft/30 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
               <CheckCircle2 className="h-3 w-3" strokeWidth={2.25} />
               Ready
             </div>
             <h2 className="mt-2 font-display text-[32px] font-semibold leading-[1.05] tracking-[-0.025em] text-ink">
               {project.source_filename}
             </h2>
+            <p className="mt-2 max-w-[520px] font-sans text-[13px] leading-relaxed text-ink-soft">
+              Pick the best clips, craft reactions, and ship &mdash; all from one screen.
+            </p>
             <p className="mt-1.5 inline-flex items-center gap-1.5 font-mono text-[12px] text-text-tertiary">
               <Film className="h-3.5 w-3.5" strokeWidth={2} />
               {/* v0.7.34 — Free tier sees the first N clips; the header used
                   to say "10 clips ready" while the grid only rendered 3,
                   which read as deceptive. Now: "3 of 10 clips visible" for
-                  free, full count for paid tiers. */}
+                  free, full count for paid tiers.
+                  v0.7.78 — Paid tier readiness counter is now honest: counts
+                  clips with a rendered file AND not currently baking / in a
+                  bake error state. Same chain PublishModal uses to decide
+                  publishability. IG-006 bake_status is read-only. */}
               {(() => {
                 const total = project.clips.length;
                 const visibleForFree = Math.min(FREE_TIER_VISIBLE_CLIPS, total);
@@ -309,10 +333,42 @@ export function ResultsGrid({
                     </>
                   );
                 }
+                const readyCount = project.clips.filter((c) => {
+                  const hasPath = !!(
+                    c.remix?.active_path?.vertical ||
+                    c.overlay?.applied_paths?.vertical ||
+                    c.vertical_path
+                  );
+                  if (!hasPath) return false;
+                  const bake = c.overlay?.bake_status;
+                  if (bake === "pending" || bake === "error") return false;
+                  return true;
+                }).length;
+                const importedCount = project.clips.filter((c) => c.imported).length;
+                if (readyCount < total) {
+                  return (
+                    <>
+                      <span className="text-ink tabular-nums">{readyCount}</span>{" "}
+                      of <span className="text-ink tabular-nums">{total}</span> ready
+                      {importedCount > 0 && (
+                        <>
+                          {" "}&middot;{" "}
+                          <span className="text-ink tabular-nums">{importedCount}</span> imported
+                        </>
+                      )}
+                    </>
+                  );
+                }
                 return (
                   <>
                     <span className="text-ink tabular-nums">{total}</span>{" "}
                     {total === 1 ? "clip" : "clips"} ready to ship
+                    {importedCount > 0 && (
+                      <>
+                        {" "}&middot;{" "}
+                        <span className="text-ink tabular-nums">{importedCount}</span> imported
+                      </>
+                    )}
                   </>
                 );
               })()}
@@ -479,6 +535,7 @@ export function ResultsGrid({
               onChangeFocus={setFocusedIdx}
               modalOpen={previewIdx !== null}
               onOpenSettings={onOpenSettings}
+              onOpenSchedule={onOpenSchedule}
               onOpenEditor={(clipIdx, scrollTo) => {
                 setPreviewIdx(clipIdx);
                 setPreviewScrollTo(scrollTo ?? null);
@@ -658,7 +715,7 @@ export function ResultsGrid({
           projectSlug={project.slug}
           mode={publishModal.mode}
           onClose={() => setPublishModal(null)}
-          onOpenSettings={onOpenSettings}
+          onOpenSchedule={onOpenSchedule}
           onDone={(msg) => {
             setPublishModal(null);
             // For bounty projects, the publish is only half the job — nudge the

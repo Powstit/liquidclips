@@ -42,7 +42,11 @@ export function ReactionCellPreview({
   const reactionName = reactionPath?.split("/").pop() ?? null;
 
   return (
-    <div className="rounded-xl border border-line bg-paper p-3.5 space-y-3">
+    <div className="relative rounded-xl border border-line bg-paper p-3.5 space-y-3">
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
       <div className="flex items-center justify-between">
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
           preview · {topology.label.toLowerCase()}

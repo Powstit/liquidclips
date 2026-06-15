@@ -1,45 +1,38 @@
-// v0.6.35 — Workstation room (new home).
+// v0.7.78 — Workstation room (LC 9.6 Studio Home pivot).
 //
-// Replaces UnifiedDropZone + WorkspaceDashboard on the `view.kind === "empty"`
-// surface. The room shows two large tactile tiles — Create and Import — and
-// nothing else. Everything that used to live underneath (rank, affiliate,
-// scheduled, active, leaderboard) is now reached via the AvatarOrbit dropdown
-// in the top-right (see AvatarPanel.tsx). Sponsored Rewards live only on Earn.
+// The empty-view surface that App.tsx mounts inside RoomShell. Studio
+// Home (../workspace/StudioHome) now owns the header + four-tile intent
+// router per the LC 9.6 directive. WorkstationRoom continues to own
+// everything that does NOT belong inside Studio Home: the sponsored
+// carousel below the tiles, the inline drop-error toast, the
+// drag-hover full-room overlay, and the IG-008 BottomCockpit clearance
+// contract.
 //
-// Tiles breathe at rest, tilt toward the cursor, and morph into UploadPortal
-// when tapped via shared layoutId. The whole room is a calm launch pad — the
-// dopamine surfaces are ambient (orbit ring + signal line) rather than
-// stacked dashboard cards.
-//
-// ship-lens v0.7.13 Tier 1 fixes landed:
-//   T1.3 — New optional `importing` prop (default false). When true the
-//          Import tile dims to opacity-50, takes pointer-events-none, and
-//          shows a small "preparing…" pill at the top of the tile so the
-//          user sees the click took even before the OS file picker pops.
-//          Back-compat: prop is optional with a default, so every existing
-//          caller compiles without changes.
-//   T1.1 (related) — `dropError` is still rendered inline (success+error
-//          toasts under the tile row) for the empty-view case; App.tsx
-//          additionally mounts a root-level GlobalToast that survives the
-//          empty → results transition triggered by handleImportDirect.
+// Public API (props) is preserved verbatim so App.tsx mounts unchanged.
+// Props that no longer drive rendering (`displayName`, `isCold`,
+// `onProjects`, `projectsCount`) are kept on the type for back-compat
+// and renamed in destructure with a leading underscore to satisfy
+// `noUnusedParameters: true`. They can be dropped from the public API
+// in a follow-up pass once App.tsx stops passing them.
 
-import { motion, AnimatePresence, useReducedMotion } from "motion/react";
-import { Sparkles, Layers, ImageIcon, ScrollText, FolderOpen } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 import { SponsoredBannerCarousel } from "../earn/SponsoredBannerCarousel";
+import { StudioHome } from "../workspace/StudioHome";
 
 export function WorkstationRoom({
   onCreate,
   onImport,
   onThumbnails,
   onScript,
-  onProjects,
-  projectsCount = null,
+  onProjects: _onProjects,
+  projectsCount: _projectsCount = null,
   dragHoverActive = false,
   dropError = null,
   userTier = null,
+  remainingExports = null,
   importing = false,
-  displayName = null,
-  isCold = false,
+  displayName: _displayName = null,
+  isCold: _isCold = false,
 }: {
   /** Single-click Create: opens the compact URL/file portal. The portal
    *  auto-focuses its URL input — no second click to start typing. */
@@ -47,21 +40,14 @@ export function WorkstationRoom({
   /** Single-click Import: fires the OS file picker directly. No modal in
    *  between — the picker IS the next surface. */
   onImport: () => void;
-  /** v0.7.1 — placeholder tile for the thumbnail-pack feature. Daniel
-   *  is wiring this later; for now the onClick fires a "coming soon"
-   *  toast via the parent so the surface stays informative, not dead. */
+  /** Opens the ThumbnailStudio modal when wired by the parent (App.tsx). */
   onThumbnails?: () => void;
-  /** v0.7.72 — Projects tile. First-class destination for organised
-   *  workspaces alongside Create/Import. Parent owns navigation. */
+  /** v0.7.78 — kept for back-compat with App.tsx; Projects is reached via
+   *  the side nav only in LC 9.6. Not rendered as a central tile. */
   onProjects?: () => void;
-  /** v0.7.73 — Optional count surfaced as the tile subtitle ("3 active").
-   *  Parent supplies it via a single sidecar.listProjects call at boot;
-   *  null = subtitle stays at the default "organise clips around goals".
-   *  Free/unsigned users get null (no count to show) — the Projects
-   *  click routes them to the locked screen regardless. */
+  /** v0.7.78 — kept for back-compat; no longer surfaced. */
   projectsCount?: number | null;
-  /** v0.7.1 — placeholder tile for the script / transcripts feature.
-   *  Same pattern as onThumbnails: parent owns the toast. */
+  /** Opens the lift_transcript pipeline when wired by the parent. */
   onScript?: () => void;
   /** P0 #5 — driven by App.tsx's tauri://drag-enter/leave listeners. When
    *  true, the room renders a dashed cyan drop affordance with a "Drop a
@@ -73,127 +59,38 @@ export function WorkstationRoom({
   /** Drives the SponsoredBannerCarousel mounted below the tiles — tier
    *  controls which campaigns show as locked vs unlocked. */
   userTier?: "free" | "solo" | "pro" | "agency" | null;
+  /** P1 — free/paid quota surface. `null` means paid/unlimited; a number is
+   *  the free user's remaining exports. Used to render the quota pill. */
+  remainingExports?: number | null;
   /** ship-lens v0.7.13 T1.3 — true while handleImportDirect is in flight
-   *  (OS file picker open OR sidecar.importReadyClips running). Dims the
-   *  Import tile, blocks pointer events, and shows a "preparing…" pill
-   *  so a second click before the picker pops doesn't look like a no-op.
-   *  Defaults to false so every existing caller compiles unchanged. */
+   *  (OS file picker open OR sidecar.importReadyClips running). Forwarded
+   *  to StudioHome so the Import tile dims + shows a "preparing…" pill. */
   importing?: boolean;
-  /** Lane 1 — first name or display name from /me, used for the warm
-   *  "Welcome back" greeting. null/undefined falls back to generic copy. */
+  /** v0.7.78 — kept for back-compat; LC 9.6 locked the headline to
+   *  "Studio's open." for everyone, so personalisation no longer drives
+   *  the hero copy. */
   displayName?: string | null;
-  /** Lane 1 — true when the user has no prior projects/clips. Switches
-   *  the greeting to the cold-customer onboarding variant. */
+  /** v0.7.78 — kept for back-compat; same reason as displayName. */
   isCold?: boolean;
 }) {
-  const reduced = useReducedMotion();
-
-  // Lane 1 — cold-customer greeting. First-time / empty users get a clear
-  // onboarding headline; returning users get a warm "Welcome back" or the
-  // existing ambient greeting.
-  const greeting = (() => {
-    if (isCold) return "Welcome to Liquid Clips.";
-    if (displayName) return `Welcome back, ${displayName}.`;
-    const lines = [
-      "what are we making",
-      "ready when you are",
-      "drop in",
-      "studio's open",
-      "your move",
-    ];
-    return lines[Math.floor(Math.random() * lines.length)] ?? lines[0];
-  })();
-
   return (
     // ───── IRON GATE IG-008 (v0.7.43) — see docs/IRON_GATES.md ─────
     // pb-48 (192px) is the BottomCockpit clearance. BottomCockpit is fixed
     // at bottom-0 (IG-005/006) and overlays anything below this padding.
-    // Without pb-48, the lower tiles (Thumbnails / Script) and the
-    // SponsoredBannerCarousel sit underneath the cockpit chrome and become
-    // unreachable. Do not reduce below pb-40 without measuring the live
-    // cockpit height on the smallest supported window.
+    // Without pb-48, the lower content (StudioHome drop hint, sponsored
+    // carousel) sits underneath the cockpit chrome and becomes unreachable.
+    // Do not reduce below pb-40 without measuring the live cockpit height
+    // on the smallest supported window.
     <div className="workstation-room flex w-full flex-col items-center justify-center gap-12 pt-12 pb-48">
-      <header className="flex flex-col items-center gap-2 text-center">
-        <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia">
-          workstation
-        </span>
-        <h1 className="font-display text-[34px] font-semibold leading-[1.05] tracking-[-0.025em] text-ink">
-          {greeting}
-        </h1>
-      </header>
-
-      {/* v0.7.1 — 4 tiles in a single row on wide screens; collapses to
-          2 cols on narrow. Same Tile component, same Sparkles/Layers
-          vibe via lucide. Thumbnails + Script are placeholders Daniel
-          wires later — onClick is a parent-owned "coming soon" toast.
-          When the prop isn't wired the tile dims + becomes non-interactive
-          so the surface still reads as "feature exists, not ready yet"
-          instead of looking dead. */}
-      {/* v0.7.72 — Tile grid widened to 5 cols on lg so Projects becomes a
-          first-class home destination alongside Create/Import/Thumbnails/
-          Script. Stays 2-cols on narrow so the layout doesn't snap. */}
-      <div className="grid grid-cols-2 gap-8 sm:grid-cols-2 lg:grid-cols-5">
-        <Tile
-          layoutId="cockpit-create"
-          icon={<Sparkles className="h-12 w-12" strokeWidth={1.5} />}
-          title="Create"
-          subtitle="paste a link · drop a video"
-          onClick={onCreate}
-          reduced={!!reduced}
-          delay={0}
-        />
-        <Tile
-          layoutId="cockpit-import"
-          icon={<Layers className="h-12 w-12" strokeWidth={1.5} />}
-          title="Import"
-          subtitle="bring in ready clips"
-          onClick={onImport}
-          reduced={!!reduced}
-          delay={0.15}
-          busy={importing}
-          busyLabel="preparing…"
-        />
-        <Tile
-          layoutId="cockpit-projects"
-          icon={<FolderOpen className="h-12 w-12" strokeWidth={1.5} />}
-          title="Projects"
-          subtitle={
-            projectsCount !== null && projectsCount > 0
-              ? `${projectsCount} active`
-              : "organise clips around goals"
-          }
-          onClick={onProjects ?? (() => undefined)}
-          disabled={!onProjects}
-          reduced={!!reduced}
-          delay={0.3}
-        />
-        <Tile
-          layoutId="cockpit-thumbnails"
-          icon={<ImageIcon className="h-12 w-12" strokeWidth={1.5} />}
-          title="Thumbnails"
-          subtitle="cover pack from one frame"
-          onClick={onThumbnails ?? (() => undefined)}
-          disabled={!onThumbnails}
-          reduced={!!reduced}
-          delay={0.45}
-        />
-        <Tile
-          layoutId="cockpit-script"
-          icon={<ScrollText className="h-12 w-12" strokeWidth={1.5} />}
-          title="Script"
-          subtitle="transcript · captions ready"
-          onClick={onScript ?? (() => undefined)}
-          disabled={!onScript}
-          reduced={!!reduced}
-          delay={0.6}
-        />
-      </div>
-
-      {/* Lane 1 — always-visible drop hint so a cold customer knows they
-          can drag a file in, not just click the tiles. */}
-      <p className="-mt-6 font-mono text-[10px] uppercase tracking-[0.24em] text-text-tertiary">
-        or drop a video anywhere on this screen
-      </p>
+      <StudioHome
+        onCreate={onCreate}
+        onImport={onImport}
+        onThumbnails={onThumbnails}
+        onScript={onScript}
+        importing={importing}
+        userTier={userTier}
+        remainingExports={remainingExports}
+      />
 
       {/* v0.7.1 — Sponsored rewards banners surface on the home screen
           too, not just the Earn page. Reads campaigns from the live
@@ -266,117 +163,12 @@ export function WorkstationRoom({
                 Drop a video to start
               </span>
               <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-300/70">
-                MP4 · MOV · MKV · WEBM
+                MP4 · MOV · MKV · WEBM · AVI · M4V · MP3 · M4A · WAV
               </span>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
     </div>
-  );
-}
-
-function Tile({
-  layoutId,
-  icon,
-  title,
-  subtitle,
-  onClick,
-  reduced,
-  delay,
-  disabled = false,
-  busy = false,
-  busyLabel,
-}: {
-  layoutId: string;
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
-  onClick: () => void;
-  reduced: boolean;
-  delay: number;
-  /** v0.7.1 — placeholder tiles (Thumbnails / Script) when the feature
-   *  isn't wired yet. Dims the tile + suppresses hover/tap motion + adds
-   *  a small "soon" pill so users read it as "coming" not "broken". */
-  disabled?: boolean;
-  /** ship-lens v0.7.13 T1.3 — true while the parent action is in flight
-   *  (e.g. handleImportDirect waiting on the OS file picker + sidecar
-   *  importReadyClips). Suppresses clicks via pointer-events-none AND
-   *  the onClick guard, dims to opacity-50, and renders busyLabel as a
-   *  pill at the top of the tile. Independent of `disabled` because the
-   *  semantic differs — disabled = feature not yet wired, busy = wired
-   *  but in flight. */
-  busy?: boolean;
-  busyLabel?: string;
-}) {
-  // ship-lens v0.7.13 T1.3 — busy is treated like disabled for the
-  // interactive surface (no hover lift, no click) but the visual cue is
-  // a "preparing…" pill instead of the "soon" pill so the user reads it
-  // as work-in-progress not feature-missing.
-  const interactionBlocked = disabled || busy;
-  return (
-    <motion.button
-      layoutId={layoutId}
-      type="button"
-      onClick={interactionBlocked ? undefined : onClick}
-      disabled={interactionBlocked}
-      initial={reduced ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.92 }}
-      animate={
-        reduced
-          ? { opacity: disabled ? 0.55 : busy ? 0.5 : 1 }
-          : { opacity: disabled ? 0.55 : busy ? 0.5 : 1, y: 0, scale: 1 }
-      }
-      transition={
-        reduced
-          ? { duration: 0.18 }
-          : { delay, type: "spring", stiffness: 280, damping: 26 }
-      }
-      whileHover={
-        reduced || interactionBlocked
-          ? undefined
-          : { scale: 1.04, transition: { type: "spring", stiffness: 360, damping: 22 } }
-      }
-      whileTap={reduced || interactionBlocked ? undefined : { scale: 0.96 }}
-      className={`cockpit-tile group relative flex h-[220px] w-[220px] flex-col items-center justify-center gap-3 bg-transparent outline-none ${interactionBlocked ? "cursor-not-allowed" : ""} ${busy ? "pointer-events-none" : ""}`}
-      aria-label={`${title} — ${subtitle}${disabled ? " (coming soon)" : ""}${busy ? " (preparing)" : ""}`}
-      aria-busy={busy || undefined}
-    >
-      {disabled && !busy && (
-        <span className="absolute right-3 top-3 rounded-full border border-fuchsia/30 bg-paper px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-fuchsia">
-          soon
-        </span>
-      )}
-      {busy && (
-        <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-fuchsia/40 bg-paper px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-fuchsia">
-          <span className="relative inline-flex h-1.5 w-1.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fuchsia opacity-70" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-fuchsia" />
-          </span>
-          {busyLabel ?? "working"}
-        </span>
-      )}
-      {/* HUD bracket corners — fuchsia dashed, only at the four corners.
-          No background fill, no full outline; the icon hovers in space and
-          the brackets read as a targeting reticle around it. */}
-      <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tl" />
-      <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-tr" />
-      <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-bl" />
-      <span aria-hidden="true" className="cockpit-tile-corner cockpit-tile-corner-br" />
-
-      {/* Ambient halo — fuchsia glow behind the icon. No background plate. */}
-      <span aria-hidden="true" className="cockpit-tile-halo" />
-
-      <span className="cockpit-tile-glyph relative z-10 text-fuchsia">
-        {icon}
-      </span>
-      <span className="relative z-10 flex flex-col items-center gap-1">
-        <span className="font-display text-[22px] font-semibold leading-none tracking-[-0.02em] text-ink">
-          {title}
-        </span>
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-tertiary">
-          {subtitle}
-        </span>
-      </span>
-    </motion.button>
   );
 }

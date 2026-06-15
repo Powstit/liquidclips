@@ -17,7 +17,7 @@
 //   DELEGATE — Caption Edit → CaptionDrawer (onOpenCaptions),
 //              Source Change → pickOverlaySource (inside ReactionControls),
 //              Publish/Schedule popover empty state → onConnectChannels →
-//                Schedule → Loadout (DON'T inline channel CRUD here),
+//                Schedule → Channels (DON'T inline channel CRUD here),
 //              Routes alt → schedule popover, ⋮ menu items → modals/routes.
 //   WATCH   — clip.overlay.bake_status (server writes "error" on ffmpeg
 //             fail; pending phase is client-side via reactionBakingAt
@@ -49,7 +49,9 @@ import {
   CAPTION_STYLE_KEYS,
   type CaptionStyleKey,
 } from "../../lib/caption-styles";
-import { listChannels, type Channel } from "../../lib/backend";
+import { type Channel } from "../../lib/backend";
+import { usePlatformConnections } from "../../lib/usePlatformConnections";
+import { isEffectivelyActive } from "../schedule/channelStatus";
 import { LAYOUTS, type LayoutKey } from "../clips-feed/LayoutIcon";
 import { ReactionControls } from "../clips-feed/ReactionControls";
 import {
@@ -80,6 +82,7 @@ type Props = {
   onClear: () => void;
   onChangeFocus: (idx: number) => void;
   onOpenSettings?: () => void;
+  onOpenSchedule?: () => void;
   onOpenEditor?: (clipIdx: number, scrollTo?: "reaction" | "captions") => void;
   onOpenCaptions?: (clipIdx: number) => void;
   modalOpen?: boolean;
@@ -101,6 +104,7 @@ export function BottomCockpit({
   onClear,
   onChangeFocus,
   onOpenSettings,
+  onOpenSchedule,
   onOpenEditor,
   onOpenCaptions,
   modalOpen = false,
@@ -555,11 +559,10 @@ export function BottomCockpit({
                 initialWhen={whenKeyAsScheduleWhen}
                 onConnectChannels={() => {
                   // Route to Schedule → Channels (canonical surface since v0.7.40).
-                  // Settings.tsx hears the event and calls onOpenSchedule("channels").
                   window.dispatchEvent(
                     new CustomEvent("lc:settings-open-tab", { detail: { tab: "channels" } }),
                   );
-                  if (onOpenSettings) onOpenSettings();
+                  onOpenSchedule?.();
                 }}
                 onClose={() => setPopover({ kind: "none" })}
                 onApply={(channels, when) =>
@@ -575,6 +578,12 @@ export function BottomCockpit({
                 busy={busy}
                 forcedNow
                 onClose={() => setPopover({ kind: "none" })}
+                onConnectChannels={() => {
+                  window.dispatchEvent(
+                    new CustomEvent("lc:settings-open-tab", { detail: { tab: "channels" } }),
+                  );
+                  onOpenSchedule?.();
+                }}
                 onApply={(channels) =>
                   void runSideEffect("Published", () =>
                     publishClipsNow(project, effectiveIdxs, channels),
@@ -798,7 +807,7 @@ function StatusStrip({
           <DropdownMenuLabel>Navigation</DropdownMenuLabel>
           {onOpenSettings && (
             <DropdownMenuItem onClick={onOpenSettings}>
-              Schedule → Loadout
+              Settings
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
@@ -1170,12 +1179,11 @@ function SchedulePopoverInline({
   initialWhen?: ScheduleWhen;
   onApply: (channels: string[], when: ScheduleWhen) => void;
   onClose: () => void;
-  /** Bug 1 (v0.7.30): empty-channels and "add channel" rows route here.
-   *  Wired to BottomCockpit.onOpenSettings so users land in Settings →
-   *  Connections in one click. */
+  /** Empty-channel and "add channel" rows route to Schedule → Channels. */
   onConnectChannels?: () => void;
 }) {
   const popoverRef = useRef<HTMLDivElement | null>(null);
+  const { snapshot } = usePlatformConnections();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [when, setWhen] = useState<ScheduleWhen>(initialWhen ?? { kind: "now" });
@@ -1206,24 +1214,23 @@ function SchedulePopoverInline({
   }, [initialWhen]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const all = await listChannels();
-        if (cancelled) return;
-        const active = all.filter((c) => c.status === "active");
-        setChannels(active);
-        setPicked(new Set(active.map((c) => c.id)));
-      } catch (e) {
-        if (!cancelled) setErr(humanError(e));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (snapshot.kind === "loading") {
+      setLoading(true);
+      return;
+    }
+    if (snapshot.kind === "error") {
+      setErr(snapshot.message);
+      setLoading(false);
+      return;
+    }
+    const active = snapshot.channels.filter(
+      (c) => c.status !== "deleted" && isEffectivelyActive(c, snapshot.ayrshare?.platforms ?? []),
+    );
+    setChannels(active);
+    setPicked(new Set(active.map((c) => c.id)));
+    setErr(null);
+    setLoading(false);
+  }, [snapshot]);
 
   return (
     <div ref={popoverRef} className="m-3 rounded-md border border-fuchsia/30 bg-paper-warm/95 p-3 shadow-[0_18px_44px_rgba(11,11,16,0.45)]">

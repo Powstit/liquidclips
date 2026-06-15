@@ -146,7 +146,9 @@ export function AddChannelModal({
         if (cancelled) return;
         if (refreshed.status === "active") {
           clearInterval(interval);
-          setState({ kind: "success", channel: refreshed });
+          window.dispatchEvent(new CustomEvent("lc:connections-mutated"));
+          onCreated(refreshed);
+          onClose();
         } else if (attempts >= 60) {
           // 60 × 1.5s = ~90s of polling. If status still isn't 'active',
           // STOP lying about success — surface a distinct still-pending UI

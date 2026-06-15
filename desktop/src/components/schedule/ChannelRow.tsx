@@ -200,10 +200,10 @@ export function ChannelRow({
 
   return (
     <div
-      className={`group flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+      className={`group flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 ${
         meta.on
           ? "border-fuchsia bg-fuchsia-soft/20"
-          : "border-line/40 bg-paper-elev/40 hover:border-fuchsia hover:bg-fuchsia-soft/20"
+          : "border-line/40 bg-paper-elev/40"
       }`}
     >
       {/* status dot */}

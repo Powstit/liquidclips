@@ -17,11 +17,11 @@
 // one. The Workspace DropZone hides the same way ("click to browse" is the
 // canonical interaction).
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import { ClipboardPaste, FolderOpen, Layers, Plus, PlayCircle, AlertTriangle } from "lucide-react";
-import { socialGetConnectionStrict, type SocialConnectionState } from "../../lib/backend";
+import { usePlatformConnections } from "../../lib/usePlatformConnections";
 import {
   humanError,
   sidecar,
@@ -69,13 +69,9 @@ function synthClip(item: DirectPublishQueueItem): Clip {
 }
 
 export function DirectPublishQueue({
-  onOpenSettings,
   onOpenProject,
   onOpenSchedule,
 }: {
-  /** Bubble up to the host (UploadTab) which already knows how to route
-   *  the user to Schedule → Loadout. */
-  onOpenSettings: () => void;
   /** Promote uploaded clips into the normal project editor so both lanes
    *  share reaction / stack / split / schedule / publish. */
   onOpenProject: (project: Project) => void;
@@ -86,33 +82,13 @@ export function DirectPublishQueue({
 }) {
   const { items, error: queueError, addPaths, remove, updateTitle } = useDirectPublishQueue();
 
-  // Connection state — read once on mount, also re-read whenever the modal
-  // closes so a user who just connected sees the gate disappear.
-  const [connection, setConnection] = useState<SocialConnectionState | null>(null);
-  const [connectionLoading, setConnectionLoading] = useState(true);
-  // Distinguish "fetch failed" from "fetch succeeded but no platforms" — the
-  // UI lies to the user otherwise (a network blip looks identical to a
-  // fresh-install empty state).
-  const [connectionError, setConnectionError] = useState<string | null>(null);
-  const refreshConnection = useCallback(async () => {
-    setConnectionLoading(true);
-    try {
-      const state = await socialGetConnectionStrict();
-      setConnection(state === "no-connection" ? null : state);
-      setConnectionError(null);
-    } catch (e) {
-      // Soft-fail for connection state itself, but track the error so we
-      // can show a "couldn't reach status — check Settings" inline instead
-      // of pretending the user just hasn't connected yet.
-      setConnection(null);
-      setConnectionError(humanError(e));
-    } finally {
-      setConnectionLoading(false);
-    }
-  }, []);
-  useEffect(() => {
-    void refreshConnection();
-  }, [refreshConnection]);
+  // Connection state — read from the canonical hook so ClipReadyCard shares
+  // the same source of truth as Schedule and PublishModal. Re-read when the
+  // modal closes so a user who just connected sees the gate disappear.
+  const { snapshot, refresh } = usePlatformConnections();
+  const connection = snapshot.kind === "loaded" ? snapshot.ayrshare : null;
+  const connectionLoading = snapshot.kind === "loading";
+  const connectionError = snapshot.kind === "error" ? snapshot.message : null;
 
   const [pickError, setPickError] = useState<string | null>(null);
   const [modal, setModal] = useState<{
@@ -304,7 +280,7 @@ export function DirectPublishQueue({
       setBulk(null);
     }
     // Re-read connection so the inline gate clears once the user links.
-    void refreshConnection();
+    void refresh();
   }
 
   async function onModalDone(msg: string) {
@@ -418,13 +394,17 @@ export function DirectPublishQueue({
             <AlertTriangle className="mt-[2px] h-4 w-4 shrink-0" strokeWidth={2.25} />
             <span>
               Couldn&rsquo;t reach social-platform status &mdash; check{" "}
-              <button
-                type="button"
-                onClick={onOpenSchedule ?? onOpenSettings}
-                className="underline decoration-dashed underline-offset-2 hover:text-ink"
-              >
-                Schedule &rarr; Loadout
-              </button>
+              {onOpenSchedule ? (
+                <button
+                  type="button"
+                  onClick={onOpenSchedule}
+                  className="underline decoration-dashed underline-offset-2 hover:text-ink"
+                >
+                  Schedule &rarr; Channels
+                </button>
+              ) : (
+                <span>Schedule &rarr; Channels</span>
+              )}
               .
             </span>
           </span>
@@ -480,7 +460,6 @@ export function DirectPublishQueue({
               onScheduleAt={onScheduleAt}
               onRemove={(id) => void remove(id)}
               onTitleChange={(id, title) => void updateTitle(id, title)}
-              onOpenSettings={onOpenSettings}
               onOpenSchedule={onOpenSchedule}
               linkedPlatforms={linkedPlatforms}
               onPlatformClick={onPlatformClick}
@@ -503,7 +482,6 @@ export function DirectPublishQueue({
           projectSlug={`${DIRECT_SLUG_PREFIX}-${modal.item.id}`}
           mode={modal.mode}
           onClose={onModalClose}
-          onOpenSettings={onOpenSettings}
           onOpenSchedule={onOpenSchedule}
           onDone={onModalDone}
           initialPlatforms={modal.platform ? [modal.platform] : undefined}
