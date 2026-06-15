@@ -35,7 +35,7 @@
 // EMPTY-STATE: when no channels exist at all, we don't dead-end the user
 // inside the popover. We surface Connect Instagram / Connect TikTok
 // buttons in-place (one-click connect, per the contract) AND a fallback
-// link to Schedule → Loadout for everything else.
+// link to Schedule → Channels for everything else.
 //
 // PERSISTENCE: store.bindChannels writes through to localStorage via the
 // existing persistedSession debounce (Agent 1) — bindings survive reboot.
@@ -452,7 +452,7 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
             // an empty popover with no way forward. Per the Connect-channel
             // flow contract: one-click Connect Instagram / Connect TikTok
             // here, with an inline "Waiting for browser…" state + 90s
-            // timeout. Schedule → Loadout stays as the catch-all link
+            // timeout. Schedule → Channels stays as the catch-all link
             // for other platforms / re-link / diagnose.
             <div className="flex flex-col gap-3">
               {connecting ? (
@@ -511,7 +511,7 @@ export function AccountBindingChip({ windowId }: { windowId: WindowId }) {
                     </button>
                   </div>
                   <p className="font-mono text-[11px] text-text-tertiary">
-                    Need YouTube, X, or another platform? Open Schedule → Loadout.
+                    Need YouTube, X, or another platform? Open Schedule → Channels.
                   </p>
                 </>
               )}

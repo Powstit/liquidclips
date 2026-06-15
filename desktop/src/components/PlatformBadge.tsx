@@ -174,9 +174,13 @@ export function PlatformBadge({ platforms, size = "sm", showLabel = false, onCli
 export function PlatformBadgePicker({
   selected,
   onToggle,
+  connectionStatus,
+  onConnectPlatform,
 }: {
   selected: PlatformId[];
   onToggle: (p: PlatformId) => void;
+  connectionStatus?: Partial<Record<PlatformId, ChannelStatus | "no-channel" | "loading">>;
+  onConnectPlatform?: (p: PlatformId) => void;
 }) {
   const all: PlatformId[] = ["youtube", "tiktok", "instagram", "x", "linkedin", "facebook"];
 
@@ -188,15 +192,49 @@ export function PlatformBadgePicker({
       <div className="flex flex-wrap gap-2">
         {all.map((p) => {
           const isActive = selected.includes(p);
+          const status = connectionStatus?.[p];
+          const connected = !status || status === "active";
+          const loading = status === "loading";
+          const needsConnect = Boolean(status && status !== "active" && status !== "loading");
+          const statusLabel = loading
+            ? "checking"
+            : needsConnect
+            ? "connect"
+            : isActive
+            ? "selected"
+            : "available";
           return (
             <button
               key={p}
-              onClick={() => onToggle(p)}
+              type="button"
+              onClick={() => {
+                if (loading) return;
+                if (needsConnect) {
+                  onConnectPlatform?.(p);
+                  return;
+                }
+                onToggle(p);
+              }}
+              disabled={loading || (needsConnect && !onConnectPlatform)}
+              title={
+                needsConnect
+                  ? `Connect ${BRAND_LABEL[p]} in Schedule → Channels`
+                  : `${isActive ? "Remove" : "Route"} ${BRAND_LABEL[p]}`
+              }
+              aria-label={
+                needsConnect
+                  ? `Connect ${BRAND_LABEL[p]} in Schedule Channels`
+                  : `${isActive ? "Remove" : "Route"} ${BRAND_LABEL[p]}`
+              }
               className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 font-sans text-[12px] transition-all ${
-                isActive ? "font-medium text-white shadow-sm" : "border border-line bg-transparent text-text-secondary hover:text-ink"
+                isActive && connected
+                  ? "font-medium text-white shadow-sm"
+                  : needsConnect
+                  ? "border border-dashed border-line bg-paper/50 text-text-tertiary hover:border-fuchsia hover:text-fuchsia-deep disabled:cursor-not-allowed disabled:opacity-50"
+                  : "border border-line bg-transparent text-text-secondary hover:text-ink disabled:cursor-wait disabled:opacity-60"
               }`}
               style={
-                isActive
+                isActive && connected
                   ? BRAND_BG[p].startsWith("linear-gradient")
                     ? { background: BRAND_BG[p] }
                     : { backgroundColor: BRAND_BG[p] }
@@ -209,6 +247,9 @@ export function PlatformBadgePicker({
                 <PlatformGlyph id={p} />
               </span>
               {BRAND_LABEL[p]}
+              <span className="font-mono text-[9px] uppercase tracking-[0.1em] opacity-70">
+                {statusLabel}
+              </span>
             </button>
           );
         })}
@@ -216,4 +257,3 @@ export function PlatformBadgePicker({
     </div>
   );
 }
-

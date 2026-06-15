@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { sidecar, humanError, type Project, type ScoredTitle, type YouTubeExtras } from "../lib/sidecar";
 import { InfoTip } from "./InfoTip";
 import { PlatformIcon } from "./PlatformIcon";
+import { CopyButton } from "./CopyButton";
 
 // YouTube long-form upload prep. Built to beat TubeBuddy / VidIQ / 1of10 on
 // the things that actually move CTR: scored title variants with reasoning,
@@ -107,33 +109,31 @@ export function YouTubeView({ project }: { project: Project }) {
 
   return (
     <div className="space-y-5">
-      {/* Header: poster + intent eyebrow + "Copy in Studio order" + Save */}
-      <div className="flex flex-wrap items-stretch gap-4 rounded-2xl border border-line bg-gradient-to-r from-paper-warm/60 via-paper to-paper-warm/40 p-4 shadow-[0_2px_12px_rgba(15,15,18,0.04)]">
-        {posterSrc && (
-          <div className="aspect-video h-[88px] shrink-0 overflow-hidden rounded-xl border border-line bg-paper-warm">
-            <img
-              src={posterSrc}
-              alt=""
-              className="h-full w-full object-cover"
-              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-            />
-          </div>
-        )}
-        <div className="flex flex-1 flex-col justify-between gap-2">
+      {/* Composer hero — YouTube Studio preparation surface. Liquid Clips
+          does NOT publish long-form YouTube directly from this view; the
+          truthful path is: edit here → Copy in Studio order → paste each
+          block into YouTube Studio. Hero owns the platform identity (icon
+          + eyebrow), the selected title as H1, the truth subcopy, and the
+          three real actions (Copy bundle / Save / Open Studio externally). */}
+      <div className="relative space-y-4 rounded-2xl border border-line bg-gradient-to-r from-paper-warm/60 via-paper to-paper-warm/40 p-5 shadow-[0_2px_12px_rgba(15,15,18,0.04)]">
+        <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+        <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
+
+        <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="grid h-7 w-7 place-items-center rounded-full bg-ink text-paper">
               <PlatformIcon id="youtube" className="h-3.5 w-3.5" />
             </span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
-              for YouTube long-form
+            <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia">
+              youtube · long-form
             </span>
           </div>
-          <h3 className="font-display text-[20px] font-semibold leading-tight tracking-[-0.015em] text-ink line-clamp-2">
-            {selectedTitle || "Pick a title below"}
-          </h3>
-        </div>
-        <div className="flex flex-col items-end justify-between gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+          <span
+            className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary"
+            aria-live="polite"
+          >
             {saveState === "saving"
               ? "saving…"
               : saveState === "saved"
@@ -142,21 +142,55 @@ export function YouTubeView({ project }: { project: Project }) {
               ? "unsaved changes"
               : "saved"}
           </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => void copyBundle()}
-              className="rounded-full border border-line bg-paper px-4 py-1.5 font-sans text-[12px] font-medium text-ink hover:border-fuchsia hover:text-fuchsia"
-            >
-              {copyState === "bundle" ? "Copied ✓" : "Copy in Studio order"}
-            </button>
-            <button
-              onClick={() => void save()}
-              disabled={!isDirty || saveState === "saving"}
-              className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)] disabled:opacity-40"
-            >
-              {saveState === "saved" ? "Saved ✓" : saveState === "saving" ? "Saving…" : "Save"}
-            </button>
+        </div>
+
+        <div className="flex flex-wrap items-start gap-4">
+          {posterSrc && (
+            <div className="aspect-video h-32 shrink-0 overflow-hidden rounded-xl border border-line bg-paper-warm">
+              <img
+                src={posterSrc}
+                alt=""
+                className="h-full w-full object-cover"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+              />
+            </div>
+          )}
+          <div className="flex min-w-[260px] flex-1 flex-col gap-2.5">
+            <div className="flex items-start gap-2">
+              <h1 className="flex-1 font-display text-[24px] font-semibold leading-tight tracking-[-0.02em] text-ink line-clamp-2">
+                {selectedTitle || "Pick a title below."}
+              </h1>
+              {selectedTitle && (
+                <CopyButton text={selectedTitle} icon label="Copy title" />
+              )}
+            </div>
+            <p className="font-sans text-[13px] leading-relaxed text-ink-soft">
+              Liquid Clips packages every field in YouTube Studio order. Open
+              Studio, upload your video, then paste each block where it goes.
+            </p>
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <button
+            onClick={() => void copyBundle()}
+            className="inline-flex items-center gap-2 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-semibold text-white shadow-[var(--glow-sm)] transition-all hover:bg-fuchsia-bright"
+          >
+            {copyState === "bundle" ? "Copied ✓" : "Copy in Studio order"}
+          </button>
+          <button
+            onClick={() => void save()}
+            disabled={!isDirty || saveState === "saving"}
+            className="rounded-full border border-line bg-paper px-5 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep disabled:opacity-40"
+          >
+            {saveState === "saved" ? "Saved ✓" : saveState === "saving" ? "Saving…" : "Save"}
+          </button>
+          <button
+            onClick={() => void openExternal("https://studio.youtube.com")}
+            className="rounded-full border border-line bg-transparent px-5 py-2 font-sans text-[13px] font-medium text-text-secondary transition-colors hover:border-fuchsia hover:text-ink"
+          >
+            Open YouTube Studio ↗
+          </button>
         </div>
       </div>
 
@@ -263,7 +297,11 @@ function ScoredTitlesCard({
   onEdit: (idx: number, next: string) => void;
 }) {
   return (
-    <section className="rounded-2xl border border-line bg-paper p-5 transition-colors hover:border-fuchsia/40">
+    <section className="relative rounded-2xl border border-line bg-paper p-5 transition-colors hover:border-fuchsia/40">
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
       <div className="flex items-center gap-1.5">
         <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
           Title variants · ranked
@@ -337,7 +375,11 @@ function DescriptionCard({
 }) {
   const near = composedLength > YT_DESC_MAX - 200;
   return (
-    <section className="rounded-2xl border border-line bg-paper p-5 transition-colors focus-within:border-fuchsia hover:border-fuchsia/40">
+    <section className="relative rounded-2xl border border-line bg-paper p-5 transition-colors focus-within:border-fuchsia hover:border-fuchsia/40">
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
@@ -389,7 +431,11 @@ function ChaptersCard({
   }
 
   return (
-    <section className="rounded-2xl border border-line bg-paper p-5 transition-colors hover:border-fuchsia/40">
+    <section className="relative rounded-2xl border border-line bg-paper p-5 transition-colors hover:border-fuchsia/40">
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
@@ -461,7 +507,11 @@ function ChipsCard({
 }) {
   const [draft, setDraft] = useState("");
   return (
-    <section className="flex flex-col rounded-2xl border border-line bg-paper p-5 transition-colors hover:border-fuchsia/40">
+    <section className="relative flex flex-col rounded-2xl border border-line bg-paper p-5 transition-colors hover:border-fuchsia/40">
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">{label}</span>
@@ -516,7 +566,11 @@ function PinnedCommentCard({
   onChange: (next: string) => void;
 }) {
   return (
-    <section className="rounded-2xl border border-line bg-paper p-5 transition-colors focus-within:border-fuchsia hover:border-fuchsia/40">
+    <section className="relative rounded-2xl border border-line bg-paper p-5 transition-colors focus-within:border-fuchsia hover:border-fuchsia/40">
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
@@ -524,9 +578,14 @@ function PinnedCommentCard({
           </span>
           <InfoTip text="After you publish, drop this as the first comment and pin it. YouTube ranks pinned comments and they're a top engagement signal in the first 60 minutes." />
         </div>
-        <span className="font-mono text-[10px] tracking-[0.08em] text-text-tertiary">
-          {value.length}/400
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px] tracking-[0.08em] text-text-tertiary">
+            {value.length}/400
+          </span>
+          {value.trim().length > 0 && (
+            <CopyButton text={value} icon label="Copy pinned comment" />
+          )}
+        </div>
       </div>
       <textarea
         value={value}
@@ -558,7 +617,11 @@ function EndScreenCard({
     onChange(ctas.filter((_, idx) => idx !== i));
   }
   return (
-    <section className="rounded-2xl border border-line bg-paper p-5 transition-colors hover:border-fuchsia/40">
+    <section className="relative rounded-2xl border border-line bg-paper p-5 transition-colors hover:border-fuchsia/40">
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">

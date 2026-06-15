@@ -32,7 +32,7 @@ export function unionBindings(windows: WindowState[]): string[] {
 /**
  * Removes a channel id from every window's binding.
  *
- * Called when the channel is deleted upstream (Settings → Connections, or a
+ * Called when the channel is deleted upstream (Schedule → Channels, or a
  * stale OAuth link tear-down). Without this, a deleted channel would linger
  * in `boundChannelIds` and the schedule action would try to fan-out to a
  * 404 target — strands the user staring at a failed-publish row with no

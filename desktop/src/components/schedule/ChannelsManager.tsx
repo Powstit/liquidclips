@@ -33,7 +33,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Plus, RefreshCw } from "lucide-react";
 import * as backend from "../../lib/backend";
 import { humanError } from "../../lib/sidecar";
-import type { Channel } from "./types";
+import type { Channel, ChannelPlatform } from "./types";
 import { ChannelRow } from "./ChannelRow";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { AddChannelModal } from "./AddChannelModal";
@@ -58,6 +58,12 @@ function emitToast(kind: "success" | "error" | "info", message: string): void {
   window.dispatchEvent(
     new CustomEvent("lc:toast", { detail: { kind, message } }),
   );
+}
+
+function notifyConnectionsMutated(): void {
+  // Broadcasts a channel mutation so every surface reading from
+  // `usePlatformConnections` re-syncs without a manual refresh.
+  window.dispatchEvent(new CustomEvent("lc:connections-mutated"));
 }
 
 export function ChannelsManager({
@@ -236,6 +242,7 @@ export function ChannelsManager({
       try {
         const list = await backend.listChannels();
         setChannels(list);
+        notifyConnectionsMutated();
         const target: Channel | null =
           refreshed
           ?? (cid ? list.find((c) => c.id === cid) ?? null : null);
@@ -275,6 +282,7 @@ export function ChannelsManager({
       const next = c.status === "paused" ? "active" : "paused";
       const updated = await backend.patchChannel(c.id, { status: next });
       setChannels((cur) => cur.map((x) => (x.id === c.id ? updated : x)));
+      notifyConnectionsMutated();
     } catch (e) {
       // v0.7.32 — `humanError` already humanises the message into the parent
       // banner. The previous `throw e` was there to let ChannelCard unwind
@@ -289,6 +297,7 @@ export function ChannelsManager({
     try {
       await backend.deleteChannel(id);
       setChannels((cur) => cur.filter((c) => c.id !== id));
+      notifyConnectionsMutated();
       setConfirmDeleteId(null);
     } catch (e) {
       setError(humanError(e));
@@ -328,6 +337,62 @@ export function ChannelsManager({
       setError(humanError(e));
     }
   }
+
+  async function handleConnectRequest(platform: ChannelPlatform) {
+    const existing = channels.find(
+      (c) => c.platform === platform && c.status !== "deleted",
+    );
+    if (existing) {
+      await handleLinkNow(existing);
+      return;
+    }
+
+    let provisioned: Channel | null = null;
+    try {
+      const { channel, link_url } = await backend.createChannel({
+        platform,
+        label: `${platformLabel(platform)} #1`,
+      });
+      provisioned = channel;
+      setChannels((cur) => {
+        const idx = cur.findIndex((c) => c.id === channel.id);
+        if (idx >= 0) {
+          const next = [...cur];
+          next[idx] = channel;
+          return next;
+        }
+        return [...cur, channel];
+      });
+      notifyConnectionsMutated();
+      if (!link_url || !link_url.startsWith("http")) {
+        setError(link_url ? `Invalid link URL (${link_url.slice(0, 40)}...)` : "Empty link URL from server.");
+        return;
+      }
+      setConnecting((cur) => {
+        const next = new Map(cur);
+        next.set(channel.id, { timedOut: false });
+        return next;
+      });
+      startConnectingTimer(channel.id);
+      await openExternal(link_url);
+      setTimeout(() => { void load(); }, 2000);
+    } catch (e) {
+      if (provisioned) finishConnecting(provisioned.id);
+      setError(humanError(e));
+    }
+  }
+
+  useEffect(() => {
+    function onConnectRequest(ev: Event) {
+      const platform = (ev as CustomEvent<{ platform?: ChannelPlatform }>).detail?.platform;
+      if (!platform) return;
+      void handleConnectRequest(platform);
+    }
+    window.addEventListener("lc:channel-connect-request", onConnectRequest as EventListener);
+    return () => {
+      window.removeEventListener("lc:channel-connect-request", onConnectRequest as EventListener);
+    };
+  }, [channels]);
 
   if (loading) {
     return (
@@ -488,7 +553,10 @@ export function ChannelsManager({
       {addOpen && (
         <AddChannelModal
           onClose={() => setAddOpen(false)}
-          onCreated={() => void load()}
+          onCreated={() => {
+            void load();
+            notifyConnectionsMutated();
+          }}
         />
       )}
     </div>

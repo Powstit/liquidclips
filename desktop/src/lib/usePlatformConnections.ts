@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   listChannels,
   socialGetConnectionStrict,
@@ -38,6 +39,35 @@ export function usePlatformConnections() {
 
   useEffect(() => {
     void refresh();
+  }, [refresh]);
+
+  // Refresh when the canonical channel-linked deep-link fires, when the
+  // legacy Tauri social-link window closes, when any surface mutates
+  // channels (create / delete / toggle), or when the window regains focus.
+  // This keeps every consumer of this hook — Schedule, PublishModal,
+  // ChannelPicker, ClipReadyCard, ResultsGrid — reading from the same backend
+  // truth without manual reloads.
+  useEffect(() => {
+    const onChange = () => void refresh();
+    window.addEventListener("junior:channel-linked", onChange);
+    window.addEventListener("lc:connections-mutated", onChange);
+    window.addEventListener("lc:desktop-auth-ready", onChange);
+    window.addEventListener("focus", onChange);
+    let unlisten: UnlistenFn | null = null;
+    void (async () => {
+      try {
+        unlisten = await listen("social_link_closed", onChange);
+      } catch {
+        /* Tauri listener unavailable (web preview) — window events still work. */
+      }
+    })();
+    return () => {
+      window.removeEventListener("junior:channel-linked", onChange);
+      window.removeEventListener("lc:connections-mutated", onChange);
+      window.removeEventListener("lc:desktop-auth-ready", onChange);
+      window.removeEventListener("focus", onChange);
+      if (unlisten) unlisten();
+    };
   }, [refresh]);
 
   const isConnected = useCallback(

@@ -18,6 +18,7 @@ import { HudChip } from "../cockpit/HudChip";
 import { ProjectCard } from "./ProjectCard";
 import { NewProjectModal } from "./NewProjectModal";
 import { ProjectsLockedScreen } from "./ProjectsLockedScreen";
+import { LibraryClipStrip } from "./LibraryClipStrip";
 
 type ProjectsFilter = "all" | "earn" | "manual" | "imports" | "archived";
 
@@ -237,29 +238,33 @@ function ProjectsTabUnlocked({
   const filteredIsEmpty = !loading && !error && projects.length > 0 && filtered.length === 0;
 
   return (
-    <div className="flex w-full max-w-[1180px] flex-col gap-6 pt-2">
-      {/* Header */}
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-8 pt-6 pb-10">
+      {/* Header — demo-pages.html workspace pattern: eyebrow + tight H1 with mt-0.5 */}
       <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1">
+        <div className="flex max-w-2xl flex-col gap-1">
           <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia">
             projects
           </span>
-          <h1 className="font-display text-[28px] font-semibold leading-[1.05] tracking-[-0.025em] text-ink">
+          <h1 className="mt-0.5 font-display text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] text-ink">
             Organise your clips around campaigns, clients, and earning goals.
           </h1>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => setNewOpen(true)} className="btn-primary">
-            <Plus className="h-3.5 w-3.5" strokeWidth={2.2} />
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setNewOpen(true)}
+            className="inline-flex h-11 items-center gap-2 rounded-full bg-fuchsia px-6 font-sans text-sm font-semibold text-white shadow-[var(--glow-md)] transition-all hover:bg-fuchsia-bright focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+          >
+            <Plus className="h-4 w-4" strokeWidth={2.2} />
             New Project
           </button>
           <button
             type="button"
             onClick={() => void onTopLevelAddFile()}
             disabled={loading}
-            className="btn-secondary"
+            className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-paper px-6 font-sans text-sm font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep disabled:opacity-50"
           >
-            <FilePlus className="h-3.5 w-3.5" strokeWidth={2.2} />
+            <FilePlus className="h-4 w-4" strokeWidth={2.2} />
             Add file
           </button>
           {/* v0.7.76 F5 — Top-level "Add from Library" removed. The
@@ -274,7 +279,7 @@ function ProjectsTabUnlocked({
             disabled={loading}
             title="Refresh projects"
             aria-label="Refresh"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-line bg-transparent text-text-secondary transition-colors hover:border-fuchsia hover:text-fuchsia disabled:opacity-50"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-line bg-transparent text-text-secondary transition-colors hover:border-fuchsia hover:text-fuchsia disabled:opacity-50"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} strokeWidth={2} />
           </button>
@@ -358,6 +363,13 @@ function ProjectsTabUnlocked({
         </div>
       )}
 
+      {/* v0.7.77 — Library clip strip. Renders Library clips inside the
+          Projects tab so a user can drag a clip onto any ProjectCard
+          without switching tabs. Source + target visible together = drag
+          works. ProjectCard's existing drop handler accepts the strip's
+          payload (kind: "library-clip") as a single-clip attach. */}
+      <LibraryClipStrip limit={12} hasProjects={projects.length > 0} />
+
       {/* Filter chips */}
       <div className="flex flex-wrap items-center gap-2">
         {PROJECTS_FILTERS.map((f) => {
@@ -393,25 +405,25 @@ function ProjectsTabUnlocked({
           button diluted the "Projects is an island" feel — Earn is its
           own tab in the sidebar, the empty state shouldn't fork to it. */}
       {isEmpty && (
-        <div className="empty-state">
-          <p className="font-display text-[18px] font-semibold text-ink">
+        <div className="empty-state p-8">
+          <p className="font-display text-[20px] font-semibold text-ink">
             No projects yet.
           </p>
-          <p className="mt-1 font-sans text-[13px] text-text-secondary">
+          <p className="mt-2 max-w-xl font-sans text-[13px] leading-relaxed text-text-secondary">
             Create a Project to start organising clips, files, and campaigns inside this tab.
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
+          <div className="mt-5 flex flex-wrap items-center gap-3">
             <button
               type="button"
               onClick={() => setNewOpen(true)}
-              className="btn-primary"
+              className="inline-flex h-11 items-center gap-2 rounded-full bg-fuchsia px-6 font-sans text-sm font-semibold text-white shadow-[var(--glow-md)] transition-all hover:bg-fuchsia-bright focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
             >
               Create a Project
             </button>
             <button
               type="button"
               onClick={onGoToWorkstation}
-              className="btn-ghost"
+              className="font-sans text-[13px] text-text-secondary underline-offset-4 transition-colors hover:text-fuchsia-deep hover:underline"
             >
               or import a clip in Workspace
             </button>

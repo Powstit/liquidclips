@@ -503,7 +503,7 @@ export const backend = {
     if (res.status === 412) {
       // Backend: no social_connections row yet. Surface a clear next step
       // instead of dumping the raw 412 body to the user.
-      throw new Error("Connect a social profile in Schedule → Loadout before publishing.");
+      throw new Error("Connect a social profile in Schedule → Channels before publishing.");
     }
     if (!res.ok) {
       // finding #9: distinguish 5xx (retry / offline UI) from 4xx (user-actionable)
@@ -1222,9 +1222,9 @@ export async function meStatusLegacy(): Promise<MeStatus | null> {
 
 // ── Social connections (P1 — Ayrshare) ─────────────────────────────────
 //
-// One profile key per user. Set via Schedule → Loadout; PublishModal
+// One profile key per user. Set via Schedule → Channels; PublishModal
 // reads `platforms` to pre-fill checkboxes and 412s the user back to
-// Schedule → Loadout if they try to publish without one.
+// Schedule → Channels if they try to publish without one.
 
 // ── Sponsored Campaigns + Submissions (sprint #14c) ─────────────────────
 // Minecraft Story Clip Challenge is the first wrapped campaign. Clipper

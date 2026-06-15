@@ -93,6 +93,14 @@ const SCHEDULE_PRESETS: SchedulePreset[] = [
   { id: "custom", label: "Pick custom time…", iso: () => null },
 ];
 
+// v0.7.78 — Canonical Ayrshare-routable set. Fixed display order on every
+// ClipReadyCard so the user instantly recognises the four destinations
+// regardless of their current connection state. Extras (anything linked
+// beyond these four — LinkedIn / Threads / Facebook) render AFTER the
+// canonical row. Lowercase to match Ayrshare's `connection.platforms`
+// vocabulary and the rest of the codebase.
+const CANONICAL_PLATFORMS: readonly string[] = ["youtube", "tiktok", "instagram", "x"];
+
 export function ClipReadyCard({
   item,
   connection,
@@ -105,7 +113,6 @@ export function ClipReadyCard({
   onAddMore,
   onRemove,
   onTitleChange,
-  onOpenSettings,
   onOpenSchedule,
 }: {
   item: DirectPublishQueueItem;
@@ -129,7 +136,6 @@ export function ClipReadyCard({
   onRemove: (id: string) => void;
   /** Persist an edited display title back to the queue. */
   onTitleChange: (id: string, title: string) => void;
-  onOpenSettings: () => void;
   /** Open Schedule → Channels. Wired to the empty-state CTA and the "+"
    *  add-platform affordance at the end of the platform-circles row. */
   onOpenSchedule?: () => void;
@@ -202,6 +208,28 @@ export function ClipReadyCard({
   const [videoError, setVideoError] = useState(false);
 
   const videoSrc = convertFileSrc(item.file_path);
+
+  // v0.7.78 — Fixed 4-platform roster + extras + trailing "+".
+  // `linkedPlatforms` is the real Ayrshare `connection.platforms` array
+  // forwarded by DirectPublishQueue. Twitter/X alias mirrors the same rule
+  // schedule/channelStatus.ts uses, so a profile that links X via the
+  // Ayrshare "twitter" endpoint still lights the canonical X tile.
+  const linkedLcSet = new Set(linkedPlatforms.map((p) => p.toLowerCase()));
+  const isCanonicalConnected = (platform: string): boolean => {
+    const lc = platform.toLowerCase();
+    if (linkedLcSet.has(lc)) return true;
+    if (lc === "x" && linkedLcSet.has("twitter")) return true;
+    if (lc === "twitter" && linkedLcSet.has("x")) return true;
+    return false;
+  };
+  const connectedCanonicalCount = CANONICAL_PLATFORMS.filter(isCanonicalConnected).length;
+  const extraPlatforms = linkedPlatforms.filter((p) => {
+    const lc = p.toLowerCase();
+    if (CANONICAL_PLATFORMS.includes(lc)) return false;
+    // Aliased to canonical X — already lit, don't render twice.
+    if (lc === "twitter") return false;
+    return true;
+  });
 
   return (
     <div className="rounded-2xl border border-line bg-paper-warm/40 p-4 space-y-3">
@@ -288,18 +316,51 @@ export function ClipReadyCard({
         )}
       </button>
 
-      {/* Connected-platform circles underneath the thumbnail. Click a
-          circle to open the scheduler pre-filtered to that platform.
-          The trailing "+" button (when onOpenSchedule is wired) jumps the
-          user straight to Schedule → Channels to link another platform. */}
-      {linkedPlatforms.length > 0 ? (
+      {/* v0.7.78 — Fixed 4-platform roster (YouTube Shorts / TikTok /
+          Instagram Reels / X) under the thumbnail. Connected = bright +
+          click opens PublishModal pre-filtered to that platform. Not
+          connected = dim dashed + click routes to Schedule → Channels.
+          Extras (anything linked beyond the canonical four) render after
+          the canonical row as connected. The trailing "+" pill remains a
+          general "connect another platform" affordance. Hidden during the
+          first connection-state read so the row doesn't flicker. Real
+          Ayrshare `linkedPlatforms` only — never fakes a state. */}
+      {!connectionLoading && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-            schedule to
+            platforms &middot; {connectedCanonicalCount} of {CANONICAL_PLATFORMS.length} connected
           </span>
-          {linkedPlatforms.map((platform) => (
+          {CANONICAL_PLATFORMS.map((platform) => {
+            const connected = isCanonicalConnected(platform);
+            const platformName = prettyPlatform(platform);
+            return connected ? (
+              <button
+                key={platform}
+                type="button"
+                onClick={() => onPlatformClick(platform, item)}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-line bg-paper text-text-secondary transition-all hover:scale-105 hover:border-fuchsia hover:bg-fuchsia-soft hover:text-fuchsia-deep hover:ring-2 hover:ring-fuchsia/30"
+                title={`Schedule to ${platformName}`}
+                aria-label={`Schedule to ${platformName}`}
+              >
+                <PlatformGlyph platform={platform} />
+              </button>
+            ) : (
+              <button
+                key={platform}
+                type="button"
+                onClick={onOpenSchedule ?? (() => undefined)}
+                disabled={!onOpenSchedule}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-line bg-paper text-text-tertiary opacity-60 transition-all hover:scale-105 hover:border-fuchsia hover:text-fuchsia-deep hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100 disabled:hover:border-line disabled:hover:opacity-40"
+                title="Not connected · open Channels"
+                aria-label={`${platformName} not connected — open Channels to link`}
+              >
+                <PlatformGlyph platform={platform} />
+              </button>
+            );
+          })}
+          {extraPlatforms.map((platform) => (
             <button
-              key={platform}
+              key={`extra-${platform}`}
               type="button"
               onClick={() => onPlatformClick(platform, item)}
               className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-line bg-paper text-text-secondary transition-all hover:scale-105 hover:border-fuchsia hover:bg-fuchsia-soft hover:text-fuchsia-deep hover:ring-2 hover:ring-fuchsia/30"
@@ -321,42 +382,30 @@ export function ClipReadyCard({
             </button>
           )}
         </div>
-      ) : !connectionLoading ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-            no platforms connected
-          </span>
-          {onOpenSchedule && (
-            <button
-              type="button"
-              onClick={onOpenSchedule}
-              className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-fuchsia-soft/30 px-3 py-1 font-sans text-[11px] font-medium text-fuchsia-deep transition-all hover:bg-fuchsia hover:text-white"
-            >
-              <Plus className="h-3 w-3" strokeWidth={2.5} />
-              connect a platform
-            </button>
-          )}
-        </div>
-      ) : null}
+      )}
 
-      {/* Action row */}
+      {/* Action row — v0.7.78 visual hierarchy:
+            • publish now: primary fuchsia + resting glow so it reads as the
+              destination CTA before hover.
+            • reaction / edit: demoted to border-line ghost so it doesn't
+              compete with publish for the primary slot. Callback unchanged. */}
       <div className="flex flex-wrap items-center gap-2 pt-1">
+        <button
+          onClick={() => tryAction("publish-now")}
+          disabled={connectionLoading || busy}
+          className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-semibold text-white shadow-[var(--glow-sm)] transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] disabled:opacity-50"
+        >
+          <Send className="h-3.5 w-3.5" strokeWidth={2.25} />
+          publish now
+        </button>
         <button
           onClick={() => onAction("edit", item)}
           disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-fuchsia-soft/30 px-4 py-2 font-sans text-[13px] font-medium text-fuchsia-deep transition-all hover:bg-fuchsia hover:text-white hover:shadow-[var(--glow-md)]"
+          className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-4 py-2 font-sans text-[13px] font-medium text-text-secondary transition-colors hover:border-fuchsia hover:text-fuchsia-deep disabled:opacity-50"
           title="Open the full clip editor: reaction, stack, split, captions, schedule, and publish."
         >
           <WandSparkles className="h-3.5 w-3.5" strokeWidth={2.25} />
           {busy ? "opening..." : "reaction / edit"}
-        </button>
-        <button
-          onClick={() => tryAction("publish-now")}
-          disabled={connectionLoading || busy}
-          className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] disabled:opacity-50"
-        >
-          <Send className="h-3.5 w-3.5" strokeWidth={2.25} />
-          publish now
         </button>
 
         {/* Schedule dropdown — caret signals there are options inside. */}
@@ -441,10 +490,12 @@ export function ClipReadyCard({
               ? "Connect first, then we'll resume your Publish Now"
               : "Connect first, then we'll resume your Schedule"}
           </p>
-          <ConnectFirstPrompt
-            variant="inline"
-            onOpenSchedule={onOpenSchedule ?? onOpenSettings}
-          />
+          {onOpenSchedule && (
+            <ConnectFirstPrompt
+              variant="inline"
+              onOpenSchedule={onOpenSchedule}
+            />
+          )}
           <div className="flex justify-end">
             <button
               onClick={() => setGateFor(null)}

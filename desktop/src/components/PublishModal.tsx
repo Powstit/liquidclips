@@ -1,17 +1,16 @@
 // ship-lens v0.7.7: fix #4 — summarisePublish branches on `status` so failed platforms no longer render as "tiktok: null" claiming success.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Globe, X } from "lucide-react";
 import { openUpgradeWhenSignedIn } from "../lib/upgradeWithAuth";
 import {
   backend,
   QuotaExceededError,
-  socialGetConnectionStrict,
-  listChannels,
   type Channel,
   type ConnectionPlatform,
   type PublishedTarget,
   type SocialConnectionState,
 } from "../lib/backend";
+import { usePlatformConnections } from "../lib/usePlatformConnections";
 import { requireCachedLicenseJwtOrThrow } from "../lib/authStorage";
 import { humanError, type Clip } from "../lib/sidecar";
 import { PlatformIcon } from "./PlatformIcon";
@@ -19,6 +18,7 @@ import { InfoTip } from "./InfoTip";
 import { useTier, TIER_COPY, type PublishCapability } from "../lib/useTier";
 import type { Tier } from "../lib/backend";
 import { ChannelPicker } from "./schedule/ChannelPicker";
+import { isEffectivelyActive } from "./schedule/channelStatus";
 import { ConnectFirstPrompt } from "./upload/ConnectFirstPrompt";
 
 /*
@@ -36,7 +36,7 @@ import { ConnectFirstPrompt } from "./upload/ConnectFirstPrompt";
  *
  *   1. Fetch the user's social connection state (GET /social/connections)
  *   2. If not connected → show a "Connect first" card with deep link to
- *      Schedule → Loadout
+ *      Schedule → Channels
  *   3. If connected → render platform checkboxes from `state.platforms`
  *   4. Submit calls backend.publishNow which posts to /publish-now with the
  *      platform array. Backend returns per-platform PublishedTarget[].
@@ -99,7 +99,6 @@ export function PublishModal({
   initialScheduledAt,
   onClose,
   onDone,
-  onOpenSettings,
   onOpenSchedule,
 }: {
   clip: Clip;
@@ -124,21 +123,26 @@ export function PublishModal({
   initialScheduledAt?: string;
   onClose: () => void;
   onDone: (msg: string) => void;
-  // Wired by App.tsx — Settings is now only used for non-connection settings
-  // (API keys etc.); connection management lives under Schedule → Loadout.
-  onOpenSettings?: () => void;
-  /** Routes the "Connect a channel first" empty-state to Schedule → Loadout,
-   *  the canonical surface for linked accounts since the Settings →
-   *  Connections collapse in Phase 1. */
+  /** Routes the "Connect a channel first" empty-state and the ChannelPicker
+   *  "Add channel" affordance to Schedule → Channels, the canonical surface
+   *  for linked accounts. */
   onOpenSchedule?: () => void;
 }) {
   const tier = useTier();
-  const [connection, setConnection] = useState<SocialConnectionState | null>(null);
-  const [connectionLoading, setConnectionLoading] = useState(true);
+  // v0.7.78 — Connection + channels come from the canonical hook so PublishModal
+  // shares one source of truth with Schedule, ChannelPicker, and ClipReadyCard.
+  const { snapshot } = usePlatformConnections();
+  const connection = snapshot.kind === "loaded" ? snapshot.ayrshare : null;
+  const connectionLoading = snapshot.kind === "loading";
+  const allChannels = useMemo<Channel[]>(
+    () => (snapshot.kind === "loaded" ? snapshot.channels.filter((c) => c.status !== "deleted") : []),
+    [snapshot],
+  );
+  const channels = useMemo<Channel[]>(
+    () => allChannels.filter((c) => isEffectivelyActive(c, connection?.platforms ?? [])),
+    [allChannels, connection],
+  );
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  // Schedule v2 — channel-aware publish. If user has any active channel, the
-  // modal switches from the legacy platform-multiselect to a ChannelPicker.
-  const [channels, setChannels] = useState<Channel[]>([]);
   const [pickedChannelId, setPickedChannelId] = useState<string | null>(null);
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [isSchedule, setIsSchedule] = useState(mode === "schedule-one");
@@ -178,79 +182,46 @@ export function PublishModal({
   const cap: PublishCapability = mode === "publish-now" ? "publish_now_single" : "schedule_one";
   const hasCapability = tier.can(cap);
 
-  // Load the user's social connection state once per mount when the tier
-  // entitles publishing. Free-tier renders the upgrade wall first and never
-  // hits the network.
+  // Derive initial selection from the canonical connection/channel snapshot.
+  // Runs once when the snapshot first loads; the ref guard prevents a later
+  // background refresh from clobbering the user's manual toggles.
   useEffect(() => {
-    if (!hasCapability) {
-      setConnectionLoading(false);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const [state, chs] = await Promise.all([
-          socialGetConnectionStrict(),
-          listChannels(),
-        ]);
-        if (cancelled) return;
-        setConnection(state === "no-connection" ? null : state);
-        const activeChannels = chs.filter((c: Channel) => c.status === "active");
-        setChannels(activeChannels);
-        const firstConnectedPlatform = state !== "no-connection" ? state.platforms[0] ?? null : null;
+    if (!hasCapability || snapshot.kind !== "loaded" || didApplyInitialPlatformsRef.current) return;
+    didApplyInitialPlatformsRef.current = true;
+    const state = snapshot.ayrshare;
+    const firstConnectedPlatform = state?.platforms[0] ?? null;
 
-        // v0.6.3 — "Schedule everywhere": tick every connected platform the
-        // instant the connection state lands, so the user lands in the
-        // modal with the broadcast already configured. Multi-platform
-        // gating still applies — if the tier disallows multi, we leave
-        // the first platform selected and let the existing togglePick
-        // logic enforce the rest.
-        if (prefillAll && mode === "publish-now" && state !== "no-connection" && state.platforms.length > 0) {
-          setPicked(new Set(state.platforms));
-        }
-        // Caller-driven pre-selection. Runs once per mount, after channels
-        // load. `undefined` = caller opted out → leave existing behavior.
-        // `[]` = explicit "select nothing" (don't fall back to all). Any
-        // platform with no matching active channel is silently ignored.
-        // Channel-path state is a single `pickedChannelId`, so we pick the
-        // first matching active channel and align the platform lens to it.
-        if (initialPlatforms !== undefined && !didApplyInitialPlatformsRef.current) {
-          didApplyInitialPlatformsRef.current = true;
-          if (initialPlatforms.length === 0) {
-            setPickedChannelId(null);
-            setSelectedPlatform(activeChannels[0]?.platform ?? initialPlatforms[0] ?? firstConnectedPlatform);
-          } else {
-            const wanted = new Set(initialPlatforms);
-            const match = activeChannels.find((c) => wanted.has(c.platform));
-            setPickedChannelId(match ? match.id : null);
-            setSelectedPlatform(match ? match.platform : (initialPlatforms[0] ?? activeChannels[0]?.platform ?? firstConnectedPlatform));
-          }
-        } else if (
-          !didApplyInitialPlatformsRef.current &&
-          activeChannels.length > 0
-        ) {
-          // No explicit caller pre-selection — auto-pick the first active
-          // channel so the modal opens "ready to submit" rather than empty.
-          // Removes a click for both "Publish now" and "Schedule ▾ → preset"
-          // flows. didApply guard prevents this from re-firing after a user
-          // deliberately deselects.
-          didApplyInitialPlatformsRef.current = true;
-          setPickedChannelId(activeChannels[0].id);
-          setSelectedPlatform(activeChannels[0].platform);
-        } else if (!didApplyInitialPlatformsRef.current) {
-          // No channels at all — still set a platform lens so the grid isn't
-          // empty on first paint.
-          didApplyInitialPlatformsRef.current = true;
-          setSelectedPlatform(firstConnectedPlatform);
-        }
-      } catch (e) {
-        if (!cancelled) setError(humanError(e));
-      } finally {
-        if (!cancelled) setConnectionLoading(false);
+    // v0.6.3 — "Schedule everywhere": tick every connected platform the
+    // instant the connection state lands, so the user lands in the
+    // modal with the broadcast already configured.
+    if (prefillAll && mode === "publish-now" && state && state.platforms.length > 0) {
+      setPicked(new Set(state.platforms));
+    }
+
+    // Caller-driven pre-selection. `undefined` = caller opted out; `[]` =
+    // explicitly select nothing. Any platform with no matching active channel
+    // is silently ignored. Align the platform lens to the matched channel.
+    if (initialPlatforms !== undefined) {
+      if (initialPlatforms.length === 0) {
+        setPickedChannelId(null);
+        setSelectedPlatform(channels[0]?.platform ?? initialPlatforms[0] ?? firstConnectedPlatform);
+      } else {
+        const wanted = new Set(initialPlatforms);
+        const match = channels.find((c) => wanted.has(c.platform));
+        setPickedChannelId(match ? match.id : null);
+        setSelectedPlatform(match ? match.platform : (initialPlatforms[0] ?? channels[0]?.platform ?? firstConnectedPlatform));
       }
-    })();
-    return () => { cancelled = true; };
-  }, [hasCapability, prefillAll, mode, initialPlatforms]);
+    } else if (channels.length > 0) {
+      // No explicit caller pre-selection — auto-pick the first routable
+      // channel so the modal opens ready to submit.
+      setPickedChannelId(channels[0].id);
+      setSelectedPlatform(channels[0].platform);
+    } else {
+      // No channels at all — still set a platform lens so the grid isn't
+      // empty on first paint.
+      setSelectedPlatform(firstConnectedPlatform);
+    }
+  }, [hasCapability, prefillAll, mode, initialPlatforms, snapshot, channels]);
 
   // If the user switches platform filters, clear a hidden channel selection
   // so the CTA count doesn't lie about what's visible.
@@ -399,13 +370,21 @@ export function PublishModal({
   if (!connectionLoading && hasNoChannels && hasNoLegacyProfile) {
     return (
       <ModalShell onClose={onClose}>
-        <ConnectFirstPrompt
-          variant="inline"
-          onOpenSchedule={() => {
-            onClose();
-            (onOpenSchedule ?? onOpenSettings)?.();
-          }}
-        />
+        {onOpenSchedule ? (
+          <ConnectFirstPrompt
+            variant="inline"
+            onOpenSchedule={() => {
+              onClose();
+              onOpenSchedule();
+            }}
+          />
+        ) : (
+          <div className="empty-state">
+            <p className="font-sans text-[13px] text-text-secondary">
+              No channels connected. Open Schedule → Channels to add one.
+            </p>
+          </div>
+        )}
       </ModalShell>
     );
   }
@@ -548,9 +527,9 @@ export function PublishModal({
               value={pickedChannelId}
               onChange={setPickedChannelId}
               filterPlatform={selectedPlatform ?? undefined}
-              onAddChannel={onOpenSettings ? () => {
+              onAddChannel={onOpenSchedule ? () => {
                 onClose();
-                onOpenSettings();
+                onOpenSchedule();
               } : undefined}
             />
           </div>
@@ -765,10 +744,10 @@ function PlatformGrid({
           }
           disabledReason={
             variant === "filter"
-              ? "No channel for this platform. Add one in Schedule → Loadout."
+              ? "No channel for this platform. Add one in Schedule → Channels."
               : !LEGACY_PUBLISH_PLATFORMS.includes(p as ConnectionPlatform)
                 ? "Direct publishing to this platform is coming soon."
-                : "Not connected. Link this platform in Schedule → Loadout first."
+                : "Not connected. Link this platform in Schedule → Channels first."
           }
           channels={variant === "filter" ? channels : undefined}
           connection={connection}

@@ -19,7 +19,7 @@
 //
 // Pause / resume / disconnect are NOT exposed in the picker (those live in
 // ChannelRow inside ChannelsManager). The needs-attention banner remains so
-// non-active rows still surface what's wrong and route to Settings.
+// non-active rows still surface what's wrong and route to Channels.
 //
 // ship-lens v0.7.7 #7 (carried forward) — non-active rows render with a
 // status microcopy + amber/red dot tone instead of silently dropping out.
@@ -30,11 +30,10 @@
 // we cap the list at max-h-[360px] with overflow-y-auto so the modal footer
 // stays reachable.
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { AlertTriangle, Plus } from "lucide-react";
 import { PlatformBadge, type PlatformId } from "../PlatformBadge";
-import * as backend from "../../lib/backend";
-import { humanError } from "../../lib/sidecar";
+import { usePlatformConnections } from "../../lib/usePlatformConnections";
 import type { Channel } from "./types";
 import { isEffectivelyActive } from "./channelStatus";
 
@@ -52,7 +51,7 @@ export function ChannelPicker({
   filterPlatform?: string;
   disabled?: boolean;
   /** Optional "+ Add channel" affordance — rendered at the bottom of the
-   *  picker. Wired by PublishModal to close the modal and open Settings
+   *  picker. Wired by PublishModal to close the modal and open Schedule
    *  → Channels so the user can link a new account without abandoning the
    *  publish flow. */
   onAddChannel?: () => void;
@@ -63,63 +62,21 @@ export function ChannelPicker({
    *  keep working without code churn. */
   onManageChannels?: () => void;
 }) {
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  // v0.7.32 B2 — same defensive stale-status override as ChannelRow + the
-  // Settings ConnectionsChannelsList. Routes modal previously gated the
-  // toggle on the raw DB `status === "active"`, so a channel that publishes
-  // fine via Ayrshare could appear un-routable here when the DB row hadn't
-  // been refreshed yet. Pull the Ayrshare profile snapshot so the gate
-  // matches what the user can actually do.
-  //
-  // `snapshotLoaded` gates the `needsAttention` count below — without it the
-  // amber count flashes high on first render (snapshot=[]) then drops to the
-  // override-adjusted count once the fetch resolves, reading as a glitch.
-  const [ayrshareLinkedPlatforms, setAyrshareLinkedPlatforms] = useState<readonly string[]>([]);
-  const [snapshotLoaded, setSnapshotLoaded] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const cs = await backend.listChannels();
-        if (cancelled) return;
-        // ship-lens v0.7.7 #7 — Keep every non-deleted channel. Active rows
-        // are routable; pending_link / error / paused rows render disabled
-        // with a status microcopy so the user knows the row exists and what
-        // to do next, instead of seeing "No channels added yet" when there
-        // are in fact several waiting on action.
-        const visible = cs.filter((c) => c.status !== "deleted");
-        setChannels(visible);
-      } catch (e) {
-        if (cancelled) return;
-        setLoadError(humanError(e));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void backend
-      .socialGetConnectionStrict()
-      .then((state) => {
-        if (cancelled) return;
-        if (state !== "no-connection") setAyrshareLinkedPlatforms(state.platforms ?? []);
-        setSnapshotLoaded(true);
-      })
-      .catch(() => {
-        // Transport error — leave the platforms empty so the picker falls
-        // back to the raw DB status. Still mark loaded so the needsAttention
-        // hint doesn't sit suppressed forever.
-        if (!cancelled) setSnapshotLoaded(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // v0.7.78 — Read channels + Ayrshare connection state from the canonical
+  // `usePlatformConnections` hook so ChannelPicker, Schedule, PublishModal,
+  // and ClipReadyCard all share one source of truth.
+  const { snapshot } = usePlatformConnections();
+  const loading = snapshot.kind === "loading";
+  const loadError = snapshot.kind === "error" ? snapshot.message : null;
+  const channels = useMemo<Channel[]>(
+    () => (snapshot.kind === "loaded" ? snapshot.channels.filter((c) => c.status !== "deleted") : []),
+    [snapshot],
+  );
+  const ayrshareLinkedPlatforms = useMemo<readonly string[]>(
+    () => (snapshot.kind === "loaded" ? snapshot.ayrshare?.platforms ?? [] : []),
+    [snapshot],
+  );
+  const snapshotLoaded = snapshot.kind !== "loading";
 
   const filtered = useMemo(() => {
     if (!filterPlatform) return channels;
@@ -145,7 +102,7 @@ export function ChannelPicker({
         <div className="error-banner items-start">
           <div className="flex flex-col gap-0.5">
             <p className="font-sans text-[13px] font-medium">
-              Couldn&apos;t load channels — open <strong>Schedule → Loadout</strong> to add one
+              Couldn&apos;t load channels — open <strong>Schedule → Channels</strong> to add one
             </p>
             <p className="font-mono text-[10px] opacity-80">
               {loadError}
@@ -162,7 +119,7 @@ export function ChannelPicker({
       <div className="flex flex-col items-start gap-3">
         <div className="empty-state">
           <p className="font-sans text-[13px] text-text-secondary">
-            No channels added yet. Open <strong>Schedule → Loadout</strong> to add one.
+            No channels added yet. Open <strong>Schedule → Channels</strong> to add one.
           </p>
         </div>
         {onAddChannel && <AddChannelButton onClick={onAddChannel} />}
@@ -200,7 +157,7 @@ export function ChannelPicker({
                 onClick={manageHandler}
                 className="self-start font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep/90 underline-offset-2 hover:underline"
               >
-                Open Schedule → Loadout
+                Open Schedule → Channels
               </button>
             )}
           </div>
@@ -324,14 +281,14 @@ function ChannelPickRow({
 
   return (
     <div
-      className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+      className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 ${
         on
           ? "border-fuchsia bg-fuchsia-soft/20"
-          : "border-line/40 bg-paper-elev/40 hover:border-fuchsia hover:bg-fuchsia-soft/20"
+          : "border-line/40 bg-paper-elev/40"
       } ${disabled ? "opacity-60" : ""}`}
       title={
         channel.status === "error"
-          ? "Reconnect in Schedule → Loadout"
+          ? "Reconnect in Schedule → Channels"
           : meta.microcopy ?? channel.handle ?? channel.label
       }
     >
