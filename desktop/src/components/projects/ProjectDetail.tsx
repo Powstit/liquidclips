@@ -344,6 +344,7 @@ function ProjectDetailUnlocked({
       if (!raw) return;
       try {
         const payload = JSON.parse(raw) as {
+          kind?: "library-clip";
           project_slug?: string;
           asset_path?: string;
           asset_type?: ProjectMembership["asset_type"];
@@ -352,35 +353,51 @@ function ProjectDetailUnlocked({
         };
         if (!payload?.asset_path) return;
 
-        // v0.7.75 — Dropping a Library project card adds its rendered clips as
-        // individual memberships. If the source has no clips, fall back to the
-        // dragged reference.
-        const sourceSlug = payload.project_slug || payload.source_project_slug;
         let added = 0;
-        if (sourceSlug && sourceSlug !== slug) {
-          const { project: sourceProject } = await sidecar.getProject(sourceSlug);
-          for (const clip of sourceProject.clips || []) {
-            const path = clipDisplayPath(clip);
-            if (!path) continue;
-            await addMembership({
-              project_slug: slug,
-              asset_type: "clip",
-              asset_path: path,
-              source_project_slug: sourceSlug,
-              clip_id: clip.slug,
-            });
-            added += 1;
-          }
-        }
-        if (added === 0) {
+
+        // v0.7.77 — LibraryClipStrip drops a SINGLE clip. Take only this
+        // clip; do not fan out to every clip in the source project.
+        if (payload.kind === "library-clip" && payload.source_project_slug) {
+          if (payload.source_project_slug === slug) return; // self-drop
           await addMembership({
             project_slug: slug,
-            asset_type: payload.asset_type || "render",
+            asset_type: "clip",
             asset_path: payload.asset_path,
             source_project_slug: payload.source_project_slug,
             clip_id: payload.clip_id,
           });
           added = 1;
+        } else {
+          // v0.7.75 — Dropping a whole Library project card (LibraryCard
+          // or ProjectCard) adds every rendered clip as a separate
+          // membership. Falls back to the dragged reference if 0 clips.
+          const sourceSlug =
+            payload.project_slug || payload.source_project_slug;
+          if (sourceSlug && sourceSlug !== slug) {
+            const { project: sourceProject } = await sidecar.getProject(sourceSlug);
+            for (const clip of sourceProject.clips || []) {
+              const path = clipDisplayPath(clip);
+              if (!path) continue;
+              await addMembership({
+                project_slug: slug,
+                asset_type: "clip",
+                asset_path: path,
+                source_project_slug: sourceSlug,
+                clip_id: clip.slug,
+              });
+              added += 1;
+            }
+          }
+          if (added === 0) {
+            await addMembership({
+              project_slug: slug,
+              asset_type: payload.asset_type || "render",
+              asset_path: payload.asset_path,
+              source_project_slug: payload.source_project_slug,
+              clip_id: payload.clip_id,
+            });
+            added = 1;
+          }
         }
         // v0.7.77 Sprint 2 V7 — name the project + use "clip" (the
         // HTML5 drag path is Library-card only, always a clip).
@@ -449,7 +466,7 @@ function ProjectDetailUnlocked({
 
   return (
     <div
-      className={`flex w-full max-w-[1080px] flex-col gap-6 pt-2 transition-colors ${
+      className={`mx-auto flex w-full max-w-6xl flex-col gap-8 px-8 pt-6 pb-10 transition-colors ${
         dragHover ? "outline outline-2 outline-offset-4 outline-fuchsia rounded-2xl bg-fuchsia-soft/10" : ""
       }`}
       onDragOver={(e) => {
@@ -472,7 +489,7 @@ function ProjectDetailUnlocked({
         </div>
       )}
 
-      {/* Header */}
+      {/* Header — demo-pages.html workspace pattern: eyebrow + tight H1 mt-0.5 */}
       <header className="flex flex-col gap-3">
         <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary">
           <span>project</span>
@@ -485,7 +502,7 @@ function ProjectDetailUnlocked({
             </>
           )}
         </div>
-        <h1 className="font-display text-[28px] font-semibold leading-[1.05] tracking-[-0.02em] text-ink">
+        <h1 className="mt-0.5 font-display text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] text-ink">
           {title}
         </h1>
         <div className="flex flex-wrap items-center gap-2">
@@ -507,38 +524,50 @@ function ProjectDetailUnlocked({
           ))}
         </div>
 
-        {/* Actions */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => onResume(project)} className="btn-primary">
-            <Play className="h-3.5 w-3.5" strokeWidth={2.2} />
+        {/* Actions — demo workspace hero CTAs (h-11 px-6 + shadow-glow-md on primary) */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => onResume(project)}
+            className="inline-flex h-11 items-center gap-2 rounded-full bg-fuchsia px-6 font-sans text-sm font-semibold text-white shadow-[var(--glow-md)] transition-all hover:bg-fuchsia-bright focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+          >
+            <Play className="h-4 w-4" strokeWidth={2.2} />
             {/* v0.7.77 Sprint 2 V5 — "Resume" implies prior work; for
                 blank Projects the discovery path is "Open Workspace". */}
             {isBlankProject ? "Open Workspace" : "Resume"}
           </button>
-          <button type="button" onClick={() => void onAddFile()} className="btn-secondary">
-            <FilePlus className="h-3.5 w-3.5" strokeWidth={2.2} />
+          <button
+            type="button"
+            onClick={() => void onAddFile()}
+            className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-paper px-6 font-sans text-sm font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep"
+          >
+            <FilePlus className="h-4 w-4" strokeWidth={2.2} />
             Add file
           </button>
           <button
             type="button"
             onClick={() => setAddFromLibraryOpen(true)}
-            className="btn-secondary"
+            className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-paper px-6 font-sans text-sm font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep"
           >
-            <Layers className="h-3.5 w-3.5" strokeWidth={2.2} />
+            <Layers className="h-4 w-4" strokeWidth={2.2} />
             Add from Library
           </button>
           <button
             type="button"
             onClick={() => void openFolder()}
             disabled={opening}
-            className="btn-ghost"
+            className="inline-flex h-11 items-center gap-2 rounded-full bg-transparent px-5 font-sans text-sm font-medium text-text-secondary transition-colors hover:text-ink disabled:opacity-50"
           >
-            <FolderOpen className="h-3.5 w-3.5" strokeWidth={2.2} />
+            <FolderOpen className="h-4 w-4" strokeWidth={2.2} />
             Open folder
           </button>
           {isBounty && project.whop_bounty_url && (
-            <button type="button" onClick={() => void openBrief()} className="btn-ghost">
-              <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} />
+            <button
+              type="button"
+              onClick={() => void openBrief()}
+              className="inline-flex h-11 items-center gap-2 rounded-full bg-transparent px-5 font-sans text-sm font-medium text-text-secondary transition-colors hover:text-ink"
+            >
+              <ExternalLink className="h-4 w-4" strokeWidth={2.2} />
               Open Whop brief
             </button>
           )}
@@ -546,10 +575,10 @@ function ProjectDetailUnlocked({
             <button
               type="button"
               onClick={() => onResume(project)}
-              className="btn-secondary"
+              className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-paper px-6 font-sans text-sm font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep"
               title="Submit a clip — opens the project workstation where Submit lives."
             >
-              <Send className="h-3.5 w-3.5" strokeWidth={2.2} />
+              <Send className="h-4 w-4" strokeWidth={2.2} />
               Submit clip
             </button>
           )}
@@ -623,108 +652,172 @@ function ProjectDetailUnlocked({
           </span>
         </div>
 
-        {/* v0.7.77 Sprint 2 V1 — Visible drop zone.
-            Larger persistent surface, state-aware copy (calm /
-            Finder-hover / Library-hover). The drop is window-level —
-            the dashed box is the visual anchor, not the literal target. */}
+        {/* v0.7.77 polish — demo-pages.html import drop zone hero treatment.
+            Borrowed inline (no .hud-frame CSS class — index.css is owned
+            by Lane 1). Pixel-invader landmark, big H2, mono caption,
+            primary "Or pick a file" CTA wired to existing onAddFile.
+            Copy: truthful — does NOT promise cross-tab Library drag. */}
         <div
-          className={`rounded-2xl border-2 border-dashed py-10 px-8 text-center transition-all ${
+          className={`relative flex min-h-[280px] flex-col items-center justify-center rounded-3xl border p-12 text-center transition-all ${
             dragHover
-              ? "border-fuchsia bg-fuchsia-soft/20 scale-[1.005]"
-              : "border-line bg-paper-elev/40"
+              ? "border-fuchsia/60 bg-fuchsia-soft/15 scale-[1.005]"
+              : "border-fuchsia/20 bg-[rgba(255,26,140,0.04)]"
           }`}
+          style={
+            dragHover
+              ? undefined
+              : { backgroundImage: "radial-gradient(ellipse at top, rgba(255,26,140,0.07), transparent 70%)" }
+          }
         >
+          {/* Pixel-invader landmark (demo-pages.html line 521 — inline so no
+              asset dependency). Uses fuchsia fill + drop-shadow glow. */}
+          <svg
+            viewBox="0 0 24 16"
+            aria-hidden="true"
+            className="mb-5 h-12 w-16 fill-fuchsia drop-shadow-[0_0_24px_rgba(255,26,140,0.55)]"
+          >
+            <rect x="3" y="2" width="2" height="2" />
+            <rect x="19" y="2" width="2" height="2" />
+            <rect x="5" y="4" width="14" height="2" />
+            <rect x="3" y="6" width="2" height="2" />
+            <rect x="7" y="6" width="2" height="2" />
+            <rect x="15" y="6" width="2" height="2" />
+            <rect x="19" y="6" width="2" height="2" />
+            <rect x="3" y="8" width="18" height="2" />
+            <rect x="5" y="10" width="2" height="2" />
+            <rect x="9" y="10" width="6" height="2" />
+            <rect x="17" y="10" width="2" height="2" />
+            <rect x="1" y="12" width="2" height="2" />
+            <rect x="7" y="12" width="2" height="2" />
+            <rect x="15" y="12" width="2" height="2" />
+            <rect x="21" y="12" width="2" height="2" />
+          </svg>
+
           {dragHover === "tauri" ? (
             <>
-              <p className="font-sans text-[15px] font-medium text-fuchsia-deep">
+              <h2 className="font-display text-[24px] font-semibold tracking-[-0.025em] text-fuchsia-deep">
                 Drop here to attach to {title}
-              </p>
-              <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia">
-                Finder drop — files become external references
+              </h2>
+              <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-fuchsia">
+                files attach as references · originals stay where they are
               </p>
             </>
           ) : dragHover === "html5" ? (
             <>
-              <p className="font-sans text-[15px] font-medium text-fuchsia-deep">
+              <h2 className="font-display text-[24px] font-semibold tracking-[-0.025em] text-fuchsia-deep">
                 Drop to attach to {title}
-              </p>
-              <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-fuchsia">
-                Library clip — will be attached as a reference
+              </h2>
+              <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-fuchsia">
+                attaches as a reference to this Project
               </p>
             </>
           ) : (
             <>
-              <p className="font-sans text-[15px] font-medium text-text-secondary">
-                Drop files or Library clips into this Project
+              <h2 className="font-display text-[24px] font-semibold tracking-[-0.025em] text-ink">
+                Drop files into this Project.
+              </h2>
+              <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-fuchsia-deep">
+                Any file attaches as a reference · originals stay where they are
               </p>
-              <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
-                Finder files become references — your originals stay where they are
-              </p>
+              <button
+                type="button"
+                onClick={() => void onAddFile()}
+                className="mt-6 inline-flex h-11 items-center gap-2 rounded-full bg-fuchsia px-6 font-sans text-sm font-semibold text-white shadow-[var(--glow-md)] transition-all hover:bg-fuchsia-bright focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+              >
+                <FilePlus className="h-4 w-4" strokeWidth={2.2} />
+                Or pick a file
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddFromLibraryOpen(true)}
+                className="mt-3 font-sans text-[13px] text-text-secondary underline-offset-4 transition-colors hover:text-fuchsia-deep hover:underline"
+              >
+                Use Add from Library to pull existing clips into this Project
+              </button>
             </>
           )}
         </div>
 
         {totalFiles === 0 ? (
-          // v0.7.77 Sprint 2 V2 — Empty-state "three ways to fill it" grid.
-          // Replaces the bare "This Project is empty" message. Each tile
-          // mirrors a header action so a fresh user never has to look
-          // away from the empty grid to find a next step.
-          <div className="empty-state">
-            <p className="font-display text-[16px] font-semibold text-ink">
+          // v0.7.77 polish — demo workspace cockpit-tile pattern. Each
+          // tile borrows demo-pages.html lines 462-498: library-card base
+          // + HUD corners + big halo'd fuchsia icon + bold label + eyebrow.
+          // Copy preserved per Daniel's approved/forbidden list; no
+          // promise of cross-tab drag.
+          <div className="flex flex-col gap-5">
+            <p className="font-display text-[18px] font-semibold text-ink">
               This Project is empty. Three ways to fill it:
             </p>
             <div
-              className="mt-4 grid gap-3"
-              style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}
+              className="grid gap-4"
+              style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}
             >
               <button
                 type="button"
                 onClick={() => onResume(project)}
-                className="group flex flex-col items-start gap-2 rounded-2xl border border-line bg-paper p-4 text-left transition-all hover:border-fuchsia hover:shadow-[var(--glow-sm)]"
+                className="library-card group relative flex h-44 flex-col items-center justify-center gap-2 rounded-2xl bg-paper-warm p-5 text-center transition-all hover:bg-paper hover:shadow-[var(--glow-md)] focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-fuchsia-soft/40 text-fuchsia-deep">
-                  <Play className="h-3.5 w-3.5" strokeWidth={2.4} />
-                </span>
-                <p className="font-display text-[13px] font-semibold text-ink group-hover:text-fuchsia-deep">
+                <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+                <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+                <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+                <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
+                <Play
+                  aria-hidden="true"
+                  className="h-12 w-12 text-fuchsia drop-shadow-[0_8px_18px_rgba(255,26,140,0.45)]"
+                  strokeWidth={1.5}
+                />
+                <p className="font-display text-sm font-semibold text-ink group-hover:text-fuchsia-deep">
                   Open Workspace
                 </p>
-                <p className="font-sans text-[12px] leading-snug text-text-secondary">
-                  Paste a URL or drop a video to capture clips into this Project.
+                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+                  paste a url or drop a video
                 </p>
               </button>
               <button
                 type="button"
                 onClick={() => void onAddFile()}
-                className="group flex flex-col items-start gap-2 rounded-2xl border border-line bg-paper p-4 text-left transition-all hover:border-fuchsia hover:shadow-[var(--glow-sm)]"
+                className="library-card group relative flex h-44 flex-col items-center justify-center gap-2 rounded-2xl bg-paper-warm p-5 text-center transition-all hover:bg-paper hover:shadow-[var(--glow-md)] focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-fuchsia-soft/40 text-fuchsia-deep">
-                  <FilePlus className="h-3.5 w-3.5" strokeWidth={2.4} />
-                </span>
-                <p className="font-display text-[13px] font-semibold text-ink group-hover:text-fuchsia-deep">
+                <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+                <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+                <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+                <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
+                <FilePlus
+                  aria-hidden="true"
+                  className="h-12 w-12 text-fuchsia drop-shadow-[0_8px_18px_rgba(255,26,140,0.45)]"
+                  strokeWidth={1.5}
+                />
+                <p className="font-display text-sm font-semibold text-ink group-hover:text-fuchsia-deep">
                   Add file
                 </p>
-                <p className="font-sans text-[12px] leading-snug text-text-secondary">
-                  Pick a video, image, or file from Finder.
+                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+                  pick a file from finder
                 </p>
               </button>
               <button
                 type="button"
                 onClick={() => setAddFromLibraryOpen(true)}
-                className="group flex flex-col items-start gap-2 rounded-2xl border border-line bg-paper p-4 text-left transition-all hover:border-fuchsia hover:shadow-[var(--glow-sm)]"
+                className="library-card group relative flex h-44 flex-col items-center justify-center gap-2 rounded-2xl bg-paper-warm p-5 text-center transition-all hover:bg-paper hover:shadow-[var(--glow-md)] focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-fuchsia-soft/40 text-fuchsia-deep">
-                  <Layers className="h-3.5 w-3.5" strokeWidth={2.4} />
-                </span>
-                <p className="font-display text-[13px] font-semibold text-ink group-hover:text-fuchsia-deep">
+                <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+                <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+                <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+                <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
+                <Layers
+                  aria-hidden="true"
+                  className="h-12 w-12 text-fuchsia drop-shadow-[0_8px_18px_rgba(255,26,140,0.45)]"
+                  strokeWidth={1.5}
+                />
+                <p className="font-display text-sm font-semibold text-ink group-hover:text-fuchsia-deep">
                   Add from Library
                 </p>
-                <p className="font-sans text-[12px] leading-snug text-text-secondary">
-                  Pull in existing clips from your Library.
+                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+                  pull existing clips in
                 </p>
               </button>
             </div>
-            <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
-              or drag files or Library clips anywhere on this screen
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+              or drop files anywhere on this Project
             </p>
           </div>
         ) : (

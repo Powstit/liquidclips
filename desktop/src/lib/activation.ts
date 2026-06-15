@@ -123,7 +123,7 @@ async function handleDeepLink(urls: string[]): Promise<void> {
     //   1. Bounce page → `liquidclips://channel-linked?cid=…`.
     //   2. We dispatch `junior:channel-linked` once with detail.channelId.
     //   3. AccountBindingChip (per workbench window) + ChannelsManager
-    //      (Settings → Connections) subscribe. Each subscriber calls
+    //      (Schedule → Channels) subscribe. Each subscriber calls
     //      backend.refreshChannel(cid) + backend.listChannels(), flips
     //      the affected row to `active`, then emits a `lc:toast` via the
     //      GlobalToastHost bus ("Instagram connected as @handle" on
@@ -131,6 +131,12 @@ async function handleDeepLink(urls: string[]): Promise<void> {
     //      the row stays `pending_link`). The 90s waiting-state timer
     //      lives on each subscriber so a stuck OAuth surfaces as
     //      "Still waiting — try Reconnect" rather than an infinite spinner.
+    //
+    // v0.7.79 — Social OAuth return contract. After OAuth completes we
+    // return the user to Schedule → Channels and force a global refresh
+    // so every surface (Schedule rail, PublishModal, ClipReadyCard,
+    // DirectPublishQueue, ChannelPicker) shows the new connected state
+    // without a manual restart or page reload.
     if (u.hostname === "channel-linked") {
       const cid = u.searchParams.get("cid") ?? u.searchParams.get("channel_id");
       window.dispatchEvent(
@@ -141,6 +147,14 @@ async function handleDeepLink(urls: string[]): Promise<void> {
           },
         }),
       );
+      // Return the app to Schedule → Channels and refresh the shared
+      // connection state. We dispatch both events so the navigation and
+      // the refresh happen even if ChannelsManager is not mounted.
+      window.dispatchEvent(
+        new CustomEvent("lc:settings-open-tab", { detail: { tab: "channels" } }),
+      );
+      window.dispatchEvent(new CustomEvent("lc:open-schedule-channels"));
+      window.dispatchEvent(new CustomEvent("lc:connections-mutated"));
       return;
     }
 

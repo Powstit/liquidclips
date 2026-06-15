@@ -402,12 +402,16 @@ export function ReactionSourcePicker({
 function MissingKeyBanner({ tab, onOpenSettings }: { tab: ProviderTab; onOpenSettings: () => void }) {
   const def = TAB_DEFS.find((t) => t.key === tab)!;
   return (
-    <div className="mb-4 rounded-xl border border-paper/15 bg-paper/5 px-4 py-4">
+    <div className="relative mb-4 rounded-xl border border-paper/15 bg-paper/5 px-4 py-4">
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
       <p className="font-display text-[13px] font-semibold text-white">
-        {def.label} search is unavailable.
+        {def.label} search needs your key.
       </p>
       <p className="mt-1 font-sans text-[12px] text-paper/65">
-        Add your {def.label} API key in Settings to search this provider, or switch to Local overlays.
+        Add your {def.label} key in Settings &rarr; API keys to search {def.label}. Or pick from Local + Bundled overlays.
       </p>
       <button
         onClick={onOpenSettings}

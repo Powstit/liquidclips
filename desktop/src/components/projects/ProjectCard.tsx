@@ -15,14 +15,14 @@
 // fuchsia hover lift) so the Projects rail feels like part of the app, not
 // a new design system.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Archive, FolderOpen, Trash2 } from "lucide-react";
 import type { ProjectLibrarySummary } from "../../lib/sidecar";
 import { humanError, sidecar } from "../../lib/sidecar";
 import { Pill } from "../primitives";
-import { addMembership } from "../../lib/projectMemberships";
+import { addMembership, useMemberships } from "../../lib/projectMemberships";
 
 type ProjectType = "Earn" | "Manual" | "Content" | "Client" | "Import";
 
@@ -65,10 +65,20 @@ export function ProjectCard({
   const editedAt = formatDate(project.updated_at || project.created_at);
   const [thumbError, setThumbError] = useState(false);
   const [dropHover, setDropHover] = useState(false);
+  const [dropError, setDropError] = useState<string | null>(null);
+  const { memberships } = useMemberships(project.slug);
+  const attachedCount = memberships.length;
   const thumbSrc =
     project.cover_thumb_path && !thumbError
       ? convertFileSrc(project.cover_thumb_path)
       : null;
+
+  // Auto-clear the ephemeral drop error so it doesn't persist on the card.
+  useEffect(() => {
+    if (!dropError) return;
+    const id = window.setTimeout(() => setDropError(null), 3000);
+    return () => window.clearTimeout(id);
+  }, [dropError]);
   const cappedDelay = Math.min(index, 12) * 0.04;
 
   const title =
@@ -119,7 +129,7 @@ export function ProjectCard({
               transition: { type: "spring", stiffness: 360, damping: 22 },
             }
       }
-      className={`library-card group relative flex flex-col gap-3 bg-transparent p-4 transition-colors ${
+      className={`library-card group relative flex flex-col gap-3 bg-transparent p-5 transition-colors ${
         project.archived ? "opacity-70 hover:opacity-100" : ""
       } ${dropHover ? "outline outline-2 outline-offset-2 outline-fuchsia bg-fuchsia-soft/25 shadow-[var(--glow-md)]" : ""}`}
       data-archived={project.archived ? "true" : "false"}
@@ -139,6 +149,7 @@ export function ProjectCard({
         void (async () => {
           try {
             const payload = JSON.parse(raw) as {
+              kind?: "library-clip";
               project_slug?: string;
               asset_path?: string;
               asset_type?: "clip" | "render" | "source" | "external";
@@ -148,23 +159,38 @@ export function ProjectCard({
             if (!payload?.asset_path) return;
             if (payload.source_project_slug === project.slug) return; // self-drop no-op
 
-            // v0.7.75 — Dropping a Library project adds its rendered clips as
-            // individual memberships, not just a cover-thumb reference. If the
-            // source has no clips, fall back to a single project reference.
-            const sourceSlug = payload.project_slug || payload.source_project_slug;
             let added = 0;
-            if (sourceSlug && sourceSlug !== project.slug) {
-              added = await addClipsFromProject(sourceSlug, project.slug);
-            }
-            if (added === 0) {
+
+            // v0.7.77 — LibraryClipStrip drops a SINGLE clip. The whole-
+            // project fallback below would otherwise add every clip from
+            // the source project, which is wrong UX for a per-clip drag.
+            if (payload.kind === "library-clip" && payload.source_project_slug) {
               await addMembership({
                 project_slug: project.slug,
-                asset_type: payload.asset_type || "render",
+                asset_type: "clip",
                 asset_path: payload.asset_path,
                 source_project_slug: payload.source_project_slug,
                 clip_id: payload.clip_id,
               });
               added = 1;
+            } else {
+              // v0.7.75 — Whole-project drop (LibraryCard, ProjectCard).
+              // Adds every rendered clip as a separate membership.
+              const sourceSlug =
+                payload.project_slug || payload.source_project_slug;
+              if (sourceSlug && sourceSlug !== project.slug) {
+                added = await addClipsFromProject(sourceSlug, project.slug);
+              }
+              if (added === 0) {
+                await addMembership({
+                  project_slug: project.slug,
+                  asset_type: payload.asset_type || "render",
+                  asset_path: payload.asset_path,
+                  source_project_slug: payload.source_project_slug,
+                  clip_id: payload.clip_id,
+                });
+                added = 1;
+              }
             }
             try {
               window.dispatchEvent(
@@ -179,7 +205,18 @@ export function ProjectCard({
               /* best-effort */
             }
           } catch (err) {
-            console.warn("[ProjectCard] drop failed:", err);
+            const message = humanError(err);
+            console.warn("[ProjectCard] drop failed:", message);
+            setDropError(message);
+            try {
+              window.dispatchEvent(
+                new CustomEvent("lc:toast", {
+                  detail: { kind: "error", message: `Could not attach: ${message}` },
+                }),
+              );
+            } catch {
+              /* best-effort */
+            }
           }
         })();
       }}
@@ -264,12 +301,23 @@ export function ProjectCard({
         <Pill tone="neutral">
           {project.clips_count} clip{project.clips_count === 1 ? "" : "s"}
         </Pill>
+        {attachedCount > 0 && (
+          <Pill tone="neutral">
+            +{attachedCount} attached
+          </Pill>
+        )}
         {editedAt && (
           <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-text-tertiary">
             · {editedAt}
           </span>
         )}
       </div>
+
+      {dropError && (
+        <p className="rounded-lg border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-2.5 py-1 font-mono text-[10px] text-[var(--color-danger)]">
+          {dropError}
+        </p>
+      )}
 
       {/* v0.7.73 — Goal/outcome line. Surfaced from project.json's `brief`
           via the summary's `goal` field so the card communicates intent at

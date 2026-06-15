@@ -476,15 +476,20 @@ export function AddFromLibraryModal({
       </div>
 
       {/* Footer action bar */}
-      <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-line/60 bg-paper-elev/40 px-6 py-3">
-        <button type="button" onClick={onClose} disabled={adding} className="btn-secondary">
+      <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-line/60 bg-paper-elev/40 px-8 py-4">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={adding}
+          className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-paper px-6 font-sans text-sm font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep disabled:opacity-50"
+        >
           Cancel
         </button>
         <button
           type="button"
           onClick={() => void onAdd()}
           disabled={selected.size === 0 || adding}
-          className="btn-primary"
+          className="inline-flex h-11 items-center gap-2 rounded-full bg-fuchsia px-6 font-sans text-sm font-semibold text-white shadow-[var(--glow-md)] transition-all hover:bg-fuchsia-bright disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
         >
           {adding
             ? "Adding…"

@@ -62,7 +62,7 @@ type Props = {
    *  The toolbar does NOT clear selection on its own after an action
    *  lands — that's the parent grid's call. */
   onClear: () => void;
-  /** Optional — open the Settings → Channels surface from the "no
+  /** Optional — open the Schedule → Channels surface from the "no
    *  channels connected" toast. When omitted, the toast just shows the
    *  copy without the inline link. */
   onOpenSettings?: () => void;
@@ -639,7 +639,7 @@ function SchedulePopover({
               onClick={onOpenSettings}
               className="self-start font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia underline-offset-2 hover:underline"
             >
-              Open Settings → Channels
+              Open Schedule → Channels
             </button>
           ) : null}
         </div>
@@ -647,7 +647,7 @@ function SchedulePopover({
         <div className="flex flex-col gap-2">
           <p className="font-sans text-[12px] text-text-secondary">
             No active channels. Connect one in{" "}
-            <strong>Settings → Channels</strong> first.
+            <strong>Schedule → Channels</strong> first.
           </p>
           {/* ChannelPicker reuse — surfaces the non-active channels with the
               right status badge so the user can see why their TikTok is greyed
@@ -678,7 +678,7 @@ function SchedulePopover({
                   onClick={() => toggle(c.id)}
                   title={
                     disabledChip
-                      ? `Status: ${c.status} — open Settings → Channels`
+                      ? `Status: ${c.status} — open Schedule → Channels`
                       : c.handle ?? c.label
                   }
                   className={[
@@ -786,7 +786,7 @@ function SummaryToast({
           onClick={onOpenSettings}
           className="self-start font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia underline-offset-2 hover:underline"
         >
-          Open Settings → Channels
+          Open Schedule → Channels
         </button>
       ) : null}
       {visible.length > 0 ? (

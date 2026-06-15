@@ -159,9 +159,12 @@ export function ClipsBulkToolbar({
           balanced against the controls on the right. Clip count is already
           shown in the ResultsGrid header strip so it's not lost. */}
       <span
-        aria-label={`${project.clips.length} clips, average score ${avg}, ${Math.floor(totalSec / 60)} minutes ${Math.round(totalSec % 60)} seconds total`}
+        aria-label={`Bulk actions — ${project.clips.length} clips, average score ${avg}, ${Math.floor(totalSec / 60)} minutes ${Math.round(totalSec % 60)} seconds total`}
         className="inline-flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary"
       >
+        <span className="rounded-full border border-fuchsia/40 bg-fuchsia-soft/20 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-fuchsia-deep">
+          bulk actions
+        </span>
         <span><span className="text-ink">{project.clips.length}</span> clips · avg <span className="text-ink">{avg}</span> · <span className="text-ink">{Math.floor(totalSec / 60)}m {Math.round(totalSec % 60)}s</span></span>
       </span>
 

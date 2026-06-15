@@ -188,15 +188,20 @@ export function NewProjectModal({
           </div>
         )}
 
-        <footer className="flex items-center justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={submitting} className="btn-secondary">
+        <footer className="flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-paper px-6 font-sans text-sm font-medium text-ink transition-colors hover:border-fuchsia hover:text-fuchsia-deep disabled:opacity-50"
+          >
             Cancel
           </button>
           <button
             type="button"
             onClick={() => void onSubmit()}
             disabled={submitting || !name.trim()}
-            className="btn-primary"
+            className="inline-flex h-11 items-center gap-2 rounded-full bg-fuchsia px-6 font-sans text-sm font-semibold text-white shadow-[var(--glow-md)] transition-all hover:bg-fuchsia-bright disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           >
             {submitting ? "Creating…" : "Create project →"}
           </button>

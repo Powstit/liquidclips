@@ -45,15 +45,23 @@ export function ConnectFirstPrompt({
           renders when nothing is linked). */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {(["tiktok", "youtube", "instagram", "x"] as const).map((p) => (
-          <div
+          // v0.7.78 — Platform chips are alternate entry points to the
+          // same `onOpenSchedule` action below. Wrapping in <button> so a
+          // click on any chip lands the user in Channels — no new
+          // connect logic, no ChannelsManager plumbing.
+          <button
             key={p}
-            className="flex items-center gap-2 rounded-xl border border-line bg-paper-warm/40 px-3 py-2"
+            type="button"
+            onClick={onOpenSchedule}
+            title={`Connect ${p} in Channels`}
+            aria-label={`Connect ${p} in Channels`}
+            className="flex items-center gap-2 rounded-xl border border-line bg-paper-warm/40 px-3 py-2 text-left transition-colors hover:border-fuchsia hover:text-fuchsia-deep"
           >
             <PlatformIcon id={p} className="h-4 w-4 text-text-tertiary" />
             <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-tertiary">
               {p}
             </span>
-          </div>
+          </button>
         ))}
       </div>
 

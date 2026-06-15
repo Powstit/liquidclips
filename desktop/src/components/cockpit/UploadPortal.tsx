@@ -88,6 +88,8 @@ export function UploadPortal({
   onPasteUrlScript,
   intent = "clips",
   dragHoverActive = false,
+  userTier = null,
+  remainingExports = null,
 }: {
   open: boolean;
   onClose: () => void;
@@ -106,6 +108,10 @@ export function UploadPortal({
   // so the dashed bracket lights up for the REAL native drag, not a
   // browser-synth drag event (which can't give us a usable file path).
   dragHoverActive?: boolean;
+  /** Current account tier. Used to show free/paid watermark status. */
+  userTier?: "free" | "solo" | "pro" | "agency" | null;
+  /** Free user's remaining exports. `null` means paid/unlimited. */
+  remainingExports?: number | null;
 }) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -363,6 +369,26 @@ export function UploadPortal({
                 <p className="rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-3 py-2 font-mono text-[11px] text-[var(--color-danger)]">
                   {error}
                 </p>
+              )}
+
+              {/* P1 — honest free/paid status before the user starts a job. */}
+              {!isScript && userTier !== null && (
+                <div className="flex flex-col gap-2">
+                  {userTier === "free" ? (
+                    <>
+                      <p className="rounded-full border border-fuchsia/30 bg-paper px-3 py-1 text-center font-mono text-[11px] text-fuchsia">
+                        {remainingExports ?? "—"} of 100 free clips left
+                      </p>
+                      <p className="text-center font-mono text-[10px] text-text-tertiary">
+                        Watermark on free exports &mdash; upgrade for clean exports.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="rounded-full border border-cyan-400/30 bg-paper px-3 py-1 text-center font-mono text-[11px] text-cyan-400">
+                      Premium · clean exports · no watermark
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           </motion.div>

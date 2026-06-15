@@ -59,6 +59,7 @@ export function AvatarPanel({
   open,
   onClose,
   tier,
+  remainingExports = null,
   refreshing,
   onRefresh,
   onOpenNotifications,
@@ -75,6 +76,11 @@ export function AvatarPanel({
   open: boolean;
   onClose: () => void;
   tier: Tier;
+  /** v0.7.78 — Persistent free-clip counter. Display-only. Null = paid /
+   *  unlimited / not loaded; a number = free user's remaining clips out
+   *  of the 100-clip starter pack. App.tsx owns the source of truth via
+   *  the existing `remainingExports` state. */
+  remainingExports?: number | null;
   refreshing: boolean;
   onRefresh: () => void;
   onOpenNotifications: () => void;
@@ -268,6 +274,21 @@ export function AvatarPanel({
                     </span>
                   </div>
                 </button>
+              )}
+              {/* v0.7.78 — Persistent free-clip counter. Shows only when
+                  the user is on the free tier and we have a real
+                  remainingExports number from /sync. Display-only — no
+                  state mutation. The number flows from App.tsx's existing
+                  `remainingExports` state. */}
+              {tier === "free" && remainingExports !== null && remainingExports >= 0 && (
+                <div
+                  role="status"
+                  aria-label={`${remainingExports} free clips left out of 100`}
+                  className="inline-flex w-fit items-center gap-1.5 rounded-full border border-fuchsia/30 bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-fuchsia" aria-hidden="true" />
+                  {remainingExports} clips left
+                </div>
               )}
               {/* 2. Inbox section (K-δ) */}
               {inboxMode && events && events.length > 0 && (

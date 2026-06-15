@@ -15,7 +15,9 @@ import {
 } from "lucide-react";
 import type { Clip, Project, RatioKey } from "../lib/sidecar";
 import { sidecar, RATIOS, humanError } from "../lib/sidecar";
-import { PlatformBadgePicker } from "./PlatformBadge";
+import { PlatformBadgePicker, type PlatformId } from "./PlatformBadge";
+import { usePlatformConnections } from "../lib/usePlatformConnections";
+import type { ChannelStatus } from "../lib/backend";
 import { OverlayTemplateGallery } from "./OverlayTemplateGallery";
 import { useTier } from "../lib/useTier";
 import { openUpgradeWhenSignedIn } from "../lib/upgradeWithAuth";
@@ -97,6 +99,7 @@ export function ClipPreview({
   // Templates fire applyOverlay with a paid layout type; without this the
   // gallery would be a backdoor around ReactionControls' Solo+ moat.
   const clipPreviewTier = useTier();
+  const { getStatus } = usePlatformConnections();
   const [actionError, setActionError] = useState<string | null>(null);
   // ship-lens v0.7.13 F4 (T1.7) — surface <video> errors so corrupt /
   // 0-byte / iCloud-placeholder files don't render as a silent black square.
@@ -608,6 +611,24 @@ export function ClipPreview({
     }
   }
 
+  const platformConnectionStatus = useMemo(
+    () =>
+      Object.fromEntries(
+        (["youtube", "tiktok", "instagram", "x", "linkedin", "facebook"] as PlatformId[])
+          .map((p) => [p, getStatus(p)]),
+      ) as Partial<Record<PlatformId, ChannelStatus | "no-channel" | "loading">>,
+    [getStatus],
+  );
+
+  function openPlatformConnect(platform: PlatformId) {
+    window.dispatchEvent(
+      new CustomEvent("lc:open-schedule-channels", {
+        detail: { connectPlatform: platform },
+      }),
+    );
+    onClose();
+  }
+
   const innerCard = (
     <>
       <ConfirmDialog
@@ -957,6 +978,8 @@ export function ClipPreview({
               <div className="flex flex-col gap-2 pt-1">
                 <PlatformBadgePicker
                   selected={clip.platforms ?? []}
+                  connectionStatus={platformConnectionStatus}
+                  onConnectPlatform={openPlatformConnect}
                   onToggle={async (p) => {
                     const cur = clip.platforms ?? [];
                     const next = cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p];
@@ -1198,6 +1221,24 @@ export function ClipPreview({
                   {saveCopyBusy ? "Saving…" : "Save copy as…"}
                 </button>
               </div>
+
+              {/* P1 — free users see the watermark warning before any export/save.
+                  v0.7.78 — wrapped in a soft chip frame matching the brand-kit
+                  so the warning reads as a discrete affordance, not ambient text. */}
+              {clipPreviewTier.tier === "free" && canPublish && (
+                <div className="rounded-xl border border-line bg-paper-warm/30 px-3 py-2">
+                  <p className="font-mono text-[11px] leading-relaxed text-text-tertiary">
+                    Watermark on free exports.{" "}
+                    <button
+                      type="button"
+                      onClick={() => openUpgradeWhenSignedIn()}
+                      className="underline decoration-fuchsia/60 underline-offset-2 hover:text-fuchsia"
+                    >
+                      Upgrade for clean exports.
+                    </button>
+                  </p>
+                </div>
+              )}
 
               {/* Bottom toast — non-blocking, auto-dismissing micro-confirm
                   so the clipper sees outcomes without leaving the editor. */}

@@ -350,7 +350,7 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
       clip.overlay?.applied_paths?.vertical ||
       clip.vertical_path;
     if (!videoPath) {
-      setStatus({ kind: "error", message: "This clip has no rendered file yet. Cut from the editor first." });
+      setStatus({ kind: "error", message: "This clip hasn't finished rendering yet — open it in the editor to finish." });
       return;
     }
     const hasChannels = channels.length > 0;
@@ -521,7 +521,11 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
     (connLoadState.conn?.platforms?.length ?? 0) === 0;
 
   return (
-    <section className="flex w-full flex-col gap-3 rounded-2xl border border-fuchsia/35 bg-paper-warm/30 p-4">
+    <section className="relative flex w-full flex-col gap-3 rounded-2xl border border-fuchsia/35 bg-paper-warm/30 p-4">
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
+      <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-fuchsia">
           <Send className="h-3 w-3" />

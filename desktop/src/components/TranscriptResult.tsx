@@ -4,6 +4,7 @@ import { openSmart as openExternal } from "../lib/openSmart";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { LiftTranscriptResult } from "../lib/sidecar";
 import { PlatformIcon, type PlatformId } from "./PlatformIcon";
+import { CopyButton } from "./CopyButton";
 import { InvadersTrigger } from "./invaders/InvadersTrigger";
 import { LiquidInvaderLoader } from "./LiquidInvaderLoader";
 
@@ -116,12 +117,7 @@ export function TranscriptResult({
                 <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
                   Original caption
                 </span>
-                <button
-                  onClick={() => void copy("caption", meta.description!)}
-                  className="hud-chip hover:!text-fuchsia"
-                >
-                  {copied === "caption" ? "copied" : "copy"}
-                </button>
+                <CopyButton text={meta.description} icon label="Copy caption" />
               </div>
               <p className="mt-2 whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-ink line-clamp-[12]">
                 {meta.description}
