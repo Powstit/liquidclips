@@ -10,6 +10,7 @@
 // whop_bounty_* metadata lands on the project correctly.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { X } from "lucide-react";
 import { humanError, sidecar } from "../../lib/sidecar";
 
@@ -88,22 +89,14 @@ export function NewProjectModal({
     }
   }, [name, type, goal, onCreated]);
 
-  if (!open) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/85 p-4 backdrop-blur-md"
-      onClick={() => {
-        if (!submitting) onClose();
-      }}
-      role="dialog"
-      aria-modal="true"
-      aria-label="New Project"
-    >
-      <div
-        className="flex w-full max-w-[440px] flex-col gap-4 rounded-2xl border border-line bg-paper-warm p-5 shadow-e2"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <AnimatePresence>
+      {open && (
+        <ModalShell
+          onClose={() => {
+            if (!submitting) onClose();
+          }}
+        >
         <header className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-0.5">
             <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia">
@@ -208,7 +201,48 @@ export function NewProjectModal({
             {submitting ? "Creating…" : "Create project →"}
           </button>
         </footer>
-      </div>
-    </div>
+        </ModalShell>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/** v0.7.77 — Shared backdrop + content motion entry for the New Project
+ *  modal. AnimatePresence drives exit on close so the modal fades + lifts
+ *  out instead of snapping. Respects reduced-motion. */
+function ModalShell({
+  children,
+  onClose,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  const reduced = useReducedMotion();
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/85 p-4 backdrop-blur-md"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: reduced ? 0.1 : 0.18, ease: "easeOut" }}
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="New Project"
+    >
+      <motion.div
+        className="flex w-full max-w-[440px] flex-col gap-4 rounded-2xl border border-line bg-paper-warm p-5 shadow-e2"
+        initial={reduced ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.97 }}
+        animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+        exit={reduced ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
+        transition={{
+          duration: reduced ? 0.12 : 0.24,
+          ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </motion.div>
+    </motion.div>
   );
 }

@@ -93,7 +93,17 @@ export function ProjectCard({
       layout
       layoutId={`proj-card-${project.slug}`}
       initial={reduced ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.94 }}
-      animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+      // v0.7.77 polish — iPhone Springboard drop affordance.
+      // When a Library/Project card is dragged OVER this card, lift +
+      // soft-fill fuchsia + thicker dashed outline so the card reads
+      // "open folder, drop here". Otherwise: at rest.
+      animate={
+        reduced
+          ? { opacity: 1 }
+          : dropHover
+            ? { opacity: 1, y: -10, scale: 1.04 }
+            : { opacity: 1, y: 0, scale: 1 }
+      }
       exit={reduced ? { opacity: 0 } : { opacity: 0, y: 14, scale: 0.94 }}
       transition={
         reduced
@@ -101,7 +111,7 @@ export function ProjectCard({
           : { delay: cappedDelay, type: "spring", stiffness: 280, damping: 26 }
       }
       whileHover={
-        reduced
+        reduced || dropHover
           ? undefined
           : {
               y: -6,
@@ -111,7 +121,7 @@ export function ProjectCard({
       }
       className={`library-card group relative flex flex-col gap-3 bg-transparent p-4 transition-colors ${
         project.archived ? "opacity-70 hover:opacity-100" : ""
-      } ${dropHover ? "outline outline-2 outline-offset-2 outline-fuchsia bg-fuchsia-soft/20" : ""}`}
+      } ${dropHover ? "outline outline-2 outline-offset-2 outline-fuchsia bg-fuchsia-soft/25 shadow-[var(--glow-md)]" : ""}`}
       data-archived={project.archived ? "true" : "false"}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes("application/x-liquidclips-asset")) {
