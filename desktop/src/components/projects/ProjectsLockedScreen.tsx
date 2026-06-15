@@ -17,6 +17,10 @@
 //   • Open Library — routes to Library (casual outputs stay free)
 //
 // No passive Keychain reads. No "Reactivate" copy.
+//
+// v0.7.77 polish: motion entry stagger + button focus rings + aria labels.
+
+import { motion, useReducedMotion } from "motion/react";
 
 export function ProjectsLockedScreen({
   onUpgrade,
@@ -27,13 +31,31 @@ export function ProjectsLockedScreen({
   onBrowseEarn: () => void;
   onOpenLibrary: () => void;
 }) {
+  const reduced = useReducedMotion();
+  const initialY = reduced ? 0 : 8;
+  const transition = reduced
+    ? { duration: 0.12 }
+    : { duration: 0.34, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] };
+
   return (
-    <div className="mx-auto flex w-full max-w-[640px] flex-col gap-6 pt-6">
-      <div className="flex flex-col gap-2">
+    <motion.div
+      className="mx-auto flex w-full max-w-[640px] flex-col gap-6 px-4 pt-6"
+      role="region"
+      aria-label="Projects locked"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: reduced ? 0.12 : 0.24 }}
+    >
+      <motion.div
+        className="flex flex-col gap-2"
+        initial={{ opacity: 0, y: initialY }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ ...transition, delay: reduced ? 0 : 0.04 }}
+      >
         <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia">
           projects · pro
         </span>
-        <h1 className="font-display text-[30px] font-semibold leading-[1.05] tracking-[-0.025em] text-ink">
+        <h1 className="font-display text-[clamp(24px,3.4vw,30px)] font-semibold leading-[1.05] tracking-[-0.025em] text-ink">
           Organise clips into campaigns, clients, and earning goals.
         </h1>
         <p className="font-sans text-[14px] leading-relaxed text-text-secondary">
@@ -41,19 +63,39 @@ export function ProjectsLockedScreen({
           your clips into workspaces, attach clips to campaigns, and manage
           earning Projects.
         </p>
-      </div>
+      </motion.div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={onUpgrade} className="btn-primary">
+      <motion.div
+        className="flex flex-wrap items-center gap-2"
+        initial={{ opacity: 0, y: initialY }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ ...transition, delay: reduced ? 0 : 0.12 }}
+      >
+        <button
+          type="button"
+          onClick={onUpgrade}
+          aria-label="Upgrade to Liquid Clips Pro"
+          className="btn-primary focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+        >
           Upgrade to Pro →
         </button>
-        <button type="button" onClick={onBrowseEarn} className="btn-secondary">
+        <button
+          type="button"
+          onClick={onBrowseEarn}
+          aria-label="Browse public Earn bounties"
+          className="btn-secondary focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+        >
           Browse Earn
         </button>
-        <button type="button" onClick={onOpenLibrary} className="btn-secondary">
+        <button
+          type="button"
+          onClick={onOpenLibrary}
+          aria-label="Open Library"
+          className="btn-secondary focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+        >
           Open Library
         </button>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
