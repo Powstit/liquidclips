@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supportEmail } from "@/lib/site";
+import { GITHUB_RELEASES_PAGE } from "@/lib/env";
 
 type Platform = "mac-arm" | "mac-intel" | "mac-universal" | "windows" | "linux" | "unknown";
 
@@ -13,7 +14,7 @@ type ArtifactMap = {
   linux?: string;
 };
 
-const RELEASES_URL = "https://github.com/Powstit/liquidclips/releases";
+const RELEASES_URL = GITHUB_RELEASES_PAGE;
 
 // v0.7.49 hotfix — Removed the NEXT_PUBLIC_DOWNLOAD_DMG_URL legacy fallback.
 // The env var on Vercel was still pointing to Jnr-employee/v0.6.44 and was

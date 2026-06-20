@@ -1,0 +1,16 @@
+import puppeteer from "puppeteer-core";
+const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const URL = "http://localhost:1420/?session=ixwod2x&api=http://localhost:3000&skipIntro=1";
+const browser = await puppeteer.launch({ executablePath: CHROME, headless: "new", defaultViewport: { width: 1440, height: 900, deviceScaleFactor: 2 } });
+const page = await browser.newPage();
+await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 2 });
+page.on("console", () => {}); page.on("pageerror", () => {});
+await page.goto(URL, { waitUntil: "domcontentloaded", timeout: 30000 });
+await new Promise((r) => setTimeout(r, 4500));
+await page.screenshot({ path: "/Users/dipdip/code/jnr/liquidclips-marketing/docs/funnel-screenshots/08-desktop-claim.png", fullPage: false });
+await new Promise((r) => setTimeout(r, 500));
+await page.evaluate(() => { const cards = document.querySelectorAll("button.lc-claim-screen-card"); if (cards[2]) cards[2].click(); });
+await new Promise((r) => setTimeout(r, 600));
+await page.screenshot({ path: "/Users/dipdip/code/jnr/liquidclips-marketing/docs/funnel-screenshots/09-desktop-claim-active.png", fullPage: false });
+await browser.close();
+console.log("ok");

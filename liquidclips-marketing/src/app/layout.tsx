@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
+import "./funnel.css";
 import { CRTOverlay } from "@/components/CRTOverlay";
+import { SITE_URL } from "@/lib/env";
 
 const inter = Inter({
   variable: "--font-sans",
@@ -17,7 +19,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://liquidclips.app"),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "Liquid Clips — Drop video. Clip. Post. Earn.",
     template: "%s — Liquid Clips",
@@ -28,7 +30,7 @@ export const metadata: Metadata = {
     title: "Liquid Clips — Drop video. Clip. Post. Earn.",
     description:
       "The arcade for clippers. Drop a long video, generate captioned clips, submit to Whop campaigns, get paid. Built by a clipper.",
-    url: "https://liquidclips.app",
+    url: SITE_URL,
     siteName: "Liquid Clips",
     images: [{ url: "/brand/og-default.png", width: 1536, height: 1024 }],
     locale: "en_GB",
@@ -86,8 +88,8 @@ export default function RootLayout({
         },
       }}
       allowedRedirectOrigins={[
-        "https://liquidclips.app",
-        "https://account.liquidclips.app",
+        SITE_URL,
+        SITE_URL.replace("://", "://account."),
       ]}
     >
       <html lang="en">

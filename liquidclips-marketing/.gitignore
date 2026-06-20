@@ -7,3 +7,19 @@ out
 # Sentry — source map auth token (never commit)
 .env.sentry-build-plugin
 .vercel
+.vercel.*-bak/
+
+# clerk configuration (can include secrets)
+/.clerk/
+
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo
+
+# Capture-script output dumps (regenerable, large)
+/_public-orphans-archive/
+/docs/audit-screenshots/
+/docs/audit-screenshots-after/
+/docs/funnel-screenshots/
+
+# macOS
+.DS_Store
