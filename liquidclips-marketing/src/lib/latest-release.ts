@@ -30,8 +30,9 @@ type GHRelease = {
   assets?: GHAsset[];
 };
 
-const RELEASES_URL =
-  "https://api.github.com/repos/Powstit/liquidclips/releases/latest";
+import { GITHUB_RELEASES_API } from "@/lib/env";
+
+const RELEASES_URL = GITHUB_RELEASES_API;
 
 export async function getLatestRelease(): Promise<LatestRelease | null> {
   try {

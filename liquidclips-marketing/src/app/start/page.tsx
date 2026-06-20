@@ -5,6 +5,7 @@ import { PageShell } from "@/components/Chrome";
 import { DownloadCTA, DownloadMeta } from "@/components/DownloadCTA";
 import { accountUrl, supportEmail } from "@/lib/site";
 import { getLatestRelease } from "@/lib/latest-release";
+import { SITE_URL } from "@/lib/env";
 
 export const metadata: Metadata = {
   title: "Start clipping YouTube, TikTok, podcasts — Liquid Clips onboarding",
@@ -25,7 +26,7 @@ export const metadata: Metadata = {
     title: "Start clipping YouTube, TikTok, podcasts — Liquid Clips",
     description:
       "Drop a long video, get publish-ready clips. Sign up free, optionally earn rewards on Whop.",
-    url: "https://liquidclips.app/start",
+    url: `${SITE_URL}/start`,
     type: "article",
   },
 };
@@ -137,7 +138,7 @@ export default async function StartPage() {
     name: "How to start clipping YouTube and TikTok videos with Liquid Clips",
     description:
       "Install Liquid Clips on Mac, sign in, drop a long video URL, pick and brand the clips, then publish to TikTok / Shorts / Reels or earn through Clip Rewards.",
-    image: "https://liquidclips.app/brand/og-default.png",
+    image: `${SITE_URL}/brand/og-default.png`,
     totalTime: "PT3M",
     step: steps.map((s) => ({
       "@type": "HowToStep",
