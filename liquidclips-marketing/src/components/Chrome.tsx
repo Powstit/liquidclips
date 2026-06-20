@@ -95,7 +95,16 @@ export function Footer() {
   );
 }
 
-export function PageShell({ children }: { children: React.ReactNode }) {
+export function PageShell({
+  children,
+  hideChrome,
+}: {
+  children: React.ReactNode;
+  /** Funnel-mode pages (generate / clips) own the entire viewport ·
+   *  no header, no footer. */
+  hideChrome?: boolean;
+}) {
+  if (hideChrome) return <>{children}</>;
   return (
     <>
       <Header />

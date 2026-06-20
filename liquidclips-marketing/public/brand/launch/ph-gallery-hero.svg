@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1270 760" role="img"
+     aria-label="liquid/clips · Drop the tape. Kade finds the moments. · 10 viral clips from any long video. Open them in the desktop app. · Launching on Product Hunt">
+  <title>liquid/clips · Product Hunt launch hero</title>
+
+  <defs>
+    <linearGradient id="room" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#13111c" />
+      <stop offset="55%" stop-color="#0a090f" />
+      <stop offset="100%" stop-color="#07060b" />
+    </linearGradient>
+
+    <radialGradient id="nebula" cx="50%" cy="32%" r="58%">
+      <stop offset="0%" stop-color="#ff2bb0" stop-opacity="0.55" />
+      <stop offset="38%" stop-color="#c70078" stop-opacity="0.30" />
+      <stop offset="70%" stop-color="#ff2bb0" stop-opacity="0.06" />
+      <stop offset="100%" stop-color="#ff2bb0" stop-opacity="0" />
+    </radialGradient>
+
+    <radialGradient id="floor-glow" cx="50%" cy="100%" r="60%">
+      <stop offset="0%" stop-color="#ff2bb0" stop-opacity="0.35" />
+      <stop offset="60%" stop-color="#ff2bb0" stop-opacity="0.05" />
+      <stop offset="100%" stop-color="#ff2bb0" stop-opacity="0" />
+    </radialGradient>
+
+    <linearGradient id="cta-fx" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ff2bb0" />
+      <stop offset="55%" stop-color="#c70078" />
+      <stop offset="100%" stop-color="#ff66c4" />
+    </linearGradient>
+
+    <pattern id="scan" x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="1" fill="#000" fill-opacity="0.30" />
+    </pattern>
+
+    <!-- the pixel invader · used as the brand mark · drawn as solid rects -->
+    <symbol id="invader" viewBox="0 0 22 14">
+      <g fill="currentColor" shape-rendering="crispEdges">
+        <rect x="3" y="0" width="2" height="2" /><rect x="17" y="0" width="2" height="2" />
+        <rect x="5" y="2" width="2" height="2" /><rect x="15" y="2" width="2" height="2" />
+        <rect x="3" y="4" width="2" height="2" /><rect x="5" y="4" width="2" height="2" />
+        <rect x="7" y="4" width="8" height="2" />
+        <rect x="15" y="4" width="2" height="2" /><rect x="17" y="4" width="2" height="2" />
+        <rect x="1" y="6" width="2" height="2" /><rect x="3" y="6" width="4" height="2" />
+        <rect x="9" y="6" width="4" height="2" />
+        <rect x="15" y="6" width="4" height="2" /><rect x="19" y="6" width="2" height="2" />
+        <rect x="1" y="8" width="20" height="2" />
+        <rect x="3" y="10" width="2" height="2" /><rect x="9" y="10" width="4" height="2" />
+        <rect x="17" y="10" width="2" height="2" />
+        <rect x="1" y="12" width="2" height="2" /><rect x="19" y="12" width="2" height="2" />
+      </g>
+    </symbol>
+  </defs>
+
+  <!-- ROOM PLATE -->
+  <rect width="1270" height="760" fill="url(#room)" />
+  <rect width="1270" height="760" fill="url(#nebula)" />
+  <rect width="1270" height="760" fill="url(#floor-glow)" />
+  <rect width="1270" height="760" fill="url(#scan)" opacity="0.45" />
+
+  <!-- horizon line · subtle pink kicker -->
+  <rect x="0" y="498" width="1270" height="1" fill="#ff2bb0" opacity="0.45" />
+  <rect x="0" y="499" width="1270" height="2" fill="#ff2bb0" opacity="0.15" />
+
+  <!-- corner reticles -->
+  <path d="M 36 36 L 36 80 M 36 36 L 80 36" stroke="#2dd6ee" stroke-width="2" fill="none" />
+  <path d="M 1234 36 L 1234 80 M 1234 36 L 1190 36" stroke="#2dd6ee" stroke-width="2" fill="none" />
+  <path d="M 36 724 L 36 680 M 36 724 L 80 724" stroke="#2dd6ee" stroke-width="2" fill="none" />
+  <path d="M 1234 724 L 1234 680 M 1234 724 L 1190 724" stroke="#2dd6ee" stroke-width="2" fill="none" />
+
+  <!-- TOP STATUS BAR -->
+  <g transform="translate(60, 70)" font-family="ui-monospace, Menlo, 'Geist Mono', monospace">
+    <!-- left · liquid/clips identity -->
+    <g font-size="17" fill="#ecebf2" font-weight="600">
+      <text>liquid</text>
+      <text x="64" fill="#ff2bb0">/</text>
+      <text x="73" fill="#ecebf2">clips</text>
+    </g>
+    <text x="0" y="22" font-size="11" letter-spacing="4" fill="#8e8b9c">
+      THE CLIPPING WORKBENCH  ·  v0.8.0 BETA
+    </text>
+  </g>
+  <g transform="translate(1210, 78)" text-anchor="end"
+     font-family="ui-monospace, Menlo, 'Geist Mono', monospace">
+    <!-- right · live PH pill -->
+    <rect x="-220" y="-22" width="220" height="30" rx="15" fill="rgba(218,85,47,0.15)"
+          stroke="rgba(218,85,47,0.55)" stroke-width="1" />
+    <circle cx="-200" cy="-7" r="5" fill="#DA552F">
+      <animate attributeName="opacity" values="1;0.4;1" dur="1.4s" repeatCount="indefinite" />
+    </circle>
+    <text x="-12" y="-2" font-size="12" letter-spacing="4" fill="#ffa07c">LIVE · PRODUCT HUNT</text>
+  </g>
+
+  <!-- HERO ROW · invader + wordmark -->
+  <g transform="translate(635, 260)" text-anchor="middle">
+    <!-- invader halo -->
+    <circle r="160" fill="#ff2bb0" opacity="0.20">
+      <animate attributeName="r" values="160;180;160" dur="4.2s" repeatCount="indefinite" />
+      <animate attributeName="opacity" values="0.20;0.32;0.20" dur="4.2s" repeatCount="indefinite" />
+    </circle>
+    <!-- invader · big · pink · 220 × 140 -->
+    <g color="#ff2bb0" style="filter: drop-shadow(0 0 22px rgba(255,43,176,0.7));"
+       transform="translate(-110, -100)">
+      <use href="#invader" width="220" height="140" />
+    </g>
+  </g>
+
+  <!-- WORDMARK -->
+  <g transform="translate(635, 360)" text-anchor="middle"
+     font-family="Inter, ui-sans-serif, system-ui, sans-serif"
+     font-weight="900" font-size="92" letter-spacing="-4">
+    <text fill="#ecebf2">liquid</text>
+    <text x="42" fill="#ff2bb0" style="filter: drop-shadow(0 0 26px rgba(255,43,176,0.65));">/</text>
+    <text x="66" fill="#ecebf2">clips</text>
+  </g>
+
+  <!-- TAGLINE -->
+  <g transform="translate(635, 440)" text-anchor="middle"
+     font-family="Inter, ui-sans-serif, system-ui, sans-serif"
+     font-weight="800" font-size="34" letter-spacing="-0.6">
+    <text fill="#ecebf2">Drop the tape.</text>
+    <text x="178" fill="#ff2bb0" style="filter: drop-shadow(0 0 14px rgba(255,43,176,0.55));">Kade</text>
+    <text x="252" fill="#ecebf2">finds the moments.</text>
+  </g>
+
+  <!-- 10 CLIP CARDS · score ladder · little glass cards with DSEG7-ish digits -->
+  <g transform="translate(170, 520)">
+    <g font-family="ui-monospace, Menlo, 'Geist Mono', monospace" font-weight="700">
+      <!-- card sizes 88 × 60 · gap 14 · 10 of them -->
+      <g transform="translate(0, 0)">
+        <rect width="88" height="60" rx="10" fill="rgba(11,11,16,0.7)"
+              stroke="rgba(255,43,176,0.45)" stroke-width="1" />
+        <text x="44" y="40" text-anchor="middle" font-size="32" fill="#ff2bb0"
+              style="filter: drop-shadow(0 0 10px rgba(255,43,176,0.45));">94</text>
+        <text x="6" y="13" font-size="9" letter-spacing="2" fill="#8e8b9c">#01</text>
+      </g>
+      <g transform="translate(102, 0)">
+        <rect width="88" height="60" rx="10" fill="rgba(11,11,16,0.7)"
+              stroke="rgba(255,43,176,0.35)" stroke-width="1" />
+        <text x="44" y="40" text-anchor="middle" font-size="32" fill="#ff66c4"
+              style="filter: drop-shadow(0 0 8px rgba(255,43,176,0.35));">91</text>
+        <text x="6" y="13" font-size="9" letter-spacing="2" fill="#8e8b9c">#02</text>
+      </g>
+      <g transform="translate(204, 0)">
+        <rect width="88" height="60" rx="10" fill="rgba(11,11,16,0.7)"
+              stroke="rgba(255,43,176,0.30)" stroke-width="1" />
+        <text x="44" y="40" text-anchor="middle" font-size="32" fill="#ff66c4">88</text>
+        <text x="6" y="13" font-size="9" letter-spacing="2" fill="#8e8b9c">#03</text>
+      </g>
+      <g transform="translate(306, 0)">
+        <rect width="88" height="60" rx="10" fill="rgba(11,11,16,0.65)"
+              stroke="rgba(255,43,176,0.26)" stroke-width="1" />
+        <text x="44" y="40" text-anchor="middle" font-size="32" fill="#ff8fcb">86</text>
+        <text x="6" y="13" font-size="9" letter-spacing="2" fill="#8e8b9c">#04</text>
+      </g>
+      <g transform="translate(408, 0)">
+        <rect width="88" height="60" rx="10" fill="rgba(11,11,16,0.6)"
+              stroke="rgba(255,43,176,0.22)" stroke-width="1" />
+        <text x="44" y="40" text-anchor="middle" font-size="32" fill="#ff8fcb">84</text>
+        <text x="6" y="13" font-size="9" letter-spacing="2" fill="#8e8b9c">#05</text>
+      </g>
+      <g transform="translate(510, 0)">
+        <rect width="88" height="60" rx="10" fill="rgba(11,11,16,0.55)"
+              stroke="rgba(255,43,176,0.20)" stroke-width="1" />
+        <text x="44" y="40" text-anchor="middle" font-size="32" fill="#c8c4be">82</text>
+        <text x="6" y="13" font-size="9" letter-spacing="2" fill="#8e8b9c">#06</text>
+      </g>
+      <g transform="translate(612, 0)">
+        <rect width="88" height="60" rx="10" fill="rgba(11,11,16,0.5)"
+              stroke="rgba(255,43,176,0.18)" stroke-width="1" />
+        <text x="44" y="40" text-anchor="middle" font-size="32" fill="#c8c4be">79</text>
+        <text x="6" y="13" font-size="9" letter-spacing="2" fill="#8e8b9c">#07</text>
+      </g>
+      <g transform="translate(714, 0)">
+        <rect width="88" height="60" rx="10" fill="rgba(11,11,16,0.5)"
+              stroke="rgba(255,43,176,0.16)" stroke-width="1" />
+        <text x="44" y="40" text-anchor="middle" font-size="32" fill="#c8c4be">77</text>
+        <text x="6" y="13" font-size="9" letter-spacing="2" fill="#8e8b9c">#08</text>
+      </g>
+      <g transform="translate(816, 0)">
+        <rect width="88" height="60" rx="10" fill="rgba(11,11,16,0.5)"
+              stroke="rgba(255,43,176,0.14)" stroke-width="1" />
+        <text x="44" y="40" text-anchor="middle" font-size="32" fill="#c8c4be">74</text>
+        <text x="6" y="13" font-size="9" letter-spacing="2" fill="#8e8b9c">#09</text>
+      </g>
+      <g transform="translate(918, 0)">
+        <rect width="88" height="60" rx="10" fill="rgba(11,11,16,0.5)"
+              stroke="rgba(255,43,176,0.12)" stroke-width="1" />
+        <text x="44" y="40" text-anchor="middle" font-size="32" fill="#8e8b9c">71</text>
+        <text x="6" y="13" font-size="9" letter-spacing="2" fill="#8e8b9c">#10</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- SUBTAG -->
+  <g transform="translate(635, 632)" text-anchor="middle"
+     font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="20" fill="#c8c4be">
+    <text>10 viral-scored short clips from any long video.</text>
+    <text y="30" fill="#8e8b9c" font-size="16">Open them in the desktop app · macOS.</text>
+  </g>
+
+  <!-- BOTTOM PH CTA · official-style upvote button mock -->
+  <g transform="translate(635, 700)" text-anchor="middle">
+    <rect x="-220" y="-26" width="440" height="50" rx="25" fill="url(#cta-fx)"
+          style="filter: drop-shadow(0 14px 28px rgba(255,43,176,0.45));" />
+    <text y="6" font-family="Inter, ui-sans-serif" font-size="16" font-weight="800" fill="#ffffff"
+          letter-spacing="0.5">
+      ▲  UPVOTE ON PRODUCT HUNT  ·  liquidclips.app/launch
+    </text>
+  </g>
+</svg>
