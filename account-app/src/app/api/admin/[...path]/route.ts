@@ -38,6 +38,7 @@ const READ_PATHS = [
   /^claims$/,
   /^webhooks$/,
   /^postiz$/,
+  /^ayrshare$/,
   /^bugs$/,
   // v0.7.55 (Uncle Daniel funnel) — Phase 1 reward bonus ledger. Whop
   // owns the submission + base $1 RPM; this ledger tracks the $4 premium
