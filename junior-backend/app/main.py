@@ -23,7 +23,7 @@ from app.cron import start_cron, stop_cron
 # block is a no-op until Daniel flips the env.
 from app.agents import start_agent_fleet, stop_agent_fleet
 from app.db import Base, engine
-from app.routes import admin, admin_mutations, admin_recovery, affiliate, agency_campaigns, analytics, auth_whop, bonus_ledger, campaign_asset_links, campaigns, carrot, channels, community, connections, desktop, doctrine, leaderboard, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, admin_mutations, admin_recovery, affiliate, agency_campaigns, analytics, auth_whop, bonus_ledger, campaign_asset_links, campaigns, carrot, channels, community, connections, desktop, doctrine, leaderboard, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -436,6 +436,36 @@ async def lifespan(_app: FastAPI):
         )""",
         "CREATE INDEX IF NOT EXISTS ix_admin_recovery_attempt_ip ON admin_recovery_attempt (ip)",
         "CREATE INDEX IF NOT EXISTS ix_admin_recovery_attempt_created ON admin_recovery_attempt (created_at)",
+        # 2026-06-25 · Promo / discount-code system. Two tables:
+        #   • promo_codes — admin-issued codes (PromoCode model)
+        #   • promo_code_redemptions — one row per successful apply
+        # Idempotent so re-run on every redeploy is a no-op once tables exist.
+        """CREATE TABLE IF NOT EXISTS promo_codes (
+            id serial PRIMARY KEY,
+            code varchar(40) NOT NULL UNIQUE,
+            percent_off integer NOT NULL,
+            max_uses integer,
+            used_count integer NOT NULL DEFAULT 0,
+            scopes_json text NOT NULL DEFAULT '[]',
+            stripe_coupon_id varchar(120),
+            revoked_at timestamptz,
+            expires_at timestamptz,
+            created_by varchar(255) NOT NULL,
+            notes text,
+            created_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_promo_codes_code ON promo_codes (code)",
+        """CREATE TABLE IF NOT EXISTS promo_code_redemptions (
+            id serial PRIMARY KEY,
+            promo_code_id integer NOT NULL REFERENCES promo_codes(id) ON DELETE CASCADE,
+            user_id varchar(120) NOT NULL,
+            stripe_subscription_id varchar(120),
+            discount_applied_usd_cents bigint NOT NULL DEFAULT 0,
+            applied_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_promo_code_redemptions_promo ON promo_code_redemptions (promo_code_id)",
+        "CREATE INDEX IF NOT EXISTS ix_promo_code_redemptions_user ON promo_code_redemptions (user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_promo_code_redemptions_applied ON promo_code_redemptions (applied_at)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -547,6 +577,12 @@ app.include_router(agency_campaigns.router)
 app.include_router(bonus_ledger.router)
 app.include_router(community.router)
 app.include_router(promo.router)
+# 2026-06-25 · Promo / discount codes — public /promo/validate + /promo/apply
+# and admin /admin/promo/* CRUD + stats. Sibling to the existing `promo`
+# router (which despite its name owns banners + announcements, kept as-is
+# to avoid touching its callers).
+app.include_router(promo_codes.router)
+app.include_router(promo_codes.admin_router)
 app.include_router(redirect.router)
 app.include_router(reward_clips.router)
 app.include_router(proxy_llm.router)
