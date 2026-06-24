@@ -13,7 +13,8 @@
 // tab in App.tsx is the opener; this chrome's Close button is the closer.
 
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, BookmarkPlus, RotateCw, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookmarkPlus, ClipboardCopy, RotateCw, SendHorizontal, X } from "lucide-react";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   browseBack,
   browseForward,
@@ -107,6 +108,57 @@ export function BrowseRewardsPanel() {
     await go(currentUrl);
   }
 
+  // v0.7.80 — clipboard + workspace handoff. The browse panel's URL bar
+  // already holds whatever the WKWebView navigated to (via the
+  // `currentUrl` subscription). Two new affordances:
+  //   • Copy   — writes the live URL to the system clipboard via the
+  //              tauri-plugin-clipboard-manager. User can paste anywhere.
+  //   • Use    — same write + emits `lc:browse-url-handoff` so the
+  //              workspace UnifiedDropZone auto-fills its URL field, then
+  //              closes the browser panel. No tabbing required.
+  // Both surface their outcome via the existing `lc:toast` bus.
+  async function copyUrl() {
+    if (!draft) return;
+    try {
+      await writeText(draft);
+      window.dispatchEvent(
+        new CustomEvent("lc:toast", {
+          detail: { message: "URL copied to clipboard", tone: "ok" },
+        }),
+      );
+    } catch (e) {
+      window.dispatchEvent(
+        new CustomEvent("lc:toast", {
+          detail: { message: `Couldn't copy URL — ${humanError(e)}`, tone: "fail" },
+        }),
+      );
+    }
+  }
+
+  async function useInWorkspace() {
+    if (!draft) return;
+    try {
+      await writeText(draft);
+      window.dispatchEvent(
+        new CustomEvent("lc:browse-url-handoff", {
+          detail: { url: draft, source: "browse-panel" },
+        }),
+      );
+      await close();
+      window.dispatchEvent(
+        new CustomEvent("lc:toast", {
+          detail: { message: "URL handed off to workspace", tone: "ok" },
+        }),
+      );
+    } catch (e) {
+      window.dispatchEvent(
+        new CustomEvent("lc:toast", {
+          detail: { message: `Handoff failed — ${humanError(e)}`, tone: "fail" },
+        }),
+      );
+    }
+  }
+
   return (
     <div
       className="fixed top-0 z-30 flex flex-col gap-1.5 border-b border-l border-fuchsia/40 bg-paper-elev px-3 py-2 shadow-[var(--shadow-e2)]"
@@ -158,6 +210,19 @@ export function BrowseRewardsPanel() {
         >
           <BookmarkPlus size={12} />
           Save
+        </button>
+        <ChromeIconButton onClick={() => void copyUrl()} disabled={busy} label="Copy URL to clipboard">
+          <ClipboardCopy size={13} />
+        </ChromeIconButton>
+        <button
+          type="button"
+          onClick={() => void useInWorkspace()}
+          disabled={busy}
+          title="Copy URL, close browser, hand off to workspace import"
+          className="inline-flex h-7 items-center gap-1 rounded-md border border-fuchsia/50 bg-fuchsia/10 px-2 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia transition-colors enabled:hover:bg-fuchsia enabled:hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+        >
+          <SendHorizontal size={12} />
+          Use
         </button>
         <ChromeIconButton onClick={() => void close()} disabled={busy} label="Close browser">
           <X size={14} />

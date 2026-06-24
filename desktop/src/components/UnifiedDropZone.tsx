@@ -84,6 +84,25 @@ export function UnifiedDropZone({
   useEffect(() => {
     setCaptionsOnState(readCaptionsEnabled());
   }, []);
+
+  // v0.7.80 — BrowseRewardsPanel "Use" button hands a URL off via the
+  // `lc:browse-url-handoff` CustomEvent. We pre-fill the URL field +
+  // switch lane to "make" + clear any prior error so the user lands
+  // ready to hit Submit. Source-tagged so future surfaces (e.g. a
+  // clip-from-Whop-detail hand-off) can share the same channel.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ url?: string; source?: string }>).detail;
+      const incoming = detail?.url?.trim();
+      if (!incoming) return;
+      setLane("make");
+      setUrl(incoming);
+      setError(null);
+    };
+    window.addEventListener("lc:browse-url-handoff", handler);
+    return () => window.removeEventListener("lc:browse-url-handoff", handler);
+  }, []);
+
   function toggleCaptions() {
     const next = !captionsOn;
     setCaptionsOnState(next);
