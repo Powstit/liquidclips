@@ -6,6 +6,7 @@ import { RouteSplash } from "@/components/RouteSplash";
 import { PostHogBoot } from "@/components/PostHogBoot";
 import { WhopLinkBoot } from "@/components/WhopLinkBoot";
 import { ServiceWorkerBoot } from "@/components/ServiceWorkerBoot";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-fraunces", display: "swap" });
@@ -80,6 +81,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <Nav />
           <main className="flex-1">{children}</main>
           <RouteSplash />
+          <Analytics />
         </body>
       </html>
     </ClerkProvider>
