@@ -7,7 +7,8 @@
 
 import { useEffect, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { ExternalLink, Loader2, RotateCw, Wallet } from "lucide-react";
+import { Loader2, RotateCw, Wallet } from "lucide-react";
+import { ExternalLink } from "../icons/BrandGlyphs";
 import { Card, Pill } from "../primitives";
 import {
   meAffiliate,

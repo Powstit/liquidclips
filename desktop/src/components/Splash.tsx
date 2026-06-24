@@ -255,7 +255,7 @@ export function Splash({
           <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               onClick={() => void onRestart()}
-              className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright"
+              className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-ink hover:bg-fuchsia-bright"
             >
               Retry engine
             </button>
@@ -312,7 +312,7 @@ export function Splash({
           type="button"
           onClick={skipSplash}
           aria-label="Skip intro"
-          className="absolute right-6 top-6 z-20 rounded-full border border-fuchsia bg-paper/45 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
+          className="absolute right-6 top-6 z-20 rounded-full border border-fuchsia bg-paper/45 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-ink focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
         >
           Skip intro
         </button>
@@ -372,7 +372,7 @@ export function Splash({
         type="button"
         onClick={skipSplash}
         aria-label="Skip intro"
-        className="absolute right-6 top-6 z-20 rounded-full border border-fuchsia bg-paper/45 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
+        className="absolute right-6 top-6 z-20 rounded-full border border-fuchsia bg-paper/45 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia shadow-[var(--glow-sm)] backdrop-blur-sm transition-all hover:bg-fuchsia hover:text-ink focus:outline-none focus:ring-2 focus:ring-fuchsia focus:ring-offset-2 focus:ring-offset-black"
       >
         Skip intro
       </button>

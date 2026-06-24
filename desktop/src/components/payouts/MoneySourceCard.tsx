@@ -13,7 +13,7 @@
 //   - Empty / setup states nudge the next concrete action
 
 import { openSmart as openExternal } from "../../lib/openSmart";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink } from "../icons/BrandGlyphs";
 import { Button, Card, Pill } from "../primitives";
 import { fmtUsd } from "../../lib/payoutsAggregations";
 
@@ -38,7 +38,7 @@ const SOURCE_META = {
     title: "Whop Content Rewards",
     subtitle: "Paid by Whop, directly to your linked account",
     monogram: "W",
-    monogramBg: "bg-fuchsia text-white",
+    monogramBg: "bg-fuchsia text-ink",
     topStripe: "border-t-fuchsia",
     primaryLabel: "Open Whop payouts ↗",
     helper:
@@ -48,7 +48,7 @@ const SOURCE_META = {
     title: "Liquid Clips affiliate",
     subtitle: "Paid by Liquid Clips via Stripe Connect",
     monogram: "S",
-    monogramBg: "bg-fuchsia text-white",
+    monogramBg: "bg-fuchsia text-ink",
     topStripe: "border-t-fuchsia",
     primaryLabel: "Open Stripe Express ↗",
     helper:

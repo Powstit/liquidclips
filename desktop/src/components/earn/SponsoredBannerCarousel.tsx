@@ -163,7 +163,7 @@ export function SponsoredBannerCarousel({ tier = null, onUpgrade }: Props) {
             <button
               type="button"
               onClick={handleCta}
-              className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+              className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-ink transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
             >
               {locked ? "Upgrade to unlock rewards →" : "Browse open campaigns →"}
             </button>
@@ -417,7 +417,7 @@ function BrandedBannerSlide({
           <span className={`mt-1 inline-flex items-center gap-1 rounded-full px-3 py-1 font-sans text-[11px] font-medium transition-all ${
             isLockedForUser
               ? "border border-fuchsia/50 bg-fuchsia-soft/40 text-fuchsia-deep group-hover:bg-fuchsia-soft/60"
-              : "bg-fuchsia text-white group-hover:bg-fuchsia-bright"
+              : "bg-fuchsia text-ink group-hover:bg-fuchsia-bright"
           }`}>
             {isLockedForUser ? (
               <>Upgrade to unlock <Lock size={10} strokeWidth={2.25} /></>

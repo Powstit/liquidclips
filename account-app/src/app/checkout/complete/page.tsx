@@ -65,7 +65,7 @@ export default async function CheckoutCompletePage({
             <div className="flex flex-wrap items-center gap-3">
               <Link
                 href="/dashboard"
-                className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-fuchsia-bright"
+                className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-ink transition-colors hover:bg-fuchsia-bright"
               >
                 Open dashboard →
               </Link>
@@ -95,7 +95,7 @@ export default async function CheckoutCompletePage({
             </p>
             <Link
               href="/upgrade"
-              className="inline-flex w-fit items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-fuchsia-bright"
+              className="inline-flex w-fit items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-ink transition-colors hover:bg-fuchsia-bright"
             >
               Restart checkout →
             </Link>
@@ -114,7 +114,7 @@ export default async function CheckoutCompletePage({
             </p>
             <Link
               href="/upgrade"
-              className="inline-flex w-fit items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-fuchsia-bright"
+              className="inline-flex w-fit items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-ink transition-colors hover:bg-fuchsia-bright"
             >
               Try again →
             </Link>
@@ -132,7 +132,7 @@ export default async function CheckoutCompletePage({
             </p>
             <Link
               href="/dashboard"
-              className="inline-flex w-fit items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-fuchsia-bright"
+              className="inline-flex w-fit items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-ink transition-colors hover:bg-fuchsia-bright"
             >
               Open dashboard →
             </Link>

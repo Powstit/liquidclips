@@ -138,7 +138,7 @@ export function ReactionCellPreview({
             onClick={onApply}
             disabled={busy || !reactionPath}
             title={reactionPath ? "Render the composite" : "Pick a reaction first"}
-            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-ink hover:bg-fuchsia-bright disabled:opacity-40"
           >
             <WandSparkles size={13} strokeWidth={2.2} />
             {busy ? "Rendering…" : "Apply reaction"}
@@ -177,14 +177,14 @@ function CellChrome({
           className={`pointer-events-auto inline-flex items-center rounded-full font-mono uppercase tracking-[0.14em] ${badgePad} ${badgeText} ${
             role === "main"
               ? "bg-paper/85 text-ink"
-              : "bg-fuchsia text-white"
+              : "bg-fuchsia text-ink"
           }`}
         >
           {role}
         </span>
         <span
           className={`pointer-events-auto inline-flex items-center gap-1 rounded-full font-mono uppercase tracking-[0.14em] ${badgePad} ${badgeText} ${
-            audioOn ? "bg-fuchsia text-white" : "bg-paper/20 text-paper/70"
+            audioOn ? "bg-fuchsia text-ink" : "bg-paper/20 text-paper/70"
           }`}
           title={
             muted
@@ -210,7 +210,7 @@ function CellChrome({
       </div>
       {!compact && title && (
         <div className="pointer-events-auto rounded-md bg-paper/70 px-2 py-1 backdrop-blur-sm">
-          <p className="truncate font-sans text-[11px] font-medium leading-tight text-white">{title}</p>
+          <p className="truncate font-sans text-[11px] font-medium leading-tight text-ink">{title}</p>
         </div>
       )}
     </div>

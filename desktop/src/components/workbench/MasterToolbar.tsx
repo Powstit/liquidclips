@@ -651,7 +651,7 @@ function SchedulePopover({
         type="button"
         disabled={disabled}
         onClick={() => onApply([], when)}
-        className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-semibold text-white shadow-[0_0_14px_rgba(255,26,140,0.4)] hover:bg-fuchsia-bright disabled:opacity-40"
+        className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-semibold text-ink shadow-[0_0_14px_rgba(255,26,140,0.4)] hover:bg-fuchsia-bright disabled:opacity-40"
       >
         <Send className="h-3 w-3" /> Schedule selected
       </button>

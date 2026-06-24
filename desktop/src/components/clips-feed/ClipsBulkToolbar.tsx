@@ -180,7 +180,7 @@ export function ClipsBulkToolbar({
           title={previewMotionOn ? "Preview motion: on" : "Preview motion: off"}
           className={`grid h-7 w-7 place-items-center rounded-full border transition-colors ${
             previewMotionOn
-              ? "border-fuchsia bg-fuchsia text-white shadow-[var(--glow-sm)]"
+              ? "border-fuchsia bg-fuchsia text-ink shadow-[var(--glow-sm)]"
               : "border-fuchsia/30 bg-transparent text-text-tertiary hover:border-fuchsia hover:text-ink"
           }`}
         >
@@ -198,7 +198,7 @@ export function ClipsBulkToolbar({
           title={previewSoundOn ? "Preview sound: on" : "Preview sound: off"}
           className={`grid h-7 w-7 place-items-center rounded-full border transition-colors ${
             previewSoundOn
-              ? "border-fuchsia bg-fuchsia text-white shadow-[var(--glow-sm)]"
+              ? "border-fuchsia bg-fuchsia text-ink shadow-[var(--glow-sm)]"
               : "border-fuchsia/30 bg-transparent text-text-tertiary hover:border-fuchsia hover:text-ink"
           }`}
         >
@@ -213,7 +213,7 @@ export function ClipsBulkToolbar({
               onClick={() => onRatioChange(r.key)}
               className={`rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-[0.08em] transition-colors ${
                 ratio === r.key
-                  ? "bg-fuchsia text-white"
+                  ? "bg-fuchsia text-ink"
                   : "text-text-tertiary hover:text-ink"
               }`}
             >

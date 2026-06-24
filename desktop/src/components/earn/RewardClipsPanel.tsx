@@ -260,7 +260,7 @@ function CopyShortLink({ url }: { url: string }) {
         onClick={() => void copy()}
         title={copied ? "Copied" : "Copy this tracking link."}
         aria-label="Copy this tracking link."
-        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-fuchsia px-3 py-1 font-sans text-[12px] font-medium text-white opacity-70 transition-opacity duration-150 hover:bg-fuchsia-bright group-hover:opacity-100"
+        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-fuchsia px-3 py-1 font-sans text-[12px] font-medium text-ink opacity-70 transition-opacity duration-150 hover:bg-fuchsia-bright group-hover:opacity-100"
       >
         <CopyIcon className="h-3.5 w-3.5" strokeWidth={2.25} />
         {copied ? "Copied" : "Copy"}

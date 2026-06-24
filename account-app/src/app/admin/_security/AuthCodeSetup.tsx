@@ -59,7 +59,7 @@ export function AuthCodeSetup({ alreadySet, backendBase, clerkUserId }: Props) {
   return (
     <form
       onSubmit={onSubmit}
-      className="rounded-md border border-neutral-200 bg-white p-4"
+      className="rounded-md border border-neutral-200 bg-ink p-4"
     >
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-neutral-900">
@@ -91,7 +91,7 @@ export function AuthCodeSetup({ alreadySet, backendBase, clerkUserId }: Props) {
       <button
         type="submit"
         disabled={!valid || state.kind === "saving"}
-        className="w-full rounded bg-neutral-900 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-neutral-400"
+        className="w-full rounded bg-neutral-900 px-3 py-2 text-sm font-medium text-ink disabled:cursor-not-allowed disabled:bg-neutral-400"
       >
         {state.kind === "saving"
           ? "Saving…"

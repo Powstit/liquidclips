@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, ExternalLink, X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
+import { ExternalLink } from "../icons/BrandGlyphs";
 import { humanError } from "../../lib/sidecar";
 import { createChannel, refreshChannel } from "../../lib/backend";
 import { openSmart } from "../../lib/openSmart";
@@ -85,7 +86,7 @@ export function InlineConnectPopover({
   if (state.kind === "success") {
     return (
       <div className="flex flex-col items-center gap-3 rounded-2xl border border-fuchsia/30 bg-fuchsia/10 px-6 py-5">
-        <div className="grid h-10 w-10 place-items-center rounded-full bg-fuchsia text-white">
+        <div className="grid h-10 w-10 place-items-center rounded-full bg-fuchsia text-ink">
           <PlatformGlyph id={platform} className="h-5 w-5" />
         </div>
         <p className="font-sans text-[13px] font-medium text-fuchsia">
@@ -102,7 +103,7 @@ export function InlineConnectPopover({
         <div className="flex gap-2">
           <button
             onClick={start}
-            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
+            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-ink hover:bg-fuchsia-bright"
           >
             Retry
           </button>
@@ -169,7 +170,7 @@ export function InlineConnectPopover({
         <button
           onClick={() => void start()}
           disabled={state.kind === "creating"}
-          className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-ink hover:bg-fuchsia-bright disabled:opacity-50"
         >
           {state.kind === "creating" ? (
             <>

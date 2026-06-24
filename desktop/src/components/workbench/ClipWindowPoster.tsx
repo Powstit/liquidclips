@@ -35,8 +35,8 @@ import { useMemo } from "react";
 import type { Clip } from "./types";
 
 function viralityClass(score: number): string {
-  if (score >= 90) return "bg-fuchsia text-white";
-  if (score >= 75) return "bg-fuchsia-bright text-white";
+  if (score >= 90) return "bg-fuchsia text-ink";
+  if (score >= 75) return "bg-fuchsia-bright text-ink";
   if (score >= 50) return "bg-fuchsia-glow text-ink";
   return "bg-paper-warm text-text-tertiary";
 }

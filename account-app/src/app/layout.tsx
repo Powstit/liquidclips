@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Fraunces, Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Nav } from "@/components/Nav";
+import { Footer } from "@/components/Footer";
 import { RouteSplash } from "@/components/RouteSplash";
 import { PostHogBoot } from "@/components/PostHogBoot";
 import { WhopLinkBoot } from "@/components/WhopLinkBoot";
@@ -25,10 +26,25 @@ export const metadata: Metadata = {
   icons: {
     apple: "/brand/apple-touch-icon.png",
   },
+  openGraph: {
+    title: "Liquid Clips — your account",
+    description: "Manage your Liquid Clips subscription, download the app, view your usage.",
+    url: "https://account.liquidclips.app",
+    siteName: "Liquid Clips",
+    images: [{ url: "/brand/cover.png", width: 1200, height: 630 }],
+    locale: "en_GB",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Liquid Clips — your account",
+    description: "Manage your Liquid Clips subscription, download the app, view your usage.",
+    images: ["/brand/cover.png"],
+  },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0A0A0F",
+  themeColor: "#0B0B10",
 };
 
 // v0.7.57 — Clerk primary swap. Clerk's primary domain is now liquidclips.app
@@ -52,20 +68,26 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       // at runtime, so the npm pin is sufficient. See clerk.com/docs/pinning.
       appearance={{
         variables: {
-          colorPrimary: "#FF1A8C",
-          colorBackground: "#FAF7F2",
-          colorText: "#0A0A0F",
-          colorTextSecondary: "#5A5560",
-          colorInputBackground: "#FAF7F2",
-          colorInputText: "#0A0A0F",
+          // Clerk v7 token names. v6 used colorText / colorTextSecondary /
+          // colorInputText / colorInputBackground — the v7 surface is
+          // colorForeground / colorMutedForeground / colorInputForeground /
+          // colorInput. v6 names are silently ignored by v7 so the modal
+          // would render in Clerk's light-cream default theme over our
+          // dark site. Mirrors marketing/src/app/layout.tsx.
+          colorPrimary: "#ff1a8c",
+          colorBackground: "#0b0b10",
+          colorForeground: "#f4f1ea",
+          colorMutedForeground: "#c8c4be",
+          colorInput: "#15151c",
+          colorInputForeground: "#f4f1ea",
           borderRadius: "10px",
           fontFamily: "var(--font-geist)",
           fontFamilyButtons: "var(--font-geist)",
         },
         elements: {
-          card: "border border-line shadow-[0_10px_40px_rgba(10,10,15,0.04)]",
+          card: "border border-line bg-paper-warm shadow-[0_10px_40px_rgba(0,0,0,0.4)]",
           headerTitle: "font-[var(--font-geist)] font-bold tracking-[-0.025em]",
-          formButtonPrimary: "bg-ink hover:bg-fuchsia transition-colors",
+          formButtonPrimary: "bg-fuchsia hover:bg-fuchsia-bright transition-colors",
           socialButtonsBlockButton: "border border-line hover:border-fuchsia",
         },
       }}
@@ -80,6 +102,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <ServiceWorkerBoot />
           <Nav />
           <main className="flex-1">{children}</main>
+          <Footer />
           <RouteSplash />
           <Analytics />
         </body>
