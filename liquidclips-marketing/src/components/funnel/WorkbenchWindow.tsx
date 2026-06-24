@@ -59,7 +59,7 @@ export function WorkbenchWindow() {
             <span /><span /><span />
           </span>
           <span className="lc-w4-titlebar-label">liquid/clips · session is loaded</span>
-          <span className="lc-w4-titlebar-version">v0.8.0</span>
+          <span className="lc-w4-titlebar-version">v0.7.80</span>
         </div>
 
         {/* App preview · 3 columns */}
