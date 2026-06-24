@@ -504,7 +504,7 @@ def set_pin(
     silently overwrite an existing hash so a session-hijacker can't
     quietly rotate the recovery secret behind Daniel's back."""
     cfg = _get_config(db)
-    already_set = bool(cfg.pin_hash or _env_pin_hash())
+    already_set = bool(cfg.pin_hash)
     if already_set and not force:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -526,7 +526,7 @@ def set_auth_code(
     """Set (or rotate) the 8-character auth code. Same overwrite-guard
     contract as /pin."""
     cfg = _get_config(db)
-    already_set = bool(cfg.auth_code_hash or _env_auth_code_hash())
+    already_set = bool(cfg.auth_code_hash)
     if already_set and not force:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
