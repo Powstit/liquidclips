@@ -1,0 +1,12 @@
+{
+  "journey": "debug",
+  "started_at": "2026-06-23T15:40:23.030Z",
+  "result": "PASS",
+  "failed_step": null,
+  "step_log": [],
+  "screenshots": [],
+  "console_errors": [],
+  "dom_assertions": {},
+  "test_title": "debug · capture console + page errors on /",
+  "duration_ms": 4094
+}

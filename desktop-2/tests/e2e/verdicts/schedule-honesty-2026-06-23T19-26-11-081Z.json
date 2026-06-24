@@ -1,0 +1,143 @@
+{
+  "journey": "Schedule Honesty",
+  "started_at": "2026-06-23T19:11:15.256Z",
+  "result": "PASS",
+  "failed_step": null,
+  "step_log": [
+    {
+      "step": 1,
+      "name": "Launch + seed session",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/sched-01-launch-seed-session.png"
+    },
+    {
+      "step": 2,
+      "name": "Click Edit on first clip",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/sched-02-click-edit-on-first-clip.png"
+    },
+    {
+      "step": 3,
+      "name": "Switch dock to Schedule tab",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/sched-03-switch-dock-to-schedule-tab.png"
+    },
+    {
+      "step": 4,
+      "name": "Schedule block exposes honest 'coming-soon' state",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/sched-04-schedule-block-exposes-honest-coming-soon-state.png"
+    },
+    {
+      "step": 5,
+      "name": "Schedule tab shows 'Coming soon' badge + honest copy",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/sched-05-schedule-tab-shows-coming-soon-badge-honest-copy.png"
+    },
+    {
+      "step": 6,
+      "name": "Date/time/lane/repeat controls still persist drafts",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/sched-06-date-time-lane-repeat-controls-still-persist-drafts.png"
+    },
+    {
+      "step": 7,
+      "name": "Queue button is disabled (no click can fire a fake toast)",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/sched-07-queue-button-is-disabled-no-click-can-fire-a-fake-toast-.png"
+    },
+    {
+      "step": 8,
+      "name": "Switch dock to Publish tab",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/sched-08-switch-dock-to-publish-tab.png"
+    },
+    {
+      "step": 9,
+      "name": "Publish 'Schedule +1h' is disabled + reads SAME promise",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/sched-09-publish-schedule-1h-is-disabled-reads-same-promise.png"
+    },
+    {
+      "step": 10,
+      "name": "Force-click both disabled CTAs · no toast fires",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/sched-10-force-click-both-disabled-ctas-no-toast-fires.png"
+    },
+    {
+      "step": 11,
+      "name": "Switch to clip #2 then back to #1",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/sched-11-switch-to-clip-2-then-back-to-1.png"
+    },
+    {
+      "step": 12,
+      "name": "Schedule draft persisted on returned clip (Patch A)",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/sched-12-schedule-draft-persisted-on-returned-clip-patch-a-.png"
+    },
+    {
+      "step": 13,
+      "name": "Emit verdict attachments",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/sched-13-emit-verdict-attachments.png"
+    }
+  ],
+  "screenshots": [
+    "/Users/dipdip/code/jnr/desktop-2/test-results/schedule-honesty-Schedule--ca161--disabled-no-fake-toast-lie-user-lens-chromium/attachments/sched-01-launch-seed-session-png-3d8c02340e05a9ae73724558f60ce3e3082136a8.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/schedule-honesty-Schedule--ca161--disabled-no-fake-toast-lie-user-lens-chromium/attachments/sched-02-click-edit-on-first-clip-png-67db55753953355b836a21ecf7016f93efc6d08e.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/schedule-honesty-Schedule--ca161--disabled-no-fake-toast-lie-user-lens-chromium/attachments/sched-03-switch-dock-to-schedule-tab-png-b92d9e7e539bec1d798f49a7eb6df3ceb50188a4.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/schedule-honesty-Schedule--ca161--disabled-no-fake-toast-lie-user-lens-chromium/attachments/sched-04-schedule-block-exposes-honest-coming-soon-state-png-a4557209f204b0185e6fdd915155b42b46fc2bba.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/schedule-honesty-Schedule--ca161--disabled-no-fake-toast-lie-user-lens-chromium/attachments/sched-05-schedule-tab-shows-coming-soon-badge-honest-copy-png-90fae828f6c742c4167092c9952b9c87f429865f.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/schedule-honesty-Schedule--ca161--disabled-no-fake-toast-lie-user-lens-chromium/attachments/sched-06-date-time-lane-repeat-controls-still-persist-drafts-png-79333bead01fa5316eef8699479fa8fb87f4a074.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/schedule-honesty-Schedule--ca161--disabled-no-fake-toast-lie-user-lens-chromium/attachments/sched-07-queue-button-is-disabled-no-click-can-fire-a-fake-toast--png-2960e40e67b9ce4433fe08be1955585ae9025c82.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/schedule-honesty-Schedule--ca161--disabled-no-fake-toast-lie-user-lens-chromium/attachments/sched-08-switch-dock-to-publish-tab-png-69d509e5ed0b0d00028413d34c8046f7ba67a72f.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/schedule-honesty-Schedule--ca161--disabled-no-fake-toast-lie-user-lens-chromium/attachments/sched-09-publish-schedule-1h-is-disabled-reads-same-promise-png-9ec2dee262ae4da730c39cc141c64ef6d9932b53.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/schedule-honesty-Schedule--ca161--disabled-no-fake-toast-lie-user-lens-chromium/attachments/sched-10-force-click-both-disabled-ctas-no-toast-fires-png-bc72f2b05bffe762fa27e92e6083d31e90c1ef9c.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/schedule-honesty-Schedule--ca161--disabled-no-fake-toast-lie-user-lens-chromium/attachments/sched-11-switch-to-clip-2-then-back-to-1-png-7e002665755191a2d2ba71b9f39eafca892a0034.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/schedule-honesty-Schedule--ca161--disabled-no-fake-toast-lie-user-lens-chromium/attachments/sched-12-schedule-draft-persisted-on-returned-clip-patch-a--png-d7d6d291bb53135f08bb12887a3f79d9ee717ce4.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/schedule-honesty-Schedule--ca161--disabled-no-fake-toast-lie-user-lens-chromium/attachments/sched-13-emit-verdict-attachments-png-179d5faa5e4bf025455e4824b1414ccb730bedd2.png"
+  ],
+  "console_errors": [
+    "console.warning: [tauri-adapter] cannot listen on sidecar:ingest_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:stage_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:bake_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:thumbnail_batch_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:export_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:regenerate_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:pick_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:lift_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:overlay_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:ingest_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:lift_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:pick_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:regenerate_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:bake_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:thumbnail_batch_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:export_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:ingest_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:lift_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:pick_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:regenerate_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:bake_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:thumbnail_batch_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:export_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:died: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:162:11"
+  ],
+  "dom_assertions": {
+    "schedule_available": "false",
+    "schedule_state": "coming-soon",
+    "schedule_badge": "Coming soon · not scheduled yet",
+    "schedule_copy": "Scheduling coming soon — connect a provider in Settings to enable.",
+    "draft_date_after_set": "2026-12-01",
+    "queue_label": "Queue · coming soon",
+    "publish_schedule_state": "coming-soon",
+    "publish_schedule_label": "Schedule · coming soon",
+    "toasts_before": 0,
+    "toasts_after_force_click": 0,
+    "persisted_draft_date": "2026-12-01",
+    "final": "ok"
+  },
+  "test_title": "Schedule Honesty · all schedule CTAs honestly disabled; no fake-toast lie",
+  "duration_ms": 40590
+}

@@ -1,0 +1,27 @@
+{
+  "journey": "Channels Station",
+  "started_at": "2026-06-23T11:05:57.205Z",
+  "result": "FAIL",
+  "failed_step": {
+    "step": 1,
+    "name": "Launch /#/channels"
+  },
+  "step_log": [
+    {
+      "step": 1,
+      "name": "Launch /#/channels",
+      "status": "FAIL",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/chan-01-launch-channels.png"
+    }
+  ],
+  "screenshots": [
+    "/Users/dipdip/code/jnr/desktop-2/test-results/channels-station-Channels--2f4c1-ls-·-zero-fake-OAuth-toasts-user-lens-chromium/attachments/chan-01-launch-channels-png-811c283d987c52103550e09271729d28f6de8035.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/channels-station-Channels--2f4c1-ls-·-zero-fake-OAuth-toasts-user-lens-chromium/test-failed-1.png"
+  ],
+  "console_errors": [
+    "console.error: Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+  ],
+  "dom_assertions": {},
+  "test_title": "Channels Station · honest mock-source state · zero fake channels · zero fake OAuth toasts",
+  "duration_ms": 15820
+}

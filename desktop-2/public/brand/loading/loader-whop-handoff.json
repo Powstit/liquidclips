@@ -1,0 +1,37 @@
+{
+  "$schema": "liquid-clips/motion-loop@1",
+  "name": "loader-whop-handoff",
+  "use": "user clicked 'Open on Whop' — show external transfer state until system browser opens",
+  "type": "loop",
+  "duration_ms": 1800,
+  "easing": "cubic-bezier(.4,0,.6,1)",
+  "renderable": ["lottie", "css-overlay"],
+  "layers": [
+    {
+      "name": "monogram",
+      "src": "brand/icons/action/campaign/finish-on-whop.svg",
+      "size_px": 64,
+      "anchor_xy_rel": [0.5, 0.55],
+      "alpha_curve": [0.55, 1.0, 0.55]
+    },
+    {
+      "name": "external-arrow-trail",
+      "shape": "trail",
+      "color_mix": { "rgb(255,26,140)": 0.65, "rgb(255,143,203)": 0.35 },
+      "from_xy_rel": [0.5, 0.55],
+      "to_xy_rel":   [0.85, 0.25],
+      "particle_count": 14,
+      "blend": "screen"
+    },
+    {
+      "name": "spotlight",
+      "shape": "radial",
+      "size_rel": 0.7,
+      "tint": "#FF1A8C",
+      "alpha_curve": [0.18, 0.36, 0.18]
+    }
+  ],
+  "copy_anchor": "OPENING ON WHOP…",
+  "respects_reduced_motion": "static_monogram_with_arrow",
+  "pause_when_hidden": true
+}

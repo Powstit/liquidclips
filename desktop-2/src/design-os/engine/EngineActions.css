@@ -1,0 +1,61 @@
+.lc-eng-actions {
+  padding: 14px 18px !important;
+  display: flex; flex-direction: column; gap: 10px;
+}
+
+.lc-eng-actions-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .2em;
+  color: #86837e;
+  text-transform: uppercase;
+}
+
+.lc-eng-actions-row {
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+
+.lc-eng-btn {
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  background: rgba(255, 255, 255, .04);
+  color: #f4f1ea;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600; font-size: 12.5px;
+  cursor: pointer;
+  transition: all .18s cubic-bezier(.2, .7, .2, 1);
+}
+.lc-eng-btn:hover:not(:disabled) {
+  border-color: rgba(255, 26, 140, .55);
+  background: rgba(255, 26, 140, .08);
+  color: #ffb3d8;
+}
+.lc-eng-btn:disabled { opacity: .55; cursor: not-allowed; }
+
+.lc-eng-btn-primary {
+  border-color: rgba(255, 26, 140, .55);
+  background: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+  color: white;
+}
+.lc-eng-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ff42a8 0%, #d40070 55%, #ff80c4 100%);
+  color: white;
+}
+
+.lc-eng-btn-quiet {
+  border-color: rgba(255, 255, 255, .07);
+  background: transparent;
+  color: #c8c4be;
+}
+.lc-eng-btn-quiet:hover:not(:disabled) {
+  border-color: rgba(220, 38, 38, .35);
+  background: rgba(220, 38, 38, .06);
+  color: #ff8b8b;
+}
+
+.lc-eng-actions-source {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px; color: #c8c4be;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%;
+}

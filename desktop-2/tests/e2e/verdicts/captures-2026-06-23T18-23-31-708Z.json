@@ -1,0 +1,12 @@
+{
+  "journey": "captures",
+  "started_at": "2026-06-23T18:22:51.357Z",
+  "result": "PASS",
+  "failed_step": null,
+  "step_log": [],
+  "screenshots": [],
+  "console_errors": [],
+  "dom_assertions": {},
+  "test_title": "captures editor picker + grid sync + accountpack CTA screenshots",
+  "duration_ms": 38658
+}

@@ -1,0 +1,32 @@
+{
+  "journey": "First-Run Onboarding",
+  "started_at": "2026-06-23T15:15:08.030Z",
+  "result": "FAIL",
+  "failed_step": {
+    "step": 1,
+    "name": "Cold launch (no JWT) · LoginOnboarding renders the 4-step explainer"
+  },
+  "step_log": [
+    {
+      "step": 1,
+      "name": "Cold launch (no JWT) · LoginOnboarding renders the 4-step explainer",
+      "status": "FAIL"
+    }
+  ],
+  "screenshots": [
+    "/Users/dipdip/code/jnr/desktop-2/test-results/first-run-onboarding-First-d987b-onnect-→-settings-→-upgrade-user-lens-chromium/test-failed-1.png"
+  ],
+  "console_errors": [
+    "pageerror: Too many re-renders. React limits the number of renders to prevent an infinite loop.",
+    "pageerror: Too many re-renders. React limits the number of renders to prevent an infinite loop.",
+    "console.error: The above error occurred in the <AgencyPreviewBanner> component:\n\n    at AgencyPreviewBanner (http://localhost:1420/src/components/paywall/AgencyPreviewBanner.tsx:41:16)\n    at section\n    at div\n    at DesignOSAppShell (http://localhost:1420/src/design-os/components/AppShell.tsx:30:3)\n    at LoginOnboardingBody (http://localhost:1420/src/design-os/routes/LoginOnboarding.tsx:43:19)\n    at EngineSessionProvider (http://localhost:1420/src/design-os/state/useEngineSession.ts:130:3)\n    at LoginOnboardingRoute\n    at AuthGate (http://localhost:1420/src/App.tsx:169:21)\n    at FunnelGate (http://localhost:1420/src/App.tsx:136:23)\n    at App (http://localhost:1420/src/App.tsx:34:41)\n\nConsider adding an error boundary to your tree to customize error handling behavior.\nVisit https://reactjs.org/link/error-boundaries to learn more about error boundaries.",
+    "pageerror: Too many re-renders. React limits the number of renders to prevent an infinite loop.",
+    "pageerror: Too many re-renders. React limits the number of renders to prevent an infinite loop.",
+    "pageerror: Too many re-renders. React limits the number of renders to prevent an infinite loop.",
+    "console.error: The above error occurred in the <AgencyPreviewBanner> component:\n\n    at AgencyPreviewBanner (http://localhost:1420/src/components/paywall/AgencyPreviewBanner.tsx:41:16)\n    at section\n    at div\n    at DesignOSAppShell (http://localhost:1420/src/design-os/components/AppShell.tsx:30:3)\n    at LoginOnboardingBody (http://localhost:1420/src/design-os/routes/LoginOnboarding.tsx:43:19)\n    at EngineSessionProvider (http://localhost:1420/src/design-os/state/useEngineSession.ts:130:3)\n    at LoginOnboardingRoute\n    at AuthGate (http://localhost:1420/src/App.tsx:169:21)\n    at FunnelGate (http://localhost:1420/src/App.tsx:136:23)\n    at App (http://localhost:1420/src/App.tsx:34:41)\n\nConsider adding an error boundary to your tree to customize error handling behavior.\nVisit https://reactjs.org/link/error-boundaries to learn more about error boundaries.",
+    "pageerror: Too many re-renders. React limits the number of renders to prevent an infinite loop."
+  ],
+  "dom_assertions": {},
+  "test_title": "First-Run Onboarding · install → activate → tile-tour → first connect → settings → upgrade",
+  "duration_ms": 14827
+}

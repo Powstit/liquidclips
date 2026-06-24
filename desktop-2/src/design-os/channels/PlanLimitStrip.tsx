@@ -1,0 +1,150 @@
+/**
+ * PlanLimitStrip · Phase 6I-B
+ *
+ * Tier + usage summary shown at the top of the Channels route.
+ *   - Current tier
+ *   - Connected accounts (used/cap)
+ *   - Accounts needing attention (expired + failed + pending-link)
+ *   - Upgrade CTA when at or near cap
+ *
+ * Reused by the Channels route and (Phase 7+) Settings / Billing surfaces.
+ * The same vocabulary is mirrored inside AddAccountPopover's plan strip —
+ * keep both in sync if the copy changes.
+ */
+
+import { GlassCard } from "../components";
+import { useChannels } from "../state/useChannels";
+import { useTierCaps, type Tier } from "../state/useTierCaps";
+import { bus } from "../bridge";
+import { useBillingState } from "../../lib/billing/adapter";
+import "./PlanLimitStrip.css";
+
+export interface PlanLimitStripProps {
+  /** Defaults to true. When false, hide the brand badge (Clipper tier). */
+  showAttention?: boolean;
+}
+
+const NEXT_TIER_LABEL: Record<Tier, string | null> = {
+  clipper: "Upgrade to Pro",
+  pro:     "Upgrade to Growth",
+  growth:  "Upgrade to Agency",
+  agency:  null,
+};
+
+export function PlanLimitStrip({ showAttention = true }: PlanLimitStripProps) {
+  const tier = useTierCaps();
+  const channels = useChannels();
+  const billing = useBillingState();
+
+  const used = channels.connectedCount;
+  const cap = tier.caps.totalChannels;
+  const overCap = used > cap;
+  const atCap = used >= cap && !overCap;
+  const attention = channels.needsAttentionCount;
+  const nextLabel = NEXT_TIER_LABEL[tier.tier];
+
+  // 2026-06-23 · Daniel's spec: "Free tier gets 1 connected social account
+  // included. The 2nd connected account triggers the $6/mo accountpack
+  // CTA." Surface the accountpack CTA for clipper tier whenever the user
+  // is at or over the channel cap. Paid tiers still see the standard
+  // tier-upgrade CTA only — accountpack is the free-tier path so they can
+  // experience the product (Daniel: "Do not make free = 0 accounts.").
+  const showAccountpackCta = tier.tier === "clipper" && (atCap || overCap);
+
+  const fill = Math.min(1, used / Math.max(1, cap));
+
+  return (
+    <GlassCard density="default" className="lc-pls" hoverLift>
+      <div className="lc-pls-top">
+        <div className="lc-pls-left">
+          <span className="lc-pls-eb">{tier.tier.toUpperCase()} plan</span>
+          <span className="lc-pls-h">
+            {used} of {cap === Infinity ? "∞" : cap} channel slots
+          </span>
+          <span className="lc-pls-sub">
+            {overCap
+              ? `${used - cap} over · channels seeded from older session · add an account pack or upgrade to keep them all live`
+              : atCap
+                ? showAccountpackCta
+                  ? "1 account included on Free · add another for $6/mo or upgrade for more"
+                  : "Cap reached · upgrade to connect more accounts"
+                : `${cap - used} more slot${cap - used === 1 ? "" : "s"} available`}
+          </span>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {showAccountpackCta && (
+            <button
+              type="button"
+              className="lc-pls-cta"
+              data-testid="accountpack-cta"
+              onClick={() => void billing.adapter.startCheckout("accountpack")}
+              style={{
+                background: "linear-gradient(135deg, var(--lc-accent, #FF1A8C), var(--lc-accent-deep, #C70066))",
+                color: "white",
+                border: "1px solid transparent",
+              }}
+              title="Stacks on Free — adds +1 connected social account for $6/mo"
+            >
+              + Add account · $6/mo
+            </button>
+          )}
+          {nextLabel && (
+            <button
+              type="button"
+              className="lc-pls-cta"
+              data-testid="upgrade-cta"
+              onClick={() => {
+                // Open the upgrade flow when one exists for this tier;
+                // adapter routes pro/growth/agency to the right plan UI.
+                const targetPlan = tier.tier === "clipper" ? "pro"
+                  : tier.tier === "pro" ? "growth"
+                  : tier.tier === "growth" ? "agency"
+                  : null;
+                if (targetPlan) {
+                  void billing.adapter.startCheckout(targetPlan);
+                } else {
+                  bus.emit("toast", { kind: "info", title: "Plan", body: "You're on the top tier." });
+                }
+              }}
+            >
+              {nextLabel}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="lc-pls-bar" aria-hidden="true">
+        <div
+          className={`lc-pls-bar-fill ${overCap ? "is-over" : atCap ? "is-at-cap" : ""}`}
+          style={{ width: `${Math.min(100, fill * 100)}%` }}
+        />
+      </div>
+
+      {showAttention && (
+        <div className="lc-pls-attn-row">
+          <span className={`lc-pls-attn-pill ${attention > 0 ? "is-active" : ""}`}>
+            <span className="lc-pls-attn-glyph">!</span>
+            {attention} need{attention === 1 ? "s" : ""} attention
+          </span>
+          {attention > 0 && (
+            <span className="lc-pls-attn-detail">
+              {expiredCount(channels.channels.map((c) => c.status))}
+            </span>
+          )}
+        </div>
+      )}
+    </GlassCard>
+  );
+}
+
+function expiredCount(statuses: string[]): string {
+  const expired = statuses.filter((s) => s === "expired").length;
+  const failed  = statuses.filter((s) => s === "failed").length;
+  const pending = statuses.filter((s) => s === "pending-link").length;
+  const parts: string[] = [];
+  if (expired) parts.push(`${expired} expired`);
+  if (failed)  parts.push(`${failed} failed`);
+  if (pending) parts.push(`${pending} linking`);
+  return parts.join(" · ");
+}

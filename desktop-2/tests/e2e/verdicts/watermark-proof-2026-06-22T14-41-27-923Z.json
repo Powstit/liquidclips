@@ -1,0 +1,183 @@
+{
+  "journey": "Watermark Proof",
+  "started_at": "2026-06-22T14:37:00.790Z",
+  "result": "PASS",
+  "failed_step": null,
+  "step_log": [
+    {
+      "step": 1,
+      "name": "Phase A · Seed Free-tier session",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-01-phase-a-seed-free-tier-session.png"
+    },
+    {
+      "step": 2,
+      "name": "Phase A · Open Workstation → Publish tab",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-02-phase-a-open-workstation-publish-tab.png"
+    },
+    {
+      "step": 3,
+      "name": "Phase A · Preview shows watermark badge",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-03-phase-a-preview-shows-watermark-badge.png"
+    },
+    {
+      "step": 4,
+      "name": "Phase A · Toggle is locked + 'free-locked' state + copy says Free",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-04-phase-a-toggle-is-locked-free-locked-state-copy-says-free.png"
+    },
+    {
+      "step": 5,
+      "name": "Phase A · Export carries watermark=true",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-05-phase-a-export-carries-watermark-true.png"
+    },
+    {
+      "step": 6,
+      "name": "Phase B · Re-seed Paid-tier session + fresh context",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-06-phase-b-re-seed-paid-tier-session-fresh-context.png"
+    },
+    {
+      "step": 7,
+      "name": "Phase B · Open Workstation → Publish tab",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-07-phase-b-open-workstation-publish-tab.png"
+    },
+    {
+      "step": 8,
+      "name": "Phase B · Toggle is unlocked (Paid)",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-08-phase-b-toggle-is-unlocked-paid-.png"
+    },
+    {
+      "step": 9,
+      "name": "Phase B · Customer flips watermark OFF",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-09-phase-b-customer-flips-watermark-off.png"
+    },
+    {
+      "step": 10,
+      "name": "Phase B · Preview badge disappears",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-10-phase-b-preview-badge-disappears.png"
+    },
+    {
+      "step": 11,
+      "name": "Phase B · Export carries watermark=false (clean)",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-11-phase-b-export-carries-watermark-false-clean-.png"
+    },
+    {
+      "step": 12,
+      "name": "Phase C · Block /me + /sync (unknown tier)",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-12-phase-c-block-me-sync-unknown-tier-.png"
+    },
+    {
+      "step": 13,
+      "name": "Phase C · Open Workstation → Publish tab + clear debug-override",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-13-phase-c-open-workstation-publish-tab-clear-debug-override.png"
+    },
+    {
+      "step": 14,
+      "name": "Phase C · Toggle is locked + honest copy mentions unknown/checking",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-14-phase-c-toggle-is-locked-honest-copy-mentions-unknown-checking.png"
+    },
+    {
+      "step": 15,
+      "name": "Phase C · Preview badge shown (safe default)",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-15-phase-c-preview-badge-shown-safe-default-.png"
+    },
+    {
+      "step": 16,
+      "name": "Phase C · Export carries watermark=true (no clean-export leak)",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-16-phase-c-export-carries-watermark-true-no-clean-export-leak-.png"
+    },
+    {
+      "step": 17,
+      "name": "Emit verdict attachments",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/wm-17-emit-verdict-attachments.png"
+    }
+  ],
+  "screenshots": [
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-01-phase-a-seed-free-tier-session-png-03e08db4493f7f88d10ea587c7a1ed9fa4a55dd5.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-02-phase-a-open-workstation-publish-tab-png-c617b33114892e57dfe5ae2fc1d79cd4af91b50f.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-03-phase-a-preview-shows-watermark-badge-png-a609f6e35965a157e07c5ef396afdb8d5392571c.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-04-phase-a-toggle-is-locked-free-locked-state-copy-says-free-png-2c352f87c05703727272560550d25b38f3ff8b61.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-05-phase-a-export-carries-watermark-true-png-7dec0e8f1769ba42cd7dd474494bf3910d11187c.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-06-phase-b-re-seed-paid-tier-session-fresh-context-png-8e1fcc1531e12b81209dba062ba1dea78d9ecc3e.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-07-phase-b-open-workstation-publish-tab-png-2d01b0b857fc52c066857fd2340cbc00ed75b1f6.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-08-phase-b-toggle-is-unlocked-paid--png-bd74b726dc6c8aa7c9f55aa26f4a20053e8397ff.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-09-phase-b-customer-flips-watermark-off-png-3d3958e4bace32fcc101b8ca75eecd3cb5255ec7.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-10-phase-b-preview-badge-disappears-png-0e876768df82558bda50b8657ed9d95fbd4f3b47.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-11-phase-b-export-carries-watermark-false-clean--png-51a02f4ecc6e79d496c11aae6388aefd5e087734.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-12-phase-c-block-me-sync-unknown-tier--png-aa712e3e682b78ec71b617b7e276ce61ca98a250.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-13-phase-c-open-workstation-publish-tab-clear-debug-override-png-80f3391c3e0d66048dd7ea7e2da676a519862ec0.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-14-phase-c-toggle-is-locked-honest-copy-mentions-unknown-checking-png-e310110c9302bbe4ae5024a58de0b8588a968f97.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-15-phase-c-preview-badge-shown-safe-default--png-a6ae9e209a2779ee571ea91350bcd594bcb363ba.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-16-phase-c-export-carries-watermark-true-no-clean-export-leak--png-8a81a895aa254591d9e93f54d1a0e0758d8439db.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/watermark-proof-Watermark--cc628-rt-across-Free-Paid-Unknown-user-lens-chromium/attachments/wm-17-emit-verdict-attachments-png-ddfe448dbe8d0ff640f34b9a8702d1be89168f1e.png"
+  ],
+  "console_errors": [
+    "console.warning: [tauri-adapter] cannot listen on sidecar:ingest_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:stage_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:bake_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:thumbnail_batch_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:export_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:regenerate_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:pick_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:lift_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:overlay_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:ingest_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:lift_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:pick_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:regenerate_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:bake_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:thumbnail_batch_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:export_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:ingest_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:lift_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:pick_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:regenerate_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:bake_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:thumbnail_batch_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:export_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:died: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:162:11"
+  ],
+  "dom_assertions": {
+    "free_preview_visible": "true",
+    "free_locked": "true",
+    "free_effective": "true",
+    "free_state": "free-locked",
+    "free_copy": "Watermark required on Free tier. Export will include the Liquid Clips watermark.",
+    "free_export_watermark": "true",
+    "free_export_success_text": "Export complete · /projects/uncle-daniel-clip-squad-2026/clips/0-export-9-16.mp4 · watermarked",
+    "paid_locked": "false",
+    "paid_state_after_off": "paid-off",
+    "paid_copy_after_off": "Watermark off — export will be clean.",
+    "paid_preview_after_off": "false",
+    "paid_export_watermark": "false",
+    "paid_export_success_text": "Export complete · /projects/uncle-daniel-clip-squad-2026/clips/0-export-9-16.mp4 · clean",
+    "unknown_locked": "true",
+    "unknown_effective": "true",
+    "unknown_state": "unknown",
+    "unknown_source": "fixture-fallback",
+    "unknown_copy": "Tier not confirmed yet — export will include the watermark until your tier loads.",
+    "unknown_preview_visible": "true",
+    "unknown_preview_stage_tier": "pro",
+    "unknown_preview_stage_source": "fixture-fallback",
+    "unknown_export_watermark": "true",
+    "unknown_export_success_text": "Export complete · /projects/uncle-daniel-clip-squad-2026/clips/0-export-9-16.mp4 · watermarked",
+    "final_screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/watermark-final-state.png"
+  },
+  "test_title": "Watermark Proof · preview promise matches export across Free / Paid / Unknown",
+  "duration_ms": 34465
+}

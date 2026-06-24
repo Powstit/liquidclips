@@ -1,0 +1,45 @@
+/* Workstation · UI-2 · shell-only additions.
+   The clip grid + stage rail + actions reuse existing .sim-* styles. The
+   bottom cockpit dock is its own component (CockpitDock) — see
+   `engine/cockpit/CockpitDock.css`. */
+
+.lc-ws-stage {
+  /* Bug 3 · clearance is now driven by the dock's real height. CockpitDock
+     measures itself via ResizeObserver and writes `--lc-dock-h` on the
+     documentElement. When the dock is collapsed (head-only ≈ 64px) the
+     padding shrinks immediately — no dead band between content and dock.
+     Fallback (360px) preserves the UI-1 reservation if the dock unmounts. */
+  padding-bottom: calc(var(--lc-dock-h, 360px) + 24px);
+  transition: padding-bottom 200ms ease;
+}
+
+/* BUG-023 · heartbeat strip beneath the clip grid */
+.lc-engine-heartbeat {
+  margin: 18px 0 6px;
+  padding: 14px 20px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 24px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 102, 184, .25);
+  background: linear-gradient(180deg, rgba(255, 102, 184, .08), rgba(127, 217, 232, .04));
+  color: #f4f1ea;
+}
+.lc-engine-heartbeat-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+  color: #ff66b8;
+}
+.lc-engine-heartbeat-meta {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px; color: #c8c4be;
+}
+.lc-engine-heartbeat-done {
+  border-color: rgba(127, 217, 232, .35);
+  background: linear-gradient(180deg, rgba(127, 217, 232, .10), rgba(127, 217, 232, .03));
+}
+.lc-engine-heartbeat-done .lc-engine-heartbeat-eb { color: #7fd9e8; }
+.lc-engine-heartbeat-error {
+  border-color: rgba(255, 90, 90, .45);
+  background: linear-gradient(180deg, rgba(255, 90, 90, .10), rgba(255, 90, 90, .03));
+}
+.lc-engine-heartbeat-error .lc-engine-heartbeat-eb { color: #ff7a7a; }

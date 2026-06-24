@@ -1,0 +1,276 @@
+/* WorkstationFrame · Item 3 console chrome.
+   Browser/OS-style frame wrapping the Workstation route content.
+   Reuses Design OS tokens (`--line2`, `--soft`, `--dim`, `--fuchsia`)
+   and the existing `.lc-pill` chrome — only frame-specific layout
+   classes are defined here. */
+
+.lc-ws-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  background: linear-gradient(180deg,
+    rgba(20, 20, 28, 0.62) 0%,
+    rgba(14, 14, 22, 0.55) 100%);
+  border: 1px solid var(--line2, rgba(255, 255, 255, 0.13));
+  box-shadow:
+    inset 0 0 24px rgba(255, 26, 140, 0.08),
+    0 18px 60px -32px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+          backdrop-filter: blur(14px) saturate(140%);
+}
+
+/* Four fuchsia corner brackets — bracket chrome ride the frame edges.
+   Pseudo-elements layer eight short gradient strokes to keep the cost
+   to a single ::before. Mirrors the legacy HUD-frame pattern in
+   liquid-house-style without re-importing the legacy CSS. */
+.lc-ws-frame::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(to right, rgba(255, 26, 140, 0.85) 0 14px, transparent 14px) top left / 14px 1.5px no-repeat,
+    linear-gradient(to bottom, rgba(255, 26, 140, 0.85) 0 14px, transparent 14px) top left / 1.5px 14px no-repeat,
+    linear-gradient(to left, rgba(255, 26, 140, 0.85) 0 14px, transparent 14px) top right / 14px 1.5px no-repeat,
+    linear-gradient(to bottom, rgba(255, 26, 140, 0.85) 0 14px, transparent 14px) top right / 1.5px 14px no-repeat,
+    linear-gradient(to right, rgba(255, 26, 140, 0.85) 0 14px, transparent 14px) bottom left / 14px 1.5px no-repeat,
+    linear-gradient(to top, rgba(255, 26, 140, 0.85) 0 14px, transparent 14px) bottom left / 1.5px 14px no-repeat,
+    linear-gradient(to left, rgba(255, 26, 140, 0.85) 0 14px, transparent 14px) bottom right / 14px 1.5px no-repeat,
+    linear-gradient(to top, rgba(255, 26, 140, 0.85) 0 14px, transparent 14px) bottom right / 1.5px 14px no-repeat;
+}
+
+/* ---- Title bar ------------------------------------------------------ */
+
+/* BUG-029.4 · titlebar scaled 2x for cockpit-readable chrome. */
+.lc-ws-frame-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 30px;
+  border-bottom: 1px solid var(--line2, rgba(255, 255, 255, 0.10));
+  background: linear-gradient(180deg,
+    rgba(20, 20, 28, 0.55),
+    rgba(20, 20, 28, 0.22));
+}
+
+.lc-ws-frame-titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.lc-ws-frame-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.lc-ws-frame-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.lc-ws-frame-dot-a {
+  background: #ff1a8c;
+  box-shadow: 0 0 8px rgba(255, 26, 140, 0.7);
+}
+.lc-ws-frame-dot-b { background: rgba(255, 26, 140, 0.55); }
+.lc-ws-frame-dot-c { background: rgba(255, 26, 140, 0.28); }
+
+.lc-ws-frame-eyebrow {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 16px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: #ff1a8c;
+}
+
+.lc-ws-frame-sep {
+  color: var(--dim, #86837e);
+  opacity: 0.6;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 18px;
+}
+
+.lc-ws-frame-project {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 20px;
+  color: #f4f1ea;
+  letter-spacing: 0.04em;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lc-ws-frame-source {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 16px;
+  color: var(--dim, #86837e);
+  letter-spacing: 0.02em;
+  max-width: 480px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Status pill (right side of title bar) -------------------------- */
+
+.lc-ws-frame-status {
+  flex: 0 0 auto;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 16px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 12px 22px;
+  gap: 14px;
+}
+
+.lc-ws-frame-status-dot {
+  width: 13px; height: 13px; border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 14px currentColor;
+}
+
+.lc-ws-frame-status-idle     { color: var(--soft, #c8c4be); }
+.lc-ws-frame-status-running  {
+  color: #ffb84d;
+  animation: lc-ws-frame-pulse 1.6s ease-in-out infinite;
+}
+.lc-ws-frame-status-complete { color: #ff1a8c; }
+.lc-ws-frame-status-error    { color: #ff5d5d; }
+
+@keyframes lc-ws-frame-pulse {
+  0%, 100% { opacity: 0.65; }
+  50%      { opacity: 1; }
+}
+
+.lc-ws-frame-status-stage {
+  text-transform: lowercase;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+}
+
+/* ---- Status strip (counts + ready pill) ----------------------------- */
+
+/* BUG-029.4 · status strip scaled 2x. */
+.lc-ws-frame-statusstrip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 30px;
+  border-bottom: 1px solid var(--line2, rgba(255, 255, 255, 0.06));
+  background: rgba(10, 10, 16, 0.32);
+}
+
+.lc-ws-frame-counts {
+  display: inline-flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.lc-ws-frame-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 18px;
+  color: var(--soft, #c8c4be);
+}
+
+.lc-ws-frame-count-label {
+  font-size: 14px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim, #86837e);
+}
+
+.lc-ws-frame-count-num {
+  font-size: 22px;
+  font-feature-settings: "tnum";
+  color: #f4f1ea;
+}
+
+/* ---- Ready-to-ship pill --------------------------------------------- */
+
+.lc-ws-frame-ready {
+  flex: 0 0 auto;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 16px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 12px 24px;
+  gap: 14px;
+  transition: all 220ms cubic-bezier(.4, 0, .2, 1);
+}
+
+.lc-ws-frame-ready-glyph {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 14px currentColor;
+}
+
+.lc-ws-frame-pill-muted { color: var(--dim, #86837e); }
+.lc-ws-frame-pill-warm  { color: #ffb84d; }
+.lc-ws-frame-pill-on    {
+  color: #fff;
+  background: linear-gradient(180deg, rgba(255, 26, 140, 0.85), rgba(255, 26, 140, 0.55));
+  border-color: rgba(255, 26, 140, 0.85);
+  box-shadow: 0 0 18px rgba(255, 26, 140, 0.45);
+}
+
+/* ---- Body slot ------------------------------------------------------ */
+
+.lc-ws-frame-body {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+/* BUG-029.2 + .7 · collapse/expand toggle. Collapsed frame shows only
+   the titlebar with project name + session pill + toggle. focusedClipIdx
+   lives in persistence so re-expand restores the selected clip preview. */
+.lc-ws-frame-titlebar-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  flex: 0 0 auto;
+}
+.lc-ws-frame-collapse {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line2, rgba(255, 255, 255, 0.12));
+  color: #f4f1ea;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 18px;
+  line-height: 1;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 160ms ease, transform 160ms ease;
+}
+.lc-ws-frame-collapse:hover {
+  background: rgba(255, 26, 140, 0.18);
+  transform: translateY(-1px);
+}
+.lc-ws-frame-collapse:active { transform: translateY(0); }
+.lc-ws-frame.is-collapsed .lc-ws-frame-titlebar {
+  border-bottom-color: transparent;
+}
+
+/* Compact at narrow viewports — the source label is the first thing
+   to drop, then the counts wrap below the eyebrow. */
+@media (max-width: 980px) {
+  .lc-ws-frame-source { display: none; }
+}
+@media (max-width: 720px) {
+  .lc-ws-frame-titlebar { flex-wrap: wrap; }
+  .lc-ws-frame-statusstrip { flex-wrap: wrap; }
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "liquid-clips/particle-config@1",
+  "name": "hologram",
+  "use": "Community squad — flickering hologram dust around projected avatars",
+  "count": 70,
+  "spawn": "ring",
+  "ring_radius_px_rel": [0.18, 0.32],
+  "lifecycle": "infinite",
+  "velocity_radial_px_frame": [0.04, 0.18],
+  "velocity_tangential_px_frame": [-0.10, 0.10],
+  "size_px": [1.0, 2.4],
+  "alpha": [0.20, 0.70],
+  "flicker": {
+    "rate_hz": 6,
+    "intensity": 0.35
+  },
+  "color_mix": {
+    "rgb(0,229,255)": 0.65,
+    "rgb(255,102,184)": 0.20,
+    "rgb(248,246,240)": 0.15
+  },
+  "blend": "screen",
+  "respects_reduced_motion": "static_ring",
+  "pause_when_hidden": true
+}

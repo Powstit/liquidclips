@@ -1,0 +1,25 @@
+{
+  "$schema": "liquid-clips/particle-config@1",
+  "name": "sparks",
+  "use": "Kade cutting-clips beam impact — fuchsia sparks where beam meets footage strip",
+  "count": 22,
+  "spawn": "from_point",
+  "lifecycle": "trail",
+  "duration_ms": 700,
+  "spawn_rate_per_s": 36,
+  "spawn_xy_rel": [0.5, 0.5],
+  "velocity_px_frame": [1.4, 3.6],
+  "spread_deg": 80,
+  "spread_origin_deg": -90,
+  "gravity_px_frame": 0.12,
+  "size_px": [1.4, 2.6],
+  "alpha_curve": [0.95, 0.55, 0.0],
+  "color_mix": {
+    "rgb(255,143,203)": 0.7,
+    "rgb(255,26,140)": 0.3
+  },
+  "shape": "circle",
+  "blend": "screen",
+  "respects_reduced_motion": "skip",
+  "pause_when_hidden": true
+}

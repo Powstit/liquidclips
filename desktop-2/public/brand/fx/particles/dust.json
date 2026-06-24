@@ -1,0 +1,20 @@
+{
+  "$schema": "liquid-clips/particle-config@1",
+  "name": "dust",
+  "use": "world ambient — slow drifting dust across every scene",
+  "count": 110,
+  "spawn": "uniform",
+  "lifecycle": "infinite",
+  "size_px": [0.4, 1.5],
+  "velocity_x_px_frame": [-0.04, 0.04],
+  "velocity_y_px_frame": [0.04, 0.18],
+  "alpha": [0.15, 0.60],
+  "color_mix": {
+    "rgb(255,102,184)": 0.14,
+    "rgb(248,246,240)": 0.86
+  },
+  "blend": "source-over",
+  "respawn_on_offscreen": true,
+  "respects_reduced_motion": true,
+  "pause_when_hidden": true
+}

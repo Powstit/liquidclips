@@ -1,0 +1,91 @@
+{
+  "$schema": "https://schema.tauri.app/config/2.0.0",
+  "productName": "Liquid Clips",
+  "version": "2.2.0",
+  "identifier": "app.liquidclips.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Liquid Clips",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 1040,
+        "minHeight": 680,
+        "decorations": true,
+        "transparent": false,
+        "titleBarStyle": "Visible",
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost; media-src 'self' blob: asset: http://asset.localhost https://asset.localhost; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost http://localhost:8000 https://updates.liquidclips.app https://api.liquidclips.app https://api.jnremployee.com https://release-assets.githubusercontent.com; frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$HOME/LiquidClips/**",
+          "$APPDATA/Liquid Clips/**"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/16x16.png",
+      "icons/32x32.png",
+      "icons/64x64.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/512x512.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "../../python-sidecar/*.py",
+      "../../python-sidecar/requirements.txt",
+      "../../python-sidecar/bin/ffmpeg",
+      "../../python-sidecar/bin/ffprobe",
+      "../../python-sidecar/bin/junior-face-detect",
+      "../../python-sidecar/models/faster-whisper-tiny/config.json",
+      "../../python-sidecar/models/faster-whisper-tiny/model.bin",
+      "../../python-sidecar/models/faster-whisper-tiny/tokenizer.json",
+      "../../python-sidecar/models/faster-whisper-tiny/vocabulary.txt",
+      "../../python-sidecar/assets/liquid-clips-wordmark.png",
+      "../../python-sidecar/assets/watermark/made-with-liquid-clips.mov",
+      "../../python-sidecar/assets/watermark/made-with-liquid-clips-static.png",
+      "../../python-sidecar/dist/sidecar-bundle/**/*"
+    ],
+    "category": "Productivity",
+    "shortDescription": "Liquid Clips · cinematic clip workbench.",
+    "longDescription": "Liquid Clips · Tauri 2 desktop shell wrapping the Liquid Clips clip workbench. Cinematic worlds + Kade-guided flows + Whop-backed reward campaigns.",
+    "macOS": {
+      "entitlements": "./entitlements-direct.plist",
+      "minimumSystemVersion": "11.0",
+      "signingIdentity": "Developer ID Application: daniel diyepriye dokubo (KT68NGT4LX)"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://updates.liquidclips.app/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIxRTAzNzA2NkJGQ0U0NDQKUldSRTVQeHJCamZnc2NpMzhmWjZrYzhaSCtjQmsxZE82b0hlbm4yejErZVBuUkMxZW1qM3diOGQK",
+      "windows": {
+        "installMode": "passive"
+      }
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["liquidclips"]
+      }
+    }
+  }
+}

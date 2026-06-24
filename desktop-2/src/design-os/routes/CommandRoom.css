@@ -1,0 +1,99 @@
+/* CommandRoom · UI-1 minimal Home
+   Removed: welcome essay, stats row, hero card, mission panel, proof panel.
+   What's left: a 4-up grid of cockpit tiles centred on a quiet stage. */
+
+.lc-home-stage {
+  position: relative;
+  width: 100%;
+  min-height: calc(100vh - 96px);
+  padding: 64px 36px 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.lc-home-grid {
+  width: 100%;
+  max-width: 1160px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+}
+
+@media (max-width: 980px) {
+  .lc-home-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .lc-home-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================================
+   UX-4 · Earn strip (clipper-only)
+   Sits flush under the 4 tiles. Reuses existing brand tokens.
+   ============================================================ */
+.lc-home-earn {
+  width: 100%;
+  max-width: 1160px;
+  margin: 18px auto 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 14px 20px;
+  background: rgba(18, 14, 24, .45);
+  border: 1px solid rgba(255, 26, 140, .22);
+  border-radius: 12px;
+  color: #f4f1ea;
+  cursor: pointer;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+.lc-home-earn:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 26, 140, .42);
+  background: rgba(24, 18, 32, .55);
+}
+.lc-home-earn:focus-visible {
+  outline: 2px solid var(--fuchsia, #ff1a8c);
+  outline-offset: 3px;
+}
+.lc-home-earn-amt {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -.01em;
+  text-transform: none;
+  color: #ff66b8;
+}
+.lc-home-earn-pen {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 13.5px;
+  letter-spacing: -.005em;
+  text-transform: none;
+  color: var(--soft, #c8c4be);
+}
+.lc-home-earn-sep { color: var(--dim, #86837e); font-size: 13px; }
+.lc-home-earn-via {
+  font-size: 10.5px;
+  color: #67e0a1;
+}
+.lc-home-earn-arrow {
+  margin-left: auto;
+  font-size: 16px;
+  color: #ff66b8;
+  text-transform: none;
+}
+
+@media (max-width: 560px) {
+  .lc-home-earn { flex-wrap: wrap; padding: 12px 16px; }
+  .lc-home-earn-arrow { margin-left: 0; }
+}
