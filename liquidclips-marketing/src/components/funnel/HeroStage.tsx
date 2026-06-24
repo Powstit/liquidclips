@@ -156,7 +156,7 @@ export function HeroStage() {
         <div className="lc-w1-hud-left">
           <span className="lc-w1-hud-mark">liquid/clips</span>
           <span className="lc-w1-hud-sep">/</span>
-          <span className="lc-w1-hud-sub">the workbench · console v0.8</span>
+          <span className="lc-w1-hud-sub">the workbench · console v0.7.80</span>
         </div>
         <div className="lc-w1-hud-right">
           <span className="lc-w1-hud-pill">
