@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useDataSource } from "./_lib/useDataSource";
 import { LiveBadge } from "./_lib/LiveBadge";
+import { InfoIcon } from "./_lib/InfoIcon";
 
 // =====================================================================
 // Shared HQ UI primitives (duplicated from AdminHQ to avoid a circular
@@ -61,12 +62,15 @@ function BoolChip({ value, on = "yes", off = "no" }: { value: boolean; on?: stri
   return <Chip label={value ? on : off} tone={value ? "ok" : "fail"} />;
 }
 
-function Panel({ title, sub, children, right }: { title: string; sub?: string; children: React.ReactNode; right?: React.ReactNode }) {
+function Panel({ title, sub, children, right, hint }: { title: string; sub?: string; children: React.ReactNode; right?: React.ReactNode; hint?: string }) {
   return (
     <section className="rounded-3xl border border-line bg-paper-warm/40 p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">{title}</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+            {title}
+            {hint && <InfoIcon hint={hint} />}
+          </div>
           {sub && <p className="mt-1 font-sans text-[12px] text-text-secondary">{sub}</p>}
         </div>
         {right}
@@ -76,29 +80,36 @@ function Panel({ title, sub, children, right }: { title: string; sub?: string; c
   );
 }
 
-function SectionHead({ title, sub }: { title: string; sub?: string }) {
+function SectionHead({ title, sub, hint }: { title: string; sub?: string; hint?: string }) {
   return (
     <div className="mb-3">
-      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia">{title}</div>
+      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia">
+        {title}
+        {hint && <InfoIcon hint={hint} />}
+      </div>
       {sub && <p className="mt-1 font-sans text-[12px] text-text-secondary">{sub}</p>}
     </div>
   );
 }
 
-function Card({ label, value, sub, tone }: { label: string; value: React.ReactNode; sub?: string; tone?: ChipTone }) {
+function Card({ label, value, sub, tone, hint }: { label: string; value: React.ReactNode; sub?: string; tone?: ChipTone; hint?: string }) {
   return (
     <div className="rounded-2xl border border-line bg-paper p-4">
-      <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">{label}</div>
+      <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+        {label}
+        {hint && <InfoIcon hint={hint} />}
+      </div>
       <div className={`mt-2 font-display text-[28px] font-bold tracking-[-0.02em] ${tone === "fail" ? "text-fuchsia-deep" : "text-ink"}`}>{value}</div>
       {sub && <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">{sub}</div>}
     </div>
   );
 }
 
-function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+function FilterSelect({ label, value, onChange, options, hint }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; hint?: string }) {
   return (
     <label className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
       {label}
+      {hint && <InfoIcon hint={hint} />}
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -404,15 +415,30 @@ export function EmployeesTab() {
     .filter((e) => e.status === "active" && e.monthly_cost_cents !== null)
     .reduce((sum, e) => sum + (e.monthly_cost_cents ?? 0), 0);
 
+  const COL_HINTS_EMP: Record<string, string> = {
+    "name": "Display name + email. Email pulled from Clerk User record matched to JUNIOR_ADMIN_EMAILS entry.",
+    "role": "Free-text role label. Not yet stored in DB — comes from the admin allowlist record on the backend.",
+    "status": "active = present in JUNIOR_ADMIN_EMAILS env AND a User row exists. invited = on allowlist but no Clerk signup yet.",
+    "tier": "Subscription tier of the matched User row. Free admins still have HQ access via the allowlist gate.",
+    "cost/mo": "Monthly payroll cost in USD. Returns null until a people-directory table is wired — never demo data.",
+    "rate": "Hourly rate in USD. Same null-until-tracked rule as cost/mo.",
+    "HQ access": "Whether this email can hit /api/admin/* routes. Driven entirely by JUNIOR_ADMIN_EMAILS membership.",
+    "started": "User.created_at — when the Clerk account was first provisioned. Null for invited-but-not-signed-up admins.",
+    "last active": "User.last_seen_at from /sync pings. Null = never opened the desktop app while signed in.",
+    "notes": "Free-text — currently empty until a real employees table exists. Surfaced verbatim, never inferred.",
+  };
+
   return (
     <Panel
       title="employees · admin allowlist (live)"
+      hint="Live join of JUNIOR_ADMIN_EMAILS env var ↔ User table. Edits happen on Railway env vars, not in this UI."
       sub="One row per admin email from JUNIOR_ADMIN_EMAILS joined to live User rows. Costs/hours show null until a people-directory table exists."
       right={
         <div className="flex flex-wrap items-center gap-2">
           <LiveBadge state={src.state} />
           <FilterSelect
             label="status"
+            hint="Narrow rows by employee status. active = signed up + on allowlist; invited = on allowlist but no Clerk account yet."
             value={statusFilter}
             onChange={setStatusFilter}
             options={[
@@ -421,12 +447,15 @@ export function EmployeesTab() {
               { value: "invited", label: "invited" },
             ]}
           />
-          <button
-            onClick={() => void load()}
-            className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia"
-          >
-            refresh
-          </button>
+          <span className="inline-flex items-center">
+            <button
+              onClick={() => void load()}
+              className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia"
+            >
+              refresh
+            </button>
+            <InfoIcon hint="Re-fetch employees from /admin/employees. No cache — re-runs the JUNIOR_ADMIN_EMAILS ↔ User join." />
+          </span>
         </div>
       }
     >
@@ -435,10 +464,10 @@ export function EmployeesTab() {
       {data && (
         <>
           <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Card label="active employees" value={rows.filter((e) => e.status === "active").length} />
-            <Card label="monthly people cost" value={moneyCentsOrDash(totalMonthlyCost || null)} />
-            <Card label="HQ access" value={rows.filter((e) => e.can_access_hq).length} />
-            <Card label="invited" value={rows.filter((e) => e.status === "invited").length} />
+            <Card label="active employees" value={rows.filter((e) => e.status === "active").length} hint="Count of allowlist emails that already have a matching Clerk User row." />
+            <Card label="monthly people cost" value={moneyCentsOrDash(totalMonthlyCost || null)} hint="Sum of monthly_cost_cents across active employees. Null until per-person payroll is stored." />
+            <Card label="HQ access" value={rows.filter((e) => e.can_access_hq).length} hint="Count of rows where can_access_hq=true — equals the JUNIOR_ADMIN_EMAILS allowlist size." />
+            <Card label="invited" value={rows.filter((e) => e.status === "invited").length} hint="Allowlist entries with no signed-up Clerk account yet — they still get admin once they sign up." />
           </div>
 
           {filtered.length === 0 ? (
@@ -449,7 +478,10 @@ export function EmployeesTab() {
                 <thead>
                   <tr className="text-left text-text-tertiary">
                     {["name", "role", "status", "tier", "cost/mo", "rate", "HQ access", "started", "last active", "notes"].map((h) => (
-                      <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                      <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                        {h}
+                        {COL_HINTS_EMP[h] && <InfoIcon hint={COL_HINTS_EMP[h]} />}
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -475,7 +507,7 @@ export function EmployeesTab() {
               </table>
             </div>
           )}
-          <p className="mt-3 font-mono text-[10px] text-text-tertiary">{data.note}</p>
+          <p className="mt-3 font-mono text-[10px] text-text-tertiary">{data.note}<InfoIcon hint="Backend-shipped honesty note for this endpoint — explains data shape, gaps, and what would need a new table to populate fully." /></p>
         </>
       )}
     </Panel>
@@ -513,14 +545,24 @@ export function AgentsTab({ agentKeyConfig: _agentKeyConfig }: { agentKeyConfig:
 
   const rows = data?.rows ?? [];
 
+  const COL_HINTS_AGT: Record<string, string> = {
+    "agent": "Agent persona name + lane. Defined in junior-backend /admin/agents endpoint, not editable from this UI.",
+    "provider": "Underlying LLM provider (Kimi / OpenAI / Claude / Internal). Determines which API key env var must be set.",
+    "lane": "Functional lane this agent owns (e.g. Auth Agent runs the sign-in/upgrade flow). One agent per lane in v0.",
+    "API key": "Whether the agent's API key env var is set on Railway. e.g. Auth Agent reads KIMI_AUTH_AGENT_API_KEY.",
+    "budget": "Monthly spend ceiling for this agent (USD). Returns null in v0 — wire a per-agent billing-event table to populate.",
+    "spent": "Current-month spend for this agent (USD). Same null-until-tracked rule as budget.",
+  };
+
   return (
     <Panel
       title="agents · automated workforce (live env)"
+      hint="Each agent maps 1-to-1 to an env var on Railway (KIMI_*_AGENT_API_KEY, OPENAI_CODEX_AGENT_API_KEY, CLAUDE_AGENT_API_KEY, HQ_INTERNAL_SECRET). No fleet table — env var presence IS the truth."
       sub="Configured = the per-agent API key env var is set on the backend. Cost telemetry not stored in v0."
       right={
         <div className="flex flex-wrap items-center gap-2">
           <LiveBadge state={src.state} />
-          <button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button>
+          <span className="inline-flex items-center"><button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button><InfoIcon hint="Re-fetch this tab's data from the backend. No cache — every click hits /api/admin/* fresh." /></span>
         </div>
       }
     >
@@ -529,10 +571,10 @@ export function AgentsTab({ agentKeyConfig: _agentKeyConfig }: { agentKeyConfig:
       {data && (
         <>
           <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Card label="keys configured" value={rows.filter((a) => a.configured).length} />
-            <Card label="keys missing" value={rows.filter((a) => !a.configured).length} tone="fail" />
-            <Card label="total agents" value={rows.length} />
-            <Card label="active providers" value={new Set(rows.filter((a) => a.configured).map((a) => a.provider)).size} />
+            <Card label="keys configured" value={rows.filter((a) => a.configured).length} hint="Count of agents whose env var is set on Railway right now." />
+            <Card label="keys missing" value={rows.filter((a) => !a.configured).length} tone="fail" hint="Agents with no API key env var — they cannot run until the key lands on Railway." />
+            <Card label="total agents" value={rows.length} hint="Total agent personas defined in junior-backend /admin/agents (currently 7: auth, projects, earn, ui, codex, claude, hq_internal)." />
+            <Card label="active providers" value={new Set(rows.filter((a) => a.configured).map((a) => a.provider)).size} hint="Distinct LLM providers with at least one configured agent (Kimi / OpenAI / Claude / Internal)." />
           </div>
 
           {rows.length === 0 ? (
@@ -550,11 +592,20 @@ export function AgentsTab({ agentKeyConfig: _agentKeyConfig }: { agentKeyConfig:
                       <Chip label={a.status} tone={a.configured ? "ok" : "fail"} />
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[10px]">
-                      <div className="text-text-tertiary">API key</div>
+                      <div className="text-text-tertiary">
+                        API key
+                        <InfoIcon hint={`Env var name driving this agent — set/unset on Railway to flip configured state. (agent key: ${a.key})`} />
+                      </div>
                       <div><BoolChip value={a.configured} on="configured" off="missing" /></div>
-                      <div className="text-text-tertiary">budget</div>
+                      <div className="text-text-tertiary">
+                        budget
+                        <InfoIcon hint="Monthly USD ceiling. Null in v0 — no per-agent cost table wired." />
+                      </div>
                       <div className="text-ink">{moneyCentsOrDash(a.monthly_budget_cents)}</div>
-                      <div className="text-text-tertiary">spent</div>
+                      <div className="text-text-tertiary">
+                        spent
+                        <InfoIcon hint="Current-month USD spend. Null in v0 — billing events not ingested per agent." />
+                      </div>
                       <div className="text-ink">{moneyCentsOrDash(a.spent_this_month_cents)}</div>
                     </div>
                     {a.note && (
@@ -564,12 +615,18 @@ export function AgentsTab({ agentKeyConfig: _agentKeyConfig }: { agentKeyConfig:
                 ))}
               </div>
               <div className="overflow-x-auto">
-                <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">agent detail</div>
+                <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                  agent detail
+                  <InfoIcon hint="Flat table view of the same agents above — easier to scan when comparing providers / lanes." />
+                </div>
                 <table className="w-full border-collapse font-mono text-[11px]">
                   <thead>
                     <tr className="text-left text-text-tertiary">
                       {["agent", "provider", "lane", "API key", "budget", "spent"].map((h) => (
-                        <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                        <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                          {h}
+                          {COL_HINTS_AGT[h] && <InfoIcon hint={COL_HINTS_AGT[h]} />}
+                        </th>
                       ))}
                     </tr>
                   </thead>
@@ -591,7 +648,7 @@ export function AgentsTab({ agentKeyConfig: _agentKeyConfig }: { agentKeyConfig:
               </div>
             </>
           )}
-          <p className="mt-3 font-mono text-[10px] text-text-tertiary">{data.note}</p>
+          <p className="mt-3 font-mono text-[10px] text-text-tertiary">{data.note}<InfoIcon hint="Backend-shipped honesty note for this endpoint — explains data shape, gaps, and what would need a new table to populate fully." /></p>
         </>
       )}
     </Panel>
@@ -633,15 +690,43 @@ export function APIToolsTab({ serviceConfig: _serviceConfig }: { serviceConfig: 
   const categories = Array.from(new Set(rows.map((s) => s.category))).sort();
   const missing = rows.filter((s) => !s.configured).length;
 
+  const COL_HINTS_API: Record<string, string> = {
+    "service": "Third-party SaaS service Liquid Clips depends on. Definition lives in junior-backend /admin/api-services.",
+    "category": "Functional grouping (AI / payments / auth / infra / hosting / storage / email / social / analytics).",
+    "env var": "Exact env var name the backend looks up on Railway to decide configured=true.",
+    "key": "configured = env var present + non-empty on Railway. missing = unset; the service is effectively off until the key lands.",
+    "fixed/mo": "Fixed monthly subscription cost. Null in v0 — no provider-invoice ingestion yet.",
+    "spend": "Variable usage cost this month. Null in v0 — same reason as fixed/mo.",
+  };
+
+  const SERVICE_HINTS: Record<string, string> = {
+    openai: "Powers AI title/caption generation, embeddings. Reads OPENAI_API_KEY.",
+    kimi: "Cheap LLM provider for high-volume jobs (auth flows, polish prompts). Reads KIMI_API_KEY or KIMI_AUTH_AGENT_API_KEY.",
+    claude: "Premium reasoning for backend planning + release tasks. Reads CLAUDE_API_KEY or CLAUDE_AGENT_API_KEY.",
+    whop: "Sub-merchant payments + community + agent fleet. Reads WHOP_API_KEY — controls whether Whop carrot rail can fan out.",
+    clerk: "Auth provider (sign-in, sessions, billing add-on packs). Reads CLERK_SECRET_KEY.",
+    stripe: "Primary payment rail (subscriptions, account packs, payouts). Reads STRIPE_SECRET_KEY.",
+    railway: "Hosts junior-backend. Reads RAILWAY_TOKEN — only needed for CLI deploys, not runtime.",
+    vercel: "Hosts account-app + marketing. Reads VERCEL_TOKEN — only needed for CLI deploys.",
+    supabase: "Optional storage backend. Reads SUPABASE_SERVICE_ROLE_KEY.",
+    resend: "Transactional email (license invites, password reset). Reads RESEND_API_KEY.",
+    ayrshare: "Hosted multi-channel social publisher. Reads AYRSHARE_API_KEY — required for /publish-now to actually post.",
+    postiz: "Self-hosted publisher (legacy, sprint-replaced by Ayrshare). Reads POSTIZ_API_KEY.",
+    storage: "Object storage for clip uploads. Reads AWS_ACCESS_KEY_ID, S3_ACCESS_KEY_ID, or R2_ACCESS_KEY_ID — any one wins.",
+    sentry: "Error tracking. Reads SENTRY_AUTH_TOKEN — needed for source-map uploads, not runtime capture.",
+    posthog: "Product analytics. Reads POSTHOG_KEY — controls server-side event capture.",
+  };
+
   return (
     <Panel
       title="apis & tools · dependency map (live env)"
+      hint="Live snapshot of which third-party services are wired. The 'configured' bit is real (env var presence). Cost columns are placeholders until billing-event ingestion lands."
       sub="Configured = env var set on backend. Costs not tracked in v0."
       right={
         <div className="flex flex-wrap items-center gap-2">
           <LiveBadge state={src.state} />
           <Chip label={`${missing} missing keys`} tone={missing ? "fail" : "ok"} />
-          <button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button>
+          <span className="inline-flex items-center"><button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button><InfoIcon hint="Re-fetch this tab's data from the backend. No cache — every click hits /api/admin/* fresh." /></span>
         </div>
       }
     >
@@ -650,15 +735,16 @@ export function APIToolsTab({ serviceConfig: _serviceConfig }: { serviceConfig: 
       {data && (
         <>
           <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Card label="services tracked" value={rows.length} />
-            <Card label="configured" value={rows.filter((s) => s.configured).length} />
-            <Card label="missing keys" value={missing} tone={missing ? "fail" : "ok"} />
-            <Card label="categories" value={categories.length} />
+            <Card label="services tracked" value={rows.length} hint="Total third-party services defined in the backend registry." />
+            <Card label="configured" value={rows.filter((s) => s.configured).length} hint="Services whose env var is set on Railway right now." />
+            <Card label="missing keys" value={missing} tone={missing ? "fail" : "ok"} hint="Services with no env var — feature paths that depend on them will fail at runtime." />
+            <Card label="categories" value={categories.length} hint="Distinct functional categories across tracked services." />
           </div>
 
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <FilterSelect
               label="category"
+              hint="Narrow services by category (AI, payments, auth, infra, hosting, storage, email, social, analytics)."
               value={categoryFilter}
               onChange={setCategoryFilter}
               options={[
@@ -676,7 +762,10 @@ export function APIToolsTab({ serviceConfig: _serviceConfig }: { serviceConfig: 
                 <thead>
                   <tr className="text-left text-text-tertiary">
                     {["service", "category", "env var", "key", "fixed/mo", "spend"].map((h) => (
-                      <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                      <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                        {h}
+                        {COL_HINTS_API[h] && <InfoIcon hint={COL_HINTS_API[h]} />}
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -684,7 +773,10 @@ export function APIToolsTab({ serviceConfig: _serviceConfig }: { serviceConfig: 
                   {filtered.map((s) => (
                     <tr key={s.id} className="border-b border-line/40 align-top">
                       <td className="px-2 py-2 text-ink">
-                        <div className="font-display text-[13px] font-semibold">{s.name}</div>
+                        <div className="font-display text-[13px] font-semibold">
+                          {s.name}
+                          {SERVICE_HINTS[s.key] && <InfoIcon hint={SERVICE_HINTS[s.key]} />}
+                        </div>
                       </td>
                       <td className="px-2 py-2"><Chip label={s.category} tone="gray" /></td>
                       <td className="px-2 py-2 font-mono text-[10px] text-text-tertiary">{s.env_var}</td>
@@ -697,7 +789,7 @@ export function APIToolsTab({ serviceConfig: _serviceConfig }: { serviceConfig: 
               </table>
             </div>
           )}
-          <p className="mt-3 font-mono text-[10px] text-text-tertiary">{data.note}</p>
+          <p className="mt-3 font-mono text-[10px] text-text-tertiary">{data.note}<InfoIcon hint="Backend-shipped honesty note for this endpoint — explains data shape, gaps, and what would need a new table to populate fully." /></p>
         </>
       )}
     </Panel>
@@ -738,11 +830,12 @@ export function IronGatesTab() {
   return (
     <Panel
       title="iron gates · commit readiness"
+      hint="Iron-gate sentinels (IG-001…IG-005) protect locked sections of the codebase. Pre-commit hook refuses sentinel deletions. Real state lives in docs/IRON_GATES.md, not a DB table."
       sub="Per-section gate state. v0 has no iron_gate_runs table; gate truth lives in docs/IRON_GATES.md."
       right={
         <div className="flex flex-wrap items-center gap-2">
           <LiveBadge state={src.state} />
-          <button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button>
+          <span className="inline-flex items-center"><button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button><InfoIcon hint="Re-fetch this tab's data from the backend. No cache — every click hits /api/admin/* fresh." /></span>
         </div>
       }
     >
@@ -789,11 +882,12 @@ export function ReleasesTab() {
   return (
     <Panel
       title="releases / builds · version control"
+      hint="Future: per-release columns (version, channel, notarised, sha256, published_at). Today the Tauri updater manifest is the only source of truth for the latest signed build."
       sub="Per-version build state. v0 has no release_history table; the Tauri updater manifest holds the latest signed release only."
       right={
         <div className="flex flex-wrap items-center gap-2">
           <LiveBadge state={src.state} />
-          <button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button>
+          <span className="inline-flex items-center"><button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button><InfoIcon hint="Re-fetch this tab's data from the backend. No cache — every click hits /api/admin/* fresh." /></span>
         </div>
       }
     >
@@ -844,15 +938,30 @@ export function CustomersTab() {
         ? rows.filter((c) => c.recent_error_count > 0)
         : rows.filter((c) => !c.first_clip_created);
 
+  const COL_HINTS_CUST: Record<string, string> = {
+    "email": "User email masked to first letter + domain (privacy: full emails never leave the backend). From Clerk User record.",
+    "tier": "Subscription tier resolved server-side from Clerk metadata + tier-alias map (channel/growth → pro, autopilot → agency).",
+    "status": "Stripe / Whop subscription status (active / trialing / past_due / canceled / expired). Source: webhook-synced fields.",
+    "provider": "Which billing rail this user is on (stripe / whop / none). Driven by which webhook last touched the user record.",
+    "signed up": "User.created_at — first Clerk signup timestamp. Truncated to date.",
+    "active": "User.last_seen_at — last /sync ping from the desktop app. Blank = never opened the app while signed in.",
+    "clips": "Lifetime count of clips this user has created. From clips_created counter on User row.",
+    "exports": "Free-tier starter-pass exports consumed (cap: 100). Resets only by upgrade, not by month.",
+    "paid?": "True when active subscription_status maps to a paid tier (solo / pro / agency). Free tier = false.",
+    "errors (14d)": "Count of DesktopErrorEvent rows for this user in the last 14 days. Highlighted fuchsia when > 0.",
+  };
+
   return (
     <Panel
       title="customer signals · live activity"
+      hint="Live join of users + DesktopErrorEvent for the most-recent signups. Read-only — edits happen via Clerk dashboard or Stripe."
       sub="Most-recent signups with live tier/status + last-14-days error counts. Emails masked."
       right={
         <div className="flex flex-wrap items-center gap-2">
           <LiveBadge state={src.state} />
           <FilterSelect
             label="filter"
+            hint="Narrow customer signals. recent errors = users with ≥1 DesktopErrorEvent in last 14d; no first clip = users who haven't activated yet."
             value={filter}
             onChange={setFilter}
             options={[
@@ -861,7 +970,7 @@ export function CustomersTab() {
               { value: "no clip", label: "no first clip" },
             ]}
           />
-          <button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button>
+          <span className="inline-flex items-center"><button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button><InfoIcon hint="Re-fetch this tab's data from the backend. No cache — every click hits /api/admin/* fresh." /></span>
         </div>
       }
     >
@@ -870,10 +979,10 @@ export function CustomersTab() {
       {data && (
         <>
           <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Card label="tracked users" value={rows.length} />
-            <Card label="paid" value={rows.filter((c) => c.is_paid).length} />
-            <Card label="recent errors" value={rows.filter((c) => c.recent_error_count > 0).length} tone="fail" />
-            <Card label="first clip created" value={rows.filter((c) => c.first_clip_created).length} />
+            <Card label="tracked users" value={rows.length} hint="Total users returned by /admin/customer-signals (capped to recent activity window)." />
+            <Card label="paid" value={rows.filter((c) => c.is_paid).length} hint="Subset with an active paid subscription. Source: Stripe + Whop webhook-synced subscription_status." />
+            <Card label="recent errors" value={rows.filter((c) => c.recent_error_count > 0).length} tone="fail" hint="Users with at least one DesktopErrorEvent in the last 14 days — candidates for outreach." />
+            <Card label="first clip created" value={rows.filter((c) => c.first_clip_created).length} hint="Users who completed first clip (activation milestone). first_clip_created flag is set on first successful export." />
           </div>
 
           {filtered.length === 0 ? (
@@ -884,7 +993,10 @@ export function CustomersTab() {
                 <thead>
                   <tr className="text-left text-text-tertiary">
                     {["email", "tier", "status", "provider", "signed up", "active", "clips", "exports", "paid?", "errors (14d)"].map((h) => (
-                      <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                      <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                        {h}
+                        {COL_HINTS_CUST[h] && <InfoIcon hint={COL_HINTS_CUST[h]} />}
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -907,7 +1019,7 @@ export function CustomersTab() {
               </table>
             </div>
           )}
-          <p className="mt-3 font-mono text-[10px] text-text-tertiary">{data.note}</p>
+          <p className="mt-3 font-mono text-[10px] text-text-tertiary">{data.note}<InfoIcon hint="Backend-shipped honesty note for this endpoint — explains data shape, gaps, and what would need a new table to populate fully." /></p>
         </>
       )}
     </Panel>
@@ -982,11 +1094,12 @@ export function CostsRunwayTab({
   return (
     <Panel
       title="costs / runway · can Daniel afford to ship?"
+      hint="Revenue side is real (MRR from User table). Cost side is null in v0 — no provider-invoice ingestion. Treat 'burn' as a placeholder until billing events land."
       sub="MRR computed live from active paid users. Cost tracking is null until per-service billing events are wired."
       right={
         <div className="flex flex-wrap items-center gap-2">
           <LiveBadge state={src.state} />
-          <button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button>
+          <span className="inline-flex items-center"><button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button><InfoIcon hint="Re-fetch this tab's data from the backend. No cache — every click hits /api/admin/* fresh." /></span>
         </div>
       }
     >
@@ -994,15 +1107,18 @@ export function CostsRunwayTab({
       <ErrorNote error={error} />
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card label="current MRR" value={moneyCents(mrr)} />
-        <Card label="target MRR" value={moneyCents(TARGET_MRR)} />
-        <Card label="gap to target" value={moneyCents(gap)} tone="fail" />
-        <Card label="paid users needed @ $29.99" value={customersNeeded} tone="pending" />
+        <Card label="current MRR" value={moneyCents(mrr)} hint="Sum of (tier baseline price × active paid users) live from User table — no cache. Stripe + Whop rails counted." />
+        <Card label="target MRR" value={moneyCents(TARGET_MRR)} hint="Hardcoded $30k MRR goal (or revenue.headline.target_mrr_cents if backend overrides). Change in backend, not UI." />
+        <Card label="gap to target" value={moneyCents(gap)} tone="fail" hint="(target_mrr − current MRR), floored at zero. Returned by backend so calc stays single-sourced." />
+        <Card label="paid users needed @ $29.99" value={customersNeeded} tone="pending" hint="Ceil((target − current MRR) / $29.99). Assumes solo-tier pricing; real mix is lower (pro/agency add more MRR per user)." />
       </div>
 
       <div className="mb-6">
         <div className="mb-2 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-          <span>$30k MRR progress</span>
+          <span>
+            $30k MRR progress
+            <InfoIcon hint="Visual % of MRR target reached. min(100, round(current MRR / target_mrr × 100))." />
+          </span>
           <span>{progress}%</span>
         </div>
         <div className="h-3 w-full overflow-hidden rounded-full bg-paper-elev">
@@ -1015,13 +1131,13 @@ export function CostsRunwayTab({
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card label="tool / api costs" value={moneyCentsOrDash(toolCosts || null)} />
-        <Card label="agent costs" value={moneyCentsOrDash(agentCosts || null)} />
-        <Card label="people costs" value={moneyCentsOrDash(peopleCosts || null)} />
-        <Card label="total monthly burn" value={moneyCentsOrDash(totalBurn || null)} tone={costsKnown && totalBurn > grossThisMonth ? "fail" : undefined} />
-        <Card label="gross revenue (this mo)" value={moneyCents(grossThisMonth)} />
-        <Card label="net monthly cash" value={costsKnown ? moneyCents(netCash) : "—"} tone={costsKnown && netCash < 0 ? "fail" : "ok"} />
-        <Card label="1,000 paid users" value={`${revenue?.headline.paid_users ?? 0} / 1,000`} />
+        <Card label="tool / api costs" value={moneyCentsOrDash(toolCosts || null)} hint="Sum of api-services monthly_cost_cents + current_month_spend_cents. Null until provider invoices are ingested." />
+        <Card label="agent costs" value={moneyCentsOrDash(agentCosts || null)} hint="Sum of agents spent_this_month_cents. Null until per-agent billing events are tracked." />
+        <Card label="people costs" value={moneyCentsOrDash(peopleCosts || null)} hint="Sum of active employees monthly_cost_cents. Null until a people-directory table stores payroll." />
+        <Card label="total monthly burn" value={moneyCentsOrDash(totalBurn || null)} tone={costsKnown && totalBurn > grossThisMonth ? "fail" : undefined} hint="tool + agent + people costs combined. Turns fuchsia when burn exceeds this month's gross." />
+        <Card label="gross revenue (this mo)" value={moneyCents(grossThisMonth)} hint="This calendar month's gross from the monthly revenue rollup (last row of revenue.monthly)." />
+        <Card label="net monthly cash" value={costsKnown ? moneyCents(netCash) : "—"} tone={costsKnown && netCash < 0 ? "fail" : "ok"} hint="gross revenue − total burn. Renders as — until any cost telemetry is wired." />
+        <Card label="1,000 paid users" value={`${revenue?.headline.paid_users ?? 0} / 1,000`} hint="Progress toward the 1k-paid-users milestone. paid_users = users with active paid subscription_status." />
       </div>
 
       {!costsKnown && (
@@ -1063,7 +1179,7 @@ export function RevenueTab() {
 
   if (loading && !summary) {
     return (
-      <Panel title="revenue · path to $30k MRR" right={<LiveBadge state={src.state} />}>
+      <Panel title="revenue · path to $30k MRR" hint="Loading live revenue from /admin/revenue/summary." right={<LiveBadge state={src.state} />}>
         <LoadingNote />
         <ErrorNote error={error} />
       </Panel>
@@ -1071,7 +1187,7 @@ export function RevenueTab() {
   }
   if (!summary) {
     return (
-      <Panel title="revenue · path to $30k MRR" right={<LiveBadge state={src.state} />}>
+      <Panel title="revenue · path to $30k MRR" hint="Backend call to /admin/revenue/summary failed — check Railway logs + error chip above." right={<LiveBadge state={src.state} />}>
         <ErrorNote error={error} />
         <EmptyNote>Could not load live revenue summary.</EmptyNote>
       </Panel>
@@ -1087,36 +1203,72 @@ export function RevenueTab() {
   const thisWeek = summary.weekly[summary.weekly.length - 1];
   const thisMonth = summary.monthly[summary.monthly.length - 1];
 
+  const COL_HINTS_BLK: Record<string, string> = {
+    "code": "Error code group key (e.g. EXPORT_FAILED, LICENSE_INVALID). Aggregated from DesktopErrorEvent rows.",
+    "count": "Total events for this code in the rolling 24h window.",
+    "affected users": "Distinct user_id count for this code in the same window.",
+    "route": "Frontend route or backend endpoint the error fired from. Null when source not tagged.",
+    "latest message": "Most recent error message in the group (truncated to 300px). Hover full row for the untruncated string.",
+    "latest at": "When the latest error of this code group occurred. Truncated to minute.",
+  };
+  const COL_HINTS_DAILY: Record<string, string> = {
+    "date": "Calendar date (UTC). One row per day in the rolling window.",
+    "new signups": "New User rows created on this date.",
+    "new paid": "Users whose paid status flipped on this date (Stripe/Whop webhook → users row).",
+    "canceled": "Subscriptions that canceled / expired on this date.",
+    "gross": "Calculated gross USD for the day. Approximate — actual payments ledger lives in Stripe/Whop.",
+  };
+  const COL_HINTS_WEEK: Record<string, string> = {
+    "week starting": "Monday of the ISO week (UTC).",
+    "new signups": "New User rows created during this week.",
+    "new paid": "Paid conversions during this week.",
+    "canceled": "Cancellations during this week.",
+    "gross": "Sum of daily gross over the week. Same approximation caveat.",
+  };
+  const COL_HINTS_MONTH: Record<string, string> = {
+    "month": "Calendar month (YYYY-MM).",
+    "MRR": "Snapshot of MRR at end of this month. Computed from active paid users × tier baseline price.",
+    "paid": "Paid users at end of this month.",
+    "free": "Free users at end of this month.",
+    "new signups": "New User rows in this month.",
+    "new paid": "Paid conversions in this month.",
+    "gross": "Sum of monthly gross. Approximate, see Stripe/Whop for canonical ledger.",
+  };
+
   return (
     <Panel
       title="revenue · path to $30k MRR (live)"
+      hint="MRR + signup buckets recomputed from the users table on every load — no cache. Daily gross is approximate; Stripe + Whop own the canonical payments ledger."
       sub="MRR + signup buckets computed live from the users table. Stripe/Whop own the actual payments ledger."
       right={
         <div className="flex flex-wrap items-center gap-2">
           <LiveBadge state={src.state} />
-          <button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button>
+          <span className="inline-flex items-center"><button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button><InfoIcon hint="Re-fetch this tab's data from the backend. No cache — every click hits /api/admin/* fresh." /></span>
         </div>
       }
     >
       <ErrorNote error={error} />
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
-        <Card label="today's gross" value={moneyCents(today?.gross_cents ?? 0)} />
-        <Card label="this week's gross" value={moneyCents(thisWeek?.gross_cents ?? 0)} />
-        <Card label="this month's gross" value={moneyCents(thisMonth?.gross_cents ?? 0)} />
-        <Card label="current MRR" value={moneyCents(headline.mrr_cents)} />
-        <Card label="paid users" value={headline.paid_users} />
-        <Card label="free users" value={headline.free_users} />
-        <Card label="users total" value={headline.users_total} />
-        <Card label="canceled / expired" value={headline.canceled_users} tone="fail" />
-        <Card label="gap to $30k MRR" value={moneyCents(headline.gap_to_target_cents)} tone="fail" />
-        <Card label="paid users needed @ $29.99" value={customersNeeded} tone="pending" />
+        <Card label="today's gross" value={moneyCents(today?.gross_cents ?? 0)} hint="Gross USD for today (UTC). Approximated from daily revenue rollup — Stripe owns canonical." />
+        <Card label="this week's gross" value={moneyCents(thisWeek?.gross_cents ?? 0)} hint="Gross USD for the current ISO week (Mon-Sun, UTC)." />
+        <Card label="this month's gross" value={moneyCents(thisMonth?.gross_cents ?? 0)} hint="Gross USD for the current calendar month." />
+        <Card label="current MRR" value={moneyCents(headline.mrr_cents)} hint="Sum of (tier baseline price × active paid subscribers). Live from User table, no cache." />
+        <Card label="paid users" value={headline.paid_users} hint="Users with active paid subscription_status (solo / pro / agency)." />
+        <Card label="free users" value={headline.free_users} hint="Users on the free tier — counted from User rows with tier='free'." />
+        <Card label="users total" value={headline.users_total} hint="Total User rows in the DB (paid + free + canceled)." />
+        <Card label="canceled / expired" value={headline.canceled_users} tone="fail" hint="Users whose subscription_status is canceled / past_due / expired. Churn candidates." />
+        <Card label="gap to $30k MRR" value={moneyCents(headline.gap_to_target_cents)} tone="fail" hint="target_mrr_cents − mrr_cents, computed backend-side so UI never drifts from canonical target." />
+        <Card label="paid users needed @ $29.99" value={customersNeeded} tone="pending" hint="Ceil(gap / $29.99). Assumes solo-tier pricing; actual mix needs fewer users when pro/agency convert." />
       </div>
 
       <div className="mb-6 rounded-2xl border border-line bg-paper p-4">
-        <SectionHead title="MRR target" sub={`${moneyCents(headline.target_mrr_cents)} target · ${headline.paid_users} paid users so far`} />
+        <SectionHead title="MRR target" hint="Progress bar toward target_mrr_cents (default $30k). Target is editable backend-side via revenue.headline.target_mrr_cents." sub={`${moneyCents(headline.target_mrr_cents)} target · ${headline.paid_users} paid users so far`} />
         <div className="mb-2 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
-          <span>progress</span>
+          <span>
+            progress
+            <InfoIcon hint="min(100, round(current MRR / target_mrr × 100)). Capped at 100% display, real number can overshoot." />
+          </span>
           <span>{progress}%</span>
         </div>
         <div className="h-3 w-full overflow-hidden rounded-full bg-paper-elev">
@@ -1125,14 +1277,17 @@ export function RevenueTab() {
       </div>
 
       <div className="mb-6 rounded-2xl border border-line bg-paper p-4">
-        <SectionHead title="revenue blockers" sub="Top error groups from desktop telemetry in the last 24h." />
+        <SectionHead title="revenue blockers" hint="Top error groups in the rolling 24h window. Source: /admin/revenue/blockers (DesktopErrorEvent aggregated by code)." sub="Top error groups from desktop telemetry in the last 24h." />
         {blockers && blockers.rows.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse font-mono text-[11px]">
               <thead>
                 <tr className="text-left text-text-tertiary">
                   {["code", "count", "affected users", "route", "latest message", "latest at"].map((h) => (
-                    <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                    <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                      {h}
+                      {COL_HINTS_BLK[h] && <InfoIcon hint={COL_HINTS_BLK[h]} />}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -1156,13 +1311,16 @@ export function RevenueTab() {
       </div>
 
       <div className="mb-6 rounded-2xl border border-line bg-paper p-4">
-        <SectionHead title="daily" />
+        <SectionHead title="daily" hint="Daily rollup buckets returned by /admin/revenue/summary. UTC dates. Each row = 24h slice." sub="Daily rollup over the recent window. Source: junior-backend /admin/revenue/summary." />
         <div className="overflow-x-auto">
           <table className="w-full border-collapse font-mono text-[11px]">
             <thead>
               <tr className="text-left text-text-tertiary">
                 {["date", "new signups", "new paid", "canceled", "gross"].map((h) => (
-                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                    {h}
+                    {COL_HINTS_DAILY[h] && <InfoIcon hint={COL_HINTS_DAILY[h]} />}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -1182,13 +1340,16 @@ export function RevenueTab() {
       </div>
 
       <div className="mb-6 rounded-2xl border border-line bg-paper p-4">
-        <SectionHead title="weekly" />
+        <SectionHead title="weekly" hint="ISO-week rollup (Mon-Sun). Each row aggregates the daily buckets in that week." sub="ISO weekly rollup. Each row sums the days in that week." />
         <div className="overflow-x-auto">
           <table className="w-full border-collapse font-mono text-[11px]">
             <thead>
               <tr className="text-left text-text-tertiary">
                 {["week starting", "new signups", "new paid", "canceled", "gross"].map((h) => (
-                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                    {h}
+                    {COL_HINTS_WEEK[h] && <InfoIcon hint={COL_HINTS_WEEK[h]} />}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -1208,13 +1369,16 @@ export function RevenueTab() {
       </div>
 
       <div className="rounded-2xl border border-line bg-paper p-4">
-        <SectionHead title="monthly" />
+        <SectionHead title="monthly" hint="Calendar-month rollup (YYYY-MM). MRR + paid/free columns are end-of-month snapshots, not running totals." sub="Calendar-month rollup. MRR + paid/free are end-of-month snapshots." />
         <div className="overflow-x-auto">
           <table className="w-full border-collapse font-mono text-[11px]">
             <thead>
               <tr className="text-left text-text-tertiary">
                 {["month", "MRR", "paid", "free", "new signups", "new paid", "gross"].map((h) => (
-                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                    {h}
+                    {COL_HINTS_MONTH[h] && <InfoIcon hint={COL_HINTS_MONTH[h]} />}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -1234,7 +1398,7 @@ export function RevenueTab() {
           </table>
         </div>
       </div>
-      <p className="mt-3 font-mono text-[10px] text-text-tertiary">{summary.note}</p>
+      <p className="mt-3 font-mono text-[10px] text-text-tertiary">{summary.note}<InfoIcon hint="Backend-shipped honesty note from /admin/revenue/summary — calls out approximations (e.g. per-day revenue not persisted in v0; Stripe/Whop own the ledger)." /></p>
     </Panel>
   );
 }
@@ -1270,11 +1434,12 @@ export function ReportsTab() {
   return (
     <Panel
       title="reports · latest signals (live)"
+      hint="Combined feed of two sources: /admin/revenue/blockers (top 5 desktop error groups, last 24h) + /admin/agent-reports (per-lane agent notes). Agent reports are empty in v0 — no table wired."
       sub="Top error groups from desktop telemetry + per-lane agent reports."
       right={
         <div className="flex flex-wrap items-center gap-2">
           <LiveBadge state={src.state} />
-          <button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button>
+          <span className="inline-flex items-center"><button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button><InfoIcon hint="Re-fetch this tab's data from the backend. No cache — every click hits /api/admin/* fresh." /></span>
         </div>
       }
     >
@@ -1288,11 +1453,17 @@ export function ReportsTab() {
         {(blockers?.rows ?? []).slice(0, 5).map((b) => (
           <div key={b.code} className="rounded-2xl border border-fuchsia-deep/30 bg-fuchsia-soft/20 p-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">{b.code} · {b.route ?? "no route"}</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                {b.code} · {b.route ?? "no route"}
+                <InfoIcon hint="Error-code key · originating route. Aggregated from DesktopErrorEvent over the last 24h." />
+              </div>
               <Chip label={`${b.count} events`} tone="fail" />
             </div>
             <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">{b.latest_message ?? "—"}</p>
-            <div className="mt-2 font-mono text-[10px] text-fuchsia-deep">affected: {b.affected_users} users · {b.latest_at?.slice(0, 16) ?? "—"}</div>
+            <div className="mt-2 font-mono text-[10px] text-fuchsia-deep">
+              affected: {b.affected_users} users · {b.latest_at?.slice(0, 16) ?? "—"}
+              <InfoIcon hint="Distinct affected user count · latest occurrence timestamp (truncated to minute, UTC)." />
+            </div>
           </div>
         ))}
         {(blockers?.rows ?? []).length === 0 && !loading && (
@@ -1335,11 +1506,12 @@ export function InboxTab() {
   return (
     <Panel
       title="inbox · user-to-HQ support board"
+      hint="Future home for inbound user messages (sender · kind · status). No inbox_messages table in v0 — wire /webhooks/support or an in-app support form to populate."
       sub="Inbound customer messages. v0 has no inbox_messages table."
       right={
         <div className="flex flex-wrap items-center gap-2">
           <LiveBadge state={src.state} />
-          <button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button>
+          <span className="inline-flex items-center"><button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button><InfoIcon hint="Re-fetch this tab's data from the backend. No cache — every click hits /api/admin/* fresh." /></span>
         </div>
       }
     >
