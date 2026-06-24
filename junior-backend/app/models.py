@@ -110,6 +110,12 @@ class User(Base):
     partner_unlocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     whop_commission_override_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # 2026-06-24 · Admin HQ Management Gap — soft ban marker. NULL =
+    # not banned. A future date = banned until that date. A far-future
+    # date (≈ year 2126) is the convention for an indefinite ban.
+    # Read by the gate that mints licenses + by Earn/Publish gates.
+    banned_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
@@ -994,6 +1000,89 @@ class ExternalCredential(Base):
     last_refreshed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+
+
+# ─── HQ Agent 3 · Management Gap Mutations ─────────────────────────────
+# Persistence backing for the 11 admin mutation endpoints (refund, ban,
+# tier-change, agent kill/restart/rotate-key, campaign edit/create/archive,
+# recent-sales feed, audit-log query). Every mutation writes one row to
+# AdminAuditLog. Agents are managed via AgentPersona (replaces the in-memory
+# WhopChatFleet dict for admin-controllable state — the fleet still runs
+# from env vars at boot, this table tracks the admin-mutable lifecycle).
+
+
+class AdminAuditLog(Base):
+    """One row per admin mutation attempt — success or failure.
+
+    Source of truth for "what did Daniel (or another admin) do, when, to
+    what, and what happened?" Powers the HQ Audit panel. Reads are
+    pagination-cheap thanks to the actor_email / action / target_id
+    indices.
+
+    `payload_json` is the JSON-serialised request body AFTER secrets
+    redaction (`first4 + "..."` for any key containing key/secret/token/
+    pin/password/jwt/authorization). Raw secrets NEVER hit this table.
+
+    `result` is "ok" for completed mutations, "error" for refused or
+    crashed attempts (with a sanitized `error_message`)."""
+
+    __tablename__ = "admin_audit_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    actor_email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    target_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    result: Mapped[str] = mapped_column(String(20), nullable=False, default="ok")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+
+
+class AgentPersona(Base):
+    """One row per admin-controllable agent persona.
+
+    The Whop chat-agent fleet (app/agents/whop_chat.py) currently runs
+    100% from env vars (WHOP_AGENT_KEYS) — its in-memory `WhopChatFleet`
+    dict has no DB backing. This table lets HQ flip an individual agent
+    on/off, count restarts, and rotate its persona key WITHOUT a Railway
+    redeploy.
+
+    `api_key_hash` is the SHA-256 of the most recently rotated key. The
+    raw key is returned to the admin ONCE at rotation time and never
+    persisted. `api_key_preview` (first4 + '...') is the display form
+    surfaced in admin reads.
+
+    `active` flips on `agent.kill` / `agent.restart`. `restart_count`
+    bumps on every restart so a flap is visible in the Audit panel.
+
+    The runtime agent loop is NOT yet wired to read this table — that
+    handshake lands in a follow-up sprint. For now the table records
+    admin intent so the operator UX works while the fleet implementation
+    catches up."""
+
+    __tablename__ = "agent_personas"
+
+    id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    label: Mapped[str] = mapped_column(String(120), nullable=False)
+    # "whop_chat" | "engagement" | future
+    kind: Mapped[str] = mapped_column(String(60), nullable=False, default="whop_chat", index=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    api_key_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    api_key_preview: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    restart_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_rotated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
