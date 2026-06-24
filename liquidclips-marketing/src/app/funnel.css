@@ -492,6 +492,100 @@
   filter: drop-shadow(0 0 6px rgba(255, 26, 140, 0.7));
 }
 
+/* === trust strip · 3 platform pills under H1, above sub === */
+.lc-w1-trust-strip {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+.lc-w1-trust-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--w1-line);
+  background: var(--w1-glass);
+  color: var(--w1-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+.lc-w1-trust-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--w1-cy);
+}
+.lc-w1-trust-label { white-space: nowrap; }
+
+/* === download free pill · above HeroPaste === */
+.lc-w1-download-pill-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 760px;
+}
+.lc-w1-download-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  height: 44px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--w1-fx);
+  color: var(--w1-ink);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 0 0 1px var(--w1-fx-glow),
+    0 22px 50px var(--w1-fx-glow);
+  transition: transform 120ms ease, box-shadow 200ms ease;
+}
+.lc-w1-download-pill:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 0 0 1px var(--w1-fx),
+    0 28px 64px var(--w1-fx-glow);
+}
+.lc-w1-download-pill:active { transform: translateY(1px); }
+.lc-w1-download-pill:focus-visible {
+  outline: 2px solid var(--w1-cy);
+  outline-offset: 3px;
+}
+.lc-w1-download-pill-label { line-height: 1; }
+.lc-w1-download-pill-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--w1-ink);
+}
+.lc-w1-download-pill-sub {
+  margin: 0;
+  padding-left: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--w1-dim);
+}
+
 /* === reduced-motion gate === */
 @media (prefers-reduced-motion: reduce) {
   .lc-w1-kade,
@@ -500,7 +594,8 @@
   .lc-w1-hud-dot,
   .lc-w1-eb-dot,
   .lc-w1-depth,
-  .lc-w1-pill { animation: none !important; transition: none !important; }
+  .lc-w1-pill,
+  .lc-w1-download-pill { animation: none !important; transition: none !important; }
 }
 
 /* === mobile flatten · keep world, drop depth === */
@@ -514,6 +609,10 @@
   .lc-w1-cta { padding: 14px 22px; justify-content: center; }
   .lc-w1-hud-pill { display: none; }
   .lc-w1-ghost { display: none; }
+  .lc-w1-trust-strip { gap: 6px 8px; }
+  .lc-w1-trust-pill { padding: 5px 10px; font-size: 10px; letter-spacing: 0.1em; }
+  .lc-w1-download-pill { height: 48px; }
+  .lc-w1-download-pill-sub { padding-left: 0; text-align: center; align-self: center; }
 }
 
 /* === END WINDOW 1 ============================================ */
