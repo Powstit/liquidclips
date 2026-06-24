@@ -22,9 +22,44 @@ import { NextResponse, type NextRequest } from "next/server";
 //
 // The middleware approach is the only path that gives us per-request
 // header control without an ALL-matches merge.
+// IRON GATE IG-HQ-001 — HQ admin IP allowlist.
+// The block below is the FIRST line of defense for the HQ command-center.
+// It runs BEFORE Clerk does anything observable to the caller, so probing
+// /admin/* from an unlisted IP is indistinguishable from a 404 on a route
+// that doesn't exist (no auth challenge, no redirect — silent denial).
+//
+// Match set: /admin/*  AND  /api/admin/*  (and only those).
+// Source of truth: ADMIN_ALLOWED_IPS env var (CSV). Empty list = lock-out.
+// IP source: x-forwarded-for first hop (Vercel sets this; localhost dev sets
+// nothing → list is effectively closed unless dev IP added).
+//
+// DO NOT edit this block without iron-gate-lens authorization. Touching the
+// failure mode (404 vs 403 vs redirect) leaks admin existence.
+function ipAllowedForAdmin(req: NextRequest): boolean {
+  const xff = req.headers.get("x-forwarded-for") ?? "";
+  const firstHop = xff.split(",")[0]?.trim() ?? "";
+  const allowed = (process.env.ADMIN_ALLOWED_IPS ?? "")
+    .split(",")
+    .map((ip) => ip.trim())
+    .filter(Boolean);
+  if (!firstHop || allowed.length === 0) return false;
+  return allowed.includes(firstHop);
+}
+
+function isAdminPath(pathname: string): boolean {
+  return pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
+}
+
 export default clerkMiddleware(async (_auth, req: NextRequest) => {
-  const res = NextResponse.next();
   const pathname = req.nextUrl.pathname;
+
+  // IRON GATE IG-HQ-001 — admin IP gate runs BEFORE everything else.
+  if (isAdminPath(pathname) && !ipAllowedForAdmin(req)) {
+    // 404 (not 403). Don't confirm the surface exists.
+    return new NextResponse("Not Found", { status: 404 });
+  }
+
+  const res = NextResponse.next();
   if (pathname.startsWith("/embed")) {
     // Embed surfaces — frame-presentable for the Tauri webview. Don't
     // set frame-ancestors at all so the SSR layout's CSP wins. (Setting
