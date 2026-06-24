@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.cron import start_cron, stop_cron
 from app.db import Base, engine
-from app.routes import admin, affiliate, analytics, auth_whop, bonus_ledger, campaigns, channels, community, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, promo, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, admin_recovery, affiliate, analytics, auth_whop, bonus_ledger, campaigns, channels, community, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, promo, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -324,6 +324,27 @@ async def lifespan(_app: FastAPI):
         )""",
         "CREATE INDEX IF NOT EXISTS ix_announcements_kind ON announcements (kind)",
         "CREATE INDEX IF NOT EXISTS ix_announcements_pinned ON announcements (pinned)",
+        # HQ Agent 5 · Admin Recovery (break-glass identity proof).
+        # `admin_recovery_config` is a singleton (id=1) holding bcrypt hashes
+        # for the PIN, auth code, and most-recently-issued TOTP seed. Raw
+        # values are never stored. `admin_recovery_attempt` is the audit log
+        # used by the rate limiter (3 attempts per IP per 24h).
+        """CREATE TABLE IF NOT EXISTS admin_recovery_config (
+            id integer PRIMARY KEY,
+            pin_hash varchar(255),
+            auth_code_hash varchar(255),
+            totp_seed_hash varchar(255),
+            last_recovery_at timestamptz,
+            updated_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        """CREATE TABLE IF NOT EXISTS admin_recovery_attempt (
+            id bigserial PRIMARY KEY,
+            ip varchar(80) NOT NULL,
+            result varchar(20) NOT NULL,
+            created_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_admin_recovery_attempt_ip ON admin_recovery_attempt (ip)",
+        "CREATE INDEX IF NOT EXISTS ix_admin_recovery_attempt_created ON admin_recovery_attempt (created_at)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -408,6 +429,11 @@ app.include_router(onboarding.router)
 app.include_router(affiliate.router)
 app.include_router(tiktok_verify.router)
 app.include_router(admin.router)
+# HQ Agent 5 · /admin/recovery/* — break-glass identity-proof + TOTP re-issue.
+# /verify and /status are intentionally NOT behind require_admin (the admin is
+# locked out by definition); /pin and /auth-code use their own admin gate via
+# Depends(_require_admin) inside the module.
+app.include_router(admin_recovery.router)
 app.include_router(campaigns.router)
 app.include_router(bonus_ledger.router)
 app.include_router(community.router)
