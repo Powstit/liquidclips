@@ -76,11 +76,15 @@ export function RecoveryForm() {
     };
   }, []);
 
+  // 2026-06-25 — Daniel removed the PIN gate. Primary 2FA is Clerk TOTP
+  // (Authenticator app + Clerk-issued backup codes). Recovery now requires:
+  //   - fast path (IP allowlisted): no proof beyond reaching this surface
+  //     (rate limit + IP + email allowlist are still the gate)
+  //   - strict path (unknown IP): 5 emails + auth code
   const allFilled =
     fastPath === true
-      ? /^\d{6}$/.test(pin)
+      ? true
       : emails.every((e) => e.trim().length > 0) &&
-        /^\d{6}$/.test(pin) &&
         /^[A-Z0-9]{8}$/.test(authCode.trim().toUpperCase());
 
   function updateEmail(i: number, value: string) {
@@ -97,7 +101,10 @@ export function RecoveryForm() {
 
     setState({ kind: "submitting" });
 
-    const payload: Record<string, unknown> = { pin };
+    // PIN gate removed 2026-06-25 — body shape now just emails + auth_code
+    // (strict path only); fast path sends nothing extra. Backend accepts
+    // body.pin for backward compat but no longer checks it.
+    const payload: Record<string, unknown> = {};
     if (fastPath !== true) {
       payload.emails = emails.map((e) => e.trim());
       payload.auth_code = authCode.trim().toUpperCase();
@@ -208,33 +215,12 @@ export function RecoveryForm() {
         </fieldset>
       )}
 
-      <div
-        className={
-          fastPath
-            ? "grid grid-cols-1 gap-4"
-            : "grid grid-cols-1 gap-4 sm:grid-cols-2"
-        }
-      >
-        <label className="block">
-          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-text-secondary">
-            6-digit PIN
-          </span>
-          <input
-            type="password"
-            inputMode="numeric"
-            autoComplete="off"
-            value={pin}
-            onChange={(e) =>
-              setPin(e.target.value.replace(/\D/g, "").slice(0, 6))
-            }
-            placeholder="••••••"
-            maxLength={6}
-            pattern="\d{6}"
-            className="w-full rounded-md border border-line bg-paper px-3 py-2 font-mono text-sm tracking-[0.3em] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
-            required
-          />
-        </label>
-        {!fastPath && (
+      {/* 2026-06-25 — PIN field removed. Primary 2FA is Clerk TOTP
+          (Authenticator app + Clerk-issued backup codes). Recovery now
+          asks for 5 emails + auth code on the strict path; fast path
+          (allowlisted IP) needs nothing beyond reaching this surface. */}
+      {!fastPath && (
+        <div className="grid grid-cols-1 gap-4">
           <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-text-secondary">
               8-character auth code
@@ -257,8 +243,8 @@ export function RecoveryForm() {
               required
             />
           </label>
-        )}
-      </div>
+        </div>
+      )}
 
       {state.kind === "fail" && (
         <div
