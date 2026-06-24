@@ -52,6 +52,7 @@ from app.models import (
     PostAnalytic,
     Schedule,
     SocialChannel,
+    SocialConnection,
     SponsoredCampaign,
     User,
     WebhookEvent,
@@ -1153,6 +1154,84 @@ def postiz_status(
             "Status display only — Admin HQ never calls or changes Postiz. Per-user "
             "per-platform integration detail lives in Postiz; counts here are the "
             "local PostizConnection rows. published/scheduled/failed are in status_counts."
+        ),
+    }
+
+
+# ======================================================================
+# 6b. Ayrshare publishing status (2026-06-25 · the live rail today)
+# ======================================================================
+
+@router.get("/ayrshare")
+def ayrshare_status(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Production status for the Ayrshare publishing rail (the live publisher
+    today; Postiz is retained as a fallback architecture). Mirrors the shape
+    of /admin/postiz so the HQ tab can render identically. Status display
+    only — never mutates Ayrshare."""
+    from app import ayrshare
+
+    schedules = db.query(Schedule).all()
+    status_counts: dict[str, int] = {}
+    last_error: dict[str, Any] | None = None
+    for sch in schedules:
+        status_counts[sch.status] = status_counts.get(sch.status, 0) + 1
+    last_failed = (
+        db.query(Schedule)
+        .filter(Schedule.status == "failed", Schedule.error.isnot(None))
+        .order_by(Schedule.updated_at.desc())
+        .first()
+    )
+    if last_failed:
+        last_error = {
+            "schedule_id": last_failed.id,
+            "platform": last_failed.platform,
+            "error": last_failed.error,
+            "at": _iso(last_failed.updated_at),
+            "retry_count": last_failed.retry_count,
+        }
+
+    recent = (
+        db.query(Schedule)
+        .order_by(Schedule.updated_at.desc())
+        .limit(min(limit, 200))
+        .all()
+    )
+    recent_rows = [
+        {
+            "id": sch.id,
+            "platform": sch.platform,
+            "status": sch.status,
+            "scheduled_for": _iso(sch.scheduled_for),
+            "post_url": sch.post_url,
+            "retry_count": sch.retry_count,
+            "updated_at": _iso(sch.updated_at),
+        }
+        for sch in recent
+    ]
+
+    # SocialConnection rows (Ayrshare Profile Keys pasted by each user in
+    # Settings → Connections). Counts only — no per-platform fan-out.
+    conns = db.query(SocialConnection).all()
+    connection_summary = {
+        "users_with_connection": len(conns),
+        "active_connections": sum(1 for c in conns if getattr(c, "active", True) is True),
+    }
+
+    return {
+        "configured": ayrshare.is_configured(),
+        "status_counts": status_counts,
+        "schedules_total": len(schedules),
+        "last_error": last_error,
+        "connections": connection_summary,
+        "recent_schedules": recent_rows,
+        "note": (
+            "Status display only — Admin HQ never calls or changes Ayrshare. "
+            "Per-user per-platform integration detail lives in Ayrshare; counts "
+            "here are the local SocialConnection rows."
         ),
     }
 

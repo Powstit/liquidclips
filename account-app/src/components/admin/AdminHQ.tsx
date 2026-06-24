@@ -159,6 +159,7 @@ const TABS = [
   "Usage",
   "Billing",
   "Postiz",
+  "Ayrshare",
   "Telemetry",
   "Bonus Ledger",
   "Community Channels",
@@ -359,6 +360,7 @@ export function AdminHQ({
         {tab === "Usage" && <UsageTab />}
         {tab === "Billing" && <BillingTab />}
         {tab === "Postiz" && <PostizTab />}
+        {tab === "Ayrshare" && <AyrshareTab />}
         {tab === "Telemetry" && <BugsTab />}
         {tab === "Bonus Ledger" && <BonusLedgerTab />}
         {tab === "Community Channels" && <CommunityChannelsTab />}
@@ -1516,6 +1518,123 @@ function PostizTab() {
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div className="mt-1"><BoolChip value={data.configured} on="configured" off="not configured" /></div>
               <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">postiz live</div>
+            </div>
+            <div className="rounded-2xl border border-line bg-paper p-4">
+              <div className="font-display text-[28px] font-bold text-ink">{data.connections.users_with_connection}</div>
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">users connected</div>
+            </div>
+            <div className="rounded-2xl border border-line bg-paper p-4">
+              <div className="font-display text-[28px] font-bold text-ink">{data.connections.active_connections}</div>
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">active connections</div>
+            </div>
+            <div className="rounded-2xl border border-line bg-paper p-4">
+              <div className="font-display text-[28px] font-bold text-ink">{data.schedules_total}</div>
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">schedules total</div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {Object.keys(data.status_counts).length === 0 ? (
+              <span className="font-mono text-[11px] text-text-tertiary">no schedule rows yet</span>
+            ) : (
+              Object.entries(data.status_counts).map(([k, v]) => (
+                <span key={k} className="inline-flex items-center gap-2 rounded-full border border-line bg-paper px-3 py-1.5">
+                  <Chip label={k} />
+                  <span className="font-display text-[15px] font-bold text-ink">{v}</span>
+                </span>
+              ))
+            )}
+          </div>
+
+          <div className="mt-4 rounded-xl border border-line bg-paper-warm/50 p-3">
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">last error</div>
+            {data.last_error ? (
+              <div className="mt-2 font-mono text-[11px] text-fuchsia-deep">
+                [{data.last_error.platform}] {data.last_error.error}
+                <span className="text-text-tertiary"> · {data.last_error.at ?? "—"} · retries {data.last_error.retry_count}</span>
+              </div>
+            ) : (
+              <div className="mt-2"><NA /> <span className="font-mono text-[11px] text-text-tertiary">— no failed schedules</span></div>
+            )}
+          </div>
+
+          {data.recent_schedules.length > 0 && (
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full border-collapse font-mono text-[11px]">
+                <thead>
+                  <tr className="text-left text-text-tertiary">
+                    {["platform", "status", "scheduled for", "retries", "post url", "updated"].map((h) => (
+                      <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.recent_schedules.map((r) => (
+                    <tr key={r.id} className="border-b border-line/40">
+                      <td className="px-2 py-2"><Chip label={r.platform} tone="gray" /></td>
+                      <td className="px-2 py-2"><Chip label={r.status} /></td>
+                      <td className="px-2 py-2 text-text-tertiary">{r.scheduled_for?.slice(0, 16) ?? "—"}</td>
+                      <td className="px-2 py-2 text-text-secondary">{r.retry_count}</td>
+                      <td className="px-2 py-2 text-text-secondary">{r.post_url ? <a href={r.post_url} target="_blank" rel="noreferrer" className="text-fuchsia underline">link</a> : "—"}</td>
+                      <td className="px-2 py-2 text-text-tertiary">{r.updated_at?.slice(0, 16) ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="mt-3 font-mono text-[11px] text-text-tertiary">{data.note}</p>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+// =====================================================================
+// Ayrshare (the LIVE publisher rail · status display only) · 2026-06-25
+// =====================================================================
+type AyrshareData = PostizData;
+
+function AyrshareTab() {
+  const fetchAdmin = useAdminFetch();
+  const src = useDataSource();
+  const [data, setData] = useState<AyrshareData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setData((await fetchAdmin("ayrshare")) as unknown as AyrshareData);
+      src.report("ayrshare", "ok");
+    } catch (e) {
+      setError(String(e));
+      src.report("ayrshare", "fail");
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAdmin, src]);
+
+  return (
+    <Panel
+      title="ayrshare · status only (live publisher rail)"
+      sub="Display only — Admin HQ never calls or changes Ayrshare. SocialConnection rows = users with Ayrshare Profile Key pasted."
+      right={
+        <div className="flex items-center gap-2">
+          <LiveBadge state={src.state} />
+          <LoadButton onClick={load} />
+        </div>
+      }
+    >
+      <Loader on={loading} />
+      <ErrorNote error={error} />
+      {data && (
+        <>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="rounded-2xl border border-line bg-paper p-4">
+              <div className="mt-1"><BoolChip value={data.configured} on="configured" off="not configured" /></div>
+              <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">ayrshare live</div>
             </div>
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div className="font-display text-[28px] font-bold text-ink">{data.connections.users_with_connection}</div>
