@@ -1,7 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { track } from "@/lib/analytics";
+import {
+  readRememberedPromoCode,
+  rememberPromoCode,
+  validatePromo,
+  type ValidateResponse,
+} from "@/lib/promo";
 
 // Affiliate starter offer = ONE offer: 100 free clips, then Solo $29.99/mo.
 // The Whop Solo plan carries a 30-day free trial, so "30 days free then $29.99"
@@ -41,6 +47,17 @@ export default function CheckoutPage() {
   // multiple analytics events. Never sent as a raw id, only as a boolean.
   const [hasAffiliate, setHasAffiliate] = useState(false);
 
+  // Promo / discount code state. The code may arrive three ways:
+  //   1. ?promo=CODE on the URL (deeplink from an influencer landing page)
+  //   2. sessionStorage from /sign-up (persists across the sign-in detour)
+  //   3. user types it into the input
+  // Live validation is debounced so we don't hammer the rate limiter.
+  const [promoInput, setPromoInput] = useState("");
+  const [promoStatus, setPromoStatus] = useState<ValidateResponse | null>(null);
+  const [promoChecking, setPromoChecking] = useState(false);
+  const [promoExpanded, setPromoExpanded] = useState(false);
+  const promoAbortRef = useRef<AbortController | null>(null);
+
   // Analytics: page view. Compute has_affiliate from the same URL/cookie
   // sources the embed uses, independent of the async affiliateId state so the
   // event fires exactly once on mount. ID-derived bool only — no affiliate id.
@@ -76,6 +93,66 @@ export default function CheckoutPage() {
     }
     setReady(true);
   }, []);
+
+  // Read ?promo=CODE OR fall back to sessionStorage (set by /sign-up).
+  // Auto-expand the promo card when we successfully prefill the input so
+  // the user sees the code was carried through.
+  useEffect(() => {
+    let initial: string | null = null;
+    try {
+      const p = new URLSearchParams(window.location.search);
+      initial = (p.get("promo") || "").trim().toUpperCase().slice(0, 40);
+    } catch {
+      /* best-effort */
+    }
+    if (!initial) initial = readRememberedPromoCode();
+    if (initial) {
+      setPromoInput(initial);
+      setPromoExpanded(true);
+      rememberPromoCode(initial);
+      track("promo_code_prefilled", { source: "url_or_session" });
+    }
+  }, []);
+
+  // Debounced live validation of the typed code. Aborts any in-flight call
+  // when the user types again so we don't race responses.
+  useEffect(() => {
+    const code = promoInput.trim().toUpperCase();
+    if (!code) {
+      setPromoStatus(null);
+      setPromoChecking(false);
+      promoAbortRef.current?.abort();
+      return;
+    }
+    setPromoChecking(true);
+    const handle = window.setTimeout(async () => {
+      promoAbortRef.current?.abort();
+      const ctrl = new AbortController();
+      promoAbortRef.current = ctrl;
+      try {
+        const res = await validatePromo(code, "solo", ctrl.signal);
+        if (!ctrl.signal.aborted) {
+          setPromoStatus(res);
+          rememberPromoCode(res.valid ? res.code ?? code : null);
+          track("promo_code_validated", {
+            valid: res.valid,
+            reason: res.reason ?? null,
+          });
+        }
+      } catch (e) {
+        if (!ctrl.signal.aborted) {
+          // Rate-limit or network — show generic "try again" state.
+          setPromoStatus({
+            valid: false,
+            reason: e instanceof Error && e.message === "rate_limited" ? "shape" : null,
+          });
+        }
+      } finally {
+        if (!ctrl.signal.aborted) setPromoChecking(false);
+      }
+    }, 400);
+    return () => window.clearTimeout(handle);
+  }, [promoInput]);
 
   useEffect(() => {
     if (document.getElementById("whop-checkout-loader")) return;
@@ -239,12 +316,87 @@ export default function CheckoutPage() {
           <h2 className="font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Start your 100 free clips.</h2>
           <p className="mt-2 text-text-secondary">Card secured by Whop, nothing charged for 30 days — cancel anytime.</p>
         </div>
-        <div className="mx-auto mt-6 max-w-xl rounded-2xl border border-line bg-paper p-2 sm:p-3">
+        {/* PROMO CODE — collapsible, brand-styled. The Whop iframe handles
+            the billing-side discount via its own affiliate-code field; the
+            LC ledger row is created server-side at checkout-complete via
+            POST /promo/apply (called from the post-purchase /get handler).
+            Until then this surface validates + persists the code so the
+            buyer SEES it's recognised before they pay. */}
+        <div className="mx-auto mt-6 max-w-xl">
+          <button
+            type="button"
+            onClick={() => setPromoExpanded((v) => !v)}
+            className="flex w-full items-center justify-between rounded-2xl border border-line bg-paper px-4 py-3 text-left font-mono text-[11px] uppercase tracking-[0.12em] text-ink transition hover:border-fuchsia"
+            aria-expanded={promoExpanded}
+          >
+            <span>
+              {promoStatus?.valid ? (
+                <span className="text-fuchsia-deep">
+                  ✓ promo applied · {promoStatus.percent_off}% off
+                </span>
+              ) : (
+                "have a discount code?"
+              )}
+            </span>
+            <span aria-hidden className="text-text-tertiary">{promoExpanded ? "−" : "+"}</span>
+          </button>
+          {promoExpanded && (
+            <div className="mt-2 rounded-2xl border border-line bg-paper p-4">
+              <label className="block font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                discount code
+              </label>
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={promoInput}
+                  onChange={(e) => setPromoInput(e.target.value.toUpperCase().slice(0, 40))}
+                  placeholder="e.g. FOUNDER25"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  aria-invalid={promoStatus ? !promoStatus.valid : undefined}
+                  aria-describedby="promo-help"
+                  className="w-full rounded-md border border-line bg-paper-warm/40 px-3 py-2 font-mono text-[13px] uppercase tracking-[0.06em] text-ink outline-none focus:border-fuchsia"
+                />
+                {promoChecking && <span className="font-mono text-[10px] text-text-tertiary">…</span>}
+              </div>
+              <p id="promo-help" className="mt-2 font-mono text-[11px]" role="status">
+                {!promoInput && (
+                  <span className="text-text-tertiary">Codes are case-insensitive. We'll apply your discount at checkout.</span>
+                )}
+                {promoInput && promoChecking && (
+                  <span className="text-text-tertiary">Checking…</span>
+                )}
+                {promoInput && !promoChecking && promoStatus?.valid && (
+                  <span className="text-fuchsia-deep">
+                    ✓ {promoStatus.percent_off}% off applied
+                    {promoStatus.expires_at && (
+                      <> · expires {new Date(promoStatus.expires_at).toLocaleDateString()}</>
+                    )}
+                  </span>
+                )}
+                {promoInput && !promoChecking && promoStatus && !promoStatus.valid && (
+                  <span className="text-text-tertiary">
+                    <span className="mr-1 text-fuchsia-deep">✕</span>
+                    {promoStatus.reason === "unknown_code" && "We don't recognise this code."}
+                    {promoStatus.reason === "revoked" && "This code is no longer active."}
+                    {promoStatus.reason === "expired" && "This code has expired."}
+                    {promoStatus.reason === "exhausted" && "This code has reached its usage limit."}
+                    {promoStatus.reason === "plan_mismatch" && "This code doesn't apply to the Solo plan."}
+                    {promoStatus.reason === "shape" && "Check the code and try again."}
+                    {promoStatus.reason == null && "Couldn't validate right now. Try again in a moment."}
+                  </span>
+                )}
+              </p>
+            </div>
+          )}
+        </div>
+        <div className="mx-auto mt-4 max-w-xl rounded-2xl border border-line bg-paper p-2 sm:p-3">
           {ready ? (
             <div
-              key={affiliateId}
+              key={`${affiliateId}-${promoStatus?.valid ? promoStatus.code ?? "" : ""}`}
               data-whop-checkout-plan-id={SOLO_PLAN_ID}
               data-whop-checkout-affiliate-code={affiliateId || undefined}
+              data-whop-checkout-discount-code={promoStatus?.valid ? promoStatus.code ?? undefined : undefined}
               data-whop-checkout-return-url={returnUrl}
               data-whop-checkout-on-complete="__jnrCheckoutComplete"
               data-whop-checkout-skip-redirect="true"
