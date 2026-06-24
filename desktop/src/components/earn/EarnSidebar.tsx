@@ -9,7 +9,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { ExternalLink } from "../icons/BrandGlyphs";
 import { Pill } from "../primitives";
 import { useActiveBrief, type AllowedPlatform, type PayoutProvider } from "../../lib/briefs";
 import { openBrowsePanel, WHOP_REWARDS_URL } from "../../lib/browse";

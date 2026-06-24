@@ -75,7 +75,7 @@ export function EmptyState({
           {cta && (
             <button
               onClick={cta.onClick}
-              className="h-10 px-5 rounded-full bg-fuchsia text-white text-[13px] font-semibold hover:bg-fuchsia-bright transition-all"
+              className="h-10 px-5 rounded-full bg-fuchsia text-ink text-[13px] font-semibold hover:bg-fuchsia-bright transition-all"
               style={{
                 boxShadow: "0 0 0 1px rgba(255,26,140,0.45), 0 12px 36px rgba(255,26,140,0.28)",
               }}

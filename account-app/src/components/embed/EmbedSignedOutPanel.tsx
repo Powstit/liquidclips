@@ -35,7 +35,7 @@ export function EmbedSignedOutPanel() {
             "*",
           );
         }}
-        className="rounded-full border border-fuchsia bg-fuchsia px-5 py-2.5 font-mono text-[12px] uppercase tracking-[0.10em] text-white shadow-[0_0_0_1px_rgba(255,26,140,0.3),0_8px_28px_-12px_rgba(255,26,140,0.55)] transition-all hover:bg-fuchsia/90 focus:outline-none focus:ring-2 focus:ring-fuchsia/40"
+        className="rounded-full border border-fuchsia bg-fuchsia px-5 py-2.5 font-mono text-[12px] uppercase tracking-[0.10em] text-ink shadow-[0_0_0_1px_rgba(255,26,140,0.3),0_8px_28px_-12px_rgba(255,26,140,0.55)] transition-all hover:bg-fuchsia/90 focus:outline-none focus:ring-2 focus:ring-fuchsia/40"
       >
         Sign in to link account →
       </button>

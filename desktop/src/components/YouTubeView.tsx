@@ -174,7 +174,7 @@ export function YouTubeView({ project }: { project: Project }) {
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <button
             onClick={() => void copyBundle()}
-            className="inline-flex items-center gap-2 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-semibold text-white shadow-[var(--glow-sm)] transition-all hover:bg-fuchsia-bright"
+            className="inline-flex items-center gap-2 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-semibold text-ink shadow-[var(--glow-sm)] transition-all hover:bg-fuchsia-bright"
           >
             {copyState === "bundle" ? "Copied ✓" : "Copy in Studio order"}
           </button>
@@ -326,7 +326,7 @@ function ScoredTitlesCard({
                   onClick={() => onPick(i)}
                   className={`grid h-9 w-9 shrink-0 place-items-center rounded-full font-mono text-[11px] font-semibold transition-colors ${
                     selected
-                      ? "bg-fuchsia text-white"
+                      ? "bg-fuchsia text-ink"
                       : "bg-paper-warm/60 text-ink hover:bg-fuchsia/20 hover:text-fuchsia-deep"
                   }`}
                   title={`CTR score ${t.score}/100`}

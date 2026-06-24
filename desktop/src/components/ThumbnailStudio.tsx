@@ -303,7 +303,7 @@ export function ThumbnailStudio({
               href="https://platform.openai.com/account/billing/limits"
               target="_blank"
               rel="noreferrer"
-              // v0.7.50 — Brand-palette pass. text-white on amber bg
+              // v0.7.50 — Brand-palette pass. text-ink on amber bg
               // wasn't reading on the kit; text-paper on amber is the
               // canonical warn pattern (dark text on warm bg).
               className="px-3 py-1 rounded bg-warn text-paper text-xs"

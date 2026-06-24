@@ -71,7 +71,7 @@ export function AddClipCard({
       <span className="library-card-corner-tr" aria-hidden />
       <span className="library-card-corner-bl" aria-hidden />
       <span className="library-card-corner-br" aria-hidden />
-      <div className="grid h-14 w-14 place-items-center rounded-full border border-fuchsia/40 bg-transparent text-fuchsia transition-colors group-hover:border-fuchsia group-hover:bg-fuchsia group-hover:text-white">
+      <div className="grid h-14 w-14 place-items-center rounded-full border border-fuchsia/40 bg-transparent text-fuchsia transition-colors group-hover:border-fuchsia group-hover:bg-fuchsia group-hover:text-ink">
         {/* Two-square duplicate glyph */}
         <svg
           width="26"

@@ -94,7 +94,7 @@ export function IntentPicker({
 
       <div className="flex items-center gap-3">
         <span
-          className="inline-grid h-[36px] w-[36px] place-items-center rounded-lg bg-fuchsia font-mono text-[18px] font-bold leading-none text-white"
+          className="inline-grid h-[36px] w-[36px] place-items-center rounded-lg bg-fuchsia font-mono text-[18px] font-bold leading-none text-ink"
           aria-hidden
         >
           /

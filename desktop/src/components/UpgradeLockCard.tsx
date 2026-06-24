@@ -1,4 +1,4 @@
-import { Lock } from "lucide-react";
+import { Lock } from "./icons/BrandGlyphs";
 import { openUpgradeWhenSignedIn } from "../lib/upgradeWithAuth";
 import { useActivation } from "../lib/activation";
 import { openSmart } from "../lib/openSmart";
