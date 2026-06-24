@@ -476,8 +476,10 @@ def recovery_status(
     → PIN only) or strict path (5 emails + PIN + auth code). Not
     admin-gated: the page renders BEFORE the admin has signed in."""
     cfg = _get_config(db)
-    pin_set = bool(cfg.pin_hash or _env_pin_hash())
-    auth_set = bool(cfg.auth_code_hash or _env_auth_code_hash())
+    # P1-006 (2026-06-24) — env fallbacks were deleted to remove the
+    # backdoor. PIN + auth code must be set via the HQ Security UI.
+    pin_set = bool(cfg.pin_hash)
+    auth_set = bool(cfg.auth_code_hash)
     totp_set = bool(cfg.totp_seed_hash)
     return StatusResponse(
         pin_configured=pin_set,
