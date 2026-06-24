@@ -50,6 +50,21 @@ desktop/python-sidecar/models/
 desktop/python-sidecar/bin/ffmpeg
 desktop/python-sidecar/bin/ffprobe
 
+# Repo-root python-sidecar (separate tree from desktop/python-sidecar)
+# v0.7.80 ship.sh blocker: the same bundled binaries live here too,
+# fetched in CI by .github/workflows/release.yml — never commit.
+python-sidecar/bin/
+python-sidecar/models/
+python-sidecar/assets/liquid-clips-wordmark.png
+python-sidecar/assets/watermark/*.mov
+python-sidecar/assets/watermark/*.mp4
+
+# --- Test results / Playwright + Vitest artifacts ---------------------------
+test-results/
+**/test-results/
+playwright-report/
+**/playwright-report/
+
 # --- Tauri build outputs ----------------------------------------------------
 *.dmg
 *.app.tar.gz
