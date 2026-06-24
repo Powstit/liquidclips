@@ -12,6 +12,7 @@ import {
 } from "@/lib/promo";
 import { useDataSource } from "./_lib/useDataSource";
 import { LiveBadge } from "./_lib/LiveBadge";
+import { InfoIcon } from "./_lib/InfoIcon";
 
 // HQ admin tab for promo / discount-code management. Reads + writes go
 // through the existing /api/admin proxy (which re-checks admin + forwards
@@ -114,6 +115,7 @@ export function PromoCodesTab(): React.JSX.Element {
         <div>
           <div className="font-mono text-[10px] uppercase tracking-[0.12em]" style={{ color: "var(--lc-fg-faint)" }}>
             promo codes
+            <InfoIcon hint="Discount codes for influencer/clipper outreach. Stored in LC DB; Stripe coupon is lazy-created on first apply and cached on the row for idempotence." />
           </div>
           <p className="lc-body mt-1 text-[12px]" style={{ color: "var(--lc-fg-muted)" }}>
             Influencer / clipper discount codes. Stripe coupon is created on first apply and cached for idempotence.
@@ -141,6 +143,7 @@ export function PromoCodesTab(): React.JSX.Element {
           >
             {showForm ? "Close form" : "New code"}
           </button>
+          <InfoIcon hint={showForm ? "Close the inline create form without saving." : "Open the inline create form to issue a new promo code. Saves go to LC DB; Stripe coupon is created on first apply."} />
         </div>
       </div>
 
@@ -188,13 +191,34 @@ export function PromoCodesTab(): React.JSX.Element {
           <table className="min-w-full font-mono text-[11px]">
             <thead className="border-b" style={{ borderColor: "var(--lc-stroke)", color: "var(--lc-fg-faint)" }}>
               <tr className="text-left">
-                <th className="px-2 py-2">code</th>
-                <th className="px-2 py-2 text-right">% off</th>
-                <th className="px-2 py-2 text-right">used / max</th>
-                <th className="px-2 py-2">expires</th>
-                <th className="px-2 py-2">scopes</th>
-                <th className="px-2 py-2">status</th>
-                <th className="px-2 py-2">created by</th>
+                <th className="px-2 py-2">
+                  code
+                  <InfoIcon hint="The user-facing discount code (uppercase). Must match the Whop dashboard code 1:1 if you want both rails to honour the same percent_off." />
+                </th>
+                <th className="px-2 py-2 text-right">
+                  % off
+                  <InfoIcon hint="Percent discount applied at Stripe checkout (1-100). Mirror this number on Whop dashboard manually for the Whop checkout iframe." />
+                </th>
+                <th className="px-2 py-2 text-right">
+                  used / max
+                  <InfoIcon hint="Live redemption counter vs. cap. ∞ = no cap. Hitting max flips status to 'exhausted' and blocks further applies." />
+                </th>
+                <th className="px-2 py-2">
+                  expires
+                  <InfoIcon hint="UTC expiration timestamp (truncated to minute). Past expiry → status flips to 'expired'. — = never expires." />
+                </th>
+                <th className="px-2 py-2">
+                  scopes
+                  <InfoIcon hint="Comma-separated plan slugs this code is valid for (e.g. solo, growth). Empty = all plans honoured." />
+                </th>
+                <th className="px-2 py-2">
+                  status
+                  <InfoIcon hint="Live status: active / exhausted (hit max_uses) / expired (past expires_at) / revoked (admin revoked)." />
+                </th>
+                <th className="px-2 py-2">
+                  created by
+                  <InfoIcon hint="Admin email that created the code. Pulled from Clerk identity at creation time — never editable later." />
+                </th>
                 <th className="px-2 py-2"> </th>
               </tr>
             </thead>
@@ -235,18 +259,22 @@ export function PromoCodesTab(): React.JSX.Element {
                           >
                             {expanded !== undefined ? "Hide" : "Stats"}
                           </button>
+                          <InfoIcon hint={expanded !== undefined ? "Collapse the stats panel for this code." : "Fetch + show per-code stats: redemptions, revenue impact, Stripe coupon id, redemption history with masked emails."} />
                           {!row.revoked_at && (
-                            <button
-                              onClick={() => void revoke(row)}
-                              className="rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em]"
-                              style={{
-                                borderColor: "rgba(255,102,184,0.40)",
-                                background: "var(--lc-bg)",
-                                color: "var(--lc-accent-mid)",
-                              }}
-                            >
-                              Revoke
-                            </button>
+                            <>
+                              <button
+                                onClick={() => void revoke(row)}
+                                className="rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em]"
+                                style={{
+                                  borderColor: "rgba(255,102,184,0.40)",
+                                  background: "var(--lc-bg)",
+                                  color: "var(--lc-accent-mid)",
+                                }}
+                              >
+                                Revoke
+                              </button>
+                              <InfoIcon hint="Permanently revoke this code. Sets revoked_at on the row + blocks all future applies. Existing redemptions stay intact. Cannot be undone." />
+                            </>
                           )}
                         </div>
                       </td>
@@ -283,19 +311,28 @@ function StatsBlock({ stats }: { stats: PromoStats }): React.JSX.Element {
     >
       <div className="flex flex-wrap gap-4 font-mono text-[11px]" style={{ color: "var(--lc-fg-muted)" }}>
         <div>
-          <span style={{ color: "var(--lc-fg-faint)" }}>redemptions: </span>
+          <span style={{ color: "var(--lc-fg-faint)" }}>
+            redemptions:
+            <InfoIcon hint="Total times this code has been applied at Stripe checkout. Equals the row count in the redemption history below." />
+          </span>{" "}
           <span className="lc-display" style={{ color: "var(--lc-fg)" }}>
             {stats.redemption_count}
           </span>
         </div>
         <div>
-          <span style={{ color: "var(--lc-fg-faint)" }}>revenue impact: </span>
+          <span style={{ color: "var(--lc-fg-faint)" }}>
+            revenue impact:
+            <InfoIcon hint="Sum of discount amount applied in USD. This is how much LC gave away — not how much revenue this code drove." />
+          </span>{" "}
           <span className="lc-display" style={{ color: "var(--lc-fg)" }}>
             {fmtCents(stats.discount_applied_usd_cents_total)}
           </span>
         </div>
         <div>
-          <span style={{ color: "var(--lc-fg-faint)" }}>stripe coupon: </span>
+          <span style={{ color: "var(--lc-fg-faint)" }}>
+            stripe coupon:
+            <InfoIcon hint="Cached Stripe Coupon id created on first apply. Empty until any user redeems. Same coupon reused for all future applies." />
+          </span>{" "}
           <span style={{ color: "var(--lc-fg)" }}>{stats.code.stripe_coupon_id ?? "—"}</span>
         </div>
       </div>
@@ -303,10 +340,22 @@ function StatsBlock({ stats }: { stats: PromoStats }): React.JSX.Element {
         <table className="mt-3 min-w-full font-mono text-[11px]">
           <thead style={{ color: "var(--lc-fg-faint)" }}>
             <tr className="text-left">
-              <th className="px-2 py-1">applied_at</th>
-              <th className="px-2 py-1">user (email masked)</th>
-              <th className="px-2 py-1">stripe sub</th>
-              <th className="px-2 py-1 text-right">discount</th>
+              <th className="px-2 py-1">
+                applied_at
+                <InfoIcon hint="When the redemption was recorded (Stripe webhook event timestamp, truncated to minute UTC)." />
+              </th>
+              <th className="px-2 py-1">
+                user (email masked)
+                <InfoIcon hint="Redeeming user's email, masked for PII safety (first letter + domain). Full email never leaves the backend." />
+              </th>
+              <th className="px-2 py-1">
+                stripe sub
+                <InfoIcon hint="Stripe subscription id this discount was applied to. Empty for one-off charges or unattached coupons." />
+              </th>
+              <th className="px-2 py-1 text-right">
+                discount
+                <InfoIcon hint="Actual USD amount discounted for this single redemption. Sum across rows = total revenue impact above." />
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -387,12 +436,12 @@ function NewCodeForm({ onSaved }: { onSaved: () => Promise<void> | void }): Reac
       style={{ borderColor: "var(--lc-stroke)", background: "var(--lc-bg)" }}
     >
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <FormField label="code *" value={draft.code} onChange={(v) => setDraft({ ...draft, code: v })} placeholder="FOUNDER25" />
-        <FormField label="percent_off (1-100) *" value={draft.percent_off} onChange={(v) => setDraft({ ...draft, percent_off: v })} type="number" />
-        <FormField label="max_uses (blank = ∞)" value={draft.max_uses} onChange={(v) => setDraft({ ...draft, max_uses: v })} type="number" />
-        <FormField label="expires_at (local)" value={draft.expires_at} onChange={(v) => setDraft({ ...draft, expires_at: v })} type="datetime-local" />
-        <FormField label="scopes (comma plan slugs)" value={draft.scopes} onChange={(v) => setDraft({ ...draft, scopes: v })} placeholder="solo, growth" />
-        <FormField label="notes" value={draft.notes} onChange={(v) => setDraft({ ...draft, notes: v })} placeholder="who got it / why" />
+        <FormField label="code *" value={draft.code} onChange={(v) => setDraft({ ...draft, code: v })} placeholder="FOUNDER25" hint="The user-facing code. Auto-uppercased on save. Must be unique. Mirror this exact spelling on the Whop dashboard if you want both rails to honour it." />
+        <FormField label="percent_off (1-100) *" value={draft.percent_off} onChange={(v) => setDraft({ ...draft, percent_off: v })} type="number" hint="Percent discount applied at Stripe checkout. Integer 1-100. Saved into Stripe Coupon on first apply." />
+        <FormField label="max_uses (blank = ∞)" value={draft.max_uses} onChange={(v) => setDraft({ ...draft, max_uses: v })} type="number" hint="Cap on total redemptions across all users. Blank = unlimited. Once hit, status flips to 'exhausted' and applies fail." />
+        <FormField label="expires_at (local)" value={draft.expires_at} onChange={(v) => setDraft({ ...draft, expires_at: v })} type="datetime-local" hint="Local-time datetime entered in your browser, converted to UTC ISO on save. Blank = never expires." />
+        <FormField label="scopes (comma plan slugs)" value={draft.scopes} onChange={(v) => setDraft({ ...draft, scopes: v })} placeholder="solo, growth" hint="Comma-separated plan slugs this code is valid for. Empty = all plans. Slugs lowercased on save." />
+        <FormField label="notes" value={draft.notes} onChange={(v) => setDraft({ ...draft, notes: v })} placeholder="who got it / why" hint="Internal-only note (who got the code, why, partnership context). Never shown to end users." />
       </div>
       {error && (
         <p
@@ -403,14 +452,17 @@ function NewCodeForm({ onSaved }: { onSaved: () => Promise<void> | void }): Reac
         </p>
       )}
       <div className="mt-3 flex items-center">
-        <button
-          onClick={() => void save()}
-          disabled={busy}
-          className="ml-auto rounded-full px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition disabled:opacity-60"
-          style={{ background: "var(--lc-accent)", color: "var(--lc-fg)" }}
-        >
-          {busy ? "Saving…" : "Create code"}
-        </button>
+        <span className="ml-auto inline-flex items-center">
+          <button
+            onClick={() => void save()}
+            disabled={busy}
+            className="rounded-full px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition disabled:opacity-60"
+            style={{ background: "var(--lc-accent)", color: "var(--lc-fg)" }}
+          >
+            {busy ? "Saving…" : "Create code"}
+          </button>
+          <InfoIcon hint="Persist this code to the LC DB. Stripe Coupon is NOT created yet — it's lazily created on the first user apply, then cached on the row." />
+        </span>
       </div>
     </div>
   );
@@ -422,16 +474,21 @@ function FormField({
   onChange,
   type = "text",
   placeholder,
+  hint,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   type?: string;
   placeholder?: string;
+  hint?: string;
 }): React.JSX.Element {
   return (
     <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em]" style={{ color: "var(--lc-fg-faint)" }}>
-      {label}
+      <span>
+        {label}
+        {hint && <InfoIcon hint={hint} />}
+      </span>
       <input
         type={type}
         value={value}
