@@ -1,0 +1,143 @@
+.lc-hud {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) 1fr auto auto auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 36px;
+  position: sticky; top: 0;
+  z-index: 10;
+  background: linear-gradient(180deg,
+    rgba(10, 10, 16, .7) 0%,
+    rgba(10, 10, 16, .32) 70%,
+    transparent 100%);
+  -webkit-backdrop-filter: blur(14px);
+          backdrop-filter: blur(14px);
+}
+
+.lc-hud-greet {
+  display: flex; flex-direction: column; line-height: 1.15;
+  min-width: 0;
+}
+.lc-hud-greet-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: .14em;
+  color: var(--dim, #86837e);
+  text-transform: uppercase;
+}
+.lc-hud-greet-name {
+  font-weight: 700; font-size: 15px;
+  letter-spacing: -.012em;
+  color: #f4f1ea;
+}
+
+/* Universal pill · BUG-029.4 pill 2x — UI-1 was 11px / 8px·13px; cockpit
+   demands cockpit-readable scale. */
+.lc-pill {
+  background: rgba(20, 20, 28, .55);
+  border: 1px solid var(--line2, rgba(255, 255, 255, .13));
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+          backdrop-filter: blur(10px) saturate(140%);
+  display: flex; align-items: center; gap: 11px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 13.5px;
+  color: var(--soft, #c8c4be);
+  letter-spacing: .04em;
+  padding: 11px 18px;
+  border-radius: 9999px;
+  min-width: 0;
+}
+
+.lc-pill-search {
+  padding: 12px 18px;
+  max-width: 480px;
+  flex: 1 1 auto;
+}
+.lc-pill-search input {
+  flex: 1 1 auto;
+  background: transparent; border: 0; outline: 0;
+  color: #f4f1ea;
+  font: inherit;
+  min-width: 0;
+}
+.lc-hud-kbd {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 13px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .07);
+  color: var(--soft, #c8c4be);
+  flex: 0 0 auto;
+}
+
+.lc-hud-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #ff1a8c;
+  box-shadow: 0 0 10px #ff1a8c;
+  animation: lc-hud-dot 2.2s cubic-bezier(.4, 0, .2, 1) infinite;
+}
+@keyframes lc-hud-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.45); opacity: .55; }
+}
+
+/* UI-1 · Clipper / Agency mode pill — segmented control inside one pill */
+.lc-pill-mode {
+  padding: 4px;
+  gap: 2px;
+  background: rgba(20, 20, 28, .55);
+}
+.lc-hud-mode-opt {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 13px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--dim, #86837e);
+  background: transparent;
+  border: 0;
+  padding: 9px 16px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+.lc-hud-mode-opt:hover { color: #f4f1ea; }
+/* TASK 7B · the active mode pill uses the accent token so it flips to
+ * blue under `body[data-app-mode="agency"]`. Box-shadow uses the
+ * accent at 22% opacity (achieved via color-mix), background at 14%.
+ * Falls back to a static rgba if color-mix is unsupported. */
+.lc-hud-mode-opt.on {
+  background: color-mix(in oklab, var(--lc-accent) 18%, transparent);
+  color: var(--lc-accent);
+  box-shadow: 0 0 12px color-mix(in oklab, var(--lc-accent) 28%, transparent) inset;
+}
+
+.lc-pill-streak { font-family: "Geist Mono", ui-monospace, monospace; }
+.lc-hud-streak-num { color: #f59e0b; }
+.lc-hud-streak-unit { color: var(--dim, #86837e); }
+
+.lc-pill-user {
+  padding: 5px 18px 5px 6px;
+  gap: 13px;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+.lc-hud-avatar {
+  width: 42px; height: 42px; border-radius: 50%;
+  background: url("/brand/kade/kade-base.png") center / 120% no-repeat #1a0011;
+  box-shadow: 0 0 0 1.5px rgba(255, 26, 140, .45), 0 0 18px rgba(255, 26, 140, .28) inset;
+  flex-shrink: 0;
+}
+.lc-hud-user-text { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; }
+.lc-hud-user-name {
+  font-weight: 700; font-size: 15px;
+  color: #f4f1ea;
+}
+.lc-hud-user-tier {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px; letter-spacing: .12em;
+  color: #ff66b8;
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-hud-dot, .lc-slash { animation: none; }
+}

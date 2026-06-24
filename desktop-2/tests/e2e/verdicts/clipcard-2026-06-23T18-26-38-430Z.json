@@ -1,0 +1,12 @@
+{
+  "journey": "ClipCard",
+  "started_at": "2026-06-23T18:25:36.234Z",
+  "result": "PASS",
+  "failed_step": null,
+  "step_log": [],
+  "screenshots": [],
+  "console_errors": [],
+  "dom_assertions": {},
+  "test_title": "ClipCard grid chips use brand SVG glyphs (not text letters)",
+  "duration_ms": 5917
+}

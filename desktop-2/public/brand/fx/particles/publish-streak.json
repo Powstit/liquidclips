@@ -1,0 +1,25 @@
+{
+  "$schema": "liquid-clips/particle-config@1",
+  "name": "publish-streak",
+  "use": "publish complete — fuchsia trail streaking across the hero after a published clip",
+  "count": 36,
+  "spawn": "along_line",
+  "lifecycle": "trail",
+  "duration_ms": 900,
+  "line_start_rel": [0.10, 0.55],
+  "line_end_rel":   [0.95, 0.40],
+  "spawn_rate_per_s": 140,
+  "velocity_along_px_frame": 7.0,
+  "velocity_perp_px_frame": [-0.4, 0.4],
+  "size_px": [2.0, 5.0],
+  "alpha_curve": [1.0, 0.6, 0.0],
+  "color_mix": {
+    "rgb(255,26,140)": 0.55,
+    "rgb(255,143,203)": 0.30,
+    "rgb(255,255,255)": 0.15
+  },
+  "shape": "circle",
+  "blend": "screen",
+  "respects_reduced_motion": "skip",
+  "pause_when_hidden": true
+}

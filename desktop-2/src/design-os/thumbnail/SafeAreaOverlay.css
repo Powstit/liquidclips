@@ -1,0 +1,18 @@
+/* Safe-area overlay layer — absolute over the variant preview.
+   pointer-events: none so clicks pass through to the underlying tile. */
+.lc-sao {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.lc-sao-img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  opacity: .85;
+  filter: drop-shadow(0 0 6px rgba(7, 199, 224, .55));
+  /* Recolor the white SVG strokes to cyan via blend */
+  mix-blend-mode: screen;
+}
+.lc-sao-face  { filter: drop-shadow(0 0 8px rgba(255, 26, 140, .55)); }
+.lc-sao-title { filter: drop-shadow(0 0 8px rgba(7, 199, 224, .55)); }

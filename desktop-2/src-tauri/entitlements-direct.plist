@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Hardened-runtime entitlements for DIRECT DISTRIBUTION via Developer ID.
+       NOT for Mac App Store (MAS requires sandbox + provisioning profile).
+
+       Notarisation requires hardened runtime, which blocks JIT, unsigned-
+       memory execution, and loading unsigned dylibs by default. Liquid
+       Clips desktop-2 is a Tauri shell with NO Python sidecar today, so
+       the only relaxation we keep is the WebView V8 JIT.
+
+       If/when a Python sidecar lands (numpy / faster-whisper / opencv),
+       uncomment the two commented-out flags below — they are ported
+       verbatim from the legacy desktop's entitlements-direct.plist. -->
+
+  <!-- WKWebView V8 + WebAssembly JIT. Tauri's bundled WebView usually
+       inherits system rules, but enabling explicitly is safer + faster. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+
+  <!-- Uncomment when Python sidecar lands (numpy / torch / faster-whisper):
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  -->
+
+  <!-- Uncomment when Python sidecar lands (loads unsigned dylibs from site-
+       packages: whisper.cpython-*.so, cv2.cpython-*.so, etc.):
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  -->
+
+</dict>
+</plist>

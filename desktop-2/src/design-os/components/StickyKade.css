@@ -1,0 +1,101 @@
+/* Sticky Kade — always above the fold. Placement modes (route-driven):
+     .is-center        · large, beside the hero (Command Room default)
+     .is-helper-right  · medium, right rail (workspace routes)
+     .is-bottom-right  · docked bottom-right of viewport (legacy default)
+     .is-mini          · top-right corner once hero anchor leaves viewport
+   Transition between any pair is a single timeline. */
+
+.lc-sticky-kade {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  transition:
+    left   320ms cubic-bezier(.2, .7, .2, 1),
+    right  320ms cubic-bezier(.2, .7, .2, 1),
+    bottom 320ms cubic-bezier(.2, .7, .2, 1),
+    top    320ms cubic-bezier(.2, .7, .2, 1),
+    width  320ms cubic-bezier(.2, .7, .2, 1),
+    height 320ms cubic-bezier(.2, .7, .2, 1);
+}
+
+/* Centre-stage: anchored INSIDE the campaign hero card area — never
+   covers the H1/eyebrow/stats row, never covers the Mission Status
+   panel (which sits at the right of the row), never covers the HUD.
+   Daniel's rule: centre-stage inside/near the hero mission card. */
+.lc-sticky-kade.is-center {
+  left: clamp(380px, 38vw, 620px);
+  top: clamp(420px, 50vh, 540px);
+  width: clamp(220px, 20vw, 300px);
+  height: clamp(220px, 20vw, 300px);
+}
+
+/* Helper-right: workspace routes (Studio, Engine). Smaller than centre,
+   docked to the right rail so the workspace canvas stays primary. */
+.lc-sticky-kade.is-helper-right {
+  right: clamp(28px, 4vw, 64px);
+  top: clamp(160px, 24vh, 260px);
+  width: clamp(220px, 22vw, 320px);
+  height: clamp(220px, 22vw, 320px);
+}
+
+/* Bottom-right: legacy/default — used by Stop Pages and dense ops. */
+.lc-sticky-kade.is-bottom-right {
+  right: clamp(20px, 4vw, 80px);
+  bottom: clamp(20px, 6vh, 120px);
+  width: clamp(280px, 28vw, 420px);
+  height: clamp(280px, 28vw, 420px);
+}
+
+/* Mini: top-right corner mini-helper once the hero anchor leaves view. */
+.lc-sticky-kade.is-mini {
+  right: 32px;
+  top: 96px;
+  width: 96px;
+  height: 96px;
+}
+
+.lc-sticky-kade-host {
+  position: relative;
+  width: 100%; height: 100%;
+}
+.lc-sticky-kade-glow {
+  position: absolute;
+  inset: -10%;
+  z-index: -1;
+  background: radial-gradient(circle at center,
+    rgba(255, 26, 140, .55) 0%,
+    rgba(255, 26, 140, .22) 28%,
+    rgba(255, 26, 140, .06) 58%,
+    transparent 75%);
+  filter: blur(6px);
+  animation: lc-sticky-kade-glow 8s cubic-bezier(.4, 0, .2, 1) infinite;
+}
+@keyframes lc-sticky-kade-glow {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.10); opacity: .82; }
+}
+.lc-sticky-kade.is-mini .lc-sticky-kade-glow {
+  inset: -20%;
+  filter: blur(10px);
+  opacity: .7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-sticky-kade { transition: none; }
+  .lc-sticky-kade-glow { animation: none; }
+}
+
+/* BUG-023 · engine progress pulse — intensifies glow + scales host briefly */
+.lc-sticky-kade.is-pulsing .lc-sticky-kade-glow {
+  filter: blur(14px); opacity: 1;
+  transform: scale(1.18);
+  transition: opacity 200ms ease-out, transform 200ms ease-out, filter 200ms ease-out;
+}
+.lc-sticky-kade.is-pulsing .lc-sticky-kade-host {
+  transform: scale(1.04);
+  transition: transform 200ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lc-sticky-kade.is-pulsing .lc-sticky-kade-glow,
+  .lc-sticky-kade.is-pulsing .lc-sticky-kade-host { transform: none; }
+}

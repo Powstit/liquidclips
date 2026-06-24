@@ -1,0 +1,25 @@
+{
+  "journey": "Activation Flow",
+  "started_at": "2026-06-23T11:05:57.205Z",
+  "result": "FAIL",
+  "failed_step": {
+    "step": 1,
+    "name": "Cold launch (no JWT) · LoginOnboarding renders idle state"
+  },
+  "step_log": [
+    {
+      "step": 1,
+      "name": "Cold launch (no JWT) · LoginOnboarding renders idle state",
+      "status": "FAIL"
+    }
+  ],
+  "screenshots": [
+    "/Users/dipdip/code/jnr/desktop-2/test-results/activation-flow-Activation-d8199-ated-·-mismatch-·-auth-fail-user-lens-chromium/test-failed-1.png"
+  ],
+  "console_errors": [
+    "console.error: Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+  ],
+  "dom_assertions": {},
+  "test_title": "Activation Flow · cold start · begin · handle · sync · home · reload-already-activated · mismatch · auth-fail",
+  "duration_ms": 10940
+}

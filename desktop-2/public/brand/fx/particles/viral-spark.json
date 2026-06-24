@@ -1,0 +1,25 @@
+{
+  "$schema": "liquid-clips/particle-config@1",
+  "name": "viral-spark",
+  "use": "rare reward — gold-fuchsia sparks around viral-moment marker on timeline (only on >85% viral score)",
+  "count": 14,
+  "spawn": "ring",
+  "ring_radius_px_rel": [0.16, 0.28],
+  "lifecycle": "infinite",
+  "velocity_radial_px_frame": [-0.06, 0.10],
+  "velocity_tangential_px_frame": [-0.05, 0.05],
+  "size_px": [1.6, 3.0],
+  "alpha": [0.45, 1.0],
+  "pulse": {
+    "rate_hz": 1.4,
+    "intensity": 0.55
+  },
+  "color_mix": {
+    "rgb(255,200,80)": 0.55,
+    "rgb(255,143,203)": 0.30,
+    "rgb(255,255,255)": 0.15
+  },
+  "blend": "screen",
+  "respects_reduced_motion": "static_ring",
+  "pause_when_hidden": true
+}

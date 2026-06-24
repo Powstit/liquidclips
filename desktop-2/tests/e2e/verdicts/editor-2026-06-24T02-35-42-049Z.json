@@ -1,0 +1,12 @@
+{
+  "journey": "editor",
+  "started_at": "2026-06-24T02:29:21.193Z",
+  "result": "PASS",
+  "failed_step": null,
+  "step_log": [],
+  "screenshots": [],
+  "console_errors": [],
+  "dom_assertions": {},
+  "test_title": "editor picker visible in ClipPreviewShell right rail",
+  "duration_ms": 2725
+}

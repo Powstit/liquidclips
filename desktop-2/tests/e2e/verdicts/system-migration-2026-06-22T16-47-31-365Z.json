@@ -1,0 +1,83 @@
+{
+  "journey": "System Migration",
+  "started_at": "2026-06-22T16:42:07.598Z",
+  "result": "PASS",
+  "failed_step": null,
+  "step_log": [
+    {
+      "step": 1,
+      "name": "STATIC · admin-HQ link in Settings.tsx is gated on tier.adminOverride",
+      "status": "PASS"
+    },
+    {
+      "step": 2,
+      "name": "Boot · admin clipper · land on home",
+      "status": "PASS"
+    },
+    {
+      "step": 3,
+      "name": "Settings · Upgrade card has real Whop link (no 'coming soon · post-beta')",
+      "status": "PASS"
+    },
+    {
+      "step": 4,
+      "name": "Settings · admin HQ link visible · opens account.liquidclips.app/admin",
+      "status": "PASS"
+    },
+    {
+      "step": 5,
+      "name": "Earn · 'Open affiliate dashboard ↗' → liquidclips.app/refer",
+      "status": "PASS"
+    },
+    {
+      "step": 6,
+      "name": "STATIC · PublishModule.tsx button label is 'Export' (not 'Publish now')",
+      "status": "PASS"
+    },
+    {
+      "step": 7,
+      "name": "Channels · Add-account button still wires through the proven Ayrshare bridge",
+      "status": "PASS"
+    }
+  ],
+  "screenshots": [],
+  "console_errors": [
+    "console.warning: [tauri-adapter] cannot listen on sidecar:ingest_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:stage_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:bake_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:thumbnail_batch_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:export_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:regenerate_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:pick_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:lift_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:overlay_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:ingest_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:lift_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:pick_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:regenerate_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:bake_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:thumbnail_batch_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:export_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:ingest_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:lift_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:pick_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:regenerate_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:bake_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:thumbnail_batch_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:export_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:died: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782138691077:162:11"
+  ],
+  "dom_assertions": {
+    "admin_hq_gated": true,
+    "upgrade_btn_text": "Manage plan on Whop ↗",
+    "upgrade_open_url": "https://whop.com/liquidclips/",
+    "hq_btn_text": "Open Admin HQ ↗",
+    "hq_open_url": "https://account.liquidclips.app/admin",
+    "ref_btn_text": "Open affiliate dashboard ↗",
+    "ref_open_url": "https://liquidclips.app/refer",
+    "publish_btn_body_excerpt": "data-testid=\"publish-now\"\n            data-export-state={exportState}\n            disabled={exportState === \"exporting\"}\n            onClick={publishNow}\n          >\n            {}\n            {exportState === \"exporting\"\n              ? \"Exporting…\"\n              : exportState === \"done\"\n                ? \"Exported ✓\"\n                : exportState === \"error\"\n                  ? \"Retry export\"\n  ",
+    "channels_add_state": "coming-soon"
+  },
+  "test_title": "System Migration · all proven-system cross-links live · publish button honest",
+  "duration_ms": 6769
+}

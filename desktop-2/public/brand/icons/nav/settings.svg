@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Liquid Clips · nav · Settings — wrench (calibration tower glyph) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FF1A8C" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" role="img" aria-hidden="true">
+  <!-- wrench head (open jaw) -->
+  <path d="M15 4a4 4 0 0 0-3.46 5.99 L4 17.5 L6.5 20 L14 12.46 A4 4 0 1 0 15 4 Z"/>
+  <!-- inner gap line for chrome highlight -->
+  <line x1="6.2" y1="17.8" x2="7.5" y2="19.1"/>
+</svg>

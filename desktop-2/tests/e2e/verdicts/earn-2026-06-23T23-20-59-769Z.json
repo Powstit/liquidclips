@@ -1,0 +1,12 @@
+{
+  "journey": "Earn",
+  "started_at": "2026-06-23T23:13:50.763Z",
+  "result": "PASS",
+  "failed_step": null,
+  "step_log": [],
+  "screenshots": [],
+  "console_errors": [],
+  "dom_assertions": {},
+  "test_title": "Earn tab · module renders with banner + status + rules + balances",
+  "duration_ms": 5316
+}

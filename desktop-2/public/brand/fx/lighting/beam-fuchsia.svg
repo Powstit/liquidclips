@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Liquid Clips · beam-fuchsia — directional fuchsia projection.
+     Kade beam / cutting beam / spotlight wash. screen-blend. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" preserveAspectRatio="xMidYMid meet" role="presentation">
+  <defs>
+    <linearGradient id="beam-fx" x1="0" y1="0.5" x2="1" y2="0.5">
+      <stop offset="0%"  stop-color="#FF1A8C" stop-opacity="0.96"/>
+      <stop offset="45%" stop-color="#FF1A8C" stop-opacity="0.46"/>
+      <stop offset="100%" stop-color="#FF1A8C" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="beam-fx-bloom" cx="0%" cy="50%" r="35%">
+      <stop offset="0%"  stop-color="#FF8FCB" stop-opacity="0.78"/>
+      <stop offset="80%" stop-color="#FF1A8C" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="beam-fx-glow" x="-10%" y="-50%" width="120%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g filter="url(#beam-fx-glow)">
+    <path d="M0 140 L40 140 L1180 110 L1180 190 L40 160 L0 160 Z" fill="url(#beam-fx)"/>
+  </g>
+  <rect width="1200" height="300" fill="url(#beam-fx-bloom)"/>
+</svg>

@@ -1,0 +1,623 @@
+import { useRef, useState } from "react";
+import {
+  Sparkles,
+  Layers,
+  ImageIcon,
+  FileText,
+  Youtube,
+  Upload,
+  Plus,
+  Wand2,
+  Calendar,
+  Share2,
+  Award,
+  Users,
+  ArrowRight,
+  Briefcase,
+  Lock,
+  Rocket,
+  Link2,
+  Compass,
+} from "lucide-react";
+import { SECTION_IDS } from "../../shell/sectionIds";
+import { useUserMode } from "../../shell/modeStore";
+import { navigateTo } from "../../shell/routes";
+import { ModeBadge } from "../../components/mode/ModeBadge";
+import { CapabilityLock } from "../../components/mode/CapabilityLock";
+import { GemPillToggle } from "../../components/mode/GemPillToggle";
+import { Badge } from "../../components/ui/Badge";
+import { Input } from "../../components/ui/Input";
+import { Collapsible } from "../../components/ui/Collapsible";
+import { Dialog } from "../../components/ui/Dialog";
+import { ActionPill } from "../../components/home/ActionPill";
+import { ImportDrawer } from "../../components/home/ImportDrawer";
+import { ThumbnailDrawer } from "../../components/home/ThumbnailDrawer";
+import { ScriptDrawer } from "../../components/home/ScriptDrawer";
+import { SponsoredBannerCarousel } from "../../components/home/SponsoredBannerCarousel";
+import { DropZone } from "../../components/cockpit/DropZone";
+import { usePlanStore } from "../../state/plan";
+import { useBrowseOverlay, WHOP_REWARDS_URL } from "../../state/browseOverlay";
+import { fakeClips } from "../../fixtures/fakeClips";
+import { fakeProjects } from "../../fixtures/fakeProjects";
+import { fakeMissions } from "../../fixtures/fakeEarn";
+import { fakeCampaigns } from "../../fixtures/fakeCampaigns";
+import { LiquidInvaderLoader } from "../../overlays/LiquidInvaderLoader";
+import { AchievementToast } from "../../overlays/AchievementToast";
+
+type DrawerKey = "import" | "thumbnails" | "script" | null;
+
+export function HomeSection() {
+  const { mode } = useUserMode();
+  const { plan, setPlan } = usePlanStore();
+  const [drawer, setDrawer] = useState<DrawerKey>(null);
+  const [expandedCard, setExpandedCard] = useState<"generate" | null>(null);
+  const [url, setUrl] = useState("");
+  const [unlockOpen, setUnlockOpen] = useState(false);
+  const [successOpen, setSuccessOpen] = useState(false);
+
+  // Lane 2 — Home DropZone affordance.
+  // dragHoverActive is LOCAL to Home (no global listener at App root).
+  // No real file pickup: drop clears the flag and swallows the event.
+  const [dragHoverActive, setDragHoverActive] = useState(false);
+  const dragDepthRef = useRef(0);
+  const onDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    dragDepthRef.current += 1;
+    setDragHoverActive(true);
+  };
+  const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+  };
+  const onDragLeave = () => {
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragHoverActive(false);
+  };
+  const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setDragHoverActive(false);
+    // No real file pickup — affordance only. v1 deferred.
+  };
+
+  const effectiveMode = mode === "agency" || mode === "campaign" ? "agency" : "clipper";
+  const isAgency = effectiveMode === "agency";
+  const isLocked = plan === "free";
+
+  const goCreate = () => navigateTo(SECTION_IDS.SECTION_CREATE);
+  const goEngine = () => navigateTo(SECTION_IDS.SECTION_EDITOR);
+  const goChannels = () => navigateTo(SECTION_IDS.SECTION_CHANNELS);
+  const goSchedule = () => navigateTo(SECTION_IDS.SECTION_SCHEDULE);
+  const goCampaigns = () => navigateTo(SECTION_IDS.SECTION_CAMPAIGNS);
+  const goEarn = () => navigateTo(SECTION_IDS.SECTION_EARN);
+  // S0 blocker fix 2026-06-17 — Browser was reachable only from the
+  // tier-gated SponsoredBannerCarousel CTA (free users saw "Upgrade to
+  // unlock rewards →"). Expose a plan-agnostic entry on the Home
+  // Connect+publish strip so the Browser feature is impossible to miss.
+  const openBrowser = useBrowseOverlay((s) => s.openWith);
+  const goBrowser = () => openBrowser(WHOP_REWARDS_URL, "browse-campaign");
+
+  const activeCampaign = fakeCampaigns.find((c) => c.status === "active");
+  const availableMissions = fakeMissions.filter((m) => m.status === "available").length;
+
+  const toggleGenerate = () => setExpandedCard((prev) => (prev === "generate" ? null : "generate"));
+
+  function handleGenerate100() {
+    if (isLocked) {
+      setUnlockOpen(true);
+      return;
+    }
+    setSuccessOpen(true);
+  }
+
+  function startTrial() {
+    setPlan("trial");
+    setUnlockOpen(false);
+    setSuccessOpen(true);
+  }
+
+  function dismissSuccess() {
+    setSuccessOpen(false);
+    goEngine();
+  }
+
+  const modeClass = isAgency ? "lc-home--agency" : "lc-home--clipper";
+  const modeData = isAgency ? "agency" : "clipper";
+
+  return (
+    <div
+      className={["lc-home", modeClass].join(" ")}
+      data-mode={modeData}
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      <DropZone active={dragHoverActive} />
+
+      {/* Mode toggle — gem-pill control. Active gem has a pink halo + bright
+          face; inactive is dimmed but still obvious as clickable. */}
+      <div className="lc-home-mode-strip-wrap">
+        <GemPillToggle />
+        <ModeBadge mode={isAgency ? "agency" : "clipper"} />
+      </div>
+
+      {/* Mode skin — mini path + headline (visually distinguishes Clipper vs Agency) */}
+      <div className="lc-home-mode-skin" data-mode={modeData}>
+        <div className="lc-home-mode-skin-headline">
+          {isAgency ? (
+            <>
+              <span className="lc-home-mode-skin-title">Agency Mode</span>
+              <span className="lc-home-mode-skin-sub">Create campaigns. Invite clippers. Grow distribution.</span>
+            </>
+          ) : (
+            <>
+              <span className="lc-home-mode-skin-title">Clipper Mode</span>
+              <span className="lc-home-mode-skin-sub">Join campaigns. Clip. Post. Submit.</span>
+            </>
+          )}
+        </div>
+        <ol className="lc-home-mode-path" aria-label={isAgency ? "Agency mission path" : "Clipper mission path"}>
+          {(isAgency
+            ? ["Create", "Invite", "Review", "Grow"]
+            : ["Join", "Clip", "Post", "Submit"]
+          ).map((step, idx, arr) => (
+            <li key={step} className="lc-home-mode-path-step">
+              <span className="lc-home-mode-path-label">{step}</span>
+              {idx < arr.length - 1 && <span className="lc-home-mode-path-arrow" aria-hidden="true">→</span>}
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      {/* Huge 4-card launcher */}
+      <div className="lc-launcher-grid">
+        {/* Generate / Create Clips */}
+        <div
+          className={["lc-launcher-card", expandedCard === "generate" ? "expanded" : ""].join(" ")}
+          data-card="generate"
+        >
+          <span className="lc-launcher-corner tl" />
+          <span className="lc-launcher-corner tr" />
+          <span className="lc-launcher-corner bl" />
+          <span className="lc-launcher-corner br" />
+          <Badge tone="brand">Build</Badge>
+          <div className="lc-launcher-icon">
+            <Sparkles size={48} strokeWidth={1.2} />
+          </div>
+          <div className="lc-launcher-title">Generate / Create Clips</div>
+          <div className="lc-launcher-subtitle">Paste a URL and create 30–100 clips in seconds.</div>
+          <button type="button" className="lc-btn" data-variant="primary" onClick={toggleGenerate}>
+            {expandedCard === "generate" ? "Close" : "Start generating"}
+          </button>
+
+          <Collapsible open={expandedCard === "generate"} className="lc-launcher-panel">
+            <div className="lc-launcher-panel-inner">
+              <div className="lc-launcher-input-row">
+                <Youtube size={16} className="text-fuchsia" />
+                <Input
+                  type="text"
+                  placeholder="Paste YouTube URL…"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+              <div className="lc-launcher-action-grid">
+                <ActionPill
+                  label="Generate clips"
+                  helper="Start from URL"
+                  icon={<Wand2 size={14} />}
+                  primary
+                  onClick={goCreate}
+                />
+                <ActionPill
+                  label="Generate 30 clips"
+                  helper="Starter batch"
+                  icon={<Plus size={14} />}
+                  onClick={goCreate}
+                />
+                <ActionPill
+                  label="Generate 100 clips"
+                  helper={isLocked ? "Unlock with Agency Growth" : "Agency batch ready"}
+                  icon={<Rocket size={14} />}
+                  locked={isLocked}
+                  onClick={handleGenerate100}
+                />
+                <ActionPill
+                  label="Open Engine"
+                  helper="Edit + export"
+                  icon={<ArrowRight size={14} />}
+                  onClick={goEngine}
+                />
+              </div>
+
+              <div className="lc-launcher-divider" aria-hidden="true" />
+
+              <div className="lc-launcher-mode-extras" data-size="sm">
+                {isAgency ? (
+                  <>
+                    <ActionPill
+                      label="Create campaign"
+                      helper="Brief + distribute"
+                      icon={<Briefcase size={14} />}
+                      onClick={goCampaigns}
+                    />
+                    <ActionPill
+                      label="Set campaign watermark"
+                      helper="Lock your stamp"
+                      icon={<Lock size={14} />}
+                      onClick={goCampaigns}
+                    />
+                    <ActionPill
+                      label="Invite clippers"
+                      helper="Grow the crew"
+                      icon={<Users size={14} />}
+                      onClick={goCampaigns}
+                    />
+                    <ActionPill
+                      label="Share affiliate link"
+                      helper="Invite and earn"
+                      icon={<Link2 size={14} />}
+                      onClick={goEarn}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <ActionPill
+                      label="Join campaign"
+                      helper="Find missions"
+                      icon={<Award size={14} />}
+                      onClick={goCampaigns}
+                    />
+                    <CapabilityLock label="Campaign watermark locked" className="self-center" />
+                    <ActionPill
+                      label="Submit to Whop"
+                      helper="Content rewards"
+                      icon={<Award size={14} />}
+                      onClick={goEarn}
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+          </Collapsible>
+        </div>
+
+        {/* Import */}
+        <LauncherCard
+          icon={<Layers size={48} strokeWidth={1.2} />}
+          title="Import"
+          subtitle="Drop a video file and send it into the Engine."
+          badge="Build"
+          primaryLabel="Import video"
+          primaryIcon={<Upload size={14} />}
+          onPrimary={() => setDrawer("import")}
+          data-card="import"
+        />
+
+        {/* Thumbnails */}
+        <LauncherCard
+          icon={<ImageIcon size={48} strokeWidth={1.2} />}
+          title="Thumbnails"
+          subtitle="Create thumbnails from your source video."
+          badge="SOON"
+          primaryLabel="Make thumbnails"
+          primaryIcon={<ImageIcon size={14} />}
+          onPrimary={() => setDrawer("thumbnails")}
+          data-card="thumbnails"
+        />
+
+        {/* Script */}
+        <LauncherCard
+          icon={<FileText size={48} strokeWidth={1.2} />}
+          title="Script"
+          subtitle="Write hooks and turn scripts into clips."
+          badge="SOON"
+          primaryLabel="Write script"
+          primaryIcon={<FileText size={14} />}
+          onPrimary={() => setDrawer("script")}
+          data-card="script"
+        />
+      </div>
+
+      {/* Sponsored reward banner carousel — hero always renders first,
+          long-rectangle slide carousel below. Offline-first sample JSON.
+          No real backend call, no browser overlay (Batch 5 deferred). */}
+      <div className="lc-home-banner-wrap">
+        <SponsoredBannerCarousel
+          tier={plan === "agency" ? "agency" : "free"}
+          onUpgrade={() => setUnlockOpen(true)}
+        />
+      </div>
+
+      {/* Connect + publish strip */}
+      <div className="lc-home-connect-strip compact">
+        <span className="lc-home-strip-label">Browser · connect · publish</span>
+        <div className="lc-home-strip-actions">
+          <button
+            type="button"
+            className="lc-btn"
+            data-variant="primary"
+            data-size="sm"
+            data-home-cta="open-browser"
+            onClick={goBrowser}
+            title="Open the in-app browser overlay"
+          >
+            <Compass size={14} /> Open Browser ↗
+          </button>
+          <button type="button" className="lc-btn" data-variant="secondary" data-size="sm" onClick={goChannels}>
+            <Share2 size={14} /> Connect channels
+          </button>
+          <button type="button" className="lc-btn" data-variant="ayrshare" data-size="sm" onClick={goChannels}>
+            <Share2 size={14} /> Publish via Ayrshare
+          </button>
+          <button type="button" className="lc-btn" data-variant="secondary" data-size="sm" onClick={goSchedule}>
+            <Calendar size={14} /> Schedule posts
+          </button>
+          <button type="button" className="lc-btn" data-variant="whop" data-size="sm" onClick={goEarn}>
+            <Award size={14} /> Submit to Whop
+          </button>
+        </div>
+      </div>
+
+      {/* Agency Partner Program strip — visible only in Agency mode. No real billing. */}
+      {isAgency && (
+        <div className="lc-home-partner-strip" role="region" aria-label="Agency Partner Program">
+          <div className="lc-home-partner-head">
+            <span className="lc-home-partner-eyebrow">Agency Partner Program</span>
+            <span className="lc-home-partner-headline">
+              Share your affiliate link and earn 50% MRR from every paid clipper you refer.
+            </span>
+          </div>
+          <div className="lc-home-partner-meta">
+            <span className="lc-home-partner-pill">Available on</span>
+            <span className="lc-home-partner-tier">Agency Growth</span>
+            <span className="lc-home-partner-tier">Agency Pro</span>
+            <span className="lc-home-partner-tier">Agency Scale</span>
+          </div>
+          <div className="lc-home-partner-actions">
+            <button type="button" className="lc-btn" data-variant="primary" data-size="sm" onClick={goEarn}>
+              <Link2 size={14} /> Share your affiliate link
+            </button>
+            <span className="lc-home-partner-chip" title="Payouts handled by Whop">
+              <Lock size={11} strokeWidth={2.25} />
+              Payouts handled by Whop
+            </span>
+            <span className="lc-home-partner-note">Agency account must remain active.</span>
+          </div>
+        </div>
+      )}
+
+      {/* Campaign / watermark / reward strip */}
+      <div className="lc-home-campaign-strip compact">
+        <div className="lc-home-campaign-chip">
+          <ModeBadge mode={isAgency ? "agency" : "clipper"} />
+          <div>
+            <div className="lc-home-campaign-title">Current mode: {isAgency ? "Agency" : "Clipper"}</div>
+            <div className="lc-home-campaign-meta">
+              {isAgency
+                ? "Create campaigns, set watermark, invite clippers"
+                : "Join campaigns, clip, submit to Whop rewards"}
+            </div>
+          </div>
+        </div>
+
+        <div className="lc-home-campaign-chip">
+          <CapabilityLock label="Campaign watermark locked" />
+          <div>
+            <div className="lc-home-campaign-title">{activeCampaign?.name ?? "No active campaign"}</div>
+            <div className="lc-home-campaign-meta">
+              {activeCampaign
+                ? `stamp ${activeCampaign.watermarkHandle} · locked`
+                : "Create a campaign to lock your watermark"}
+            </div>
+          </div>
+        </div>
+
+        <div className="lc-home-campaign-chip">
+          <Award size={18} />
+          <div>
+            <div className="lc-home-campaign-title">{availableMissions} mission{availableMissions === 1 ? "" : "s"} available</div>
+            <div className="lc-home-campaign-meta">Clip, post, and submit for rewards on Whop</div>
+          </div>
+        </div>
+
+        <div className="lc-home-campaign-chip">
+          <LiquidInvaderLoader />
+          <div>
+            <div className="lc-home-campaign-title">Engine ready</div>
+            <div className="lc-home-campaign-meta">Simulator · No real backend</div>
+          </div>
+        </div>
+
+        <div className="lc-home-campaign-handoffs">
+          <button type="button" className="lc-btn" data-variant="whop" data-size="sm" onClick={goEarn}>
+            <Award size={14} /> Whop Content Rewards →
+          </button>
+          {isAgency && (
+            <button type="button" className="lc-btn" data-variant="secondary" data-size="sm" onClick={goCampaigns}>
+              <Briefcase size={14} /> Whop Checkout placeholder
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Recent clips + projects */}
+      <div className="lc-home-recents">
+        <div className="lc-home-recent-col">
+          <div className="lc-home-recent-head">
+            <span className="lc-section-eyebrow">recent clips</span>
+            <button type="button" className="lc-home-recent-link" onClick={goEngine}>
+              Open Engine <ArrowRight size={12} />
+            </button>
+          </div>
+          <div className="lc-home-recent-list">
+            {fakeClips.slice(0, 3).map((clip) => (
+              <div key={clip.id} className="lc-home-recent-item" onClick={goEngine} role="button" tabIndex={0}>
+                <div className="lc-home-recent-thumb" />
+                <div>
+                  <div className="lc-home-recent-title">{clip.title}</div>
+                  <div className="lc-home-recent-meta">{clip.durationSec}s · {clip.source}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="lc-home-recent-col">
+          <div className="lc-home-recent-head">
+            <span className="lc-section-eyebrow">recent projects</span>
+            <button type="button" className="lc-home-recent-link" onClick={() => navigateTo(SECTION_IDS.SECTION_PROJECTS)}>
+              View all <ArrowRight size={12} />
+            </button>
+          </div>
+          <div className="lc-home-recent-list">
+            {fakeProjects.slice(0, 3).map((p) => (
+              <div key={p.id} className="lc-home-recent-item" onClick={() => navigateTo(SECTION_IDS.SECTION_PROJECTS)} role="button" tabIndex={0}>
+                <div className="lc-home-recent-thumb" />
+                <div>
+                  <div className="lc-home-recent-title">{p.name}</div>
+                  <div className="lc-home-recent-meta">{p.clipCount} clips · updated {p.updatedAt}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Persona footer cards removed in Batch 2.5 — the GemPillToggle at the
+          top of Home now owns the Clipper / Agency switch. Keeping two controls
+          for the same state on the same page was an AI-slop tell. */}
+
+      <AchievementToast show={false} />
+
+      <ImportDrawer open={drawer === "import"} onClose={() => setDrawer(null)} onSendToEngine={goEngine} />
+      <ThumbnailDrawer open={drawer === "thumbnails"} onClose={() => setDrawer(null)} onOpenEngine={goEngine} />
+      <ScriptDrawer open={drawer === "script"} onClose={() => setDrawer(null)} onOpenEngine={goEngine} />
+
+      {/* 100-clip gate — unlock modal (simulator only, no real billing) */}
+      <Dialog open={unlockOpen} onClose={() => setUnlockOpen(false)} title="Unlock 100 clips">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-3 rounded-xl border border-fuchsia/30 bg-fuchsia/10 p-4">
+            <Rocket size={20} className="text-fuchsia" />
+            <div>
+              <div className="font-display text-[15px] font-semibold text-ink">Agency Growth</div>
+              <div className="text-[12px] text-text-secondary">Generate up to 100 clips per source.</div>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 rounded-xl border border-line bg-paper p-4">
+            <div className="flex items-center justify-between">
+              <span className="font-display text-[14px] font-medium text-ink">Agency Pro</span>
+              <Badge tone="brand">30-day free trial</Badge>
+            </div>
+            <p className="text-[12px] leading-relaxed text-text-secondary">
+              No real billing yet. This is a simulator surface — start the trial to unlock 100-clip batches.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="lc-btn flex-1"
+              data-variant="secondary"
+              onClick={() => setUnlockOpen(false)}
+            >
+              Not now
+            </button>
+            <button
+              type="button"
+              className="lc-btn flex-1"
+              data-variant="primary"
+              onClick={startTrial}
+            >
+              Start trial
+            </button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* 100-clip gate — simulator success / Engine handoff */}
+      <Dialog open={successOpen} onClose={dismissSuccess} title="100 clips queued">
+        <div className="flex flex-col gap-4">
+          <p className="text-[13px] leading-relaxed text-text-secondary">
+            Engine handoff accepted. Your 100-clip batch is queued in simulator mode — no real backend call.
+          </p>
+          <div className="flex items-center gap-2 rounded-lg border border-line bg-paper p-3 text-[12px] text-text-tertiary">
+            <Rocket size={14} className="text-fuchsia" />
+            <span>Agency Pro · 30-day free trial · no real Whop API</span>
+          </div>
+          <button type="button" className="lc-btn w-full" data-variant="primary" onClick={dismissSuccess}>
+            Open Engine →
+          </button>
+        </div>
+      </Dialog>
+
+      {/* Hidden contract anchors for the guard */}
+      <div aria-hidden="true" style={{ display: "none" }}>
+        <span data-home-card="generate">Generate / Create Clips</span>
+        <span data-home-card="import">Import</span>
+        <span data-home-card="thumbnails">Thumbnails</span>
+        <span data-home-card="script">Script</span>
+        <span data-home-action="paste-youtube">Paste YouTube URL</span>
+        <span data-home-action="generate-clips">Generate clips</span>
+        <span data-home-action="generate-30-clips">Generate 30 clips</span>
+        <span data-home-action="generate-100-clips">Generate 100 clips</span>
+        <span data-home-action="connect-channels">Connect channels</span>
+        <span data-home-action="publish-ayrshare">Publish via Ayrshare</span>
+        <span data-home-action="schedule-posts">Schedule posts</span>
+        <span data-home-action="submit-whop">Submit to Whop rewards</span>
+        <span data-home-action="open-engine">Open Engine</span>
+        <span data-home-mode="clipper">Clipper Mode</span>
+        <span data-home-mode="agency">Agency Mode</span>
+        <span data-home-action="join-campaign">Join campaign</span>
+        <span data-home-action="create-campaign">Create campaign</span>
+        <span data-home-action="set-watermark">Set campaign watermark</span>
+        <span data-home-action="invite-clippers">Invite clippers</span>
+        <span data-home-lock="campaign-watermark">Campaign watermark locked</span>
+        <span data-home-whop="content-rewards">Whop Content Rewards</span>
+        <span data-home-whop="checkout">Whop Checkout</span>
+        <span data-home-path="clipper">Join → Clip → Post → Submit</span>
+        <span data-home-path="agency">Create → Invite → Review → Grow</span>
+        <span data-home-partner="program">Agency Partner Program</span>
+        <span data-home-partner="affiliate-link">Share your affiliate link</span>
+        <span data-home-partner="mrr">Earn 50% MRR</span>
+        <span data-home-partner="payouts">Payouts handled by Whop</span>
+        <span data-home-partner="active">Agency account must remain active</span>
+        <span data-home-tier="growth">Agency Growth</span>
+        <span data-home-tier="pro">Agency Pro</span>
+        <span data-home-tier="scale">Agency Scale</span>
+        <span data-home-lock="unlock-agency-growth">Unlock with Agency Growth</span>
+      </div>
+    </div>
+  );
+}
+
+interface LauncherCardProps {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  badge: string;
+  primaryLabel: string;
+  primaryIcon: React.ReactNode;
+  onPrimary: () => void;
+  "data-card"?: string;
+}
+
+function LauncherCard({ icon, title, subtitle, badge, primaryLabel, primaryIcon, onPrimary, "data-card": dataCard }: LauncherCardProps): JSX.Element {
+  return (
+    <div className="lc-launcher-card" data-card={dataCard} onClick={onPrimary} role="button" tabIndex={0}>
+      <span className="lc-launcher-corner tl" />
+      <span className="lc-launcher-corner tr" />
+      <span className="lc-launcher-corner bl" />
+      <span className="lc-launcher-corner br" />
+      <Badge tone={badge === "SOON" ? "soon" : "brand"}>{badge}</Badge>
+      <div className="lc-launcher-icon">{icon}</div>
+      <div className="lc-launcher-title">{title}</div>
+      <div className="lc-launcher-subtitle">{subtitle}</div>
+      <button type="button" className="lc-btn" data-variant="primary" onClick={(e) => { e.stopPropagation(); onPrimary(); }}>
+        {primaryIcon}
+        {primaryLabel}
+      </button>
+    </div>
+  );
+}

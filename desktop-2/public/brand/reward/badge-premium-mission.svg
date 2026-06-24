@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-hidden="true"><defs><radialGradient id="g" cx="50%" cy="40%" r="60%"><stop offset="0%" stop-color="#3A0D27"/><stop offset="100%" stop-color="#160418"/></radialGradient></defs><circle cx="64" cy="64" r="58" fill="none" stroke="#FFC83A" stroke-width="6"/><circle cx="64" cy="64" r="48" fill="url(#g)"/><polygon points="64 36 72 58 95 58 76 72 84 95 64 81 44 95 52 72 33 58 56 58" fill="#FF1A8C"/></svg>

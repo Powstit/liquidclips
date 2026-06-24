@@ -1,0 +1,12 @@
+{
+  "journey": "proof",
+  "started_at": "2026-06-23T16:59:15.508Z",
+  "result": "PASS",
+  "failed_step": null,
+  "step_log": [],
+  "screenshots": [],
+  "console_errors": [],
+  "dom_assertions": {},
+  "test_title": "proof 5 · true Agency · pill, no banner",
+  "duration_ms": 5776
+}

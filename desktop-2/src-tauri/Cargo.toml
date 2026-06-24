@@ -1,0 +1,45 @@
+[package]
+name = "liquid-clips-shell"
+version = "2.2.0"
+description = "Liquid Clips 2.0 raw shell"
+authors = ["Liquid Clips"]
+edition = "2021"
+
+[lib]
+name = "liquid_clips_shell_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# Batch C (2026-06-20) — `protocol-asset` feature lets the webview play
+# clip preview .mp4 files from CLIPS_HOME via the `asset:` URL scheme.
+# Required by ResultsGrid + Studio preview wiring (lands in Batch D).
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-deep-link = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# P1-1F-b · native OS credential storage for the license JWT.
+# macOS Keychain · Windows Credential Manager · Linux Secret Service.
+# `apple-native` + `windows-native` keep the implementation free of
+# external dbus/dconf requirements on those targets.
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+# P1-4-d · auto-update pipeline. `updater` is the minisign-verified
+# bundle fetcher; `process` is required by `relaunch()` after a
+# successful install.
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+# Batch C (2026-06-20) — fs plugin required by the `fs:*` capability set
+# in `capabilities/default.json`. The sidecar writes project state to
+# AppData; the frontend reads previews via the asset: protocol (enabled
+# in tauri.conf.json) — not directly via fs — so this is mostly a forward
+# enablement for batch D consumers. Plugin only adds ~150 KB to binary.
+tauri-plugin-fs = "2"
+# Sidecar bridge (Batch A · 2026-06-20) — Rust ⇄ Python JSON-RPC over stdio.
+# `anyhow` for error chaining inside sidecar.rs.
+# `tokio` with the full set the desktop sidecar.rs uses: io-util for line
+# pumping, process for ChildStdin/Command, sync for Mutex/oneshot, plus
+# macros + rt-multi-thread for the spawn primitives. Iron Gate IG-002.
+anyhow = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util", "process", "sync"] }

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Liquid Clips · nav · Campaigns — mission target / bullseye -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FF1A8C" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" role="img" aria-hidden="true">
+  <!-- outer ring -->
+  <circle cx="12" cy="12" r="8.4"/>
+  <!-- middle ring -->
+  <circle cx="12" cy="12" r="5.2"/>
+  <!-- bullseye -->
+  <circle cx="12" cy="12" r="1.6"/>
+  <!-- arrow tail (mission committed) -->
+  <line x1="17.5" y1="6.5" x2="21" y2="3"/>
+  <path d="M21 3 v3.4 h-3.4"/>
+</svg>

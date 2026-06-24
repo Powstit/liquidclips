@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Liquid Clips · nav · Create — link paste into a clip frame -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FF1A8C" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" role="img" aria-hidden="true">
+  <!-- clip frame -->
+  <rect x="3" y="5" width="18" height="14" rx="2.4"/>
+  <!-- link chain -->
+  <path d="M9 12.5 a2.6 2.6 0 0 1 2.6-2.6 h1.4"/>
+  <path d="M15 11.5 a2.6 2.6 0 0 1 -2.6 2.6 h-1.4"/>
+  <!-- connector segment -->
+  <line x1="10.5" y1="12" x2="13.5" y2="12"/>
+</svg>

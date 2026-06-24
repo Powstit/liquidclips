@@ -1,0 +1,12 @@
+{
+  "journey": "State",
+  "started_at": "2026-06-23T23:13:50.763Z",
+  "result": "PASS",
+  "failed_step": null,
+  "step_log": [],
+  "screenshots": [],
+  "console_errors": [],
+  "dom_assertions": {},
+  "test_title": "State transition · paid state renders distinct status + CTA",
+  "duration_ms": 4765
+}

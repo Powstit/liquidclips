@@ -1,0 +1,31 @@
+{
+  "$schema": "liquid-clips/motion-loop@1",
+  "name": "loader-campaign-sync",
+  "use": "campaign data fetch — slow mission badge rotation with fuchsia rim sync ring",
+  "type": "loop",
+  "duration_ms": 2400,
+  "easing": "linear",
+  "renderable": ["lottie", "css-overlay"],
+  "layers": [
+    {
+      "name": "badge",
+      "src": "brand/icons/action/campaign/mission.svg",
+      "size_px": 56,
+      "anchor": "center",
+      "rotation_deg": [0, 360],
+      "scale": [1.0, 1.0]
+    },
+    {
+      "name": "sync-ring",
+      "shape": "ring",
+      "outer_radius_rel": 0.62,
+      "inner_radius_rel": 0.54,
+      "tint": "#FF1A8C",
+      "alpha_curve": [0.42, 0.88, 0.42],
+      "rotation_deg": [0, -360],
+      "stroke_dash": "240 352"
+    }
+  ],
+  "respects_reduced_motion": "static_badge_with_dim_ring",
+  "pause_when_hidden": true
+}

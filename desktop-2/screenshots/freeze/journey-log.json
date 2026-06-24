@@ -1,0 +1,192 @@
+{
+  "passed": 28,
+  "total": 30,
+  "steps": [
+    {
+      "n": 1,
+      "label": "Home opens after intro/loading",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 2,
+      "label": "Click Browse open campaigns",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 3,
+      "label": "Browser overlay opens on top of app",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 4,
+      "label": "App dims behind browser (scrim present)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 5,
+      "label": "Click Use in Engine ↗",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 6,
+      "label": "Engine opens",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 7,
+      "label": "Handoff chip appears",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 8,
+      "label": "Select a clip",
+      "ok": false,
+      "note": ""
+    },
+    {
+      "n": 9,
+      "label": "Selected clip preview is vertical (9:16 thumb)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 10,
+      "label": "CampaignContextStrip visible",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 11,
+      "label": "Open Edit overlay",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 12,
+      "label": "Split layout renders",
+      "ok": false,
+      "note": ""
+    },
+    {
+      "n": 13,
+      "label": "Close overlay",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 14,
+      "label": "Click Publish via Ayrshare",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 15,
+      "label": "PublishModal opens",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 16,
+      "label": "Toggle channels",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 17,
+      "label": "Type/edit caption",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 18,
+      "label": "Select Post now",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 19,
+      "label": "Queue post (sim) → works",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 20,
+      "label": "Go to Schedule",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 21,
+      "label": "Queue rows present (n=4)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 22,
+      "label": "Delete (local) works (4 → 3)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 23,
+      "label": "Return to Engine",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 24,
+      "label": "Click Submit to Whop rewards",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 25,
+      "label": "SubmitToWhopModal opens",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 26,
+      "label": "Paste a fake posted link",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 27,
+      "label": "Open Whop submission ↗ writes local record + opens external",
+      "ok": true,
+      "note": "popup blocked in headless; local record verified next"
+    },
+    {
+      "n": 28,
+      "label": "Go to Earn",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 29,
+      "label": "Local submission ledger present with 2 row(s)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "n": 30,
+      "label": "Honesty footer visible",
+      "ok": true,
+      "note": ""
+    }
+  ],
+  "consoleErrors": [
+    "console: [invaders] read failed, treating as zero TypeError: Cannot read properties of undefined (reading 'invoke')",
+    "console: [invaders] read failed, treating as zero TypeError: Cannot read properties of undefined (reading 'invoke')",
+    "console: [invaders] read failed, treating as zero TypeError: Cannot read properties of undefined (reading 'invoke')",
+    "console: [invaders] read failed, treating as zero TypeError: Cannot read properties of undefined (reading 'invoke')"
+  ]
+}

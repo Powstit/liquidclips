@@ -1,0 +1,81 @@
+/* Design-OS shell covers the viewport — the legacy shell stays mounted
+   but is occluded behind us. This keeps the existing section registry +
+   sidecar wiring intact while letting us render the new room.
+   NOTE: do NOT add isolation:isolate here — it breaks the .lc-world's
+   position:fixed anchor (it would position relative to .lc-app instead
+   of viewport, causing the world canvas to vanish). */
+.lc-app {
+  position: fixed; inset: 0;
+  z-index: 200;
+  display: grid;
+  grid-template-columns: 244px 1fr;
+  min-height: 100vh;
+  background: transparent;
+  overflow: auto;
+  /* HUD is sticky + blur cone — reserve safe area for anchor jumps and
+     ensure hero H1 never lands behind it. ~58px HUD + ~30px blur fade. */
+  --lc-hud-safe-area: 88px;
+  scroll-padding-top: var(--lc-hud-safe-area);
+}
+
+/* Hide every part of the legacy shell when Design OS is active.
+   Keep elements mounted (so the section registry, mode store and sidecar
+   wiring stay alive) but force-occlude them. */
+body[data-design-os="active"] .lc-shell,
+body[data-design-os="active"] .lc-shell *,
+body[data-design-os="active"] .lc-aurora,
+body[data-design-os="active"] .lc-aurora *,
+body[data-design-os="active"] .lc-sidenav,
+body[data-design-os="active"] .lc-topbar,
+body[data-design-os="active"] .lc-canvas,
+body[data-design-os="active"] .lc-deck-atmosphere,
+body[data-design-os="active"] .lc-page,
+body[data-design-os="active"] .lc-section,
+body[data-design-os="active"] .lc-browse-rail-tab,
+body[data-design-os="active"] .lc-signal-line {
+  visibility: hidden !important;
+}
+/* Re-show the Design OS shell + every descendant. */
+body[data-design-os="active"] .lc-app,
+body[data-design-os="active"] .lc-app *,
+body[data-design-os="active"] .lc-app *::before,
+body[data-design-os="active"] .lc-app *::after,
+body[data-design-os="active"] .lc-cursor-glow,
+body[data-design-os="active"] .lc-sticky-kade,
+body[data-design-os="active"] .lc-sticky-kade *,
+/* ModalPortal hoisted to SimulatorRouter so its context flows to every
+   route — re-show its subtree manually. */
+body[data-design-os="active"] .lc-modal-portal-root,
+body[data-design-os="active"] .lc-modal-portal-root *,
+/* Drawer also portals to body — re-show its subtree. */
+body[data-design-os="active"] .lc-drawer-host,
+body[data-design-os="active"] .lc-drawer-host * {
+  visibility: visible !important;
+}
+
+.lc-main {
+  display: flex; flex-direction: column;
+  min-width: 0;
+}
+
+.lc-scroll {
+  padding: 26px 36px 110px;
+  display: flex; flex-direction: column;
+  gap: 26px;
+}
+
+/* Hero/title elements ALWAYS clear the sticky HUD safe area on scroll-into-view. */
+.lc-scroll .sim-welcome,
+.lc-scroll .cr-welcome,
+.lc-scroll h1 {
+  scroll-margin-top: var(--lc-hud-safe-area, 88px);
+}
+
+/* Reserve breathing room above the first hero block so the 80px H1 never
+   collides with the HUD's blur cone on initial render. */
+.lc-scroll > .sim-stage > .sim-welcome:first-child,
+.lc-scroll > .cr-welcome:first-child,
+.lc-scroll > :first-child .cr-welcome:first-child,
+.lc-scroll > :first-child > .sim-welcome:first-child {
+  padding-top: 16px;
+}

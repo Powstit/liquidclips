@@ -1,0 +1,27 @@
+{
+  "journey": "Full Clipping",
+  "started_at": "2026-06-23T11:46:25.352Z",
+  "result": "FAIL",
+  "failed_step": {
+    "step": 1,
+    "name": "Generate clips · seed completed session"
+  },
+  "step_log": [
+    {
+      "step": 1,
+      "name": "Generate clips · seed completed session",
+      "status": "FAIL",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/full-01-generate-clips-seed-completed-session.png"
+    }
+  ],
+  "screenshots": [
+    "/Users/dipdip/code/jnr/desktop-2/test-results/full-clipping-journey-Full-13dac-yle→schedule-honesty→export-user-lens-chromium/attachments/full-01-generate-clips-seed-completed-session-png-9ce05d91b1a53b1902cd69354c18658ac7aacf99.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/full-clipping-journey-Full-13dac-yle→schedule-honesty→export-user-lens-chromium/test-failed-1.png"
+  ],
+  "console_errors": [
+    "console.error: Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+  ],
+  "dom_assertions": {},
+  "test_title": "Full Clipping · customer walks generate→edit→reaction→caption→trim→watermark→style→schedule honesty→export",
+  "duration_ms": 20703
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "liquid-clips/motion-loop@1",
+  "name": "kade-eye-loader",
+  "use": "route-change / first-paint — composes over any Kade pose",
+  "type": "loop",
+  "duration_ms": 1200,
+  "easing": "cubic-bezier(.4,0,.2,1)",
+  "renderable": ["webp-cycle", "css-overlay", "lottie"],
+  "frames": {
+    "eye_pupil": [
+      { "t": 0.00, "shape": "dot",        "tint": "#FF1A8C", "rotation_deg":   0, "scale": 1.0, "glow_px": 8 },
+      { "t": 0.25, "shape": "arc-90",     "tint": "#FF3DA5", "rotation_deg":  90, "scale": 1.1, "glow_px": 12 },
+      { "t": 0.50, "shape": "arc-180",    "tint": "#FF1A8C", "rotation_deg": 180, "scale": 1.2, "glow_px": 16 },
+      { "t": 0.75, "shape": "arc-270",    "tint": "#FF3DA5", "rotation_deg": 270, "scale": 1.1, "glow_px": 12 },
+      { "t": 1.00, "shape": "dot",        "tint": "#FF1A8C", "rotation_deg": 360, "scale": 1.0, "glow_px": 8  }
+    ]
+  },
+  "compose": {
+    "over_sprite": "brand/kade/kade-base.png",
+    "left_eye_xy_rel":  [0.388, 0.298],
+    "right_eye_xy_rel": [0.612, 0.298],
+    "eye_radius_rel":   0.045
+  },
+  "respects_reduced_motion": "static_eye_dot",
+  "pause_when_hidden": true
+}
