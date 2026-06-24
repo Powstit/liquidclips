@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.cron import start_cron, stop_cron
 from app.db import Base, engine
-from app.routes import admin, affiliate, analytics, auth_whop, bonus_ledger, campaigns, channels, community, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, promo, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, admin_mutations, affiliate, analytics, auth_whop, bonus_ledger, campaigns, channels, community, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, promo, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -324,6 +324,52 @@ async def lifespan(_app: FastAPI):
         )""",
         "CREATE INDEX IF NOT EXISTS ix_announcements_kind ON announcements (kind)",
         "CREATE INDEX IF NOT EXISTS ix_announcements_pinned ON announcements (pinned)",
+        # HQ Agent 3 · Management Gap mutations (2026-06-24).
+        # users.banned_until — NULL = not banned. Far-future date = indefinite.
+        # Read by license-mint + Earn/Publish gates in a follow-up. The column
+        # lands here so the /admin/mutations/users/{id}/ban endpoint can write
+        # to it without a separate ALTER round-trip.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until timestamptz",
+        "CREATE INDEX IF NOT EXISTS ix_users_banned_until ON users (banned_until) WHERE banned_until IS NOT NULL",
+        # admin_audit_log — one row per admin mutation (success or failure).
+        # payload_json stores the REDACTED request body (secrets → first4+...).
+        # Indexed on actor_email + action + target_id so the Audit panel can
+        # filter cheaply. created_at index for the default time-window scan.
+        """CREATE TABLE IF NOT EXISTS admin_audit_log (
+            id bigserial PRIMARY KEY,
+            actor_email varchar(255) NOT NULL,
+            action varchar(120) NOT NULL,
+            target_type varchar(60) NOT NULL,
+            target_id varchar(120) NOT NULL,
+            payload_json text NOT NULL DEFAULT '{}',
+            result varchar(20) NOT NULL DEFAULT 'ok',
+            error_message text,
+            created_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_admin_audit_log_actor ON admin_audit_log (actor_email)",
+        "CREATE INDEX IF NOT EXISTS ix_admin_audit_log_action ON admin_audit_log (action)",
+        "CREATE INDEX IF NOT EXISTS ix_admin_audit_log_target ON admin_audit_log (target_id)",
+        "CREATE INDEX IF NOT EXISTS ix_admin_audit_log_created ON admin_audit_log (created_at)",
+        # agent_personas — admin-controllable lifecycle for the Whop chat-agent
+        # fleet. The runtime fleet (app/agents/whop_chat.py) still boots from
+        # WHOP_AGENT_KEYS env; this table tracks active/restart/key-rotation
+        # state so HQ can mutate the lifecycle without a redeploy. The runtime
+        # ↔ table handshake lands in a follow-up sprint.
+        """CREATE TABLE IF NOT EXISTS agent_personas (
+            id varchar(120) PRIMARY KEY,
+            label varchar(120) NOT NULL,
+            kind varchar(60) NOT NULL DEFAULT 'whop_chat',
+            active boolean NOT NULL DEFAULT true,
+            api_key_hash varchar(128),
+            api_key_preview varchar(40),
+            restart_count integer NOT NULL DEFAULT 0,
+            last_rotated_at timestamptz,
+            notes text,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_agent_personas_kind ON agent_personas (kind)",
+        "CREATE INDEX IF NOT EXISTS ix_agent_personas_active ON agent_personas (active)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -408,6 +454,11 @@ app.include_router(onboarding.router)
 app.include_router(affiliate.router)
 app.include_router(tiktok_verify.router)
 app.include_router(admin.router)
+# HQ Agent 3 · /admin/mutations/* — 11 management-gap mutations.
+# Mounted alongside the existing read-only /admin router so the same
+# require_admin gate guards both. Sibling routers (recovery, ai-terminal)
+# come from other HQ agents and are wired separately.
+app.include_router(admin_mutations.router)
 app.include_router(campaigns.router)
 app.include_router(bonus_ledger.router)
 app.include_router(community.router)
