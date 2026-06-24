@@ -50,11 +50,28 @@ function isAdminPath(pathname: string): boolean {
   return pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
 }
 
+// Recovery surfaces are the break-glass path for a locked-out admin.
+// They MUST be reachable from a non-allowlisted IP (hotel wifi after a
+// lost-laptop scenario), so they bypass the IP gate. Backend still
+// rate-limits (3/24h per IP) AND runs strict 3-factor verification on
+// non-allowlisted IPs (5-of-5 emails + PIN + auth code).
+function isRecoveryPath(pathname: string): boolean {
+  return (
+    pathname.startsWith("/admin/recovery") ||
+    pathname.startsWith("/api/admin/recovery")
+  );
+}
+
 export default clerkMiddleware(async (_auth, req: NextRequest) => {
   const pathname = req.nextUrl.pathname;
 
   // IRON GATE IG-HQ-001 — admin IP gate runs BEFORE everything else.
-  if (isAdminPath(pathname) && !ipAllowedForAdmin(req)) {
+  // Recovery surfaces are exempt (see isRecoveryPath rationale).
+  if (
+    isAdminPath(pathname) &&
+    !isRecoveryPath(pathname) &&
+    !ipAllowedForAdmin(req)
+  ) {
     // 404 (not 403). Don't confirm the surface exists.
     return new NextResponse("Not Found", { status: 404 });
   }
