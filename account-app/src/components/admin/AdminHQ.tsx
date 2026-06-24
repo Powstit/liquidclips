@@ -15,6 +15,7 @@ import {
   ReportsTab,
   RevenueTab,
 } from "./HQCommandTabs";
+import { SurfacesTab } from "./SurfacesTab";
 
 // Read-only Admin HQ v0 — dense, utilitarian, on-brand (paper/ink + fuchsia).
 // All data is fetched THROUGH /api/admin/* proxy routes that re-check admin on
@@ -131,6 +132,7 @@ type TimelineEvent = { at: string | null; kind: string; label: string; source: s
 type Timeline = { user_id: string; email_masked: string; events: TimelineEvent[]; unavailable: string[]; note: string };
 
 const TABS = [
+  "Surfaces",
   "Overview",
   "Revenue",
   "Bugs",
@@ -329,6 +331,7 @@ export function AdminHQ({
       </nav>
 
       <div className="mt-7">
+        {tab === "Surfaces" && <SurfacesTab />}
         {tab === "Overview" && <OverviewTab initial={initialOverview} />}
         {tab === "Revenue" && <RevenueTab />}
         {tab === "Bugs" && <BugCommandTab agentKeyConfig={agentKeyConfig} />}
