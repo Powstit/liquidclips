@@ -63,6 +63,28 @@ from app.routes.usage import STARTER_EXPORT_CAP, starter_export_remaining
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
+# 2026-06-24 · Whop chat-agent fleet observability. Returns the live
+# fleet stats (uptime, per-agent polls / messages / errors). Returns
+# {"enabled": false, ...} when the fleet isn't running (default state
+# until Daniel flips WHOP_AGENT_ENABLED + drops in WHOP_AGENT_KEYS).
+@router.get("/whop-agents")
+def list_whop_agents(_: "AdminUser") -> dict:
+    from app.agents.whop_chat import get_fleet, AGENT_ENABLED
+    fleet = get_fleet()
+    if fleet is None:
+        return {
+            "enabled": AGENT_ENABLED,
+            "running": False,
+            "fleet_size": 0,
+            "note": "fleet not started · WHOP_AGENT_ENABLED=true + WHOP_AGENT_KEYS required",
+        }
+    return {
+        "enabled": True,
+        "running": True,
+        **fleet.stats(),
+    }
+
+
 # --- datetime helpers --------------------------------------------------
 # SQLite stores tz-aware DateTime columns as naive; comparing them against a
 # tz-aware now() raises TypeError. Match the dialect like cron.py does.

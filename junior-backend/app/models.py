@@ -94,6 +94,15 @@ class User(Base):
     # tiktok_verification_code + tiktok_verified_at drive the code-in-bio gate.
     # partner_unlocked_at + whop_commission_override_id mark the user as a
     # Partner — set together when the unlock service POSTs the 50% override.
+    # 2026-06-24 · carrot rail · Whop sub-merchant ID for transfers.create
+    # destination_id + onboarding status. Set via POST /me/carrot/onboard.
+    # carrot_total_paid_usd_cents is the lifetime sum of net payouts (5% LC
+    # fee already deducted). carrot_last_claim_at gates retries / idempotence.
+    whop_sub_merchant_id: Mapped[str | None] = mapped_column(String, nullable=True, unique=True, index=True)
+    whop_sub_merchant_status: Mapped[str] = mapped_column(String, nullable=False, default="none")
+    carrot_total_paid_usd_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    carrot_last_claim_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     referred_paid_subs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tiktok_handle: Mapped[str | None] = mapped_column(String, nullable=True)
     tiktok_verification_code: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -653,6 +662,74 @@ class SponsoredCampaign(Base):
     is_high_rpm: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_invite_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
+    # ─── Phase 6N-E · Whop reward connection ─────────────────────────────
+    # Locked rule: Whop is the source of truth for reward funding,
+    # bounty/reward pool, attribution, payout eligibility, approval.
+    # Liquid Clips caches a snapshot for cheap discovery-card reads but
+    # NEVER forks the accounting ledger.
+    #
+    # `whop_reward_id` / `whop_reward_url` rename the legacy
+    # `whop_campaign_id` / `whop_campaign_url` fields. Old columns stay
+    # as fallback reads until one release rotates everything to the new
+    # names. Idempotent ALTER TABLE statements in app/main.py:lifespan
+    # add the new columns and copy values from the legacy fields.
+    whop_reward_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    whop_reward_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Cached normalized response from `_normalize_bounty`. Capped at
+    # top-level fields so the row doesn't grow unbounded with deep
+    # discussion-post / attachment trees.
+    whop_reward_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # `business_goal_type` maps to our `campaign_type` discriminator.
+    # `bounty_type` is captured for analytics (`classic / user_funded /
+    # workforce`). Both nullable until first sync.
+    whop_reward_snapshot_business_goal: Mapped[str | None] = mapped_column(
+        String, nullable=True, index=True
+    )
+    whop_reward_snapshot_bounty_type: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )
+    # Last successful sync · drives the 6h stale calculation + cron
+    # pickup. Indexed so the cron query is cheap.
+    whop_reward_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    whop_reward_last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Cached reward-state enum from the 6N-E plan §1.b. Indexed for
+    # discovery-card filtering. Values:
+    #   unlinked / pending_reward / connected / live / funded /
+    #   partially_funded / capacity_reached / closed / unreachable /
+    #   not_visible / stale
+    whop_reward_state: Mapped[str | None] = mapped_column(
+        String, nullable=True, index=True
+    )
+    # ─── 6N-E correction patch · URL-first ──────────────────────────
+    # Separates "we tried to enrich" from "we never tried" so the UI
+    # can render the right empty state. Default 'not_attempted' on row
+    # create. The reward enrichment is BONUS · campaign creation +
+    # publish do NOT require this to be `enriched`.
+    #   not_attempted · no enrichment fetch yet (id couldn't be extracted)
+    #   enriched      · publicBounty returned a usable snapshot
+    #   not_enriched  · 404 / not_visible / Partner-gated (deliberate)
+    #   unreachable   · 5xx / network error (transient)
+    whop_reward_snapshot_status: Mapped[str] = mapped_column(
+        String, nullable=False, default="not_attempted", index=True
+    )
+
+    # Discriminator from Phase 6N-A architecture. Defaults to "clip" so
+    # legacy rows don't trip the not-null check during migration.
+    campaign_type: Mapped[str] = mapped_column(
+        String, nullable=False, default="clip", index=True
+    )
+
+    # Agency identity. SET NULL on user delete so the row survives.
+    created_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    # Long-form description body for the campaign page. Defaults to ''
+    # for legacy rows. Agency creation flow's Step 2 writes this.
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
@@ -850,5 +927,253 @@ class RewardBonusLedger(Base):
         DateTime(timezone=True), nullable=False, default=utcnow
     )
     ledger_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+
+
+# ─── v2 · Asset Infrastructure · DORMANT FOR V1 ─────────────────────────
+#
+# Reserved for the future Drive/Dropbox/ingestion model.
+# V1 Campaign assets are BRIEF LINKS (see `CampaignAssetLink` below).
+# V1 does NOT touch these tables. Removing forces a future session to
+# re-derive the schema from `docs/asset-source-foundation-audit.md`.
+#
+# Tables:
+#   - external_credentials        · per-user OAuth tokens (Drive, Dropbox)
+#   - campaign_asset_sources      · per-campaign source attachment + manifest
+#   - asset_source_ingestion_jobs · cron queue for re-ingest runs
+#
+# When create_all runs on deploy these tables get created empty.
+# Nothing reads or writes them in v1 · zero v1 risk.
+#
+# Tokens are encrypted at rest via Fernet (key from EXTERNAL_CREDENTIALS_KEY
+# env var). See `app/credentials_crypto.py` for the wrapper · also dormant.
+# ────────────────────────────────────────────────────────────────────────
+
+
+class ExternalCredential(Base):
+    """Per-user OAuth credential for an external provider (Drive, Dropbox,
+    future Whop user-OAuth). Tokens are stored encrypted at rest; never
+    return raw token material to the desktop.
+
+    One row per (user, provider, account) so a user can attach more than
+    one Drive account (personal + brand) without overwriting the prior.
+    """
+
+    __tablename__ = "external_credentials"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: "ec_" + uuid.uuid4().hex
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    provider: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    # provider ∈ {"google_drive", "dropbox", "whop_user"}
+
+    # Encrypted token material · NEVER write the raw token here.
+    # See `app/credentials_crypto.py:encrypt_token / decrypt_token`.
+    access_token_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    scope: Mapped[str] = mapped_column(String, nullable=False, default="")
+
+    # Display metadata so the desktop can show "you're connected as ..."
+    account_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    account_email: Mapped[str | None] = mapped_column(String, nullable=True)
+    provider_account_id: Mapped[str | None] = mapped_column(
+        String, nullable=True, index=True
+    )
+
+    status: Mapped[str] = mapped_column(String, nullable=False, default="active", index=True)
+    # status ∈ {"active", "expired", "revoked", "error"}
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    last_refreshed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+
+
+class CampaignAssetSource(Base):
+    """Per-campaign asset-source attachment. Polymorphic by `kind`.
+
+    A Campaign may have N rows (Drive folder + Dropbox file + direct upload
+    pack + Whop attachments dump). Each row's manifest is cached separately
+    so the ingestion cron can re-pull one without touching the others.
+    """
+
+    __tablename__ = "campaign_asset_sources"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: "asrc_" + uuid.uuid4().hex
+    )
+    # Campaign FK is a string id matching `sponsored_campaigns.id`
+    # (the canonical Campaign table per Phase 6N-A). We don't FK it
+    # explicitly here because the column may rename during the 6N-A
+    # schema delta — the column stays scoped to that table by convention.
+    campaign_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+
+    kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    # kind ∈ {"drive_folder", "drive_file", "dropbox_folder",
+    #         "dropbox_file", "whop_assets", "direct_upload"}
+
+    label: Mapped[str] = mapped_column(String, nullable=False)
+    url: Mapped[str] = mapped_column(String, nullable=False)
+    external_id: Mapped[str | None] = mapped_column(
+        String, nullable=True, index=True
+    )
+
+    credential_id: Mapped[str | None] = mapped_column(
+        ForeignKey("external_credentials.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    # Cached manifest computed by the ingestion cron · null until first run.
+    manifest_file_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    manifest_total_bytes: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )
+    manifest_sample_names: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    manifest_cached_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    status: Mapped[str] = mapped_column(
+        String, nullable=False, default="pending_link", index=True
+    )
+    # status ∈ {"pending_link", "ready", "stale", "error"}
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    added_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+
+
+class AssetSourceIngestionJob(Base):
+    """One row per ingestion run. The APScheduler cron picks up `queued`
+    rows; transitions to `running`; records the outcome.
+
+    Why a separate table:
+      - Backpressure · stuck-in-running rows recover via timestamp comparison.
+      - Audit · "why is this folder stale?" answers from the row history.
+      - Per-source throttling · one job in flight per
+        (credential_id, kind) keeps providers happy.
+    """
+
+    __tablename__ = "asset_source_ingestion_jobs"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: "aij_" + uuid.uuid4().hex
+    )
+    asset_source_id: Mapped[str] = mapped_column(
+        ForeignKey("campaign_asset_sources.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String, nullable=False, default="queued", index=True
+    )
+    # status ∈ {"queued", "running", "ok", "failed", "cancelled"}
+
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    files_seen: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bytes_seen: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    triggered_by: Mapped[str] = mapped_column(
+        String, nullable=False, default="cron"
+    )
+    # triggered_by ∈ {"cron", "agency_save", "manual_refresh"}
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+
+
+# ─── Phase 6N-D v1 · Campaign Asset Links ───────────────────────────────
+#
+# V1 Campaign assets are BRIEF LINKS. Agency pastes a Drive URL,
+# Dropbox URL, Whop URL, generic URL, or a free-text upload note.
+# Clipper opens the URL externally and follows the brief.
+#
+# NO OAuth, NO manifest, NO ingestion, NO folder crawl.
+# Whatever's on the other end of the URL is governed by the host
+# platform's own sharing rules. The backend just stores the row.
+#
+# Visibility gating is the only smart part:
+#   - "all"      · visible to anyone who can see the campaign card
+#   - "joined"   · visible after the clipper joins the campaign
+#   - "approved" · visible after the clipper has 1+ approved submission
+#
+# Per-campaign cardinality is small (typically 1-5 rows). Reorder is a
+# single bulk endpoint to keep the round-trip count low.
+# ────────────────────────────────────────────────────────────────────────
+
+
+class CampaignAssetLink(Base):
+    """Per-campaign asset brief link · v1.
+
+    Agency pastes an external URL. Clipper opens it in their browser.
+    Not managed, not ingested.
+    """
+
+    __tablename__ = "campaign_asset_links"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: "lnk_" + uuid.uuid4().hex
+    )
+    # Campaign FK is a string id matching `sponsored_campaigns.id`. Not a
+    # hard FK so the Phase 6N-A rename can land without breaking this row.
+    campaign_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+
+    type: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    # type ∈ {"google_drive", "dropbox", "whop", "direct_url", "upload_note"}
+
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    url: Mapped[str] = mapped_column(String, nullable=False, default="")
+    # `url` is empty when type == "upload_note" · the row is then a
+    # text-only instruction surface, not a clickable link.
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    visibility: Mapped[str] = mapped_column(
+        String, nullable=False, default="all", index=True
+    )
+    # visibility ∈ {"all", "joined", "approved"}
+
+    sort_order: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, index=True
+    )
+
+    added_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
     )

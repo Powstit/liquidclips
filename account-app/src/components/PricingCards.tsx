@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckoutButton } from "@clerk/nextjs/experimental";
+import { useSearchParams } from "next/navigation";
 import { track } from "@/lib/analytics";
 
 // Custom pricing UI. Replaces Clerk's stock <PricingTable> so we control the
@@ -81,10 +82,13 @@ const PLANS: Plan[] = [
     ],
   },
   {
-    id: "pro",
+    // 2026-06-23 · Clerk slug renamed Pro → Growth (same plan ID, new slug)
+    // SOVEREIGN-2.2 markup retained · backend /me effective_tier now returns
+    // "growth" for this plan after junior-backend redeploy.
+    id: "growth",
     checkoutPlanId: PRO_PLAN_ID,
-    slug: "pro",
-    name: "Pro",
+    slug: "growth",
+    name: "Growth",
     tagline: "Hosted AI and multi-platform publishing.",
     priceUsd: 79.99,
     features: [
@@ -104,7 +108,7 @@ const PLANS: Plan[] = [
     slug: "agency",
     name: "Agency",
     tagline: "For client accounts and white-label teams.",
-    priceUsd: 149,
+    priceUsd: 500,
     features: [
       { label: "Everything in Pro", built: true },
       { label: "25 social accounts included", built: true },
@@ -118,10 +122,19 @@ const PLANS: Plan[] = [
 
 export function PricingCards({ currentSlug }: { currentSlug?: string }) {
   const normalizedCurrentSlug = normalizePlanSlug(currentSlug);
+  // 2026-06-23 · ?addon=accountpack focuses the page on the +1 social
+  // account add-on. Desktop's PlanLimitStrip "+ Add account · $6/mo" CTA
+  // routes here so the customer lands on a focused CheckoutButton without
+  // hunting through the full plan grid. The regular grid still renders
+  // below so they can compare against upgrading to Pro instead.
+  const params = useSearchParams();
+  const focusedAddon = params?.get("addon");
+  const showAccountpackFocus = focusedAddon === "accountpack";
   // Monthly billing only — annual ships once we have real pricing data to
   // back a discount. No fake "save 20%" theatre.
   return (
     <div>
+      {showAccountpackFocus && <AccountpackFocusCard />}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {PLANS.map((p) => (
           <PlanCard
@@ -141,10 +154,60 @@ export function PricingCards({ currentSlug }: { currentSlug?: string }) {
   );
 }
 
+/** AccountpackFocusCard · focused $6/mo add-on CTA.
+ *  Rendered above the plan grid when ?addon=accountpack is present (deep
+ *  link from desktop's PlanLimitStrip "+ Add account" CTA). One CheckoutButton
+ *  wired to ACCOUNT_PACK_PLAN_ID. Stacks on any tier — the customer keeps
+ *  their current subscription and gains +1 connected channel slot. */
+function AccountpackFocusCard() {
+  return (
+    <div
+      data-testid="accountpack-focus-card"
+      className="mb-6 rounded-3xl border border-fuchsia bg-fuchsia-soft/20 p-6 shadow-[0_20px_60px_rgba(255,26,140,0.10)]"
+    >
+      <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex-1">
+          <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
+            Account pack · add-on
+          </div>
+          <h3 className="mt-2 font-display text-[24px] font-semibold tracking-[-0.02em] text-ink">
+            +1 connected social account
+          </h3>
+          <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
+            Stacks on any plan. Add one extra account for $6/mo — cancel anytime.
+            Perfect for Free users who want to publish to a second platform without upgrading.
+          </p>
+        </div>
+        <div className="flex items-baseline gap-2 self-stretch sm:self-center">
+          <span className="font-display text-[32px] font-bold tracking-[-0.03em] text-ink">$6</span>
+          <span className="font-mono text-[12px] text-text-tertiary">/month</span>
+        </div>
+      </div>
+      <div className="mt-5">
+        <CheckoutButton planId={ACCOUNT_PACK_PLAN_ID} planPeriod="month">
+          <button
+            onClick={() => track("checkout_started", {
+              plan_id: ACCOUNT_PACK_PLAN_ID,
+              plan_name: "Account pack",
+              add_on: true,
+            })}
+            className="w-full rounded-full bg-fuchsia px-5 py-3 font-sans text-[14px] font-medium text-paper transition-all hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] sm:w-auto"
+          >
+            Add account pack · $6/mo
+          </button>
+        </CheckoutButton>
+      </div>
+    </div>
+  );
+}
+
 function normalizePlanSlug(slug?: string): string | undefined {
   if (!slug) return undefined;
   if (slug === "free") return "free_user";
-  if (slug === "growth" || slug === "channel") return "pro";
+  // 2026-06-23 · Clerk slug rename Pro → Growth. Legacy users still tagged
+  // "pro" / "channel" must normalise UP to "growth" (the new card slug)
+  // so PricingCards correctly marks their current plan.
+  if (slug === "pro" || slug === "channel") return "growth";
   if (slug === "autopilot") return "agency";
   return slug;
 }

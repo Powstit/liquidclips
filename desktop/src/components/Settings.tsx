@@ -61,7 +61,7 @@ const WHOP_MANAGE_URL = "https://whop.com/liquidclips";
 
 type Tier = "free" | "solo" | "growth" | "autopilot";
 
-type SettingsCategory = "account" | "api-keys" | "privacy" | "about";
+export type SettingsCategory = "account" | "api-keys" | "privacy" | "about";
 
 type DepsInfo = {
   ok: boolean;

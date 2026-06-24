@@ -1,0 +1,205 @@
+# ───── IRON GATE IG-013 (inherited from desktop/) ─────
+# Apple notarisation orchestrator for desktop-2. Paired with
+# desktop-2/scripts/notarize.sh + desktop-2/scripts/sign-clean-macos-app.sh
+# + desktop-2/scripts/package-signed-macos-artifacts.sh. The 6 secrets
+# (APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_ID, APPLE_PASSWORD,
+# APPLE_TEAM_ID, TAURI_SIGNING_PRIVATE_KEY) on Powstit/Jnr-employee are the
+# source of truth — already present (verified P1-4-d 2026-06-19).
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD is referenced for forward-compat; the
+# current key is unpassphrased so the empty env var is fine.
+# NEVER swap apple-actions/import-codesign-certs@v3 for an unversioned ref.
+# NEVER drop `--options runtime --timestamp` from the codesign pass.
+# Hardened runtime is mandatory; Apple rejects without it.
+#
+# ───── Coexistence note ─────
+# Until legacy desktop/ retires, both workflows live side-by-side. Legacy
+# fires on `v*.*.*` (release.yml). desktop-2 fires on `desktop-2-v*.*.*`
+# (this file). At cutover, rename this trigger to `v*.*.*` and delete
+# release.yml. Both publish to the same updater manifest endpoint
+# (updates.liquidclips.app/latest.json) — newest tag wins.
+#
+# ───── Slimming vs legacy release.yml ─────
+# Removed because desktop-2 has no Python sidecar (yet):
+#   - fetch ffmpeg + ffprobe step
+#   - fetch faster-whisper-tiny model step
+#   - sign sidecar helper binaries step
+#   - GIPHY_API_KEY / PEXELS_API_KEY / PIXABAY_API_KEY env vars
+#   - python-sidecar/* + python-sidecar models xattr targets
+# Re-add when sidecar lands.
+
+name: Release desktop-2
+on:
+  push:
+    tags:
+      - 'desktop-2-v[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Per-arch native jobs — same matrix as legacy.
+        target:
+          - runner: macos-latest
+            arch: aarch64
+            rust_target: aarch64-apple-darwin
+            slug: aarch64
+          - runner: macos-15-intel
+            arch: x86_64
+            rust_target: x86_64-apple-darwin
+            slug: x86_64
+    runs-on: ${{ matrix.target.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: install frontend dependencies
+        run: npm install
+        working-directory: ./desktop-2
+
+      - name: verify updater signing key matches tauri pubkey
+        working-directory: ./desktop-2
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          brew install minisign
+          CANARY="$(mktemp)"
+          PUBKEY_FILE="$(mktemp)"
+          SIG_FILE="$(mktemp)"
+          printf 'liquid-clips-updater-key-check\n' > "$CANARY"
+          npx tauri signer sign "$CANARY"
+          node -e "const fs=require('fs'); const c=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8')); fs.writeFileSync(process.argv[1], Buffer.from(c.plugins.updater.pubkey, 'base64'));" "$PUBKEY_FILE"
+          base64 -d -i "$CANARY.sig" > "$SIG_FILE"
+          minisign -Vm "$CANARY" -x "$SIG_FILE" -p "$PUBKEY_FILE"
+          EXPECTED='B1E037066BFCE444'
+          ACTUAL="$(sed -n 's/^untrusted comment: minisign public key: //p' "$PUBKEY_FILE" | tr -d '[:space:]')"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "✗ updater pubkey fingerprint mismatch: expected $EXPECTED, got $ACTUAL" >&2
+            exit 1
+          fi
+          echo "✓ updater signing secret matches tauri pubkey $ACTUAL"
+
+      # xattr strip: prevents codesign "resource fork" failure on bundled
+      # files that carry macOS quarantine/Finder metadata. desktop-2 trims
+      # the legacy list down to the surfaces that exist here.
+      - name: strip extended attributes from bundled files
+        run: |
+          set -euo pipefail
+          xattr -cr desktop-2/src/ 2>/dev/null || true
+          xattr -cr desktop-2/public/ 2>/dev/null || true
+          xattr -cr desktop-2/src-tauri/icons/
+          xattr -cr desktop-2/src-tauri/entitlements*
+          xattr -cr desktop-2/src-tauri/target/release/ 2>/dev/null || true
+          echo "✓ xattrs stripped"
+
+      - name: import Developer ID certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      # apple-actions/import-codesign-certs creates signing_temp.keychain but
+      # doesn't always add it to codesign's search list. Force the keychain
+      # to the front of the user search list and dump identities so we can
+      # confirm what's loaded.
+      - name: register codesign keychain + verify identity
+        run: |
+          set -euo pipefail
+          security list-keychains -d user -s signing_temp.keychain login.keychain
+          security default-keychain -d user -s signing_temp.keychain || true
+          security set-keychain-settings -lut 21600 signing_temp.keychain
+          echo "--- identities visible to codesign ---"
+          security find-identity -v -p codesigning
+          echo "--- Developer ID identities ---"
+          security find-identity -v -p codesigning | grep -i "Developer ID" || echo "(no Developer ID match)"
+
+      - name: build signed macOS app
+        working-directory: ./desktop-2
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        # Per-arch native build. Each matrix runner builds its own slice.
+        # We do not lipo a universal binary — instead we publish two DMGs.
+        run: npm run tauri -- build --target ${{ matrix.target.rust_target }} --bundles app
+
+      - name: repair-sign macOS app bundle
+        run: |
+          set -euo pipefail
+          APP=$(find desktop-2/src-tauri/target -path '*/bundle/macos/Liquid Clips.app' -type d | head -1)
+          if [ -z "$APP" ]; then
+            echo "✗ No Liquid Clips.app bundle found" >&2
+            exit 1
+          fi
+          desktop-2/scripts/sign-clean-macos-app.sh "$APP"
+
+      - name: rebuild DMG + updater tarball from repaired app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          APP=$(find desktop-2/src-tauri/target -path '*/bundle/macos/Liquid Clips.app' -type d | head -1)
+          # Delete the stale tauri-default DMG (with space, unsigned container)
+          # before rebuild so notarize.sh + upload glob only see the slugged
+          # + re-signed DMG. Inherited fix from legacy v0.7.50 incident where
+          # `find | head -1` picked the unsigned tauri DMG and uploaded a
+          # non-notarised file.
+          find desktop-2/src-tauri/target -path '*/bundle/dmg/*.dmg' -type f -delete || true
+          desktop-2/scripts/package-signed-macos-artifacts.sh "$APP" ${{ matrix.target.slug }}
+
+      - name: notarize and staple .dmg
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          DMG=$(find desktop-2/src-tauri/target -path '*/bundle/dmg/Liquid.Clips_*.dmg' -type f | head -1)
+          if [ -z "$DMG" ]; then
+            echo "✗ No rebuilt .dmg found at bundle/dmg/Liquid.Clips_*.dmg" >&2
+            exit 1
+          fi
+          echo "→ notarising $DMG"
+          desktop-2/scripts/notarize.sh "$DMG"
+
+      - name: verify notarized installer
+        run: |
+          set -euo pipefail
+          DMG=$(find desktop-2/src-tauri/target -path '*/bundle/dmg/Liquid.Clips_*.dmg' -type f | head -1)
+          echo "→ verifying $DMG"
+          spctl --assess -vv --type install "$DMG"
+          # Hard-require the staple ticket — without it, offline users hit
+          # Gatekeeper.
+          xcrun stapler validate "$DMG"
+
+      - name: create draft GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Liquid Clips ${{ github.ref_name }}
+          draft: true
+          prerelease: false
+          body: |
+            **What's new**
+            See [CHANGELOG.md](./CHANGELOG.md) for full details.
+
+            **Install**
+            1. Download `Liquid.Clips_*_aarch64.dmg` for Apple Silicon or `Liquid.Clips_*_x86_64.dmg` for Intel
+            2. Open the DMG, drag **Liquid Clips** to **Applications**
+            3. Double-click from Applications — the app is signed and notarized by Apple.
+          files: |
+            desktop-2/src-tauri/target/**/bundle/dmg/Liquid.Clips_*.dmg
+            desktop-2/src-tauri/target/**/bundle/macos/*.app.tar.gz
+            desktop-2/src-tauri/target/**/bundle/macos/*.app.tar.gz.sig

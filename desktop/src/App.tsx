@@ -16,7 +16,7 @@
 //          of a raw `String(e)` traceback.
 // Carry-overs from v0.7.8 preserved verbatim: S1 atomic-wipe sign-out, S5
 // engine-restart banner, S6 check_deps remediation, v0.7.7 fixes #3/#5/#9.
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { AlertTriangle, CheckCircle2, Loader2, LogIn } from "lucide-react";
@@ -82,7 +82,7 @@ import { OnboardingOverlay } from "./components/onboarding/OnboardingOverlay";
 import { StudioTour } from "./components/onboarding/StudioTour";
 import { useOnboardingStep } from "./contracts/useOnboardingStep";
 import { closeInvaders } from "./lib/invaders/store";
-import { Settings } from "./components/Settings";
+import { Settings, type SettingsCategory } from "./components/Settings";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { AchievementToast } from "./components/AchievementToast";
 import { SidecarCrashOverlay } from "./components/SidecarCrashOverlay";
@@ -344,6 +344,17 @@ export default function App() {
   const [settingsInitialTab, setSettingsInitialTab] = useState<
     "account" | "api-keys" | "privacy" | "about" | undefined
   >(undefined);
+  // v0.7.79 P0 — App shell contract: opening Settings must never happen while
+  // the Browse panel is open, because the Browse webview reserves 566px on
+  // the right and squashes Settings into the remaining compressed column.
+  const openSettings = useCallback(
+    (tab?: SettingsCategory) => {
+      void closeBrowsePanel().catch(() => undefined);
+      if (tab) setSettingsInitialTab(tab);
+      setSettingsOpen(true);
+    },
+    [],
+  );
   // v0.7.31 — Thumbnail Studio surface (Cover Pack + AI Generate). Replaces
   // the v0.7.1 placeholder toast at the WorkstationRoom onThumbnails handler.
   // slug="" means no project context (Brand/Identity wizards still work,
@@ -422,8 +433,7 @@ export default function App() {
         "about",
       ];
       if (settingsTabs.includes(detail?.tab)) {
-        setSettingsInitialTab(detail.tab);
-        setSettingsOpen(true);
+        openSettings(detail.tab);
       }
     }
     window.addEventListener("lc:settings-open-tab", onSettingsTab);
@@ -488,10 +498,21 @@ export default function App() {
   // Earn-tab ConnectionBadge "Sign in with Whop" CTA) can pop Settings open
   // without prop-drilling setSettingsOpen everywhere.
   useEffect(() => {
-    const open = () => setSettingsOpen(true);
+    const open = () => openSettings();
     window.addEventListener("lc:open-settings", open);
     return () => window.removeEventListener("lc:open-settings", open);
   }, []);
+
+  // v0.7.79 P0 — App shell contract: the Browse/Browser panel reserves a
+  // fixed 566px right gutter and squishes every core surface. It must close
+  // automatically when the user enters any core flow. We keep it open only
+  // for the deliberate browser contexts (Earn, Community, Bounty setup).
+  useEffect(() => {
+    const keepOpenViews: View["kind"][] = ["earn", "community", "bounty-setup"];
+    if (!keepOpenViews.includes(view.kind)) {
+      void closeBrowsePanel().catch(() => undefined);
+    }
+  }, [view.kind]);
 
   // v0.7.8 S5 — surface mid-session sidecar crashes as a top-level fuchsia
   // banner. Pre-fix the only path to learn about a sidecar:died event was
@@ -1475,12 +1496,7 @@ export default function App() {
           // v0.7.68 — This is an API-key problem, not an auth problem. Open
           // Settings directly on the API-keys tab instead of sending the user
           // through the FirstRun sign-in flow.
-          setSettingsOpen(true);
-          setTimeout(() => {
-            window.dispatchEvent(
-              new CustomEvent("lc:settings-open-tab", { detail: { tab: "keys" } }),
-            );
-          }, 0);
+          openSettings("api-keys");
           return false;
         }
       } catch {
@@ -2045,7 +2061,7 @@ export default function App() {
               break;
           }
         }}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => openSettings()}
       />
       {/* Right column — header on top, main below.
           v0.6.35 — Header chrome collapsed to a single AvatarOrbit on the
@@ -2340,6 +2356,9 @@ export default function App() {
                 // studio shows the Brand + Identity wizards (per-user setup
                 // that survives across projects) and gates the Cover Pack +
                 // Generate flows behind "open a project first."
+                // v0.7.79 P0 — App shell contract: close Browse panel so
+                // ThumbnailStudio has the full canvas.
+                void closeBrowsePanel().catch(() => undefined);
                 setThumbnailStudio({
                   open: true,
                   slug: "",
@@ -2355,6 +2374,9 @@ export default function App() {
                 // default (clips) mode, so the tile promised
                 // "transcript · captions ready" and silently ran the clips
                 // pipeline instead — Daniel's #5 punch-list bug.
+                // v0.7.79 P0 — App shell contract: close Browse panel so
+                // UploadPortal has the full canvas.
+                void closeBrowsePanel().catch(() => undefined);
                 setUploadPortal({ open: true, intent: "script" });
               }}
               dragHoverActive={dragHoverActive}
@@ -2584,7 +2606,7 @@ export default function App() {
                 Close
               </button>
               <button
-                onClick={() => setSettingsOpen(true)}
+                onClick={() => openSettings()}
                 className="rounded-full border border-line bg-paper px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:border-fuchsia"
               >
                 View account & watermark info
@@ -2646,7 +2668,7 @@ export default function App() {
               // v0.7.45 P3.c — If the channel-connect event already routed
               // us to Schedule → Channels, don't also open Settings.
               if (channelConnectPendingRef.current === true) return;
-              setSettingsOpen(true);
+              openSettings();
             }}
             onOpenSchedule={() => { setScheduleInitialSub("channels"); setView({ kind: "schedule" }); }}
           />
@@ -2875,7 +2897,7 @@ export default function App() {
         userTier={userTier}
         onOpenSettings={() => {
           setThumbnailStudio((prev) => ({ ...prev, open: false }));
-          setSettingsOpen(true);
+          openSettings();
         }}
         onCoverChanged={() => {
           // v0.7.31 — broadcast so LibraryTab re-fetches list_projects and the
@@ -2927,7 +2949,7 @@ export default function App() {
         refreshing={refreshingApp}
         onRefresh={() => void refreshApp()}
         onOpenNotifications={() => setInboxOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => openSettings()}
         onOpenSchedule={() => { setScheduleInitialSub(undefined); setView({ kind: "schedule" }); }}
         onOpenEarn={() => setView({ kind: "earn" })}
         onSignOut={
@@ -2966,7 +2988,7 @@ export default function App() {
       {showOnboarding && view.kind === "empty" && (
         <OnboardingOverlay
           onComplete={completeOnboarding}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={() => openSettings()}
           onTrySample={() => onPasteUrl(SAMPLE_ONBOARDING_URL, "")}
         />
       )}

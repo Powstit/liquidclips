@@ -24,15 +24,44 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
+from app.features import tier_limit
 from app.models import Schedule, User
 
 router = APIRouter(prefix="/schedules", tags=["schedules"])
 
 Platform = Literal["youtube", "tiktok", "x"]
+
+
+def _month_window_utc(now: datetime | None = None) -> datetime:
+    """First instant of the current UTC calendar month."""
+    n = now or datetime.now(timezone.utc)
+    return datetime(n.year, n.month, 1, tzinfo=timezone.utc)
+
+
+def _enforce_monthly_post_cap(db: Session, user: User, additional: int = 1) -> None:
+    """TASK 3 · monthly-posts tier cap. Counts rows created this UTC month
+    on the user's `schedules` table (any status). Raises 402 if adding
+    `additional` rows would exceed the tier cap. Founders → agency."""
+    cap = tier_limit(user.tier, "monthly_posts", founder=bool(user.founder_flag))
+    since = _month_window_utc()
+    used = (
+        db.query(func.count(Schedule.id))
+        .filter(Schedule.user_id == user.id)
+        .filter(Schedule.created_at >= since)
+        .scalar()
+        or 0
+    )
+    if used + additional > cap:
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            f"You've hit the {cap}-posts/month cap for your tier "
+            f"({used} used this month). Upgrade to schedule more.",
+        )
 
 
 def _require_scheduling_built(user: User) -> None:
@@ -106,6 +135,7 @@ def create_schedule(
     db: Annotated[Session, Depends(get_db)],
 ) -> ScheduleResponse:
     _require_scheduling_built(user)
+    _enforce_monthly_post_cap(db, user, additional=1)
     if body.scheduled_for.tzinfo is None:
         body.scheduled_for = body.scheduled_for.replace(tzinfo=timezone.utc)
     row = Schedule(
@@ -136,6 +166,17 @@ def create_drip_batch(
     keeps the UI feedback tight ("15 clips scheduled across 14 days").
     """
     _require_scheduling_built(user)
+    # TASK 3 · bulk-scheduling-rows tier cap. Mirrors
+    # `useTierCaps.bulkSchedulingRows` (Free/Solo 1 · Pro 25 · Agency 1000).
+    bulk_cap = tier_limit(user.tier, "bulk_scheduling_rows", founder=bool(user.founder_flag))
+    if len(body.items) > bulk_cap:
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            f"Bulk schedule capped at {bulk_cap} rows for your tier "
+            f"(received {len(body.items)}). Split the batch or upgrade.",
+        )
+    # TASK 3 · monthly-posts cap also applies to the batch as a whole.
+    _enforce_monthly_post_cap(db, user, additional=len(body.items))
     out: list[ScheduleResponse] = []
     for item in body.items:
         scheduled_for = item.scheduled_for
