@@ -1,0 +1,184 @@
+/* IRON GATE IG-HQ-002
+ * Liquid Clips HQ — Admin brand token contract.
+ * Mirrors /Users/dipdip/code/jnr/desktop-2/src/index.css and
+ * /Users/dipdip/code/jnr/liquidclips-marketing/src/app/globals.css.
+ * These --lc-* tokens are the namespaced surface contract the Admin HQ
+ * (account-app/src/components/admin/*) reads. Do NOT redefine the brand
+ * colours here — they alias the canonical ladder from globals.css.
+ * Touching this file without sign-off risks brand drift across the HQ
+ * shell + every tab. See ~/.claude/skills/liquid-clips-brand-kit/SKILL.md.
+ */
+
+:root {
+  /* --- HQ surface contract (aliases canonical fuchsia ladder) ----- */
+  --lc-bg:        var(--paper, #0b0b10);          /* page bg (deep) */
+  --lc-bg-warm:   var(--paper-warm, #15151c);     /* elevated card */
+  --lc-bg-elev:   var(--paper-elev, #1c1c25);     /* hover surface */
+  --lc-fg:        var(--ink, #f4f1ea);            /* primary text (warm white, NOT #fff) */
+  --lc-fg-muted:  var(--ink-soft, #c8c4be);       /* secondary text */
+  --lc-fg-faint:  var(--text-tertiary, #8a857e);  /* tertiary text */
+  --lc-accent:    var(--fuchsia, #ff1a8c);        /* one CTA accent — fuchsia */
+  --lc-accent-hot:  var(--fuchsia-bright, #ff3da5);
+  --lc-accent-mid:  var(--fuchsia-deep, #ff66b8);
+  --lc-accent-soft: var(--fuchsia-soft, rgba(255, 26, 140, 0.16));
+  --lc-stroke:        var(--line, rgba(255, 255, 255, 0.07));
+  --lc-stroke-strong: var(--line-strong, rgba(255, 255, 255, 0.12));
+  --lc-surface:       var(--paper-warm, #15151c); /* default panel surface */
+
+  /* Signal-only — never CTA, never decorative */
+  --lc-warn: #d99b2d;  /* finish-linking / pending */
+  --lc-fail: #ef4767;  /* error · within brand fuchsia neighbourhood */
+  --lc-ok:   #4dc6a8;  /* configured / live · muted teal, reads OK on dark */
+
+  /* Shadow ladder */
+  --lc-shadow-resting:  0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 2px 8px rgba(0, 0, 0, 0.45);
+  --lc-shadow-elevated: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 14px 40px rgba(0, 0, 0, 0.55);
+  --lc-glow-sm: 0 0 0 1px rgba(255, 26, 140, 0.35), 0 6px 18px rgba(255, 26, 140, 0.18);
+  --lc-glow-md: 0 0 0 1px rgba(255, 26, 140, 0.45), 0 12px 36px rgba(255, 26, 140, 0.28);
+
+  /* Radii — brand-locked */
+  --lc-radius-chip:    8px;
+  --lc-radius-control: 12px;
+  --lc-radius-card:    16px;
+  --lc-radius-card-lg: 24px;
+  --lc-radius-pill:    9999px;
+}
+
+/* --- Typography classes ------------------------------------------- */
+/* Display = Inter / Geist (the font next/font installs as --font-geist).
+ * Tracking matches brand kit §1 (Hero, H1, H2).                       */
+.lc-display {
+  font-family: var(--font-display, var(--font-geist, ui-sans-serif, system-ui, sans-serif));
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  color: var(--lc-fg);
+}
+
+.lc-body {
+  font-family: var(--font-sans, var(--font-geist, ui-sans-serif, system-ui, sans-serif));
+  font-weight: 400;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--lc-fg-muted);
+  letter-spacing: normal;
+}
+
+.lc-eyebrow {
+  font-family: var(--font-mono, var(--font-geist-mono, ui-monospace, "SF Mono", Menlo, monospace));
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--lc-fg-faint);
+}
+
+/* --- HQ shell chrome --------------------------------------------- */
+.lc-hq-shell {
+  background:
+    radial-gradient(1100px 520px at 12% -10%, rgba(255, 26, 140, 0.10), transparent 65%),
+    radial-gradient(900px 460px at 92% -8%, rgba(0, 229, 255, 0.05), transparent 60%),
+    var(--lc-bg);
+  color: var(--lc-fg);
+  min-height: 100vh;
+}
+
+/* Brand pill — primary CTA (one fuchsia bg, warm-ink text per kit) */
+.lc-pill-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--lc-radius-pill);
+  background: var(--lc-accent);
+  color: var(--lc-fg);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow: var(--lc-glow-sm);
+  border: 0;
+  cursor: pointer;
+  transition: background 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+}
+.lc-pill-primary:hover { background: var(--lc-accent-hot); box-shadow: var(--lc-glow-md); }
+.lc-pill-primary:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
+
+/* Brand pill — ghost / secondary */
+.lc-pill-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: var(--lc-radius-pill);
+  background: transparent;
+  color: var(--lc-fg-muted);
+  border: 1px solid var(--lc-stroke);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 200ms ease, color 200ms ease;
+}
+.lc-pill-ghost:hover {
+  border-color: rgba(255, 26, 140, 0.55);
+  color: var(--lc-fg);
+}
+
+/* Tab — inactive / active */
+.lc-tab {
+  padding: 0.4rem 0.95rem;
+  border-radius: var(--lc-radius-pill);
+  background: transparent;
+  color: var(--lc-fg-muted);
+  border: 1px solid var(--lc-stroke);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 200ms ease, color 200ms ease, background 200ms ease;
+}
+.lc-tab:hover { border-color: rgba(255, 26, 140, 0.45); color: var(--lc-fg); }
+.lc-tab[data-active="true"] {
+  background: var(--lc-accent-soft);
+  border-color: rgba(255, 26, 140, 0.55);
+  color: var(--lc-accent-mid);
+  box-shadow: var(--lc-glow-sm);
+}
+
+/* Active-tab indicator dot (brand accent, never grey) */
+.lc-tab[data-active="true"]::before {
+  content: "";
+  display: inline-block;
+  width: 6px; height: 6px;
+  margin-right: 0.45rem;
+  border-radius: 50%;
+  background: var(--lc-accent);
+  box-shadow: 0 0 8px rgba(255, 26, 140, 0.7);
+  vertical-align: 1px;
+}
+
+/* Brand stroke (subtle hairline under header) */
+.lc-stroke-under {
+  border-bottom: 1px solid var(--lc-stroke);
+  position: relative;
+}
+.lc-stroke-under::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 -1px 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 26, 140, 0.45) 35%, rgba(255, 26, 140, 0.45) 65%, transparent);
+  pointer-events: none;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .lc-tab, .lc-pill-primary, .lc-pill-ghost { transition: none; }
+}
