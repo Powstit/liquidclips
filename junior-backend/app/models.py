@@ -852,3 +852,55 @@ class RewardBonusLedger(Base):
     ledger_updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
     )
+
+
+# ─── HQ Agent 5 · Recovery Flow ─────────────────────────────────────────
+# Break-glass mechanism: if Daniel loses his laptop AND Clerk session AND
+# TOTP seed, the recovery flow proves identity via 3-of-5 master emails +
+# 6-digit PIN + 8-character auth code. Success re-issues a fresh TOTP seed
+# whose hash is persisted on the singleton AdminRecoveryConfig row (id=1).
+#
+# All secret material (pin, auth code, totp seed) is bcrypt-hashed before
+# storage. Raw values are NEVER persisted and NEVER logged. The fresh TOTP
+# seed is returned ONCE on a successful /verify and never displayed again.
+#
+# Rate limiting: 3 attempts per IP per 24h. Each attempt (success or fail)
+# logs a row to AdminRecoveryAttempt with the failure category — the route
+# counts the prior 24h rows for the IP to enforce the cap.
+
+
+class AdminRecoveryConfig(Base):
+    """Singleton row (id=1) holding bcrypt hashes for the recovery PIN,
+    auth code, and the most recently issued TOTP seed. The route layer
+    upserts the singleton; if id!=1 rows exist (test fixture pollution)
+    only id=1 is read."""
+
+    __tablename__ = "admin_recovery_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    auth_code_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    totp_seed_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_recovery_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+
+
+class AdminRecoveryAttempt(Base):
+    """One row per recovery attempt. `result` is the failure category so we
+    can audit which gate failed without ever recording raw secrets. The
+    route enforces 3-per-24h-per-IP by counting rows where ip == this ip
+    and created_at >= now-24h."""
+
+    __tablename__ = "admin_recovery_attempt"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ip: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    # result ∈ {"ok", "fail_emails", "fail_pin", "fail_auth_code", "rate_limited"}
+    result: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
