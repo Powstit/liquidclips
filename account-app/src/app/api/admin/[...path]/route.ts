@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { isAdmin } from "@/lib/admin-allowlist";
 
 // Server-side proxy for the Admin HQ client component. The browser calls
 // /api/admin/<backend-path>; this handler:
@@ -21,19 +22,6 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "https://api.j
 // in next.config.ts, so the auto-generated RouteContext<TPath> global isn't
 // available — we type the shape inline instead.
 type AdminRouteCtx = { params: Promise<{ path: string[] }> };
-
-const ADMIN_FALLBACK = [
-  "danieldiyepriye@gmail.com",
-  "mrddokubo@gmail.com",
-  "crazycatjackkids@gmail.com",
-  "thedoks2019@gmail.com",
-];
-
-function adminList(): string[] {
-  const env = process.env.JUNIOR_ADMIN_EMAILS ?? "";
-  const src = env ? env.split(",") : ADMIN_FALLBACK;
-  return src.map((e) => e.trim().toLowerCase()).filter(Boolean);
-}
 
 // Allow-list of backend admin paths reachable through this proxy. GET = read,
 // POST = the two explicitly-safe claim actions only. No other mutation path
@@ -99,7 +87,7 @@ async function requireAdminId(): Promise<string | null> {
   const user = await currentUser();
   if (!user) return null;
   const email = (user.primaryEmailAddress?.emailAddress ?? "").trim().toLowerCase();
-  if (!email || !adminList().includes(email)) return null;
+  if (!isAdmin(email)) return null;
   return userId;
 }
 

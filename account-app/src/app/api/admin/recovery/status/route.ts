@@ -19,10 +19,17 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 function clientIp(req: NextRequest): string {
-  const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim();
-  const real = req.headers.get("x-real-ip");
-  if (real) return real;
+  // P1-005: x-vercel-forwarded-for is signed by Vercel — trust it
+  // unconditionally. x-forwarded-for / x-real-ip can be spoofed by the
+  // browser; only honour them in development for local testing.
+  const vercel = req.headers.get("x-vercel-forwarded-for");
+  if (vercel) return vercel.split(",")[0].trim();
+  if (process.env.NODE_ENV !== "production") {
+    const fwd = req.headers.get("x-forwarded-for");
+    if (fwd) return fwd.split(",")[0].trim();
+    const real = req.headers.get("x-real-ip");
+    if (real) return real;
+  }
   return "unknown";
 }
 
@@ -34,7 +41,9 @@ export async function GET(req: NextRequest): Promise<Response> {
       headers: {
         "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "",
         // Pass-through so backend's ip_allowlisted check sees the real
-        // client IP, not Vercel's edge proxy.
+        // client IP, not Vercel's edge proxy. Backend reads
+        // x-vercel-forwarded-for first (signed, unspoofable) per P1-005.
+        "x-vercel-forwarded-for": ip,
         "x-forwarded-for": ip,
         "x-real-ip": ip,
       },

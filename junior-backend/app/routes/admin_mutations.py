@@ -1,10 +1,16 @@
 """Admin HQ Management Gap mutations — write-side admin actions.
 
-This router lives alongside the read-only `admin.py`. It owns the 11
-mutation endpoints (refund, ban, tier-change, agent kill/restart/rotate-key,
+This router lives alongside the read-only `admin.py`. It owns the
+mutation endpoints (ban, tier-change, agent kill/restart/rotate-key,
 campaign edit/create/archive, recent-sales feed, audit-log query) that
 let Daniel operate the business from HQ without log-diving or Railway
 shell access.
+
+P1-009: the per-user refund endpoint was DELETED. Whop owns refunds for
+sponsored-reward payouts and Stripe owns refunds for direct subscriptions;
+carrot withdraw is the only customer-facing money-out path Liquid Clips
+actually controls. The log-only refund stub was returning ok:true with no
+side effect — that's a worse UX than not having the button at all.
 
 Architecture
 ------------
@@ -41,7 +47,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Literal
@@ -280,6 +285,17 @@ def _mask_email(email: str | None) -> str | None:
     return f"{head}@{domain}"
 
 
+def _resolve_provider(u: User) -> str:
+    """P1-008 · single-column provider inference was mislabelling Stripe
+    Connect subscribers as 'clerk'. Priority: stripe → whop → clerk. Use
+    this helper anywhere a provider label is derived from a User row."""
+    if getattr(u, "stripe_connect_account_id", None):
+        return "stripe"
+    if getattr(u, "whop_user_id", None):
+        return "whop"
+    return "clerk"
+
+
 @router.get("/recent-sales", response_model=RecentSalesOut)
 def recent_sales(
     admin: AdminUser,
@@ -318,7 +334,7 @@ def recent_sales(
                 email_masked=_mask_email(u.email),
                 tier=u.tier,
                 subscription_status=u.subscription_status,
-                provider=("whop" if u.whop_user_id else "clerk"),
+                provider=_resolve_provider(u),
                 paid_until=_iso(u.paid_until),
                 at=_iso(u.updated_at),
             )
@@ -609,80 +625,15 @@ def change_tier(
 
 
 # =====================================================================
-# 6. POST /users/{user_id}/refund
+# 6. POST /users/{user_id}/refund — DELETED (P1-009)
 # =====================================================================
-
-
-class RefundIn(BaseModel):
-    amount_usd: float = Field(..., gt=0, le=10_000)
-    currency: Literal["usd", "usdc"] = "usd"
-    reason: str = Field(..., min_length=1, max_length=400)
-
-
-class RefundOut(BaseModel):
-    ok: bool
-    action: str = "user.refund"
-    target_id: str
-    audit_id: int | None
-    would_refund: bool
-    live: bool
-    message: str
-
-
-@router.post("/users/{user_id}/refund", response_model=RefundOut)
-def refund_user(
-    user_id: str,
-    body: RefundIn,
-    admin: AdminUser,
-    db: Annotated[Session, Depends(get_db)],
-    idempotence_key: Annotated[str | None, Header(alias="idempotence-key")] = None,
-) -> RefundOut:
-    """Phase 1 · LOG-ONLY refund intent.
-
-    When `WHOP_PAYMENTS_LIVE=true` AND a real refund call is wired
-    into `whop_payments`, this endpoint will fire it. Until then the
-    request is recorded in the audit log with `would_refund=true` so
-    Daniel can reconcile in the Whop dashboard."""
-    action = "user.refund"
-    _check_idempotence(db, action=action, idempotence_key=idempotence_key)
-
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found")
-
-    live = (os.environ.get("WHOP_PAYMENTS_LIVE", "").strip().lower() in ("1", "true", "yes", "on"))
-    would_refund = True
-    note = "intent recorded · log-only mode (set WHOP_PAYMENTS_LIVE=true + wire refund SDK to actually call Whop)"
-    if live:
-        # TODO: call whop_payments.refund(...) once the SDK exposes one.
-        # For now record the live-mode intent so the audit row reflects
-        # the decision trail.
-        note = "intent recorded · WHOP_PAYMENTS_LIVE=true but refund SDK not yet wired"
-
-    row = _write_audit(
-        db,
-        actor_email=admin.email or "",
-        action=action,
-        target_type="user",
-        target_id=user.id,
-        payload={
-            "idempotence_key": idempotence_key,
-            "amount_usd": body.amount_usd,
-            "currency": body.currency,
-            "reason": body.reason,
-            "live_mode": live,
-            "whop_user_id": user.whop_user_id,
-        },
-        result="ok",
-    )
-    return RefundOut(
-        ok=True,
-        target_id=user.id,
-        audit_id=row.id,
-        would_refund=would_refund,
-        live=live,
-        message=note,
-    )
+#
+# Removed because the endpoint was log-only — it returned ok:true with
+# would_refund:true but never touched Whop or Stripe. The frontend
+# rendered a green check; the customer kept the charge. Whop owns
+# sponsored-reward refunds, Stripe owns subscription refunds, carrot
+# withdraw is the only customer-facing money-out path Liquid Clips
+# controls. Re-add only if a real provider call is wired in.
 
 
 # =====================================================================
@@ -737,6 +688,30 @@ def ban_user(
         audit_id=row.id,
         message=f"banned until {until.isoformat()}",
     )
+
+
+# =====================================================================
+# 7a. GET /agents/count — used by HQ MutationsTab to hide the Agents
+#     section until the agent_personas table has rows. (P1-007 fix.)
+# =====================================================================
+
+
+class AgentCountOut(BaseModel):
+    count: int
+
+
+@router.get("/agents/count", response_model=AgentCountOut)
+def agents_count(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> AgentCountOut:
+    """Return the number of rows in `agent_personas`. The HQ Mutations
+    tab calls this on mount; when count == 0 it renders a placeholder
+    explaining that kill/restart/rotate is unavailable until the Whop
+    chat-agent fleet (WHOP_AGENT_KEYS) is seeded. The mutation routes
+    themselves stay live so seeding instantly unlocks them."""
+    n = db.query(AgentPersona).count()
+    return AgentCountOut(count=int(n or 0))
 
 
 # =====================================================================

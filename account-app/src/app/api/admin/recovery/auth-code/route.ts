@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { isAdmin } from "@/lib/admin-allowlist";
 
 // HQ Agent 5 · Recovery /auth-code proxy.
 //
@@ -9,19 +10,6 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "https://api.jnremployee.com";
-
-const ADMIN_FALLBACK = [
-  "danieldiyepriye@gmail.com",
-  "mrddokubo@gmail.com",
-  "crazycatjackkids@gmail.com",
-  "thedoks2019@gmail.com",
-];
-
-function adminList(): string[] {
-  const env = process.env.JUNIOR_ADMIN_EMAILS ?? "";
-  const src = env ? env.split(",") : ADMIN_FALLBACK;
-  return src.map((e) => e.trim().toLowerCase()).filter(Boolean);
-}
 
 async function requireAdminId(): Promise<string | null> {
   const { userId } = await auth();
@@ -33,7 +21,7 @@ async function requireAdminId(): Promise<string | null> {
   )
     .trim()
     .toLowerCase();
-  if (!email || !adminList().includes(email)) return null;
+  if (!isAdmin(email)) return null;
   return userId;
 }
 

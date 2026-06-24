@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { isAdmin } from "@/lib/admin-allowlist";
 
 // HQ Agent 3 · Mutations proxy.
 //
@@ -17,31 +18,20 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "https://api.j
 
 type MutationsRouteCtx = { params: Promise<{ path: string[] }> };
 
-const ADMIN_FALLBACK = [
-  "danieldiyepriye@gmail.com",
-  "mrddokubo@gmail.com",
-  "crazycatjackkids@gmail.com",
-  "thedoks2019@gmail.com",
-];
-
-function adminList(): string[] {
-  const env = process.env.JUNIOR_ADMIN_EMAILS ?? "";
-  const src = env ? env.split(",") : ADMIN_FALLBACK;
-  return src.map((e) => e.trim().toLowerCase()).filter(Boolean);
-}
-
-// Explicit allow-list for the 11 mutation endpoints + the audit-log read.
+// Explicit allow-list for the mutation endpoints + the audit-log read.
 // Anything that doesn't match gets a 400 before any network hop.
+// NOTE: refund endpoint removed (P1-009) — Whop owns sponsored-reward
+// refunds; carrot withdraw is the only customer-facing money-out path.
 const READ_PATHS: RegExp[] = [
   /^recent-sales$/,
   /^audit-log$/,
+  /^agents\/count$/,
 ];
 const WRITE_PATHS: RegExp[] = [
   /^campaigns\/[^/]+\/edit$/,
   /^campaigns\/create$/,
   /^campaigns\/[^/]+\/archive$/,
   /^users\/[^/]+\/tier-change$/,
-  /^users\/[^/]+\/refund$/,
   /^users\/[^/]+\/ban$/,
   /^agents\/[^/]+\/kill$/,
   /^agents\/[^/]+\/restart$/,
@@ -59,7 +49,7 @@ async function requireAdminId(): Promise<string | null> {
   const user = await currentUser();
   if (!user) return null;
   const email = (user.primaryEmailAddress?.emailAddress ?? "").trim().toLowerCase();
-  if (!email || !adminList().includes(email)) return null;
+  if (!isAdmin(email)) return null;
   return userId;
 }
 

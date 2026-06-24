@@ -11,25 +11,13 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { isAdmin } from "@/lib/admin-allowlist";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "https://api.jnremployee.com";
-
-const ADMIN_FALLBACK = [
-  "danieldiyepriye@gmail.com",
-  "mrddokubo@gmail.com",
-  "crazycatjackkids@gmail.com",
-  "thedoks2019@gmail.com",
-];
-
-function adminList(): string[] {
-  const env = process.env.JUNIOR_ADMIN_EMAILS ?? "";
-  const src = env ? env.split(",") : ADMIN_FALLBACK;
-  return src.map((e) => e.trim().toLowerCase()).filter(Boolean);
-}
 
 type AuditBody = {
   action?: string;
@@ -49,7 +37,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     return NextResponse.json({ error: "forbidden" }, { status: 401 });
   }
   const email = (user.primaryEmailAddress?.emailAddress ?? "").trim().toLowerCase();
-  if (!email || !adminList().includes(email)) {
+  if (!isAdmin(email)) {
     return NextResponse.json({ error: "forbidden" }, { status: 401 });
   }
 
@@ -60,13 +48,28 @@ export async function POST(req: NextRequest): Promise<Response> {
     return NextResponse.json({ error: "invalid json body" }, { status: 400 });
   }
 
-  // The client never supplies `actor_email` — it comes from Clerk. This
-  // prevents a client from spoofing the audit actor.
+  // P0-002 audit-forge guard:
+  //   - `action` MUST start with "ai.client." (this route is for client-side
+  //     AI-terminal audit pings only; everything else must come from a
+  //     server-side mutation endpoint).
+  //   - `target_type` / `target_id` are server-overridden to "ai"/"terminal"
+  //     regardless of client input.
+  //   - `result` is clamped to "ok" | "error".
+  //   - `actor_email` forced from Clerk session (existing behaviour).
+  const action =
+    typeof body.action === "string" ? body.action : "ai.client.unspecified";
+  if (!action.startsWith("ai.client.")) {
+    return NextResponse.json(
+      { error: "action prefix not allowed for client audit" },
+      { status: 403 },
+    );
+  }
+
   const payload = {
     actor_email: email,
-    action: typeof body.action === "string" ? body.action : "ai.client.unspecified",
-    target_type: typeof body.target_type === "string" ? body.target_type : "ai",
-    target_id: typeof body.target_id === "string" ? body.target_id : "terminal",
+    action,
+    target_type: "ai",
+    target_id: "terminal",
     payload_json:
       body.payload_json && typeof body.payload_json === "object"
         ? body.payload_json

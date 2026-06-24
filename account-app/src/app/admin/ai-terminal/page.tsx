@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { Terminal } from "./Terminal";
+import { isAdmin } from "@/lib/admin-allowlist";
 
 // Admin HQ — AI Terminal page (read-only investigative chat).
 //
@@ -10,19 +11,6 @@ import { Terminal } from "./Terminal";
 // it lives only inside `/api/admin/ai/run`.
 
 export const dynamic = "force-dynamic";
-
-const ADMIN_FALLBACK = [
-  "danieldiyepriye@gmail.com",
-  "mrddokubo@gmail.com",
-  "crazycatjackkids@gmail.com",
-  "thedoks2019@gmail.com",
-];
-
-function adminList(): string[] {
-  const env = process.env.JUNIOR_ADMIN_EMAILS ?? "";
-  const src = env ? env.split(",") : ADMIN_FALLBACK;
-  return src.map((e) => e.trim().toLowerCase()).filter(Boolean);
-}
 
 export default async function AITerminalPage() {
   const { userId } = await auth();
@@ -34,7 +22,7 @@ export default async function AITerminalPage() {
   const primaryEmail = (user.primaryEmailAddress?.emailAddress ?? "")
     .trim()
     .toLowerCase();
-  if (!primaryEmail || !adminList().includes(primaryEmail)) {
+  if (!isAdmin(primaryEmail)) {
     redirect("/");
   }
 
