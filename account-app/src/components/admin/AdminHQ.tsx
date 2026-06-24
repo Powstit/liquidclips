@@ -19,6 +19,7 @@ import { SurfacesTab } from "./SurfacesTab";
 import { PromoCodesTab } from "./PromoCodesTab";
 import { useDataSource } from "./_lib/useDataSource";
 import { LiveBadge } from "./_lib/LiveBadge";
+import { InfoIcon } from "./_lib/InfoIcon";
 
 // Read-only Admin HQ v0 — dense, utilitarian, on-brand (paper/ink + fuchsia).
 // All data is fetched THROUGH /api/admin/* proxy routes that re-check admin on
@@ -458,7 +459,10 @@ function OverviewTab({ initial }: { initial: Overview | null }) {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {Object.entries(data.config).map(([k, v]) => (
               <div key={k} className="rounded-2xl border border-line bg-paper p-3">
-                <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">{k}</div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                  {k}
+                  <InfoIcon hint={`Server-side boolean from /admin/overview · backend reports whether the env-secret for "${k}" is set on Railway (presence, not value).`} />
+                </div>
                 <div className="mt-2">
                   {typeof v === "boolean" ? <BoolChip value={v} /> : <span className="font-mono text-[12px] text-ink">{String(v)}</span>}
                 </div>
@@ -469,7 +473,10 @@ function OverviewTab({ initial }: { initial: Overview | null }) {
             {Object.entries(data.counts).map(([k, v]) => (
               <div key={k} className="rounded-2xl border border-line bg-paper p-4">
                 <div className="font-display text-[28px] font-bold tracking-[-0.02em] text-ink">{v}</div>
-                <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">{k.replace(/_/g, " ")}</div>
+                <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                  {k.replace(/_/g, " ")}
+                  <InfoIcon hint={`Live count from /admin/overview · backend SELECT against the "${k}" table or aggregate. No cache — recomputed per request.`} />
+                </div>
               </div>
             ))}
           </div>
@@ -477,10 +484,14 @@ function OverviewTab({ initial }: { initial: Overview | null }) {
             {Object.entries(data.notes).map(([k, v]) => (
               <div key={k} className="font-mono text-[11px] text-text-tertiary">
                 <span className="text-ink">{k.replace(/_/g, " ")}:</span> {v}
+                <InfoIcon hint="Backend-shipped honesty note · explains where the count comes from and what would need a new table to populate fully." />
               </div>
             ))}
           </div>
-          <div className="mt-3 font-mono text-[10px] text-text-tertiary">generated {data.generated_at}</div>
+          <div className="mt-3 font-mono text-[10px] text-text-tertiary">
+            generated {data.generated_at}
+            <InfoIcon hint="UTC server timestamp at the moment /admin/overview computed this snapshot. Refresh re-runs the query." />
+          </div>
         </>
       )}
     </Panel>
@@ -554,15 +565,24 @@ function LaunchHealthTab() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink">{data.score}/100</div>
-              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">automated gate score</div>
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                automated gate score
+                <InfoIcon hint="Weighted score from /admin/health · ok=full points, warn=partial, fail=zero. Pure read-only — no posts, charges, or mutations." />
+              </div>
             </div>
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div><Chip label={data.overall} tone={gateTone(data.overall)} /></div>
-              <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">overall status</div>
+              <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                overall status
+                <InfoIcon hint="Worst gate wins · any fail → fail, any warn → warn, else ok. Computed server-side on each /admin/health call." />
+              </div>
             </div>
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div className="font-mono text-[12px] text-ink">{data.generated_at}</div>
-              <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">last run</div>
+              <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                last run
+                <InfoIcon hint="UTC timestamp of the most recent /admin/health invocation rendered above. Click 'run health check' to refresh." />
+              </div>
             </div>
           </div>
 
@@ -573,12 +593,18 @@ function LaunchHealthTab() {
                 <div key={g.key} className="rounded-2xl border border-line bg-paper p-4">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">{g.key}</div>
+                      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                        {g.key}
+                        <InfoIcon hint={`Gate key · stable identifier the backend uses for this check. Owner: /admin/health gate "${g.key}".`} />
+                      </div>
                       <h3 className="mt-1 font-display text-[18px] font-semibold leading-tight tracking-[-0.02em] text-ink">{g.label}</h3>
                     </div>
                     <Chip label={g.status} tone={gateTone(g.status)} />
                   </div>
-                  <p className="mt-3 font-sans text-[13px] leading-relaxed text-text-secondary">{g.detail}</p>
+                  <p className="mt-3 font-sans text-[13px] leading-relaxed text-text-secondary">
+                    {g.detail}
+                    <InfoIcon hint="Detail string from the backend gate · plain-English explanation of why this is ok / warn / fail." />
+                  </p>
                   {value && (
                     <code className="mt-3 block overflow-x-auto rounded-xl bg-paper-warm/60 px-3 py-2 font-mono text-[11px] text-text-tertiary">
                       {value}
@@ -587,6 +613,7 @@ function LaunchHealthTab() {
                   {g.action && (
                     <p className="mt-3 font-mono text-[11px] text-fuchsia-deep">
                       action · {g.action}
+                      <InfoIcon hint="Operator action the backend recommends to clear this gate (e.g. set env var, run migration, paste id)." />
                     </p>
                   )}
                 </div>
@@ -595,7 +622,10 @@ function LaunchHealthTab() {
           </div>
 
           <div className="mt-4 rounded-2xl border border-line bg-paper p-4">
-            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">public urls</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+              public urls
+              <InfoIcon hint="Live public URLs the backend expects to be reachable. Each link opens in a new tab — pre-launch sanity check." />
+            </div>
             <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {Object.entries(data.public_urls).map(([k, v]) => (
                 <a key={k} href={v} target="_blank" rel="noreferrer" className="truncate rounded-xl border border-line bg-paper-warm/40 px-3 py-2 font-mono text-[11px] text-ink hover:border-fuchsia">
@@ -677,19 +707,31 @@ function FunctionHeatmapTab() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink">{data.score}/100</div>
-              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">function score</div>
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                function score
+                <InfoIcon hint="Weighted aggregate from /admin/function-heatmap · ok=full, warn=partial, fail=0. Computed every 5h by Railway cron." />
+              </div>
             </div>
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div><Chip label={data.overall} tone={gateTone(data.overall)} /></div>
-              <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">overall</div>
+              <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                overall
+                <InfoIcon hint="Worst-gate-wins roll-up · any fail → fail. Drives the admin Resend email when status flips to fail." />
+              </div>
             </div>
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div className="font-display text-[28px] font-bold text-ink">{data.failures}</div>
-              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">red gates</div>
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                red gates
+                <InfoIcon hint="Count of gates with status=fail in this snapshot. Each fail emits PostHog telemetry + triggers operator email." />
+              </div>
             </div>
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div className="font-mono text-[11px] text-ink">{data.source}</div>
-              <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">{data.generated_at}</div>
+              <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                {data.generated_at}
+                <InfoIcon hint='source = "cron" (Railway scheduled) or "manual" (run-now button). generated_at = UTC timestamp of the run.' />
+              </div>
             </div>
           </div>
 
@@ -698,14 +740,23 @@ function FunctionHeatmapTab() {
               <div key={g.key} className="rounded-2xl border border-line bg-paper p-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">{g.owner} · {g.key}</div>
+                    <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+                      {g.owner} · {g.key}
+                      <InfoIcon hint={`owner = which lane (auth/billing/backend/etc) owns this gate · key = stable id used by /admin/function-heatmap. Owner: ${g.owner}.`} />
+                    </div>
                     <h3 className="mt-1 font-display text-[18px] font-semibold leading-tight tracking-[-0.02em] text-ink">{g.label}</h3>
                   </div>
                   <Chip label={g.status} tone={gateTone(g.status)} />
                 </div>
-                <p className="mt-3 font-sans text-[13px] leading-relaxed text-text-secondary">{g.detail}</p>
+                <p className="mt-3 font-sans text-[13px] leading-relaxed text-text-secondary">
+                  {g.detail}
+                  <InfoIcon hint="Backend detail string · why this gate is currently ok / warn / fail. Edited via /admin/function-heatmap gate definitions." />
+                </p>
                 {g.action && (
-                  <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.08em] text-fuchsia-deep">{g.action}</p>
+                  <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.08em] text-fuchsia-deep">
+                    {g.action}
+                    <InfoIcon hint="Operator action to clear this gate · ship-blocking when status=fail." />
+                  </p>
                 )}
               </div>
             ))}
@@ -788,7 +839,9 @@ function AlertsTab() {
       {data && (
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <Chip label={`${data.unread} unread`} tone={data.unread ? "pending" : "ok"} />
+          <InfoIcon hint="Count of AdminAlert rows where read_at IS NULL for the signed-in admin. Mark-read writes read_at via POST /admin/alerts/{id}/read." />
           <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">{data.alerts.length} shown</span>
+          <InfoIcon hint="Alerts returned for the current filter (all / unread / high). Server caps at 100 rows; older rows live in /admin/alerts with paging." />
         </div>
       )}
       {data && data.alerts.length === 0 && (
@@ -803,11 +856,13 @@ function AlertsTab() {
               <div>
                 <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
                   {alert.category} · {alert.created_at ?? "unknown"}
+                  <InfoIcon hint="AdminAlert.category (heatmap/webhook/billing/system) and created_at UTC timestamp — written by the source that emitted the alert." />
                 </div>
                 <h3 className="mt-1 font-display text-[18px] font-semibold leading-tight tracking-[-0.02em] text-ink">{alert.title}</h3>
               </div>
               <div className="flex items-center gap-2">
                 <Chip label={alert.priority} tone={alert.priority === "high" ? "fail" : alert.priority === "medium" ? "pending" : "gray"} />
+                <InfoIcon hint="AdminAlert.priority · high triggers Resend operator email + sirens; medium/low ride the inbox only." />
                 {!alert.read_at && (
                   <button onClick={() => markRead(alert.id)} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ink hover:border-fuchsia">
                     mark read
@@ -884,19 +939,31 @@ function useUserDetail() {
 function SearchBar({ query, setQuery, onSearch, loading }: { query: string; setQuery: (s: string) => void; onSearch: () => void; loading: boolean }) {
   return (
     <div className="flex flex-col gap-2 sm:flex-row">
-      <input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && onSearch()}
-        placeholder="email · clerk id · whop user id · backend id · affiliate id"
-        className="w-full flex-1 rounded-xl border border-line bg-paper px-3 py-2.5 font-mono text-[12px] text-ink placeholder:text-text-tertiary"
-      />
+      <div className="flex w-full flex-1 items-center gap-1">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && onSearch()}
+          placeholder="email · clerk id · whop user id · backend id · affiliate id"
+          className="w-full flex-1 rounded-xl border border-line bg-paper px-3 py-2.5 font-mono text-[12px] text-ink placeholder:text-text-tertiary"
+        />
+        <InfoIcon hint="GET /admin/users?query= · matches against email, clerk_id, whop_user_id, backend User.id, affiliate_id. Email substring is case-insensitive." />
+      </div>
       <button onClick={onSearch} disabled={loading} className="shrink-0 rounded-xl bg-ink px-5 py-2.5 font-mono text-[12px] uppercase tracking-[0.1em] text-paper transition hover:bg-fuchsia disabled:opacity-50">
         {loading ? "…" : "search"}
       </button>
     </div>
   );
 }
+
+const USER_COL_HINTS: Record<string, string> = {
+  email: "User.email · MASKED in this list (e.g. d•••@example.com). Full email only appears in the detail card below after you click 'open'.",
+  tier: "users.tier · effective Liquid Clips tier (free/solo/pro/agency). Backend resolves Clerk metadata + Whop subscription + admin override.",
+  status: "users.subscription_status · active/trialing/canceled/past_due/refunded. Source: latest Whop/Clerk webhook for this user.",
+  provider: "users.billing_provider · 'whop' or 'stripe' (Clerk Billing). Determines which dashboard opens in the Billing tab.",
+  founder: "users.founder · true if the lifetime/founder unlock applies. Locked-in benefits survive subscription_status changes.",
+  created: "users.created_at · UTC date the backend User row was first inserted (Clerk webhook or first /desktop/connect).",
+};
 
 function ResultsTable({ rows, onOpen }: { rows: UserRow[]; onOpen: (id: string) => void }) {
   if (rows.length === 0) return null;
@@ -906,7 +973,10 @@ function ResultsTable({ rows, onOpen }: { rows: UserRow[]; onOpen: (id: string) 
         <thead>
           <tr className="text-left text-text-tertiary">
             {["email", "tier", "status", "provider", "founder", "created", ""].map((h) => (
-              <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+              <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                {h}
+                {USER_COL_HINTS[h] && <InfoIcon hint={USER_COL_HINTS[h]} />}
+              </th>
             ))}
           </tr>
         </thead>
@@ -932,10 +1002,13 @@ function ResultsTable({ rows, onOpen }: { rows: UserRow[]; onOpen: (id: string) 
   );
 }
 
-function KV({ label, children }: { label: string; children: React.ReactNode }) {
+function KV({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
     <div className="flex items-center justify-between gap-3 border-b border-line/40 px-1 py-1.5 last:border-b-0">
-      <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">{label}</span>
+      <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
+        {label}
+        {hint && <InfoIcon hint={hint} />}
+      </span>
       <span className="text-right font-mono text-[11px] text-ink">{children}</span>
     </div>
   );
@@ -946,37 +1019,40 @@ function UserDetailCard({ d, timeline, onLoadTimeline }: { d: UserDetail; timeli
     <div className="mt-5 rounded-2xl border border-line bg-paper p-5">
       <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
         <div>
-          <KV label="email (full)">{d.email}</KV>
-          <KV label="backend id">{d.backend_user_id}</KV>
-          <KV label="clerk id">{d.clerk_id}</KV>
-          <KV label="whop user id">{d.whop_user_id ?? <NA />}</KV>
-          <KV label="affiliate id (referrer)">{d.affiliate_id ?? <NA />}</KV>
-          <KV label="created">{d.created_at ?? <NA />}</KV>
+          <KV label="email (full)" hint="users.email · UNMASKED · PII exposure — only render in this admin-only detail card, never in lists or logs.">{d.email}</KV>
+          <KV label="backend id" hint="users.id · primary key in junior-backend Postgres. Stable, internal — use this for /admin/users/{id} lookups.">{d.backend_user_id}</KV>
+          <KV label="clerk id" hint="users.clerk_id · Clerk's user_xxxx id. Source for sign-in identity and (for Stripe path) billing.">{d.clerk_id}</KV>
+          <KV label="whop user id" hint="users.whop_user_id · Whop user_xxxx id, set when account linked via /whop/* OAuth or webhook. Null = no Whop link.">{d.whop_user_id ?? <NA />}</KV>
+          <KV label="affiliate id (referrer)" hint="users.referred_by · backend User.id of the affiliate who brought this user in. Drives starter-pass + Whop reward credit.">{d.affiliate_id ?? <NA />}</KV>
+          <KV label="created" hint="users.created_at · UTC insert timestamp of this User row.">{d.created_at ?? <NA />}</KV>
         </div>
         <div>
-          <KV label="tier raw → effective">
+          <KV label="tier raw → effective" hint="raw_tier = Clerk metadata · effective_tier = backend-resolved (raw + Whop sub + admin_override). The effective value is what gates features.">
             <span>
               {d.raw_tier} → <Chip label={d.effective_tier} />
               {d.admin_override && <span className="ml-1"><Chip label="admin override" tone="pending" /></span>}
             </span>
           </KV>
-          <KV label="founder raw / effective">{d.raw_founder ? "yes" : "no"} / {d.effective_founder ? "yes" : "no"}</KV>
-          <KV label="subscription status"><Chip label={d.subscription_status} /></KV>
-          <KV label="billing provider">{d.billing_provider}</KV>
-          <KV label="paid until">{d.paid_until ?? <NA />}</KV>
-          <KV label="exports used / cap">{d.starter_exports_used} / {d.starter_export_cap}</KV>
-          <KV label="remaining exports">{d.remaining_exports === null ? "unlimited" : d.remaining_exports}</KV>
+          <KV label="founder raw / effective" hint="raw = stored founder flag, effective = post-resolution (admin override can flip). Founder unlock is sticky across status changes.">{d.raw_founder ? "yes" : "no"} / {d.effective_founder ? "yes" : "no"}</KV>
+          <KV label="subscription status" hint="users.subscription_status · last value written by Clerk/Whop webhook. Drives gating across desktop + account-app."><Chip label={d.subscription_status} /></KV>
+          <KV label="billing provider" hint="users.billing_provider · 'whop' (Whop checkout/Affiliate) or 'stripe' (Clerk Billing direct). Determines which dashboard the Billing tab links to.">{d.billing_provider}</KV>
+          <KV label="paid until" hint="users.paid_until · UTC expiry from the last Whop/Stripe subscription event. Null if free/never-paid.">{d.paid_until ?? <NA />}</KV>
+          <KV label="exports used / cap" hint="users.starter_exports_used / .starter_export_cap · counter for the 100-export starter pass. Paid users bypass the cap.">{d.starter_exports_used} / {d.starter_export_cap}</KV>
+          <KV label="remaining exports" hint="Derived: cap − used (paid users return null = unlimited). Drives the desktop export #101 block.">{d.remaining_exports === null ? "unlimited" : d.remaining_exports}</KV>
         </div>
       </div>
 
       <div className="mt-4 rounded-xl border border-line bg-paper-warm/50 p-3">
-        <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">latest license</div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+          latest license
+          <InfoIcon hint="Most recent License row for this user (junior-backend License table). Desktop reads the active license via JWT in macOS keychain." />
+        </div>
         {d.latest_license ? (
           <div className="mt-2 grid grid-cols-2 gap-x-6 sm:grid-cols-4">
-            <KV label="tier at issue">{d.latest_license.tier_at_issue}</KV>
-            <KV label="issued">{d.latest_license.issued_at ?? <NA />}</KV>
-            <KV label="expires">{d.latest_license.expires_at ?? <NA />}</KV>
-            <KV label="revoked">{d.latest_license.revoked ? <Chip label="revoked" tone="fail" /> : <Chip label="active" tone="ok" />}</KV>
+            <KV label="tier at issue" hint="License.tier_at_issue · tier snapshotted into the JWT at mint time. Frozen for the license lifetime.">{d.latest_license.tier_at_issue}</KV>
+            <KV label="issued" hint="License.issued_at · UTC mint timestamp from POST /desktop/connect (server-side, x-internal-secret gated).">{d.latest_license.issued_at ?? <NA />}</KV>
+            <KV label="expires" hint="License.expires_at · JWT exp claim. Desktop refreshes on next launch when within renewal window.">{d.latest_license.expires_at ?? <NA />}</KV>
+            <KV label="revoked" hint="License.revoked · boolean. Set true by admin revoke; desktop hard-blocks paid features when true.">{d.latest_license.revoked ? <Chip label="revoked" tone="fail" /> : <Chip label="active" tone="ok" />}</KV>
           </div>
         ) : (
           <div className="mt-2"><NA /> <span className="font-mono text-[11px] text-text-tertiary">— no license minted yet</span></div>
@@ -1058,22 +1134,35 @@ function UsageTab() {
         <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <div className="rounded-2xl border border-line bg-paper p-4">
             <div className="font-display text-[28px] font-bold text-ink">{d.starter_exports_used}</div>
-            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">exports used</div>
+            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+              exports used
+              <InfoIcon hint="users.starter_exports_used · monotonic counter incremented by sidecar on every successful export. Survives logout." />
+            </div>
           </div>
           <div className="rounded-2xl border border-line bg-paper p-4">
             <div className="font-display text-[28px] font-bold text-ink">{d.remaining_exports === null ? "∞" : d.remaining_exports}</div>
-            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">remaining exports</div>
+            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+              remaining exports
+              <InfoIcon hint="Derived: starter_export_cap − starter_exports_used · null/∞ when tier is paid (cap is bypassed)." />
+            </div>
           </div>
           <div className="rounded-2xl border border-line bg-paper p-4">
             <div className="mt-1"><Chip label={d.subscription_status === "active" ? "active" : "trialing"} /></div>
-            <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">trialing vs active</div>
+            <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+              trialing vs active
+              <InfoIcon hint="Coalesces users.subscription_status into the 2-state label the gate cares about: 'active' (paid) or 'trialing' (everything else)." />
+            </div>
           </div>
           <div className="rounded-2xl border border-line bg-paper p-4">
             <div className="mt-1"><Chip label={d.remaining_exports === null ? "no" : wouldBlock ? "blocked" : "no"} tone={d.remaining_exports === null ? "ok" : wouldBlock ? "fail" : "ok"} /></div>
-            <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">export #101 blocked?</div>
+            <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+              export #101 blocked?
+              <InfoIcon hint="Simulates the desktop gate: if remaining_exports ≤ 0 AND tier is not paid, the next export is hard-blocked with the upgrade modal." />
+            </div>
           </div>
           <div className="col-span-2 mt-1 font-mono text-[11px] text-text-tertiary sm:col-span-4">
             last individual export event: <NA /> — only the running counter is stored in v0 (PostHog has clip-export events).
+            <InfoIcon hint="Per-export history is not in junior-backend (v0 design: only the monotonic counter). PostHog 'clip-export' events are the only event-level audit trail." />
           </div>
         </div>
       )}
@@ -1105,22 +1194,23 @@ function BillingTab() {
         <div className="mt-5 rounded-2xl border border-line bg-paper p-5">
           <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
             <div>
-              <KV label="provider"><Chip label={d.billing_provider} /></KV>
-              <KV label="subscription status"><Chip label={d.subscription_status} /></KV>
-              <KV label="tier"><Chip label={d.effective_tier} /></KV>
-              <KV label="paid until">{d.paid_until ?? <NA />}</KV>
+              <KV label="provider" hint="users.billing_provider · 'whop' or 'stripe'. Determines which third-party ledger is the source of truth for this user."><Chip label={d.billing_provider} /></KV>
+              <KV label="subscription status" hint="users.subscription_status · last value written by Clerk/Whop webhook. active/trialing/canceled/past_due/refunded."><Chip label={d.subscription_status} /></KV>
+              <KV label="tier" hint="users.tier · effective tier after admin override + Whop sub. Determines feature gating across desktop + account-app."><Chip label={d.effective_tier} /></KV>
+              <KV label="paid until" hint="users.paid_until · UTC expiry from the latest provider event. Null when user is free or never paid.">{d.paid_until ?? <NA />}</KV>
             </div>
             <div>
-              <KV label="founder">{d.effective_founder ? "yes" : "no"}</KV>
-              <KV label="refunded">{d.subscription_status === "refunded" ? "yes" : "no"}</KV>
-              <KV label="canceled">{d.subscription_status === "canceled" ? "yes" : "no"}</KV>
-              <KV label="past due">{d.subscription_status === "past_due" ? "yes" : "no"}</KV>
+              <KV label="founder" hint="users.founder (effective) · lifetime/founder unlock. Sticky across cancel/refund — drives founder badges + locked-tier access.">{d.effective_founder ? "yes" : "no"}</KV>
+              <KV label="refunded" hint="Derived: subscription_status === 'refunded'. Set by provider webhook (Whop or Stripe).">{d.subscription_status === "refunded" ? "yes" : "no"}</KV>
+              <KV label="canceled" hint="Derived: subscription_status === 'canceled'. User retains access until paid_until elapses unless revoked.">{d.subscription_status === "canceled" ? "yes" : "no"}</KV>
+              <KV label="past due" hint="Derived: subscription_status === 'past_due'. Provider failed to charge — Whop/Stripe retries; tier holds until status flips to canceled.">{d.subscription_status === "past_due" ? "yes" : "no"}</KV>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <a href={d.billing_provider === "whop" ? whopOrders : clerkDash} target="_blank" rel="noreferrer" className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-ink hover:border-fuchsia">
               open {d.billing_provider} dashboard →
             </a>
+            <InfoIcon hint={d.billing_provider === "whop" ? "Opens whop.com/dashboard — backend does not store a per-user Whop order id, so this lands on the root dashboard." : "Opens dashboard.clerk.com — backend does not store a Stripe customer id mapping, so this lands on the Clerk dashboard root."} />
           </div>
           <p className="mt-3 font-mono text-[11px] text-text-tertiary">
             Deep customer/order links are not available — the backend does not store a Whop order id or Clerk/Stripe customer id mapping in v0. These open the provider dashboard root.
@@ -1213,8 +1303,21 @@ function PendingWhopTab() {
           <table className="w-full border-collapse font-mono text-[11px]">
             <thead>
               <tr className="text-left text-text-tertiary">
-                {["email", "tier", "founder", "whop user id", "renewal end", "created", "consumed", "status", "age"].map((h) => (
-                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                {([
+                  ["email", "PendingWhopMembership.email_masked · MASKED. Email pre-purchase, before the user signed up for Liquid Clips."],
+                  ["tier", "PendingWhopMembership.tier · tier paid for on Whop (solo/pro/agency). Becomes users.tier when claim is consumed."],
+                  ["founder", "PendingWhopMembership.founder · true if Whop product = founder/lifetime SKU. Carries into users.founder on consume."],
+                  ["whop user id", "PendingWhopMembership.whop_user_id · Whop user_xxxx that paid. Null until Whop webhook attaches one."],
+                  ["renewal end", "PendingWhopMembership.renewal_period_end · UNIX seconds. Whop subscription expiry locked at the time of purchase."],
+                  ["created", "PendingWhopMembership.created_at · UTC insert (Whop webhook receipt time)."],
+                  ["consumed", "PendingWhopMembership.consumed_at · UTC when the entitlement was attached to a real user via signup/connect."],
+                  ["status", "PendingWhopMembership.status · 'open' (waiting for signup) / 'consumed' / 'expired' / 'voided'."],
+                  ["age", "Derived: now − created_at. How long this entitlement has been parked unclaimed."],
+                ] as Array<[string, string]>).map(([h, hint]) => (
+                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                    {h}
+                    <InfoIcon hint={hint} />
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -1236,7 +1339,7 @@ function PendingWhopTab() {
           </table>
         </div>
       )}
-      {note && <p className="mt-3 font-mono text-[11px] text-text-tertiary">{note}</p>}
+      {note && <p className="mt-3 font-mono text-[11px] text-text-tertiary">{note}<InfoIcon hint="Backend-shipped honesty note for /admin/pending-whop · explains data shape + gaps." /></p>}
     </Panel>
   );
 }
@@ -1301,8 +1404,20 @@ function ClaimsTab() {
           <table className="w-full border-collapse font-mono text-[11px]">
             <thead>
               <tr className="text-left text-text-tertiary">
-                {["short id", "target email", "requester", "created", "expires", "used", "status", "actions"].map((h) => (
-                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                {([
+                  ["short id", "ClaimToken.short_id · last 8 chars of the token id (safe to display). Raw token is NEVER rendered server-side or in the browser."],
+                  ["target email", "ClaimToken.target_email_masked · MASKED. Address the claim link was emailed to via Resend."],
+                  ["requester", "ClaimToken.requester_clerk_id · truncated. The admin/operator Clerk user who created the claim link."],
+                  ["created", "ClaimToken.created_at · UTC mint timestamp. Pairs with expires_at for the link lifetime."],
+                  ["expires", "ClaimToken.expires_at · UTC link death. After this, the claim cannot be used."],
+                  ["used", "ClaimToken.used_at · UTC when the link was clicked + entitlement attached. Null = unused."],
+                  ["status", "ClaimToken.status · open / used / expired / revoked. Drives whether expire/resend buttons are enabled."],
+                  ["actions", "expire = POST /admin/claims/{id}/expire (burn the link) · resend = POST /admin/claims/{id}/resend (re-email the SAME open link, no new token)."],
+                ] as Array<[string, string]>).map(([h, hint]) => (
+                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                    {h}
+                    <InfoIcon hint={hint} />
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -1422,8 +1537,14 @@ function WebhooksTab() {
       }
     >
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <FilterSelect label="provider" value={provider} onChange={setProvider} options={["", "clerk", "whop"]} />
-        <FilterSelect label="status" value={status} onChange={setStatus} options={["", "handled", "ignored", "failed"]} />
+        <span className="inline-flex items-center">
+          <FilterSelect label="provider" value={provider} onChange={setProvider} options={["", "clerk", "whop"]} />
+          <InfoIcon hint="Filter on WebhookEvent.provider · clerk (sign-in/billing) or whop (subscription/affiliate). Empty = both." />
+        </span>
+        <span className="inline-flex items-center">
+          <FilterSelect label="status" value={status} onChange={setStatus} options={["", "handled", "ignored", "failed"]} />
+          <InfoIcon hint="Filter on WebhookEvent.status · handled (applied), ignored (out-of-order/no-op), failed (signature ok, handler crashed)." />
+        </span>
         <span className="font-mono text-[10px] text-text-tertiary">pick filters, then Load</span>
       </div>
       <Loader on={loading} />
@@ -1436,8 +1557,19 @@ function WebhooksTab() {
           <table className="w-full border-collapse font-mono text-[11px]">
             <thead>
               <tr className="text-left text-text-tertiary">
-                {["provider", "event", "status", "linked", "error", "received", "handled"].map((h) => (
-                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                {([
+                  ["provider", "WebhookEvent.provider · clerk | whop. Source webhook surface."],
+                  ["event", "WebhookEvent.event_name · the provider's event id (e.g. user.created, subscription.canceled)."],
+                  ["status", "WebhookEvent.status · handled / ignored / failed. Failure = signature was valid but the handler raised."],
+                  ["linked", "Foreign keys this event touched · u:<User.id> · p:<PendingWhopMembership.id>. Empty = no record matched."],
+                  ["error", "WebhookEvent.error · raw handler error string (admin-only). Truncated; hover for full."],
+                  ["received", "WebhookEvent.received_at · UTC of POST hitting junior-backend, before handler runs."],
+                  ["handled", "WebhookEvent.handled_at · UTC of handler completion. Null = still in-flight or crashed before write."],
+                ] as Array<[string, string]>).map(([h, hint]) => (
+                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                    {h}
+                    <InfoIcon hint={hint} />
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -1517,19 +1649,31 @@ function PostizTab() {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div className="mt-1"><BoolChip value={data.configured} on="configured" off="not configured" /></div>
-              <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">postiz live</div>
+              <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                postiz live
+                <InfoIcon hint="True iff POSTIZ_BASE_URL + POSTIZ_API_KEY are set on Railway. NOTE: Postiz is the legacy/fallback publisher — Ayrshare is the LIVE rail in production. See Ayrshare tab." />
+              </div>
             </div>
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div className="font-display text-[28px] font-bold text-ink">{data.connections.users_with_connection}</div>
-              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">users connected</div>
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                users connected
+                <InfoIcon hint="Count of SocialConnection rows with provider='postiz'. Each row = one user who paired their Postiz workspace." />
+              </div>
             </div>
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div className="font-display text-[28px] font-bold text-ink">{data.connections.active_connections}</div>
-              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">active connections</div>
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                active connections
+                <InfoIcon hint="Subset of users_with_connection that have completed at least one successful schedule. Used to gauge real activation, not just account link." />
+              </div>
             </div>
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div className="font-display text-[28px] font-bold text-ink">{data.schedules_total}</div>
-              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">schedules total</div>
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                schedules total
+                <InfoIcon hint="Total Schedule rows for the Postiz rail (all statuses, all-time). Drives the per-status chip row below." />
+              </div>
             </div>
           </div>
 
@@ -1544,10 +1688,14 @@ function PostizTab() {
                 </span>
               ))
             )}
+            <InfoIcon hint="Schedule.status grouped count · pending / queued / posted / failed. Backend GROUP BY against the Schedule table." />
           </div>
 
           <div className="mt-4 rounded-xl border border-line bg-paper-warm/50 p-3">
-            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">last error</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+              last error
+              <InfoIcon hint="Most recent Schedule with status='failed' · platform, error string, timestamp, retry count. Source of operator triage when Postiz publishing breaks." />
+            </div>
             {data.last_error ? (
               <div className="mt-2 font-mono text-[11px] text-fuchsia-deep">
                 [{data.last_error.platform}] {data.last_error.error}
@@ -1563,8 +1711,18 @@ function PostizTab() {
               <table className="w-full border-collapse font-mono text-[11px]">
                 <thead>
                   <tr className="text-left text-text-tertiary">
-                    {["platform", "status", "scheduled for", "retries", "post url", "updated"].map((h) => (
-                      <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                    {([
+                      ["platform", "Schedule.platform · destination network (twitter/instagram/youtube/tiktok/etc)."],
+                      ["status", "Schedule.status · pending → queued → posted (or failed). Live row state."],
+                      ["scheduled for", "Schedule.scheduled_for · UTC time the schedule is queued to publish. Past values still pending = stuck worker."],
+                      ["retries", "Schedule.retry_count · how many times the publisher rail has retried this row. >3 usually = dead."],
+                      ["post url", "Schedule.post_url · live link returned by Postiz on success. Null = not posted yet (or failed)."],
+                      ["updated", "Schedule.updated_at · UTC of the last state change row touched."],
+                    ] as Array<[string, string]>).map(([h, hint]) => (
+                      <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                        {h}
+                        <InfoIcon hint={hint} />
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -1583,7 +1741,7 @@ function PostizTab() {
               </table>
             </div>
           )}
-          <p className="mt-3 font-mono text-[11px] text-text-tertiary">{data.note}</p>
+          <p className="mt-3 font-mono text-[11px] text-text-tertiary">{data.note}<InfoIcon hint="Backend-shipped honesty note for /admin/postiz · explains current data scope + gaps." /></p>
         </>
       )}
     </Panel>
@@ -1634,19 +1792,31 @@ function AyrshareTab() {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div className="mt-1"><BoolChip value={data.configured} on="configured" off="not configured" /></div>
-              <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">ayrshare live</div>
+              <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                ayrshare live
+                <InfoIcon hint="True iff AYRSHARE_API_KEY is set on Railway. THIS is the live publisher rail used by production today — Postiz is the legacy/fallback architecture." />
+              </div>
             </div>
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div className="font-display text-[28px] font-bold text-ink">{data.connections.users_with_connection}</div>
-              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">users connected</div>
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                users connected
+                <InfoIcon hint="Count of SocialConnection rows with provider='ayrshare' (Ayrshare Profile Key pasted by the user)." />
+              </div>
             </div>
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div className="font-display text-[28px] font-bold text-ink">{data.connections.active_connections}</div>
-              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">active connections</div>
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                active connections
+                <InfoIcon hint="Subset of users_with_connection that have completed at least one successful Ayrshare schedule. Live activation pulse." />
+              </div>
             </div>
             <div className="rounded-2xl border border-line bg-paper p-4">
               <div className="font-display text-[28px] font-bold text-ink">{data.schedules_total}</div>
-              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">schedules total</div>
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+                schedules total
+                <InfoIcon hint="Total Schedule rows on the Ayrshare rail (all statuses, all-time). This is the live publish queue users see." />
+              </div>
             </div>
           </div>
 
@@ -1661,10 +1831,14 @@ function AyrshareTab() {
                 </span>
               ))
             )}
+            <InfoIcon hint="Live Ayrshare Schedule.status grouped count · pending / queued / posted / failed. Backend GROUP BY against the Schedule table." />
           </div>
 
           <div className="mt-4 rounded-xl border border-line bg-paper-warm/50 p-3">
-            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">last error</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+              last error
+              <InfoIcon hint="Most recent Schedule with status='failed' on the live Ayrshare rail · platform, error, time, retries. THIS is the rail users hit today — triage here first when publishing breaks." />
+            </div>
             {data.last_error ? (
               <div className="mt-2 font-mono text-[11px] text-fuchsia-deep">
                 [{data.last_error.platform}] {data.last_error.error}
@@ -1680,8 +1854,18 @@ function AyrshareTab() {
               <table className="w-full border-collapse font-mono text-[11px]">
                 <thead>
                   <tr className="text-left text-text-tertiary">
-                    {["platform", "status", "scheduled for", "retries", "post url", "updated"].map((h) => (
-                      <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                    {([
+                      ["platform", "Schedule.platform · destination network (twitter/instagram/youtube/tiktok/etc) on the live Ayrshare rail."],
+                      ["status", "Schedule.status · pending → queued → posted (or failed). Live state on the Ayrshare publisher rail."],
+                      ["scheduled for", "Schedule.scheduled_for · UTC publish time on the live rail. Past values still pending = stuck Ayrshare worker."],
+                      ["retries", "Schedule.retry_count · live-rail retries. Ayrshare backoff handles transient failures up to ~3 attempts."],
+                      ["post url", "Schedule.post_url · live link returned by Ayrshare on success. Null = not posted yet or failed."],
+                      ["updated", "Schedule.updated_at · UTC of the last state change for this Ayrshare-rail row."],
+                    ] as Array<[string, string]>).map(([h, hint]) => (
+                      <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                        {h}
+                        <InfoIcon hint={hint} />
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -1700,7 +1884,7 @@ function AyrshareTab() {
               </table>
             </div>
           )}
-          <p className="mt-3 font-mono text-[11px] text-text-tertiary">{data.note}</p>
+          <p className="mt-3 font-mono text-[11px] text-text-tertiary">{data.note}<InfoIcon hint="Backend-shipped honesty note for /admin/ayrshare — explains the live-rail data scope and gaps." /></p>
         </>
       )}
     </Panel>
@@ -1793,7 +1977,10 @@ function BugsTab() {
       {/* Needs-action summary */}
       {needsAction.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">needs action</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+            needs action
+            <InfoIcon hint="Server-computed signals (BugTelemetry.needs_action) — usually 'p0_count > 0' or known failure-cluster thresholds. Drives operator triage urgency." />
+          </span>
           {needsAction.map(([k, v]) => (
             <Chip key={k} label={`${k.replace(/_/g, " ")}${typeof v === "number" ? `: ${v}` : ""}`} tone="fail" />
           ))}
@@ -1808,16 +1995,25 @@ function BugsTab() {
             <div className="font-display text-[28px] font-bold tracking-[-0.02em] text-ink">
               {data.affected_users !== undefined ? data.affected_users : <span className="text-[14px] text-text-tertiary">—</span>}
             </div>
-            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">affected users</div>
+            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+              affected users
+              <InfoIcon hint="Distinct count of BugTelemetry.user_ref values in the current filter window. Server-side DISTINCT — null user_refs excluded." />
+            </div>
           </div>
           {/* Total rows */}
           <div className="rounded-2xl border border-line bg-paper p-4">
             <div className="font-display text-[28px] font-bold tracking-[-0.02em] text-ink">{rows.length}</div>
-            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">events shown</div>
+            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+              events shown
+              <InfoIcon hint="Number of BugTelemetry rows returned for the current filter. Server caps at 200; older rows live in PostHog." />
+            </div>
           </div>
           {/* By version */}
           <div className="col-span-2 rounded-2xl border border-line bg-paper p-4">
-            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">by app version</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+              by app version
+              <InfoIcon hint="Server-side GROUP BY app_version from BugTelemetry. Tells you which desktop version is generating the noise — e.g. did v0.7.x regress something." />
+            </div>
             {data.by_app_version && Object.keys(data.by_app_version).length > 0 ? (
               <div className="mt-2 flex flex-wrap gap-2">
                 {Object.entries(data.by_app_version).map(([ver, cnt]) => (
@@ -1833,7 +2029,10 @@ function BugsTab() {
           </div>
           {/* By error code / event */}
           <div className="col-span-2 rounded-2xl border border-line bg-paper p-4">
-            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">by error code / event</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+              by error code / event
+              <InfoIcon hint="Server-side GROUP BY COALESCE(error_code, event). Cluster view of what's breaking — sort the loudest cluster first." />
+            </div>
             {data.by_error_code && Object.keys(data.by_error_code).length > 0 ? (
               <div className="mt-2 flex flex-wrap gap-2">
                 {Object.entries(data.by_error_code).map(([code, cnt]) => (
@@ -1853,10 +2052,16 @@ function BugsTab() {
       {/* Filters */}
       <div className="mb-3 flex flex-wrap items-center gap-3">
         {loaded && eventOptions.length > 1 && (
-          <FilterSelect label="event" value={filterEvent} onChange={setFilterEvent} options={eventOptions} />
+          <span className="inline-flex items-center">
+            <FilterSelect label="event" value={filterEvent} onChange={setFilterEvent} options={eventOptions} />
+            <InfoIcon hint="Filter on BugTelemetry.event · narrows the rows + aggregates to one event family (e.g. crash, sidecar_timeout)." />
+          </span>
         )}
         {loaded && versionOptions.length > 1 && (
-          <FilterSelect label="version" value={filterVersion} onChange={setFilterVersion} options={versionOptions} />
+          <span className="inline-flex items-center">
+            <FilterSelect label="version" value={filterVersion} onChange={setFilterVersion} options={versionOptions} />
+            <InfoIcon hint="Filter on BugTelemetry.app_version · isolate failures to a specific desktop build (e.g. v0.7.55)." />
+          </span>
         )}
         {loaded && (eventOptions.length > 1 || versionOptions.length > 1) && (
           <span className="font-mono text-[10px] text-text-tertiary">pick filters, then Load</span>
@@ -1875,8 +2080,21 @@ function BugsTab() {
           <table className="w-full border-collapse font-mono text-[11px]">
             <thead>
               <tr className="text-left text-text-tertiary">
-                {["event", "version", "os / arch", "route", "status", "error code", "message", "user", "time"].map((h) => (
-                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                {([
+                  ["event", "BugTelemetry.event · short kind label posted by the desktop reporter (crash/error/warn/timeout/etc)."],
+                  ["version", "BugTelemetry.app_version · tauri appVersion at the moment the event fired."],
+                  ["os / arch", "BugTelemetry.os + .arch · e.g. darwin / aarch64. Useful for triaging Mac-only or arm64-only regressions."],
+                  ["route", "BugTelemetry.route · in-app surface or URL path the user was on when the event fired."],
+                  ["status", "BugTelemetry.http_status · only set when the event came from an HTTP call. 5xx → fail tone, 4xx → warn."],
+                  ["error code", "BugTelemetry.error_code · stable backend/sidecar error symbol (e.g. SIDECAR_TIMEOUT). Use for clustering."],
+                  ["message", "BugTelemetry.message · short error message string. Truncated to 60 chars; hover for full text (no payloads/tokens stored)."],
+                  ["user", "BugTelemetry.user_ref · opaque user reference (clerk_id or backend id). Truncated. PII-safe — not the email."],
+                  ["time", "BugTelemetry.created_at · UTC server-receive time."],
+                ] as Array<[string, string]>).map(([h, hint]) => (
+                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                    {h}
+                    <InfoIcon hint={hint} />
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -2021,32 +2239,39 @@ function BonusLedgerTab() {
       right={
         <div className="flex items-center gap-2">
           <LiveBadge state={src.state} />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-md border border-line bg-paper px-2 py-1 font-mono text-[11px] uppercase tracking-[0.1em] text-ink"
-          >
-            <option value="">all statuses</option>
-            <option value="pending">pending</option>
-            <option value="paid">paid</option>
-            <option value="waived">waived</option>
-          </select>
-          <select
-            value={missionFilter}
-            onChange={(e) => setMissionFilter(e.target.value)}
-            className="rounded-md border border-line bg-paper px-2 py-1 font-mono text-[11px] uppercase tracking-[0.1em] text-ink"
-          >
-            <option value="">all missions</option>
-            <option value="training">uncle daniel · training</option>
-            <option value="main">viral reaction · main</option>
-            <option value="proof">software proof</option>
-          </select>
+          <span className="inline-flex items-center gap-1">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="rounded-md border border-line bg-paper px-2 py-1 font-mono text-[11px] uppercase tracking-[0.1em] text-ink"
+            >
+              <option value="">all statuses</option>
+              <option value="pending">pending</option>
+              <option value="paid">paid</option>
+              <option value="waived">waived</option>
+            </select>
+            <InfoIcon hint="Filter on BonusLedger.bonus_payout_status · pending (owed) · paid (sent) · waived (not eligible)." />
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <select
+              value={missionFilter}
+              onChange={(e) => setMissionFilter(e.target.value)}
+              className="rounded-md border border-line bg-paper px-2 py-1 font-mono text-[11px] uppercase tracking-[0.1em] text-ink"
+            >
+              <option value="">all missions</option>
+              <option value="training">uncle daniel · training</option>
+              <option value="main">viral reaction · main</option>
+              <option value="proof">software proof</option>
+            </select>
+            <InfoIcon hint="Filter on BonusLedger.mission_lane · training | main | proof. Mirrors sponsored_campaigns.mission_lane." />
+          </span>
           <button
             onClick={() => setShowImport((v) => !v)}
             className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia"
           >
             {showImport ? "Close import" : "Import Whop row"}
           </button>
+          <InfoIcon hint="POST /admin/bonus-ledger/import · creates a BonusLedger row mirroring an approved Whop submission. Base + bonus payout computed server-side from membership tier + watermark status at import." />
         </div>
       }
     >
@@ -2073,20 +2298,20 @@ function BonusLedgerTab() {
           <table className="min-w-full font-mono text-[11px]">
             <thead className="border-b border-line text-text-tertiary">
               <tr className="text-left">
-                <th className="px-2 py-2">whop_submission</th>
-                <th className="px-2 py-2">email</th>
-                <th className="px-2 py-2">membership</th>
-                <th className="px-2 py-2">watermark</th>
-                <th className="px-2 py-2">campaign</th>
-                <th className="px-2 py-2">lane</th>
-                <th className="px-2 py-2">post</th>
-                <th className="px-2 py-2 text-right">views</th>
-                <th className="px-2 py-2 text-right">base</th>
-                <th className="px-2 py-2 text-right">bonus due</th>
-                <th className="px-2 py-2 text-right">total eff.</th>
-                <th className="px-2 py-2 text-right">refs</th>
-                <th className="px-2 py-2">status</th>
-                <th className="px-2 py-2"> </th>
+                <th className="px-2 py-2">whop_submission<InfoIcon hint="BonusLedger.whop_submission_id · the Whop submission id this row mirrors. Truncated. Idempotency key for the import endpoint." /></th>
+                <th className="px-2 py-2">email<InfoIcon hint="BonusLedger.email · clipper email at import time. PII exposure — admin-only surface." /></th>
+                <th className="px-2 py-2">membership<InfoIcon hint="BonusLedger.membership_status_at_export · free | solo | pro | agency at the moment of export. Snapshotted at import (does not auto-update)." /></th>
+                <th className="px-2 py-2">watermark<InfoIcon hint="BonusLedger.export_watermark_status · true (watermark) → bonus $0. false (no watermark, paid user) → bonus eligible. Frozen at import." /></th>
+                <th className="px-2 py-2">campaign<InfoIcon hint="BonusLedger.campaign_name or campaign_id · sponsored_campaigns row this submission is attached to." /></th>
+                <th className="px-2 py-2">lane<InfoIcon hint="BonusLedger.mission_lane · training | main | proof. Defines payout tier within the campaign." /></th>
+                <th className="px-2 py-2">post<InfoIcon hint="BonusLedger.submitted_post_url · the public clip URL on the destination network. Opens in new tab for view-count verification." /></th>
+                <th className="px-2 py-2 text-right">views<InfoIcon hint="BonusLedger.approved_views · view count Whop signed off on. Updated when admin marks-paid with a fresh final count." /></th>
+                <th className="px-2 py-2 text-right">base<InfoIcon hint="BonusLedger.base_payout_cents · approved_views × base_rpm. Whop pays this; Liquid Clips does not." /></th>
+                <th className="px-2 py-2 text-right">bonus due<InfoIcon hint="BonusLedger.premium_bonus_due_cents · the +$4 RPM bonus Liquid Clips owes the clipper (only when paid + no watermark)." /></th>
+                <th className="px-2 py-2 text-right">total eff.<InfoIcon hint="BonusLedger.total_effective_payout_cents · base + bonus. The clipper's true take if the bonus lands." /></th>
+                <th className="px-2 py-2 text-right">refs<InfoIcon hint="BonusLedger.affiliate_referrals · count of users who signed up via this clipper's affiliate link. Drives reward eligibility on the flywheel." /></th>
+                <th className="px-2 py-2">status<InfoIcon hint="BonusLedger.bonus_payout_status · pending | paid | waived. 'paid' freezes the row + records the timestamp." /></th>
+                <th className="px-2 py-2"> <InfoIcon hint="Mark-paid action · POST /admin/bonus-ledger/{id}/mark-paid with final approved_views. Confirms the bonus was sent and stores bonus_marked_paid_at." /></th>
               </tr>
             </thead>
             <tbody>
@@ -2183,10 +2408,10 @@ function BonusLedgerImport({
     }
   }
 
-  function field(name: keyof typeof form, label: string, opts?: { placeholder?: string; type?: string }) {
+  function field(name: keyof typeof form, label: string, opts?: { placeholder?: string; type?: string; hint?: string }) {
     return (
       <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-        {label}
+        <span>{label}{opts?.hint && <InfoIcon hint={opts.hint} />}</span>
         <input
           type={opts?.type ?? "text"}
           value={form[name]}
@@ -2201,16 +2426,16 @@ function BonusLedgerImport({
   return (
     <div className="mb-4 rounded-2xl border border-line bg-paper p-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        {field("whop_submission_id", "whop_submission_id *", { placeholder: "wsub_…" })}
-        {field("whop_bounty_id", "whop_bounty_id", { placeholder: "wbnt_…" })}
-        {field("whop_user_id", "whop_user_id", { placeholder: "wuser_…" })}
-        {field("email", "email", { placeholder: "clipper@example.com" })}
-        {field("campaign_id", "campaign_id or slug", { placeholder: "clip-uncle-daniel-content" })}
-        {field("mission_lane", "mission_lane", { placeholder: "training | main | proof" })}
-        {field("submitted_post_url", "submitted_post_url *", { placeholder: "https://…" })}
-        {field("approved_views", "approved_views", { type: "number" })}
+        {field("whop_submission_id", "whop_submission_id *", { placeholder: "wsub_…", hint: "Whop submission id (wsub_…). Required + serves as idempotency key — re-importing returns the existing BonusLedger row." })}
+        {field("whop_bounty_id", "whop_bounty_id", { placeholder: "wbnt_…", hint: "Whop bounty id (wbnt_…) the submission belongs to. Optional · used for cross-referencing in Whop dashboard." })}
+        {field("whop_user_id", "whop_user_id", { placeholder: "wuser_…", hint: "Whop user id (wuser_…) of the clipper. Backend joins this to users.whop_user_id to resolve liquid_clips_user_id." })}
+        {field("email", "email", { placeholder: "clipper@example.com", hint: "Clipper email (PII). Used for display + as fallback identifier if whop_user_id doesn't join." })}
+        {field("campaign_id", "campaign_id or slug", { placeholder: "clip-uncle-daniel-content", hint: "sponsored_campaigns.id or .slug. Backend resolves slug → id at import." })}
+        {field("mission_lane", "mission_lane", { placeholder: "training | main | proof", hint: "BonusLedger.mission_lane label. Echoed onto the row + used by the lane filter above." })}
+        {field("submitted_post_url", "submitted_post_url *", { placeholder: "https://…", hint: "Public clip URL on the destination network (YT/IG/TT/X). Required." })}
+        {field("approved_views", "approved_views", { type: "number", hint: "Whop-approved view count at import. Used for base + bonus computation; can be updated when marking-paid." })}
         <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-          membership_status_at_export
+          <span>membership_status_at_export<InfoIcon hint="Membership tier at the moment of export · free | solo | pro | agency. Snapshotted into BonusLedger.membership_status_at_export — bonus only eligible for paid tiers." /></span>
           <select
             value={form.membership_status_at_export}
             onChange={(e) => setForm((f) => ({ ...f, membership_status_at_export: e.target.value }))}
@@ -2223,7 +2448,7 @@ function BonusLedgerImport({
           </select>
         </label>
         <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-          export_watermark_status
+          <span>export_watermark_status<InfoIcon hint="Was the clip exported with the Liquid Clips watermark? Backend rule: watermark=true → bonus $0; watermark=false + paid tier → bonus due." /></span>
           <select
             value={form.export_watermark_status}
             onChange={(e) => setForm((f) => ({ ...f, export_watermark_status: e.target.value }))}
@@ -2444,13 +2669,13 @@ function CommunityChannelsTab() {
           <table className="min-w-full font-mono text-[11px]">
             <thead className="border-b border-line text-text-tertiary">
               <tr className="text-left">
-                <th className="px-2 py-2">section</th>
-                <th className="px-2 py-2">slug · name</th>
-                <th className="px-2 py-2">tier</th>
-                <th className="px-2 py-2">whop_channel_id</th>
-                <th className="px-2 py-2">business · lane</th>
-                <th className="px-2 py-2 text-right">sort</th>
-                <th className="px-2 py-2"> </th>
+                <th className="px-2 py-2">section<InfoIcon hint="community_channels.section · announcements | free_lobby | paid_core | mission. Groups rooms in the community sidebar." /></th>
+                <th className="px-2 py-2">slug · name<InfoIcon hint="community_channels.slug (immutable id) + .name (display label). Slug is the URL segment + Whop sync key." /></th>
+                <th className="px-2 py-2">tier<InfoIcon hint="community_channels.required_tier · free | free_paid | paid | paid_admin. Controls who can read/post." /></th>
+                <th className="px-2 py-2">whop_channel_id<InfoIcon hint="community_channels.whop_channel_id · chat_feed_… id from Whop. When set, room routes directly to Whop chat; when null, paid users see the community landing." /></th>
+                <th className="px-2 py-2">business · lane<InfoIcon hint="community_channels.business_unit + .mission_lane · routes the room to a specific funnel (e.g. uncle_daniel · training)." /></th>
+                <th className="px-2 py-2 text-right">sort<InfoIcon hint="community_channels.sort_order · ascending. Determines order within the section." /></th>
+                <th className="px-2 py-2"> <InfoIcon hint="Edit = PATCH /admin/community/channels/{slug} · Delete = DELETE same endpoint. Slug is immutable on edit." /></th>
               </tr>
             </thead>
             <tbody>
@@ -2510,10 +2735,10 @@ function ChannelDraftForm({
   busy: boolean;
   editingSlug: string | null;
 }) {
-  function text(name: keyof ChannelDraft, label: string, opts?: { placeholder?: string }) {
+  function text(name: keyof ChannelDraft, label: string, opts?: { placeholder?: string; hint?: string }) {
     return (
       <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-        {label}
+        <span>{label}{opts?.hint && <InfoIcon hint={opts.hint} />}</span>
         <input
           type="text"
           value={draft[name] as string}
@@ -2528,7 +2753,7 @@ function ChannelDraftForm({
     );
   }
 
-  function bool(name: keyof ChannelDraft, label: string) {
+  function bool(name: keyof ChannelDraft, label: string, hint?: string) {
     return (
       <label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
         <input
@@ -2537,6 +2762,7 @@ function ChannelDraftForm({
           onChange={(e) => setDraft((d) => ({ ...d, [name]: e.target.checked }))}
         />
         {label}
+        {hint && <InfoIcon hint={hint} />}
       </label>
     );
   }
@@ -2547,14 +2773,14 @@ function ChannelDraftForm({
         {editingSlug ? `editing ${editingSlug}` : "new channel"}
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
-        {text("slug", "slug *", { placeholder: "premium-rewards-hq" })}
-        {text("name", "name *", { placeholder: "Premium Rewards HQ" })}
-        {text("whop_channel_id", "whop_channel_id", { placeholder: "chat_feed_…" })}
-        {text("business_unit", "business_unit", { placeholder: "uncle_daniel" })}
-        {text("mission_lane", "mission_lane", { placeholder: "training" })}
-        {text("sort_order", "sort_order")}
+        {text("slug", "slug *", { placeholder: "premium-rewards-hq", hint: "community_channels.slug · immutable URL/sync key. Lowercase, hyphenated. Required + cannot change after create." })}
+        {text("name", "name *", { placeholder: "Premium Rewards HQ", hint: "community_channels.name · display label shown in the room list. Required." })}
+        {text("whop_channel_id", "whop_channel_id", { placeholder: "chat_feed_…", hint: "community_channels.whop_channel_id · paste the chat_feed_XXX from Whop. When set, room routes paid users into Whop chat directly." })}
+        {text("business_unit", "business_unit", { placeholder: "uncle_daniel", hint: "community_channels.business_unit · funnel grouping (uncle_daniel | viral_reaction | software_proof | ddb | etc)." })}
+        {text("mission_lane", "mission_lane", { placeholder: "training", hint: "community_channels.mission_lane · training | main | proof. Pairs with business_unit for per-mission rooms." })}
+        {text("sort_order", "sort_order", { hint: "community_channels.sort_order · integer, ascending. Controls position within section." })}
         <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-          required_tier
+          <span>required_tier<InfoIcon hint="community_channels.required_tier · free | free_paid | paid | paid_admin. Determines read+post permission per user.tier." /></span>
           <select
             value={draft.required_tier}
             onChange={(e) => setDraft((d) => ({ ...d, required_tier: e.target.value }))}
@@ -2567,7 +2793,7 @@ function ChannelDraftForm({
           </select>
         </label>
         <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-          section
+          <span>section<InfoIcon hint="community_channels.section · announcements (top) | free_lobby | paid_core | mission (funnel rooms). Visual grouping." /></span>
           <select
             value={draft.section}
             onChange={(e) => setDraft((d) => ({ ...d, section: e.target.value }))}
@@ -2580,7 +2806,7 @@ function ChannelDraftForm({
           </select>
         </label>
         <label className="col-span-2 flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary md:col-span-3">
-          purpose
+          <span>purpose<InfoIcon hint="community_channels.purpose · short prose shown as a room subtitle. Optional but recommended for free_lobby + mission rooms." /></span>
           <textarea
             value={draft.purpose}
             onChange={(e) => setDraft((d) => ({ ...d, purpose: e.target.value }))}
@@ -2590,8 +2816,8 @@ function ChannelDraftForm({
         </label>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-4">
-        {bool("is_admin_only", "admin-only posts")}
-        {bool("is_locked_preview_enabled", "show locked preview to free users")}
+        {bool("is_admin_only", "admin-only posts", "community_channels.is_admin_only · when true, only admins can post — users can read.")}
+        {bool("is_locked_preview_enabled", "show locked preview to free users", "community_channels.is_locked_preview_enabled · when true, free users see a teaser of the room (read but no post).")}
         <button
           type="button"
           onClick={() => void save()}
@@ -2829,14 +3055,14 @@ function MissionsTab() {
           <table className="min-w-full font-mono text-[11px]">
             <thead className="border-b border-line text-text-tertiary">
               <tr className="text-left">
-                <th className="px-2 py-2">status</th>
-                <th className="px-2 py-2">slug · name</th>
-                <th className="px-2 py-2">lane</th>
-                <th className="px-2 py-2 text-right">base $RPM</th>
-                <th className="px-2 py-2 text-right">premium $RPM</th>
-                <th className="px-2 py-2 text-right">budget</th>
-                <th className="px-2 py-2">whop_bounty_id</th>
-                <th className="px-2 py-2"> </th>
+                <th className="px-2 py-2">status<InfoIcon hint="sponsored_campaigns.status · draft | coming_soon | partially_funded | funded | live | closed. Public mission feed shows everything except 'closed'." /></th>
+                <th className="px-2 py-2">slug · name<InfoIcon hint="sponsored_campaigns.slug (URL/sync key, immutable on edit) + .name (display label)." /></th>
+                <th className="px-2 py-2">lane<InfoIcon hint="sponsored_campaigns.mission_lane ?? mission_type. Defines payout cohort within the mission." /></th>
+                <th className="px-2 py-2 text-right">base $RPM<InfoIcon hint="sponsored_campaigns.base_rpm_cents / 100 · $/1000 views Whop pays everyone." /></th>
+                <th className="px-2 py-2 text-right">premium $RPM<InfoIcon hint="sponsored_campaigns.premium_rpm_cents / 100 · $/1000 views Liquid Clips tops up for paid clippers (paid + no-watermark only)." /></th>
+                <th className="px-2 py-2 text-right">budget<InfoIcon hint="sponsored_campaigns.budget_cents / 100 · total $ pool for this mission. Whop enforces drawdown." /></th>
+                <th className="px-2 py-2">whop_bounty_id<InfoIcon hint="sponsored_campaigns.whop_campaign_id · Whop content reward id bound to this mission. Required for funnel to work end-to-end." /></th>
+                <th className="px-2 py-2"> <InfoIcon hint="Edit = PATCH /admin/campaigns/{slug} · Delete = DELETE same endpoint. Slug immutable on edit." /></th>
               </tr>
             </thead>
             <tbody>
@@ -2883,10 +3109,10 @@ function MissionDraftForm({
   busy: boolean;
   editingSlug: string | null;
 }) {
-  function text(name: string, label: string, opts?: { placeholder?: string }) {
+  function text(name: string, label: string, opts?: { placeholder?: string; hint?: string }) {
     return (
       <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-        {label}
+        <span>{label}{opts?.hint && <InfoIcon hint={opts.hint} />}</span>
         <input
           type="text"
           value={String(draft[name] ?? "")}
@@ -2899,11 +3125,12 @@ function MissionDraftForm({
     );
   }
 
-  function bool(name: string, label: string) {
+  function bool(name: string, label: string, hint?: string) {
     return (
       <label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
         <input type="checkbox" checked={!!draft[name]} onChange={(e) => setDraft((d) => ({ ...d, [name]: e.target.checked }))} />
         {label}
+        {hint && <InfoIcon hint={hint} />}
       </label>
     );
   }
@@ -2914,22 +3141,22 @@ function MissionDraftForm({
         {editingSlug ? `editing ${editingSlug}` : "new mission"}
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-        {text("slug", "slug *")}
-        {text("name", "name *")}
-        {text("brand", "brand label")}
-        {text("brand_name", "brand_name")}
-        {text("business_unit", "business_unit")}
+        {text("slug", "slug *", { hint: "sponsored_campaigns.slug · immutable URL/sync key. Required, hyphenated, lowercase." })}
+        {text("name", "name *", { hint: "sponsored_campaigns.name · display label across Earn, Whop bounty card, and admin." })}
+        {text("brand", "brand label", { hint: "sponsored_campaigns.brand · short brand tag (e.g. 'DDB'). Used in lists + filters." })}
+        {text("brand_name", "brand_name", { hint: "sponsored_campaigns.brand_name · full brand display name (e.g. 'Daniel Diyepriye Beauty')." })}
+        {text("business_unit", "business_unit", { hint: "sponsored_campaigns.business_unit · funnel grouping (uncle_daniel, viral_reaction, ddb, etc)." })}
         <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-          mission_type
+          <span>mission_type<InfoIcon hint="sponsored_campaigns.mission_type · uncle_daniel | viral_reaction | software_proof. Drives card style + payout cohort." /></span>
           <select value={String(draft.mission_type)} onChange={(e) => setDraft((d) => ({ ...d, mission_type: e.target.value }))} className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink">
             <option value="uncle_daniel">uncle_daniel</option>
             <option value="viral_reaction">viral_reaction</option>
             <option value="software_proof">software_proof</option>
           </select>
         </label>
-        {text("mission_lane", "mission_lane")}
+        {text("mission_lane", "mission_lane", { hint: "sponsored_campaigns.mission_lane · training | main | proof. Pairs with mission_type for per-lane payout." })}
         <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-          status
+          <span>status<InfoIcon hint="sponsored_campaigns.status · controls public visibility. live = surfaced + earning; closed = hidden from public feed." /></span>
           <select value={String(draft.status)} onChange={(e) => setDraft((d) => ({ ...d, status: e.target.value }))} className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink">
             <option value="coming_soon">coming_soon</option>
             <option value="partially_funded">partially_funded</option>
@@ -2938,20 +3165,20 @@ function MissionDraftForm({
             <option value="closed">closed</option>
           </select>
         </label>
-        {text("base_rpm_cents", "base_rpm (cents)")}
-        {text("premium_rpm_cents", "premium_rpm (cents)")}
-        {text("premium_bonus_cents", "bonus_rpm (cents)")}
-        {text("budget_cents", "budget (cents)")}
-        {text("required_tier", "required_tier")}
-        {text("whop_url", "whop_url *")}
-        {text("whop_campaign_id", "whop_campaign_id")}
-        {text("whop_campaign_url", "whop_campaign_url")}
-        {text("community_channel_id", "community_channel_id")}
+        {text("base_rpm_cents", "base_rpm (cents)", { hint: "sponsored_campaigns.base_rpm_cents · $/1000 views Whop pays everyone (base + bonus is the LC top-up)." })}
+        {text("premium_rpm_cents", "premium_rpm (cents)", { hint: "sponsored_campaigns.premium_rpm_cents · target $/1000 for paid no-watermark clippers (base + bonus)." })}
+        {text("premium_bonus_cents", "bonus_rpm (cents)", { hint: "sponsored_campaigns.premium_bonus_cents · the +$ on top of base for paid no-watermark clippers. Drives BonusLedger calc." })}
+        {text("budget_cents", "budget (cents)", { hint: "sponsored_campaigns.budget_cents · total mission $ pool. Whop enforces drawdown." })}
+        {text("required_tier", "required_tier", { hint: "sponsored_campaigns.required_tier · free | solo | pro | agency. Locks who can submit." })}
+        {text("whop_url", "whop_url *", { hint: "sponsored_campaigns.whop_url · public Whop product/bounty link. Required + opened from Earn cards." })}
+        {text("whop_campaign_id", "whop_campaign_id", { hint: "sponsored_campaigns.whop_campaign_id · Whop content reward id (wcamp_…) bound to this mission." })}
+        {text("whop_campaign_url", "whop_campaign_url", { hint: "sponsored_campaigns.whop_campaign_url · operator-facing Whop dashboard link for this campaign." })}
+        {text("community_channel_id", "community_channel_id", { hint: "sponsored_campaigns.community_channel_id · UUID of the community_channels row that hosts this mission's discussion." })}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-4">
-        {bool("is_high_rpm", "high RPM")}
-        {bool("is_invite_only", "invite only")}
-        {bool("affiliate_enabled", "affiliate enabled")}
+        {bool("is_high_rpm", "high RPM", "sponsored_campaigns.is_high_rpm · flag for the high-payout badge on Earn cards.")}
+        {bool("is_invite_only", "invite only", "sponsored_campaigns.is_invite_only · hides the mission from the public feed; only invited clippers see it.")}
+        {bool("affiliate_enabled", "affiliate enabled", "sponsored_campaigns.affiliate_enabled · when true, referrals from this mission count toward the flywheel reward.")}
         <button onClick={() => void save()} disabled={busy} className="ml-auto rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink hover:bg-fuchsia-bright disabled:opacity-60">
           {busy ? "Saving…" : editingSlug ? "Save changes" : "Create mission"}
         </button>
@@ -3062,13 +3289,13 @@ function BannersTab() {
           <table className="min-w-full font-mono text-[11px]">
             <thead className="border-b border-line text-text-tertiary">
               <tr className="text-left">
-                <th className="px-2 py-2">placement</th>
-                <th className="px-2 py-2">title</th>
-                <th className="px-2 py-2">target</th>
-                <th className="px-2 py-2 text-right">priority</th>
-                <th className="px-2 py-2">cta</th>
-                <th className="px-2 py-2">active</th>
-                <th className="px-2 py-2"> </th>
+                <th className="px-2 py-2">placement<InfoIcon hint="banners.placement · earn_hero | mission_card | mission_detail | upgrade_modal | community_top | home_hero | checkout_modal." /></th>
+                <th className="px-2 py-2">title<InfoIcon hint="banners.title · primary headline shown in the placement." /></th>
+                <th className="px-2 py-2">target<InfoIcon hint="banners.target_tier + .target_mission_id · narrows which users see this. Empty/everyone = all users." /></th>
+                <th className="px-2 py-2 text-right">priority<InfoIcon hint="banners.priority · higher number = wins when multiple banners qualify for the same placement." /></th>
+                <th className="px-2 py-2">cta<InfoIcon hint="banners.cta_text + .cta_url · optional click-through. Null = display-only banner." /></th>
+                <th className="px-2 py-2">active<InfoIcon hint="banners.is_active · controls live visibility. Pause = is_active=false; row preserved." /></th>
+                <th className="px-2 py-2"> <InfoIcon hint="Pause/Resume = PATCH /admin/banners/{id} {is_active}. Delete = DELETE /admin/banners/{id}." /></th>
               </tr>
             </thead>
             <tbody>
@@ -3152,13 +3379,13 @@ function BannerForm({
   return (
     <div className="mb-4 rounded-2xl border border-line bg-paper p-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <Field label="title *" value={draft.title} onChange={(v) => setDraft({ ...draft, title: v })} />
-        <Field label="subtitle" value={draft.subtitle} onChange={(v) => setDraft({ ...draft, subtitle: v })} />
-        <Field label="image_url" value={draft.image_url} onChange={(v) => setDraft({ ...draft, image_url: v })} />
-        <Field label="cta_text" value={draft.cta_text} onChange={(v) => setDraft({ ...draft, cta_text: v })} />
-        <Field label="cta_url" value={draft.cta_url} onChange={(v) => setDraft({ ...draft, cta_url: v })} />
+        <Field label="title *" value={draft.title} onChange={(v) => setDraft({ ...draft, title: v })} hint="banners.title · primary headline. Required." />
+        <Field label="subtitle" value={draft.subtitle} onChange={(v) => setDraft({ ...draft, subtitle: v })} hint="banners.subtitle · optional secondary line under the headline." />
+        <Field label="image_url" value={draft.image_url} onChange={(v) => setDraft({ ...draft, image_url: v })} hint="banners.image_url · ABSOLUTE URL to brand asset. Prefer /public/brand/ from the marketing site over external CDNs." />
+        <Field label="cta_text" value={draft.cta_text} onChange={(v) => setDraft({ ...draft, cta_text: v })} hint="banners.cta_text · button label. Empty + cta_url = display-only banner." />
+        <Field label="cta_url" value={draft.cta_url} onChange={(v) => setDraft({ ...draft, cta_url: v })} hint="banners.cta_url · click-through destination. Internal route or absolute URL." />
         <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-          placement
+          <span>placement<InfoIcon hint="banners.placement · where this banner renders in the app. One placement per row; multiple banners per placement compete on priority." /></span>
           <select value={draft.placement} onChange={(e) => setDraft({ ...draft, placement: e.target.value })} className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink">
             <option value="earn_hero">earn_hero</option>
             <option value="mission_card">mission_card</option>
@@ -3170,15 +3397,15 @@ function BannerForm({
           </select>
         </label>
         <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-          target_tier
+          <span>target_tier<InfoIcon hint="banners.target_tier · narrow visibility to free or paid. Empty = everyone." /></span>
           <select value={draft.target_tier} onChange={(e) => setDraft({ ...draft, target_tier: e.target.value })} className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink">
             <option value="">everyone</option>
             <option value="free">free</option>
             <option value="paid">paid</option>
           </select>
         </label>
-        <Field label="target_mission_id" value={draft.target_mission_id} onChange={(v) => setDraft({ ...draft, target_mission_id: v })} />
-        <Field label="priority" value={draft.priority} onChange={(v) => setDraft({ ...draft, priority: v })} />
+        <Field label="target_mission_id" value={draft.target_mission_id} onChange={(v) => setDraft({ ...draft, target_mission_id: v })} hint="banners.target_mission_id · sponsored_campaigns.id this banner is bound to. Empty = not mission-scoped." />
+        <Field label="priority" value={draft.priority} onChange={(v) => setDraft({ ...draft, priority: v })} hint="banners.priority · integer, higher wins. Tie-breaker for multiple active banners in the same placement." />
       </div>
       {error && <p className="mt-3 rounded-md border border-[#DC2626]/40 bg-[#DC2626]/5 px-3 py-2 font-mono text-[11px] text-[#F87171]">{error}</p>}
       <div className="mt-3 flex items-center">
@@ -3188,10 +3415,10 @@ function BannerForm({
   );
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function Field({ label, value, onChange, hint }: { label: string; value: string; onChange: (v: string) => void; hint?: string }) {
   return (
     <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-      {label}
+      <span>{label}{hint && <InfoIcon hint={hint} />}</span>
       <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink" />
     </label>
   );
@@ -3298,8 +3525,10 @@ function AnnouncementsTab() {
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
                   <Chip label={a.kind} />
+                  <InfoIcon hint="announcements.kind · mission_drop | payout | rule_change | deadline | other. Tags the card icon + priority." />
                   {a.pinned && <Chip label="pinned" />}
-                  {a.target_tier && <span>· {a.target_tier}</span>}
+                  {a.pinned && <InfoIcon hint="announcements.pinned = true · surfaces first in the Announcements room + on dashboard first paint." />}
+                  {a.target_tier && <span>· {a.target_tier}<InfoIcon hint="announcements.target_tier · narrows visibility (free | paid). Empty = everyone." /></span>}
                 </div>
                 <span className="font-display text-[15px] font-semibold text-ink">{a.title}</span>
                 {a.body_markdown && (
@@ -3374,9 +3603,9 @@ function AnnouncementForm({
   return (
     <div className="mb-4 rounded-2xl border border-line bg-paper p-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <Field label="title *" value={draft.title} onChange={(v) => setDraft({ ...draft, title: v })} />
+        <Field label="title *" value={draft.title} onChange={(v) => setDraft({ ...draft, title: v })} hint="announcements.title · headline shown in the room + dashboard. Required." />
         <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-          kind
+          <span>kind<InfoIcon hint="announcements.kind · taxonomy chip · mission_drop | payout | rule_change | deadline | other." /></span>
           <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink">
             <option value="mission_drop">mission_drop</option>
             <option value="payout">payout</option>
@@ -3386,21 +3615,22 @@ function AnnouncementForm({
           </select>
         </label>
         <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
-          target_tier
+          <span>target_tier<InfoIcon hint="announcements.target_tier · narrows audience to free or paid. Empty = everyone." /></span>
           <select value={draft.target_tier} onChange={(e) => setDraft({ ...draft, target_tier: e.target.value })} className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink">
             <option value="">everyone</option>
             <option value="free">free</option>
             <option value="paid">paid</option>
           </select>
         </label>
-        <Field label="cta_text" value={draft.cta_text} onChange={(v) => setDraft({ ...draft, cta_text: v })} />
-        <Field label="cta_url" value={draft.cta_url} onChange={(v) => setDraft({ ...draft, cta_url: v })} />
+        <Field label="cta_text" value={draft.cta_text} onChange={(v) => setDraft({ ...draft, cta_text: v })} hint="announcements.cta_text · optional click-through label." />
+        <Field label="cta_url" value={draft.cta_url} onChange={(v) => setDraft({ ...draft, cta_url: v })} hint="announcements.cta_url · click destination. Internal route or absolute URL." />
         <label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
           <input type="checkbox" checked={draft.pinned} onChange={(e) => setDraft({ ...draft, pinned: e.target.checked })} />
           pin to top
+          <InfoIcon hint="announcements.pinned · pinned rows surface first in the Announcements room + on dashboard first paint." />
         </label>
         <label className="col-span-2 flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary md:col-span-3">
-          body (markdown)
+          <span>body (markdown)<InfoIcon hint="announcements.body_markdown · rendered as markdown. Newlines + links supported." /></span>
           <textarea value={draft.body_markdown} onChange={(e) => setDraft({ ...draft, body_markdown: e.target.value })} rows={4} className="rounded-md border border-line bg-paper px-2 py-1 font-sans text-[12px] normal-case tracking-normal text-ink" />
         </label>
       </div>
@@ -3642,8 +3872,10 @@ function BugCommandTab({ agentKeyConfig }: { agentKeyConfig: AgentKeyConfig }) {
           <LiveBadge state={src.state} />
           <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">lanes</span>
           <Chip label={`${LANES.length}`} tone="gray" />
+          <InfoIcon hint="Total agent lanes configured · const LANES at the top of the BugCommandTab. Lane count is static; status is computed from live bug counts." />
           <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">open bugs</span>
           <Chip label={`${bugs.filter((b) => isActiveBug(b.status)).length}`} tone="gray" />
+          <InfoIcon hint="Bugs from /admin/bug-intake where status not in (passed, parked). Live count — refreshes on Refresh." />
           <button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button>
         </div>
       }
@@ -3653,34 +3885,66 @@ function BugCommandTab({ agentKeyConfig }: { agentKeyConfig: AgentKeyConfig }) {
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <div className="rounded-2xl border border-line bg-paper p-4">
           <div className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink">{openP0.length}</div>
-          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">Open P0 bugs</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+            Open P0 bugs
+            <InfoIcon hint="Bugs from /admin/bug-intake where severity starts with 'P0' AND status not in (passed, parked). Top priority — these block ship." />
+          </div>
         </div>
         <div className="rounded-2xl border border-line bg-paper p-4">
           <div className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink">{blockingPayment.length}</div>
-          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">Blocking payment</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+            Blocking payment
+            <InfoIcon hint="Open bugs with severity = 'P0 — stops payment' OR 'P0 — stops paid access'. These cost MRR directly." />
+          </div>
         </div>
         <div className="rounded-2xl border border-line bg-paper p-4">
           <div className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink">{blockingActivation.length}</div>
-          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">Blocking activation</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+            Blocking activation
+            <InfoIcon hint="Open bugs with severity = 'P0 — stops first action'. New users can't reach their first success — early churn driver." />
+          </div>
         </div>
         <div className="rounded-2xl border border-line bg-paper p-4">
           <div className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink">{blockingRetention.length}</div>
-          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">Blocking retention</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+            Blocking retention
+            <InfoIcon hint="Open bugs with severity = 'P1 — retention blocker'. Returning users hit something that erodes habit — silent churn driver." />
+          </div>
         </div>
         <div className="rounded-2xl border border-line bg-paper p-4">
           <div className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink">{LANES.length}</div>
-          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">Total agent lanes</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">
+            Total agent lanes
+            <InfoIcon hint="Static count of agent lanes defined in the LANES const · auth, projects, earn, onboarding, ui, backend, release." />
+          </div>
         </div>
       </div>
 
       {/* Agent lanes table — pure configuration, no demo statuses */}
       <div className="mb-6 overflow-x-auto">
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">agent lanes (config + live counts)</div>
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+          agent lanes (config + live counts)
+          <InfoIcon hint="Static lane registry from const LANES · per-row counts come from /admin/bug-intake. Lane config (allowed/forbidden files) defines what an agent may touch." />
+        </div>
         <table className="w-full border-collapse font-mono text-[11px]">
           <thead>
             <tr className="text-left text-text-tertiary">
-              {["lane", "owner", "P0", "P1", "P2", "active", "API key", "Iron Gate section", "allowed files", "forbidden files"].map((h) => (
-                <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+              {([
+                ["lane", "LANE.name · the agent lane's display label (Auth, Projects, Earn, Onboarding, UI, Backend, Release)."],
+                ["owner", "LANE.owner · the named agent persona responsible for this lane (e.g. Auth Agent, Projects Agent)."],
+                ["P0", "Live count: bugs from /admin/bug-intake where severity starts 'P0' AND lane matches this row."],
+                ["P1", "Live count: bugs where severity starts 'P1' AND lane matches this row."],
+                ["P2", "Live count: bugs where severity starts 'P2' AND lane matches this row."],
+                ["active", "Live count: bugs where status not in (passed, parked) AND lane matches this row."],
+                ["API key", "Boolean flag passed from page.tsx server component · whether the env var for this lane's API key is set on Railway. Value never leaves the server."],
+                ["Iron Gate section", "LANE.ironGateSection · which IG sentinel section locks this lane's territory (docs/IRON_GATES.md)."],
+                ["allowed files", "LANE.allowedFiles · which files/areas this agent may edit. Touching outside = lane violation."],
+                ["forbidden files", "LANE.forbiddenFiles · which files this agent must NOT touch. Hard-fail at review."],
+              ] as Array<[string, string]>).map(([h, hint]) => (
+                <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                  {h}
+                  <InfoIcon hint={hint} />
+                </th>
               ))}
             </tr>
           </thead>
@@ -3710,7 +3974,10 @@ function BugCommandTab({ agentKeyConfig }: { agentKeyConfig: AgentKeyConfig }) {
 
       {/* Recent agent reports (live) */}
       <div className="mb-6 rounded-2xl border border-line bg-paper p-4">
-        <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">recent agent reports</div>
+        <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+          recent agent reports
+          <InfoIcon hint="Live agent_reports rows from /admin/agent-reports · most recent operator + agent reports written into the table. Empty until an agent ships a report." />
+        </div>
         {reports.length === 0 ? (
           <div className="font-mono text-[11px] text-text-tertiary">{reportsNote ?? "No agent reports yet."}</div>
         ) : (
@@ -3732,7 +3999,10 @@ function BugCommandTab({ agentKeyConfig }: { agentKeyConfig: AgentKeyConfig }) {
       {/* Bug intake table (live) */}
       <div>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">bug intake</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+            bug intake
+            <InfoIcon hint="Live rows from /admin/bug-intake · operator-tracked bugs (NOT raw telemetry). Each row is hand-triaged + assigned to a lane + severity." />
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
               lane
@@ -3746,6 +4016,7 @@ function BugCommandTab({ agentKeyConfig }: { agentKeyConfig: AgentKeyConfig }) {
                   <option key={l.key} value={l.key}>{l.name}</option>
                 ))}
               </select>
+              <InfoIcon hint="Filter on bug-intake.lane · narrows to one agent lane's queue." />
             </label>
             <label className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-tertiary">
               status
@@ -3759,6 +4030,7 @@ function BugCommandTab({ agentKeyConfig }: { agentKeyConfig: AgentKeyConfig }) {
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
+              <InfoIcon hint="Filter on bug-intake.status · new → assigned → fixing → ready for review → passed/failed/parked." />
             </label>
           </div>
         </div>
@@ -3772,8 +4044,22 @@ function BugCommandTab({ agentKeyConfig }: { agentKeyConfig: AgentKeyConfig }) {
             <table className="w-full border-collapse font-mono text-[11px]">
               <thead>
                 <tr className="text-left text-text-tertiary">
-                  {["id", "title", "section", "severity", "status", "lane", "source", "version", "daniel approval", "report"].map((h) => (
-                    <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                  {([
+                    ["id", "bug-intake.id · stable bug identifier (BUG-NNN). Used in commit messages + agent reports."],
+                    ["title", "bug-intake.title · short headline + description shown beneath."],
+                    ["section", "bug-intake.section · subsystem the bug lives in (e.g. Auth, Earn, Sidecar)."],
+                    ["severity", "bug-intake.severity · P0 (stops X) / P1 (trust loss / retention) / P2 (polish). Drives KPI cards above."],
+                    ["status", "bug-intake.status · workflow state · new → assigned → fixing → ready for review → passed/failed/parked."],
+                    ["lane", "bug-intake.lane · which agent lane owns this bug (from the LANES const)."],
+                    ["source", "bug-intake.source · how the bug surfaced (Daniel, automation, customer, telemetry)."],
+                    ["version", "bug-intake.appVersion · desktop build the bug was first reported against."],
+                    ["daniel approval", "bug-intake.danielApprovalRequired · true = Daniel must sign off on the fix before merge (P0 + visible UX)."],
+                    ["report", "bug-intake.latestAgentReport · most recent agent report string. Hover for full text (truncated to 260px)."],
+                  ] as Array<[string, string]>).map(([h, hint]) => (
+                    <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">
+                      {h}
+                      <InfoIcon hint={hint} />
+                    </th>
                   ))}
                 </tr>
               </thead>
