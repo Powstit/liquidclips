@@ -94,8 +94,19 @@ export default function CheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "https://liquidclips.app";
-  const returnUrl = `${origin}/get${affiliateId ? `?a=${encodeURIComponent(affiliateId)}` : ""}`;
+  // 2026-06-24 · payment-flow audit ·
+  // Whop return MUST land on account.liquidclips.app/get (which handles the
+  // post-purchase Clerk → Whop linkage via POST to backend). The previous
+  // behaviour used `window.location.origin` which is correct when checkout
+  // runs on account-app, but a defensive explicit account-app URL prevents
+  // any future cross-origin redirect from landing on the marketing /get
+  // route (which doesn't exist — would 404).
+  const accountAppOrigin = typeof window !== "undefined"
+    ? (window.location.origin.endsWith("liquidclips.app") || window.location.hostname.includes("localhost")
+        ? window.location.origin
+        : "https://account.liquidclips.app")
+    : "https://account.liquidclips.app";
+  const returnUrl = `${accountAppOrigin}/get${affiliateId ? `?a=${encodeURIComponent(affiliateId)}` : ""}`;
 
   // On a completed checkout, drive the TOP window to /get ourselves. The embed's
   // built-in redirect lands inside the iframe / on Whop's hub (what Daniel hit);

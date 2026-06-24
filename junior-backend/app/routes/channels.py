@@ -371,6 +371,28 @@ def create_channel(
             link_url=link_url,
         )
 
+    # TASK 3 · per-platform cap (channels_per_platform) · enforced BEFORE
+    # the total cap so the customer sees the right error message. Counts
+    # all non-deleted rows on the same (user, platform) pair, then maps
+    # against TIER_LIMITS. This closes the client-only cap that
+    # `useTierCaps.perPlatformChannels` advertised but the server never
+    # checked (a scripted client could POST /channels repeatedly).
+    from app.features import tier_limit
+    per_platform_cap = tier_limit(user.tier, "channels_per_platform", founder=bool(user.founder_flag))
+    per_platform_existing = (
+        db.query(SocialChannel)
+        .filter(SocialChannel.user_id == user.id)
+        .filter(SocialChannel.platform == body.platform)
+        .filter(SocialChannel.status != "deleted")
+        .count()
+    )
+    if per_platform_existing >= per_platform_cap:
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            f"You've added the max {per_platform_cap} {body.platform} channel(s) for your tier. "
+            f"Upgrade to add more {body.platform} handles.",
+        )
+
     # Tier cap — counts all non-deleted channels across platforms.
     existing = (
         db.query(SocialChannel)

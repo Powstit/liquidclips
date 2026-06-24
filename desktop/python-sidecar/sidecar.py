@@ -2777,6 +2777,8 @@ def method_start_ingest_url(params: dict[str, Any]) -> dict[str, Any]:
       - ingest_complete  { project, downloaded_path }
       - ingest_error     { message }
     """
+    import time
+
     url = params.get("url")
     if not isinstance(url, str) or not url.strip():
         raise ValueError("start_ingest_url requires `url` (str)")
@@ -3304,6 +3306,8 @@ def method_start_lift_transcript(params: dict[str, Any]) -> dict[str, Any]:
       - lift_complete  { url, transcript, meta }
       - lift_error     { url, message }
     """
+    import time
+
     url = params.get("url")
     if not isinstance(url, str) or not url.strip():
         raise ValueError("start_lift_transcript requires `url` (str)")

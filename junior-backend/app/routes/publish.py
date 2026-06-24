@@ -26,6 +26,7 @@ from app.db import get_db
 from app.deps import current_user
 from app.models import SocialConnection, User
 from app.routes.notifications import write_notification
+from app.routes.schedules import _enforce_monthly_post_cap
 
 log = logging.getLogger("junior.publish")
 
@@ -104,6 +105,10 @@ async def publish_now(
     for cancel.
     """
     _require_paid_tier(user)
+    # TASK 3 · monthly-posts tier cap (matches `useTierCaps.monthlyPosts`).
+    # Immediate publishes also count toward the cap · scripted clients
+    # can't bypass by skipping the /schedules table.
+    _enforce_monthly_post_cap(db, user, additional=1)
 
     # Resolve which Ayrshare profile + which platform list to post against.
     channel = None

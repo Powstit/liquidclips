@@ -218,6 +218,28 @@ def create_submission(
             f"You've submitted {_MAX_SUBMISSIONS_PER_DAY} clips in the last 24h — daily cap. Try again tomorrow.",
         )
 
+    # 3b. TASK 3 · clips-per-campaign tier cap. Mirrors
+    # `useTierCaps.clipsPerCampaign` (Free/Solo 10 · Pro 50 · Agency 200).
+    # Counts ALL non-rejected submissions this user has made TO this
+    # campaign · prevents a scripted client from bypassing the client-only
+    # cap.
+    from app.features import tier_limit
+    per_campaign_cap = tier_limit(user.tier, "clips_per_campaign", founder=bool(user.founder_flag))
+    per_campaign_count = (
+        db.query(func.count(CampaignSubmission.id))
+        .filter(CampaignSubmission.user_id == user.id)
+        .filter(CampaignSubmission.campaign_id == body.campaign_id)
+        .filter(CampaignSubmission.status != "rejected")
+        .scalar()
+        or 0
+    )
+    if per_campaign_count >= per_campaign_cap:
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            f"You've reached the {per_campaign_cap}-clip cap for this campaign at your tier. "
+            "Upgrade to submit more clips per campaign.",
+        )
+
     # 4. Download the clip via yt-dlp to a temp file, then run watermark detector
     clip_path = _download_clip(str(body.clip_url))
     try:

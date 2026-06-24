@@ -38,12 +38,26 @@ settings = get_settings()
 # Clerk plan slug → backend tier value. Slug = brand name, tier = backend value.
 # Kept as a map (not identity) so a future brand rename doesn't require touching
 # any tier-check logic — just edit this dict.
+#
+# 2026-06-24 · Clerk slug renamed Pro → Growth (same plan ID kept). The "pro"
+# fallback below catches any pre-rename Clerk subscriptions that still carry
+# the legacy slug — they map to "growth" which is what their plan resolves to
+# in the new naming. Without this fallback those subscriptions silently lose
+# tier resolution on the next webhook delivery.
 CLERK_SLUG_TO_TIER: dict[str, str] = {
     "free_user": "free",
     "solo": "solo",
+    "pro": "growth",       # legacy fallback · pre-rename Clerk slug
     "growth": "growth",
+    "agency": "agency",
     "autopilot": "autopilot",
 }
+
+# Clerk plan ID for the $6/mo accountpack add-on (mirrors NEXT_PUBLIC_CLERK_ACCOUNT_PACK_PLAN_ID
+# in account-app/src/components/PricingCards.tsx). Used by the webhook handler
+# to read the subscription item quantity and grant extra connected social
+# accounts via User.extra_accounts_purchased. Override via env when needed.
+ACCOUNT_PACK_PLAN_ID = "cplan_3EV9znSsguzmwoQoEr5kXpumkfM"
 
 
 def _verify_and_parse(request: Request, body: bytes) -> dict:
@@ -323,6 +337,29 @@ def _parse_period_end(data: dict) -> datetime | None:
     return None
 
 
+def _accountpack_quantity_from_subscription(data: dict) -> int | None:
+    """Extract the accountpack add-on quantity from a subscription payload.
+    Returns None if no accountpack item is present (don't touch the field),
+    or the integer quantity (≥0) when an accountpack item is found.
+
+    2026-06-24 · payment-flow audit · before this, the accountpack
+    purchase flow was: customer charged → webhook received → tier
+    correctly updated → BUT user.extra_accounts_purchased never written,
+    so the per-tier social-account ceiling never grew. This pulls the
+    quantity off the items array so the cap actually expands."""
+    items = data.get("items") or []
+    for item in items:
+        plan = item.get("plan") or {}
+        plan_id = plan.get("id") or plan.get("plan_id")
+        if plan_id == ACCOUNT_PACK_PLAN_ID:
+            qty = item.get("quantity")
+            try:
+                return max(0, int(qty)) if qty is not None else 0
+            except (TypeError, ValueError):
+                return 0
+    return None
+
+
 def _handle_subscription_active(db: Session, data: dict) -> None:
     clerk_id = _user_id_from_payer(data)
     if not clerk_id:
@@ -341,6 +378,15 @@ def _handle_subscription_active(db: Session, data: dict) -> None:
     period_end = _parse_period_end(data)
     if period_end:
         user.paid_until = period_end
+
+    # 2026-06-24 · accountpack quantity sync. When the subscription items
+    # include the $6/mo accountpack add-on, read its quantity and grant
+    # the user that many additional connected-social-account slots. None
+    # = no accountpack item present (don't touch the field). 0 = item
+    # present but quantity zero (downgrade — explicit write).
+    ap_qty = _accountpack_quantity_from_subscription(data)
+    if ap_qty is not None:
+        user.extra_accounts_purchased = ap_qty
 
     # Mirror to Clerk publicMetadata — nothing else writes tier there, so the
     # upgrade page / PostHogBoot / dashboard fallback would otherwise read "free".

@@ -93,6 +93,38 @@ Locked items:
 
 ---
 
+## 🗓️ PHASE LOCKS — multi-version cross-cutting capabilities
+
+Phase-tagged work that spans (or sits alongside) the version cadence. These items don't compete with the version cycle above; they have their own scope, sign-off, and ship gates. Append, don't reshuffle.
+
+### Phase 6P · Browser Capture & Reconciliation
+
+**Status:** Approved future capability · **DO NOT BUILD YET**.
+
+**Locked at:** 2026-06-19 by Daniel.
+
+**Goal:** Bridge Whop and Liquid Clips without deep Whop API access. When users voluntarily interact with Whop through an LC-controlled browser/webview, LC can reconcile visible Whop information with LC campaign information. Whop remains the source of truth; Browser Capture is the reconciliation layer; Liquid Clips is the operational layer.
+
+**Scope (locked):**
+- v1 · Manual import (~3d) · agency clicks "Capture reward info" on a Whop page in LC's browser; visible reward fields prefill the §8 Step 2 brief.
+- v1.5 · Reconciliation (~5d) · side-by-side diff card of payout/deadline/eligibility/status; auto-suggest reconciliation when URL matches a known LC campaign.
+- v2 · Deep Assist (~10–12d) · per-reward persistent consent + screenshots + submission-evidence + payout-event capture + match-rate dashboard.
+
+**Hard rules (never relax):**
+- Explicit user consent required (per-click / per-session / per-reward scopes).
+- Visible page content only.
+- No cookie access. No token interception. No hidden API interception. No browser exploitation. No bypassing Whop permissions. No automated reward actions.
+
+**Not required for:** 6N-E. The §8 URL-first flow ships independently.
+
+**Pre-ship gates:** Whop developer-relations sign-off before v1; written ToS clearance before v1.5.
+
+**Design doc:** `desktop-2/docs/browser-capture-reconciliation-audit.md` (single source of truth — architecture, capability matrix, consent model, ToS posture, roadmap detail).
+
+**Build gate:** Daniel must explicitly authorize v1 work on a separate turn. Audit-only until then.
+
+---
+
 ## 📌 BACKLOG — known-and-tracked, no-version yet
 
 These are real items that haven't been version-anchored. Append, don't reshuffle.

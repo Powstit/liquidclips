@@ -17,8 +17,13 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.cron import start_cron, stop_cron
+# 2026-06-24 · Whop chat-agent fleet (Option B · co-hosted async coroutines).
+# Defaults to DISABLED via WHOP_AGENT_ENABLED=false · safe to import without
+# keys. start_agent_fleet() returns None when disabled, so the lifespan
+# block is a no-op until Daniel flips the env.
+from app.agents import start_agent_fleet, stop_agent_fleet
 from app.db import Base, engine
-from app.routes import admin, affiliate, analytics, auth_whop, bonus_ledger, campaigns, channels, community, connections, desktop, doctrine, leaderboard, me, notifications, onboarding, promo, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, affiliate, agency_campaigns, analytics, auth_whop, bonus_ledger, campaign_asset_links, campaigns, carrot, channels, community, connections, desktop, doctrine, leaderboard, me, me_lifetime_views, notifications, onboarding, promo, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -97,6 +102,14 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS clips_created integer NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS active_at timestamptz",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS extra_accounts_purchased integer NOT NULL DEFAULT 0",
+        # 2026-06-24 · carrot rail · Whop sub-merchant id (for transfers.create
+        # destination_id) + onboarding status (pending|onboarded|rejected) +
+        # lifetime payout ledger (cents) + last_claim_at for idempotence checks.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_sub_merchant_id varchar",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_whop_sub_merchant_id ON users (whop_sub_merchant_id) WHERE whop_sub_merchant_id IS NOT NULL",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_sub_merchant_status varchar NOT NULL DEFAULT 'none'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS carrot_total_paid_usd_cents bigint NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS carrot_last_claim_at timestamptz",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_usage_month varchar",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_tokens_used integer NOT NULL DEFAULT 0",
         # Earnings leaderboard cache (sprint #14a). Refreshed every 6h by
@@ -213,6 +226,38 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS whop_campaign_id varchar",
         "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS whop_campaign_url varchar",
         "CREATE INDEX IF NOT EXISTS ix_sponsored_campaigns_mission_type ON sponsored_campaigns (mission_type)",
+        # ─── Phase 6N-E · Whop reward connection ──────────────────────
+        # New columns for the canonical reward-source-of-truth model.
+        # `whop_reward_id` / `whop_reward_url` carry the renamed semantics;
+        # the legacy `whop_campaign_id` / `_url` columns stay for one
+        # release as fallback reads, then drop in a follow-up.
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS whop_reward_id varchar",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS whop_reward_url varchar",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS whop_reward_snapshot jsonb",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS whop_reward_snapshot_business_goal varchar",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS whop_reward_snapshot_bounty_type varchar",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS whop_reward_synced_at timestamptz",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS whop_reward_last_error text",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS whop_reward_state varchar",
+        # 6N-E correction patch · URL-first enrichment state tag
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS whop_reward_snapshot_status varchar NOT NULL DEFAULT 'not_attempted'",
+        "CREATE INDEX IF NOT EXISTS ix_sponsored_campaigns_whop_reward_snapshot_status ON sponsored_campaigns (whop_reward_snapshot_status)",
+        # `campaign_type` discriminator (clip / coordination / affiliate /
+        # submission). Default 'clip' so legacy rows pass the not-null
+        # gate during the migration window.
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS campaign_type varchar NOT NULL DEFAULT 'clip'",
+        # Agency identity. NULL on legacy rows; future agency creation
+        # flow writes the user id.
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS created_by varchar",
+        "ALTER TABLE sponsored_campaigns ADD COLUMN IF NOT EXISTS description text NOT NULL DEFAULT ''",
+        "CREATE INDEX IF NOT EXISTS ix_sponsored_campaigns_whop_reward_id ON sponsored_campaigns (whop_reward_id)",
+        "CREATE INDEX IF NOT EXISTS ix_sponsored_campaigns_whop_reward_synced ON sponsored_campaigns (whop_reward_synced_at)",
+        "CREATE INDEX IF NOT EXISTS ix_sponsored_campaigns_whop_reward_state ON sponsored_campaigns (whop_reward_state)",
+        "CREATE INDEX IF NOT EXISTS ix_sponsored_campaigns_campaign_type ON sponsored_campaigns (campaign_type)",
+        # Backfill: copy legacy whop_campaign_id → whop_reward_id where
+        # the latter is null. Idempotent (NULL guard).
+        "UPDATE sponsored_campaigns SET whop_reward_id = whop_campaign_id WHERE whop_reward_id IS NULL AND whop_campaign_id IS NOT NULL",
+        "UPDATE sponsored_campaigns SET whop_reward_url = whop_campaign_url WHERE whop_reward_url IS NULL AND whop_campaign_url IS NOT NULL",
         # reward_bonus_ledger — Phase 1 premium bonus tracker. Whop owns
         # the submission flow + base $1 RPM payout; this ledger mirrors
         # approved Whop submissions and tracks the +$4 RPM bonus due to
@@ -357,9 +402,14 @@ async def lifespan(_app: FastAPI):
         )
 
     start_cron()
+    # Whop chat-agent fleet · guarded by WHOP_AGENT_ENABLED env (default false).
+    # When Daniel supplies WHOP_AGENT_KEYS + flips the enable flag, 100 async
+    # tasks spin up alongside the FastAPI process. Until then this is a no-op.
+    await start_agent_fleet()
     try:
         yield
     finally:
+        await stop_agent_fleet()
         stop_cron()
 
 
@@ -404,11 +454,17 @@ app.include_router(social.router)
 app.include_router(connections.router)
 app.include_router(whop.router)
 app.include_router(me.router)
+# 2026-06-24 · /me/lifetime-views · aggregates PostAnalytic for the $50 carrot
+app.include_router(me_lifetime_views.router)
+# 2026-06-24 · /me/carrot · real Whop transfers + sub-merchant onboarding (IG-SOV-2.2-001)
+app.include_router(carrot.router)
 app.include_router(onboarding.router)
 app.include_router(affiliate.router)
 app.include_router(tiktok_verify.router)
 app.include_router(admin.router)
 app.include_router(campaigns.router)
+app.include_router(campaign_asset_links.router)
+app.include_router(agency_campaigns.router)
 app.include_router(bonus_ledger.router)
 app.include_router(community.router)
 app.include_router(promo.router)
