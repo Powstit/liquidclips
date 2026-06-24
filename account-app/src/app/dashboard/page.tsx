@@ -5,6 +5,7 @@ import { PricingCards } from "@/components/PricingCards";
 import { TrackOnMount, TrackedLink } from "@/components/Track";
 import { AffiliateCard, type AffiliateData, type AffiliateMeResponse, type PaymentVisibility } from "@/components/AffiliateCard";
 import { SignOutButton } from "@/components/SignOutButton";
+import { isAdmin as isAdminEmail } from "@/lib/admin-allowlist";
 
 const FALLBACK_AFFILIATE: AffiliateData = {
   connected: false,
@@ -83,15 +84,10 @@ export default async function DashboardPage() {
   }
   const c = overview?.customer ?? null;
 
-  // Admin fallback list — only used if the backend fetch failed. Keep in sync
-  // with junior-backend/app/features.py.
-  const adminEnv = process.env.JUNIOR_ADMIN_EMAILS ?? "";
-  const adminList = (adminEnv
-    ? adminEnv.split(",")
-    : ["danieldiyepriye@gmail.com", "mrddokubo@gmail.com", "crazycatjackkids@gmail.com", "thedoks2019@gmail.com"]
-  ).map((e) => e.trim().toLowerCase()).filter(Boolean);
+  // Admin allow-list — only used if the backend fetch failed. Single source
+  // of truth lives in @/lib/admin-allowlist (P0-001).
   const primaryEmail = (user.primaryEmailAddress?.emailAddress ?? "").trim().toLowerCase();
-  const clerkIsAdmin = !!primaryEmail && adminList.includes(primaryEmail);
+  const clerkIsAdmin = isAdminEmail(primaryEmail);
 
   const isAdmin = c?.admin_override ?? clerkIsAdmin;
   const tier = normalizeTier(c?.tier ?? (clerkIsAdmin ? "agency" : clerkTier));

@@ -61,20 +61,12 @@ export type TierChangePayload = {
   reason: string;
 };
 
-export type RefundPayload = {
-  amount_usd: number;
-  currency: "usd" | "usdc";
-  reason: string;
-};
+// P1-009: RefundPayload / RefundResult types and `refund()` API removed.
+// Whop owns sponsored-reward refunds, Stripe owns subscription refunds —
+// the log-only stub was misleading customers with a fake green check.
 
-export type RefundResult = {
-  ok: boolean;
-  action: string;
-  target_id: string;
-  audit_id: number | null;
-  would_refund: boolean;
-  live: boolean;
-  message: string;
+export type AgentCountResponse = {
+  count: number;
 };
 
 export type BanPayload = {
@@ -173,12 +165,8 @@ export const mutationsApi = {
       body,
       idempotenceKey: freshIdem(`tier-${userId}`),
     }),
-  refund: (userId: string, body: RefundPayload) =>
-    call<RefundResult>(`users/${encodeURIComponent(userId)}/refund`, {
-      method: "POST",
-      body,
-      idempotenceKey: freshIdem(`refund-${userId}`),
-    }),
+  // P1-009: refund() removed — see RefundPayload comment above.
+  agentsCount: () => call<AgentCountResponse>(`agents/count`),
   ban: (userId: string, body: BanPayload) =>
     call<ActionResult>(`users/${encodeURIComponent(userId)}/ban`, {
       method: "POST",

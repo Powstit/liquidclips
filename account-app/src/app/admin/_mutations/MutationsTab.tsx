@@ -7,16 +7,18 @@ import { mutationsApi, type RecentSales, type SaleRow } from "./api";
 
 // HQ Agent 3 · Mutations tab.
 //
-// Single HQ surface that hosts all 11 management-gap mutations. Layout:
+// Single HQ surface that hosts the management-gap mutations. Layout:
 //   - Sales    · GET /recent-sales feed (auto-loads on mount)
 //   - Campaigns · create / edit / archive
-//   - Users    · tier-change / refund / ban
-//   - Agents   · kill / restart / rotate-key
+//   - Users    · tier-change / ban (refund DELETED per P1-009)
+//   - Agents   · kill / restart / rotate-key — hidden until agent_personas
+//                table is seeded (P1-007). Endpoints stay live for the day
+//                seeding happens.
 //   - Audit    · last 50 mutations (auto-refreshes after every fire)
 //
 // Every action button opens ConfirmModal with a typed-confirmation string
-// (e.g. "REFUND user_abc"). After the modal returns success we toast the
-// result + bump auditRefresh so the AuditLogPanel re-polls.
+// (e.g. "BAN USER"). After the modal returns success we toast the result
+// + bump auditRefresh so the AuditLogPanel re-polls.
 
 type ToastShape = { tone: "ok" | "fail"; message: string } | null;
 
@@ -385,37 +387,10 @@ function UsersSection({
     });
   };
 
-  const openRefund = () => {
-    openModal({
-      title: "Refund user",
-      description: "Records the refund intent in the audit log. When WHOP_PAYMENTS_LIVE=true is set AND the refund SDK is wired, the call goes through Whop. Until then, this is log-only — reconcile in the Whop dashboard.",
-      requiredText: "REFUND USER",
-      confirmLabel: "Issue refund",
-      destructive: true,
-      fields: [
-        { name: "user_id", label: "Backend user id", required: true, placeholder: "u_xxx" },
-        { name: "amount_usd", label: "Amount (USD)", type: "number", required: true, defaultValue: 0 },
-        { name: "currency", label: "Currency", type: "select", required: true, defaultValue: "usd", options: [
-          { value: "usd", label: "usd" },
-          { value: "usdc", label: "usdc" },
-        ] },
-        { name: "reason", label: "Reason (audit log)", type: "textarea", required: true },
-      ],
-      onConfirm: async (vals) => {
-        try {
-          const res = await mutationsApi.refund(vals.user_id, {
-            amount_usd: Number(vals.amount_usd),
-            currency: vals.currency as "usd" | "usdc",
-            reason: vals.reason,
-          });
-          onSuccess(`${res.live ? "[LIVE] " : "[LOG] "}${res.message}`);
-        } catch (e) {
-          onError(e);
-          throw e;
-        }
-      },
-    });
-  };
+  // P1-009: refund modal + button removed. Whop owns sponsored-reward
+  // refunds; Stripe owns subscription refunds. The previous "log-only"
+  // refund button returned ok:true with no money moved — that's worse
+  // than not having a button at all.
 
   const openBan = () => {
     openModal({
@@ -445,9 +420,8 @@ function UsersSection({
   };
 
   return (
-    <SectionShell title="users · tier-change / refund / ban">
+    <SectionShell title="users · tier-change / ban">
       <ActionButton onClick={openTier} label="Change tier" tone="secondary" />
-      <ActionButton onClick={openRefund} label="Refund" tone="destructive" />
       <ActionButton onClick={openBan} label="Ban user" tone="destructive" />
     </SectionShell>
   );
@@ -455,6 +429,12 @@ function UsersSection({
 
 // ---------------------------------------------------------------------
 // Agents · kill / restart / rotate-key
+//
+// P1-007: agent_personas starts empty in every fresh environment. Calling
+// kill/restart/rotate against an empty table returned 404 for every agent
+// id. We hide the action surface until count > 0 and show a placeholder
+// instead — the endpoints stay live so the day Daniel seeds the Whop
+// chat-agent fleet (WHOP_AGENT_KEYS), the buttons just appear.
 // ---------------------------------------------------------------------
 function AgentsSection({
   openModal,
@@ -465,6 +445,49 @@ function AgentsSection({
   onSuccess: (msg: string) => void;
   onError: (e: unknown) => void;
 }) {
+  const [agentCount, setAgentCount] = useState<number | null>(null);
+  const [countError, setCountError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await mutationsApi.agentsCount();
+        if (!cancelled) setAgentCount(res.count);
+      } catch (e) {
+        if (!cancelled) setCountError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (agentCount === 0) {
+    return (
+      <SectionShell title="agents · kill / restart / rotate-key">
+        <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-4 font-mono text-[11px] leading-relaxed text-neutral-600">
+          Agents will appear here once the Whop chat-agent fleet
+          (<code className="rounded bg-white px-1 py-0.5 text-pink-700 ring-1 ring-pink-200">WHOP_AGENT_KEYS</code>)
+          is seeded into the <code>agent_personas</code> table. Until then,
+          agent kill / restart / rotate is not available.
+        </div>
+      </SectionShell>
+    );
+  }
+
+  if (agentCount === null) {
+    return (
+      <SectionShell title="agents · kill / restart / rotate-key">
+        <div className="font-mono text-[11px] text-neutral-500">
+          {countError
+            ? `agent count unreachable · ${countError}`
+            : "checking agent fleet…"}
+        </div>
+      </SectionShell>
+    );
+  }
+
   const openKill = () => {
     openModal({
       title: "Kill agent",
