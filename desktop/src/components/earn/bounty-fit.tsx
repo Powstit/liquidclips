@@ -217,7 +217,7 @@ export function BountyFitChecklist({ clip, project }: { clip: Clip; project: Pro
           <li key={it.key} className="flex items-start gap-2">
             <span
               className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] font-bold ${
-                it.ok ? "bg-fuchsia text-white" : "border border-[var(--color-danger)]/50 text-[var(--color-danger)]"
+                it.ok ? "bg-fuchsia text-ink" : "border border-[var(--color-danger)]/50 text-[var(--color-danger)]"
               }`}
               aria-hidden
             >

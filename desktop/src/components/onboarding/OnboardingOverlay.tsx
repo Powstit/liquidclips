@@ -166,7 +166,7 @@ export function OnboardingOverlay({ onComplete, onOpenSettings, onTrySample }: O
             type="button"
             onClick={() => void primary()}
             disabled={busy}
-            className="inline-flex items-center gap-2 rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-ink transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] disabled:opacity-60"
           >
             {cta}
             <ArrowRight size={16} />

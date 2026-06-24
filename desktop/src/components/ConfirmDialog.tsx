@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { AlertTriangle, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
+import { AlertTriangle } from "./icons/BrandGlyphs";
 
 // Branded confirm primitive — kills the native `confirm()` calls that block
 // the Tauri webview thread + break the cockpit voice. Mirrors the visual
@@ -159,7 +160,7 @@ export function ConfirmDialog({
                 type="button"
                 onClick={onConfirm}
                 disabled={busy}
-                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 font-sans text-[13px] font-medium text-white transition-colors disabled:opacity-60 ${
+                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 font-sans text-[13px] font-medium text-ink transition-colors disabled:opacity-60 ${
                   isDestructive
                     ? "bg-[var(--color-danger)] hover:bg-[#B91C1C]"
                     : "bg-fuchsia hover:bg-fuchsia-bright"

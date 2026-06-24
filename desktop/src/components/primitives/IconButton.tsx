@@ -24,7 +24,7 @@ const variants: Record<Variant, string> = {
   ghost: "text-text-secondary hover:bg-paper-elev hover:text-ink",
   outline:
     "border border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-fuchsia",
-  primary: "bg-fuchsia text-white hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]",
+  primary: "bg-fuchsia text-ink hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]",
 };
 
 export const IconButton = forwardRef<HTMLButtonElement, Props>(function IconButton(

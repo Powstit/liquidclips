@@ -159,7 +159,7 @@ export default async function MissionDetailPage({ params }: { params: RouteParam
                 href={submitUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-fuchsia-bright"
+                className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-ink transition-colors hover:bg-fuchsia-bright"
               >
                 Submit on Whop →
               </a>
@@ -171,7 +171,7 @@ export default async function MissionDetailPage({ params }: { params: RouteParam
             {!isPremium && (
               <a
                 href="/upgrade"
-                className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia/40 bg-fuchsia-soft/20 px-4 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-fuchsia-deep transition-colors hover:border-fuchsia hover:bg-fuchsia hover:text-white"
+                className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia/40 bg-fuchsia-soft/20 px-4 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-fuchsia-deep transition-colors hover:border-fuchsia hover:bg-fuchsia hover:text-ink"
               >
                 Upgrade to unlock ${premiumRpm} RPM + 50% MRR →
               </a>

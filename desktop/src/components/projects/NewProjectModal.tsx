@@ -201,7 +201,7 @@ export function NewProjectModal({
             type="button"
             onClick={() => void onSubmit()}
             disabled={submitting || !name.trim()}
-            className="inline-flex h-11 items-center gap-2 rounded-full bg-fuchsia px-6 font-sans text-sm font-semibold text-white shadow-[var(--glow-md)] transition-all hover:bg-fuchsia-bright disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            className="inline-flex h-11 items-center gap-2 rounded-full bg-fuchsia px-6 font-sans text-sm font-semibold text-ink shadow-[var(--glow-md)] transition-all hover:bg-fuchsia-bright disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           >
             {submitting ? "Creating…" : "Create project →"}
           </button>

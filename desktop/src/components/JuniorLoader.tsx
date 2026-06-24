@@ -108,7 +108,7 @@ export function JuniorLoader({
             {onRetry && (
               <button
                 onClick={onRetry}
-                className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
+                className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-ink hover:bg-fuchsia-bright"
               >
                 Retry
               </button>

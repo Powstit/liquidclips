@@ -393,7 +393,7 @@ export function ClipReadyCard({
         <button
           onClick={() => tryAction("publish-now")}
           disabled={connectionLoading || busy}
-          className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-semibold text-white shadow-[var(--glow-sm)] transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-semibold text-ink shadow-[var(--glow-sm)] transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] disabled:opacity-50"
         >
           <Send className="h-3.5 w-3.5" strokeWidth={2.25} />
           publish now

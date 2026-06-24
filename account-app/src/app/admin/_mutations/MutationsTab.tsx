@@ -66,7 +66,7 @@ export function MutationsTab({ adminEmail }: { adminEmail: string }) {
         <p className="mt-2 font-sans text-[13px] leading-relaxed text-neutral-700">
           Every action requires typed confirmation. Mutations are audit-logged with the
           actor email, action, target, and a redacted payload snapshot. Signed in as{" "}
-          <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] text-pink-700 ring-1 ring-pink-200">
+          <code className="rounded bg-ink px-1.5 py-0.5 font-mono text-[11px] text-pink-700 ring-1 ring-pink-200">
             {adminEmail}
           </code>
           .
@@ -142,7 +142,7 @@ function SalesSection() {
   }, [load]);
 
   return (
-    <section className="rounded-3xl border border-neutral-200 bg-white p-5">
+    <section className="rounded-3xl border border-neutral-200 bg-ink p-5">
       <header className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-500">
@@ -156,7 +156,7 @@ function SalesSection() {
           <select
             value={sinceHours}
             onChange={(e) => setSinceHours(Number(e.target.value))}
-            className="rounded-xl border border-neutral-300 bg-white px-3 py-1.5 font-mono text-[11px] text-neutral-900 focus:border-pink-500 focus:outline-none"
+            className="rounded-xl border border-neutral-300 bg-ink px-3 py-1.5 font-mono text-[11px] text-neutral-900 focus:border-pink-500 focus:outline-none"
           >
             {[24, 72, 168, 720].map((h) => (
               <option key={h} value={h}>
@@ -167,7 +167,7 @@ function SalesSection() {
           <button
             type="button"
             onClick={load}
-            className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-neutral-800 hover:border-pink-500"
+            className="rounded-full border border-neutral-300 bg-ink px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-neutral-800 hover:border-pink-500"
           >
             refresh
           </button>
@@ -468,7 +468,7 @@ function AgentsSection({
       <SectionShell title="agents · kill / restart / rotate-key">
         <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-4 font-mono text-[11px] leading-relaxed text-neutral-600">
           Agents will appear here once the Whop chat-agent fleet
-          (<code className="rounded bg-white px-1 py-0.5 text-pink-700 ring-1 ring-pink-200">WHOP_AGENT_KEYS</code>)
+          (<code className="rounded bg-ink px-1 py-0.5 text-pink-700 ring-1 ring-pink-200">WHOP_AGENT_KEYS</code>)
           is seeded into the <code>agent_personas</code> table. Until then,
           agent kill / restart / rotate is not available.
         </div>
@@ -572,7 +572,7 @@ function AgentsSection({
 // ---------------------------------------------------------------------
 function SectionShell({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-3xl border border-neutral-200 bg-white p-5">
+    <section className="rounded-3xl border border-neutral-200 bg-ink p-5">
       <header>
         <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-500">
           {title}
@@ -594,10 +594,10 @@ function ActionButton({
 }) {
   const cls =
     tone === "primary"
-      ? "bg-neutral-900 text-white hover:bg-pink-700"
+      ? "bg-neutral-900 text-ink hover:bg-pink-700"
       : tone === "destructive"
-        ? "bg-pink-600 text-white hover:bg-pink-700"
-        : "border border-neutral-300 bg-white text-neutral-900 hover:border-pink-500";
+        ? "bg-pink-600 text-ink hover:bg-pink-700"
+        : "border border-neutral-300 bg-ink text-neutral-900 hover:border-pink-500";
   return (
     <button
       type="button"

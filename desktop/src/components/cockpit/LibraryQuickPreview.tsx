@@ -170,7 +170,7 @@ export function LibraryQuickPreview({ project, onOpen, onClose }: LibraryQuickPr
               onClose();
               onOpen();
             }}
-            className="flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-semibold text-white transition-colors hover:bg-fuchsia-deep"
+            className="flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-semibold text-ink transition-colors hover:bg-fuchsia-deep"
           >
             <FolderOpen className="h-3.5 w-3.5" />
             Open →

@@ -372,7 +372,7 @@ export const ClipCard = React.memo(function ClipCard({
                   void revealBrokenFile();
                 }}
                 disabled={!videoPath}
-                className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-fuchsia px-3 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-white transition-colors hover:bg-fuchsia-bright disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-fuchsia px-3 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-ink transition-colors hover:bg-fuchsia-bright disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Reveal in Finder
               </button>
@@ -393,7 +393,7 @@ export const ClipCard = React.memo(function ClipCard({
             }}
             className={`absolute left-2.5 top-2.5 grid h-[22px] w-[22px] place-items-center rounded-md border backdrop-blur-sm transition-all ${
               selected
-                ? "border-fuchsia bg-fuchsia text-white shadow-[0_0_12px_rgba(255,26,140,0.5)]"
+                ? "border-fuchsia bg-fuchsia text-ink shadow-[0_0_12px_rgba(255,26,140,0.5)]"
                 : "border-line-strong bg-paper/70 text-transparent hover:border-fuchsia"
             }`}
           >

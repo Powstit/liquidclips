@@ -139,7 +139,7 @@ export function LibraryWall({
               type="button"
               onClick={onBulkDelete}
               disabled={selectedSlugs.size === 0}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-danger)] px-4 py-2 font-sans text-[13px] font-medium text-white transition-colors hover:bg-[#B91C1C] disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-danger)] px-4 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:bg-[#B91C1C] disabled:opacity-40"
             >
               <Trash2 className="h-3.5 w-3.5" strokeWidth={2.2} />
               Delete {selectedSlugs.size > 0 ? selectedSlugs.size : ""}
@@ -333,7 +333,7 @@ function EmptyState({
         <button
           type="button"
           onClick={onGoToWorkstation}
-          className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.45)]"
+          className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-ink transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.45)]"
         >
           Go to Workstation →
         </button>

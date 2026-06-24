@@ -387,7 +387,7 @@ export function ResultsGrid({
               title={bestBitsOnly ? "Show all clips" : `Show only virality ≥ ${VIRALITY_FLOOR}`}
               className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors ${
                 bestBitsOnly
-                  ? "border-fuchsia bg-fuchsia text-white shadow-[0_0_18px_rgba(255,26,140,0.4)]"
+                  ? "border-fuchsia bg-fuchsia text-ink shadow-[0_0_18px_rgba(255,26,140,0.4)]"
                   : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
               }`}
             >
@@ -465,7 +465,7 @@ export function ResultsGrid({
               }
               onDropAnother();
             }}
-            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-ink transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
           >
             <Plus className="h-4 w-4" strokeWidth={2.5} />
             Drop another

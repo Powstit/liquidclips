@@ -65,7 +65,7 @@ export function BountyWorkspaceHeader({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep">
-            <span className="inline-grid h-5 w-5 place-items-center rounded-full bg-fuchsia font-mono text-[11px] font-bold leading-none text-white" aria-hidden>
+            <span className="inline-grid h-5 w-5 place-items-center rounded-full bg-fuchsia font-mono text-[11px] font-bold leading-none text-ink" aria-hidden>
               /
             </span>
             clipping for a Whop reward
@@ -214,7 +214,7 @@ function NextStepTile({
         <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">next step</div>
         <button
           onClick={onGenerateClips}
-          className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-3 py-1 font-sans text-[11px] font-medium text-white hover:bg-fuchsia-bright"
+          className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-3 py-1 font-sans text-[11px] font-medium text-ink hover:bg-fuchsia-bright"
         >
           Generate clips
         </button>
@@ -242,7 +242,7 @@ function NextStepTile({
         <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">next step</div>
         <button
           onClick={copySubmissionLink}
-          className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-3 py-1 font-sans text-[11px] font-medium text-white hover:bg-fuchsia-bright"
+          className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-3 py-1 font-sans text-[11px] font-medium text-ink hover:bg-fuchsia-bright"
         >
           {copied ? "Copied!" : "Copy submission link"}
         </button>

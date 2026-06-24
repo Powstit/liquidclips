@@ -35,13 +35,13 @@ export default function ReferPage() {
         <div className="mt-2 flex flex-wrap gap-3">
           <Link
             href="/dashboard"
-            className="inline-flex items-center gap-2 rounded-full bg-[var(--fuchsia)] px-6 py-3 font-sans text-[14px] font-semibold text-white shadow-[0_0_28px_rgba(255,26,140,0.45)] transition-colors hover:bg-[var(--fuchsia-bright)]"
+            className="inline-flex items-center gap-2 rounded-full bg-[var(--fuchsia)] px-6 py-3 font-sans text-[14px] font-semibold text-ink shadow-[0_0_28px_rgba(255,26,140,0.45)] transition-colors hover:bg-[var(--fuchsia-bright)]"
           >
             Get my affiliate link →
           </Link>
           <a
             href="#terms"
-            className="inline-flex items-center gap-2 rounded-full border border-[#3a2530] bg-[#1a0f18] px-6 py-3 font-sans text-[14px] font-medium text-[#C9C0C5] transition-colors hover:border-[var(--fuchsia)] hover:text-white"
+            className="inline-flex items-center gap-2 rounded-full border border-[#3a2530] bg-[#1a0f18] px-6 py-3 font-sans text-[14px] font-medium text-[#C9C0C5] transition-colors hover:border-[var(--fuchsia)] hover:text-ink"
           >
             Read the terms ↓
           </a>
@@ -117,7 +117,7 @@ export default function ReferPage() {
             </ul>
             <Link
               href="/dashboard"
-              className="mt-5 inline-flex items-center gap-2 rounded-full bg-[var(--fuchsia)] px-5 py-2.5 font-sans text-[13px] font-semibold text-white"
+              className="mt-5 inline-flex items-center gap-2 rounded-full bg-[var(--fuchsia)] px-5 py-2.5 font-sans text-[13px] font-semibold text-ink"
             >
               Set up Whop payout →
             </Link>
@@ -138,7 +138,7 @@ export default function ReferPage() {
             </ul>
             <Link
               href="/dashboard#payouts"
-              className="mt-5 inline-flex items-center gap-2 rounded-full border border-[#3a2530] bg-[#1a0f18] px-5 py-2.5 font-sans text-[13px] font-semibold text-white"
+              className="mt-5 inline-flex items-center gap-2 rounded-full border border-[#3a2530] bg-[#1a0f18] px-5 py-2.5 font-sans text-[13px] font-semibold text-ink"
             >
               Set up Stripe Connect →
             </Link>
@@ -233,7 +233,7 @@ export default function ReferPage() {
           <div className="mt-5">
             <Link
               href="/dashboard"
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--fuchsia)] px-6 py-3 font-sans text-[14px] font-semibold text-white shadow-[0_0_28px_rgba(255,26,140,0.45)] transition-colors hover:bg-[var(--fuchsia-bright)]"
+              className="inline-flex items-center gap-2 rounded-full bg-[var(--fuchsia)] px-6 py-3 font-sans text-[14px] font-semibold text-ink shadow-[0_0_28px_rgba(255,26,140,0.45)] transition-colors hover:bg-[var(--fuchsia-bright)]"
             >
               Open my dashboard →
             </Link>

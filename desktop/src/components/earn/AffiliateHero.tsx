@@ -964,7 +964,7 @@ function CopyLinkButton({ url, disabled }: { url: string; disabled?: boolean }) 
       <button
         onClick={() => void copy()}
         disabled={disabled}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-fuchsia px-3 py-1 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-50"
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-fuchsia px-3 py-1 font-sans text-[12px] font-medium text-ink hover:bg-fuchsia-bright disabled:opacity-50"
         title={copied ? "Copied" : "Copy your default Liquid Clips referral link."}
         aria-label="Copy your default Liquid Clips referral link."
       >

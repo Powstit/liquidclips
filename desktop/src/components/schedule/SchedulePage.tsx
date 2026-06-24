@@ -529,11 +529,11 @@ function PillTab({
       aria-pressed={active}
       className={`inline-flex items-center gap-2 rounded-full border px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors ${
         active
-          ? "border-transparent bg-fuchsia text-white shadow-[var(--glow-sm)]"
+          ? "border-transparent bg-fuchsia text-ink shadow-[var(--glow-sm)]"
           : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
       }`}
     >
-      <Icon size={12} className={active ? "text-white" : "text-fuchsia"} />
+      <Icon size={12} className={active ? "text-ink" : "text-fuchsia"} />
       <span>{label}</span>
       {typeof count === "number" && (
         <span

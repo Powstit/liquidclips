@@ -344,7 +344,7 @@ export function AvatarPanel({
                         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                       />
                     ) : (
-                      <span className="flex h-full w-full items-center justify-center font-display text-[16px] font-bold text-white">
+                      <span className="flex h-full w-full items-center justify-center font-display text-[16px] font-bold text-ink">
                         {initials}
                       </span>
                     )}
