@@ -1998,3 +1998,557 @@ def delete_announcement(
     db.delete(a)
     db.commit()
 
+
+# ======================================================================
+# 2026-06-24 · HQ Demo-Data Wipe — live-data endpoints for tabs that used
+# to render hardcoded sample arrays. EVERY endpoint here is a thin read
+# over the real DB (or an env-flag derived view). For dimensions that
+# don't have a backing table yet, the endpoint returns an empty list +
+# an honest "note" explaining why. The frontend renders "No X yet" — it
+# never falls back to demo data. NO new tables. NO writes.
+# ======================================================================
+
+
+# ── Revenue summary (real, computed from users table) ────────────────
+
+def _day_key(dt: datetime) -> str:
+    return dt.date().isoformat()
+
+
+def _week_start(dt: datetime) -> str:
+    """ISO Monday for the week containing dt. Date-only string."""
+    d = dt.date()
+    monday = d - timedelta(days=d.weekday())
+    return monday.isoformat()
+
+
+def _month_key(dt: datetime) -> str:
+    return dt.date().strftime("%Y-%m")
+
+
+# Pricing baseline — Solo / Pro / Agency monthly cents. Used to estimate
+# MRR from the live users table. These are pricing constants, not mock
+# data; if Daniel re-prices, update here.
+_TIER_PRICE_CENTS = {
+    "free": 0,
+    "solo": 2999,
+    "channel": 4999,   # legacy alias for pro
+    "pro": 4999,
+    "autopilot": 14999,  # legacy alias for agency
+    "agency": 14999,
+}
+
+
+def _tier_price_cents(tier: str) -> int:
+    return _TIER_PRICE_CENTS.get((tier or "free").lower(), 0)
+
+
+@router.get("/revenue/summary")
+def revenue_summary(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    days: int = 14,
+    weeks: int = 6,
+    months: int = 6,
+) -> dict[str, Any]:
+    """Live revenue rollups computed from the real `users` table.
+
+    NOT a payments-system source of truth — Stripe/Whop own that. This is
+    Junior's view of "who signed up, who's paid, what tier are they" so
+    Admin HQ can show a useful pulse without inventing numbers. All counts
+    are derived from User.created_at + User.subscription_status + User.tier.
+    """
+    days = max(1, min(days, 90))
+    weeks = max(1, min(weeks, 26))
+    months = max(1, min(months, 24))
+
+    now = _now()
+    users = db.query(User).all()
+
+    # MRR + headline counts (live).
+    paid_users = [u for u in users if u.subscription_status == "active" and (u.tier or "free") != "free"]
+    free_users = [u for u in users if (u.tier or "free") == "free"]
+    canceled_users = [u for u in users if u.subscription_status in ("canceled", "expired", "refunded")]
+    mrr_cents = sum(_tier_price_cents(u.tier) for u in paid_users)
+
+    # Daily bucket (new signups + new paid + canceled per day, based on
+    # User.created_at and User.subscription_status). We do not have a
+    # historical events table, so "newPaidToday" approximates as users
+    # created in the day window who are currently paid.
+    day_buckets: dict[str, dict[str, Any]] = {}
+    for i in range(days):
+        d = (now - timedelta(days=i)).date().isoformat()
+        day_buckets[d] = {
+            "date": d,
+            "new_signups": 0,
+            "new_paid": 0,
+            "canceled": 0,
+            "gross_cents": 0,
+            "note": "",
+        }
+
+    for u in users:
+        if not u.created_at:
+            continue
+        key = _day_key(u.created_at)
+        if key in day_buckets:
+            day_buckets[key]["new_signups"] += 1
+            if u.subscription_status == "active" and (u.tier or "free") != "free":
+                day_buckets[key]["new_paid"] += 1
+                day_buckets[key]["gross_cents"] += _tier_price_cents(u.tier)
+        # Canceled approximation — use updated_at if it's recent.
+        if u.subscription_status in ("canceled", "refunded", "expired") and u.updated_at:
+            ck = _day_key(u.updated_at)
+            if ck in day_buckets:
+                day_buckets[ck]["canceled"] += 1
+
+    daily = sorted(day_buckets.values(), key=lambda r: r["date"])
+
+    # Weekly bucket — same idea, keyed by ISO week start.
+    weekly_buckets: dict[str, dict[str, Any]] = {}
+    for i in range(weeks):
+        d = (now - timedelta(days=i * 7))
+        key = _week_start(d)
+        weekly_buckets.setdefault(key, {
+            "week_starting": key,
+            "new_signups": 0,
+            "new_paid": 0,
+            "canceled": 0,
+            "gross_cents": 0,
+        })
+
+    for u in users:
+        if not u.created_at:
+            continue
+        key = _week_start(u.created_at)
+        if key in weekly_buckets:
+            weekly_buckets[key]["new_signups"] += 1
+            if u.subscription_status == "active" and (u.tier or "free") != "free":
+                weekly_buckets[key]["new_paid"] += 1
+                weekly_buckets[key]["gross_cents"] += _tier_price_cents(u.tier)
+        if u.subscription_status in ("canceled", "refunded", "expired") and u.updated_at:
+            ck = _week_start(u.updated_at)
+            if ck in weekly_buckets:
+                weekly_buckets[ck]["canceled"] += 1
+
+    weekly = sorted(weekly_buckets.values(), key=lambda r: r["week_starting"])
+
+    # Monthly bucket.
+    month_buckets: dict[str, dict[str, Any]] = {}
+    cursor = now
+    for _ in range(months):
+        key = _month_key(cursor)
+        month_buckets.setdefault(key, {
+            "month": key,
+            "new_signups": 0,
+            "new_paid": 0,
+            "canceled": 0,
+            "gross_cents": 0,
+            "mrr_cents": 0,
+            "paid_users": 0,
+            "free_users": 0,
+        })
+        # Step back ~one month.
+        cursor = cursor - timedelta(days=30)
+
+    for u in users:
+        if u.created_at:
+            mk = _month_key(u.created_at)
+            if mk in month_buckets:
+                month_buckets[mk]["new_signups"] += 1
+                if u.subscription_status == "active" and (u.tier or "free") != "free":
+                    month_buckets[mk]["new_paid"] += 1
+                    month_buckets[mk]["gross_cents"] += _tier_price_cents(u.tier)
+
+    # The current month gets the live MRR snapshot; older months stay
+    # signups-only since we don't have historical state.
+    current_month_key = _month_key(now)
+    if current_month_key in month_buckets:
+        month_buckets[current_month_key]["mrr_cents"] = mrr_cents
+        month_buckets[current_month_key]["paid_users"] = len(paid_users)
+        month_buckets[current_month_key]["free_users"] = len(free_users)
+
+    monthly = sorted(month_buckets.values(), key=lambda r: r["month"])
+
+    return {
+        "headline": {
+            "mrr_cents": mrr_cents,
+            "paid_users": len(paid_users),
+            "free_users": len(free_users),
+            "canceled_users": len(canceled_users),
+            "users_total": len(users),
+            "target_mrr_cents": 30000_00,
+            "gap_to_target_cents": max(0, 30000_00 - mrr_cents),
+        },
+        "daily": daily,
+        "weekly": weekly,
+        "monthly": monthly,
+        "generated_at": _iso(datetime.now(timezone.utc)),
+        "note": (
+            "MRR is computed live from users.tier × baseline price (Solo $29.99, "
+            "Pro $49.99, Agency $149.99). Historical daily/weekly counts are based on "
+            "User.created_at; refund/cancel counts use User.updated_at as an approximation "
+            "since per-day revenue events aren't persisted in v0. Stripe/Whop own the ledger."
+        ),
+    }
+
+
+# ── Revenue blockers (real, from desktop error telemetry) ────────────
+
+@router.get("/revenue/blockers")
+def revenue_blockers(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Top error groups from DesktopErrorEvent in the last 24h — what's
+    actively breaking customer flows. Not a synthetic 'blocker' list, just
+    the real error_code groups ordered by frequency."""
+    since = _now() - timedelta(hours=24)
+    rows = (
+        db.query(DesktopErrorEvent)
+        .filter(DesktopErrorEvent.created_at >= since)
+        .all()
+    )
+    by_code: dict[str, dict[str, Any]] = {}
+    for e in rows:
+        code = e.error_code or e.event or "(unknown)"
+        g = by_code.setdefault(code, {
+            "code": code,
+            "count": 0,
+            "affected_users": set(),
+            "latest_message": None,
+            "latest_at_dt": None,
+            "route": e.route,
+        })
+        g["count"] += 1
+        if e.user_ref:
+            g["affected_users"].add(e.user_ref)
+        if e.created_at and (g["latest_at_dt"] is None or e.created_at > g["latest_at_dt"]):
+            g["latest_message"] = e.message
+            g["latest_at_dt"] = e.created_at
+
+    blockers = [
+        {
+            "code": g["code"],
+            "count": g["count"],
+            "affected_users": len(g["affected_users"]),
+            "latest_message": g["latest_message"],
+            "latest_at": _iso(g["latest_at_dt"]),
+            "route": g["route"],
+        }
+        for g in by_code.values()
+    ]
+    blockers.sort(key=lambda b: b["count"], reverse=True)
+    return {
+        "rows": blockers[:limit],
+        "window_hours": 24,
+        "generated_at": _iso(datetime.now(timezone.utc)),
+        "note": (
+            "Top error groups from desktop telemetry in the last 24h. "
+            "These are the real things breaking customer flows right now."
+        ),
+    }
+
+
+# ── Customer signals (real, from User + DesktopErrorEvent) ───────────
+
+@router.get("/customer-signals")
+def customer_signals(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Recent signups + activity signal per user. Emails masked. Drawn
+    from User + Usage + DesktopErrorEvent. No demo data."""
+    users = (
+        db.query(User)
+        .order_by(User.created_at.desc())
+        .limit(min(max(limit, 1), 200))
+        .all()
+    )
+    # Pull recent error refs once, group by user_ref so we can attach.
+    since = _now() - timedelta(days=14)
+    err_rows = (
+        db.query(DesktopErrorEvent)
+        .filter(DesktopErrorEvent.created_at >= since)
+        .all()
+    )
+    err_by_user: dict[str, dict[str, Any]] = {}
+    for e in err_rows:
+        if not e.user_ref:
+            continue
+        slot = err_by_user.setdefault(e.user_ref, {"count": 0, "latest_dt": None})
+        slot["count"] += 1
+        if e.created_at and (slot["latest_dt"] is None or e.created_at > slot["latest_dt"]):
+            slot["latest_dt"] = e.created_at
+
+    rows: list[dict[str, Any]] = []
+    for u in users:
+        # user_ref convention in telemetry.py: backend user id. Best effort.
+        e = err_by_user.get(u.id, {"count": 0, "latest_dt": None})
+        is_paid = u.subscription_status == "active" and (u.tier or "free") != "free"
+        rows.append({
+            "id": u.id,
+            "email_masked": _mask_email(u.email),
+            "tier": u.tier,
+            "subscription_status": u.subscription_status,
+            "billing_provider": "whop" if u.whop_user_id else "clerk",
+            "created_at": _iso(u.created_at),
+            "active_at": _iso(u.active_at),
+            "clips_created": u.clips_created or 0,
+            "starter_exports_used": u.starter_exports_used or 0,
+            "is_paid": is_paid,
+            "recent_error_count": e["count"],
+            "recent_error_at": _iso(e["latest_dt"]),
+            "first_clip_created": (u.clips_created or 0) > 0,
+        })
+    return {
+        "rows": rows,
+        "generated_at": _iso(datetime.now(timezone.utc)),
+        "note": (
+            "Most-recent signups with live activity + error counts in the last 14 days. "
+            "Real users only; emails masked in this list."
+        ),
+    }
+
+
+# ── Inbox (empty in v0 — no inbox_messages table) ────────────────────
+
+@router.get("/inbox")
+def inbox_messages(admin: AdminUser) -> dict[str, Any]:
+    """Inbound user-to-HQ support board. No table yet — returns empty
+    list + the migration path. Frontend renders an honest empty state."""
+    return {
+        "rows": [],
+        "note": (
+            "No inbox_messages table in v0. Once /webhooks/support or a "
+            "contact form posts to a new table, this endpoint will list "
+            "real customer messages. Until then there is no inbox to show."
+        ),
+    }
+
+
+# ── Employees (live, derived from admin allowlist + this user) ───────
+
+@router.get("/employees")
+def employees(
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    """Live employees view drawn from the admin allowlist + each user row.
+    Returns one row per admin email that actually exists in the User
+    table. No people directory table in v0 — costs/hours are unknown
+    and intentionally left as null instead of being invented."""
+    from app.features import ADMIN_EMAILS
+
+    allow = ADMIN_EMAILS  # frozenset[str] of lowercase emails
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for email in sorted(allow):
+        u = db.query(User).filter_by(email=email).one_or_none()
+        seen.add(email)
+        if u is None:
+            rows.append({
+                "id": f"allow:{email}",
+                "name": email.split("@")[0],
+                "email": email,
+                "role": "Admin",
+                "status": "invited",
+                "created_at": None,
+                "last_active": None,
+                "tier": "—",
+                "founder": False,
+                "monthly_cost_cents": None,
+                "hourly_rate_cents": None,
+                "can_access_hq": True,
+                "emergency_contact": email == "danieldiyepriye@gmail.com",
+                "notes": "On admin allowlist but no User row yet.",
+            })
+            continue
+        rows.append({
+            "id": u.id,
+            "name": email.split("@")[0],
+            "email": email,
+            "role": "Admin",
+            "status": "active" if u.subscription_status == "active" else u.subscription_status,
+            "created_at": _iso(u.created_at),
+            "last_active": _iso(u.active_at),
+            "tier": u.tier,
+            "founder": bool(u.founder_flag),
+            "monthly_cost_cents": None,
+            "hourly_rate_cents": None,
+            "can_access_hq": True,
+            "emergency_contact": email == "danieldiyepriye@gmail.com",
+            "notes": "From admin allowlist.",
+        })
+    return {
+        "rows": rows,
+        "generated_at": _iso(datetime.now(timezone.utc)),
+        "note": (
+            "Employees = JUNIOR_ADMIN_EMAILS allowlist joined to live User "
+            "rows. No people-directory table in v0 — costs/hours are not "
+            "stored, so they show null. Add an `employees` table to track "
+            "monthly cost / rate / role."
+        ),
+    }
+
+
+# ── Agents (live env-flag derived) ───────────────────────────────────
+
+@router.get("/agents")
+def agents_status(admin: AdminUser) -> dict[str, Any]:
+    """Live agent fleet status derived from env-flag presence. Returns
+    one entry per agent lane the env exposes. Never returns demo costs."""
+    s = get_settings()
+
+    def env(name: str) -> str | None:
+        return os.environ.get(name) or None
+
+    raw = [
+        ("auth", "Auth Agent", "Kimi", "Auth / Account / Upgrade", env("KIMI_AUTH_AGENT_API_KEY")),
+        ("projects", "Projects Agent", "Kimi", "Projects Manager", env("KIMI_PROJECTS_AGENT_API_KEY")),
+        ("earn", "Earn Agent", "Kimi", "Earn Workflow", env("KIMI_EARN_AGENT_API_KEY")),
+        ("ui", "UI Agent", "Kimi", "UI Polish", env("KIMI_UI_AGENT_API_KEY")),
+        ("codex", "Codex Agent", "OpenAI", "Upgrade + Self-Onboarding", env("OPENAI_CODEX_AGENT_API_KEY")),
+        ("claude", "Claude Agent", "Claude", "Backend / Release", env("CLAUDE_AGENT_API_KEY")),
+        ("hq_internal", "HQ Internal", "Internal", "Operator tooling", env("HQ_INTERNAL_SECRET")),
+    ]
+    rows = [
+        {
+            "id": f"agent:{key}",
+            "key": key,
+            "name": name,
+            "provider": provider,
+            "lane": lane,
+            "configured": bool(value),
+            "status": "active" if value else "missing key",
+            "monthly_budget_cents": None,
+            "spent_this_month_cents": None,
+            "note": "Cost telemetry not wired in v0.",
+        }
+        for key, name, provider, lane, value in raw
+    ]
+    _ = s  # touch settings dependency so import stays warm
+    return {
+        "rows": rows,
+        "generated_at": _iso(datetime.now(timezone.utc)),
+        "note": (
+            "Agent fleet derived from env-flag presence. Cost/spend not "
+            "tracked in v0 — those columns show null. Wire a per-agent "
+            "billing event table to populate."
+        ),
+    }
+
+
+# ── API services (live env-flag derived) ─────────────────────────────
+
+@router.get("/api-services")
+def api_services_status(admin: AdminUser) -> dict[str, Any]:
+    """Live API/service dependency map. Configured flag is real (env var
+    presence); cost/spend are null because Junior doesn't store billing
+    events for third-party APIs in v0."""
+    def env(*names: str) -> bool:
+        return any(bool(os.environ.get(n)) for n in names)
+
+    services = [
+        ("openai", "OpenAI", "AI", "OPENAI_API_KEY", env("OPENAI_API_KEY")),
+        ("kimi", "Kimi", "AI", "KIMI_API_KEY", env("KIMI_API_KEY", "KIMI_AUTH_AGENT_API_KEY")),
+        ("claude", "Claude", "AI", "CLAUDE_API_KEY", env("CLAUDE_API_KEY", "CLAUDE_AGENT_API_KEY")),
+        ("whop", "Whop", "payments", "WHOP_API_KEY", env("WHOP_API_KEY")),
+        ("clerk", "Clerk", "auth", "CLERK_SECRET_KEY", env("CLERK_SECRET_KEY")),
+        ("stripe", "Stripe", "payments", "STRIPE_SECRET_KEY", env("STRIPE_SECRET_KEY")),
+        ("railway", "Railway", "infra", "RAILWAY_TOKEN", env("RAILWAY_TOKEN")),
+        ("vercel", "Vercel", "hosting", "VERCEL_TOKEN", env("VERCEL_TOKEN")),
+        ("supabase", "Supabase", "storage", "SUPABASE_SERVICE_ROLE_KEY", env("SUPABASE_SERVICE_ROLE_KEY")),
+        ("resend", "Resend", "email", "RESEND_API_KEY", env("RESEND_API_KEY")),
+        ("ayrshare", "Ayrshare", "social", "AYRSHARE_API_KEY", env("AYRSHARE_API_KEY")),
+        ("postiz", "Postiz", "social", "POSTIZ_API_KEY", env("POSTIZ_API_KEY")),
+        ("storage", "S3 / R2 Storage", "storage", "AWS_ACCESS_KEY_ID / R2_ACCESS_KEY_ID",
+            env("AWS_ACCESS_KEY_ID", "S3_ACCESS_KEY_ID", "R2_ACCESS_KEY_ID")),
+        ("sentry", "Sentry", "analytics", "SENTRY_AUTH_TOKEN", env("SENTRY_AUTH_TOKEN")),
+        ("posthog", "PostHog", "analytics", "POSTHOG_KEY", env("POSTHOG_KEY")),
+    ]
+    rows = [
+        {
+            "id": f"svc:{key}",
+            "key": key,
+            "name": name,
+            "category": category,
+            "env_var": env_var,
+            "configured": configured,
+            "monthly_cost_cents": None,
+            "current_month_spend_cents": None,
+            "note": "Cost telemetry not wired in v0.",
+        }
+        for key, name, category, env_var, configured in services
+    ]
+    return {
+        "rows": rows,
+        "generated_at": _iso(datetime.now(timezone.utc)),
+        "note": (
+            "Service registry by env-flag presence. Costs aren't tracked "
+            "in v0 (we don't pull provider invoices yet)."
+        ),
+    }
+
+
+# ── Iron Gates / Releases / Bug intake / Agent reports — no-table v0 ──
+
+@router.get("/iron-gates")
+def iron_gates(admin: AdminUser) -> dict[str, Any]:
+    """Iron-gate tracker. No backing table in v0 — agents record their
+    iron-gate state in markdown files in the repo, not the DB. Returns
+    an empty list so the UI can render an honest empty state."""
+    return {
+        "rows": [],
+        "note": (
+            "No iron_gate_runs table in v0. Iron-gate state lives in "
+            "docs/IRON_GATES.md and the per-agent reports. Wire a real "
+            "table to surface here."
+        ),
+    }
+
+
+@router.get("/releases")
+def releases(admin: AdminUser) -> dict[str, Any]:
+    """Recent release records. No release_history table in v0 — the
+    desktop updater manifest holds the latest version only. Returns
+    an empty list."""
+    return {
+        "rows": [],
+        "note": (
+            "No release_history table in v0. The Tauri updater manifest "
+            "holds only the latest signed release; per-build hand-walk "
+            "metadata isn't persisted. Wire a release-history table to "
+            "show real rows here."
+        ),
+    }
+
+
+@router.get("/bug-intake")
+def bug_intake(admin: AdminUser) -> dict[str, Any]:
+    """User-reported bug intake. No bug_intake table in v0 — the
+    DesktopErrorEvent table (already surfaced under /admin/bugs) covers
+    auto-captured errors. Returns empty + the migration path."""
+    return {
+        "rows": [],
+        "note": (
+            "No bug_intake table in v0. DesktopErrorEvent (/admin/bugs) "
+            "covers auto-captured desktop errors. A separate intake table "
+            "would track user-reported bugs with lane assignment + status."
+        ),
+    }
+
+
+@router.get("/agent-reports")
+def agent_reports(admin: AdminUser) -> dict[str, Any]:
+    """Per-lane agent report stream. No agent_reports table in v0."""
+    return {
+        "rows": [],
+        "note": (
+            "No agent_reports table in v0. Agents log to local files; "
+            "wire a real ingest endpoint to populate this stream."
+        ),
+    }
+

@@ -97,6 +97,12 @@
   /* Tracking — unchanged. */
   --tracking-eyebrow: 0.12em;
   --tracking-display: -0.025em;
+
+  /* v0.7.79 — Spring ease curve. Used inline at ~6 call sites already
+     (`cubic-bezier(.34, 1.56, .64, 1)`) — promoted to a named token so
+     the WalletPanel + future surfaces can reference one canonical curve
+     instead of duplicating the cubic-bezier literal. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 html,
