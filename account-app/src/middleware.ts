@@ -30,14 +30,27 @@ import { NextResponse, type NextRequest } from "next/server";
 //
 // Match set: /admin/*  AND  /api/admin/*  (and only those).
 // Source of truth: ADMIN_ALLOWED_IPS env var (CSV). Empty list = lock-out.
-// IP source: x-forwarded-for first hop (Vercel sets this; localhost dev sets
-// nothing → list is effectively closed unless dev IP added).
+//
+// IP source (P1-005 trust boundary):
+//   1. x-vercel-forwarded-for — Vercel signs this header at the edge; the
+//      browser CANNOT spoof a value that reaches our code. This is the
+//      only trustworthy source in production.
+//   2. x-forwarded-for — fallback ONLY in development (NODE_ENV !==
+//      "production") for local testing. In production we ignore it
+//      because the browser can set it before Vercel's edge sees the
+//      request.
+//   3. localhost dev sets neither → list is effectively closed unless dev
+//      IP added.
 //
 // DO NOT edit this block without iron-gate-lens authorization. Touching the
 // failure mode (404 vs 403 vs redirect) leaks admin existence.
 function ipAllowedForAdmin(req: NextRequest): boolean {
-  const xff = req.headers.get("x-forwarded-for") ?? "";
-  const firstHop = xff.split(",")[0]?.trim() ?? "";
+  const vercel = req.headers.get("x-vercel-forwarded-for") ?? "";
+  let firstHop = vercel.split(",")[0]?.trim() ?? "";
+  if (!firstHop && process.env.NODE_ENV !== "production") {
+    const xff = req.headers.get("x-forwarded-for") ?? "";
+    firstHop = xff.split(",")[0]?.trim() ?? "";
+  }
   const allowed = (process.env.ADMIN_ALLOWED_IPS ?? "")
     .split(",")
     .map((ip) => ip.trim())

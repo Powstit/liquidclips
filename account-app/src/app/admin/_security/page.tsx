@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { isAdmin, getMasterEmailCount } from "@/lib/admin-allowlist";
+import { isAdmin } from "@/lib/admin-allowlist";
 import { PinSetup } from "./PinSetup";
 import { AuthCodeSetup } from "./AuthCodeSetup";
 
@@ -9,7 +9,7 @@ import { AuthCodeSetup } from "./AuthCodeSetup";
 // By the time a request reaches this server component, the middleware
 // (IRON GATE IG-HQ-001) has already confirmed the request IP is on
 // ADMIN_ALLOWED_IPS. This page enforces the remaining two gates:
-//   - email is on ADMIN_MASTER_EMAILS (5-of-5 master list)
+//   - email is on JUNIOR_ADMIN_EMAILS (shared isAdmin allowlist)
 //   - the Clerk session carries an MFA claim (Clerk dashboard toggle)
 //
 // Failure modes:
@@ -121,8 +121,6 @@ export default async function HQSecurityPage() {
     recoveryStatus.pin_set === true &&
     recoveryStatus.auth_code_set === true;
 
-  const masterCount = getMasterEmailCount();
-
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <header className="mb-8">
@@ -133,8 +131,7 @@ export default async function HQSecurityPage() {
           You&apos;re in.
         </h1>
         <p className="mt-2 text-sm text-neutral-600">
-          Signed in as <span className="font-mono">{primaryEmail}</span>. Master
-          list size: {masterCount}.
+          Signed in as <span className="font-mono">{primaryEmail}</span>.
         </p>
       </header>
 

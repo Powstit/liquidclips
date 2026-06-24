@@ -22,10 +22,20 @@ export const runtime = "nodejs";
 function clientIp(req: NextRequest): string {
   // Forward the originating client IP to the backend so its rate-limiter
   // groups attempts by the human, not by Vercel's edge proxy IP.
-  const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim();
-  const real = req.headers.get("x-real-ip");
-  if (real) return real;
+  //
+  // P1-005 trust boundary: x-vercel-forwarded-for is SIGNED by Vercel —
+  // the browser cannot spoof a value that survives the edge. We trust it
+  // unconditionally. x-forwarded-for / x-real-ip can be set client-side
+  // before reaching Vercel; we only trust them as a fallback in
+  // development (NODE_ENV !== "production") for local testing.
+  const vercel = req.headers.get("x-vercel-forwarded-for");
+  if (vercel) return vercel.split(",")[0].trim();
+  if (process.env.NODE_ENV !== "production") {
+    const fwd = req.headers.get("x-forwarded-for");
+    if (fwd) return fwd.split(",")[0].trim();
+    const real = req.headers.get("x-real-ip");
+    if (real) return real;
+  }
   return "unknown";
 }
 
@@ -42,7 +52,9 @@ export async function POST(req: NextRequest): Promise<Response> {
         "content-type": req.headers.get("content-type") ?? "application/json",
         "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "",
         // Pass-through so the backend rate-limit sees the real client IP
-        // rather than Vercel's edge node.
+        // rather than Vercel's edge node. Backend reads
+        // x-vercel-forwarded-for first (signed, unspoofable) per P1-005.
+        "x-vercel-forwarded-for": ip,
         "x-forwarded-for": ip,
         "x-real-ip": ip,
       },

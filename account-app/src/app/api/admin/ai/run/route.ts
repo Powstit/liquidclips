@@ -7,19 +7,24 @@
 //      gates, middleware gates, this route gates again).
 //   2. Anthropic API key is server-only — `process.env.CLAUDE_ADMIN_API_KEY`.
 //      The key is NEVER returned, logged, or sent to the browser.
-//   3. Cost guard: HARD ceiling of $0.50 / run AND 50k input tokens /
-//      run AND 30 requests / hour / admin. Over any limit → refuse.
+//   3. Rate limit: 30 requests / hour / admin (in-memory sliding window).
+//      Pre-flight cost-cap math was removed in P1-004 — the cap was
+//      internally contradictory (50k input alone exceeded the $0.50
+//      ceiling at Opus pricing). Real usage and cost are still recorded
+//      in the audit log for visibility; the rate limit is the spend
+//      backstop.
 //   4. PII redaction: every email address in the live data dump is
 //      replaced with a `<email_N>` placeholder before the prompt leaves
 //      this process. The inverse mapping is held in-request memory only
 //      and is used to un-redact the model's reply on the way back.
 //   5. Audit: every prompt+response pair is POSTed to junior-backend
-//      `/admin/audit-log` so Daniel has a permanent trail.
+//      `/admin/audit-log` so Daniel has a permanent trail (including
+//      tokens_in / tokens_out / cost_usd actuals).
 //   6. Read-only contract: NO tool use, NO streaming, NO function calls.
 //      Pure text in / text out.
 //
-// IRON GATE: do NOT add tool use, do NOT relax the cost guard, do NOT
-// remove the redaction. Any of those changes needs a fresh review and
+// IRON GATE: do NOT add tool use, do NOT remove the redaction, do NOT
+// remove the rate limit. Any of those changes needs a fresh review and
 // a registry entry in `desktop/docs/IRON_GATES.md` under IG-HQ-003.
 //
 // IRON GATE IG-HQ-003 END
@@ -29,6 +34,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { isAdmin } from "@/lib/admin-allowlist";
 import {
   contextBackendPath,
   systemPromptFor,
@@ -46,37 +52,20 @@ const BACKEND_URL =
 
 // Model id — per the HQ-Agent-4 spec. The Anthropic SDK accepts the
 // public model string; we do not pin a per-call beta header so the
-// default 200k context window applies (well above our 50k input cap).
+// default 200k context window applies. The health route
+// (/api/admin/ai/health) pings this same model id so any 404 surfaces
+// loudly before a user-facing call hits it.
 const MODEL = "claude-opus-4-7";
 const MAX_OUTPUT_TOKENS = 4096;
 
-// Cost guard — Claude Opus 4.x list price (USD per million tokens) at the
-// time of writing. Update if Anthropic publishes a new rate sheet; the
-// guard remains conservative because we ALSO clamp on token count.
+// Pricing constants retained for audit-log cost accounting only. They
+// no longer gate any request (see P1-004 header note above).
 const PRICE_INPUT_PER_MTOK = 15.0; // $/M input tokens
 const PRICE_OUTPUT_PER_MTOK = 75.0; // $/M output tokens
-const MAX_INPUT_TOKENS = 50_000;
-const MAX_COST_USD = 0.5;
 
 const RATE_LIMIT_REQUESTS_PER_HOUR = 30;
 
 // ---- Admin gate ----------------------------------------------------------
-//
-// Mirrors `account-app/src/app/admin/page.tsx`. Once Agent 1 lands
-// `@/lib/admin-allowlist`, swap this for the shared import.
-
-const ADMIN_FALLBACK = [
-  "danieldiyepriye@gmail.com",
-  "mrddokubo@gmail.com",
-  "crazycatjackkids@gmail.com",
-  "thedoks2019@gmail.com",
-];
-
-function adminList(): string[] {
-  const env = process.env.JUNIOR_ADMIN_EMAILS ?? "";
-  const src = env ? env.split(",") : ADMIN_FALLBACK;
-  return src.map((e) => e.trim().toLowerCase()).filter(Boolean);
-}
 
 type AdminIdentity = { userId: string; email: string };
 
@@ -86,7 +75,7 @@ async function requireAdmin(): Promise<AdminIdentity | null> {
   const user = await currentUser();
   if (!user) return null;
   const email = (user.primaryEmailAddress?.emailAddress ?? "").trim().toLowerCase();
-  if (!email || !adminList().includes(email)) return null;
+  if (!isAdmin(email)) return null;
   return { userId, email };
 }
 
@@ -250,20 +239,14 @@ function parseBody(raw: unknown): RunRequestBody | null {
   return { context: context as TerminalContext, prompt, history };
 }
 
-// ---- Token estimation (pre-flight) ---------------------------------------
+// ---- Cost accounting (post-flight only) ----------------------------------
 //
-// Anthropic ships a countTokens helper but it's a network round-trip per
-// call. For a HARD pre-flight ceiling we approximate at ~4 chars/token,
-// which is a slight over-estimate for English + JSON and therefore
-// fail-safe (more likely to reject a borderline run than allow one
-// that breaks the ceiling on the real side).
+// P1-004: pre-flight cost-cap math removed (50k input alone exceeded the
+// $0.50 ceiling at Opus pricing — internally contradictory). Real token
+// counts come back from Anthropic in the response usage block; we use
+// `actualCostUsd` only to record the spend in the audit log.
 
-function estimateInputTokens(parts: string[]): number {
-  const chars = parts.reduce((n, s) => n + s.length, 0);
-  return Math.ceil(chars / 4);
-}
-
-function estimateCostUsd(tokensIn: number, tokensOut: number): number {
+function actualCostUsd(tokensIn: number, tokensOut: number): number {
   return (tokensIn / 1_000_000) * PRICE_INPUT_PER_MTOK + (tokensOut / 1_000_000) * PRICE_OUTPUT_PER_MTOK;
 }
 
@@ -329,38 +312,8 @@ export async function POST(req: NextRequest): Promise<Response> {
     `${systemPromptFor(body.context)}\n\n` +
     `--- LIVE DATA SNAPSHOT (PII REDACTED) ---\n${snapshotRedacted}\n--- END SNAPSHOT ---\n`;
 
-  // 4) Pre-flight cost guard.
-  const estimatedIn = estimateInputTokens([
-    systemPrompt,
-    ...historyRedacted.map((m) => m.content),
-    promptRedacted,
-  ]);
-  const estimatedCost = estimateCostUsd(estimatedIn, MAX_OUTPUT_TOKENS);
-  if (estimatedIn > MAX_INPUT_TOKENS || estimatedCost > MAX_COST_USD) {
-    const errBody = {
-      error: "exceeds cost ceiling",
-      estimated_input_tokens: estimatedIn,
-      estimated_cost_usd: Number(estimatedCost.toFixed(4)),
-      max_input_tokens: MAX_INPUT_TOKENS,
-      max_cost_usd: MAX_COST_USD,
-    };
-    // Audit the refusal so Daniel can see why the run was blocked.
-    await appendAudit({
-      adminEmail: admin.email,
-      context: body.context,
-      payload: {
-        prompt: body.prompt,
-        response: JSON.stringify(errBody),
-        tokens_in: estimatedIn,
-        tokens_out: 0,
-        cost_usd: 0,
-      },
-      result: "error",
-    });
-    return NextResponse.json(errBody, { status: 200 }); // spec: 200 + error key
-  }
-
-  // 5) Call Anthropic. No streaming, no tools.
+  // 4) Call Anthropic. No streaming, no tools. (Pre-flight cost-cap math
+  //    removed per P1-004 — see header comment.)
   const client = new Anthropic({ apiKey });
   let modelMessage = "";
   let tokensIn = 0;
@@ -375,7 +328,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         { role: "user", content: promptRedacted },
       ],
     });
-    tokensIn = result.usage?.input_tokens ?? estimatedIn;
+    tokensIn = result.usage?.input_tokens ?? 0;
     tokensOut = result.usage?.output_tokens ?? 0;
     // Text-only contract — concatenate text blocks; ignore any other
     // block type (the request never asks for tool use, but if Anthropic
@@ -391,7 +344,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       payload: {
         prompt: body.prompt,
         response: message,
-        tokens_in: estimatedIn,
+        tokens_in: 0,
         tokens_out: 0,
         cost_usd: 0,
       },
@@ -400,12 +353,12 @@ export async function POST(req: NextRequest): Promise<Response> {
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  // 6) Un-redact ONLY the model's reply so Daniel sees real addresses.
+  // 5) Un-redact ONLY the model's reply so Daniel sees real addresses.
   //    The redaction map never leaves this process.
   const unredacted = unredact(modelMessage, map);
-  const costUsd = estimateCostUsd(tokensIn, tokensOut);
+  const costUsd = actualCostUsd(tokensIn, tokensOut);
 
-  // 7) Audit the successful run with REAL emails (Daniel's eyes only).
+  // 6) Audit the successful run with REAL emails (Daniel's eyes only).
   await appendAudit({
     adminEmail: admin.email,
     context: body.context,

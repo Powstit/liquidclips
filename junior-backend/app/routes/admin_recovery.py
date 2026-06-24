@@ -5,13 +5,15 @@ Liquid Clips HQ. The four endpoints under `/admin/recovery/*` let Daniel
 re-issue a fresh TOTP seed when his laptop, his Clerk session, AND his
 TOTP seed are all gone. The proof-of-identity gates are:
 
-  1. emails  — at least 3 of 5 master emails submitted must match
-                ADMIN_MASTER_EMAILS (case-insensitive).
+  1. emails  — at least 3 of 5 master emails submitted must match the
+                allowlist (case-insensitive). Source priority:
+                ADMIN_MASTER_EMAILS env → JUNIOR_ADMIN_EMAILS env → 4-email
+                hardcoded fallback. (powstit removed P0-001.)
   2. pin     — 6-digit numeric PIN, bcrypt-compared against the hash
-                stored on the singleton AdminRecoveryConfig row (or the
-                RECOVERY_PIN_HASH env fallback).
+                stored on the singleton AdminRecoveryConfig row. No env
+                fallback (env-PIN backdoor removed P1-006).
   3. auth_code — 8-character uppercase alphanumeric code, bcrypt-compared
-                against AdminRecoveryConfig.auth_code_hash (or env fallback).
+                against AdminRecoveryConfig.auth_code_hash. No env fallback.
 
 All three must pass. On success a fresh pyotp.random_base32() seed is
 generated, its bcrypt hash is persisted to AdminRecoveryConfig, and the
@@ -103,8 +105,18 @@ def _now() -> datetime:
 def _client_ip(request: Request) -> str:
     """Pull the client ip from common proxy headers, else the raw socket.
     Truncated to 80 chars because the column is String(80) and IPv6 +
-    forwarded-for chains can exceed that."""
-    for header in ("x-forwarded-for", "x-real-ip", "cf-connecting-ip"):
+    forwarded-for chains can exceed that.
+
+    Header priority (P1-005): x-vercel-forwarded-for FIRST because Vercel
+    signs it — the browser cannot forge a value that survives the edge.
+    x-forwarded-for / x-real-ip / cf-connecting-ip remain as fallbacks for
+    non-Vercel ingress paths (direct backend, local dev)."""
+    for header in (
+        "x-vercel-forwarded-for",
+        "x-forwarded-for",
+        "x-real-ip",
+        "cf-connecting-ip",
+    ):
         value = request.headers.get(header)
         if value:
             # x-forwarded-for can be a comma-separated chain; first is client.
@@ -120,7 +132,8 @@ def _master_email_list() -> list[str]:
 
     Source priority: ADMIN_MASTER_EMAILS env (CSV) → JUNIOR_ADMIN_EMAILS env (CSV)
     → hardcoded fallback. The fallback matches features.py so first-launch
-    works without env wiring."""
+    works without env wiring. (P0-001: powstit removed — keeps the recovery
+    allowlist aligned with the 4-email admin allowlist used everywhere else.)"""
     raw = os.environ.get("ADMIN_MASTER_EMAILS", "").strip()
     if not raw:
         raw = os.environ.get("JUNIOR_ADMIN_EMAILS", "").strip()
@@ -130,7 +143,6 @@ def _master_email_list() -> list[str]:
             "mrddokubo@gmail.com",
             "crazycatjackkids@gmail.com",
             "thedoks2019@gmail.com",
-            "powstit@gmail.com",
         ]
     return [e.strip().lower() for e in raw.split(",") if e.strip()]
 
@@ -160,24 +172,22 @@ def _get_config(db: Session) -> AdminRecoveryConfig:
     return row
 
 
-def _env_pin_hash() -> str | None:
-    return (os.environ.get("RECOVERY_PIN_HASH") or "").strip() or None
-
-
-def _env_auth_code_hash() -> str | None:
-    return (os.environ.get("RECOVERY_AUTH_CODE_HASH") or "").strip() or None
-
-
 def _resolve_pin_hash(db: Session) -> str | None:
-    """DB row wins; env is the bootstrap fallback so Daniel can run /verify
-    before he's set the PIN through the UI."""
+    """Return the bcrypt PIN hash stored on the singleton config row, or
+    None if Daniel has not yet set a PIN through the HQ UI. The env-fallback
+    backdoor (RECOVERY_PIN_HASH) was removed in P1-006 — a stale env value
+    would have worked forever as an out-of-band bypass. First-time flow:
+    Daniel sets the PIN via `/admin/_security/PinSetup` which POSTs to
+    `/admin/recovery/pin`. Until then, `/verify` fails closed (no PIN
+    configured = no recovery — that's the right behaviour)."""
     cfg = _get_config(db)
-    return cfg.pin_hash or _env_pin_hash()
+    return cfg.pin_hash
 
 
 def _resolve_auth_code_hash(db: Session) -> str | None:
+    """See `_resolve_pin_hash` — env fallback removed P1-006."""
     cfg = _get_config(db)
-    return cfg.auth_code_hash or _env_auth_code_hash()
+    return cfg.auth_code_hash
 
 
 def _count_recent_attempts(db: Session, ip: str) -> int:
