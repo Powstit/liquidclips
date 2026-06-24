@@ -5,6 +5,7 @@ import { SignUp } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
 import { TestimonialPanel } from "@/components/TestimonialPanel";
 import { track } from "@/lib/analytics";
+import { rememberPromoCode } from "@/lib/promo";
 
 // Two-column sign-up surface. Same shape as /sign-in. Affiliate cookie is
 // captured into Clerk's unsafeMetadata at sign-up — that's the "first-touch
@@ -25,6 +26,7 @@ function readAffiliateRef(): string | null {
 
 export default function SignUpPage() {
   const [affiliateId, setAffiliateId] = useState<string | null>(null);
+  const [promoCode, setPromoCode] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const searchParams = useSearchParams();
   const redirectUrl = searchParams.get("redirect_url") || searchParams.get("redirect") || "/dashboard";
@@ -38,6 +40,21 @@ export default function SignUpPage() {
     // form" and "arrived via a referral". Neither carries email.
     track("signup_started", { has_affiliate: !!aff });
     if (aff) track("affiliate_ref_captured", { affiliate_id: aff, surface: "signup" });
+
+    // 2026-06-25 · Promo code carry-through. Clerk's hosted <SignUp /> form
+    // doesn't expose a discount-code field, so we persist the URL value to
+    // sessionStorage and the checkout page picks it up after sign-up completes.
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const raw = (p.get("promo") || "").trim().toUpperCase().slice(0, 40);
+      if (raw && /^[A-Z0-9_-]+$/.test(raw)) {
+        setPromoCode(raw);
+        rememberPromoCode(raw);
+        track("promo_code_captured", { surface: "signup" });
+      }
+    } catch {
+      /* best-effort */
+    }
   }, []);
 
   return (
@@ -64,6 +81,12 @@ export default function SignUpPage() {
           {affiliateId && (
             <div className="w-full rounded-xl border border-fuchsia-soft bg-fuchsia-soft/30 px-4 py-3 text-center font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
               Referred · attribution locked
+            </div>
+          )}
+
+          {promoCode && (
+            <div className="w-full rounded-xl border border-fuchsia-soft bg-fuchsia-soft/20 px-4 py-3 text-center font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
+              Discount code <span className="font-display tracking-normal">{promoCode}</span> · applied at checkout
             </div>
           )}
 
