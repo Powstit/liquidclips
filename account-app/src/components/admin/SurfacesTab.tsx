@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 
 import { useDataSource } from "./_lib/useDataSource";
 import { LiveBadge } from "./_lib/LiveBadge";
+import { InfoIcon } from "./_lib/InfoIcon";
 
 type ProbeState = "checking" | "ok" | "unknown";
 
@@ -26,7 +27,9 @@ type Surface = {
   url: string;
   probeUrl: string;
   description: string;
-  manage: { label: string; href: string }[];
+  /** Hint about what the URL itself represents. */
+  urlHint?: string;
+  manage: { label: string; href: string; hint: string }[];
 };
 
 const SURFACES: Surface[] = [
@@ -35,11 +38,12 @@ const SURFACES: Surface[] = [
     name: "Marketing site",
     url: "https://liquidclips.app",
     probeUrl: "https://liquidclips.app/",
+    urlHint: "Public marketing root — Next.js on Vercel. Manual `vercel deploy --prod` from liquidclips-marketing/. Not auto-deployed on git push.",
     description: "Public landing · pricing · /founding · /agencies · /clippers funnel pages.",
     manage: [
-      { label: "Vercel deploys", href: "https://vercel.com/liquidclips/liquidclips-marketing" },
-      { label: "GitHub source", href: "https://github.com/Powstit/liquidclips/tree/main/liquidclips-marketing" },
-      { label: "PostHog analytics", href: "https://eu.posthog.com" },
+      { label: "Vercel deploys", href: "https://vercel.com/liquidclips/liquidclips-marketing", hint: "Trigger redeploy, manage env vars, see build logs + production aliasing for liquidclips.app." },
+      { label: "GitHub source", href: "https://github.com/Powstit/liquidclips/tree/main/liquidclips-marketing", hint: "Source code for the marketing site. Edit copy, components, OG images here." },
+      { label: "PostHog analytics", href: "https://eu.posthog.com", hint: "Funnel + event analytics for marketing pages (signup conversion, page views). EU region instance." },
     ],
   },
   {
@@ -47,11 +51,12 @@ const SURFACES: Surface[] = [
     name: "Account + HQ (this app)",
     url: "https://account.liquidclips.app",
     probeUrl: "https://account.liquidclips.app/",
+    urlHint: "Account/HQ root — this Next.js app on Vercel. Manual `vercel deploy --prod` from account-app/. Hosts sign-in, billing, embeds, and HQ.",
     description: "Sign-in · billing · embed surfaces · admin HQ.",
     manage: [
-      { label: "Vercel deploys", href: "https://vercel.com/liquidclips/account-app" },
-      { label: "GitHub source", href: "https://github.com/Powstit/liquidclips/tree/main/account-app" },
-      { label: "Clerk dashboard", href: "https://dashboard.clerk.com" },
+      { label: "Vercel deploys", href: "https://vercel.com/liquidclips/account-app", hint: "Trigger redeploy, manage env vars, see build logs + production aliasing for account.liquidclips.app." },
+      { label: "GitHub source", href: "https://github.com/Powstit/liquidclips/tree/main/account-app", hint: "Source code for this app. Edit auth, billing, HQ tabs here." },
+      { label: "Clerk dashboard", href: "https://dashboard.clerk.com", hint: "Manage users, sessions, JUNIOR_ADMIN_EMAILS allowlist, billing add-on packs, OAuth providers." },
     ],
   },
   {
@@ -59,11 +64,12 @@ const SURFACES: Surface[] = [
     name: "Backend (junior-backend)",
     url: "https://api.liquidclips.app",
     probeUrl: "https://api.liquidclips.app/healthcheck",
+    urlHint: "FastAPI backend root. Custom domain in front of junior-backend-production.up.railway.app. /healthcheck returns liveness + ayrshare_configured.",
     description: "FastAPI · Railway · webhooks · Ayrshare proxy · Whop carrot rail.",
     manage: [
-      { label: "Railway deploys", href: "https://railway.com/project" },
-      { label: "GitHub source", href: "https://github.com/Powstit/liquidclips/tree/main/junior-backend" },
-      { label: "Sentry errors", href: "https://sentry.io" },
+      { label: "Railway deploys", href: "https://railway.com/project", hint: "Manage backend deploys, env vars (WHOP_API_KEY, JUNIOR_ADMIN_EMAILS, STRIPE_SECRET_KEY, etc), DB connection, replica count." },
+      { label: "GitHub source", href: "https://github.com/Powstit/liquidclips/tree/main/junior-backend", hint: "Source code for the FastAPI backend. Routes, models, webhooks, Ayrshare client live here." },
+      { label: "Sentry errors", href: "https://sentry.io", hint: "Server-side error tracking for the FastAPI process. Requires SENTRY_AUTH_TOKEN for source-map uploads." },
     ],
   },
   {
@@ -71,11 +77,12 @@ const SURFACES: Surface[] = [
     name: "Desktop app (Liquid Clips)",
     url: "https://github.com/Powstit/liquidclips/releases",
     probeUrl: "https://api.github.com/repos/Powstit/liquidclips/releases/latest",
+    urlHint: "GitHub Releases page — canonical distribution channel for signed/notarised DMGs + Windows installers. Tauri updater pulls from here.",
     description: "Tauri + Python sidecar · macOS notarised · Windows code-signed.",
     manage: [
-      { label: "GitHub releases", href: "https://github.com/Powstit/liquidclips/releases" },
-      { label: "GitHub Actions (CI)", href: "https://github.com/Powstit/liquidclips/actions" },
-      { label: "Apple Developer", href: "https://developer.apple.com/account" },
+      { label: "GitHub releases", href: "https://github.com/Powstit/liquidclips/releases", hint: "Latest signed builds (DMG / MSI). Tauri auto-updater consumes the updater manifest here." },
+      { label: "GitHub Actions (CI)", href: "https://github.com/Powstit/liquidclips/actions", hint: "Tag-triggered build pipeline. Notarises macOS, signs Windows, publishes to Releases. Triggered by desktop/scripts/ship.sh." },
+      { label: "Apple Developer", href: "https://developer.apple.com/account", hint: "Manage Apple Developer ID cert + notarisation credentials (used by CI as encrypted secrets)." },
     ],
   },
   {
@@ -83,10 +90,11 @@ const SURFACES: Surface[] = [
     name: "Whop (payments + community)",
     url: "https://whop.com",
     probeUrl: "",
+    urlHint: "Third-party platform — no internal probe (cross-origin). Whop owns the sub-merchant payments rail, community, agents, and affiliate checkout.",
     description: "Sub-merchant rail · sponsored rewards · affiliate checkout · chat agents.",
     manage: [
-      { label: "Whop dashboard", href: "https://whop.com/dashboard" },
-      { label: "Whop API docs", href: "https://docs.whop.com" },
+      { label: "Whop dashboard", href: "https://whop.com/dashboard", hint: "Manage Whop store, pricing plans, discount codes, sub-merchant config, community channels, agent fleet keys." },
+      { label: "Whop API docs", href: "https://docs.whop.com", hint: "API reference for Whop endpoints — needed when extending the /whop/* proxy in junior-backend." },
     ],
   },
   {
@@ -94,11 +102,12 @@ const SURFACES: Surface[] = [
     name: "Credentials + secrets",
     url: "",
     probeUrl: "",
+    urlHint: "No public URL — credentials live in 1Password + Vercel env vars + Railway env vars. Mirror to ~/.claude-credentials/ on the dev machine.",
     description: "API keys · webhook secrets · OAuth credentials.",
     manage: [
-      { label: "1Password — Liquid Clips vault", href: "https://my.1password.com" },
-      { label: "Vercel env vars", href: "https://vercel.com/liquidclips" },
-      { label: "Railway env vars", href: "https://railway.com/project" },
+      { label: "1Password — Liquid Clips vault", href: "https://my.1password.com", hint: "Canonical secret store. Every rotation lands here first, then propagates to Vercel + Railway + ~/.claude-credentials/." },
+      { label: "Vercel env vars", href: "https://vercel.com/liquidclips", hint: "Per-project env vars (account-app + liquidclips-marketing). Rotate Clerk + Stripe public keys here." },
+      { label: "Railway env vars", href: "https://railway.com/project", hint: "Backend env vars (JUNIOR_ADMIN_EMAILS, WHOP_API_KEY, STRIPE_SECRET_KEY, AYRSHARE_API_KEY, agent API keys). Rotation forces a redeploy." },
     ],
   },
 ];
@@ -142,10 +151,10 @@ function SurfaceCard({
 
   const badge =
     state === "ok"
-      ? { label: "reachable", color: "var(--lc-ok)", bg: "rgba(77, 198, 168, 0.10)", border: "rgba(77, 198, 168, 0.42)" }
+      ? { label: "reachable", color: "var(--lc-ok)", bg: "rgba(77, 198, 168, 0.10)", border: "rgba(77, 198, 168, 0.42)", hint: "Client-side no-cors HEAD/GET succeeded within 6s. Confirms the URL is publicly reachable (not that it's healthy)." }
       : state === "checking"
-        ? { label: "checking", color: "var(--lc-warn)", bg: "rgba(217, 155, 45, 0.10)", border: "rgba(217, 155, 45, 0.42)" }
-        : { label: "unknown", color: "var(--lc-fg-faint)", bg: "color-mix(in srgb, var(--lc-bg-warm) 70%, transparent)", border: "var(--lc-stroke)" };
+        ? { label: "checking", color: "var(--lc-warn)", bg: "rgba(217, 155, 45, 0.10)", border: "rgba(217, 155, 45, 0.42)", hint: "Probe in flight — waiting up to 6s for the no-cors fetch to resolve." }
+        : { label: "unknown", color: "var(--lc-fg-faint)", bg: "color-mix(in srgb, var(--lc-bg-warm) 70%, transparent)", border: "var(--lc-stroke)", hint: "No probe URL OR the no-cors fetch failed / timed out. Doesn't necessarily mean the surface is down — could be CORS/network on the browser side." };
 
   return (
     <div
@@ -165,61 +174,70 @@ function SurfaceCard({
             {surface.name}
           </div>
           {surface.url && (
-            <a
-              href={surface.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="lc-body"
-              style={{ fontSize: 12, color: "var(--lc-accent-mid)", textDecoration: "none", wordBreak: "break-all" }}
-            >
-              {surface.url} ↗
-            </a>
+            <span style={{ display: "inline-flex", alignItems: "center" }}>
+              <a
+                href={surface.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="lc-body"
+                style={{ fontSize: 12, color: "var(--lc-accent-mid)", textDecoration: "none", wordBreak: "break-all" }}
+              >
+                {surface.url} ↗
+              </a>
+              {surface.urlHint && <InfoIcon hint={surface.urlHint} />}
+            </span>
           )}
         </div>
-        <span
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            padding: "3px 10px",
-            borderRadius: 999,
-            fontSize: 11,
-            fontWeight: 600,
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
-            color: badge.color,
-            background: badge.bg,
-            border: `1px solid ${badge.border}`,
-            whiteSpace: "nowrap",
-          }}
-        >
-          {badge.label}
+        <span style={{ display: "inline-flex", alignItems: "center" }}>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "3px 10px",
+              borderRadius: 999,
+              fontSize: 11,
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              color: badge.color,
+              background: badge.bg,
+              border: `1px solid ${badge.border}`,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {badge.label}
+          </span>
+          <InfoIcon hint={badge.hint} />
         </span>
       </div>
       <p className="lc-body" style={{ fontSize: 13, color: "var(--lc-fg-muted)", margin: 0 }}>
         {surface.description}
+        <InfoIcon hint="Hand-curated one-liner describing what this surface owns. Lives in the SURFACES array of this file — edit there, not in a CMS." />
       </p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4, alignItems: "center" }}>
         {surface.manage.map((m) => (
-          <a
-            key={m.href}
-            href={m.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              fontSize: 12,
-              padding: "4px 10px",
-              borderRadius: 999,
-              border: "1px solid var(--lc-stroke)",
-              color: "var(--lc-fg)",
-              textDecoration: "none",
-              background: "transparent",
-              transition: "background 120ms",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "color-mix(in srgb, var(--lc-accent-soft) 60%, transparent)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-          >
-            {m.label} →
-          </a>
+          <span key={m.href} style={{ display: "inline-flex", alignItems: "center" }}>
+            <a
+              href={m.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontSize: 12,
+                padding: "4px 10px",
+                borderRadius: 999,
+                border: "1px solid var(--lc-stroke)",
+                color: "var(--lc-fg)",
+                textDecoration: "none",
+                background: "transparent",
+                transition: "background 120ms",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "color-mix(in srgb, var(--lc-accent-soft) 60%, transparent)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              {m.label} →
+            </a>
+            <InfoIcon hint={m.hint} />
+          </span>
         ))}
       </div>
     </div>
@@ -234,9 +252,11 @@ export function SurfacesTab() {
         <div>
           <h2 className="lc-display" style={{ fontSize: 20, fontWeight: 600, color: "var(--lc-fg)", margin: 0 }}>
             Every page Liquid Clips runs
+            <InfoIcon hint="Single-pane index of every surface (marketing, account, backend, desktop, Whop, credentials). Read-only — manage links jump to the owning dashboard." />
           </h2>
           <p className="lc-body" style={{ fontSize: 13, color: "var(--lc-fg-muted)", margin: "4px 0 0" }}>
             Live reachability check + jump-to-manage for marketing, account, backend, desktop, Whop, and credentials.
+            <InfoIcon hint="Each card runs a client-side no-cors probe in parallel — green = HTTP responded within 6s; unknown = no probe URL OR timed out / browser blocked." />
           </p>
         </div>
         <LiveBadge state={src.state} />
