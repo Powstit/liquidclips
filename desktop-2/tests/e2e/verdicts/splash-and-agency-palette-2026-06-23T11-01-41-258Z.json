@@ -1,0 +1,42 @@
+{
+  "journey": "Splash and Agency Palette",
+  "started_at": "2026-06-23T10:53:24.850Z",
+  "result": "FAIL",
+  "failed_step": {
+    "step": 4,
+    "name": "LIVE · first launch (no lc:intro-seen) renders the intro stage"
+  },
+  "step_log": [
+    {
+      "step": 1,
+      "name": "STATIC · TASK 7A splash assets present (intro.mp4 · closing-still.png · Kade poses · bug sprites)",
+      "status": "PASS"
+    },
+    {
+      "step": 2,
+      "name": "STATIC · IntroSplash 3-stage contract is wired (intro · loading · game)",
+      "status": "PASS"
+    },
+    {
+      "step": 3,
+      "name": "STATIC · Skip + Continue buttons share font-sans (no font-mono drift)",
+      "status": "PASS"
+    },
+    {
+      "step": 4,
+      "name": "LIVE · first launch (no lc:intro-seen) renders the intro stage",
+      "status": "FAIL"
+    }
+  ],
+  "screenshots": [
+    "/Users/dipdip/code/jnr/desktop-2/test-results/splash-and-agency-palette--05307-r-skip-·-agency-blue-accent-user-lens-chromium/test-failed-1.png"
+  ],
+  "console_errors": [
+    "console.error: Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+  ],
+  "dom_assertions": {
+    "missing_assets": []
+  },
+  "test_title": "Splash and Agency Palette · splash stages exist · returning-user skip · agency-blue accent",
+  "duration_ms": 16635
+}

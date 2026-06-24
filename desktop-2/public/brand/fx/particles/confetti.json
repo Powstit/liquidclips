@@ -1,0 +1,25 @@
+{
+  "$schema": "liquid-clips/particle-config@1",
+  "name": "confetti",
+  "use": "success state — celebration burst for first-clip, payout, level-up",
+  "count": 64,
+  "spawn": "radial_burst",
+  "lifecycle": "burst",
+  "duration_ms": 1400,
+  "burst_origin_xy_rel": [0.5, 0.5],
+  "velocity_px_frame": [3.2, 6.4],
+  "spread_deg": 360,
+  "gravity_px_frame": 0.18,
+  "size_px": [3, 7],
+  "rotation_deg_s": [-360, 360],
+  "alpha_curve": [1.0, 1.0, 0.0],
+  "color_mix": {
+    "rgb(255,26,140)": 0.55,
+    "rgb(255,143,203)": 0.25,
+    "rgb(0,229,255)": 0.20
+  },
+  "shape": "rect",
+  "blend": "source-over",
+  "respects_reduced_motion": "static_frame",
+  "pause_when_hidden": true
+}

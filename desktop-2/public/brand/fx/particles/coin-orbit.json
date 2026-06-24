@@ -1,0 +1,20 @@
+{
+  "$schema": "liquid-clips/particle-config@1",
+  "name": "coin-orbit",
+  "use": "Earn vault — coins orbiting around Kade head",
+  "count": 4,
+  "spawn": "fixed_orbit",
+  "orbit": {
+    "center_xy_rel": [0.5, 0.45],
+    "radius_px": [110, 140],
+    "phase_offsets_deg": [0, 90, 180, 270],
+    "angular_velocity_deg_s": 18,
+    "tilt_y_scale": 0.42
+  },
+  "sprite": "brand/icons/metric/coins-earned.svg",
+  "sprite_size_px": 24,
+  "alpha": 0.95,
+  "z_sort": true,
+  "respects_reduced_motion": "pause",
+  "pause_when_hidden": true
+}

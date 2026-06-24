@@ -1,0 +1,17 @@
+{
+  "journey": "Channels",
+  "started_at": "2026-06-23T18:59:18.366Z",
+  "result": "FAIL",
+  "failed_step": {
+    "step": -1,
+    "name": "playwright-runtime-error"
+  },
+  "step_log": [],
+  "screenshots": [
+    "/Users/dipdip/code/jnr/desktop-2/test-results/platform-icons-and-account-7993c--shows-6-mo-accountpack-CTA-user-lens-chromium/test-failed-1.png"
+  ],
+  "console_errors": [],
+  "dom_assertions": {},
+  "test_title": "Channels at-cap (1/1) shows +$6/mo accountpack CTA",
+  "duration_ms": 8632
+}

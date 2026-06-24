@@ -1,0 +1,192 @@
+/* Splash HUD chrome — sits over the game arena. Glass-pill aesthetic
+   matching the skip-intro button (rounded, fuchsia border, paper-on-ink
+   backdrop, backdrop blur). pointer-events disabled so the HUD never
+   competes for clicks with the game canvas. */
+
+.splash-hud-top {
+  position: absolute;
+  top: 20px;
+  left: 280px;   /* leave room for the absolute-positioned Logo at top-left */
+  right: 144px;  /* leave room for skip-intro button */
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: none;
+}
+
+/* SCORE chip — live engine score in the top HUD next to the counters. */
+.splash-hud-score {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1;
+  padding: 10px 14px;
+}
+.splash-hud-score-label {
+  font-family: sans-serif;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #FF1A8C;
+  font-weight: 700;
+}
+.splash-hud-score-value {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 28px;
+  font-weight: 800;
+  color: #F4F1EA;
+  margin-top: 4px;
+}
+
+.splash-hud-counter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(11, 11, 16, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  min-width: 180px;
+}
+.splash-hud-counter-fuchsia {
+  border: 1px solid rgba(255, 26, 140, 0.6);
+  box-shadow:
+    inset 0 0 8px rgba(255, 26, 140, 0.1),
+    0 0 14px rgba(255, 26, 140, 0.18);
+}
+.splash-hud-counter-cyan {
+  border: 1px solid rgba(0, 229, 255, 0.6);
+  box-shadow:
+    inset 0 0 8px rgba(0, 229, 255, 0.1),
+    0 0 14px rgba(0, 229, 255, 0.18);
+}
+
+.splash-hud-counter-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.splash-hud-counter-icon-fuchsia { color: #FF1A8C; }
+.splash-hud-counter-icon-cyan { color: #00E5FF; }
+
+.splash-hud-counter-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1;
+}
+.splash-hud-counter-label {
+  font-family: sans-serif;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(244, 241, 234, 0.65);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.splash-hud-counter-value {
+  font-family: sans-serif;
+  font-size: 24px;
+  font-weight: 800;
+  color: #F4F1EA;
+  margin-top: 4px;
+}
+.splash-hud-counter-delta {
+  font-family: monospace;
+  font-size: 9px;
+  color: #34D399;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.splash-hud-lives {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 14px;
+  margin-left: auto;
+}
+.splash-hud-lives-label {
+  font-family: sans-serif;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(244, 241, 234, 0.65);
+  font-weight: 700;
+}
+.splash-hud-lives-hearts {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.splash-hud-tip {
+  position: absolute;
+  bottom: 112px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 26, 140, 0.4);
+  background: rgba(11, 11, 16, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-family: sans-serif;
+  font-size: 13px;
+  color: #F4F1EA;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.splash-hud-tip strong { color: #FF1A8C; font-weight: 700; }
+.splash-hud-tip-icon { color: #FF1A8C; font-size: 14px; }
+
+.splash-hud-levelup {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 26, 140, 0.4);
+  background: rgba(11, 11, 16, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  max-width: 520px;
+  pointer-events: none;
+}
+.splash-hud-levelup-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.splash-hud-levelup-eb {
+  font-family: sans-serif;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: #FF1A8C;
+  font-weight: 700;
+}
+.splash-hud-levelup-body {
+  font-family: sans-serif;
+  font-size: 11px;
+  color: rgba(244, 241, 234, 0.65);
+  line-height: 1.4;
+  max-width: 240px;
+}
+.splash-hud-levelup-pips {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}

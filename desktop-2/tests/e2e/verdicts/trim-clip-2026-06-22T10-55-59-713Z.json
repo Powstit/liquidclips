@@ -1,0 +1,170 @@
+{
+  "journey": "Trim Clip",
+  "started_at": "2026-06-22T10:54:14.514Z",
+  "result": "PASS",
+  "failed_step": null,
+  "step_log": [
+    {
+      "step": 1,
+      "name": "Launch app and seed completed session",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-01-launch-app-and-seed-completed-session.png"
+    },
+    {
+      "step": 2,
+      "name": "Navigate to Workstation",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-02-navigate-to-workstation.png"
+    },
+    {
+      "step": 3,
+      "name": "Confirm clip grid is populated",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-03-confirm-clip-grid-is-populated.png"
+    },
+    {
+      "step": 4,
+      "name": "Click Edit on first clip",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-04-click-edit-on-first-clip.png"
+    },
+    {
+      "step": 5,
+      "name": "Cockpit dock opens",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-05-cockpit-dock-opens.png"
+    },
+    {
+      "step": 6,
+      "name": "Switch dock to Trim tab",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-06-switch-dock-to-trim-tab.png"
+    },
+    {
+      "step": 7,
+      "name": "Change trim In and Out to a tighter range",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-07-change-trim-in-and-out-to-a-tighter-range.png"
+    },
+    {
+      "step": 8,
+      "name": "Verify Apply Trim button is enabled (range changed)",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-08-verify-apply-trim-button-is-enabled-range-changed-.png"
+    },
+    {
+      "step": 9,
+      "name": "Click Apply trim",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-09-click-apply-trim.png"
+    },
+    {
+      "step": 10,
+      "name": "Trim state transitions: regenerating → done",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-10-trim-state-transitions-regenerating-done.png"
+    },
+    {
+      "step": 11,
+      "name": "Switch to second clip",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-11-switch-to-second-clip.png"
+    },
+    {
+      "step": 12,
+      "name": "Return to first clip",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-12-return-to-first-clip.png"
+    },
+    {
+      "step": 13,
+      "name": "Trim values persisted on returned clip",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-13-trim-values-persisted-on-returned-clip.png"
+    },
+    {
+      "step": 14,
+      "name": "Switch dock to Publish tab",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-14-switch-dock-to-publish-tab.png"
+    },
+    {
+      "step": 15,
+      "name": "Click Publish now (exports the trimmed clip)",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-15-click-publish-now-exports-the-trimmed-clip-.png"
+    },
+    {
+      "step": 16,
+      "name": "Export reaches done state · clip carries the trim",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-16-export-reaches-done-state-clip-carries-the-trim.png"
+    },
+    {
+      "step": 17,
+      "name": "Emit verdict attachments",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-17-emit-verdict-attachments.png"
+    }
+  ],
+  "screenshots": [
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-01-launch-app-and-seed-completed-session-png-1712fa641c4c86911a256a512449c95e9173e0c3.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-02-navigate-to-workstation-png-281f7a6938a1f4d31543b5ded77ae22bfc69fbe4.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-03-confirm-clip-grid-is-populated-png-38b1086698dcc4549879efcf53cf6c2486695186.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-04-click-edit-on-first-clip-png-0c424492f394aa12fcbfe46100f8e328c6fe2ba1.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-05-cockpit-dock-opens-png-cca6d7b3293c3f4d79274f8f4d273408be3f8d6c.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-06-switch-dock-to-trim-tab-png-9ac35b56be07c5d52e3821df96481da5c2fcca61.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-07-change-trim-in-and-out-to-a-tighter-range-png-a897152c65e3703b66bb1dabf3952b23eb21cc39.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-08-verify-apply-trim-button-is-enabled-range-changed--png-a8f08fef8b81c8df5c883fde18b65a97128956ee.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-09-click-apply-trim-png-11bec428202a10c1c380e39ad1b096fe5da7424f.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-10-trim-state-transitions-regenerating-done-png-a5d51e7de68966eb8c9a72df2df9f4d4289bd2ef.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-11-switch-to-second-clip-png-0375c68c81193a2fcb1839fe82a83d5891374bb8.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-12-return-to-first-clip-png-0b666b2145b9338fe708f53c00f8a97b64c21a82.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-13-trim-values-persisted-on-returned-clip-png-12853794562622e975c88a1a3d3471dde6d69aa1.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-14-switch-dock-to-publish-tab-png-4e90bc953294f56f03ff745efbe446af903c0273.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-15-click-publish-now-exports-the-trimmed-clip--png-9ce20ca4cfa060aff8d34bfc7b64ca82d3fd1888.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-16-export-reaches-done-state-clip-carries-the-trim-png-11b619ef575a18209620bebeac076afb9256eef5.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-17-emit-verdict-attachments-png-c90c178eb788b3dcc43ca4a1a2176505a296b321.png"
+  ],
+  "console_errors": [
+    "console.warning: [tauri-adapter] cannot listen on sidecar:ingest_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:stage_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:bake_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:thumbnail_batch_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:export_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:regenerate_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:pick_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:lift_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:overlay_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:ingest_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:lift_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:pick_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:regenerate_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:bake_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:thumbnail_batch_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:export_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:ingest_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:lift_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:pick_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:regenerate_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:bake_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:thumbnail_batch_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:export_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:died: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=9d21d336:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=9d21d336:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782124074989:162:11"
+  ],
+  "dom_assertions": {
+    "grid_clip_count": 6,
+    "dock_on_trim": true,
+    "trim_original_in": "0:00",
+    "trim_original_out": "0:28",
+    "trim_tightened_in": "0:05",
+    "trim_tightened_out": "0:22",
+    "trim_state_reached_done": true,
+    "trim_persisted_in": "0:05",
+    "trim_persisted_out": "0:22",
+    "post_trim_export_output_path": "/projects/uncle-daniel-clip-squad-2026/clips/0-export-9-16.mp4",
+    "final_screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-final-state.png"
+  },
+  "test_title": "Trim Clip · customer can trim a clip and export uses the new trim",
+  "duration_ms": 21269
+}

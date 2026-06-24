@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Liquid Clips · nav · Earn — three stacked coins -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FF1A8C" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" role="img" aria-hidden="true">
+  <!-- top coin (ellipse from front view) -->
+  <ellipse cx="12" cy="6.6" rx="7" ry="2.6"/>
+  <!-- middle coin -->
+  <path d="M5 11.4 a7 2.6 0 0 0 14 0"/>
+  <line x1="5"  y1="6.6"  x2="5"  y2="11.4"/>
+  <line x1="19" y1="6.6"  x2="19" y2="11.4"/>
+  <!-- bottom coin -->
+  <path d="M5 16.2 a7 2.6 0 0 0 14 0"/>
+  <line x1="5"  y1="11.4" x2="5"  y2="16.2"/>
+  <line x1="19" y1="11.4" x2="19" y2="16.2"/>
+</svg>

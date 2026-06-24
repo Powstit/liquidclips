@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Liquid Clips · aurora — radial fuchsia/cyan ambient wash.
+     Use as <img src> or CSS background on the world layer. screen-blend. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" role="presentation">
+  <defs>
+    <radialGradient id="aurora-fx-1" cx="22%" cy="-2%" r="60%">
+      <stop offset="0%"  stop-color="#FF1A8C" stop-opacity="0.36"/>
+      <stop offset="60%" stop-color="#FF1A8C" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="aurora-fx-2" cx="86%" cy="10%" r="55%">
+      <stop offset="0%"  stop-color="#7A0F48" stop-opacity="0.42"/>
+      <stop offset="62%" stop-color="#7A0F48" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="aurora-fx-3" cx="50%" cy="110%" r="80%">
+      <stop offset="0%"  stop-color="#FF1A8C" stop-opacity="0.18"/>
+      <stop offset="70%" stop-color="#FF1A8C" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="aurora-cy" cx="6%" cy="76%" r="50%">
+      <stop offset="0%"  stop-color="#00E5FF" stop-opacity="0.16"/>
+      <stop offset="60%" stop-color="#00E5FF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#aurora-fx-2)"/>
+  <rect width="1600" height="900" fill="url(#aurora-fx-1)"/>
+  <rect width="1600" height="900" fill="url(#aurora-fx-3)"/>
+  <rect width="1600" height="900" fill="url(#aurora-cy)"/>
+</svg>

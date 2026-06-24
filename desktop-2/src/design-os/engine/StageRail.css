@@ -1,0 +1,121 @@
+/* 7-tile pipeline rail. Wraps to two rows on narrower viewports. */
+.lc-stage-rail {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 14px;
+  width: 100%;
+}
+@media (max-width: 1240px) {
+  .lc-stage-rail { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 880px) {
+  .lc-stage-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* BUG-029.4 · 2x tile padding for cockpit-readable scale.
+   Bug 1 · `min-height` softened — was 196px hard floor that clipped wrapped
+   text. Tile is now a flex column that grows to fit content; floor only
+   prevents collapse on the rare 1-word stage (e.g. "Cutting"). */
+.lc-stage-tile {
+  padding: 24px 22px !important;
+  display: flex; flex-direction: column; gap: 12px;
+  min-height: 180px;
+  position: relative;
+  /* Bug 1 · ensure descendant text can use the full width before wrap. */
+  min-width: 0;
+  overflow: visible;
+}
+
+/* BUG-029.4 · eyebrow + label scaled. */
+.lc-stage-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 13px; letter-spacing: .22em;
+  color: #86837e;
+  text-transform: uppercase;
+  /* Bug 1 · keep eyebrow on a single line; truncate if a stage name ever
+     gets longer than the tile. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+/* Bug 1 · multi-word labels ("Preparing video", "Making thumbnails") were
+   clipping at tile edge — font was 22px with NO wrap controls, and the
+   parent grid uses `minmax(0, 1fr)` so the cell width can dip below the
+   word length. Switch to balanced wrap with `overflow-wrap: anywhere` and
+   trim the type a touch so two-word labels fit two lines cleanly. */
+.lc-stage-label {
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: -.012em;
+  color: #f4f1ea;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  hyphens: auto;
+  text-wrap: balance;
+  min-width: 0;
+}
+@media (max-width: 1380px) {
+  .lc-stage-label { font-size: 17.5px; }
+}
+@media (max-width: 1240px) {
+  .lc-stage-label { font-size: 19px; }  /* grid drops to 4-col, more width */
+}
+@media (max-width: 880px) {
+  .lc-stage-label { font-size: 18px; }  /* grid drops to 2-col */
+}
+
+.lc-stage-state {
+  margin-top: auto;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 13px; letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.lc-stage-state-pending { color: #86837e; }
+.lc-stage-state-done    { color: #7fd9e8; }
+.lc-stage-state-failed  { color: #ff8b8b; }
+
+.lc-stage-note {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px; line-height: 1.4;
+  color: #c8c4be;
+  max-height: 2.8em;
+  overflow: hidden;
+}
+
+/* BUG-029.5 · loading glow pulse on active stage tile. The pulse
+   advertises "this stage is currently churning" — pair with the
+   AllowanceBar progress for both shape and motion signals. */
+@keyframes lc-stage-glow-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px rgba(255, 26, 140, .55),
+      0 18px 38px rgba(255, 26, 140, .22),
+      0 0 18px rgba(255, 26, 140, .14);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px rgba(255, 26, 140, .85),
+      0 22px 52px rgba(255, 26, 140, .42),
+      0 0 38px rgba(255, 26, 140, .38);
+  }
+}
+.lc-stage-tile.is-active {
+  border-color: rgba(255, 26, 140, .55);
+  animation: lc-stage-glow-pulse 1.6s ease-in-out infinite;
+}
+.lc-stage-tile.is-active .lc-stage-eb { color: #ff66b8; }
+@media (prefers-reduced-motion: reduce) {
+  .lc-stage-tile.is-active { animation: none; }
+}
+
+.lc-stage-tile.is-done {
+  border-color: rgba(7, 199, 224, .35);
+}
+.lc-stage-tile.is-done .lc-stage-eb { color: #7fd9e8; }
+
+.lc-stage-tile.is-failed {
+  border-color: rgba(220, 38, 38, .45);
+}
+.lc-stage-tile.is-failed .lc-stage-eb { color: #ff8b8b; }

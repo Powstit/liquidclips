@@ -1,0 +1,13 @@
+.lc-channels-tier-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 9px;
+  border-radius: 9999px;
+  background: rgba(7, 199, 224, .14);
+  border: 1px solid rgba(7, 199, 224, .4);
+  color: #7fd9e8;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .14em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}

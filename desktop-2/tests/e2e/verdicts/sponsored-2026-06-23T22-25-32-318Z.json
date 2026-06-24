@@ -1,0 +1,12 @@
+{
+  "journey": "Sponsored",
+  "started_at": "2026-06-23T22:15:55.551Z",
+  "result": "PASS",
+  "failed_step": null,
+  "step_log": [],
+  "screenshots": [],
+  "console_errors": [],
+  "dom_assertions": {},
+  "test_title": "Sponsored Reward Strip · clipper home",
+  "duration_ms": 10135
+}

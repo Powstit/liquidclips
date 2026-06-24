@@ -1,0 +1,152 @@
+/* BUG-031 Patch C · `max-width: calc(100vw - 460px)` removed. The cap was a
+   UI-1 reading-column compromise from when the editor lived in a sidebar.
+   With the cockpit docked at the bottom (UI-2), the cap floats content in
+   the centre of the viewport and creates the dead bands Daniel called out.
+   Stage now fills the `1fr` content column of `.lc-app` (244px nav + 1fr
+   — see AppShell.css:11). Home (CommandRoom) does NOT use .sim-stage so
+   its card grid is untouched. .sim-welcome / .sim-sub caps below preserve
+   paragraph readability. */
+.sim-stage { display: flex; flex-direction: column; gap: 26px; }
+
+/* Runtime-honesty tag rendered inline with the route eyebrow.
+   Mock-pipeline routes show "Engine preview" so users never mistake mock
+   progress for production reality. */
+.lc-runtime-tag {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 9px;
+  border-radius: 9999px;
+  background: rgba(245, 158, 11, .14);
+  border: 1px solid rgba(245, 158, 11, .4);
+  color: #fbbf24;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .14em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+/* Live · backend variant · cyan/green palette so users see at-a-glance
+   when the route is reading from a real endpoint rather than mock. */
+.lc-runtime-tag.is-live {
+  background: rgba(110, 231, 183, .1);
+  border-color: rgba(110, 231, 183, .45);
+  color: #6ee7b7;
+}
+
+.sim-welcome { display: flex; flex-direction: column; gap: 8px; padding: 4px 4px 12px; max-width: 1100px; }
+.sim-eb { font-family: "Geist Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: .15em; color: #86837e; text-transform: uppercase; }
+.sim-h1 {
+  margin: 0;
+  font-weight: 800; font-size: 80px; line-height: .98; letter-spacing: -.038em;
+  background: linear-gradient(180deg, #ffffff 0%, #d8d4ce 70%, #b6b2ac 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.sim-sub { color: #c8c4be; margin: 4px 0 0; font-size: 14.5px; max-width: 580px; }
+
+.sim-section-h { margin: 0 0 14px; font-size: 18px; font-weight: 700; letter-spacing: -.015em; color: #f4f1ea; }
+
+.sim-states { padding: 8px 4px 0; }
+
+.sim-state-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
+.sim-state {
+  background: rgba(14, 14, 22, .62);
+  border: 1px solid rgba(255, 255, 255, .13);
+  border-radius: 14px;
+  padding: 14px 12px;
+  display: flex; flex-direction: column; gap: 6px;
+  min-height: 160px;
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+          backdrop-filter: blur(14px) saturate(140%);
+}
+.sim-state-lbl {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--lc-state-tone, #86837e);
+}
+.sim-state-title { font-size: 14px; font-weight: 600; color: #f4f1ea; letter-spacing: -.01em; }
+.sim-state-body  { font-size: 12px; line-height: 1.5; color: #c8c4be; }
+
+.sim-tone-fx     { --lc-state-tone: #ff1a8c; }
+.sim-tone-fxd    { --lc-state-tone: #ff66b8; }
+.sim-tone-amber  { --lc-state-tone: #f59e0b; }
+.sim-tone-danger { --lc-state-tone: #dc2626; }
+.sim-tone-dim    { --lc-state-tone: #86837e; }
+
+.sim-tone-fx     { border-color: rgba(255,26,140,.32); }
+.sim-tone-fxd    { border-color: rgba(255,102,184,.28); }
+.sim-tone-amber  { border-color: rgba(245,158,11,.32); }
+.sim-tone-danger { border-color: rgba(220,38,38,.32); }
+
+/* Key panel — the single "what this route is for" tile per stub. */
+.sim-key {
+  padding: 20px 24px 22px;
+  display: flex; flex-direction: column; gap: 12px;
+  align-self: flex-start;
+  min-width: 320px; max-width: 560px;
+}
+.sim-key-head { display: flex; align-items: center; justify-content: space-between; }
+.sim-key-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .18em;
+  color: #ff66b8;
+  text-transform: uppercase;
+}
+.sim-key-tag {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9px; letter-spacing: .18em;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  background: rgba(255, 26, 140, .14);
+  color: #ff66b8;
+  text-transform: uppercase;
+}
+.sim-key-headline {
+  font-weight: 800; font-size: 34px; line-height: 1.05; letter-spacing: -.022em;
+  color: #f4f1ea;
+  margin-top: 2px;
+}
+.sim-key-sub { margin: 0; color: #c8c4be; font-size: 13px; line-height: 1.5; }
+.sim-key-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.sim-key-chip {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: .12em;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid rgba(255, 255, 255, .12);
+  color: #c8c4be;
+  text-transform: uppercase;
+}
+.sim-key-bar {
+  height: 6px; border-radius: 4px;
+  background: rgba(255, 255, 255, .07);
+  overflow: hidden;
+}
+.sim-key-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff1a8c 0%, #ff66b8 100%);
+  box-shadow: 0 0 12px rgba(255, 26, 140, .55);
+}
+
+/* Micro strip */
+.sim-micro { padding: 18px 22px; display: flex; flex-direction: column; gap: 12px; }
+.sim-micro-sub { color: #c8c4be; font-size: 13px; margin: 0; }
+.sim-micro-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.sim-btn {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600; font-size: 13px;
+  padding: 10px 14px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, .13);
+  background: rgba(20, 20, 28, .55);
+  color: #f4f1ea;
+  cursor: pointer;
+  transition: all .22s cubic-bezier(.2, .7, .2, 1);
+}
+.sim-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 26, 140, .55);
+  box-shadow: 0 0 0 1px rgba(255, 26, 140, .35), 0 10px 28px rgba(255, 26, 140, .18);
+}
+.sim-btn:disabled { opacity: .5; cursor: not-allowed; }

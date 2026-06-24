@@ -1,0 +1,269 @@
+/* Settings · P1-2 / P1-2A · beta-honest settings route
+ *
+ * Layout owned by DesignOSAppShell + sim-welcome (SimPage.css). This
+ * file only styles the cards · the page chrome / hero / background
+ * comes from the design-OS shell. */
+
+.lc-settings {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  margin-top: 24px;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  color: #f4f1ea;
+}
+
+/* Cards */
+.lc-settings-card {
+  width: 100%;
+  max-width: 640px;
+  padding: 22px 24px;
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lc-settings-card-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: #ffa3d0;
+}
+
+/* Rows */
+.lc-settings-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lc-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, .02);
+  border: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 8px;
+}
+.lc-settings-row-label {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #86837e;
+  white-space: nowrap;
+}
+.lc-settings-row-value {
+  font-size: 13px;
+  color: #c8c4be;
+  text-align: right;
+  word-break: break-all;
+}
+.lc-settings-row-value.is-mono {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+}
+.lc-settings-row-value.tone-live {
+  color: #6ee7b7;
+}
+.lc-settings-row-value.tone-warn {
+  color: #fbbf24;
+}
+.lc-settings-row-value.tone-muted {
+  color: #c8c4be;
+}
+
+.lc-settings-row-pill {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  background: rgba(255, 26, 140, .12);
+  border: 1px solid rgba(255, 26, 140, .5);
+  color: #ffa3d0;
+}
+
+/* Hints + prose */
+.lc-settings-hint {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #86837e;
+  margin: 0;
+}
+.lc-settings-degraded {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #fbbf24;
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid rgba(251, 191, 36, .55);
+  background: rgba(251, 191, 36, .05);
+  border-radius: 4px;
+}
+.lc-settings-prose {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lc-settings-prose p {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #b1aea8;
+  margin: 0;
+}
+.lc-settings-prose strong {
+  color: #ffa3d0;
+  font-weight: 700;
+}
+.lc-settings-prose code {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid rgba(255, 255, 255, .1);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.lc-settings-prose-small {
+  font-size: 12px !important;
+  color: #86837e !important;
+}
+
+/* Storage key copy row */
+.lc-settings-key-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, .02);
+  border: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 8px;
+}
+.lc-settings-key-label {
+  display: block;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #86837e;
+  margin-bottom: 4px;
+}
+.lc-settings-key-code {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  color: #7fd9e8;
+  background: rgba(7, 199, 224, .06);
+  border: 1px solid rgba(7, 199, 224, .25);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+/* CTAs */
+.lc-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lc-settings-cta {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 650;
+  font-size: 12.5px;
+  padding: 10px 18px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all .14s;
+  border: 1px solid rgba(255, 255, 255, .15);
+  white-space: nowrap;
+}
+.lc-settings-cta-secondary {
+  background: rgba(255, 255, 255, .06);
+  border-color: rgba(255, 255, 255, .2);
+  color: #f4f1ea;
+}
+.lc-settings-cta-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .1);
+  border-color: rgba(255, 255, 255, .35);
+}
+.lc-settings-cta-quiet {
+  background: transparent;
+  border-color: rgba(255, 255, 255, .15);
+  color: #c8c4be;
+  align-self: flex-start;
+}
+.lc-settings-cta-quiet:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .05);
+  color: #f4f1ea;
+  border-color: rgba(255, 255, 255, .3);
+}
+.lc-settings-cta-compact {
+  padding: 6px 14px;
+  font-size: 10.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.lc-settings-cta:disabled {
+  opacity: .35;
+  cursor: not-allowed;
+}
+
+/* P1-3-b · Connected accounts · per-provider sub-card. */
+.lc-settings-provider {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, .02);
+  border: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 10px;
+}
+.lc-settings-provider-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.lc-settings-provider-name {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 14.5px;
+  color: #f4f1ea;
+}
+.lc-settings-provider-body {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #b1aea8;
+  margin: 0;
+}
+.lc-settings-provider-body strong {
+  color: #ffa3d0;
+  font-weight: 700;
+}
+.lc-settings-provider-meta {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #86837e;
+}
+.lc-settings-meta-label {
+  color: #86837e;
+}
+.lc-settings-meta-value {
+  color: #c8c4be;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11.5px;
+}

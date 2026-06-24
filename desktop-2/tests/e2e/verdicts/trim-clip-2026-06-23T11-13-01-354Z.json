@@ -1,0 +1,34 @@
+{
+  "journey": "Trim Clip",
+  "started_at": "2026-06-23T11:05:57.205Z",
+  "result": "FAIL",
+  "failed_step": {
+    "step": 2,
+    "name": "Navigate to Workstation"
+  },
+  "step_log": [
+    {
+      "step": 1,
+      "name": "Launch app and seed completed session",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-01-launch-app-and-seed-completed-session.png"
+    },
+    {
+      "step": 2,
+      "name": "Navigate to Workstation",
+      "status": "FAIL",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/trim-02-navigate-to-workstation.png"
+    }
+  ],
+  "screenshots": [
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-01-launch-app-and-seed-completed-session-png-1712fa641c4c86911a256a512449c95e9173e0c3.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/attachments/trim-02-navigate-to-workstation-png-281f7a6938a1f4d31543b5ded77ae22bfc69fbe4.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/trim-clip-Trim-Clip-Journe-1195f-nd-export-uses-the-new-trim-user-lens-chromium/test-failed-1.png"
+  ],
+  "console_errors": [
+    "console.error: Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+  ],
+  "dom_assertions": {},
+  "test_title": "Trim Clip · customer can trim a clip and export uses the new trim",
+  "duration_ms": 20761
+}

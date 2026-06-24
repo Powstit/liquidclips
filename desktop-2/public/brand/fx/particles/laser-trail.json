@@ -1,0 +1,20 @@
+{
+  "$schema": "liquid-clips/particle-config@1",
+  "name": "laser-trail",
+  "use": "combat — fuchsia trail behind Kade's laser beam in flight",
+  "count": 18,
+  "spawn": "along_path",
+  "lifecycle": "trail",
+  "spawn_rate_per_s": 90,
+  "velocity_inherit_path": 0.20,
+  "size_px": [2.0, 4.0],
+  "alpha_curve": [0.95, 0.62, 0.0],
+  "color_mix": {
+    "rgb(255,26,140)": 0.7,
+    "rgb(255,143,203)": 0.3
+  },
+  "shape": "circle",
+  "blend": "screen",
+  "respects_reduced_motion": "skip",
+  "pause_when_hidden": true
+}

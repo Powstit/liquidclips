@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Liquid Clips · nav · Home — cockpit reticle -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FF1A8C" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" role="img" aria-hidden="true">
+  <circle cx="12" cy="12" r="9"/>
+  <circle cx="12" cy="12" r="3.6"/>
+  <line x1="12" y1="2" x2="12" y2="7"/>
+  <line x1="12" y1="17" x2="12" y2="22"/>
+  <line x1="2" y1="12" x2="7" y2="12"/>
+  <line x1="17" y1="12" x2="22" y2="12"/>
+  <circle cx="12" cy="12" r=".8" fill="#FF1A8C" stroke="none"/>
+</svg>

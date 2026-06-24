@@ -1,0 +1,26 @@
+{
+  "$schema": "liquid-clips/particle-config@1",
+  "name": "smoke-trail",
+  "use": "importing — soft fuchsia smoke under Kade during file/URL ingest",
+  "count": 28,
+  "spawn": "from_point",
+  "lifecycle": "trail",
+  "spawn_rate_per_s": 24,
+  "spawn_xy_rel": [0.5, 0.92],
+  "velocity_px_frame": [0.4, 1.2],
+  "spread_deg": 30,
+  "spread_origin_deg": -90,
+  "gravity_px_frame": -0.05,
+  "size_px": [10, 22],
+  "size_curve": [1.0, 1.4, 1.8],
+  "alpha_curve": [0.42, 0.28, 0.0],
+  "color_mix": {
+    "rgb(255,26,140)": 0.55,
+    "rgb(255,143,203)": 0.35,
+    "rgb(255,255,255)": 0.10
+  },
+  "shape": "blob",
+  "blend": "screen",
+  "respects_reduced_motion": "skip",
+  "pause_when_hidden": true
+}

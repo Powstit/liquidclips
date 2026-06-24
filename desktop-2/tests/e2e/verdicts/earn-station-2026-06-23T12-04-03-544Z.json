@@ -1,0 +1,27 @@
+{
+  "journey": "Earn Station",
+  "started_at": "2026-06-23T11:57:01.502Z",
+  "result": "FAIL",
+  "failed_step": {
+    "step": 1,
+    "name": "Launch /#/earn"
+  },
+  "step_log": [
+    {
+      "step": 1,
+      "name": "Launch /#/earn",
+      "status": "FAIL",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/earn-01-launch-earn.png"
+    }
+  ],
+  "screenshots": [
+    "/Users/dipdip/code/jnr/desktop-2/test-results/earn-station-Earn-Station--c9e08--single-source-matches-Home-user-lens-chromium/attachments/earn-01-launch-earn-png-b71b92f07b5856f5fa6e2380fcb28acad1ae52a0.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/earn-station-Earn-Station--c9e08--single-source-matches-Home-user-lens-chromium/test-failed-1.png"
+  ],
+  "console_errors": [
+    "console.error: Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+  ],
+  "dom_assertions": {},
+  "test_title": "Earn Station · honest zeros · zero fake balances · zero fake leaderboard · single-source matches Home",
+  "duration_ms": 15669
+}

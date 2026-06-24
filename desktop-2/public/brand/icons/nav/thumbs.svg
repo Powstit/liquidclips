@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Liquid Clips · nav · Thumbs — cover with hook label corner -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FF1A8C" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" role="img" aria-hidden="true">
+  <!-- thumbnail frame -->
+  <rect x="3" y="5" width="18" height="14" rx="2"/>
+  <!-- hook corner badge -->
+  <path d="M3 9 L8 5"/>
+  <!-- horizon line -->
+  <path d="M3 16 L9.5 11 L13.5 14.5 L21 9"/>
+  <!-- sun mark -->
+  <circle cx="16.5" cy="9.5" r="1.6"/>
+</svg>

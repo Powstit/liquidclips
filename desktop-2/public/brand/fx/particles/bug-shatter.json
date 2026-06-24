@@ -1,0 +1,27 @@
+{
+  "$schema": "liquid-clips/particle-config@1",
+  "name": "bug-shatter",
+  "use": "combat — anomaly insect breaks into 12 fragments after laser hit",
+  "count": 12,
+  "spawn": "radial_burst",
+  "lifecycle": "burst",
+  "duration_ms": 800,
+  "burst_origin_xy_rel": [0.5, 0.5],
+  "velocity_px_frame": [2.4, 5.0],
+  "spread_deg": 360,
+  "gravity_px_frame": 0.22,
+  "size_px": [4, 9],
+  "rotation_deg_s": [-540, 540],
+  "alpha_curve": [1.0, 0.85, 0.0],
+  "color_mix": {
+    "rgb(20,28,40)": 0.50,
+    "rgb(0,229,255)": 0.30,
+    "rgb(45,30,55)": 0.20
+  },
+  "shape": "fragment",
+  "sprite": "brand/enemies/bug-shatter-fragments.png",
+  "sprite_grid": [4, 3],
+  "blend": "source-over",
+  "respects_reduced_motion": "skip",
+  "pause_when_hidden": true
+}

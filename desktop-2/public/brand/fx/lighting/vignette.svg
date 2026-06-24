@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Liquid Clips · vignette — radial dark-edges mask + top/bottom soft fade.
+     Use as last overlay over world, regular blend. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" role="presentation">
+  <defs>
+    <radialGradient id="vignette" cx="50%" cy="50%" r="68%">
+      <stop offset="0%"  stop-color="#000000" stop-opacity="0"/>
+      <stop offset="55%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="86%" stop-color="#000000" stop-opacity="0.36"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.68"/>
+    </radialGradient>
+    <linearGradient id="vignette-vt" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%"  stop-color="#000000" stop-opacity="0.22"/>
+      <stop offset="18%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="78%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.32"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#vignette)"/>
+  <rect width="1600" height="900" fill="url(#vignette-vt)"/>
+</svg>

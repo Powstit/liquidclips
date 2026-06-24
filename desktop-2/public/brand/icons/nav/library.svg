@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Liquid Clips · nav · Library — clip-card archive stack -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FF1A8C" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" role="img" aria-hidden="true">
+  <!-- back card -->
+  <rect x="4.5" y="4.5" width="11" height="14" rx="1.8"/>
+  <!-- middle card (offset right) -->
+  <rect x="7.5" y="6"   width="11" height="14" rx="1.8"/>
+  <!-- play glyph on front card -->
+  <path d="M11.5 11 L15 13 L11.5 15 Z"/>
+</svg>

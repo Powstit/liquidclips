@@ -1,0 +1,126 @@
+{
+  "journey": "Earn Station",
+  "started_at": "2026-06-23T19:28:01.101Z",
+  "result": "PASS",
+  "failed_step": null,
+  "step_log": [
+    {
+      "step": 1,
+      "name": "Launch /#/earn",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/earn-01-launch-earn.png"
+    },
+    {
+      "step": 2,
+      "name": "Stage exposes source=mock · zero clips · zero earnings",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/earn-02-stage-exposes-source-mock-zero-clips-zero-earnings.png"
+    },
+    {
+      "step": 3,
+      "name": "Source pill says 'Backend offline · preview only'",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/earn-03-source-pill-says-backend-offline-preview-only-.png"
+    },
+    {
+      "step": 4,
+      "name": "Offline banner visible with honest 'no balance' copy",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/earn-04-offline-banner-visible-with-honest-no-balance-copy.png"
+    },
+    {
+      "step": 5,
+      "name": "Lifetime-earned tag shows $0.00 (real-computed, not faked)",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/earn-05-lifetime-earned-tag-shows-0-00-real-computed-not-faked-.png"
+    },
+    {
+      "step": 6,
+      "name": "ZERO RewardClipRows render · the 8-clip fake seed is gone",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/earn-06-zero-rewardcliprows-render-the-8-clip-fake-seed-is-gone.png"
+    },
+    {
+      "step": 7,
+      "name": "ZERO leaderboard rows · the 5-user fake seed is gone",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/earn-07-zero-leaderboard-rows-the-5-user-fake-seed-is-gone.png"
+    },
+    {
+      "step": 8,
+      "name": "Filter chips render but no clips match · honest empty list",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/earn-08-filter-chips-render-but-no-clips-match-honest-empty-list.png"
+    },
+    {
+      "step": 9,
+      "name": "Cross-station single-source · Home earn strip reads the SAME $0.00",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/earn-09-cross-station-single-source-home-earn-strip-reads-the-same-0-00.png"
+    },
+    {
+      "step": 10,
+      "name": "Emit verdict attachments",
+      "status": "PASS",
+      "screenshot": "/Users/dipdip/code/jnr/desktop-2/tests/e2e/screenshots/earn-10-emit-verdict-attachments.png"
+    }
+  ],
+  "screenshots": [
+    "/Users/dipdip/code/jnr/desktop-2/test-results/earn-station-Earn-Station--c9e08--single-source-matches-Home-user-lens-chromium/attachments/earn-01-launch-earn-png-b71b92f07b5856f5fa6e2380fcb28acad1ae52a0.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/earn-station-Earn-Station--c9e08--single-source-matches-Home-user-lens-chromium/attachments/earn-02-stage-exposes-source-mock-zero-clips-zero-earnings-png-5989bbd5864c88b61af4a9e6ac2660e3f1b728b7.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/earn-station-Earn-Station--c9e08--single-source-matches-Home-user-lens-chromium/attachments/earn-03-source-pill-says-backend-offline-preview-only--png-f6f1f4b65f2372d203182dce7c1145d889bd897d.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/earn-station-Earn-Station--c9e08--single-source-matches-Home-user-lens-chromium/attachments/earn-04-offline-banner-visible-with-honest-no-balance-copy-png-7680b0018a185a96c147b26f5fd66be35107b584.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/earn-station-Earn-Station--c9e08--single-source-matches-Home-user-lens-chromium/attachments/earn-05-lifetime-earned-tag-shows-0-00-real-computed-not-faked--png-ebf9347f3209ae024d490929b969bfd3488f13a1.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/earn-station-Earn-Station--c9e08--single-source-matches-Home-user-lens-chromium/attachments/earn-06-zero-rewardcliprows-render-the-8-clip-fake-seed-is-gone-png-ec8b95f9e6493cbe1c72ed67a91d314f4050f71a.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/earn-station-Earn-Station--c9e08--single-source-matches-Home-user-lens-chromium/attachments/earn-07-zero-leaderboard-rows-the-5-user-fake-seed-is-gone-png-d3f9b3e2dcd117b9cec590e8b39c2b71756568f3.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/earn-station-Earn-Station--c9e08--single-source-matches-Home-user-lens-chromium/attachments/earn-08-filter-chips-render-but-no-clips-match-honest-empty-list-png-5822d8305da63b3a2d9e9e77626d027ae1844912.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/earn-station-Earn-Station--c9e08--single-source-matches-Home-user-lens-chromium/attachments/earn-09-cross-station-single-source-home-earn-strip-reads-the-same-0-00-png-9ace3da2c680e185f76b7ac047fa5366ce45fd72.png",
+    "/Users/dipdip/code/jnr/desktop-2/test-results/earn-station-Earn-Station--c9e08--single-source-matches-Home-user-lens-chromium/attachments/earn-10-emit-verdict-attachments-png-29bba658127f915f29fdc6999fa7a9e4b2ab5bc2.png"
+  ],
+  "console_errors": [
+    "console.warning: [tauri-adapter] cannot listen on sidecar:ingest_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:stage_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:bake_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:thumbnail_batch_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:export_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:regenerate_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:pick_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:lift_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:overlay_progress: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:120:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:ingest_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:lift_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:pick_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:regenerate_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:bake_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:thumbnail_batch_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:export_complete: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:135:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:ingest_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:lift_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:pick_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:regenerate_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:bake_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:thumbnail_batch_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:export_error: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:149:13",
+    "console.warning: [tauri-adapter] cannot listen on sidecar:died: TypeError: Cannot read properties of undefined (reading 'transformCallback')\n    at transformCallback (http://localhost:1420/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=dd41d8e2:22:37)\n    at listen (http://localhost:1420/node_modules/.vite/deps/chunk-7FCLUC5I.js?v=dd41d8e2:39:14)\n    at register (http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:109:25)\n    at http://localhost:1420/src/design-os/bridge/tauri-adapter.ts?t=1782238103035:162:11"
+  ],
+  "dom_assertions": {
+    "earn_source": "mock",
+    "earn_clip_count": "0",
+    "earn_lifetime": "0",
+    "earn_pending": "0",
+    "earn_pill_data": "mock",
+    "earn_pill_text": "Backend offline · preview only",
+    "earn_banner_text": "No earnings yetThe /me/reward-clips endpoint isn't reachable from this build. Real earnings, payouts, and the affiliate leaderboard appear here once you connect a backend. No fake balance is shown.",
+    "earn_lifetime_tag_text": "$0.00 earned",
+    "reward_clip_row_count": 0,
+    "fake_leaderboard_dollar_matches": 0,
+    "earn_filter_chip_count": 6,
+    "rows_after_first_chip_click": 0,
+    "home_earn_earned": "0",
+    "home_earn_pending": "0",
+    "home_earn_earned_text": "$0.00 earned",
+    "final": "ok"
+  },
+  "test_title": "Earn Station · honest zeros · zero fake balances · zero fake leaderboard · single-source matches Home",
+  "duration_ms": 30883
+}
