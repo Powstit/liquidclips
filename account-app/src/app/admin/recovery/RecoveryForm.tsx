@@ -1,13 +1,18 @@
 "use client";
 
-// HQ Agent 5 · Recovery form (5 emails + 6-digit PIN + 8-char auth code).
+// HQ Agent 5 · Recovery form (IP-aware: fast path = PIN only when caller's
+// IP is in ADMIN_ALLOWED_IPS; strict path = 5 emails + 6-digit PIN +
+// 8-char auth code from unknown IPs).
+//
+// On mount, calls /api/admin/recovery/status to learn whether the caller's
+// IP is allowlisted. Renders the compact form OR the full form accordingly.
 //
 // Submits to /api/admin/recovery/verify. On 200+ok=true swaps the form for
 // SuccessPanel with the freshly minted TOTP seed + backup codes. On 200+
 // ok=false shows the failure copy with attempts_remaining; on 429 shows
 // the "wait 24h" copy. Network errors fall back to a generic retry message.
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { SuccessPanel } from "./SuccessPanel";
 
 const EMAIL_SLOTS = 5;
@@ -33,6 +38,13 @@ type State =
   | { kind: "rate_limited" }
   | { kind: "success"; payload: VerifyOk };
 
+type StatusBody = {
+  ip_allowlisted: boolean;
+  pin_configured: boolean;
+  auth_code_configured: boolean;
+  totp_configured: boolean;
+};
+
 export function RecoveryForm() {
   const [emails, setEmails] = useState<string[]>(
     Array.from({ length: EMAIL_SLOTS }, () => ""),
@@ -40,11 +52,36 @@ export function RecoveryForm() {
   const [pin, setPin] = useState("");
   const [authCode, setAuthCode] = useState("");
   const [state, setState] = useState<State>({ kind: "idle" });
+  const [fastPath, setFastPath] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/recovery/status", {
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          if (!cancelled) setFastPath(false);
+          return;
+        }
+        const body = (await res.json()) as StatusBody;
+        if (!cancelled) setFastPath(Boolean(body.ip_allowlisted));
+      } catch {
+        if (!cancelled) setFastPath(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const allFilled =
-    emails.every((e) => e.trim().length > 0) &&
-    /^\d{6}$/.test(pin) &&
-    /^[A-Z0-9]{8}$/.test(authCode.trim().toUpperCase());
+    fastPath === true
+      ? /^\d{6}$/.test(pin)
+      : emails.every((e) => e.trim().length > 0) &&
+        /^\d{6}$/.test(pin) &&
+        /^[A-Z0-9]{8}$/.test(authCode.trim().toUpperCase());
 
   function updateEmail(i: number, value: string) {
     setEmails((prev) => {
@@ -60,16 +97,18 @@ export function RecoveryForm() {
 
     setState({ kind: "submitting" });
 
+    const payload: Record<string, unknown> = { pin };
+    if (fastPath !== true) {
+      payload.emails = emails.map((e) => e.trim());
+      payload.auth_code = authCode.trim().toUpperCase();
+    }
+
     try {
       const res = await fetch("/api/admin/recovery/verify", {
         method: "POST",
         headers: { "content-type": "application/json" },
         cache: "no-store",
-        body: JSON.stringify({
-          emails: emails.map((e) => e.trim()),
-          pin,
-          auth_code: authCode.trim().toUpperCase(),
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (res.status === 429) {
@@ -116,41 +155,66 @@ export function RecoveryForm() {
     );
   }
 
+  if (fastPath === null) {
+    return (
+      <div className="rounded-xl border border-line bg-paper-elev p-5 text-sm text-text-secondary">
+        Checking your network…
+      </div>
+    );
+  }
+
   const submitting = state.kind === "submitting";
 
   return (
     <form onSubmit={onSubmit} className="space-y-6" noValidate>
-      <fieldset className="rounded-xl border border-line bg-paper-elev p-5">
-        <legend className="px-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
-          Five master emails
-        </legend>
-        <p className="mb-4 text-sm text-text-secondary">
-          Order doesn&apos;t matter — you need at least 3 correct. Lower-case
-          and whitespace are normalised.
-        </p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {emails.map((value, i) => (
-            <label key={i} className="block">
-              <span className="mb-1 block text-xs uppercase text-text-tertiary">
-                Email {i + 1}
-              </span>
-              <input
-                type="email"
-                inputMode="email"
-                autoComplete="off"
-                spellCheck={false}
-                value={value}
-                onChange={(e) => updateEmail(i, e.target.value)}
-                placeholder="name@example.com"
-                className="w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
-                required
-              />
-            </label>
-          ))}
+      {fastPath ? (
+        <div className="rounded-xl border border-fuchsia/30 bg-fuchsia-soft p-4 text-sm text-fuchsia-deep">
+          <p className="font-semibold">Your network is recognised.</p>
+          <p className="mt-1">
+            Fast path enabled — only the 6-digit PIN is required to re-issue
+            your TOTP. Gates stop aliens, not you.
+          </p>
         </div>
-      </fieldset>
+      ) : (
+        <fieldset className="rounded-xl border border-line bg-paper-elev p-5">
+          <legend className="px-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+            Five master emails
+          </legend>
+          <p className="mb-4 text-sm text-text-secondary">
+            Network not recognised — strict path. Order doesn&apos;t matter;
+            you need at least 3 correct. Lower-case and whitespace are
+            normalised.
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {emails.map((value, i) => (
+              <label key={i} className="block">
+                <span className="mb-1 block text-xs uppercase text-text-tertiary">
+                  Email {i + 1}
+                </span>
+                <input
+                  type="email"
+                  inputMode="email"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={value}
+                  onChange={(e) => updateEmail(i, e.target.value)}
+                  placeholder="name@example.com"
+                  className="w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
+                  required
+                />
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div
+        className={
+          fastPath
+            ? "grid grid-cols-1 gap-4"
+            : "grid grid-cols-1 gap-4 sm:grid-cols-2"
+        }
+      >
         <label className="block">
           <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-text-secondary">
             6-digit PIN
@@ -170,28 +234,30 @@ export function RecoveryForm() {
             required
           />
         </label>
-        <label className="block">
-          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-text-secondary">
-            8-character auth code
-          </span>
-          <input
-            type="password"
-            autoComplete="off"
-            value={authCode}
-            onChange={(e) => {
-              const cleaned = e.target.value
-                .toUpperCase()
-                .replace(/[^A-Z0-9]/g, "")
-                .slice(0, 8);
-              setAuthCode(cleaned);
-            }}
-            placeholder="A1B2C3D4"
-            maxLength={8}
-            pattern="[A-Z0-9]{8}"
-            className="w-full rounded-md border border-line bg-paper px-3 py-2 font-mono text-sm uppercase tracking-[0.2em] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
-            required
-          />
-        </label>
+        {!fastPath && (
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-text-secondary">
+              8-character auth code
+            </span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={authCode}
+              onChange={(e) => {
+                const cleaned = e.target.value
+                  .toUpperCase()
+                  .replace(/[^A-Z0-9]/g, "")
+                  .slice(0, 8);
+                setAuthCode(cleaned);
+              }}
+              placeholder="A1B2C3D4"
+              maxLength={8}
+              pattern="[A-Z0-9]{8}"
+              className="w-full rounded-md border border-line bg-paper px-3 py-2 font-mono text-sm uppercase tracking-[0.2em] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
+              required
+            />
+          </label>
+        )}
       </div>
 
       {state.kind === "fail" && (
@@ -238,9 +304,9 @@ export function RecoveryForm() {
       </button>
 
       <p className="text-xs text-text-tertiary">
-        This form attempts identity proof against the master allowlist + the
-        stored PIN/auth-code hashes. We log only the failure category and your
-        IP — never the values you typed.
+        {fastPath
+          ? "Your IP is on the allowlist (ADMIN_ALLOWED_IPS). We only check the PIN. Failure category + IP are logged — never the values you typed."
+          : "This form attempts identity proof against the master allowlist + the stored PIN/auth-code hashes. We log only the failure category and your IP — never the values you typed."}
       </p>
     </form>
   );

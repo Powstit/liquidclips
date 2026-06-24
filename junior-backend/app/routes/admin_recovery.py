@@ -81,6 +81,16 @@ AUTH_CODE_REGEX = re.compile(r"^[A-Z0-9]{8}$")
 # ─── helpers ───────────────────────────────────────────────────────────
 
 
+def _is_allowlisted_ip(ip: str) -> bool:
+    """Return True if `ip` is in ADMIN_ALLOWED_IPS (CSV env). Daniel's
+    saved IPs (home, Tailscale mesh) take the fast path: PIN only.
+    Unknown IPs (lost-laptop scenario) take the strict path: 3-of-5
+    emails + PIN + auth code. Gates stop aliens, not Daniel."""
+    allowed = (os.environ.get("ADMIN_ALLOWED_IPS") or "").split(",")
+    allowed_set = {a.strip() for a in allowed if a.strip()}
+    return bool(ip) and ip in allowed_set
+
+
 def _now() -> datetime:
     """Match the dialect — SQLite stores naive datetimes; comparing to a
     tz-aware now() raises TypeError. Mirror the pattern used elsewhere."""
@@ -230,13 +240,17 @@ AdminUser = Annotated[User, Depends(_require_admin)]
 
 
 class VerifyRequest(BaseModel):
-    """All three proofs in one body — atomic check. emails must have
-    exactly 5 entries (matching TOTAL_EMAIL_SLOTS). pin/auth_code shape
-    is enforced by the regex validators."""
+    """Proofs in one body. Required factors depend on caller IP:
+      - allowlisted IP → PIN only (emails + auth_code optional / ignored)
+      - non-allowlisted IP → emails (exactly 5) + PIN + auth_code all required
 
-    emails: list[str] = Field(..., min_length=TOTAL_EMAIL_SLOTS, max_length=TOTAL_EMAIL_SLOTS)
+    The handler enforces the path-specific shape; this model accepts the
+    superset and lets the route reject what's actually missing for the
+    caller's path."""
+
+    emails: list[str] | None = Field(default=None)
     pin: str = Field(..., min_length=6, max_length=6)
-    auth_code: str = Field(..., min_length=8, max_length=8)
+    auth_code: str | None = Field(default=None)
 
     @field_validator("pin")
     @classmethod
@@ -247,7 +261,9 @@ class VerifyRequest(BaseModel):
 
     @field_validator("auth_code")
     @classmethod
-    def _check_auth_code_shape(cls, v: str) -> str:
+    def _check_auth_code_shape(cls, v: str | None) -> str | None:
+        if v is None or v == "":
+            return None
         normalized = v.strip().upper()
         if not AUTH_CODE_REGEX.match(normalized):
             raise ValueError("auth_code must be 8 uppercase alphanumeric characters")
@@ -280,6 +296,10 @@ class StatusResponse(BaseModel):
     # (which reads pin_set / auth_code_set).
     pin_set: bool
     auth_code_set: bool
+    # IP fast-path indicator. When true, the caller's IP is in
+    # ADMIN_ALLOWED_IPS and recovery only requires the PIN (the frontend
+    # uses this to render the compact form vs the full 3-factor form).
+    ip_allowlisted: bool
 
 
 class PinSetRequest(BaseModel):
@@ -334,9 +354,10 @@ def verify_recovery(
       5. all three pass              → 200 {ok: true, totp_seed, backup_codes}
     """
     ip = _client_ip(request)
+    fast_path = _is_allowlisted_ip(ip)
 
     # 1. rate limit — runs FIRST so a brute-forcer learns nothing about
-    # which gate would have rejected them.
+    # which gate would have rejected them. Applies on BOTH paths.
     prior_attempts = _count_recent_attempts(db, ip)
     if prior_attempts >= RATE_LIMIT_MAX_ATTEMPTS:
         _log_attempt(db, ip, "rate_limited")
@@ -345,22 +366,32 @@ def verify_recovery(
             "Too many recovery attempts. Wait 24 hours before trying again.",
         )
 
-    # 2. email match — case-insensitive, dedup user input to prevent
-    # someone filling all 5 slots with the same correct email.
-    master = set(_master_email_list())
-    submitted = {e.strip().lower() for e in body.emails if e and e.strip()}
-    matches = submitted & master
-    if len(matches) < MIN_MATCHING_EMAILS:
-        _log_attempt(db, ip, "fail_emails")
-        remaining = max(0, RATE_LIMIT_MAX_ATTEMPTS - prior_attempts - 1)
-        return VerifyFailureResponse(
-            ok=False,
-            attempts_remaining=remaining,
-            detail="Verification failed.",
-        )
+    # 2. email match — STRICT PATH ONLY. Allowlisted IPs skip this entirely
+    # because the IP itself is identity proof (Daniel's home / Tailscale).
+    if not fast_path:
+        if not body.emails or len(body.emails) != TOTAL_EMAIL_SLOTS:
+            _log_attempt(db, ip, "fail_emails")
+            remaining = max(0, RATE_LIMIT_MAX_ATTEMPTS - prior_attempts - 1)
+            return VerifyFailureResponse(
+                ok=False,
+                attempts_remaining=remaining,
+                detail="Verification failed.",
+            )
+        master = set(_master_email_list())
+        submitted = {e.strip().lower() for e in body.emails if e and e.strip()}
+        matches = submitted & master
+        if len(matches) < MIN_MATCHING_EMAILS:
+            _log_attempt(db, ip, "fail_emails")
+            remaining = max(0, RATE_LIMIT_MAX_ATTEMPTS - prior_attempts - 1)
+            return VerifyFailureResponse(
+                ok=False,
+                attempts_remaining=remaining,
+                detail="Verification failed.",
+            )
 
-    # 3. pin — bcrypt compare against stored hash. If no PIN is configured
-    # ANYWHERE, fail closed so an empty database can't be exploited.
+    # 3. pin — REQUIRED ON BOTH PATHS. bcrypt compare against stored hash.
+    # If no PIN is configured ANYWHERE, fail closed so an empty database
+    # can't be exploited.
     pin_hash = _resolve_pin_hash(db)
     if not pin_hash or not _bcrypt_check(body.pin, pin_hash):
         _log_attempt(db, ip, "fail_pin")
@@ -371,16 +402,25 @@ def verify_recovery(
             detail="Verification failed.",
         )
 
-    # 4. auth code — same shape.
-    auth_code_hash = _resolve_auth_code_hash(db)
-    if not auth_code_hash or not _bcrypt_check(body.auth_code, auth_code_hash):
-        _log_attempt(db, ip, "fail_auth_code")
-        remaining = max(0, RATE_LIMIT_MAX_ATTEMPTS - prior_attempts - 1)
-        return VerifyFailureResponse(
-            ok=False,
-            attempts_remaining=remaining,
-            detail="Verification failed.",
-        )
+    # 4. auth code — STRICT PATH ONLY. Same shape as emails check.
+    if not fast_path:
+        if not body.auth_code:
+            _log_attempt(db, ip, "fail_auth_code")
+            remaining = max(0, RATE_LIMIT_MAX_ATTEMPTS - prior_attempts - 1)
+            return VerifyFailureResponse(
+                ok=False,
+                attempts_remaining=remaining,
+                detail="Verification failed.",
+            )
+        auth_code_hash = _resolve_auth_code_hash(db)
+        if not auth_code_hash or not _bcrypt_check(body.auth_code, auth_code_hash):
+            _log_attempt(db, ip, "fail_auth_code")
+            remaining = max(0, RATE_LIMIT_MAX_ATTEMPTS - prior_attempts - 1)
+            return VerifyFailureResponse(
+                ok=False,
+                attempts_remaining=remaining,
+                detail="Verification failed.",
+            )
 
     # 5. all gates passed — mint a fresh TOTP seed, hash + persist it,
     # mint backup codes, log success.
@@ -416,10 +456,15 @@ def verify_recovery(
 
 
 @router.get("/status", response_model=StatusResponse)
-def recovery_status(db: Annotated[Session, Depends(get_db)]) -> StatusResponse:
+def recovery_status(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+) -> StatusResponse:
     """Setup-state probe — used by Agent 1's security landing page to
-    render "PIN configured / not configured" pills. Not admin-gated:
-    the page renders BEFORE the admin has signed in (or even can sign in)."""
+    render "PIN configured / not configured" pills, AND by the recovery
+    form to learn whether the caller is on the fast path (IP allowlisted
+    → PIN only) or strict path (5 emails + PIN + auth code). Not
+    admin-gated: the page renders BEFORE the admin has signed in."""
     cfg = _get_config(db)
     pin_set = bool(cfg.pin_hash or _env_pin_hash())
     auth_set = bool(cfg.auth_code_hash or _env_auth_code_hash())
@@ -431,6 +476,7 @@ def recovery_status(db: Annotated[Session, Depends(get_db)]) -> StatusResponse:
         last_recovery_at=cfg.last_recovery_at.isoformat() if cfg.last_recovery_at else None,
         pin_set=pin_set,
         auth_code_set=auth_set,
+        ip_allowlisted=_is_allowlisted_ip(_client_ip(request)),
     )
 
 
