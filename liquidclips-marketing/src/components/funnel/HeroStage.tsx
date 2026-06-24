@@ -3,6 +3,8 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { HeroPaste } from "./HeroPaste";
+import { HeroDownloadPill } from "./HeroDownloadPill";
+import { HeroTrustStrip } from "./HeroTrustStrip";
 
 /**
  * ╔══════════════════════════════════════════════════════════════════╗
@@ -184,16 +186,20 @@ export function HeroStage() {
       {/* centred copy block · low front-facing camera */}
       <div className="lc-w1-content">
         <div className="lc-w1-eb">
-          <span className="lc-w1-eb-dot" /> KADE // SCOUT UNIT ONLINE
+          <span className="lc-w1-eb-dot" /> 100 FREE CLIPS · NO CARD · NO TIMELINE
         </div>
 
         <h1 className="lc-w1-h1">
           Your next <em>viral clip</em> is hiding in a 90-minute video.
         </h1>
 
+        <HeroTrustStrip />
+
         <p className="lc-w1-sub">
           Paste the long video. Kade takes it from there.
         </p>
+
+        <HeroDownloadPill />
 
         <HeroPaste onWake={setAwake} />
 
