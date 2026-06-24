@@ -141,7 +141,7 @@ export function InformationConsole() {
       <div className="lc-ic-status">
         <span className="lc-ic-status-mark">liquid/clips</span>
         <span className="lc-ic-status-sep">/</span>
-        <span className="lc-ic-status-trail">information console · v0.8</span>
+        <span className="lc-ic-status-trail">information console · v0.7.80</span>
         <span className="lc-ic-status-spacer" />
         <span className="lc-ic-status-eb">
           <span className="lc-ic-status-dot" /> KADE // STANDING BY
