@@ -250,24 +250,18 @@ AdminUser = Annotated[User, Depends(_require_admin)]
 
 
 class VerifyRequest(BaseModel):
-    """Proofs in one body. Required factors depend on caller IP:
-      - allowlisted IP → PIN only (emails + auth_code optional / ignored)
-      - non-allowlisted IP → emails (exactly 5) + PIN + auth_code all required
-
-    The handler enforces the path-specific shape; this model accepts the
-    superset and lets the route reject what's actually missing for the
-    caller's path."""
+    """Recovery proof. Daniel removed the PIN gate 2026-06-25 — the primary
+    2FA on the admin account is Clerk TOTP (Authenticator app), which already
+    issues its own backup codes for the "lost phone" case. The custom recovery
+    flow here is the break-glass for when the Clerk session AND Clerk MFA are
+    both gone — proof is now:
+      - 3-of-5 master emails (always required when reaching this endpoint)
+      - 8-char auth code (optional belt-and-braces)
+    PIN field is accepted for backward compat but no longer checked."""
 
     emails: list[str] | None = Field(default=None)
-    pin: str = Field(..., min_length=6, max_length=6)
+    pin: str | None = Field(default=None)  # accepted for compat, NOT checked
     auth_code: str | None = Field(default=None)
-
-    @field_validator("pin")
-    @classmethod
-    def _check_pin_shape(cls, v: str) -> str:
-        if not PIN_REGEX.match(v):
-            raise ValueError("pin must be 6 digits")
-        return v
 
     @field_validator("auth_code")
     @classmethod
@@ -399,18 +393,11 @@ def verify_recovery(
                 detail="Verification failed.",
             )
 
-    # 3. pin — REQUIRED ON BOTH PATHS. bcrypt compare against stored hash.
-    # If no PIN is configured ANYWHERE, fail closed so an empty database
-    # can't be exploited.
-    pin_hash = _resolve_pin_hash(db)
-    if not pin_hash or not _bcrypt_check(body.pin, pin_hash):
-        _log_attempt(db, ip, "fail_pin")
-        remaining = max(0, RATE_LIMIT_MAX_ATTEMPTS - prior_attempts - 1)
-        return VerifyFailureResponse(
-            ok=False,
-            attempts_remaining=remaining,
-            detail="Verification failed.",
-        )
+    # 3. pin — REMOVED 2026-06-25 per Daniel. Primary 2FA is Clerk TOTP
+    # (Authenticator app) which already issues backup codes. The custom
+    # recovery is now lighter: 3-of-5 emails (above) on the strict path,
+    # plus optional auth_code (below). Body.pin is accepted for backward
+    # compat but no longer checked.
 
     # 4. auth code — STRICT PATH ONLY. Same shape as emails check.
     if not fast_path:
