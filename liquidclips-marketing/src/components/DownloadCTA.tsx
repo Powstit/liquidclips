@@ -165,7 +165,11 @@ export function DownloadCTA({
   const platform = override ?? detected;
   const href = pickArtifact(platform, artifacts);
   const intelReady = Boolean(artifacts.macIntel);
-  const waitlistHref = `mailto:${supportEmail}?subject=${encodeURIComponent("Let me know when Liquid Clips is ready")}`;
+  // v0.7.59 (Sprint C — multi-platform launch). The "Let me know when ready"
+  // waitlist mailto is removed now that Windows + Linux ship from the same
+  // release pipeline (CI matrix entries added 2026-06-24). All platforms
+  // resolve to a real installer; the only mailto kept is the "Trouble
+  // downloading?" support fallback in the no-href failure branch.
 
   const cls = [
     variant === "primary" ? "button-primary" : "button-secondary",
@@ -256,9 +260,6 @@ export function DownloadCTA({
           Trouble downloading? <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
         </p>
       )}
-      {/* Keep mailto reachable in the failure mode even though waitlistHref
-          is no longer the primary fallback. */}
-      <span hidden>{waitlistHref}</span>
     </div>
   );
 }
@@ -271,14 +272,26 @@ export function DownloadMeta({ version }: { version?: string } = {}) {
   const versionTag = version ? ` · v${version}` : "";
   if (platform === "unknown") {
     return (
-      <p className="microcopy">Apple Silicon DMG · signed &amp; notarized{versionTag}.</p>
+      <p className="microcopy">Choose your platform: Mac · Windows · Linux{versionTag}</p>
     );
   }
-  if (platform === "windows" || platform === "linux") {
+  if (platform === "windows") {
+    // Windows ships UNSIGNED until Daniel procures an EV cert (DigiCert ~$300/yr
+    // or SSL.com ~$200/yr). Until then SmartScreen warns once on first launch.
+    // Be transparent about it so the user isn't blindsided — see desktop/CLAUDE.md
+    // "Windows + Linux release path".
     return (
       <p className="microcopy">
-        Detected {platform === "windows" ? "Windows" : "Linux"} — public build is Mac only for now. Email us and we&apos;ll
-        notify you when the {platform === "windows" ? "Windows" : "Linux"} build is ready.
+        Windows installer (.exe or .msi){versionTag}. First launch may show a SmartScreen warning —
+        click <strong>More info</strong> → <strong>Run anyway</strong>. We are working on an EV cert to remove this prompt.
+      </p>
+    );
+  }
+  if (platform === "linux") {
+    return (
+      <p className="microcopy">
+        Linux installer (.AppImage portable or .deb for Debian/Ubuntu){versionTag}.
+        AppImage: <code>chmod +x</code> then run. .deb: <code>sudo apt install ./liquid-clips_*.deb</code>.
       </p>
     );
   }
