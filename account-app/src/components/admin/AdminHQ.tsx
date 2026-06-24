@@ -16,6 +16,9 @@ import {
   RevenueTab,
 } from "./HQCommandTabs";
 import { SurfacesTab } from "./SurfacesTab";
+import { PromoCodesTab } from "./PromoCodesTab";
+import { useDataSource } from "./_lib/useDataSource";
+import { LiveBadge } from "./_lib/LiveBadge";
 
 // Read-only Admin HQ v0 — dense, utilitarian, on-brand (paper/ink + fuchsia).
 // All data is fetched THROUGH /api/admin/* proxy routes that re-check admin on
@@ -162,6 +165,7 @@ const TABS = [
   "Missions",
   "Banners",
   "Announcements",
+  "Promo Codes",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -361,6 +365,7 @@ export function AdminHQ({
         {tab === "Missions" && <MissionsTab />}
         {tab === "Banners" && <BannersTab />}
         {tab === "Announcements" && <AnnouncementsTab />}
+        {tab === "Promo Codes" && <PromoCodesTab />}
       </div>
 
       <footer className="mt-14 border-t border-line pt-5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
@@ -405,30 +410,43 @@ function Loader({ on }: { on: boolean }) {
 // =====================================================================
 function OverviewTab({ initial }: { initial: Overview | null }) {
   const fetchAdmin = useAdminFetch();
+  const src = useDataSource();
   const [data, setData] = useState<Overview | null>(initial);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(initial ? null : "Overview not loaded — refresh to retry.");
+
+  // Seed badge state from the SSR-provided initial overview, then update
+  // on each refresh.
+  useEffect(() => {
+    if (initial) src.report("overview", "ok");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       setData((await fetchAdmin("overview")) as unknown as Overview);
+      src.report("overview", "ok");
     } catch (e) {
       setError(String(e));
+      src.report("overview", "fail");
     } finally {
       setLoading(false);
     }
-  }, [fetchAdmin]);
+  }, [fetchAdmin, src]);
 
   return (
     <Panel
       title="overview · config + counts"
       sub="'configured' means a secret is set in env — never the value. Counts are live from the DB."
       right={
-        <button onClick={refresh} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-ink hover:border-fuchsia">
-          refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <LiveBadge state={src.state} />
+          <button onClick={refresh} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-ink hover:border-fuchsia">
+            refresh
+          </button>
+        </div>
       }
     >
       <Loader on={loading} />
@@ -490,6 +508,7 @@ function prettyJson(value: unknown): string | null {
 
 function LaunchHealthTab() {
   const fetchAdmin = useAdminFetch();
+  const src = useDataSource();
   const [data, setData] = useState<LaunchHealth | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -499,21 +518,26 @@ function LaunchHealthTab() {
     setError(null);
     try {
       setData((await fetchAdmin("health")) as unknown as LaunchHealth);
+      src.report("health", "ok");
     } catch (e) {
       setError(String(e));
+      src.report("health", "fail");
     } finally {
       setLoading(false);
     }
-  }, [fetchAdmin]);
+  }, [fetchAdmin, src]);
 
   return (
     <Panel
       title="launch health · one-click gates"
       sub="Admin-only aggregate check for release readiness. Read-only: no posts, charges, payouts, or account mutations."
       right={
-        <button onClick={refresh} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-ink hover:border-fuchsia">
-          run health check
-        </button>
+        <div className="flex items-center gap-2">
+          <LiveBadge state={src.state} />
+          <button onClick={refresh} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-ink hover:border-fuchsia">
+            run health check
+          </button>
+        </div>
       }
     >
       <Loader on={loading} />
@@ -590,6 +614,7 @@ function LaunchHealthTab() {
 // =====================================================================
 function FunctionHeatmapTab() {
   const fetchAdmin = useAdminFetch();
+  const src = useDataSource();
   const [data, setData] = useState<FunctionHeatmap | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -599,31 +624,36 @@ function FunctionHeatmapTab() {
     setError(null);
     try {
       setData((await fetchAdmin("function-heatmap")) as unknown as FunctionHeatmap);
+      src.report("heatmap", "ok");
     } catch (e) {
       setError(String(e));
+      src.report("heatmap", "fail");
     } finally {
       setLoading(false);
     }
-  }, [fetchAdmin]);
+  }, [fetchAdmin, src]);
 
   const runNow = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       setData((await fetchAdmin("function-heatmap/run", { method: "POST" })) as unknown as FunctionHeatmap);
+      src.report("heatmap", "ok");
     } catch (e) {
       setError(String(e));
+      src.report("heatmap", "fail");
     } finally {
       setLoading(false);
     }
-  }, [fetchAdmin]);
+  }, [fetchAdmin, src]);
 
   return (
     <Panel
       title="function heat map · automated rail checks"
       sub="Railway runs this every 5 hours. Red gates email admins through Resend; every run emits PostHog telemetry. Read-only: no posts, charges, OAuth mutations, or payouts."
       right={
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <LiveBadge state={src.state} />
           <button onClick={load} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-ink hover:border-fuchsia">
             load latest
           </button>
@@ -689,6 +719,7 @@ function FunctionHeatmapTab() {
 // =====================================================================
 function AlertsTab() {
   const fetchAdmin = useAdminFetch();
+  const src = useDataSource();
   const [data, setData] = useState<AdminAlertsResponse | null>(null);
   const [filter, setFilter] = useState<"all" | "unread" | "high">("all");
   const [loading, setLoading] = useState(false);
@@ -703,12 +734,14 @@ function AlertsTab() {
       if (filter === "high") params.set("priority", "high");
       const suffix = params.toString() ? `?${params.toString()}` : "";
       setData((await fetchAdmin(`alerts${suffix}`)) as unknown as AdminAlertsResponse);
+      src.report("alerts", "ok");
     } catch (e) {
       setError(String(e));
+      src.report("alerts", "fail");
     } finally {
       setLoading(false);
     }
-  }, [fetchAdmin, filter]);
+  }, [fetchAdmin, filter, src]);
 
   useEffect(() => {
     void load();
@@ -729,7 +762,8 @@ function AlertsTab() {
       title="alerts · admin inbox"
       sub="High-signal operator alerts from Railway heat-map, webhooks, billing, and system notifications for the signed-in admin."
       right={
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <LiveBadge state={src.state} />
           {(["all", "unread", "high"] as const).map((f) => (
             <button
               key={f}
@@ -980,8 +1014,17 @@ function UserDetailCard({ d, timeline, onLoadTimeline }: { d: UserDetail; timeli
 
 function UsersTab() {
   const s = useUserDetail();
+  const src = useDataSource();
+  useEffect(() => {
+    if (s.error) src.report("users", "fail");
+    else if (s.results.length > 0 || s.detail) src.report("users", "ok");
+  }, [s.error, s.results.length, s.detail, src]);
   return (
-    <Panel title="users · search + detail" sub="Emails masked in results; full email only in the detail card below.">
+    <Panel
+      title="users · search + detail"
+      sub="Emails masked in results; full email only in the detail card below."
+      right={<LiveBadge state={src.state} />}
+    >
       <SearchBar query={s.query} setQuery={s.setQuery} onSearch={s.search} loading={s.loading} />
       <ErrorNote error={s.error} />
       <ResultsTable rows={s.results} onOpen={s.open} />
@@ -993,10 +1036,19 @@ function UsersTab() {
 // Usage tab — focuses on the export gate for a searched user.
 function UsageTab() {
   const s = useUserDetail();
+  const src = useDataSource();
+  useEffect(() => {
+    if (s.error) src.report("users", "fail");
+    else if (s.detail) src.report("users", "ok");
+  }, [s.error, s.detail, src]);
   const d = s.detail;
   const wouldBlock = d ? d.remaining_exports !== null && d.remaining_exports <= 0 : false;
   return (
-    <Panel title="usage · export gate" sub="Search a user to inspect their 100-export starter pass and whether export #101 would be blocked.">
+    <Panel
+      title="usage · export gate"
+      sub="Search a user to inspect their 100-export starter pass and whether export #101 would be blocked."
+      right={<LiveBadge state={src.state} />}
+    >
       <SearchBar query={s.query} setQuery={s.setQuery} onSearch={s.search} loading={s.loading} />
       <ErrorNote error={s.error} />
       <ResultsTable rows={s.results} onOpen={s.open} />
@@ -1030,11 +1082,20 @@ function UsageTab() {
 // Billing tab — provider-specific read-only state for a searched user.
 function BillingTab() {
   const s = useUserDetail();
+  const src = useDataSource();
+  useEffect(() => {
+    if (s.error) src.report("users", "fail");
+    else if (s.detail) src.report("users", "ok");
+  }, [s.error, s.detail, src]);
   const d = s.detail;
   const whopOrders = "https://whop.com/dashboard";
   const clerkDash = "https://dashboard.clerk.com";
   return (
-    <Panel title="billing · read-only" sub="No cancel / refund / edit in v0. Whop & Clerk/Stripe own the ledger.">
+    <Panel
+      title="billing · read-only"
+      sub="No cancel / refund / edit in v0. Whop & Clerk/Stripe own the ledger."
+      right={<LiveBadge state={src.state} />}
+    >
       <SearchBar query={s.query} setQuery={s.setQuery} onSearch={s.search} loading={s.loading} />
       <ErrorNote error={s.error} />
       <ResultsTable rows={s.results} onOpen={s.open} />
@@ -1127,8 +1188,22 @@ function LoadButton({ onClick }: { onClick: () => void }) {
 
 function PendingWhopTab() {
   const { rows, note, loading, error, load } = useList<Pending>("pending-whop");
+  const src = useDataSource();
+  useEffect(() => {
+    if (error) src.report("pending-whop", "fail");
+    else if (rows.length >= 0 && !loading) src.report("pending-whop", "ok");
+  }, [error, rows.length, loading, src]);
   return (
-    <Panel title="pending whop · read-only" sub="Entitlements parked for buyers who paid on Whop before signing up. Emails masked." right={<LoadButton onClick={load} />}>
+    <Panel
+      title="pending whop · read-only"
+      sub="Entitlements parked for buyers who paid on Whop before signing up. Emails masked."
+      right={
+        <div className="flex items-center gap-2">
+          <LiveBadge state={src.state} />
+          <LoadButton onClick={load} />
+        </div>
+      }
+    >
       <Loader on={loading} />
       <ErrorNote error={error} />
       {rows.length > 0 && (
@@ -1180,6 +1255,11 @@ type Claim = {
 
 function ClaimsTab() {
   const { rows, loading, error, load, fetchAdmin } = useList<Claim>("claims");
+  const src = useDataSource();
+  useEffect(() => {
+    if (error) src.report("claims", "fail");
+    else if (!loading) src.report("claims", "ok");
+  }, [error, loading, src]);
   const [actioning, setActioning] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
 
@@ -1201,7 +1281,16 @@ function ClaimsTab() {
   );
 
   return (
-    <Panel title="claims · read-only + safe actions" sub="Raw tokens are never rendered. Safe actions: expire (burn link) · resend (re-email the SAME open link)." right={<LoadButton onClick={load} />}>
+    <Panel
+      title="claims · read-only + safe actions"
+      sub="Raw tokens are never rendered. Safe actions: expire (burn link) · resend (re-email the SAME open link)."
+      right={
+        <div className="flex items-center gap-2">
+          <LiveBadge state={src.state} />
+          <LoadButton onClick={load} />
+        </div>
+      }
+    >
       <Loader on={loading} />
       <ErrorNote error={error} />
       {actionMsg && <div className="mt-2 rounded-xl border border-line bg-paper px-3 py-2 font-mono text-[11px] text-ink">{actionMsg}</div>}
@@ -1289,6 +1378,7 @@ function FilterSelect({ label, value, onChange, options }: { label: string; valu
 
 function WebhooksTab() {
   const fetchAdmin = useAdminFetch();
+  const src = useDataSource();
   const [rows, setRows] = useState<Webhook[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1307,12 +1397,14 @@ function WebhooksTab() {
       const r = (await fetchAdmin(path)) as unknown as { rows: Webhook[] };
       setRows(r.rows ?? []);
       setLoaded(true);
+      src.report("webhooks", "ok");
     } catch (e) {
       setError(String(e));
+      src.report("webhooks", "fail");
     } finally {
       setLoading(false);
     }
-  }, [fetchAdmin, provider, status]);
+  }, [fetchAdmin, provider, status, src]);
 
   const shortId = (v: string | null) => (v ? v.slice(0, 8) + "…" : null);
 
@@ -1320,7 +1412,12 @@ function WebhooksTab() {
     <Panel
       title="webhooks · read-only"
       sub="Metadata-only log of signature-valid Clerk/Whop webhooks — no payloads, emails, secrets, or tokens stored."
-      right={<LoadButton onClick={load} />}
+      right={
+        <div className="flex items-center gap-2">
+          <LiveBadge state={src.state} />
+          <LoadButton onClick={load} />
+        </div>
+      }
     >
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <FilterSelect label="provider" value={provider} onChange={setProvider} options={["", "clerk", "whop"]} />
@@ -1381,6 +1478,7 @@ type PostizData = {
 
 function PostizTab() {
   const fetchAdmin = useAdminFetch();
+  const src = useDataSource();
   const [data, setData] = useState<PostizData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1390,15 +1488,26 @@ function PostizTab() {
     setError(null);
     try {
       setData((await fetchAdmin("postiz")) as unknown as PostizData);
+      src.report("postiz", "ok");
     } catch (e) {
       setError(String(e));
+      src.report("postiz", "fail");
     } finally {
       setLoading(false);
     }
-  }, [fetchAdmin]);
+  }, [fetchAdmin, src]);
 
   return (
-    <Panel title="postiz · status only" sub="Display only — Admin HQ never calls or changes Postiz." right={<LoadButton onClick={load} />}>
+    <Panel
+      title="postiz · status only"
+      sub="Display only — Admin HQ never calls or changes Postiz."
+      right={
+        <div className="flex items-center gap-2">
+          <LiveBadge state={src.state} />
+          <LoadButton onClick={load} />
+        </div>
+      }
+    >
       <Loader on={loading} />
       <ErrorNote error={error} />
       {data && (
@@ -1515,6 +1624,7 @@ function bugChipTone(event: string, http_status: number | null, error_code: stri
 
 function BugsTab() {
   const fetchAdmin = useAdminFetch();
+  const src = useDataSource();
   const [data, setData] = useState<BugsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1532,12 +1642,14 @@ function BugsTab() {
       const path = qs.toString() ? `bugs?${qs.toString()}` : "bugs";
       setData((await fetchAdmin(path)) as unknown as BugsData);
       setLoaded(true);
+      src.report("bugs", "ok");
     } catch (e) {
       setError(String(e));
+      src.report("bugs", "fail");
     } finally {
       setLoading(false);
     }
-  }, [fetchAdmin, filterEvent, filterVersion]);
+  }, [fetchAdmin, filterEvent, filterVersion, src]);
 
   const rows = data?.rows ?? [];
 
@@ -1552,7 +1664,12 @@ function BugsTab() {
     <Panel
       title="bugs · desktop error telemetry"
       sub="Recent desktop error events forwarded by the app. Read-only — no payloads, tokens, or PII from the payload."
-      right={<LoadButton onClick={load} />}
+      right={
+        <div className="flex items-center gap-2">
+          <LiveBadge state={src.state} />
+          <LoadButton onClick={load} />
+        </div>
+      }
     >
       {/* Needs-action summary */}
       {needsAction.length > 0 && (
@@ -1723,6 +1840,7 @@ type AdminBonusLedgerRow = {
 
 function BonusLedgerTab() {
   const adminFetch = useAdminFetch();
+  const src = useDataSource();
   const [rows, setRows] = useState<AdminBonusLedgerRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -1740,10 +1858,12 @@ function BonusLedgerTab() {
         `bonus-ledger${qs.toString() ? `?${qs.toString()}` : ""}`,
       )) as { rows: AdminBonusLedgerRow[] };
       setRows(r.rows);
+      src.report("bonus-ledger", "ok");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e)); // allow-raw-error — admin-internal debug surface
+      src.report("bonus-ledger", "fail");
     }
-  }, [adminFetch, statusFilter, missionFilter]);
+  }, [adminFetch, statusFilter, missionFilter, src]);
 
   useEffect(() => {
     void load();
@@ -1781,6 +1901,7 @@ function BonusLedgerTab() {
       sub="Phase 1. Whop owns submission + base $1 RPM. This ledger tracks the +$4 premium bonus due to paid users with no-watermark exports. Click Import to mirror an approved Whop submission; Mark paid to record the bonus has been sent."
       right={
         <div className="flex items-center gap-2">
+          <LiveBadge state={src.state} />
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -2063,6 +2184,7 @@ const EMPTY_DRAFT: ChannelDraft = {
 
 function CommunityChannelsTab() {
   const adminFetch = useAdminFetch();
+  const src = useDataSource();
   const [rows, setRows] = useState<AdminChannel[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<ChannelDraft>(EMPTY_DRAFT);
@@ -2074,10 +2196,12 @@ function CommunityChannelsTab() {
     try {
       const j = (await adminFetch("community/channels")) as { channels: AdminChannel[] };
       setRows(j.channels);
+      src.report("channels", "ok");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e)); // allow-raw-error — admin-internal debug surface
+      src.report("channels", "fail");
     }
-  }, [adminFetch]);
+  }, [adminFetch, src]);
 
   useEffect(() => {
     void load();
@@ -2168,13 +2292,16 @@ function CommunityChannelsTab() {
       title="Community channels"
       sub="Tier-gated rooms backed by Whop chat feeds. Sections: announcements · free_lobby · paid_core · mission. Paste chat_feed_XXX from Whop into a row's whop_channel_id to route that room directly to chat — rooms without an id route paid users to the community landing instead."
       right={
-        <button
-          type="button"
-          onClick={reset}
-          className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia"
-        >
-          {editingSlug ? "Cancel edit" : "New channel"}
-        </button>
+        <div className="flex items-center gap-2">
+          <LiveBadge state={src.state} />
+          <button
+            type="button"
+            onClick={reset}
+            className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia"
+          >
+            {editingSlug ? "Cancel edit" : "New channel"}
+          </button>
+        </div>
       }
     >
       <ChannelDraftForm
@@ -2419,6 +2546,7 @@ const EMPTY_MISSION: Record<string, string | boolean> = {
 
 function MissionsTab() {
   const adminFetch = useAdminFetch();
+  const src = useDataSource();
   const [rows, setRows] = useState<AdminMission[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string | boolean>>(EMPTY_MISSION);
@@ -2432,10 +2560,12 @@ function MissionsTab() {
       // on the public read excludes "closed" only).
       const j = (await adminFetch("campaigns")) as { campaigns: AdminMission[] };
       setRows(j.campaigns);
+      src.report("campaigns", "ok");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e)); // allow-raw-error — admin-internal debug surface
+      src.report("campaigns", "fail");
     }
-  }, [adminFetch]);
+  }, [adminFetch, src]);
 
   useEffect(() => {
     void load();
@@ -2549,13 +2679,16 @@ function MissionsTab() {
       title="Missions"
       sub="Every clipping mission across Uncle Daniel, viral reactions, DDB, fashion, sponsors, proof. Whop bounty id is the Whop content reward bound to this mission."
       right={
-        <button
-          type="button"
-          onClick={reset}
-          className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia"
-        >
-          {editingSlug ? "Cancel edit" : "New mission"}
-        </button>
+        <div className="flex items-center gap-2">
+          <LiveBadge state={src.state} />
+          <button
+            type="button"
+            onClick={reset}
+            className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia"
+          >
+            {editingSlug ? "Cancel edit" : "New mission"}
+          </button>
+        </div>
       }
     >
       <MissionDraftForm
@@ -2728,6 +2861,7 @@ type AdminBanner = {
 
 function BannersTab() {
   const adminFetch = useAdminFetch();
+  const src = useDataSource();
   const [rows, setRows] = useState<AdminBanner[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -2737,10 +2871,12 @@ function BannersTab() {
     try {
       const j = (await adminFetch("banners")) as { banners: AdminBanner[] };
       setRows(j.banners);
+      src.report("banners", "ok");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e)); // allow-raw-error — admin-internal debug surface
+      src.report("banners", "fail");
     }
-  }, [adminFetch]);
+  }, [adminFetch, src]);
 
   useEffect(() => {
     void load();
@@ -2774,13 +2910,16 @@ function BannersTab() {
       title="Banners"
       sub="Promotional placements across earn_hero · mission_card · mission_detail · upgrade_modal · community_top · home_hero · checkout_modal."
       right={
-        <button
-          type="button"
-          onClick={() => setShowForm((v) => !v)}
-          className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia"
-        >
-          {showForm ? "Close form" : "New banner"}
-        </button>
+        <div className="flex items-center gap-2">
+          <LiveBadge state={src.state} />
+          <button
+            type="button"
+            onClick={() => setShowForm((v) => !v)}
+            className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia"
+          >
+            {showForm ? "Close form" : "New banner"}
+          </button>
+        </div>
       }
     >
       {showForm && (
@@ -2956,6 +3095,7 @@ type AdminAnnouncement = {
 
 function AnnouncementsTab() {
   const adminFetch = useAdminFetch();
+  const src = useDataSource();
   const [rows, setRows] = useState<AdminAnnouncement[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -2965,10 +3105,12 @@ function AnnouncementsTab() {
     try {
       const j = (await adminFetch("announcements")) as { announcements: AdminAnnouncement[] };
       setRows(j.announcements);
+      src.report("announcements", "ok");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e)); // allow-raw-error — admin-internal debug surface
+      src.report("announcements", "fail");
     }
-  }, [adminFetch]);
+  }, [adminFetch, src]);
 
   useEffect(() => {
     void load();
@@ -3002,13 +3144,16 @@ function AnnouncementsTab() {
       title="Announcements"
       sub="Mission drops, payout updates, rule changes. Pinned rows surface first in the Announcements room and on dashboard first paint."
       right={
-        <button
-          type="button"
-          onClick={() => setShowForm((v) => !v)}
-          className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia"
-        >
-          {showForm ? "Close form" : "New post"}
-        </button>
+        <div className="flex items-center gap-2">
+          <LiveBadge state={src.state} />
+          <button
+            type="button"
+            onClick={() => setShowForm((v) => !v)}
+            className="rounded-full border border-line bg-paper px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia hover:text-fuchsia"
+          >
+            {showForm ? "Close form" : "New post"}
+          </button>
+        </div>
       }
     >
       {showForm && (
@@ -3149,12 +3294,14 @@ function AnnouncementForm({
 }
 
 // =====================================================================
-// Bug Command Centre — MRR protection dashboard (v0 foundation)
+// Bug Command Centre — MRR protection dashboard (live)
 // =====================================================================
-// This tab is intentionally client-side + mock-data first. The backend has
-// DesktopErrorEvent telemetry (see BugsTab) but no agent-lane / bug-intake
-// table yet. When real bug intake is wired later, swap the static arrays
-// below for a fetch to /api/admin/bug-command/*.
+// 2026-06-24 HQ Demo-Data Wipe: the hardcoded MOCK_BUGS / AGENT_REPORTS
+// arrays and per-lane demo statuses were removed. Bug intake now fetches
+// /api/admin/bug-intake; the lane table renders configuration only (the
+// allowed/forbidden files + Iron Gate section per lane), not invented
+// statuses. Lane *status* is unavailable until a real lane-state table
+// ships — shown as "—" rather than a fake "fixing" label.
 //
 // Security rules:
 //   - API keys are boolean flags passed from the server component. The real
@@ -3179,28 +3326,20 @@ type BugSeverity =
   | "P1 — retention blocker"
   | "P2 — polish";
 
-type BugSource = "user" | "app" | "agent" | "system";
-type BugSection = "Auth" | "Projects" | "Earn" | "D1" | "UI" | "Backend" | "Release";
-
 type Bug = {
   id: string;
   title: string;
   description: string;
-  source: BugSource;
-  section: BugSection;
+  source: string;
+  section: string;
   severity: BugSeverity;
   appVersion: string;
   status: BugStatus;
   lane: LaneKey;
   assignedAgent: string;
-  screenshotLink: string | null;
-  logLink: string | null;
-  ironGateChecklistLink: string | null;
   latestAgentReport: string;
   danielApprovalRequired: boolean;
 };
-
-type LaneStatus = "idle" | "assigned" | "fixing" | "waiting review" | "blocked" | "passed";
 
 type LaneKey =
   | "auth"
@@ -3215,19 +3354,20 @@ type AgentLane = {
   key: LaneKey;
   name: string;
   owner: string;
-  status: LaneStatus;
   ironGateSection: string;
   allowedFiles: string;
   forbiddenFiles: string;
   apiKeyFlag: keyof AgentKeyConfig;
 };
 
+// Lane registry — pure configuration (which files an agent owns, which
+// API key it uses). No status field — status comes from live bug counts
+// or shows "—" when no intake table exists.
 const LANES: AgentLane[] = [
   {
     key: "auth",
     name: "Auth / Account / Upgrade",
     owner: "Auth Agent",
-    status: "fixing",
     ironGateSection: "Section A — Auth / Account / Upgrade",
     allowedFiles: "activation.ts, useTier.ts, Whop checkout routes",
     forbiddenFiles: "FirstRun, Projects Manager, Earn Workflow",
@@ -3237,7 +3377,6 @@ const LANES: AgentLane[] = [
     key: "projects",
     name: "Projects Manager",
     owner: "Projects Agent",
-    status: "fixing",
     ironGateSection: "Section B — Projects Manager",
     allowedFiles: "Project views, project.json logic, asset grid",
     forbiddenFiles: "Earn workflow, auth/tier gating, Library core",
@@ -3247,7 +3386,6 @@ const LANES: AgentLane[] = [
     key: "earn",
     name: "Earn Workflow",
     owner: "Earn Agent",
-    status: "assigned",
     ironGateSection: "Section C — Earn Workflow",
     allowedFiles: "Earn panels, bounty cards, SUB/PAY tabs",
     forbiddenFiles: "Whop API routes, payout ledger mutations",
@@ -3257,7 +3395,6 @@ const LANES: AgentLane[] = [
     key: "onboarding",
     name: "Upgrade + Self-Onboarding",
     owner: "Onboarding Agent",
-    status: "waiting review",
     ironGateSection: "Section A / D — Upgrade + UI Polish",
     allowedFiles: "Upgrade page, WhopCheckoutEmbed, onboarding copy",
     forbiddenFiles: "Backend Whop routes, license minting logic",
@@ -3267,7 +3404,6 @@ const LANES: AgentLane[] = [
     key: "ui",
     name: "UI Polish",
     owner: "UI Agent",
-    status: "fixing",
     ironGateSection: "Section D — Earn + Projects UI Polish",
     allowedFiles: "Tailwind tokens, card/button components, empty states",
     forbiddenFiles: "Data flow hooks, backend routes, sidecar",
@@ -3277,7 +3413,6 @@ const LANES: AgentLane[] = [
     key: "backend",
     name: "Backend",
     owner: "Backend Agent",
-    status: "blocked",
     ironGateSection: "Architecture / backend health gates",
     allowedFiles: "Admin routes, feature flags, telemetry ingest",
     forbiddenFiles: "Desktop customer flows, Railway deploy config",
@@ -3287,7 +3422,6 @@ const LANES: AgentLane[] = [
     key: "release",
     name: "Release / QA",
     owner: "Release Agent",
-    status: "passed",
     ironGateSection: "Global Iron Gate / launch health",
     allowedFiles: "local-install.sh, test:invariant, health checks",
     forbiddenFiles: "latest.json, release tags, customer flows",
@@ -3295,134 +3429,10 @@ const LANES: AgentLane[] = [
   },
 ];
 
-const MOCK_BUGS: Bug[] = [
-  {
-    id: "BUG-001",
-    title: "Reactivate still shown to signed-in admin",
-    description: "AvatarPanel and Settings render stale Reactivate CTA after login.",
-    source: "user",
-    section: "Auth",
-    severity: "P0 — stops paid access",
-    appVersion: "0.7.55",
-    status: "fixing",
-    lane: "auth",
-    assignedAgent: "Auth Agent",
-    screenshotLink: null,
-    logLink: null,
-    ironGateChecklistLink: "https://www.notion.so/iron-gate-auth",
-    latestAgentReport: "Located stale sessionExpired branch in AvatarPanel. Patch in review.",
-    danielApprovalRequired: true,
-  },
-  {
-    id: "BUG-002",
-    title: "Free user sees Projects Manager unlocked",
-    description: "Tier gate fails on cold launch before tier refresh completes.",
-    source: "system",
-    section: "Projects",
-    severity: "P0 — stops payment",
-    appVersion: "0.7.55",
-    status: "assigned",
-    lane: "projects",
-    assignedAgent: "Projects Agent",
-    screenshotLink: null,
-    logLink: null,
-    ironGateChecklistLink: "https://www.notion.so/iron-gate-projects",
-    latestAgentReport: "Reproduced on starter pass. useTier returns free before refresh.",
-    danielApprovalRequired: true,
-  },
-  {
-    id: "BUG-003",
-    title: "Duplicate Earn Projects for same bounty",
-    description: "Start Project creates a second active project instead of resuming.",
-    source: "agent",
-    section: "Earn",
-    severity: "P1 — retention blocker",
-    appVersion: "0.7.54",
-    status: "ready for review",
-    lane: "earn",
-    assignedAgent: "Earn Agent",
-    screenshotLink: null,
-    logLink: null,
-    ironGateChecklistLink: "https://www.notion.so/iron-gate-earn",
-    latestAgentReport: "Deduplication guard added to EarnPanelMount. Ready for hand-walk.",
-    danielApprovalRequired: false,
-  },
-  {
-    id: "BUG-004",
-    title: "Upgrade CTA opens dead page on signed-in free user",
-    description: "Signed-in free upgrade routes to /upgrade instead of Whop checkout embed.",
-    source: "user",
-    section: "Auth",
-    severity: "P0 — stops payment",
-    appVersion: "0.7.55",
-    status: "fixing",
-    lane: "onboarding",
-    assignedAgent: "Onboarding Agent",
-    screenshotLink: null,
-    logLink: null,
-    ironGateChecklistLink: "https://www.notion.so/iron-gate-upgrade",
-    latestAgentReport: "openUpgradeWhenSignedIn now points to account-app checkout.",
-    danielApprovalRequired: true,
-  },
-  {
-    id: "BUG-005",
-    title: "Earn cards still look like debug cockpit",
-    description: "Spacing, hierarchy and payout readability need polish.",
-    source: "agent",
-    section: "UI",
-    severity: "P2 — polish",
-    appVersion: "0.7.55",
-    status: "fixing",
-    lane: "ui",
-    assignedAgent: "UI Agent",
-    screenshotLink: null,
-    logLink: null,
-    ironGateChecklistLink: "https://www.notion.so/iron-gate-ui",
-    latestAgentReport: "Card refactor in progress. Empty states added.",
-    danielApprovalRequired: false,
-  },
-  {
-    id: "BUG-006",
-    title: "Admin proxy strips body on PATCH",
-    description: "Community channel edits return 422 because proxy drops JSON body.",
-    source: "system",
-    section: "Backend",
-    severity: "P1 — trust loss",
-    appVersion: "0.7.55",
-    status: "passed",
-    lane: "backend",
-    assignedAgent: "Backend Agent",
-    screenshotLink: null,
-    logLink: null,
-    ironGateChecklistLink: "https://www.notion.so/iron-gate-backend",
-    latestAgentReport: "Proxy now forwards body for PATCH/POST/DELETE. Verified in admin.",
-    danielApprovalRequired: false,
-  },
-  {
-    id: "BUG-007",
-    title: "local-install.sh not executable after build",
-    description: "Installer script permissions break fresh local install test.",
-    source: "system",
-    section: "Release",
-    severity: "P0 — stops first action",
-    appVersion: "0.7.55",
-    status: "passed",
-    lane: "release",
-    assignedAgent: "Release Agent",
-    screenshotLink: null,
-    logLink: null,
-    ironGateChecklistLink: "https://www.notion.so/iron-gate-release",
-    latestAgentReport: "chmod +x added to CI build step. Hand-walk passed.",
-    danielApprovalRequired: true,
-  },
-];
-
-const AGENT_REPORTS: { lane: LaneKey; at: string; summary: string }[] = [
-  { lane: "auth", at: "2026-06-14T09:30:00Z", summary: "Stale Reactivate branch isolated; patch under review." },
-  { lane: "projects", at: "2026-06-14T09:15:00Z", summary: "Tier race condition reproduced. Fix targets useTier initial state." },
-  { lane: "earn", at: "2026-06-14T08:45:00Z", summary: "Deduplication guard ready for Daniel hand-walk." },
-  { lane: "backend", at: "2026-06-14T08:00:00Z", summary: "PATCH body forwarding verified across all admin write paths." },
-];
+// Bug + AgentReport response shapes from /admin/bug-intake + /admin/agent-reports.
+type BugIntakeResponse = { rows: Bug[]; note?: string };
+type AgentReport = { lane: LaneKey; at: string; summary: string };
+type AgentReportsResponse = { rows: AgentReport[]; note?: string };
 
 function severityTone(severity: BugSeverity): ChipTone {
   if (severity.startsWith("P0")) return "fail";
@@ -3446,26 +3456,59 @@ function isBlockingRetention(severity: BugSeverity): boolean {
   return severity === "P1 — retention blocker";
 }
 
-function laneCounts(lane: LaneKey) {
-  const bugs = MOCK_BUGS.filter((b) => b.lane === lane);
-  const active = bugs.filter((b) => isActiveBug(b.status));
-  const p0 = bugs.filter((b) => b.severity.startsWith("P0"));
-  const p1 = bugs.filter((b) => b.severity.startsWith("P1"));
-  const p2 = bugs.filter((b) => b.severity.startsWith("P2"));
+function laneCounts(bugs: Bug[], laneKey: LaneKey) {
+  const ofLane = bugs.filter((b) => b.lane === laneKey);
+  const active = ofLane.filter((b) => isActiveBug(b.status));
+  const p0 = ofLane.filter((b) => b.severity.startsWith("P0"));
+  const p1 = ofLane.filter((b) => b.severity.startsWith("P1"));
+  const p2 = ofLane.filter((b) => b.severity.startsWith("P2"));
   return { active, p0, p1, p2 };
 }
 
 function BugCommandTab({ agentKeyConfig }: { agentKeyConfig: AgentKeyConfig }) {
+  const src = useDataSource();
+  const fetchAdmin = useAdminFetch();
   const [filterLane, setFilterLane] = useState<LaneKey | "all">("all");
   const [filterStatus, setFilterStatus] = useState<BugStatus | "all">("all");
+  const [bugs, setBugs] = useState<Bug[]>([]);
+  const [bugsNote, setBugsNote] = useState<string | null>(null);
+  const [reports, setReports] = useState<AgentReport[]>([]);
+  const [reportsNote, setReportsNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const openP0 = MOCK_BUGS.filter((b) => b.severity.startsWith("P0") && isActiveBug(b.status));
-  const blockingPayment = MOCK_BUGS.filter((b) => isBlockingPayment(b.severity) && isActiveBug(b.status));
-  const blockingActivation = MOCK_BUGS.filter((b) => isBlockingActivation(b.severity) && isActiveBug(b.status));
-  const blockingRetention = MOCK_BUGS.filter((b) => isBlockingRetention(b.severity) && isActiveBug(b.status));
-  const ironGatesNotPassed = LANES.filter((l) => l.status !== "passed").length;
+  const load = useCallback(async () => {
+    setError(null);
+    const [intake, agentReports] = await Promise.allSettled([
+      fetchAdmin("bug-intake") as Promise<unknown> as Promise<BugIntakeResponse>,
+      fetchAdmin("agent-reports") as Promise<unknown> as Promise<AgentReportsResponse>,
+    ]);
+    if (intake.status === "fulfilled") {
+      setBugs(intake.value.rows ?? []);
+      setBugsNote(intake.value.note ?? null);
+      src.report("bug-intake", "ok");
+    } else {
+      setError(String(intake.reason));
+      src.report("bug-intake", "fail");
+    }
+    if (agentReports.status === "fulfilled") {
+      setReports(agentReports.value.rows ?? []);
+      setReportsNote(agentReports.value.note ?? null);
+      src.report("agent-reports", "ok");
+    } else {
+      src.report("agent-reports", "fail");
+    }
+  }, [fetchAdmin, src]);
 
-  const filteredBugs = MOCK_BUGS.filter((b) => {
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const openP0 = bugs.filter((b) => b.severity.startsWith("P0") && isActiveBug(b.status));
+  const blockingPayment = bugs.filter((b) => isBlockingPayment(b.severity) && isActiveBug(b.status));
+  const blockingActivation = bugs.filter((b) => isBlockingActivation(b.severity) && isActiveBug(b.status));
+  const blockingRetention = bugs.filter((b) => isBlockingRetention(b.severity) && isActiveBug(b.status));
+
+  const filteredBugs = bugs.filter((b) => {
     if (filterLane !== "all" && b.lane !== filterLane) return false;
     if (filterStatus !== "all" && b.status !== filterStatus) return false;
     return true;
@@ -3473,17 +3516,20 @@ function BugCommandTab({ agentKeyConfig }: { agentKeyConfig: AgentKeyConfig }) {
 
   return (
     <Panel
-      title="bug command centre · MRR protection"
-      sub="Tracks only bugs that block install, activation, payment, retention, or trust. Mock-data foundation — wire real intake later."
+      title="bug command centre · MRR protection (live)"
+      sub="Tracks only bugs that block install, activation, payment, retention, or trust. Lane config below is constant; per-lane status comes from live bug counts."
       right={
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <LiveBadge state={src.state} />
           <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">lanes</span>
           <Chip label={`${LANES.length}`} tone="gray" />
           <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">open bugs</span>
-          <Chip label={`${MOCK_BUGS.filter((b) => isActiveBug(b.status)).length}`} tone="gray" />
+          <Chip label={`${bugs.filter((b) => isActiveBug(b.status)).length}`} tone="gray" />
+          <button onClick={() => void load()} className="rounded-full border border-line bg-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:border-fuchsia">refresh</button>
         </div>
       }
     >
+      <ErrorNote error={error} />
       {/* Cards */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <div className="rounded-2xl border border-line bg-paper p-4">
@@ -3503,30 +3549,29 @@ function BugCommandTab({ agentKeyConfig }: { agentKeyConfig: AgentKeyConfig }) {
           <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">Blocking retention</div>
         </div>
         <div className="rounded-2xl border border-line bg-paper p-4">
-          <div className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink">{ironGatesNotPassed}</div>
-          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">Iron Gates not passed</div>
+          <div className="font-display text-[34px] font-bold tracking-[-0.03em] text-ink">{LANES.length}</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-tertiary">Total agent lanes</div>
         </div>
       </div>
 
-      {/* Agent lanes table */}
+      {/* Agent lanes table — pure configuration, no demo statuses */}
       <div className="mb-6 overflow-x-auto">
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">agent lanes</div>
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">agent lanes (config + live counts)</div>
         <table className="w-full border-collapse font-mono text-[11px]">
           <thead>
             <tr className="text-left text-text-tertiary">
-              {["lane", "owner", "status", "P0", "P1", "P2", "active", "API key", " Iron Gate section", "allowed files", "forbidden files"].map((h) => (
+              {["lane", "owner", "P0", "P1", "P2", "active", "API key", "Iron Gate section", "allowed files", "forbidden files"].map((h) => (
                 <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {LANES.map((lane) => {
-              const counts = laneCounts(lane.key);
+              const counts = laneCounts(bugs, lane.key);
               return (
                 <tr key={lane.key} className="border-b border-line/40">
                   <td className="px-2 py-2 text-ink">{lane.name}</td>
                   <td className="px-2 py-2 text-text-secondary">{lane.owner}</td>
-                  <td className="px-2 py-2"><Chip label={lane.status} tone={lane.status === "passed" ? "ok" : lane.status === "blocked" ? "fail" : "pending"} /></td>
                   <td className="px-2 py-2 text-text-secondary">{counts.p0.length}</td>
                   <td className="px-2 py-2 text-text-secondary">{counts.p1.length}</td>
                   <td className="px-2 py-2 text-text-secondary">{counts.p2.length}</td>
@@ -3544,24 +3589,28 @@ function BugCommandTab({ agentKeyConfig }: { agentKeyConfig: AgentKeyConfig }) {
         </table>
       </div>
 
-      {/* Recent agent reports */}
+      {/* Recent agent reports (live) */}
       <div className="mb-6 rounded-2xl border border-line bg-paper p-4">
         <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">recent agent reports</div>
-        <ul className="space-y-2">
-          {AGENT_REPORTS.map((r, i) => {
-            const lane = LANES.find((l) => l.key === r.lane);
-            return (
-              <li key={i} className="flex flex-wrap items-baseline gap-2 font-mono text-[11px]">
-                <span className="text-text-tertiary">{r.at.slice(0, 16).replace("T", " ")}</span>
-                <Chip label={lane?.owner ?? r.lane} tone="gray" />
-                <span className="text-ink">{r.summary}</span>
-              </li>
-            );
-          })}
-        </ul>
+        {reports.length === 0 ? (
+          <div className="font-mono text-[11px] text-text-tertiary">{reportsNote ?? "No agent reports yet."}</div>
+        ) : (
+          <ul className="space-y-2">
+            {reports.map((r, i) => {
+              const lane = LANES.find((l) => l.key === r.lane);
+              return (
+                <li key={i} className="flex flex-wrap items-baseline gap-2 font-mono text-[11px]">
+                  <span className="text-text-tertiary">{r.at.slice(0, 16).replace("T", " ")}</span>
+                  <Chip label={lane?.owner ?? r.lane} tone="gray" />
+                  <span className="text-ink">{r.summary}</span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
-      {/* Bug intake table / mock data */}
+      {/* Bug intake table (live) */}
       <div>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">bug intake</div>
@@ -3595,43 +3644,49 @@ function BugCommandTab({ agentKeyConfig }: { agentKeyConfig: AgentKeyConfig }) {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse font-mono text-[11px]">
-            <thead>
-              <tr className="text-left text-text-tertiary">
-                {["id", "title", "section", "severity", "status", "lane", "source", "version", "daniel approval", "report"].map((h) => (
-                  <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+        {bugs.length === 0 ? (
+          <div className="rounded-2xl border border-line border-dashed bg-paper p-5 text-center font-mono text-[11px] text-text-tertiary">
+            {bugsNote ?? "No bug intake rows yet."}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse font-mono text-[11px]">
+              <thead>
+                <tr className="text-left text-text-tertiary">
+                  {["id", "title", "section", "severity", "status", "lane", "source", "version", "daniel approval", "report"].map((h) => (
+                    <th key={h} className="border-b border-line px-2 py-2 font-normal uppercase tracking-[0.08em]">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredBugs.map((b) => (
+                  <tr key={b.id} className="border-b border-line/40 align-top hover:bg-paper-warm/60">
+                    <td className="px-2 py-2 text-text-tertiary">{b.id}</td>
+                    <td className="px-2 py-2 text-ink">
+                      <div className="max-w-[220px]">
+                        <div className="font-display text-[13px] font-semibold">{b.title}</div>
+                        <div className="mt-0.5 text-text-secondary">{b.description}</div>
+                      </div>
+                    </td>
+                    <td className="px-2 py-2"><Chip label={b.section} tone="gray" /></td>
+                    <td className="px-2 py-2"><Chip label={b.severity} tone={severityTone(b.severity)} /></td>
+                    <td className="px-2 py-2"><Chip label={b.status} tone={b.status === "passed" ? "ok" : b.status === "failed" ? "fail" : "pending"} /></td>
+                    <td className="px-2 py-2 text-text-secondary">{LANES.find((l) => l.key === b.lane)?.name ?? b.lane}</td>
+                    <td className="px-2 py-2 text-text-secondary">{b.source}</td>
+                    <td className="px-2 py-2 text-text-tertiary">{b.appVersion}</td>
+                    <td className="px-2 py-2"><BoolChip value={b.danielApprovalRequired} /></td>
+                    <td className="max-w-[260px] px-2 py-2 text-text-secondary" title={b.latestAgentReport}>{b.latestAgentReport}</td>
+                  </tr>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredBugs.map((b) => (
-                <tr key={b.id} className="border-b border-line/40 align-top hover:bg-paper-warm/60">
-                  <td className="px-2 py-2 text-text-tertiary">{b.id}</td>
-                  <td className="px-2 py-2 text-ink">
-                    <div className="max-w-[220px]">
-                      <div className="font-display text-[13px] font-semibold">{b.title}</div>
-                      <div className="mt-0.5 text-text-secondary">{b.description}</div>
-                    </div>
-                  </td>
-                  <td className="px-2 py-2"><Chip label={b.section} tone="gray" /></td>
-                  <td className="px-2 py-2"><Chip label={b.severity} tone={severityTone(b.severity)} /></td>
-                  <td className="px-2 py-2"><Chip label={b.status} tone={b.status === "passed" ? "ok" : b.status === "failed" ? "fail" : "pending"} /></td>
-                  <td className="px-2 py-2 text-text-secondary">{LANES.find((l) => l.key === b.lane)?.name ?? b.lane}</td>
-                  <td className="px-2 py-2 text-text-secondary">{b.source}</td>
-                  <td className="px-2 py-2 text-text-tertiary">{b.appVersion}</td>
-                  <td className="px-2 py-2"><BoolChip value={b.danielApprovalRequired} /></td>
-                  <td className="max-w-[260px] px-2 py-2 text-text-secondary" title={b.latestAgentReport}>{b.latestAgentReport}</td>
-                </tr>
-              ))}
-              {filteredBugs.length === 0 && (
-                <tr>
-                  <td colSpan={10} className="px-2 py-4 font-mono text-[11px] text-text-tertiary">No bugs match the current filters.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                {filteredBugs.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="px-2 py-4 font-mono text-[11px] text-text-tertiary">No bugs match the current filters.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </Panel>
   );
