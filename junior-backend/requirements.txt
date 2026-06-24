@@ -16,3 +16,7 @@ resend>=2.4
 posthog>=3.5
 stripe>=10.0
 sentry-sdk[fastapi]>=2.0
+# HQ Agent 5 · Admin Recovery (break-glass flow). bcrypt hashes the recovery
+# PIN + auth code; pyotp mints the fresh TOTP seed returned on /verify.
+bcrypt>=4.2
+pyotp>=2.9
