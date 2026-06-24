@@ -1321,3 +1321,70 @@ class CampaignAssetLink(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
     )
+
+
+# ─── Promo / Discount Codes (2026-06-25) ────────────────────────────────
+#
+# Influencer / clipper discount-code system. Daniel hands a short code
+# (e.g. "FOUNDER25") to a creator; they apply it at sign-up + checkout
+# to receive a percent_off discount on their subscription. Codes are
+# case-insensitive (stored upper), optionally capped (max_uses) and/or
+# time-limited (expires_at), optionally scoped to specific plan slugs.
+#
+# This is the LIQUID-CLIPS side ledger. The actual discount on Stripe
+# subscriptions is applied by creating a Stripe Coupon on first apply
+# (id cached in stripe_coupon_id for idempotence). Whop discount codes
+# are managed in the Whop dashboard out-of-band — see PromoCodesTab in
+# the admin HQ for the static "how to set up the Whop side" reference.
+#
+# Both tables are created in main.py's lifespan migrations so they
+# survive every redeploy.
+
+
+class PromoCode(Base):
+    """Influencer / clipper discount code · admin-issued."""
+
+    __tablename__ = "promo_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(40), unique=True, nullable=False, index=True)  # stored uppercase
+    percent_off: Mapped[int] = mapped_column(Integer, nullable=False)  # 1-100
+    max_uses: Mapped[int | None] = mapped_column(Integer, nullable=True)  # None = unlimited
+    used_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # JSON list of plan slugs (e.g. ["solo","growth"]). Empty list = all plans.
+    # Stored as Text so we can round-trip via json.loads/dumps regardless of dialect.
+    scopes_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    # Cached on first successful apply so we don't hit Stripe twice.
+    stripe_coupon_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)  # admin email
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+
+class PromoCodeRedemption(Base):
+    """One row per successful promo-code apply on a checkout."""
+
+    __tablename__ = "promo_code_redemptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    promo_code_id: Mapped[int] = mapped_column(
+        ForeignKey("promo_codes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Stored as the clerk_user_id string so we don't depend on the local
+    # users.id row existing at apply-time (clerk webhook race) and so the
+    # admin stats panel can join either way.
+    user_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Discount applied in USD cents — admin Stats panel uses this for the
+    # "revenue impact" rollup. Snapshotted at apply time so a later
+    # percent_off edit doesn't retroactively change the reported impact.
+    discount_applied_usd_cents: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0
+    )
+    applied_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )

@@ -1,0 +1,1199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Liquid Clips · Splash Game · Final-State Demo</title>
+  <style>
+    /* ─── Brand tokens (mirrors src/index.css IG-012 palette) ─── */
+    :root {
+      --lc-paper:        #0B0B10;
+      --lc-paper-deep:   #050507;
+      --lc-ink:          #F4F1EA;
+      --lc-fuchsia:      #FF1A8C;
+      --lc-fuchsia-deep: #C70066;
+      --lc-fuchsia-soft: #FF66B8;
+      --lc-fuchsia-glow: #FF3DA5;
+      --lc-cyan:         #14B8A6;
+      --lc-amber:        #FFD15A;
+      --lc-emerald:      #4ADE80;
+      --lc-coral:        #F87171;
+      --lc-line:         rgba(255,255,255,0.10);
+      --lc-text-secondary: rgba(244,241,234,0.72);
+      --lc-text-tertiary:  rgba(244,241,234,0.45);
+      --lc-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+      --lc-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+      --lc-display: "SF Pro Display", -apple-system, system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: var(--lc-paper-deep); color: var(--lc-ink); font-family: var(--lc-sans); }
+
+    /* ─── Demo page chrome ─── */
+    .demo-header {
+      padding: 36px 48px 24px;
+      border-bottom: 1px solid var(--lc-line);
+      background: linear-gradient(180deg, var(--lc-paper), var(--lc-paper-deep));
+    }
+    .demo-eb {
+      font-family: var(--lc-mono);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--lc-fuchsia);
+    }
+    .demo-h1 {
+      margin: 8px 0 6px;
+      font-family: var(--lc-display);
+      font-size: 36px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .demo-sub {
+      color: var(--lc-text-secondary);
+      font-size: 14px;
+      line-height: 1.45;
+      max-width: 720px;
+    }
+    .demo-toc {
+      margin: 20px 0 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .demo-toc a {
+      font-family: var(--lc-mono);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--lc-text-tertiary);
+      padding: 6px 12px;
+      border: 1px solid var(--lc-line);
+      border-radius: 999px;
+      text-decoration: none;
+    }
+    .demo-toc a:hover { color: var(--lc-fuchsia); border-color: var(--lc-fuchsia); }
+
+    .demo-section {
+      padding: 40px 48px;
+      border-bottom: 1px solid var(--lc-line);
+    }
+    .demo-section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .demo-section-h {
+      font-family: var(--lc-display);
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+    }
+    .demo-section-note {
+      font-family: var(--lc-mono);
+      font-size: 11px;
+      letter-spacing: 0.10em;
+      color: var(--lc-text-tertiary);
+      text-transform: uppercase;
+    }
+
+    /* ─── Game stage (fuchsia grid background) ─── */
+    .game-stage {
+      position: relative;
+      width: 100%;
+      height: 600px;
+      background:
+        radial-gradient(circle at 50% 55%, rgba(255,26,140,0.18), transparent 60%),
+        linear-gradient(180deg, #0a0a14 0%, #0b0518 100%);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 30px 80px rgba(255,26,140,0.08), 0 0 0 1px var(--lc-line);
+    }
+
+    /* fuchsia grid */
+    .game-stage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,26,140,0.18) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,26,140,0.18) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.6) 30%, rgba(0,0,0,1) 80%);
+      pointer-events: none;
+    }
+    /* scan line */
+    .game-stage::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent 0px,
+        transparent 3px,
+        rgba(255,255,255,0.018) 3px,
+        rgba(255,255,255,0.018) 4px
+      );
+      pointer-events: none;
+    }
+
+    /* ─── HUD ─── */
+    .hud {
+      position: absolute;
+      inset: 16px 16px auto 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      z-index: 4;
+    }
+    .hud-left { display: flex; flex-direction: column; gap: 4px; }
+    .hud-right { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+    .hud-eb {
+      font-family: var(--lc-mono);
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--lc-text-tertiary);
+    }
+    .hud-value {
+      font-family: var(--lc-display);
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--lc-fuchsia-soft);
+      text-shadow: 0 0 12px rgba(255,26,140,0.4);
+    }
+    .hud-wave {
+      font-family: var(--lc-mono);
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--lc-amber);
+      background: rgba(255,209,90,0.12);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,209,90,0.4);
+    }
+
+    /* ─── Lives (3 hearts) ─── */
+    .lives {
+      display: flex;
+      gap: 6px;
+    }
+    .heart {
+      width: 22px;
+      height: 22px;
+      display: inline-block;
+      position: relative;
+    }
+    .heart svg { width: 100%; height: 100%; display: block; }
+    .heart.lost svg { opacity: 0.25; filter: grayscale(1); }
+
+    /* ─── Enemy grid + player ─── */
+    .enemies {
+      position: absolute;
+      top: 110px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: grid;
+      grid-template-columns: repeat(7, 38px);
+      grid-template-rows: repeat(4, 38px);
+      gap: 8px;
+      z-index: 3;
+    }
+    .enemy {
+      width: 38px;
+      height: 38px;
+      object-fit: contain;
+      image-rendering: pixelated;
+      filter: drop-shadow(0 0 8px rgba(255,26,140,0.35));
+    }
+    .enemy.pink   { filter: hue-rotate(-25deg) drop-shadow(0 0 8px rgba(255,26,140,0.55)); }
+    .enemy.cyan   { filter: hue-rotate(100deg) drop-shadow(0 0 8px rgba(20,184,166,0.55)); }
+    .enemy.amber  { filter: hue-rotate(40deg) drop-shadow(0 0 8px rgba(255,209,90,0.55)); }
+
+    .player {
+      position: absolute;
+      bottom: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 56px;
+      height: 56px;
+      image-rendering: pixelated;
+      z-index: 5;
+      filter: drop-shadow(0 0 14px rgba(255,26,140,0.6));
+    }
+
+    /* ─── Hint line ─── */
+    .hint {
+      position: absolute;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--lc-mono);
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--lc-text-tertiary);
+      z-index: 4;
+    }
+
+    /* ─── Leaderboard ─── */
+    .lb {
+      width: 100%;
+      max-width: 480px;
+      padding: 20px 22px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--lc-line);
+    }
+    .lb-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .lb-tabs {
+      display: flex;
+      gap: 4px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 8px;
+      padding: 3px;
+    }
+    .lb-tab {
+      padding: 6px 14px;
+      font-family: var(--lc-mono);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--lc-text-tertiary);
+      background: transparent;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .lb-tab.active {
+      background: var(--lc-fuchsia);
+      color: white;
+      box-shadow: 0 4px 14px rgba(255,26,140,0.3);
+    }
+    .lb-row {
+      display: grid;
+      grid-template-columns: 24px 36px 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 4px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .lb-row:last-child { border-bottom: none; }
+    .lb-rank {
+      font-family: var(--lc-mono);
+      font-size: 13px;
+      color: var(--lc-text-tertiary);
+      text-align: center;
+    }
+    .lb-rank.gold   { color: var(--lc-amber); font-weight: 700; }
+    .lb-rank.silver { color: rgba(220,220,220,0.85); font-weight: 700; }
+    .lb-rank.bronze { color: #CD7F32; font-weight: 700; }
+    .lb-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.04);
+      padding: 2px;
+      image-rendering: pixelated;
+      border: 1px solid var(--lc-line);
+    }
+    .lb-name {
+      font-family: var(--lc-sans);
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .lb-tier {
+      font-family: var(--lc-mono);
+      font-size: 9px;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      color: var(--lc-text-tertiary);
+      margin-top: 1px;
+    }
+    .lb-tier.pro    { color: var(--lc-cyan); }
+    .lb-tier.growth { color: var(--lc-fuchsia-soft); }
+    .lb-tier.agency { color: var(--lc-amber); }
+    .lb-score {
+      font-family: var(--lc-display);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--lc-fuchsia-soft);
+    }
+    .lb-row.you {
+      background: linear-gradient(90deg, rgba(255,26,140,0.10), transparent);
+      border-radius: 8px;
+      border: 1px solid rgba(255,26,140,0.30);
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+
+    /* ─── My Score states (logged-in vs logged-out) ─── */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .grid-2 > * { min-width: 0; }
+    @media (max-width: 880px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .my-score {
+      padding: 24px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--lc-line);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .my-score-eb {
+      font-family: var(--lc-mono);
+      font-size: 10px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--lc-text-tertiary);
+    }
+    .my-score-state-tag {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-family: var(--lc-mono);
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .my-score-state-tag.signed-in {
+      color: var(--lc-emerald);
+      background: rgba(74,222,128,0.10);
+      border: 1px solid rgba(74,222,128,0.35);
+    }
+    .my-score-state-tag.signed-out {
+      color: var(--lc-amber);
+      background: rgba(255,209,90,0.10);
+      border: 1px solid rgba(255,209,90,0.35);
+    }
+    .my-score-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .my-score-avatar {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.04);
+      image-rendering: pixelated;
+      border: 2px solid var(--lc-fuchsia);
+      padding: 2px;
+    }
+    .my-score-avatar.placeholder {
+      display: grid;
+      place-items: center;
+      border: 2px dashed var(--lc-text-tertiary);
+      color: var(--lc-text-tertiary);
+      font-family: var(--lc-mono);
+      font-size: 10px;
+      letter-spacing: 0.10em;
+      padding: 0;
+    }
+    .my-score-amt {
+      font-family: var(--lc-display);
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--lc-fuchsia-soft);
+      letter-spacing: -0.02em;
+    }
+    .my-score-meta {
+      font-family: var(--lc-mono);
+      font-size: 11px;
+      color: var(--lc-text-tertiary);
+    }
+    .my-score-cta {
+      margin-top: 8px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      background: var(--lc-fuchsia);
+      color: white;
+      font-family: var(--lc-sans);
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+      border: none;
+      transition: background 160ms ease, transform 160ms ease;
+    }
+    .my-score-cta:hover { background: var(--lc-fuchsia-deep); transform: translateY(-1px); }
+    .my-score-note {
+      font-family: var(--lc-sans);
+      font-size: 12px;
+      color: var(--lc-text-secondary);
+      line-height: 1.45;
+    }
+
+    /* ─── Achievement badge ─── */
+    .achievement {
+      position: relative;
+      padding: 28px 24px;
+      border-radius: 16px;
+      background:
+        radial-gradient(circle at 50% 30%, rgba(255,209,90,0.25), transparent 60%),
+        linear-gradient(135deg, rgba(255,209,90,0.08), rgba(255,26,140,0.04));
+      border: 1px solid rgba(255,209,90,0.45);
+      box-shadow: 0 0 50px rgba(255,209,90,0.15);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .achievement-badge {
+      width: 88px;
+      height: 88px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #FFE48F, var(--lc-amber) 70%, #B8830A);
+      display: grid;
+      place-items: center;
+      font-size: 44px;
+      box-shadow: 0 0 36px rgba(255,209,90,0.5), inset 0 -8px 16px rgba(184,131,10,0.5);
+      animation: badge-pulse 2.2s ease-in-out infinite;
+    }
+    @keyframes badge-pulse {
+      0%, 100% { transform: scale(1); }
+      50%      { transform: scale(1.06); }
+    }
+    .achievement-eb {
+      font-family: var(--lc-mono);
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--lc-amber);
+    }
+    .achievement-h {
+      font-family: var(--lc-display);
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .achievement-sub {
+      font-family: var(--lc-sans);
+      font-size: 13px;
+      color: var(--lc-text-secondary);
+      max-width: 320px;
+    }
+
+    /* ─── Level-up card ─── */
+    .levelup {
+      padding: 28px 24px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(255,26,140,0.12), rgba(255,26,140,0.04));
+      border: 1px solid var(--lc-fuchsia);
+      box-shadow: 0 0 40px rgba(255,26,140,0.20);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .levelup-eb {
+      font-family: var(--lc-mono);
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--lc-fuchsia);
+    }
+    .levelup-h {
+      font-family: var(--lc-display);
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+    }
+    .levelup-grid {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 12px;
+      align-items: center;
+    }
+    .levelup-stat {
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--lc-line);
+    }
+    .levelup-stat-eb {
+      font-family: var(--lc-mono);
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--lc-text-tertiary);
+    }
+    .levelup-stat-val {
+      font-family: var(--lc-display);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--lc-ink);
+      margin-top: 4px;
+    }
+    .levelup-arrow {
+      font-size: 18px;
+      color: var(--lc-fuchsia);
+    }
+    .levelup-cta {
+      margin-top: 4px;
+      padding: 12px 18px;
+      border-radius: 10px;
+      background: var(--lc-fuchsia);
+      color: white;
+      font-family: var(--lc-sans);
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+    }
+
+    /* ─── Game-over modal ─── */
+    .gameover-stage {
+      position: relative;
+      background: linear-gradient(180deg, #07060c 0%, #0c0612 100%);
+      border-radius: 16px;
+      padding: 40px 32px;
+      border: 1px solid var(--lc-line);
+      box-shadow: inset 0 0 60px rgba(255,26,140,0.10);
+    }
+    .gameover-stage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 16px;
+      background:
+        linear-gradient(rgba(255,26,140,0.12) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,26,140,0.12) 1px, transparent 1px);
+      background-size: 30px 30px;
+      mask-image: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.8) 100%);
+      pointer-events: none;
+    }
+    .gameover {
+      position: relative;
+      max-width: 460px;
+      margin: 0 auto;
+      padding: 28px;
+      border-radius: 14px;
+      background: rgba(11,11,16,0.9);
+      border: 1px solid var(--lc-fuchsia);
+      box-shadow: 0 0 50px rgba(255,26,140,0.30);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      z-index: 1;
+    }
+    .gameover-eb {
+      font-family: var(--lc-mono);
+      font-size: 10px;
+      letter-spacing: 0.20em;
+      text-transform: uppercase;
+      color: var(--lc-coral);
+    }
+    .gameover-h {
+      font-family: var(--lc-display);
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .gameover-score {
+      font-family: var(--lc-display);
+      font-size: 56px;
+      font-weight: 900;
+      color: var(--lc-fuchsia-soft);
+      letter-spacing: -0.025em;
+      text-shadow: 0 0 24px rgba(255,26,140,0.5);
+      line-height: 1;
+      margin: 8px 0;
+    }
+    .gameover-meta {
+      font-family: var(--lc-mono);
+      font-size: 11px;
+      color: var(--lc-text-tertiary);
+      letter-spacing: 0.10em;
+    }
+    .gameover-cta-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 6px;
+    }
+    .gameover-cta {
+      padding: 14px 16px;
+      border-radius: 10px;
+      font-family: var(--lc-sans);
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+    }
+    .gameover-cta.primary {
+      background: var(--lc-fuchsia);
+      color: white;
+    }
+    .gameover-cta.quiet {
+      background: transparent;
+      color: var(--lc-text-secondary);
+      border: 1px solid var(--lc-line);
+    }
+
+    /* ─── Continue gate ─── */
+    .continue-gate {
+      padding: 24px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--lc-line);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .continue-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .continue-cta {
+      padding: 14px 24px;
+      border-radius: 10px;
+      background: var(--lc-fuchsia);
+      color: white;
+      font-family: var(--lc-sans);
+      font-size: 14px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+    }
+    .continue-cta:disabled {
+      background: rgba(255,255,255,0.06);
+      color: var(--lc-text-tertiary);
+      cursor: not-allowed;
+    }
+    .continue-conditions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .continue-cond {
+      padding: 5px 10px;
+      border-radius: 6px;
+      background: rgba(74,222,128,0.10);
+      border: 1px solid rgba(74,222,128,0.35);
+      color: var(--lc-emerald);
+      font-family: var(--lc-mono);
+      font-size: 10px;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+    }
+    .continue-cond.locked {
+      background: rgba(255,209,90,0.08);
+      border-color: rgba(255,209,90,0.30);
+      color: var(--lc-amber);
+    }
+
+    /* ─── Boss wave reveal ─── */
+    .boss-wave {
+      position: relative;
+      padding: 32px 28px;
+      border-radius: 16px;
+      background:
+        radial-gradient(circle at 50% 30%, rgba(248,113,113,0.15), transparent 60%),
+        linear-gradient(180deg, #100612 0%, #05050b 100%);
+      border: 1px solid rgba(248,113,113,0.40);
+      box-shadow: inset 0 0 60px rgba(248,113,113,0.08);
+    }
+    .boss-wave-head {
+      text-align: center;
+      margin-bottom: 22px;
+    }
+    .boss-wave-eb {
+      font-family: var(--lc-mono);
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--lc-coral);
+      animation: boss-flash 0.9s ease-in-out infinite;
+    }
+    @keyframes boss-flash {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.45; }
+    }
+    .boss-wave-h {
+      font-family: var(--lc-display);
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin: 6px 0 4px;
+    }
+    .boss-wave-sub {
+      font-family: var(--lc-sans);
+      font-size: 13px;
+      color: var(--lc-text-secondary);
+    }
+    .boss-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 18px;
+      align-items: end;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    @media (max-width: 720px) {
+      .boss-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+    .boss-cell {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 8px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--lc-line);
+      transition: transform 200ms ease, border-color 200ms ease;
+    }
+    .boss-cell:hover {
+      transform: translateY(-4px);
+      border-color: var(--lc-coral);
+    }
+    .boss-sprite {
+      width: 80px;
+      height: 80px;
+      object-fit: contain;
+      filter: drop-shadow(0 6px 12px rgba(248,113,113,0.30));
+      image-rendering: auto;
+    }
+    .boss-name {
+      font-family: var(--lc-display);
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+    }
+    .boss-trait {
+      font-family: var(--lc-mono);
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--lc-text-tertiary);
+      text-align: center;
+    }
+
+    /* ─── Footer ─── */
+    .demo-footer {
+      padding: 30px 48px 50px;
+      color: var(--lc-text-tertiary);
+      font-family: var(--lc-mono);
+      font-size: 11px;
+      letter-spacing: 0.10em;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(255,26,140,0.12);
+      border: 1px solid rgba(255,26,140,0.40);
+      color: var(--lc-fuchsia-soft);
+      font-family: var(--lc-mono);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .pill-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--lc-fuchsia); display: inline-block;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="demo-header">
+    <div class="demo-eb">Splash Game · Final-State Demo</div>
+    <h1 class="demo-h1">Liquid Clips · Onboarding Cinematic + Game</h1>
+    <p class="demo-sub">
+      Single-page review of every state in the splash game before code-port to <code>desktop-2</code>.
+      All sections render against real brand assets from <code>/public/brand/</code>. Approve this layout +
+      asset usage before I wire the React port.
+    </p>
+    <nav class="demo-toc">
+      <a href="#stage">1 · Active stage</a>
+      <a href="#hud">2 · Kade HUD + 3 lives</a>
+      <a href="#leaderboard">3 · Leaderboard rows</a>
+      <a href="#myscore">4 · MY SCORE (auth branch)</a>
+      <a href="#achievement">5 · Achievement moment</a>
+      <a href="#levelup">6 · Level-up card</a>
+      <a href="#bosswave">7 · Boss wave</a>
+      <a href="#gameover">8 · Game-over modal</a>
+      <a href="#continue">9 · Continue gate</a>
+    </nav>
+  </header>
+
+  <!-- 1 · ACTIVE STAGE -->
+  <section class="demo-section" id="stage">
+    <div class="demo-section-head">
+      <div>
+        <h2 class="demo-section-h">1 · Active stage · fuchsia grid + Kade HUD + 3 lives</h2>
+      </div>
+      <span class="demo-section-note">scene: enemies on grid · player at bottom · live score · wave 1 · 3/3 hearts</span>
+    </div>
+    <div class="game-stage" id="hud">
+      <!-- HUD (top) -->
+      <div class="hud">
+        <div class="hud-left">
+          <span class="hud-eb">Score</span>
+          <span class="hud-value" id="hud-score">12,840</span>
+          <div class="lives" aria-label="3 lives remaining">
+            <span class="heart" title="Life 1"><svg viewBox="0 0 24 24" fill="#FF1A8C"><path d="M12 21s-7-4.35-9.5-9.05C.7 8.5 2.5 4 6.5 4c2 0 3.5 1.2 4.5 2.7C12 5.2 13.5 4 15.5 4c4 0 5.8 4.5 4 7.95C19 16.65 12 21 12 21z"/></svg></span>
+            <span class="heart" title="Life 2"><svg viewBox="0 0 24 24" fill="#FF1A8C"><path d="M12 21s-7-4.35-9.5-9.05C.7 8.5 2.5 4 6.5 4c2 0 3.5 1.2 4.5 2.7C12 5.2 13.5 4 15.5 4c4 0 5.8 4.5 4 7.95C19 16.65 12 21 12 21z"/></svg></span>
+            <span class="heart" title="Life 3"><svg viewBox="0 0 24 24" fill="#FF1A8C"><path d="M12 21s-7-4.35-9.5-9.05C.7 8.5 2.5 4 6.5 4c2 0 3.5 1.2 4.5 2.7C12 5.2 13.5 4 15.5 4c4 0 5.8 4.5 4 7.95C19 16.65 12 21 12 21z"/></svg></span>
+          </div>
+        </div>
+        <div class="hud-right">
+          <span class="hud-eb">High score</span>
+          <span class="hud-value">28,920</span>
+          <span class="hud-wave">Wave 1 of ∞</span>
+        </div>
+      </div>
+
+      <!-- Enemy grid -->
+      <div class="enemies" aria-hidden="true">
+        <img src="../public/brand/invaders/grunt.png" class="enemy pink" alt="" />
+        <img src="../public/brand/invaders/grunt.png" class="enemy pink" alt="" />
+        <img src="../public/brand/invaders/grunt.png" class="enemy pink" alt="" />
+        <img src="../public/brand/invaders/grunt.png" class="enemy pink" alt="" />
+        <img src="../public/brand/invaders/grunt.png" class="enemy pink" alt="" />
+        <img src="../public/brand/invaders/grunt.png" class="enemy pink" alt="" />
+        <img src="../public/brand/invaders/grunt.png" class="enemy pink" alt="" />
+
+        <img src="../public/brand/invaders/elite.png" class="enemy cyan" alt="" />
+        <img src="../public/brand/invaders/elite.png" class="enemy cyan" alt="" />
+        <img src="../public/brand/invaders/elite.png" class="enemy cyan" alt="" />
+        <img src="../public/brand/invaders/elite.png" class="enemy cyan" alt="" />
+        <img src="../public/brand/invaders/elite.png" class="enemy cyan" alt="" />
+        <img src="../public/brand/invaders/elite.png" class="enemy cyan" alt="" />
+        <img src="../public/brand/invaders/elite.png" class="enemy cyan" alt="" />
+
+        <img src="../public/brand/invaders/drone.png" class="enemy amber" alt="" />
+        <img src="../public/brand/invaders/drone.png" class="enemy amber" alt="" />
+        <img src="../public/brand/invaders/drone.png" class="enemy amber" alt="" />
+        <img src="../public/brand/invaders/drone.png" class="enemy amber" alt="" />
+        <img src="../public/brand/invaders/drone.png" class="enemy amber" alt="" />
+        <img src="../public/brand/invaders/drone.png" class="enemy amber" alt="" />
+        <img src="../public/brand/invaders/drone.png" class="enemy amber" alt="" />
+
+        <img src="../public/brand/invaders/invader-wasp.png" class="enemy" alt="" />
+        <img src="../public/brand/invaders/invader-wasp.png" class="enemy" alt="" />
+        <img src="../public/brand/invaders/invader-wasp.png" class="enemy" alt="" />
+        <img src="../public/brand/invaders/mothership.png" class="enemy" alt="boss" style="width:48px;height:48px;" />
+        <img src="../public/brand/invaders/invader-wasp.png" class="enemy" alt="" />
+        <img src="../public/brand/invaders/invader-wasp.png" class="enemy" alt="" />
+        <img src="../public/brand/invaders/invader-wasp.png" class="enemy" alt="" />
+      </div>
+
+      <!-- Player ship (Kade) -->
+      <img class="player" src="../public/brand/invaders/player-ship.png" alt="player ship" />
+
+      <!-- Hint -->
+      <div class="hint">← → move · space to fire · esc to pause</div>
+    </div>
+  </section>
+
+  <!-- 3 · LEADERBOARD -->
+  <section class="demo-section" id="leaderboard">
+    <div class="demo-section-head">
+      <div>
+        <h2 class="demo-section-h">3 · Leaderboard rows · avatars match user profile / Clipper tier</h2>
+      </div>
+      <span class="demo-section-note">10 Kade-derivative PixelLab avatars · 32×32 native · tier-coded labels</span>
+    </div>
+    <div style="display:flex;justify-content:center;">
+      <div class="lb">
+        <div class="lb-head">
+          <span class="pill"><span class="pill-dot"></span>Top clippers · this week</span>
+          <div class="lb-tabs">
+            <button class="lb-tab active">Week</button>
+            <button class="lb-tab">All-time</button>
+          </div>
+        </div>
+        <!-- 10 rows · uses all 10 generated avatars -->
+        <div class="lb-row">
+          <span class="lb-rank gold">1</span>
+          <img src="../public/brand/splash/avatars/avatar-01-king-kade.png" class="lb-avatar" alt="" />
+          <div><div class="lb-name">KingKade</div><div class="lb-tier agency">AGENCY</div></div>
+          <div class="lb-score">28,920</div>
+        </div>
+        <div class="lb-row">
+          <span class="lb-rank silver">2</span>
+          <img src="../public/brand/splash/avatars/avatar-02-cape-clipper.png" class="lb-avatar" alt="" />
+          <div><div class="lb-name">CapeClipper</div><div class="lb-tier growth">GROWTH</div></div>
+          <div class="lb-score">22,140</div>
+        </div>
+        <div class="lb-row">
+          <span class="lb-rank bronze">3</span>
+          <img src="../public/brand/splash/avatars/avatar-03-visor-vibe.png" class="lb-avatar" alt="" />
+          <div><div class="lb-name">VisorVibe</div><div class="lb-tier growth">GROWTH</div></div>
+          <div class="lb-score">19,580</div>
+        </div>
+        <div class="lb-row">
+          <span class="lb-rank">4</span>
+          <img src="../public/brand/splash/avatars/avatar-04-cyan-soldier.png" class="lb-avatar" alt="" />
+          <div><div class="lb-name">CyanSoldier</div><div class="lb-tier pro">PRO</div></div>
+          <div class="lb-score">17,210</div>
+        </div>
+        <div class="lb-row you">
+          <span class="lb-rank">5</span>
+          <img src="../public/brand/splash/avatars/avatar-05-star-striker.png" class="lb-avatar" alt="" />
+          <div><div class="lb-name">You · StarStriker</div><div class="lb-tier pro">PRO · YOU</div></div>
+          <div class="lb-score">12,840</div>
+        </div>
+        <div class="lb-row">
+          <span class="lb-rank">6</span>
+          <img src="../public/brand/splash/avatars/avatar-06-purple-wizard.png" class="lb-avatar" alt="" />
+          <div><div class="lb-name">PurpleWizard</div><div class="lb-tier pro">PRO</div></div>
+          <div class="lb-score">11,450</div>
+        </div>
+        <div class="lb-row">
+          <span class="lb-rank">7</span>
+          <img src="../public/brand/splash/avatars/avatar-07-ninja-clipper.png" class="lb-avatar" alt="" />
+          <div><div class="lb-name">NinjaClipper</div><div class="lb-tier pro">PRO</div></div>
+          <div class="lb-score">9,720</div>
+        </div>
+        <div class="lb-row">
+          <span class="lb-rank">8</span>
+          <img src="../public/brand/splash/avatars/avatar-08-rainbow-runner.png" class="lb-avatar" alt="" />
+          <div><div class="lb-name">RainbowRunner</div><div class="lb-tier pro">PRO</div></div>
+          <div class="lb-score">8,140</div>
+        </div>
+        <div class="lb-row">
+          <span class="lb-rank">9</span>
+          <img src="../public/brand/splash/avatars/avatar-09-gold-medalist.png" class="lb-avatar" alt="" />
+          <div><div class="lb-name">GoldMedalist</div><div class="lb-tier pro">PRO</div></div>
+          <div class="lb-score">7,310</div>
+        </div>
+        <div class="lb-row">
+          <span class="lb-rank">10</span>
+          <img src="../public/brand/splash/avatars/avatar-10-bowtie-boss.png" class="lb-avatar" alt="" />
+          <div><div class="lb-name">BowtieBoss</div><div class="lb-tier pro">PRO</div></div>
+          <div class="lb-score">6,990</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · MY SCORE auth branch -->
+  <section class="demo-section" id="myscore">
+    <div class="demo-section-head">
+      <div>
+        <h2 class="demo-section-h">4 · MY SCORE · logged-in vs logged-out branch</h2>
+      </div>
+      <span class="demo-section-note">real user hook → avatar + name + saved high score · logged-out → CTA</span>
+    </div>
+    <div class="grid-2">
+      <!-- LEFT · logged-in -->
+      <div class="my-score">
+        <div class="my-score-row" style="justify-content:space-between;">
+          <span class="my-score-eb">MY SCORE · live</span>
+          <span class="my-score-state-tag signed-in">● Signed in</span>
+        </div>
+        <div class="my-score-row">
+          <img src="../public/brand/splash/avatars/avatar-05-star-striker.png" class="my-score-avatar" alt="your avatar" />
+          <div>
+            <div class="my-score-amt">12,840</div>
+            <div class="my-score-meta">DANIEL · Pro · best 18,420 all-time</div>
+          </div>
+        </div>
+        <div class="my-score-note">
+          Your score saves to your Liquid Clips profile and feeds the weekly leaderboard.
+        </div>
+      </div>
+
+      <!-- RIGHT · logged-out -->
+      <div class="my-score">
+        <div class="my-score-row" style="justify-content:space-between;">
+          <span class="my-score-eb">MY SCORE · session-only</span>
+          <span class="my-score-state-tag signed-out">○ Signed out</span>
+        </div>
+        <div class="my-score-row">
+          <div class="my-score-avatar placeholder">?</div>
+          <div>
+            <div class="my-score-amt" style="opacity:0.6;">12,840</div>
+            <div class="my-score-meta">Score is local · not saved</div>
+          </div>
+        </div>
+        <button class="my-score-cta">Sign in to save your score</button>
+        <div class="my-score-note" style="font-size:11px;">
+          We never charge you to play. Sign-in just attaches the score to your profile so the leaderboard counts it.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · ACHIEVEMENT -->
+  <section class="demo-section" id="achievement">
+    <div class="demo-section-head">
+      <div>
+        <h2 class="demo-section-h">5 · Achievement moment · triggered on threshold cross</h2>
+      </div>
+      <span class="demo-section-note">e.g. first 10k score, first boss kill, week-1 streak</span>
+    </div>
+    <div style="display:flex;justify-content:center;">
+      <div class="achievement" style="max-width:420px;">
+        <div class="achievement-badge">🏆</div>
+        <span class="achievement-eb">Achievement unlocked</span>
+        <h3 class="achievement-h">First 10,000-point round</h3>
+        <p class="achievement-sub">
+          Your clipper rank just bumped to <strong style="color:var(--lc-fuchsia-soft);">Lieutenant</strong>.
+          Next badge unlocks at 25,000 points — keep clipping.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 · LEVEL-UP CARD -->
+  <section class="demo-section" id="levelup">
+    <div class="demo-section-head">
+      <div>
+        <h2 class="demo-section-h">6 · Level-up card · between waves</h2>
+      </div>
+      <span class="demo-section-note">slides in · 2.5s · accepts auto-continue or manual ready</span>
+    </div>
+    <div style="display:flex;justify-content:center;">
+      <div class="levelup" style="max-width:480px;width:100%;">
+        <span class="levelup-eb">Wave clear</span>
+        <h3 class="levelup-h">Wave 2 inbound · speed +12%</h3>
+        <div class="levelup-grid">
+          <div class="levelup-stat">
+            <div class="levelup-stat-eb">Score</div>
+            <div class="levelup-stat-val">8,140</div>
+          </div>
+          <span class="levelup-arrow">→</span>
+          <div class="levelup-stat">
+            <div class="levelup-stat-eb">Score</div>
+            <div class="levelup-stat-val" style="color:var(--lc-fuchsia-soft);">12,840</div>
+          </div>
+        </div>
+        <button class="levelup-cta">Ready for wave 2 →</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 · BOSS WAVE -->
+  <section class="demo-section" id="bosswave">
+    <div class="demo-section-head">
+      <div>
+        <h2 class="demo-section-h">7 · Boss wave · the 6 unused 3D bug enemies</h2>
+      </div>
+      <span class="demo-section-note">each bug = a fraud-actor / threat the Sovereign system protects against</span>
+    </div>
+    <div class="boss-wave">
+      <div class="boss-wave-head">
+        <span class="boss-wave-eb">⚠ Boss wave incoming</span>
+        <h3 class="boss-wave-h">Six threat-actors emerge</h3>
+        <p class="boss-wave-sub">Each one drops a multiplier · clear all 6 to unlock the next world.</p>
+      </div>
+      <div class="boss-grid">
+        <div class="boss-cell">
+          <img src="../public/brand/enemies/bug-spider.webp" class="boss-sprite" alt="" />
+          <div class="boss-name">Botnet Spider</div>
+          <div class="boss-trait">view inflation</div>
+        </div>
+        <div class="boss-cell">
+          <img src="../public/brand/enemies/bug-rulebreak.webp" class="boss-sprite" alt="" />
+          <div class="boss-name">Rule-Breaker</div>
+          <div class="boss-trait">tos violator</div>
+        </div>
+        <div class="boss-cell">
+          <img src="../public/brand/enemies/bug-glitch.webp" class="boss-sprite" alt="" />
+          <div class="boss-name">Glitch</div>
+          <div class="boss-trait">shadowban</div>
+        </div>
+        <div class="boss-cell">
+          <img src="../public/brand/enemies/bug-mothbug.webp" class="boss-sprite" alt="" />
+          <div class="boss-name">Mothbug</div>
+          <div class="boss-trait">engagement farm</div>
+        </div>
+        <div class="boss-cell">
+          <img src="../public/brand/enemies/bug-grunt.webp" class="boss-sprite" alt="" />
+          <div class="boss-name">Grunt</div>
+          <div class="boss-trait">click farmer</div>
+        </div>
+        <div class="boss-cell">
+          <img src="../public/brand/enemies/repair-drone.webp" class="boss-sprite" alt="" />
+          <div class="boss-name">Drone Swarm</div>
+          <div class="boss-trait">geo-spoofer</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 · GAME-OVER MODAL -->
+  <section class="demo-section" id="gameover">
+    <div class="demo-section-head">
+      <div>
+        <h2 class="demo-section-h">8 · Game-over modal · over the dimmed stage</h2>
+      </div>
+      <span class="demo-section-note">renders inline over the active stage · CTA row offers replay + continue</span>
+    </div>
+    <div class="gameover-stage">
+      <div class="gameover">
+        <span class="gameover-eb">Game over · wave 3</span>
+        <h3 class="gameover-h">Out of lives.</h3>
+        <div class="gameover-score">12,840</div>
+        <div class="gameover-meta">New best by +2,420 · saved to your profile</div>
+        <div class="gameover-cta-row">
+          <button class="gameover-cta primary">Play again</button>
+          <button class="gameover-cta quiet">Continue to app →</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 · CONTINUE GATE -->
+  <section class="demo-section" id="continue">
+    <div class="demo-section-head">
+      <div>
+        <h2 class="demo-section-h">9 · Continue button gate · enabled when ready + min-hold met</h2>
+      </div>
+      <span class="demo-section-note">prevents accidental skip · also enforces 5s brand moment</span>
+    </div>
+    <div class="continue-gate" style="max-width:520px;margin:0 auto;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <span class="my-score-eb">Continue to Liquid Clips</span>
+        <span class="my-score-eb" style="color:var(--lc-text-tertiary);">2 of 2 conditions met</span>
+      </div>
+      <div class="continue-conditions">
+        <span class="continue-cond">✓ Splash ready</span>
+        <span class="continue-cond">✓ Min hold (5s) complete</span>
+      </div>
+      <div class="continue-row">
+        <button class="continue-cta">Continue →</button>
+        <span class="my-score-meta" style="opacity:0.7;">Press Enter or tap to advance.</span>
+      </div>
+      <!-- ALSO shown: disabled state -->
+      <hr style="border:none;border-top:1px solid var(--lc-line);margin:8px 0;" />
+      <span class="my-score-eb">Disabled state · before min-hold</span>
+      <div class="continue-conditions">
+        <span class="continue-cond">✓ Splash ready</span>
+        <span class="continue-cond locked">⏱ Min hold 3.4s / 5.0s</span>
+      </div>
+      <div class="continue-row">
+        <button class="continue-cta" disabled>Continue → (3.4s)</button>
+        <span class="my-score-meta" style="opacity:0.7;">Brand moment in progress.</span>
+      </div>
+    </div>
+  </section>
+
+  <footer class="demo-footer">
+    Liquid Clips · splash game · final-state demo · 2026-06-23 · IG-003 intro cinematic · brand kit IG-012
+  </footer>
+</body>
+</html>
