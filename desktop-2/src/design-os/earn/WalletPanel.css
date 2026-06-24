@@ -1,0 +1,621 @@
+/* WalletPanel · brand-locked surface · 2026-06-24
+ * Replaces the silent-success "Withdraw $X" risk with an honest pipeline
+ * breakdown. All tokens come from src/brand/brandTheme.css. No Lucide
+ * defaults · uses /brand/reward/* SVGs where icons appear. */
+
+.lc-wallet {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  /* lc-glass already sets bg/border/radius/padding · keep this surface clean */
+}
+
+/* ─── Header ────────────────────────────────────────────────────────── */
+
+.lc-wallet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.lc-wallet-head-l {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lc-wallet-eb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.lc-wallet-eb-new {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--color-fuchsia);
+  color: white;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.lc-wallet-eb-beta {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 102, 184, .14);
+  color: var(--color-fuchsia-deep);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 102, 184, .35);
+}
+
+.lc-wallet-title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-display);
+  color: var(--color-ink);
+  line-height: 1.1;
+  margin-top: 2px;
+}
+
+.lc-wallet-sub {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+.lc-wallet-head-r {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lc-wallet-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid var(--color-line);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 160ms ease, transform 160ms ease, border-color 160ms ease;
+}
+.lc-wallet-refresh:hover:not(:disabled) {
+  background: rgba(255, 26, 140, .08);
+  border-color: rgba(255, 26, 140, .35);
+  color: var(--color-ink);
+}
+.lc-wallet-refresh:disabled { opacity: .5; cursor: progress; }
+.lc-wallet-refresh-icon { display: inline-block; transition: transform 240ms ease; }
+.lc-wallet-refresh.is-spinning .lc-wallet-refresh-icon {
+  animation: lc-wallet-spin 900ms linear infinite;
+}
+@keyframes lc-wallet-spin { to { transform: rotate(360deg); } }
+
+/* ─── Hero pipeline total ───────────────────────────────────────────── */
+
+.lc-wallet-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: var(--radius-card);
+  background: linear-gradient(135deg, rgba(255, 26, 140, .12) 0%, rgba(255, 26, 140, .03) 100%);
+  border: 1px solid rgba(255, 26, 140, .25);
+  flex-wrap: wrap;
+}
+.lc-wallet-hero-eb {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-fuchsia-deep);
+}
+.lc-wallet-hero-num {
+  font-family: var(--font-display);
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: var(--tracking-display);
+  color: var(--color-ink);
+  line-height: 1;
+  text-shadow: 0 0 24px rgba(255, 26, 140, .25);
+}
+.lc-wallet-hero-meta {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: auto;
+  text-align: right;
+}
+.lc-wallet-hero-meta-l {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+.lc-wallet-hero-meta-v {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.lc-wallet-hero-approval {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid var(--color-line);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+.lc-wallet-hero-approval[data-tone="high"]  { border-color: rgba(110, 231, 183, .35); color: #6ee7b7; }
+.lc-wallet-hero-approval[data-tone="mid"]   { border-color: rgba(251, 191, 36, .35); color: #fbbf24; }
+.lc-wallet-hero-approval[data-tone="low"]   { border-color: rgba(255, 102, 184, .35); color: var(--color-fuchsia-deep); }
+
+/* ─── Stat cards (4 across) ─────────────────────────────────────────── */
+
+.lc-wallet-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.lc-wallet-stat {
+  position: relative;
+  padding: 16px 18px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  transition: transform 200ms var(--ease-spring), border-color 200ms ease, background 200ms ease;
+}
+.lc-wallet-stat:hover {
+  transform: translateY(-2px);
+}
+
+.lc-wallet-stat-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+.lc-wallet-stat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.lc-wallet-stat-value {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -.012em;
+  color: var(--color-ink);
+  line-height: 1.05;
+}
+
+.lc-wallet-stat-foot {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  color: var(--color-text-tertiary);
+}
+
+/* Tonal accent per bucket (matches EarnSummaryStrip palette) */
+.lc-wallet-stat[data-tone="in-review"]   { border-color: rgba(251, 191, 36, .28) !important; background: rgba(251, 191, 36, .04) !important; }
+.lc-wallet-stat[data-tone="in-review"] .lc-wallet-stat-value { color: #fbbf24; }
+.lc-wallet-stat[data-tone="in-review"] .lc-wallet-stat-icon  { background: rgba(251, 191, 36, .14); color: #fbbf24; }
+
+.lc-wallet-stat[data-tone="approved"]   { border-color: rgba(110, 231, 183, .28) !important; background: rgba(110, 231, 183, .04) !important; }
+.lc-wallet-stat[data-tone="approved"] .lc-wallet-stat-value { color: #6ee7b7; }
+.lc-wallet-stat[data-tone="approved"] .lc-wallet-stat-icon  { background: rgba(110, 231, 183, .14); color: #6ee7b7; }
+
+.lc-wallet-stat[data-tone="paid"]       { border-color: rgba(255, 26, 140, .28) !important; background: rgba(255, 26, 140, .04) !important; }
+.lc-wallet-stat[data-tone="paid"] .lc-wallet-stat-value { color: var(--color-fuchsia-deep); text-shadow: 0 0 12px rgba(255, 26, 140, .25); }
+.lc-wallet-stat[data-tone="paid"] .lc-wallet-stat-icon  { background: rgba(255, 26, 140, .14); color: var(--color-fuchsia-deep); }
+
+.lc-wallet-stat[data-tone="rejected"]   { border-color: rgba(255, 139, 139, .25) !important; background: rgba(255, 139, 139, .03) !important; }
+.lc-wallet-stat[data-tone="rejected"] .lc-wallet-stat-value { color: #ff8b8b; }
+.lc-wallet-stat[data-tone="rejected"] .lc-wallet-stat-icon  { background: rgba(255, 139, 139, .12); color: #ff8b8b; }
+
+/* ─── Withdraw section ──────────────────────────────────────────────── */
+
+.lc-wallet-withdraw {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--color-line);
+  background: rgba(255, 255, 255, .03);
+}
+.lc-wallet-withdraw.is-live {
+  border-color: rgba(255, 26, 140, .35);
+  background: linear-gradient(135deg, rgba(255, 26, 140, .08) 0%, rgba(255, 26, 140, .02) 100%);
+}
+
+.lc-wallet-withdraw-l {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.lc-wallet-withdraw-eb {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+.lc-wallet-withdraw-line {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  max-width: 60ch;
+}
+.lc-wallet-withdraw-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+.lc-wallet-withdraw-breakdown b {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--color-ink);
+  letter-spacing: 0;
+  text-transform: none;
+  margin-left: 4px;
+}
+
+.lc-wallet-withdraw-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: var(--radius-pill);
+  background: var(--grad-fuchsia);
+  color: white;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  cursor: pointer;
+  border: 0;
+  box-shadow: var(--glow-md);
+  transition: transform 160ms var(--ease-spring), box-shadow 160ms ease;
+}
+.lc-wallet-withdraw-cta:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--glow-lg);
+}
+.lc-wallet-withdraw-cta:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* ─── Section heads ─────────────────────────────────────────────────── */
+
+.lc-wallet-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lc-wallet-section-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.lc-wallet-section-h-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  color: var(--color-ink);
+}
+.lc-wallet-section-h-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+/* ─── Campaign table ────────────────────────────────────────────────── */
+
+.lc-wallet-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, .015);
+  overflow: hidden;
+}
+.lc-wallet-table-head {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) 90px 90px 90px minmax(80px, 110px) 90px;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-line);
+  background: rgba(255, 255, 255, .03);
+}
+.lc-wallet-table-head span {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+.lc-wallet-table-head span.is-right { text-align: right; }
+
+.lc-wallet-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) 90px 90px 90px minmax(80px, 110px) 90px;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-line);
+  align-items: center;
+  transition: background 160ms ease;
+  cursor: default;
+}
+.lc-wallet-row:last-child { border-bottom: 0; }
+.lc-wallet-row:hover { background: rgba(255, 26, 140, .03); }
+
+.lc-wallet-row-c {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.lc-wallet-row-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--grad-fuchsia);
+  flex-shrink: 0;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid var(--color-line-strong);
+}
+.lc-wallet-row-c-l {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.lc-wallet-row-c-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lc-wallet-row-c-brand {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.lc-wallet-row-n {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.lc-wallet-row-n.is-earned {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+
+.lc-wallet-row-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  border: 1px solid var(--color-line);
+  background: rgba(255, 255, 255, .03);
+  color: var(--color-text-secondary);
+  justify-self: end;
+}
+.lc-wallet-row-status[data-status="live"]            { border-color: rgba(110, 231, 183, .35); color: #6ee7b7; }
+.lc-wallet-row-status[data-status="funded"]          { border-color: rgba(110, 231, 183, .35); color: #6ee7b7; }
+.lc-wallet-row-status[data-status="partially_funded"]{ border-color: rgba(251, 191, 36, .35); color: #fbbf24; }
+.lc-wallet-row-status[data-status="coming_soon"]     { border-color: rgba(0, 229, 255, .25); color: #7fd9e8; }
+.lc-wallet-row-status[data-status="closed"]          { border-color: rgba(255, 139, 139, .25); color: #ff8b8b; }
+
+/* ─── Activity feed ─────────────────────────────────────────────────── */
+
+.lc-wallet-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, .015);
+  overflow: hidden;
+}
+.lc-wallet-feed-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 11px 16px;
+  align-items: center;
+  border-bottom: 1px solid var(--color-line);
+}
+.lc-wallet-feed-row:last-child { border-bottom: 0; }
+
+.lc-wallet-feed-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-text-tertiary);
+  justify-self: center;
+}
+.lc-wallet-feed-row[data-kind="submitted"] .lc-wallet-feed-dot { background: #fbbf24; box-shadow: 0 0 8px rgba(251, 191, 36, .55); }
+.lc-wallet-feed-row[data-kind="approved"]  .lc-wallet-feed-dot { background: #6ee7b7; box-shadow: 0 0 8px rgba(110, 231, 183, .55); }
+.lc-wallet-feed-row[data-kind="paid"]      .lc-wallet-feed-dot { background: var(--color-fuchsia); box-shadow: 0 0 10px rgba(255, 26, 140, .55); }
+.lc-wallet-feed-row[data-kind="rejected"]  .lc-wallet-feed-dot { background: #ff8b8b; box-shadow: 0 0 8px rgba(255, 139, 139, .45); }
+
+.lc-wallet-feed-label {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--color-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lc-wallet-feed-time {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+/* ─── Empty state ───────────────────────────────────────────────────── */
+
+.lc-wallet-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 36px 24px;
+  text-align: center;
+  border: 1px dashed var(--color-line-strong);
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, .015);
+}
+.lc-wallet-empty-art {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 24px rgba(255, 26, 140, .35));
+}
+.lc-wallet-empty-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-display);
+  color: var(--color-ink);
+}
+.lc-wallet-empty-sub {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  max-width: 44ch;
+}
+.lc-wallet-empty-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: var(--radius-pill);
+  background: var(--grad-fuchsia);
+  color: white;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  cursor: pointer;
+  border: 0;
+  box-shadow: var(--glow-sm);
+  transition: transform 160ms var(--ease-spring), box-shadow 160ms ease;
+}
+.lc-wallet-empty-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--glow-md);
+}
+
+/* ─── Loading skeleton ──────────────────────────────────────────────── */
+
+.lc-wallet-sk-shimmer {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, .02) 0%,
+      rgba(255, 26, 140, .06) 50%,
+      rgba(255, 255, 255, .02) 100%
+    );
+  background-size: 200% 100%;
+  animation: lc-wallet-sk-pulse 1600ms ease-in-out infinite;
+  border-radius: 8px;
+}
+@keyframes lc-wallet-sk-pulse {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.lc-wallet-sk-hero      { height: 92px; }
+.lc-wallet-sk-stat      { height: 96px; }
+.lc-wallet-sk-section-h { height: 18px; width: 200px; }
+.lc-wallet-sk-row       { height: 60px; }
+.lc-wallet-sk-feed-row  { height: 44px; }
+
+/* ─── Honest footer line ────────────────────────────────────────────── */
+
+.lc-wallet-foot {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  text-align: center;
+  padding-top: 6px;
+}
