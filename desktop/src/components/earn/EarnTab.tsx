@@ -32,6 +32,8 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 
 import { AffiliateHero } from "./AffiliateHero";
 import { BountyCard } from "./BountyCard";
+// v0.7.79 — honest pipeline wallet surface (ported from desktop-2).
+import { WalletPanel } from "../wallet/WalletPanel";
 import { BountyDetail } from "./BountyDetail";
 import { BountyFilters } from "./BountyFilters";
 import { EarnErrorBoundary } from "./EarnErrorBoundary";
@@ -446,6 +448,13 @@ export function EarnTab({
             >
               EARN SURFACE: public-bounty native EarnTab v0.7.76
             </div>
+
+            {/* v0.7.79 — Honest pipeline wallet. Renders for ALL auth
+                states; the panel itself degrades to a sign-in-aware empty
+                / offline view when the JWT cache is missing or the backend
+                returns 401. Mounts ABOVE the sponsored carousel so paying
+                clippers see their pipeline first. */}
+            <WalletPanel />
 
             {/* Sponsored campaigns — public, always visible. */}
             <SponsoredBannerCarousel tier={userTier ?? "free"} onUpgrade={openUpgradeWhenSignedIn} />
