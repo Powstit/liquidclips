@@ -68,7 +68,7 @@ export function ConnectFirstPrompt({
       <div className="flex items-center justify-end gap-3">
         <button
           onClick={onOpenSchedule}
-          className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+          className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-ink transition-all hover:bg-fuchsia-bright hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
         >
           Open Schedule &rarr;
         </button>

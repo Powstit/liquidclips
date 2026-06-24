@@ -128,7 +128,7 @@ export function DropZone({
         <div className="mt-3 flex items-center justify-end gap-2 border-t border-line/70 pt-3">
           <button
             onClick={runCurrentMode}
-            className="rounded-full bg-fuchsia px-5 py-1.5 font-sans text-[13px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+            className="rounded-full bg-fuchsia px-5 py-1.5 font-sans text-[13px] font-medium text-ink transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
           >
             {mode === "clips" ? "Get clips →" : "Get script →"}
           </button>

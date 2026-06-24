@@ -227,7 +227,7 @@ export function BountySubmissionCapture({ project }: { project: Project }) {
             <div className="flex items-center gap-2 font-sans text-[13px] font-medium text-ink">
               <span
                 className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] font-bold ${
-                  c.ok ? "bg-fuchsia text-white" : "border border-[var(--color-danger)]/40 text-[var(--color-danger)]"
+                  c.ok ? "bg-fuchsia text-ink" : "border border-[var(--color-danger)]/40 text-[var(--color-danger)]"
                 }`}
                 aria-hidden
               >

@@ -230,7 +230,7 @@ export function UnifiedDropZone({
             <button
               type="button"
               onClick={submitMake}
-              className="inline-flex items-center gap-2 rounded-2xl bg-fuchsia px-5 py-3 font-sans text-[14px] font-semibold text-white shadow-[0_0_24px_rgba(255,26,140,0.55)] transition-all hover:bg-fuchsia-bright hover:shadow-[0_0_32px_rgba(255,26,140,0.75)]"
+              className="inline-flex items-center gap-2 rounded-2xl bg-fuchsia px-5 py-3 font-sans text-[14px] font-semibold text-ink shadow-[0_0_24px_rgba(255,26,140,0.55)] transition-all hover:bg-fuchsia-bright hover:shadow-[0_0_32px_rgba(255,26,140,0.75)]"
             >
               {mode === "clips" ? "Get clips" : "Get script"}
               <ArrowRight className="h-4 w-4" />
@@ -322,7 +322,7 @@ export function UnifiedDropZone({
               type="button"
               onClick={() => void pickImportPack()}
               disabled={importing}
-              className="mt-1 inline-flex items-center gap-2 rounded-2xl bg-fuchsia px-5 py-2.5 font-sans text-[13px] font-semibold text-white shadow-[0_0_24px_rgba(255,26,140,0.5)] transition-all hover:bg-fuchsia-bright disabled:opacity-60"
+              className="mt-1 inline-flex items-center gap-2 rounded-2xl bg-fuchsia px-5 py-2.5 font-sans text-[13px] font-semibold text-ink shadow-[0_0_24px_rgba(255,26,140,0.5)] transition-all hover:bg-fuchsia-bright disabled:opacity-60"
             >
               <FolderOpen className="h-4 w-4" />
               {importing ? "Importing…" : "Browse files"}

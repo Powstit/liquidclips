@@ -459,3 +459,63 @@ swap.
 
 *Audit run with iron-gate intact + IG-012 drift-check green.
 No code changes. No push. Worktree branch only.*
+
+---
+
+## Sprint B sweep · 2026-06-25 · status update
+
+**Worktree:** `worktree-agent-a1f2c80c1f36eee4c` (branched from `c4d0169`).
+
+### Drifts CLOSED in this sweep
+
+P0:
+- P0 #1 — account-app Clerk v6 → v7 tokens (`account-app/src/app/layout.tsx`). Mirrors marketing's v7 token block. Modal now renders dark on the dark site.
+- P0 #2 — funnel.css non-canonical `--w1-*` ladder. Bulk-swapped all hex + rgba forms to canonical `#ff1a8c` / `#00e5ff` / `#f4f1ea` (and RGB equivalents `255,26,140` / `0,229,255` / `244,241,234`). 0 drifted literals remain.
+- P0 #3 — desktop `<title>` rebrand from `junior/employee` → `Liquid Clips` (`desktop/index.html`).
+- P0 #4 — desktop `Button` primitive (`desktop/src/components/ui/button.tsx`): `publish` yellow gradient retired (now mirrors `primary` fuchsia); `destructive` `bg-red-500` → `var(--color-danger)` token + `text-ink`; `default` `text-white` → `text-ink`.
+- P0 #5 — desktop `ConnectionDot` (`desktop/src/components/platforms/ConnectionDot.tsx`): banned green/amber/red → fuchsia-deep (success/pending) + `var(--color-danger)` (error/paused), matching the brand kit "no green" rule.
+
+P1:
+- P1 #8 — `text-white` / `bg-white` mechanical sweep across desktop + account-app component files: **170 `text-white` → `text-ink` + 25 `bg-white` → `bg-ink` swaps across 83 files**. Opacity variants (`text-white/70`, etc.) preserved as legit translucency on dark. Token / config / test files untouched.
+- P1 #10 — account-app `Footer.tsx` shipped (`account-app/src/components/Footer.tsx`) and wired into `layout.tsx`. Logo + invader landmark + 3 utility links + brand sign-off.
+- P1 #11 — account-app `openGraph` metadata + Twitter card added to `layout.tsx`. Points at `/brand/cover.png` (existing 1200×630-ish asset; replace with a dedicated `/brand/og-default.png` whenever one is generated). `themeColor` corrected from `#0A0A0F` → canonical `#0B0B10`.
+- P1 #12 — account-app `Logo.tsx` now leads with the pixel-invader monogram (`/brand/logo-monogram.png`), matching marketing + HQ admin's invader-first pattern.
+- P1 #13 — desktop `index.html` now loads `Inter` from Google Fonts so the `--font-display: "Inter"` / `--font-sans: "Inter"` declarations in `src/index.css` actually paint. Display no longer cascades to system SF Pro.
+- P1 #14 — marketing `/start` hosted-AI promise stripped (Pro/Agency claim removed from FAQ + tile + Tier descriptor). Replaced with "Bring your own OpenAI key — hosted AI rolling out soon" framing so the refund vector stays honest until `/proxy/llm` ships (junior-backend sprint #8).
+- P1 #6 — desktop bespoke icon system seeded: `desktop/src/components/icons/BrandGlyphs.tsx` ships 7 inline-SVG brand glyphs (`ExternalLink`, `Sparkles`, `Plus`, `AlertTriangle`, `RefreshCw`, `Check`, `Lock`) with a Lucide-compatible API. 7 high-traffic call sites swapped (`ConfirmDialog`, `MoneySourceCard`, `ScheduleQueue`, `AnalyticsView`, `EarnSidebar`, `PayoutsView`, `DoctrineLibrary`, `BountyDetail`, `InlineConnectPopover`, `UpgradeLockCard`).
+- P1 #7 — desktop-2 bespoke icon system seeded: `desktop-2/src/components/icons/BrandGlyphs.tsx` ships 8 inline-SVG brand glyphs (`Scissors`, `Lock`, `ArrowRight`, `ArrowUpRight`, `Compass`, `Briefcase`, `Sparkles`, `Plus`). 7 call sites swapped (`ActionPill`, `CapabilityLock`, `ModeBadge`, `GemPillToggle`, `BrowseRailTab`, `BrowseSection`, `SponsoredBannerCarousel`).
+
+### Drifts moved to P2 backlog (Lucide tail · not closed)
+
+| File | Icons | Reason for deferral |
+|---|---|---|
+| `desktop/src/App.tsx` | `AlertTriangle` + 3 others | Touched by IG-010 sentinel — split-imports require care; deferred. |
+| `desktop/src/components/ResultsGrid.tsx` | `CheckCircle2, FolderOpen, Plus, Film, Sparkles, Loader2, Lock` | 7-icon mixed import; partial swap would muddy the diff. |
+| `desktop/src/components/Settings.tsx` | mixed | Highest-traffic settings surface; pull into a dedicated icon polish sprint. |
+| `desktop/src/components/BrowseRewardsPanel.tsx` | mixed | Tied to embedded webview chrome; needs visual sign-off. |
+| `desktop/src/components/cockpit/BottomCockpit.tsx` | mixed | Cockpit surface IG-008 adjacent. |
+| `desktop/src/components/ThumbnailStudio.tsx` | mixed | Carries P2 #9 (raw red/amber literals) — bundle together. |
+| `desktop/src/components/schedule/ChannelPicker.tsx` | `AlertTriangle, ...` | Bundle with schedule polish. |
+| `desktop/src/components/schedule/AddChannelModal.tsx` | `AlertTriangle, ...` | Bundle with schedule polish. |
+| `desktop/src/components/cockpit/AvatarPanel.tsx` | mixed | Tied to LibraryWall surface. |
+| `desktop-2/src/components/home/ImportDrawer.tsx` | `Upload, Link2, ArrowRight, HardDrive` | `Upload`, `Link2`, `HardDrive` need bespoke equivalents. |
+| `desktop-2/src/components/home/ThumbnailDrawer.tsx` | `ImageIcon, Wand2, Link2, Plus, ArrowRight` | `ImageIcon`, `Wand2`, `Link2` need bespoke equivalents. |
+| `desktop-2/src/components/home/ScriptDrawer.tsx` | `FileText, Wand2, Scissors, ArrowRight` | `FileText`, `Wand2` need bespoke equivalents. |
+| `desktop-2/src/components/ui/Dialog.tsx`, `Sheet.tsx`, `*/InvadersOverlay.tsx` | `X` | Trivial close icon; would replace with bespoke close glyph in a polish sprint. |
+| `desktop/src/components/UpgradeLockCard.tsx` | (CLOSED) | already swapped. |
+
+**Residual Lucide imports:** desktop 83 (was 89), desktop-2 9 (was 18). Total 92 (was 107). Remaining 92 are documented above as P2 backlog — each row picks up in a focused icon-polish sprint where the bespoke glyph for the missing icon (`FileText`, `Wand2`, `Link2`, `Upload`, `HardDrive`, `ImageIcon`, `FolderOpen`, `Film`, `X`, `CheckCircle2`, `PanelRightOpen`, `Pencil`, `Trash2`, `Crown`, `GraduationCap`, `HelpCircle`, `PlayCircle`, `Clock`, `Wallet`, `RotateCw`, `BarChart3`, `ChevronLeft`/`Right`, `FileVideo`) gets a brand-locked stroked replacement before its host file is touched.
+
+### Other drifts NOT in scope for this sweep
+
+- P0 favicon 404 (marketing) — sister agent territory (marketing public/).
+- P1 marketing `v0.8.0` hardcodes — sister Agent A.
+- P1 `_security` page raw cream/red banners — admin surface, out of file scope.
+- P1 AI Terminal raw red — admin surface.
+- P2 — Account-app `Fraunces` font load (still unused; future cleanup).
+- P2 — Marketing `JetBrains_Mono` → canonical `Geist Mono` (sister Agent A territory).
+- P2 — `.lc-w4-traffic` macOS-style red/amber/green dots in marketing (defensible iconography per audit).
+- P2 — Desktop-2 HTML title `Liquid Clips 2.0 — Shell Simulator` (becomes P0 only when this surface ships).
+- P2 — `ThumbnailStudio.tsx` 6 raw red/amber literals (bundled with backlog above).
+- P2 — `BottomCockpit.tsx` raw `border-red-400` notice bar (bundled with backlog above).
+

@@ -360,7 +360,7 @@ function ChannelCard({ c, isPremium }: { c: Channel; isPremium: boolean }) {
             <button
               type="button"
               onClick={upgrade}
-              className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-fuchsia-bright"
+              className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink transition-colors hover:bg-fuchsia-bright"
             >
               Upgrade →
             </button>
@@ -387,7 +387,7 @@ function ChannelCard({ c, isPremium }: { c: Channel; isPremium: boolean }) {
             <button
               type="button"
               onClick={openRoom}
-              className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia/40 bg-fuchsia-soft/20 px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-fuchsia-deep transition-colors hover:border-fuchsia hover:bg-fuchsia hover:text-white"
+              className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia/40 bg-fuchsia-soft/20 px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-fuchsia-deep transition-colors hover:border-fuchsia hover:bg-fuchsia hover:text-ink"
             >
               Open community →
             </button>
@@ -418,7 +418,7 @@ function ChannelCard({ c, isPremium }: { c: Channel; isPremium: boolean }) {
             <button
               type="button"
               onClick={openRoom}
-              className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia/40 bg-fuchsia-soft/20 px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-fuchsia-deep transition-colors hover:border-fuchsia hover:bg-fuchsia hover:text-white"
+              className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia/40 bg-fuchsia-soft/20 px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-fuchsia-deep transition-colors hover:border-fuchsia hover:bg-fuchsia hover:text-ink"
             >
               Open chat →
             </button>
@@ -463,8 +463,8 @@ function TierPill({
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-2.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_28px_-12px_rgba(255,26,140,0.55)]">
-      <span className="inline-block h-1.5 w-1.5 rounded-full bg-white" />
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-2.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-ink shadow-[0_8px_28px_-12px_rgba(255,26,140,0.55)]">
+      <span className="inline-block h-1.5 w-1.5 rounded-full bg-ink" />
       premium
     </span>
   );

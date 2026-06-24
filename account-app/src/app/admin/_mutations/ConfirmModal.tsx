@@ -91,7 +91,7 @@ export function ConfirmModal({
         if (e.target === e.currentTarget && !busy) onClose();
       }}
     >
-      <div className="w-full max-w-lg rounded-3xl border border-neutral-200 bg-white p-6 shadow-2xl">
+      <div className="w-full max-w-lg rounded-3xl border border-neutral-200 bg-ink p-6 shadow-2xl">
         <div className="flex items-baseline justify-between gap-3">
           <h2
             id="confirm-modal-title"
@@ -103,7 +103,7 @@ export function ConfirmModal({
             type="button"
             onClick={onClose}
             disabled={busy}
-            className="rounded-full border border-neutral-300 bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-neutral-600 hover:border-pink-500 disabled:opacity-40"
+            className="rounded-full border border-neutral-300 bg-ink px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-neutral-600 hover:border-pink-500 disabled:opacity-40"
           >
             close
           </button>
@@ -123,7 +123,7 @@ export function ConfirmModal({
                 placeholder: f.placeholder,
                 disabled: busy,
                 className:
-                  "w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 font-mono text-[12px] text-neutral-900 placeholder:text-neutral-400 focus:border-pink-500 focus:outline-none disabled:opacity-50",
+                  "w-full rounded-xl border border-neutral-300 bg-ink px-3 py-2 font-mono text-[12px] text-neutral-900 placeholder:text-neutral-400 focus:border-pink-500 focus:outline-none disabled:opacity-50",
               };
               return (
                 <div key={f.name}>
@@ -164,7 +164,7 @@ export function ConfirmModal({
           <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-neutral-500">
             Type to confirm:
           </div>
-          <code className="mt-1 block break-all rounded-lg bg-white px-2 py-1.5 font-mono text-[11px] text-pink-700 ring-1 ring-pink-200">
+          <code className="mt-1 block break-all rounded-lg bg-ink px-2 py-1.5 font-mono text-[11px] text-pink-700 ring-1 ring-pink-200">
             {requiredText}
           </code>
           <input
@@ -177,7 +177,7 @@ export function ConfirmModal({
             }}
             placeholder="Type the exact confirmation string above"
             disabled={busy}
-            className="mt-3 w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 font-mono text-[12px] text-neutral-900 placeholder:text-neutral-400 focus:border-pink-500 focus:outline-none disabled:opacity-50"
+            className="mt-3 w-full rounded-xl border border-neutral-300 bg-ink px-3 py-2 font-mono text-[12px] text-neutral-900 placeholder:text-neutral-400 focus:border-pink-500 focus:outline-none disabled:opacity-50"
           />
         </div>
 
@@ -192,7 +192,7 @@ export function ConfirmModal({
             type="button"
             onClick={onClose}
             disabled={busy}
-            className="rounded-full border border-neutral-300 bg-white px-4 py-2 font-mono text-[11px] uppercase tracking-[0.1em] text-neutral-700 hover:border-pink-500 disabled:opacity-40"
+            className="rounded-full border border-neutral-300 bg-ink px-4 py-2 font-mono text-[11px] uppercase tracking-[0.1em] text-neutral-700 hover:border-pink-500 disabled:opacity-40"
           >
             cancel
           </button>
@@ -200,7 +200,7 @@ export function ConfirmModal({
             type="button"
             onClick={confirm}
             disabled={!canConfirm}
-            className={`rounded-full px-4 py-2 font-mono text-[11px] uppercase tracking-[0.1em] text-white transition disabled:opacity-30 ${
+            className={`rounded-full px-4 py-2 font-mono text-[11px] uppercase tracking-[0.1em] text-ink transition disabled:opacity-30 ${
               destructive
                 ? "bg-pink-600 hover:bg-pink-700"
                 : "bg-neutral-900 hover:bg-pink-700"

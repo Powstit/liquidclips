@@ -275,7 +275,7 @@ function BountyCard({ bounty }: { bounty: WhopBounty }) {
           <span
             className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] ${
               hot
-                ? "border-fuchsia/40 bg-fuchsia text-white"
+                ? "border-fuchsia/40 bg-fuchsia text-ink"
                 : score >= 58
                   ? "border-line bg-paper text-ink"
                   : "border-line bg-paper text-text-tertiary"
@@ -334,7 +334,7 @@ function BountyCard({ bounty }: { bounty: WhopBounty }) {
           <button
             onClick={onStart}
             disabled={starting}
-            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-fuchsia px-3 py-1.5 font-sans text-[12px] font-medium text-white transition-all hover:bg-fuchsia-bright disabled:opacity-60 disabled:cursor-not-allowed"
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-fuchsia px-3 py-1.5 font-sans text-[12px] font-medium text-ink transition-all hover:bg-fuchsia-bright disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {starting ? "Starting…" : "Start clipping"}
             {!starting && <ArrowRightIcon />}

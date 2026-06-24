@@ -1741,7 +1741,7 @@ function SettingsCompactHeader({
       </button>
       <div
         aria-hidden="true"
-        className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-gradient-to-br from-fuchsia to-fuchsia-deep font-display text-[14px] font-bold text-white"
+        className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-gradient-to-br from-fuchsia to-fuchsia-deep font-display text-[14px] font-bold text-ink"
       >
         {renderedAvatar ? (
           <img src={renderedAvatar} alt="" className="h-full w-full object-cover" draggable={false} />
@@ -1853,7 +1853,7 @@ function ProfileAvatarRow({ email }: { email: string | null }) {
             }}
           />
         ) : (
-          <span className="flex h-full w-full items-center justify-center font-display text-[20px] font-bold text-white">
+          <span className="flex h-full w-full items-center justify-center font-display text-[20px] font-bold text-ink">
             {initials}
           </span>
         )}

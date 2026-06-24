@@ -42,8 +42,8 @@ function formatHms(seconds: number): string {
 }
 
 function viralityClass(score: number): string {
-  if (score >= 90) return "bg-fuchsia text-white";
-  if (score >= 75) return "bg-fuchsia-bright text-white";
+  if (score >= 90) return "bg-fuchsia text-ink";
+  if (score >= 75) return "bg-fuchsia-bright text-ink";
   if (score >= 50) return "bg-fuchsia-glow text-ink";
   return "bg-paper-warm text-text-tertiary";
 }
@@ -1022,7 +1022,7 @@ export function ClipPreview({
                   <button
                     onClick={() => void saveMeta()}
                     disabled={!isDirty || busy}
-                    className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)] disabled:opacity-40"
+                    className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[13px] font-medium text-ink transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.25)] disabled:opacity-40"
                   >
                     {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved ✓" : "Save"}
                   </button>
@@ -1073,7 +1073,7 @@ export function ClipPreview({
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button onClick={() => void regenerate()} disabled={busy}
-                    className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-50">
+                    className="rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-medium text-ink hover:bg-fuchsia-bright disabled:opacity-50">
                     {busy ? "Working…" : "Re-cut"}
                   </button>
                   <button onClick={() => { setTrimStart(clip.start); setTrimEnd(clip.end); }}
@@ -1102,7 +1102,7 @@ export function ClipPreview({
                     aria-expanded={scheduleOpen}
                     aria-haspopup="menu"
                     title={canPublish ? "Schedule a post reminder" : "Needs a 9:16 render first"}
-                    className="inline-flex items-center gap-2 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-semibold text-white shadow-[0_6px_18px_rgba(255,26,140,0.25)] transition-all hover:bg-fuchsia-bright disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex items-center gap-2 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-semibold text-ink shadow-[0_6px_18px_rgba(255,26,140,0.25)] transition-all hover:bg-fuchsia-bright disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <Calendar size={14} strokeWidth={2.2} aria-hidden />
                     Schedule
@@ -1170,7 +1170,7 @@ export function ClipPreview({
                               }
                               void submitSchedule(d.toISOString());
                             }}
-                            className="rounded-md bg-fuchsia px-3 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-40"
+                            className="rounded-md bg-fuchsia px-3 py-1.5 font-sans text-[12px] font-medium text-ink hover:bg-fuchsia-bright disabled:opacity-40"
                           >
                             Set
                           </button>
