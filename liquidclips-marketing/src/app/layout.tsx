@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import "./funnel.css";
 import { CRTOverlay } from "@/components/CRTOverlay";
+import { Analytics } from "@vercel/analytics/next";
 import { SITE_URL } from "@/lib/env";
 
 const inter = Inter({
@@ -96,6 +97,7 @@ export default function RootLayout({
         <body className={`${inter.variable} ${jetbrainsMono.variable}`}>
           <CRTOverlay />
           {children}
+          <Analytics />
         </body>
       </html>
     </ClerkProvider>
