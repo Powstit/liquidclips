@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Splash Game · Design Lock Demo · v0.7.67</title>
+  <meta name="viewport" content="width=1600, initial-scale=1" />
+  <style>
+    /* ───── Brand tokens (mirror of desktop-2/src/index.css :root) ───── */
+    :root {
+      --color-fuchsia: #ff1a8c;
+      --color-fuchsia-bright: #ff3da5;
+      --color-fuchsia-deep: #ff66b8;
+      --color-fuchsia-glow: #ff8fcb;
+      --color-cyan: #00e5ff;
+      --color-paper: #0b0b10;
+      --color-paper-warm: #15151c;
+      --color-ink: #f4f1ea;
+      --color-ink-soft: #c8c4be;
+      --color-text-tertiary: #8a857e;
+      --color-line: rgba(255,255,255,0.07);
+      --glow-sm: 0 0 0 1px rgba(255, 26, 140, 0.35), 0 6px 18px rgba(255, 26, 140, 0.18);
+      --glow-md: 0 0 0 1px rgba(255, 26, 140, 0.45), 0 12px 36px rgba(255, 26, 140, 0.28);
+      --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+      --font-sans:    "Inter", ui-sans-serif, system-ui, sans-serif;
+      --font-mono:    "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; background: var(--color-paper); color: var(--color-ink);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+    }
+    /* ───── Stage ───── */
+    .stage {
+      position: relative;
+      width: 100vw; height: 100vh;
+      overflow: hidden;
+      background: var(--color-paper);
+    }
+    /* Pink perspective grid floor */
+    .grid {
+      position: absolute; inset: 0;
+      pointer-events: none; z-index: 0; overflow: hidden;
+    }
+    .grid-floor {
+      position: absolute;
+      bottom: -10%; left: 50%;
+      width: 220%; height: 75%;
+      transform: translateX(-50%) perspective(900px) rotateX(62deg);
+      transform-origin: bottom center;
+      background-image:
+        linear-gradient(rgba(255, 26, 140, 0.55) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 26, 140, 0.55) 1px, transparent 1px);
+      background-size: 64px 64px;
+      mask-image: linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.85) 30%, rgba(0,0,0,0.5) 55%, rgba(0,0,0,0) 100%);
+      -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.85) 30%, rgba(0,0,0,0.5) 55%, rgba(0,0,0,0) 100%);
+    }
+    /* Star field — single faint twinkles via inline svg as bg */
+    .stars {
+      position: absolute; inset: 0; pointer-events: none; z-index: 1;
+      background-image:
+        radial-gradient(circle at 12% 18%, rgba(255,255,255,0.25) 1px, transparent 1.5px),
+        radial-gradient(circle at 38% 32%, rgba(255,255,255,0.18) 1px, transparent 1.5px),
+        radial-gradient(circle at 67% 22%, rgba(255,255,255,0.30) 1px, transparent 1.5px),
+        radial-gradient(circle at 84% 41%, rgba(255,255,255,0.20) 1px, transparent 1.5px),
+        radial-gradient(circle at 22% 55%, rgba(255,255,255,0.15) 1px, transparent 1.5px),
+        radial-gradient(circle at 91% 64%, rgba(255,255,255,0.22) 1px, transparent 1.5px),
+        radial-gradient(circle at 47% 50%, rgba(255,255,255,0.18) 1px, transparent 1.5px),
+        radial-gradient(circle at 71% 72%, rgba(255,255,255,0.24) 1px, transparent 1.5px);
+    }
+    /* ───── Logo top-left ───── */
+    .logo {
+      position: absolute; top: 22px; left: 24px; z-index: 30;
+      display: inline-flex; align-items: center; gap: 14px;
+      font-family: var(--font-display); font-weight: 600; font-size: 32px;
+      letter-spacing: -0.02em; color: var(--color-ink);
+    }
+    .logo-mark {
+      width: 36px; height: 24px;
+      image-rendering: pixelated;
+    }
+    .logo .slash { color: var(--color-fuchsia); }
+    /* ───── Top HUD strip (counters + lives) ───── */
+    .hud-top {
+      position: absolute; top: 20px; left: 280px; right: 144px;
+      z-index: 30; display: flex; align-items: center; gap: 12px;
+    }
+    .counter {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 14px;
+      border-radius: 14px;
+      background: rgba(11,11,16,0.55);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      min-width: 200px;
+    }
+    .counter-fuchsia {
+      border: 1px solid rgba(255,26,140,0.6);
+      box-shadow: inset 0 0 8px rgba(255,26,140,0.10), 0 0 14px rgba(255,26,140,0.18);
+    }
+    .counter-cyan {
+      border: 1px solid rgba(0,229,255,0.6);
+      box-shadow: inset 0 0 8px rgba(0,229,255,0.10), 0 0 14px rgba(0,229,255,0.18);
+    }
+    .counter-icon { display: inline-flex; align-items: center; justify-content: center; }
+    .counter-fuchsia .counter-icon { color: var(--color-fuchsia); }
+    .counter-cyan .counter-icon { color: var(--color-cyan); }
+    .counter-body { display: flex; flex-direction: column; align-items: flex-start; line-height: 1; }
+    .counter-label {
+      font-size: 9px; text-transform: uppercase; letter-spacing: 0.14em;
+      color: rgba(244,241,234,0.65); font-weight: 700; white-space: nowrap;
+    }
+    .counter-value {
+      font-size: 24px; font-weight: 800; color: var(--color-ink);
+      margin-top: 4px;
+    }
+    .counter-delta {
+      font-family: var(--font-mono);
+      font-size: 9px; color: #34D399; margin-top: 4px;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    /* SCORE chip */
+    .score-chip {
+      display: flex; flex-direction: column; align-items: flex-start; line-height: 1;
+      padding: 10px 14px;
+    }
+    .score-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--color-fuchsia); font-weight: 700; }
+    .score-value { font-size: 28px; font-weight: 800; color: var(--color-ink); margin-top: 4px; font-family: var(--font-mono); }
+    /* Lives */
+    .lives { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; margin-left: auto; }
+    .lives-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.14em; color: rgba(244,241,234,0.65); font-weight: 700; }
+    .lives-hearts { display: flex; gap: 6px; margin-top: 4px; }
+    /* ───── Skip intro ───── */
+    .skip {
+      position: absolute; top: 24px; right: 24px; z-index: 30;
+      display: inline-flex; align-items: center; gap: 6px;
+      border-radius: 9999px;
+      border: 1px solid var(--color-fuchsia);
+      background: rgba(244,241,234,0.06);
+      padding: 8px 14px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.12em; color: var(--color-fuchsia);
+      backdrop-filter: blur(6px);
+    }
+    /* ───── Game canvas area (mocked with pixel-grid sprites) ───── */
+    .arena {
+      position: absolute; top: 140px; bottom: 240px; left: 50%;
+      transform: translateX(-50%);
+      width: 540px;
+      z-index: 5;
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+      pointer-events: none;
+    }
+    .arena-hud {
+      display: flex; justify-content: space-between; width: 100%;
+      font-family: var(--font-mono); font-size: 11px;
+      color: rgba(244,241,234,0.8); letter-spacing: 0.1em;
+    }
+    .arena-canvas {
+      position: relative; width: 480px; height: 320px; flex-shrink: 0;
+      border-radius: 12px;
+    }
+    /* Invader rows */
+    .invader-row {
+      display: flex; justify-content: center; gap: 18px;
+      margin-bottom: 8px;
+    }
+    .pixel-invader {
+      width: 26px; height: 22px;
+      image-rendering: pixelated;
+    }
+    .pixel-invader-cyan { filter: drop-shadow(0 0 4px rgba(0, 229, 255, 0.55)); }
+    .pixel-invader-fuchsia { filter: drop-shadow(0 0 4px rgba(255, 26, 140, 0.55)); }
+    .pixel-invader-fuchsia-bright { filter: drop-shadow(0 0 4px rgba(255, 102, 184, 0.55)); }
+    /* BOSS wave — 3D illustrated bug enemy from /brand/enemies/ */
+    .boss-row {
+      display: flex; justify-content: center;
+      margin-bottom: 14px;
+    }
+    .boss-bug {
+      width: 56px; height: 56px;
+      filter: drop-shadow(0 0 14px rgba(255, 26, 140, 0.55));
+      animation: boss-bob 2.4s ease-in-out infinite;
+    }
+    @keyframes boss-bob {
+      0%, 100% { transform: translateY(0); }
+      50%      { transform: translateY(-6px); }
+    }
+    /* Player ship (kade) bottom of arena */
+    .arena-player {
+      position: absolute; bottom: 12px; left: 50%;
+      transform: translateX(-50%);
+    }
+    .pixel-player {
+      width: 42px; height: 30px;
+      image-rendering: pixelated;
+      filter: drop-shadow(0 0 8px rgba(255, 102, 184, 0.5));
+    }
+    /* Bullets travelling up — visual cue only */
+    .bullets {
+      position: absolute; left: 50%; bottom: 50px;
+      transform: translateX(-50%);
+      display: flex; flex-direction: column; gap: 28px;
+      pointer-events: none;
+    }
+    .bullet {
+      width: 4px; height: 12px;
+      background: var(--color-fuchsia);
+      box-shadow: 0 0 6px rgba(255, 26, 140, 0.8);
+      border-radius: 2px;
+    }
+    /* +10 score pop */
+    .pop {
+      position: absolute;
+      font-family: var(--font-sans); font-weight: 700; font-size: 14px;
+      color: var(--color-fuchsia);
+      text-shadow: 0 0 8px rgba(255, 26, 140, 0.7);
+      pointer-events: none;
+    }
+    .pop-1 { left: 56%; top: 30%; }
+    .pop-2 { left: 26%; top: 48%; }
+    /* Kill burst (pink particles) */
+    .burst {
+      position: absolute; width: 6px; height: 6px;
+      background: var(--color-cyan);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--color-cyan);
+    }
+    .burst-1 { left: 42%; top: 33%; }
+    .burst-2 { left: 45%; top: 36%; }
+    .burst-3 { left: 39%; top: 35%; }
+    /* ───── Tip pill (center bottom) ───── */
+    .tip {
+      position: absolute; bottom: 144px; left: 50%;
+      transform: translateX(-50%); z-index: 30;
+      display: inline-flex; align-items: center; gap: 12px;
+      padding: 10px 20px; border-radius: 9999px;
+      border: 1px solid rgba(255,26,140,0.4);
+      background: rgba(11,11,16,0.65);
+      backdrop-filter: blur(8px);
+      font-size: 13px; color: var(--color-ink); white-space: nowrap;
+    }
+    .tip strong { color: var(--color-fuchsia); font-weight: 700; }
+    .tip-icon { color: var(--color-fuchsia); }
+    /* ───── Level-up card (bottom-left) ───── */
+    .levelup {
+      position: absolute; bottom: 24px; left: 24px; z-index: 30;
+      display: flex; align-items: center; gap: 16px;
+      padding: 12px 18px; border-radius: 14px;
+      border: 1px solid rgba(255,26,140,0.4);
+      background: rgba(11,11,16,0.55);
+      backdrop-filter: blur(8px);
+      max-width: 520px;
+    }
+    .levelup-eb {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em;
+      color: var(--color-fuchsia); font-weight: 700;
+    }
+    .levelup-body {
+      font-size: 11px; color: rgba(244,241,234,0.65); line-height: 1.4; max-width: 240px;
+      display: block; margin-top: 4px;
+    }
+    .levelup-pips { display: flex; gap: 4px; align-items: center; margin-left: 8px; }
+    .pip {
+      width: 22px; height: 22px;
+      image-rendering: pixelated;
+    }
+    /* ───── Right leaderboard panel ───── */
+    .lb {
+      position: absolute; right: 24px; top: 100px; bottom: 24px;
+      width: 360px; z-index: 30;
+      display: flex; flex-direction: column; gap: 12px;
+      padding: 14px; border-radius: 18px;
+      border: 1px solid rgba(255,26,140,0.55);
+      background: rgba(11,11,16,0.55);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 0 18px rgba(255,26,140,0.22), inset 0 0 10px rgba(255,26,140,0.08);
+      overflow: hidden;
+    }
+    .lb-tabs { display: flex; gap: 6px; flex-shrink: 0; }
+    .lb-tab {
+      flex: 1; padding: 8px 12px; border-radius: 10px;
+      border: 1px solid rgba(255,26,140,0.3);
+      background: rgba(0,0,0,0.4);
+      color: rgba(244,241,234,0.65);
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em;
+      cursor: pointer; transition: all 0.15s ease-out;
+    }
+    .lb-tab.on {
+      background: rgba(255,26,140,0.18);
+      color: var(--color-fuchsia);
+      border-color: var(--color-fuchsia);
+      box-shadow: 0 0 8px rgba(255,26,140,0.45);
+    }
+    .lb-body {
+      display: flex; flex-direction: column; gap: 16px;
+      overflow-y: auto; flex: 1; padding-right: 4px;
+    }
+    .lb-body::-webkit-scrollbar { width: 4px; }
+    .lb-body::-webkit-scrollbar-thumb { background: rgba(255,26,140,0.4); border-radius: 4px; }
+    .lb-section-title {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.16em;
+      margin: 0 0 10px 0;
+    }
+    .lb-section-title-fuchsia { color: var(--color-fuchsia-deep); }
+    .lb-section-title-fuchsia svg { color: var(--color-fuchsia); }
+    .lb-section-title-cyan { color: #4DD9F0; }
+    .lb-section-title-cyan svg { color: var(--color-cyan); }
+    .lb-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+    .lb-row {
+      display: grid; grid-template-columns: 24px 32px 1fr auto;
+      align-items: center; gap: 10px; padding: 6px 4px;
+    }
+    .lb-row.is-me {
+      background: rgba(255, 26, 140, 0.10);
+      border-radius: 8px;
+      box-shadow: inset 0 0 0 1px rgba(255, 26, 140, 0.30);
+      padding: 8px;
+    }
+    .lb-rank {
+      width: 20px; height: 20px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: rgba(244,241,234,0.55);
+    }
+    .lb-avatar {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      image-rendering: pixelated;
+      background: rgba(255,255,255,0.04);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+    .lb-avatar-initials {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      display: grid; place-items: center;
+      color: white; font-size: 13px; font-weight: 700;
+      flex-shrink: 0;
+    }
+    .lb-row-name { display: flex; flex-direction: column; min-width: 0; }
+    .lb-row-name-text {
+      font-size: 13px; font-weight: 600; color: var(--color-ink);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .lb-row-detail {
+      font-size: 10px; color: rgba(244,241,234,0.5);
+    }
+    .lb-row-score {
+      font-size: 13px; font-weight: 700; text-align: right;
+    }
+    .lb-row-score-fuchsia { color: var(--color-fuchsia); }
+    .lb-row-score-cyan { color: var(--color-cyan); }
+    .lb-sim {
+      font-family: var(--font-mono);
+      font-size: 9px; color: rgba(244,241,234,0.35);
+      text-align: center; margin: 4px 0 0 0;
+      letter-spacing: 0.1em; text-transform: uppercase;
+    }
+    /* "You" callout pinned at bottom of leaderboard panel */
+    .lb-you {
+      flex-shrink: 0;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px dashed rgba(255, 26, 140, 0.5);
+      background: rgba(255, 26, 140, 0.05);
+      display: flex; align-items: center; gap: 12px;
+    }
+    .lb-you-eb {
+      font-size: 9px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.14em; color: var(--color-fuchsia);
+    }
+    .lb-you-name {
+      font-size: 13px; font-weight: 700; color: var(--color-ink);
+    }
+    .lb-you-score {
+      margin-left: auto;
+      font-size: 15px; font-weight: 800; color: var(--color-fuchsia);
+      font-family: var(--font-mono);
+    }
+    .lb-you-anon-cta {
+      margin-left: auto;
+      padding: 5px 11px;
+      border-radius: 9999px;
+      border: 1px solid var(--color-fuchsia);
+      background: var(--color-fuchsia);
+      color: white;
+      font-size: 11px; font-weight: 700;
+      cursor: pointer; text-transform: uppercase; letter-spacing: 0.1em;
+    }
+    /* ───── Top-of-document toggle ───── */
+    .auth-toggle {
+      position: fixed; top: 8px; left: 50%; transform: translateX(-50%);
+      z-index: 9999;
+      display: inline-flex; gap: 0; padding: 4px;
+      border-radius: 9999px;
+      background: rgba(0,0,0,0.6);
+      border: 1px solid rgba(255,255,255,0.1);
+      backdrop-filter: blur(8px);
+      font-size: 11px; font-family: var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+    }
+    .auth-toggle button {
+      border: 0; background: transparent; color: rgba(255,255,255,0.6);
+      padding: 6px 14px; border-radius: 9999px; cursor: pointer;
+    }
+    .auth-toggle button.on {
+      background: var(--color-fuchsia); color: white;
+    }
+  </style>
+</head>
+<body>
+  <!-- Toggle for design review only. Not in production. -->
+  <div class="auth-toggle" id="authToggle" aria-label="Demo · auth state toggle">
+    <button class="on" id="btnLoggedIn">Logged-in</button>
+    <button id="btnLoggedOut">Not logged-in</button>
+  </div>
+
+  <div class="stage">
+    <!-- Pink perspective grid floor -->
+    <div class="grid"><div class="grid-floor"></div></div>
+    <div class="stars"></div>
+
+    <!-- Logo top-left -->
+    <div class="logo">
+      <!-- Pixel-invader brand glyph · 24×16 grid · fuchsia -->
+      <svg class="logo-mark" viewBox="0 0 24 16" fill="var(--color-fuchsia)" style="filter:drop-shadow(0 0 10px rgba(255,26,140,0.55));">
+        <rect x="3" y="2" width="2" height="2"/><rect x="19" y="2" width="2" height="2"/>
+        <rect x="5" y="4" width="14" height="2"/>
+        <rect x="3" y="6" width="2" height="2"/><rect x="7" y="6" width="2" height="2"/><rect x="15" y="6" width="2" height="2"/><rect x="19" y="6" width="2" height="2"/>
+        <rect x="3" y="8" width="18" height="2"/>
+        <rect x="5" y="10" width="2" height="2"/><rect x="9" y="10" width="6" height="2"/><rect x="17" y="10" width="2" height="2"/>
+        <rect x="1" y="12" width="2" height="2"/><rect x="7" y="12" width="2" height="2"/><rect x="15" y="12" width="2" height="2"/><rect x="21" y="12" width="2" height="2"/>
+      </svg>
+      <span>liquid<span class="slash">/</span>clips</span>
+    </div>
+
+    <!-- Top counters · SCORE · LIVES -->
+    <div class="hud-top">
+      <div class="counter counter-fuchsia">
+        <span class="counter-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="9" cy="7" r="3"/>
+            <path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>
+            <circle cx="17" cy="7" r="2.5"/>
+            <path d="M21 21v-1.5a3 3 0 0 0-3-3"/>
+          </svg>
+        </span>
+        <div class="counter-body">
+          <span class="counter-label">Clippers</span>
+          <span class="counter-value">243</span>
+          <span class="counter-delta">▲ +12 today</span>
+        </div>
+      </div>
+
+      <div class="counter counter-cyan">
+        <span class="counter-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 21V8l8-5 8 5v13"/>
+            <path d="M9 21v-6h6v6"/>
+            <path d="M9 11h.01M15 11h.01M9 14h.01M15 14h.01"/>
+          </svg>
+        </span>
+        <div class="counter-body">
+          <span class="counter-label">Agencies / Brands</span>
+          <span class="counter-value">47</span>
+          <span class="counter-delta">▲ +3 today</span>
+        </div>
+      </div>
+
+      <div class="score-chip">
+        <span class="score-label">Score</span>
+        <span class="score-value">260</span>
+      </div>
+
+      <div class="lives">
+        <span class="lives-label">Lives</span>
+        <div class="lives-hearts">
+          <!-- 2 of 3 hearts lit · proves LIVES is wired -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="#FF1A8C"><path d="M12 21s-7-4.5-9-9c-1.5-3.5 1-7 4.5-7C9.5 5 11 6.5 12 8c1-1.5 2.5-3 4.5-3 3.5 0 6 3.5 4.5 7-2 4.5-9 9-9 9z"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="#FF1A8C"><path d="M12 21s-7-4.5-9-9c-1.5-3.5 1-7 4.5-7C9.5 5 11 6.5 12 8c1-1.5 2.5-3 4.5-3 3.5 0 6 3.5 4.5 7-2 4.5-9 9-9 9z"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="rgba(244,241,234,0.18)"><path d="M12 21s-7-4.5-9-9c-1.5-3.5 1-7 4.5-7C9.5 5 11 6.5 12 8c1-1.5 2.5-3 4.5-3 3.5 0 6 3.5 4.5 7-2 4.5-9 9-9 9z"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Skip intro -->
+    <div class="skip">▶▶ Skip Intro</div>
+
+    <!-- Arena (game canvas mock) -->
+    <div class="arena">
+      <div class="arena-hud">
+        <span>WAVE 3 · BOSS</span>
+        <span>5 ENEMIES LEFT</span>
+      </div>
+
+      <div class="arena-canvas">
+        <!-- BOSS WAVE — single 3D illustrated bug at top of formation -->
+        <div class="boss-row">
+          <img class="boss-bug" src="/brand/enemies/bug-mothbug.webp" alt="Boss · mothbug" />
+        </div>
+
+        <!-- Cyan squid row -->
+        <div class="invader-row">
+          <!-- Inline pixel squids in cyan via inline svg -->
+          <svg class="pixel-invader pixel-invader-cyan" viewBox="0 0 11 8" fill="#00E5FF">
+            <rect x="5" y="0" width="1" height="1"/><rect x="4" y="1" width="3" height="1"/><rect x="3" y="2" width="5" height="1"/><rect x="2" y="3" width="2" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="7" y="3" width="2" height="1"/><rect x="1" y="4" width="9" height="1"/><rect x="0" y="5" width="2" height="1"/><rect x="3" y="5" width="2" height="1"/><rect x="6" y="5" width="2" height="1"/><rect x="9" y="5" width="2" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/>
+          </svg>
+          <svg class="pixel-invader pixel-invader-cyan" viewBox="0 0 11 8" fill="#00E5FF"><rect x="5" y="0" width="1" height="1"/><rect x="4" y="1" width="3" height="1"/><rect x="3" y="2" width="5" height="1"/><rect x="2" y="3" width="2" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="7" y="3" width="2" height="1"/><rect x="1" y="4" width="9" height="1"/><rect x="0" y="5" width="2" height="1"/><rect x="3" y="5" width="2" height="1"/><rect x="6" y="5" width="2" height="1"/><rect x="9" y="5" width="2" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/></svg>
+          <svg class="pixel-invader pixel-invader-cyan" viewBox="0 0 11 8" fill="#00E5FF"><rect x="5" y="0" width="1" height="1"/><rect x="4" y="1" width="3" height="1"/><rect x="3" y="2" width="5" height="1"/><rect x="2" y="3" width="2" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="7" y="3" width="2" height="1"/><rect x="1" y="4" width="9" height="1"/><rect x="0" y="5" width="2" height="1"/><rect x="3" y="5" width="2" height="1"/><rect x="6" y="5" width="2" height="1"/><rect x="9" y="5" width="2" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/></svg>
+          <svg class="pixel-invader pixel-invader-cyan" viewBox="0 0 11 8" fill="#00E5FF"><rect x="5" y="0" width="1" height="1"/><rect x="4" y="1" width="3" height="1"/><rect x="3" y="2" width="5" height="1"/><rect x="2" y="3" width="2" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="7" y="3" width="2" height="1"/><rect x="1" y="4" width="9" height="1"/><rect x="0" y="5" width="2" height="1"/><rect x="3" y="5" width="2" height="1"/><rect x="6" y="5" width="2" height="1"/><rect x="9" y="5" width="2" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/></svg>
+        </div>
+
+        <!-- Fuchsia crab row -->
+        <div class="invader-row">
+          <svg class="pixel-invader pixel-invader-fuchsia-bright" viewBox="0 0 11 8" fill="#FF66B8"><rect x="2" y="0" width="1" height="1"/><rect x="8" y="0" width="1" height="1"/><rect x="3" y="1" width="1" height="1"/><rect x="7" y="1" width="1" height="1"/><rect x="2" y="2" width="7" height="1"/><rect x="1" y="3" width="2" height="1"/><rect x="4" y="3" width="3" height="1"/><rect x="8" y="3" width="2" height="1"/><rect x="0" y="4" width="11" height="1"/><rect x="0" y="5" width="1" height="1"/><rect x="2" y="5" width="7" height="1"/><rect x="10" y="5" width="1" height="1"/><rect x="0" y="6" width="1" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/><rect x="10" y="6" width="1" height="1"/><rect x="3" y="7" width="2" height="1"/><rect x="6" y="7" width="2" height="1"/></svg>
+          <svg class="pixel-invader pixel-invader-fuchsia-bright" viewBox="0 0 11 8" fill="#FF66B8"><rect x="2" y="0" width="1" height="1"/><rect x="8" y="0" width="1" height="1"/><rect x="3" y="1" width="1" height="1"/><rect x="7" y="1" width="1" height="1"/><rect x="2" y="2" width="7" height="1"/><rect x="1" y="3" width="2" height="1"/><rect x="4" y="3" width="3" height="1"/><rect x="8" y="3" width="2" height="1"/><rect x="0" y="4" width="11" height="1"/><rect x="0" y="5" width="1" height="1"/><rect x="2" y="5" width="7" height="1"/><rect x="10" y="5" width="1" height="1"/><rect x="0" y="6" width="1" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/><rect x="10" y="6" width="1" height="1"/><rect x="3" y="7" width="2" height="1"/><rect x="6" y="7" width="2" height="1"/></svg>
+          <svg class="pixel-invader pixel-invader-fuchsia-bright" viewBox="0 0 11 8" fill="#FF66B8"><rect x="2" y="0" width="1" height="1"/><rect x="8" y="0" width="1" height="1"/><rect x="3" y="1" width="1" height="1"/><rect x="7" y="1" width="1" height="1"/><rect x="2" y="2" width="7" height="1"/><rect x="1" y="3" width="2" height="1"/><rect x="4" y="3" width="3" height="1"/><rect x="8" y="3" width="2" height="1"/><rect x="0" y="4" width="11" height="1"/><rect x="0" y="5" width="1" height="1"/><rect x="2" y="5" width="7" height="1"/><rect x="10" y="5" width="1" height="1"/><rect x="0" y="6" width="1" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/><rect x="10" y="6" width="1" height="1"/><rect x="3" y="7" width="2" height="1"/><rect x="6" y="7" width="2" height="1"/></svg>
+          <svg class="pixel-invader pixel-invader-fuchsia-bright" viewBox="0 0 11 8" fill="#FF66B8"><rect x="2" y="0" width="1" height="1"/><rect x="8" y="0" width="1" height="1"/><rect x="3" y="1" width="1" height="1"/><rect x="7" y="1" width="1" height="1"/><rect x="2" y="2" width="7" height="1"/><rect x="1" y="3" width="2" height="1"/><rect x="4" y="3" width="3" height="1"/><rect x="8" y="3" width="2" height="1"/><rect x="0" y="4" width="11" height="1"/><rect x="0" y="5" width="1" height="1"/><rect x="2" y="5" width="7" height="1"/><rect x="10" y="5" width="1" height="1"/><rect x="0" y="6" width="1" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/><rect x="10" y="6" width="1" height="1"/><rect x="3" y="7" width="2" height="1"/><rect x="6" y="7" width="2" height="1"/></svg>
+        </div>
+
+        <!-- Octopus row -->
+        <div class="invader-row">
+          <svg class="pixel-invader pixel-invader-fuchsia" viewBox="0 0 12 8" fill="#FF1A8C"><rect x="4" y="0" width="4" height="1"/><rect x="1" y="1" width="10" height="1"/><rect x="0" y="2" width="12" height="1"/><rect x="0" y="3" width="3" height="1"/><rect x="5" y="3" width="2" height="1"/><rect x="9" y="3" width="3" height="1"/><rect x="0" y="4" width="12" height="1"/><rect x="2" y="5" width="3" height="1"/><rect x="7" y="5" width="3" height="1"/><rect x="1" y="6" width="2" height="1"/><rect x="5" y="6" width="2" height="1"/><rect x="9" y="6" width="2" height="1"/><rect x="2" y="7" width="1" height="1"/><rect x="9" y="7" width="1" height="1"/></svg>
+          <svg class="pixel-invader pixel-invader-fuchsia" viewBox="0 0 12 8" fill="#FF1A8C"><rect x="4" y="0" width="4" height="1"/><rect x="1" y="1" width="10" height="1"/><rect x="0" y="2" width="12" height="1"/><rect x="0" y="3" width="3" height="1"/><rect x="5" y="3" width="2" height="1"/><rect x="9" y="3" width="3" height="1"/><rect x="0" y="4" width="12" height="1"/><rect x="2" y="5" width="3" height="1"/><rect x="7" y="5" width="3" height="1"/><rect x="1" y="6" width="2" height="1"/><rect x="5" y="6" width="2" height="1"/><rect x="9" y="6" width="2" height="1"/><rect x="2" y="7" width="1" height="1"/><rect x="9" y="7" width="1" height="1"/></svg>
+          <svg class="pixel-invader pixel-invader-fuchsia" viewBox="0 0 12 8" fill="#FF1A8C"><rect x="4" y="0" width="4" height="1"/><rect x="1" y="1" width="10" height="1"/><rect x="0" y="2" width="12" height="1"/><rect x="0" y="3" width="3" height="1"/><rect x="5" y="3" width="2" height="1"/><rect x="9" y="3" width="3" height="1"/><rect x="0" y="4" width="12" height="1"/><rect x="2" y="5" width="3" height="1"/><rect x="7" y="5" width="3" height="1"/><rect x="1" y="6" width="2" height="1"/><rect x="5" y="6" width="2" height="1"/><rect x="9" y="6" width="2" height="1"/><rect x="2" y="7" width="1" height="1"/><rect x="9" y="7" width="1" height="1"/></svg>
+        </div>
+
+        <!-- Score-pops + kill burst -->
+        <span class="pop pop-1">+10</span>
+        <span class="pop pop-2">+10</span>
+        <span class="burst burst-1"></span>
+        <span class="burst burst-2"></span>
+        <span class="burst burst-3"></span>
+
+        <!-- Bullets -->
+        <div class="bullets">
+          <div class="bullet"></div>
+          <div class="bullet"></div>
+        </div>
+
+        <!-- Player ship (Kade-cannon pixel grid, white + cyan eye) -->
+        <div class="arena-player">
+          <svg class="pixel-player" viewBox="0 0 13 9">
+            <g fill="#F4F1EA">
+              <rect x="6" y="0" width="1" height="1"/>
+              <rect x="5" y="1" width="3" height="1"/>
+              <rect x="4" y="2" width="5" height="1"/>
+              <rect x="4" y="3" width="1" height="1"/><rect x="8" y="3" width="1" height="1"/>
+              <rect x="3" y="4" width="7" height="1"/>
+              <rect x="2" y="5" width="9" height="1"/>
+              <rect x="1" y="6" width="11" height="1"/>
+              <rect x="0" y="7" width="3" height="1"/><rect x="4" y="7" width="5" height="1"/><rect x="10" y="7" width="3" height="1"/>
+              <rect x="1" y="8" width="1" height="1"/><rect x="11" y="8" width="1" height="1"/>
+            </g>
+            <g fill="#00E5FF"><rect x="5" y="3" width="3" height="1"/></g>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tip pill -->
+    <div class="tip">
+      <span class="tip-icon">◆</span>
+      <span>Hit bugs. Earn <strong>points</strong>. Level up your clipping game.</span>
+    </div>
+
+    <!-- Level-up card -->
+    <div class="levelup">
+      <div>
+        <span class="levelup-eb">Level up</span>
+        <span class="levelup-body">Score points to unlock rewards and climb the leaderboards.</span>
+      </div>
+      <div class="levelup-pips">
+        <!-- 8 pixel-invader pips: 5 lit, 3 dim -->
+        <!-- Lit (fuchsia) -->
+        <svg class="pip" viewBox="0 0 11 8" fill="#FF1A8C"><rect x="5" y="0" width="1" height="1"/><rect x="4" y="1" width="3" height="1"/><rect x="3" y="2" width="5" height="1"/><rect x="2" y="3" width="2" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="7" y="3" width="2" height="1"/><rect x="1" y="4" width="9" height="1"/><rect x="0" y="5" width="2" height="1"/><rect x="3" y="5" width="2" height="1"/><rect x="6" y="5" width="2" height="1"/><rect x="9" y="5" width="2" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/></svg>
+        <svg class="pip" viewBox="0 0 11 8" fill="#FF1A8C"><rect x="5" y="0" width="1" height="1"/><rect x="4" y="1" width="3" height="1"/><rect x="3" y="2" width="5" height="1"/><rect x="2" y="3" width="2" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="7" y="3" width="2" height="1"/><rect x="1" y="4" width="9" height="1"/><rect x="0" y="5" width="2" height="1"/><rect x="3" y="5" width="2" height="1"/><rect x="6" y="5" width="2" height="1"/><rect x="9" y="5" width="2" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/></svg>
+        <svg class="pip" viewBox="0 0 11 8" fill="#FF1A8C"><rect x="5" y="0" width="1" height="1"/><rect x="4" y="1" width="3" height="1"/><rect x="3" y="2" width="5" height="1"/><rect x="2" y="3" width="2" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="7" y="3" width="2" height="1"/><rect x="1" y="4" width="9" height="1"/><rect x="0" y="5" width="2" height="1"/><rect x="3" y="5" width="2" height="1"/><rect x="6" y="5" width="2" height="1"/><rect x="9" y="5" width="2" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/></svg>
+        <svg class="pip" viewBox="0 0 11 8" fill="#FF1A8C"><rect x="5" y="0" width="1" height="1"/><rect x="4" y="1" width="3" height="1"/><rect x="3" y="2" width="5" height="1"/><rect x="2" y="3" width="2" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="7" y="3" width="2" height="1"/><rect x="1" y="4" width="9" height="1"/><rect x="0" y="5" width="2" height="1"/><rect x="3" y="5" width="2" height="1"/><rect x="6" y="5" width="2" height="1"/><rect x="9" y="5" width="2" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/></svg>
+        <svg class="pip" viewBox="0 0 11 8" fill="#FF1A8C"><rect x="5" y="0" width="1" height="1"/><rect x="4" y="1" width="3" height="1"/><rect x="3" y="2" width="5" height="1"/><rect x="2" y="3" width="2" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="7" y="3" width="2" height="1"/><rect x="1" y="4" width="9" height="1"/><rect x="0" y="5" width="2" height="1"/><rect x="3" y="5" width="2" height="1"/><rect x="6" y="5" width="2" height="1"/><rect x="9" y="5" width="2" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/></svg>
+        <!-- Dim -->
+        <svg class="pip" viewBox="0 0 11 8" fill="rgba(244,241,234,0.18)"><rect x="5" y="0" width="1" height="1"/><rect x="4" y="1" width="3" height="1"/><rect x="3" y="2" width="5" height="1"/><rect x="2" y="3" width="2" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="7" y="3" width="2" height="1"/><rect x="1" y="4" width="9" height="1"/><rect x="0" y="5" width="2" height="1"/><rect x="3" y="5" width="2" height="1"/><rect x="6" y="5" width="2" height="1"/><rect x="9" y="5" width="2" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/></svg>
+        <svg class="pip" viewBox="0 0 11 8" fill="rgba(244,241,234,0.18)"><rect x="5" y="0" width="1" height="1"/><rect x="4" y="1" width="3" height="1"/><rect x="3" y="2" width="5" height="1"/><rect x="2" y="3" width="2" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="7" y="3" width="2" height="1"/><rect x="1" y="4" width="9" height="1"/><rect x="0" y="5" width="2" height="1"/><rect x="3" y="5" width="2" height="1"/><rect x="6" y="5" width="2" height="1"/><rect x="9" y="5" width="2" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/></svg>
+        <svg class="pip" viewBox="0 0 11 8" fill="rgba(244,241,234,0.18)"><rect x="5" y="0" width="1" height="1"/><rect x="4" y="1" width="3" height="1"/><rect x="3" y="2" width="5" height="1"/><rect x="2" y="3" width="2" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="7" y="3" width="2" height="1"/><rect x="1" y="4" width="9" height="1"/><rect x="0" y="5" width="2" height="1"/><rect x="3" y="5" width="2" height="1"/><rect x="6" y="5" width="2" height="1"/><rect x="9" y="5" width="2" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/></svg>
+      </div>
+    </div>
+
+    <!-- Right leaderboard panel -->
+    <aside class="lb" aria-label="Leaderboard">
+      <div class="lb-tabs" role="tablist">
+        <button class="lb-tab on">Leaderboard</button>
+        <button class="lb-tab">My Score</button>
+      </div>
+      <div class="lb-body">
+        <!-- TOP CLIPPERS -->
+        <div>
+          <h3 class="lb-section-title lb-section-title-fuchsia">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 21h8M12 17v4"/>
+              <path d="M7 4h10v5a5 5 0 0 1-10 0V4z"/>
+              <path d="M5 4H3v3a3 3 0 0 0 3 3M19 4h2v3a3 3 0 0 1-3 3"/>
+            </svg>
+            Top Clippers (by views)
+          </h3>
+          <ul class="lb-list">
+            <li class="lb-row">
+              <span class="lb-rank"><svg width="20" height="20" viewBox="0 0 24 24" fill="#FFD24A"><path d="M3 8l4 4 5-7 5 7 4-4-2 12H5z"/></svg></span>
+              <img class="lb-avatar" src="/brand/leaderboard-avatars/clipqueen.png" alt="ClipQueen" />
+              <div class="lb-row-name"><span class="lb-row-name-text">ClipQueen</span><span class="lb-row-detail">2.4M views</span></div>
+              <span class="lb-row-score lb-row-score-fuchsia">2,840</span>
+            </li>
+            <li class="lb-row">
+              <span class="lb-rank"><svg width="20" height="20" viewBox="0 0 24 24" fill="#D7DBE2"><path d="M3 8l4 4 5-7 5 7 4-4-2 12H5z"/></svg></span>
+              <img class="lb-avatar" src="/brand/leaderboard-avatars/turboclipper.png" alt="TurboClipper" />
+              <div class="lb-row-name"><span class="lb-row-name-text">TurboClipper</span><span class="lb-row-detail">1.8M views</span></div>
+              <span class="lb-row-score lb-row-score-fuchsia">2,120</span>
+            </li>
+            <li class="lb-row">
+              <span class="lb-rank"><svg width="20" height="20" viewBox="0 0 24 24" fill="#E89A3F"><path d="M3 8l4 4 5-7 5 7 4-4-2 12H5z"/></svg></span>
+              <img class="lb-avatar" src="/brand/leaderboard-avatars/contentking.png" alt="ContentKing" />
+              <div class="lb-row-name"><span class="lb-row-name-text">ContentKing</span><span class="lb-row-detail">1.5M views</span></div>
+              <span class="lb-row-score lb-row-score-fuchsia">1,760</span>
+            </li>
+            <li class="lb-row">
+              <span class="lb-rank lb-rank-num">4</span>
+              <img class="lb-avatar" src="/brand/leaderboard-avatars/snipmaster.png" alt="SnipMaster" />
+              <div class="lb-row-name"><span class="lb-row-name-text">SnipMaster</span><span class="lb-row-detail">1.2M views</span></div>
+              <span class="lb-row-score lb-row-score-fuchsia">1,420</span>
+            </li>
+            <li class="lb-row">
+              <span class="lb-rank lb-rank-num">5</span>
+              <img class="lb-avatar" src="/brand/leaderboard-avatars/clipgod.png" alt="ClipGod" />
+              <div class="lb-row-name"><span class="lb-row-name-text">ClipGod</span><span class="lb-row-detail">1.1M views</span></div>
+              <span class="lb-row-score lb-row-score-fuchsia">1,150</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- TOP AGENCIES -->
+        <div>
+          <h3 class="lb-section-title lb-section-title-cyan">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 21V8l8-5 8 5v13"/>
+              <path d="M9 21v-6h6v6"/>
+              <path d="M9 11h.01M15 11h.01M9 14h.01M15 14h.01"/>
+            </svg>
+            Top Agencies (by payouts)
+          </h3>
+          <ul class="lb-list">
+            <li class="lb-row">
+              <span class="lb-rank"><svg width="20" height="20" viewBox="0 0 24 24" fill="#FFD24A"><path d="M3 8l4 4 5-7 5 7 4-4-2 12H5z"/></svg></span>
+              <img class="lb-avatar" src="/brand/leaderboard-avatars/primeagency.png" alt="Prime Agency" />
+              <div class="lb-row-name"><span class="lb-row-name-text">Prime Agency</span><span class="lb-row-detail">$24,560 paid</span></div>
+              <span class="lb-row-score lb-row-score-cyan">24,560</span>
+            </li>
+            <li class="lb-row">
+              <span class="lb-rank"><svg width="20" height="20" viewBox="0 0 24 24" fill="#D7DBE2"><path d="M3 8l4 4 5-7 5 7 4-4-2 12H5z"/></svg></span>
+              <img class="lb-avatar" src="/brand/leaderboard-avatars/elevatemedia.png" alt="Elevate Media" />
+              <div class="lb-row-name"><span class="lb-row-name-text">Elevate Media</span><span class="lb-row-detail">$18,340 paid</span></div>
+              <span class="lb-row-score lb-row-score-cyan">18,340</span>
+            </li>
+            <li class="lb-row">
+              <span class="lb-rank"><svg width="20" height="20" viewBox="0 0 24 24" fill="#E89A3F"><path d="M3 8l4 4 5-7 5 7 4-4-2 12H5z"/></svg></span>
+              <img class="lb-avatar" src="/brand/leaderboard-avatars/visionagency.png" alt="Vision Agency" />
+              <div class="lb-row-name"><span class="lb-row-name-text">Vision Agency</span><span class="lb-row-detail">$14,280 paid</span></div>
+              <span class="lb-row-score lb-row-score-cyan">14,280</span>
+            </li>
+            <li class="lb-row">
+              <span class="lb-rank lb-rank-num">4</span>
+              <img class="lb-avatar" src="/brand/leaderboard-avatars/creatorcollective.png" alt="Creator Collective" />
+              <div class="lb-row-name"><span class="lb-row-name-text">Creator Collective</span><span class="lb-row-detail">$11,920 paid</span></div>
+              <span class="lb-row-score lb-row-score-cyan">11,920</span>
+            </li>
+            <li class="lb-row">
+              <span class="lb-rank lb-rank-num">5</span>
+              <img class="lb-avatar" src="/brand/leaderboard-avatars/clipempire.png" alt="Clip Empire" />
+              <div class="lb-row-name"><span class="lb-row-name-text">Clip Empire</span><span class="lb-row-detail">$9,850 paid</span></div>
+              <span class="lb-row-score lb-row-score-cyan">9,850</span>
+            </li>
+          </ul>
+        </div>
+
+        <p class="lb-sim">simulator data · not real views or payouts</p>
+      </div>
+
+      <!-- "You" callout pinned at the bottom · toggleable -->
+      <div class="lb-you" id="lbYou">
+        <div class="lb-avatar-initials" style="background:#FF1A8C;">DD</div>
+        <div>
+          <div class="lb-you-eb">You</div>
+          <div class="lb-you-name">Daniel · Beta</div>
+        </div>
+        <div class="lb-you-score">260</div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    // Demo-only auth-state toggle. Not in production.
+    const btnIn  = document.getElementById('btnLoggedIn');
+    const btnOut = document.getElementById('btnLoggedOut');
+    const you    = document.getElementById('lbYou');
+    function setState(loggedIn) {
+      btnIn.classList.toggle('on',  loggedIn);
+      btnOut.classList.toggle('on', !loggedIn);
+      if (loggedIn) {
+        you.innerHTML = `
+          <div class="lb-avatar-initials" style="background:#FF1A8C;">DD</div>
+          <div>
+            <div class="lb-you-eb">You</div>
+            <div class="lb-you-name">Daniel · Beta</div>
+          </div>
+          <div class="lb-you-score">260</div>
+        `;
+      } else {
+        you.innerHTML = `
+          <div class="lb-avatar-initials" style="background:rgba(244,241,234,0.15);color:rgba(244,241,234,0.55);">?</div>
+          <div>
+            <div class="lb-you-eb">Not signed in</div>
+            <div class="lb-you-name" style="color:rgba(244,241,234,0.65);font-weight:500;">Sign in to save your score</div>
+          </div>
+          <button class="lb-you-anon-cta">Sign in</button>
+        `;
+      }
+    }
+    btnIn.addEventListener('click', () => setState(true));
+    btnOut.addEventListener('click', () => setState(false));
+  </script>
+</body>
+</html>
