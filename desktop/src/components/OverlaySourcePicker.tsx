@@ -255,7 +255,7 @@ export function ReactionSourcePicker({
         {/* Header */}
         <header className="flex items-center justify-between gap-3 border-b border-paper/10 px-5 py-3.5">
           <div className="flex items-center gap-2">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-fuchsia text-white">
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-fuchsia text-ink">
               <Wand2 size={14} strokeWidth={2.4} />
             </span>
             <div>
@@ -270,7 +270,7 @@ export function ReactionSourcePicker({
           <button
             onClick={() => onResolve({ kind: "cancel" })}
             title="Close (esc)"
-            className="inline-flex items-center gap-1 rounded-full border border-paper/15 bg-paper/5 px-3 py-1.5 font-mono text-[11px] text-paper/70 hover:border-fuchsia hover:text-white"
+            className="inline-flex items-center gap-1 rounded-full border border-paper/15 bg-paper/5 px-3 py-1.5 font-mono text-[11px] text-paper/70 hover:border-fuchsia hover:text-ink"
           >
             <X size={12} strokeWidth={2.4} />
             close
@@ -288,8 +288,8 @@ export function ReactionSourcePicker({
                 onClick={() => switchTab(t.key)}
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-sans text-[12px] font-medium transition-colors ${
                   active
-                    ? "bg-fuchsia text-white shadow-[var(--glow-sm)]"
-                    : "text-paper/65 hover:bg-paper/10 hover:text-white"
+                    ? "bg-fuchsia text-ink shadow-[var(--glow-sm)]"
+                    : "text-paper/65 hover:bg-paper/10 hover:text-ink"
                 }`}
               >
                 <Icon size={13} strokeWidth={2.2} />
@@ -310,13 +310,13 @@ export function ReactionSourcePicker({
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") void searchOnline(query, tab); }}
                   placeholder={PLACEHOLDERS[tab]}
-                  className="w-full rounded-full border border-paper/15 bg-paper/5 px-9 py-2 font-sans text-[13px] text-white placeholder:text-paper/40 focus:border-fuchsia focus:bg-paper/10 focus:outline-none"
+                  className="w-full rounded-full border border-paper/15 bg-paper/5 px-9 py-2 font-sans text-[13px] text-ink placeholder:text-paper/40 focus:border-fuchsia focus:bg-paper/10 focus:outline-none"
                 />
               </div>
               <button
                 onClick={() => void searchOnline(query, tab)}
                 disabled={searching}
-                className="rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-50"
+                className="rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-ink hover:bg-fuchsia-bright disabled:opacity-50"
               >
                 {searching ? "Searching…" : "Search"}
               </button>
@@ -326,7 +326,7 @@ export function ReactionSourcePicker({
                 <button
                   key={pill}
                   onClick={() => { setQuery(pill); void searchOnline(pill, tab); }}
-                  className="rounded-full border border-paper/15 bg-paper/5 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-paper/65 hover:border-fuchsia hover:text-white"
+                  className="rounded-full border border-paper/15 bg-paper/5 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-paper/65 hover:border-fuchsia hover:text-ink"
                 >
                   {pill}
                 </button>
@@ -407,7 +407,7 @@ function MissingKeyBanner({ tab, onOpenSettings }: { tab: ProviderTab; onOpenSet
       <span aria-hidden="true" className="library-card-corner library-card-corner-tr" />
       <span aria-hidden="true" className="library-card-corner library-card-corner-bl" />
       <span aria-hidden="true" className="library-card-corner library-card-corner-br" />
-      <p className="font-display text-[13px] font-semibold text-white">
+      <p className="font-display text-[13px] font-semibold text-ink">
         {def.label} search needs your key.
       </p>
       <p className="mt-1 font-sans text-[12px] text-paper/65">
@@ -415,7 +415,7 @@ function MissingKeyBanner({ tab, onOpenSettings }: { tab: ProviderTab; onOpenSet
       </p>
       <button
         onClick={onOpenSettings}
-        className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-3 py-1.5 font-sans text-[12px] font-medium text-white transition-colors hover:bg-fuchsia-bright"
+        className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-3 py-1.5 font-sans text-[12px] font-medium text-ink transition-colors hover:bg-fuchsia-bright"
       >
         <KeyRound size={12} strokeWidth={2.4} />
         Open Settings
@@ -433,13 +433,13 @@ function ProviderPaywall({ tab, onClose }: { tab: ProviderTab; onClose: () => vo
         <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-fuchsia/20 text-fuchsia">
           <Icon size={22} strokeWidth={2.2} />
         </div>
-        <p className="font-display text-[14px] font-semibold text-white">Unlock {def.label}</p>
+        <p className="font-display text-[14px] font-semibold text-ink">Unlock {def.label}</p>
         <p className="mt-1 font-sans text-[12px] text-paper/60">
           Upgrade to Solo to search {def.label} and insert premium reactions, GIFs, and stock video.
         </p>
         <button
           onClick={onClose}
-          className="mt-4 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-white transition-colors hover:bg-fuchsia-bright"
+          className="mt-4 rounded-full bg-fuchsia px-4 py-2 font-sans text-[12px] font-medium text-ink transition-colors hover:bg-fuchsia-bright"
         >
           See plans
         </button>
@@ -563,16 +563,16 @@ function ResultCard({
           {item.provider}
         </span>
         {/* play affordance */}
-        <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-paper/90 text-white opacity-0 transition-opacity group-hover:opacity-100">
+        <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-paper/90 text-ink opacity-0 transition-opacity group-hover:opacity-100">
           {hover ? <Pause size={11} strokeWidth={2.4} /> : <Play size={11} strokeWidth={2.4} />}
         </span>
         {/* use-reaction action */}
-        <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-fuchsia px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-white opacity-0 transition-opacity group-hover:opacity-100">
+        <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-fuchsia px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-ink opacity-0 transition-opacity group-hover:opacity-100">
           {isDownloading ? "downloading…" : "use reaction →"}
         </span>
       </div>
       <div className="p-2">
-        <p className="line-clamp-2 font-sans text-[11px] leading-tight text-white">{item.title}</p>
+        <p className="line-clamp-2 font-sans text-[11px] leading-tight text-ink">{item.title}</p>
         {item.author && (
           <p className="mt-0.5 truncate font-mono text-[9px] uppercase tracking-[0.08em] text-paper/55">
             {item.author}
@@ -685,15 +685,15 @@ function ProjectClipCard({
         <span className="absolute left-2 top-2 inline-flex items-center rounded-full bg-paper/80 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-white/85 backdrop-blur-sm">
           {(idx + 1).toString().padStart(2, "0")}
         </span>
-        <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-paper/90 text-white opacity-0 transition-opacity group-hover:opacity-100">
+        <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-paper/90 text-ink opacity-0 transition-opacity group-hover:opacity-100">
           {hover ? <Pause size={11} strokeWidth={2.4} /> : <Play size={11} strokeWidth={2.4} />}
         </span>
-        <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-fuchsia px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-white opacity-0 transition-opacity group-hover:opacity-100">
+        <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-fuchsia px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-ink opacity-0 transition-opacity group-hover:opacity-100">
           use reaction →
         </span>
       </div>
       <div className="p-2">
-        <p className="line-clamp-2 font-sans text-[11px] leading-tight text-white">{clip.title}</p>
+        <p className="line-clamp-2 font-sans text-[11px] leading-tight text-ink">{clip.title}</p>
       </div>
     </button>
   );
@@ -706,10 +706,10 @@ function UploadPane({ onPick }: { onPick: () => void }) {
         onClick={onPick}
         className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-paper/25 bg-paper/5 px-10 py-10 transition-colors hover:border-fuchsia hover:bg-fuchsia-soft/10"
       >
-        <span className="grid h-12 w-12 place-items-center rounded-full bg-fuchsia text-white">
+        <span className="grid h-12 w-12 place-items-center rounded-full bg-fuchsia text-ink">
           <Upload size={18} strokeWidth={2.4} />
         </span>
-        <p className="font-display text-[15px] font-semibold text-white">Choose reaction file</p>
+        <p className="font-display text-[15px] font-semibold text-ink">Choose reaction file</p>
         <p className="font-sans text-[12px] text-paper/65">mp4, mov, mkv, webm, m4v</p>
       </button>
     </div>
@@ -722,7 +722,7 @@ function LocalOverlaysPane({ onUpload }: { onUpload: () => void }) {
       id: "subscribe",
       label: "Subscribe bug",
       preview: (
-        <div className="rounded-full bg-fuchsia px-3 py-1 font-display text-[10px] font-bold uppercase tracking-wide text-white shadow-[var(--glow-sm)]">
+        <div className="rounded-full bg-fuchsia px-3 py-1 font-display text-[10px] font-bold uppercase tracking-wide text-ink shadow-[var(--glow-sm)]">
           Subscribe
         </div>
       ),
@@ -754,7 +754,7 @@ function LocalOverlaysPane({ onUpload }: { onUpload: () => void }) {
       label: "Lower-third label",
       preview: (
         <div className="w-[80%] rounded-md bg-paper/90 px-3 py-1.5 text-center">
-          <span className="font-sans text-[10px] font-medium text-white">Creator Name</span>
+          <span className="font-sans text-[10px] font-medium text-ink">Creator Name</span>
         </div>
       ),
     },
@@ -771,7 +771,7 @@ function LocalOverlaysPane({ onUpload }: { onUpload: () => void }) {
       id: "paid-badge",
       label: "Paid clip badge",
       preview: (
-        <div className="rounded-md bg-fuchsia px-2 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-white">
+        <div className="rounded-md bg-fuchsia px-2 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-ink">
           Paid Clip
         </div>
       ),
@@ -781,7 +781,7 @@ function LocalOverlaysPane({ onUpload }: { onUpload: () => void }) {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-fuchsia/20 bg-fuchsia/5 px-4 py-3">
-        <p className="font-display text-[13px] font-semibold text-white">Local overlays are coming soon.</p>
+        <p className="font-display text-[13px] font-semibold text-ink">Local overlays are coming soon.</p>
         <p className="mt-1 font-sans text-[12px] text-paper/65">
           Use your own file via Upload, or add a provider key to search millions of reactions today.
         </p>

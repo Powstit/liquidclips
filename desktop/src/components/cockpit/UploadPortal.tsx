@@ -344,7 +344,7 @@ export function UploadPortal({
                     // The ref guard above is the safety net; this is the
                     // honesty layer.
                     disabled={submitting}
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full bg-fuchsia text-white transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.5)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-fuchsia disabled:hover:shadow-none ${
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full bg-fuchsia text-ink transition-all hover:bg-fuchsia-bright hover:shadow-[0_8px_24px_rgba(255,26,140,0.5)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-fuchsia disabled:hover:shadow-none ${
                       urlIsReady && !submitting
                         ? "ring-2 ring-fuchsia/40 ring-offset-2 ring-offset-paper"
                         : ""

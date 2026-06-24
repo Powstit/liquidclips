@@ -228,7 +228,7 @@ export function PlatformBadgePicker({
               }
               className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 font-sans text-[12px] transition-all ${
                 isActive && connected
-                  ? "font-medium text-white shadow-sm"
+                  ? "font-medium text-ink shadow-sm"
                   : needsConnect
                   ? "border border-dashed border-line bg-paper/50 text-text-tertiary hover:border-fuchsia hover:text-fuchsia-deep disabled:cursor-not-allowed disabled:opacity-50"
                   : "border border-line bg-transparent text-text-secondary hover:text-ink disabled:cursor-wait disabled:opacity-60"

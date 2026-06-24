@@ -50,7 +50,7 @@ export function QrCode({
     <div className={`inline-flex flex-col items-center gap-2 ${className}`}>
       {/* Outer card — thin fuchsia accent, white inner padding for the quiet zone */}
       <div className="rounded-2xl border border-fuchsia/60 bg-paper p-3 shadow-[var(--glow-sm)]">
-        <div className="bg-white p-1.5">
+        <div className="bg-ink p-1.5">
           <QRCodeSVG
             value={value}
             size={size}

@@ -209,7 +209,7 @@ export function SponsoredCarousel({
               onClick={() => {
                 if (typeof window !== "undefined") window.location.reload();
               }}
-              className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-fuchsia-bright"
+              className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink transition-colors hover:bg-fuchsia-bright"
             >
               Reload missions →
             </button>
@@ -421,7 +421,7 @@ function MissionChip({
       aria-pressed={active}
       className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors ${
         active
-          ? "border-fuchsia bg-fuchsia text-white shadow-[0_8px_28px_-12px_rgba(255,26,140,0.55)]"
+          ? "border-fuchsia bg-fuchsia text-ink shadow-[0_8px_28px_-12px_rgba(255,26,140,0.55)]"
           : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
       }`}
     >
@@ -498,8 +498,8 @@ function HeroSlide({
               Closed
             </span>
           ) : (
-            <span className="inline-flex w-fit items-center gap-1.5 self-start rounded-full bg-fuchsia px-3 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_28px_-12px_rgba(255,26,140,0.55)]">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-white pulse-dot" />
+            <span className="inline-flex w-fit items-center gap-1.5 self-start rounded-full bg-fuchsia px-3 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-ink shadow-[0_8px_28px_-12px_rgba(255,26,140,0.55)]">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-ink pulse-dot" />
               LIVE
             </span>
           )}
@@ -553,7 +553,7 @@ function HeroSlide({
               type="button"
               onClick={onClick}
               disabled={locked || closed}
-              className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition-all hover:bg-fuchsia-bright disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-ink transition-all hover:bg-fuchsia-bright disabled:cursor-not-allowed disabled:opacity-50"
             >
               {locked
                 ? "Upgrade to unlock →"

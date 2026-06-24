@@ -351,7 +351,7 @@ function ChannelPickRow({
       >
         <span
           aria-hidden
-          className="absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white transition-[left] duration-150"
+          className="absolute top-[2px] h-[14px] w-[14px] rounded-full bg-ink transition-[left] duration-150"
           style={{ left: on ? 16 : 2 }}
         />
       </button>

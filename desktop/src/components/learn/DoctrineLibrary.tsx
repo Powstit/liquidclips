@@ -10,7 +10,8 @@
 // list so the UI is fully testable end-to-end.
 
 import { useEffect, useMemo, useState } from "react";
-import { Clock, ExternalLink, Loader2, PlayCircle } from "lucide-react";
+import { Clock, Loader2, PlayCircle } from "lucide-react";
+import { ExternalLink } from "../icons/BrandGlyphs";
 import { openSmart as openExternal } from "../../lib/openSmart";
 import {
   listDoctrineEpisodes,

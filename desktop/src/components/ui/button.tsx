@@ -7,17 +7,21 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        // Brand-consistency-audit P0 #4 (2026-06-25):
+        // - `default` swapped text-white → text-ink (warm white #f4f1ea, not #fff)
+        // - `publish` amber gradient (banned) → fuchsia (sole CTA accent)
+        // - `destructive` raw bg-red-500 → --color-danger token + text-ink
         default:
-          "bg-fuchsia text-white shadow-[0_12px_30px_-12px_rgba(255,45,149,0.7)] hover:bg-fuchsia-bright",
+          "bg-fuchsia text-ink shadow-[0_12px_30px_-12px_rgba(255,45,149,0.7)] hover:bg-fuchsia-bright",
         primary:
           "font-display font-bold tracking-[0.01em] bg-gradient-to-b from-[#ff6bb4] to-[#ff2d95] text-[#190007] shadow-[0_12px_30px_-12px_rgba(255,45,149,0.7),inset_0_1px_0_rgba(255,255,255,0.35)] hover:-translate-y-0.5 hover:shadow-[0_18px_38px_-12px_rgba(255,45,149,0.85),inset_0_1px_0_rgba(255,255,255,0.4)]",
         publish:
-          "font-display font-bold tracking-[0.01em] bg-gradient-to-b from-[#ffd34d] to-[#ffab2e] text-[#241500] shadow-[0_12px_30px_-12px_rgba(255,171,46,0.7),inset_0_1px_0_rgba(255,255,255,0.4)] hover:-translate-y-0.5",
+          "font-display font-bold tracking-[0.01em] bg-gradient-to-b from-[#ff6bb4] to-[#ff2d95] text-[#190007] shadow-[0_12px_30px_-12px_rgba(255,45,149,0.7),inset_0_1px_0_rgba(255,255,255,0.35)] hover:-translate-y-0.5 hover:shadow-[0_18px_38px_-12px_rgba(255,45,149,0.85),inset_0_1px_0_rgba(255,255,255,0.4)]",
         outline:
           "border border-line bg-transparent text-text-secondary hover:border-line-2 hover:text-paper",
         ghost: "hover:bg-paper-warm/10 hover:text-paper",
         destructive:
-          "bg-red-500 text-white shadow-sm hover:bg-red-600",
+          "bg-[var(--color-danger)] text-ink shadow-sm hover:bg-[var(--color-danger-bright)]",
         link: "text-fuchsia underline-offset-4 hover:underline",
       },
       size: {

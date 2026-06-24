@@ -71,7 +71,7 @@ const faqs = [
   },
   {
     q: "Do I need an OpenAI key?",
-    a: "Free and Solo plans bring their own OpenAI key for the clip-selection step (paste a key starting with sk- in Settings). Pro and Agency plans get hosted AI — no key needed, no per-clip OpenAI bill, faster picks.",
+    a: "Yes — bring your own OpenAI key for the clip-selection step (paste a key starting with sk- in Settings). Hosted AI for Pro and Agency plans is rolling out soon; until then every tier uses your own key.",
   },
   {
     q: "What's Clip Rewards?",
@@ -79,7 +79,7 @@ const faqs = [
   },
   {
     q: "Is it really 60 seconds?",
-    a: "From URL paste to first clip exported: typically 45-90 seconds on Pro (hosted AI + fast machines), 2-4 minutes on Free (depends on your Mac's CPU and OpenAI response time). A 3-hour podcast usually produces 30-50 clips in the first pass.",
+    a: "From URL paste to first clip exported: typically 45-90 seconds on fast machines, 2-4 minutes on older Macs (depends on your CPU and OpenAI response time). A 3-hour podcast usually produces 30-50 clips in the first pass.",
   },
   {
     q: "Does it work on Windows / Linux?",
@@ -114,7 +114,7 @@ const videoTypes = [
   },
   {
     title: "Local .mp4 you own",
-    body: "Personal recordings, screen captures, agency client footage — drag the file into the cockpit. Nothing leaves your machine unless you explicitly choose hosted AI on Pro+.",
+    body: "Personal recordings, screen captures, agency client footage — drag the file into the cockpit. Local-first by design: nothing leaves your machine unless you opt into hosted AI (rolling out soon).",
   },
 ] as const;
 
@@ -234,7 +234,7 @@ export default async function StartPage() {
                 <h3>Direct sign-up (Google + Stripe)</h3>
                 <p>
                   Sign in with Google. 100 free clip credits on the Starter Pass. Upgrade to Solo
-                  ($29.99/mo), Pro ($79.99/mo) for hosted AI, or Agency ($149/mo). Billing managed
+                  ($29.99/mo), Pro ($79.99/mo), or Agency ($149/mo). Billing managed
                   by Stripe on{" "}
                   <Link href={accountUrl + "/dashboard"} className="inline-link">
                     your dashboard

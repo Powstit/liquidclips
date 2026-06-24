@@ -154,7 +154,7 @@ export function BonusEarnings({ tier }: { tier: Tier }) {
                 /* not in an iframe — no-op */
               }
             }}
-            className="shrink-0 rounded-full bg-fuchsia px-5 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-fuchsia-bright"
+            className="shrink-0 rounded-full bg-fuchsia px-5 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink transition-colors hover:bg-fuchsia-bright"
           >
             Upgrade to Liquid Clips →
           </button>

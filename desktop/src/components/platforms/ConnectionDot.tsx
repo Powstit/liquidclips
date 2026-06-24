@@ -3,14 +3,19 @@ import type { ChannelStatus } from "../../lib/backend";
 
 type DotStatus = ChannelStatus | "stale" | "no-channel" | "loading";
 
+// Brand-consistency-audit P0 #5 (2026-06-25):
+// Brand kit explicitly bans green / amber / red accents — success state is
+// fuchsia-deep (not green), warning is fuchsia-deep (not amber), error is
+// the --color-danger token. Active state earns the bright fuchsia accent so
+// "connected" reads as the same single accent everywhere else on the surface.
 const DOT_STYLES: Record<DotStatus, string> = {
-  active: "bg-green-500",
-  pending_link: "bg-amber-400 animate-pulse",
-  unlinked: "bg-amber-400 animate-pulse",
-  error: "bg-red-500",
-  paused: "bg-red-500",
+  active: "bg-fuchsia-deep",
+  pending_link: "bg-fuchsia-deep animate-pulse",
+  unlinked: "bg-fuchsia-deep animate-pulse",
+  error: "bg-[var(--color-danger)]",
+  paused: "bg-[var(--color-danger)]",
   deleted: "bg-text-tertiary",
-  stale: "bg-amber-400 animate-pulse",
+  stale: "bg-fuchsia-deep animate-pulse",
   "no-channel": "hidden",
   loading: "bg-text-tertiary animate-pulse",
 };

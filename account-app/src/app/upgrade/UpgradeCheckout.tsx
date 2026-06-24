@@ -39,7 +39,7 @@ export function UpgradeCheckout({
         </p>
         <a
           href="/dashboard"
-          className="inline-flex w-fit items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-fuchsia-bright"
+          className="inline-flex w-fit items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink transition-colors hover:bg-fuchsia-bright"
         >
           Open dashboard →
         </a>

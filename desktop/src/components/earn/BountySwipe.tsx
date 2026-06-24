@@ -127,7 +127,7 @@ export function BountySwipe({ bounties, onSave, onSkip, isLoading }: BountySwipe
         </button>
         <button
           onClick={() => handleSwipe("right")}
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-fuchsia text-white shadow-[0_0_24px_rgba(255,26,140,0.35)] transition-colors hover:bg-fuchsia-deep"
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-fuchsia text-ink shadow-[0_0_24px_rgba(255,26,140,0.35)] transition-colors hover:bg-fuchsia-deep"
           aria-label="Save"
         >
           ✓

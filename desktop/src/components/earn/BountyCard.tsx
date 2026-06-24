@@ -94,7 +94,7 @@ export function BountyCard({
           <span
             className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[var(--tracking-eyebrow)] ${
               hot
-                ? "border-fuchsia/40 bg-fuchsia text-white"
+                ? "border-fuchsia/40 bg-fuchsia text-ink"
                 : score >= 58
                   ? "border-line bg-paper text-ink"
                   : "border-line bg-paper text-text-tertiary"

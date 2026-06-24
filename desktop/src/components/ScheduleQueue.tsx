@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { openSmart as openExternal } from "../lib/openSmart";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw } from "./icons/BrandGlyphs";
 import { backend, type ScheduleDto } from "../lib/backend";
 import { getCachedLicenseJwt, requireCachedLicenseJwtOrThrow } from "../lib/authStorage";
 import { sidecar, humanError } from "../lib/sidecar";
