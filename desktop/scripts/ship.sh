@@ -182,6 +182,57 @@ for TARGET in darwin-x86_64 darwin-aarch64; do
   done
 done
 
+# Windows + Linux manifest verification (added 2026-06-24 — Sprint C).
+# These targets are only present once the multi-platform release CI has
+# uploaded artifacts for them. We do a SOFT check (warn but don't fail) so
+# a Mac-only hotfix ship doesn't get blocked by a missing Windows leg.
+# Promote to hard-required once Windows EV cert + Linux pipeline are stable.
+verify_manifest_soft() {
+  local host_label="$1" url="$2"
+  local response reported
+  response="$(curl -sS --max-time 15 "$url" 2>/dev/null || true)"
+  if [ -z "$response" ]; then
+    echo "${C_DIM}⚠ $host_label unreachable or empty (skipped)${C_END}"
+    return 0
+  fi
+  reported="$(echo "$response" | jq -r '.version // empty' 2>/dev/null || true)"
+  if [ -z "$reported" ]; then
+    echo "${C_DIM}⚠ $host_label no .version field (target not yet wired) — skipped${C_END}"
+    return 0
+  fi
+  if [ "$reported" != "$VERSION" ]; then
+    echo "${C_ERR}⚠ $host_label reports $reported, expected $VERSION${C_END}"
+    echo "  ${C_DIM}This may mean the windows/linux job didn't finish, or the manifest hasn't been updated yet.${C_END}"
+    return 0
+  fi
+  ok "$host_label → $VERSION"
+}
+
+step "Soft-checking Windows + Linux manifest entries"
+for TARGET in windows-x86_64 linux-x86_64; do
+  URL="$PROXY_BASE/latest.json?target=$TARGET&current_version=0.0.0"
+  verify_manifest_soft "$PROXY_BASE [$TARGET]" "$URL"
+done
+
+# Optional asset-presence check against the latest GH release. When `gh` is
+# installed + authed, list the release assets and confirm Windows + Linux
+# bundles are attached. Soft-fail — don't block ship if gh isn't present.
+if command -v gh >/dev/null 2>&1; then
+  step "Checking GH release assets for $VERSION"
+  ASSETS="$(gh release view "v$VERSION" -R Powstit/liquidclips --json assets --jq '.assets[].name' 2>/dev/null || true)"
+  if [ -n "$ASSETS" ]; then
+    for pattern in "Liquid.Clips_.*aarch64.dmg" "Liquid.Clips_.*x86_64.dmg" "-setup.exe" "\\.msi" "\\.deb" "\\.AppImage"; do
+      if echo "$ASSETS" | grep -Eq "$pattern"; then
+        ok "asset matches /$pattern/"
+      else
+        echo "${C_DIM}⚠ no asset matches /$pattern/ — platform may have failed in CI${C_END}"
+      fi
+    done
+  else
+    echo "${C_DIM}(no draft release v$VERSION yet, or gh not authed — skipping asset check)${C_END}"
+  fi
+fi
+
 # ── push to origin so the commit + version bump are durable ─────────────
 # Push is best-effort: the ship has already landed on the live manifest
 # (verified above) and the artifact is on the backend volume — customers

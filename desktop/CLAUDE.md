@@ -80,6 +80,72 @@ bash scripts/bump_patch.sh               # bump patch version in package.json + 
 
 Apple cert is in login keychain (`Developer ID Application: daniel diyepriye dokubo (KT68NGT4LX)`) for local builds. CI signs with the imported Developer ID cert, strips resource forks before signing, notarizes the DMG, staples it, and uploads the updater artifacts to a draft GitHub release.
 
+## Windows + Linux release path
+
+Added 2026-06-24 (Sprint C — multi-platform launch). Until this sprint, only
+macOS (`aarch64` + `x86_64`) shipped from `.github/workflows/release.yml`; the
+marketing site funnelled Windows + Linux visitors into a `mailto:` dead-end
+("Email us and we'll notify you when the X build is ready"). The release CI
+now produces installers for all three OSes.
+
+### Matrix
+
+| os_kind | runner | rust_target | bundles | signing |
+|---|---|---|---|---|
+| `mac` | `macos-latest` (arm64) | `aarch64-apple-darwin` | `.dmg`, `.app.tar.gz` | Apple Developer ID + notarized (IG-013) |
+| `mac` | `macos-15-intel` | `x86_64-apple-darwin` | `.dmg`, `.app.tar.gz` | Apple Developer ID + notarized (IG-013) |
+| `windows` | `windows-latest` | `x86_64-pc-windows-msvc` | `-setup.exe` (NSIS), `.msi` (WiX) | **unsigned** until EV cert procured |
+| `linux` | `ubuntu-latest` | `x86_64-unknown-linux-gnu` | `.deb`, `.AppImage` | n/a (AppImage portable; .deb unsigned) |
+
+Apple-specific steps are gated `if: matrix.target.os_kind == 'mac'` so Windows
++ Linux runners skip cert import, codesign, notarytool, and stapler entirely.
+IG-013 stays intact — the Apple chain is untouched on the mac legs.
+
+### Windows code-signing — Daniel blocker
+
+**Status:** no Windows code-signing cert is configured. There is no
+`WINDOWS_CERT_*` GitHub Actions secret on `Powstit/liquidclips` (verified
+2026-06-24). The Windows leg builds in two modes:
+
+* `if: vars.WINDOWS_CERT_AVAILABLE == 'true'` → signed build (will use the
+  cert thumbprint from `tauri.conf.json` `bundle.windows.certificateThumbprint`
+  once it's wired). Requires `WINDOWS_CERT_THUMBPRINT` secret + cert imported
+  into the runner keychain — neither exists yet.
+* `if: vars.WINDOWS_CERT_AVAILABLE != 'true'` (current state) → unsigned
+  build. The installer works; SmartScreen warns on first launch with
+  "Microsoft Defender SmartScreen prevented an unrecognized app from starting."
+  Users click **More info** → **Run anyway**. After ~3k installs, SmartScreen
+  builds reputation and stops warning.
+
+**What Daniel needs to do to remove the SmartScreen warning:**
+1. Procure an EV (Extended Validation) code-signing cert. Options:
+   - **DigiCert EV CodeSigning** — ~$300/yr. Hardware token shipped by post (HSM-backed).
+   - **SSL.com EV Code Signing** — ~$200/yr. Cloud-signing option available (no token).
+2. Export the cert thumbprint (sha1) — paste into `WINDOWS_CERT_THUMBPRINT`
+   GitHub Actions secret.
+3. Set repo variable `WINDOWS_CERT_AVAILABLE=true` (under Settings → Secrets
+   and variables → Actions → Variables tab).
+4. Stage the `.pfx` import step BEFORE the `build Windows installers (signed)`
+   step in `release.yml` (currently a stub gated behind the same variable).
+
+Until then, ship Windows unsigned and document the SmartScreen step on the
+download page — `DownloadMeta` in
+`liquidclips-marketing/src/components/DownloadCTA.tsx` already does this when
+Windows is detected.
+
+### Auto-updater multi-platform
+
+Tauri's updater is per-target — `latest.json` keys by `target` (e.g.
+`darwin-aarch64`, `windows-x86_64`, `linux-x86_64`). The release job emits
+updater artifacts per matrix leg (`*.nsis.zip` + `*.nsis.zip.sig` on Windows,
+`*.AppImage.tar.gz` + `*.AppImage.tar.gz.sig` on Linux); the backend
+`/updates/upload` endpoint accepts them at the matching target slot.
+
+`desktop/scripts/ship.sh` performs a SOFT manifest check for the new targets
+(`windows-x86_64`, `linux-x86_64`) — non-blocking until the new pipeline is
+stable. Once both legs ship cleanly on two consecutive releases, promote the
+soft check to hard-required.
+
 ### Auto-updater live rehearsal
 
 Run this once from a clean release candidate commit before v0.5.0. Do not reuse the tag after publishing; delete and recreate only while the draft release remains private.
