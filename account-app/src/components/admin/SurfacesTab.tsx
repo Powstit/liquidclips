@@ -15,6 +15,9 @@
 
 import { useEffect, useState } from "react";
 
+import { useDataSource } from "./_lib/useDataSource";
+import { LiveBadge } from "./_lib/LiveBadge";
+
 type ProbeState = "checking" | "ok" | "unknown";
 
 type Surface = {
@@ -100,27 +103,42 @@ const SURFACES: Surface[] = [
   },
 ];
 
-function SurfaceCard({ surface }: { surface: Surface }) {
+function SurfaceCard({
+  surface,
+  onProbe,
+}: {
+  surface: Surface;
+  onProbe: (id: string, status: "ok" | "fail" | "skip") => void;
+}) {
   const [state, setState] = useState<ProbeState>(surface.probeUrl ? "checking" : "unknown");
 
   useEffect(() => {
-    if (!surface.probeUrl) return;
+    if (!surface.probeUrl) {
+      onProbe(surface.id, "skip");
+      return;
+    }
     let cancelled = false;
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 6000);
     fetch(surface.probeUrl, { mode: "no-cors", signal: ctl.signal, cache: "no-store" })
       .then(() => {
-        if (!cancelled) setState("ok");
+        if (!cancelled) {
+          setState("ok");
+          onProbe(surface.id, "ok");
+        }
       })
       .catch(() => {
-        if (!cancelled) setState("unknown");
+        if (!cancelled) {
+          setState("unknown");
+          onProbe(surface.id, "fail");
+        }
       })
       .finally(() => clearTimeout(t));
     return () => {
       cancelled = true;
       ctl.abort();
     };
-  }, [surface.probeUrl]);
+  }, [surface.probeUrl, surface.id, onProbe]);
 
   const badge =
     state === "ok"
@@ -209,15 +227,19 @@ function SurfaceCard({ surface }: { surface: Surface }) {
 }
 
 export function SurfacesTab() {
+  const src = useDataSource();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div>
-        <h2 className="lc-display" style={{ fontSize: 20, fontWeight: 600, color: "var(--lc-fg)", margin: 0 }}>
-          Every page Liquid Clips runs
-        </h2>
-        <p className="lc-body" style={{ fontSize: 13, color: "var(--lc-fg-muted)", margin: "4px 0 0" }}>
-          Live reachability check + jump-to-manage for marketing, account, backend, desktop, Whop, and credentials.
-        </p>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <h2 className="lc-display" style={{ fontSize: 20, fontWeight: 600, color: "var(--lc-fg)", margin: 0 }}>
+            Every page Liquid Clips runs
+          </h2>
+          <p className="lc-body" style={{ fontSize: 13, color: "var(--lc-fg-muted)", margin: "4px 0 0" }}>
+            Live reachability check + jump-to-manage for marketing, account, backend, desktop, Whop, and credentials.
+          </p>
+        </div>
+        <LiveBadge state={src.state} />
       </div>
       <div
         style={{
@@ -227,7 +249,7 @@ export function SurfacesTab() {
         }}
       >
         {SURFACES.map((s) => (
-          <SurfaceCard key={s.id} surface={s} />
+          <SurfaceCard key={s.id} surface={s} onProbe={src.report} />
         ))}
       </div>
     </div>
