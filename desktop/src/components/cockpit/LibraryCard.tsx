@@ -141,7 +141,7 @@ export function LibraryCard({
           <span
             className={`inline-flex h-5 w-5 items-center justify-center rounded border ${
               selected
-                ? "border-fuchsia bg-fuchsia text-white"
+                ? "border-fuchsia bg-fuchsia text-ink"
                 : "border-ink-soft/60 bg-paper/40 text-ink-soft/80"
             }`}
           >
@@ -312,9 +312,9 @@ function StatusChip({
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] backdrop-blur-sm ${
         danger
-          ? "bg-[var(--color-danger)]/85 text-white shadow-[0_0_18px_rgba(220,38,38,0.5)]"
+          ? "bg-[var(--color-danger)]/85 text-ink shadow-[0_0_18px_rgba(220,38,38,0.5)]"
           : glow
-          ? "bg-fuchsia/85 text-white shadow-[0_0_18px_rgba(255,26,140,0.6)]"
+          ? "bg-fuchsia/85 text-ink shadow-[0_0_18px_rgba(255,26,140,0.6)]"
           : dim
           ? "bg-paper/85 text-ink/60 shadow-[0_2px_8px_rgba(0,0,0,0.25)]"
           : "bg-paper/95 text-ink shadow-[0_3px_12px_rgba(0,0,0,0.4)]"
@@ -368,7 +368,7 @@ export function RingButton({
       aria-label={ariaLabel}
       className={`inline-flex h-7 w-7 items-center justify-center rounded-full border bg-paper/70 backdrop-blur-md transition-colors ${
         active
-          ? "border-fuchsia bg-fuchsia text-white"
+          ? "border-fuchsia bg-fuchsia text-ink"
           : destructive
           ? "border-line text-text-secondary hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]"
           : "border-line text-text-secondary hover:border-fuchsia hover:text-fuchsia"

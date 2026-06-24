@@ -916,10 +916,10 @@ function CollapsedBody({
           // v0.7.50 — Background gradients retired for solid brand tokens
           // (brand kit: "One fuchsia accent. Period."). Custom dark off-
           // palette text colors (#241500, #190007) swapped for canonical
-          // text-paper / text-white per CTA pill spec.
+          // text-paper / text-ink per CTA pill spec.
           ctaIsPublish
             ? "bg-warn text-paper shadow-[0_8px_18px_-8px_rgba(245,158,11,0.7)]"
-            : "bg-fuchsia text-white shadow-[0_8px_18px_-8px_rgba(255,26,140,0.7)]",
+            : "bg-fuchsia text-ink shadow-[0_8px_18px_-8px_rgba(255,26,140,0.7)]",
           "disabled:opacity-40 disabled:shadow-none",
         )}
       >
@@ -1040,7 +1040,7 @@ function MasterCta({
         // v0.7.50 — Solid bg-fuchsia + canonical white CTA text replace
         // the gradient + custom dark hex. Glow shadow retained but normalised
         // to the canonical fuchsia hex.
-        "bg-fuchsia text-white shadow-[0_12px_24px_-12px_rgba(255,26,140,0.7),inset_0_1px_0_rgba(255,255,255,0.18)] hover:-translate-y-0.5",
+        "bg-fuchsia text-ink shadow-[0_12px_24px_-12px_rgba(255,26,140,0.7),inset_0_1px_0_rgba(255,255,255,0.18)] hover:-translate-y-0.5",
         "disabled:bg-line/20 disabled:text-text-tertiary disabled:shadow-none disabled:cursor-not-allowed disabled:translate-y-0",
       )}
     >
@@ -1289,7 +1289,7 @@ function SchedulePopoverInline({
                   className={cn(
                     "rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em]",
                     on
-                      ? "border-fuchsia bg-fuchsia text-white"
+                      ? "border-fuchsia bg-fuchsia text-ink"
                       : "border-line bg-paper text-text-tertiary",
                   )}
                 >
@@ -1349,7 +1349,7 @@ function SchedulePopoverInline({
             type="button"
             onClick={() => onApply([...picked], when)}
             disabled={busy || picked.size === 0}
-            className="w-full rounded bg-fuchsia px-3 py-2 font-sans text-[12px] font-semibold text-white disabled:opacity-50"
+            className="w-full rounded bg-fuchsia px-3 py-2 font-sans text-[12px] font-semibold text-ink disabled:opacity-50"
           >
             {busy ? "…" : forcedNow ? "Publish" : "Schedule"} {picked.size} channel
             {picked.size === 1 ? "" : "s"}
@@ -1395,7 +1395,7 @@ function CaptionStylePopover({
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.08em]",
                 active
-                  ? "border-fuchsia bg-fuchsia text-white"
+                  ? "border-fuchsia bg-fuchsia text-ink"
                   : "border-line bg-paper text-ink-soft hover:border-fuchsia",
               )}
             >

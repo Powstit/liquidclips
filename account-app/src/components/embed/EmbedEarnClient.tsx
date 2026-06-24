@@ -304,7 +304,7 @@ function ReconnectPanel({ onRetry }: { onRetry: () => void }) {
         type="button"
         data-testid="embed-reconnect-cta"
         onClick={onRetry}
-        className="rounded-full border border-fuchsia bg-fuchsia px-5 py-2.5 font-mono text-[12px] uppercase tracking-[0.10em] text-white shadow-[0_0_0_1px_rgba(255,26,140,0.3),0_8px_28px_-12px_rgba(255,26,140,0.55)] transition-all hover:bg-fuchsia/90 focus:outline-none focus:ring-2 focus:ring-fuchsia/40"
+        className="rounded-full border border-fuchsia bg-fuchsia px-5 py-2.5 font-mono text-[12px] uppercase tracking-[0.10em] text-ink shadow-[0_0_0_1px_rgba(255,26,140,0.3),0_8px_28px_-12px_rgba(255,26,140,0.55)] transition-all hover:bg-fuchsia/90 focus:outline-none focus:ring-2 focus:ring-fuchsia/40"
       >
         Retry →
       </button>
@@ -400,7 +400,7 @@ function ConnectionBadge({ status }: { status: WhopLinkStatus }) {
             href="https://whop.com/liquidclips"
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-white transition-colors hover:bg-fuchsia-bright"
+            className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:bg-fuchsia-bright"
           >
             Sign up via Whop →
           </a>

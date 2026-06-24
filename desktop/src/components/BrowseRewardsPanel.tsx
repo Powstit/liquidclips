@@ -197,7 +197,7 @@ export function BrowseRewardsPanel() {
           type="button"
           onClick={() => void go()}
           disabled={busy}
-          className="inline-flex h-7 items-center rounded-md bg-fuchsia px-3 font-mono text-[10px] uppercase tracking-[0.12em] text-white transition-colors hover:bg-fuchsia-bright disabled:opacity-50"
+          className="inline-flex h-7 items-center rounded-md bg-fuchsia px-3 font-mono text-[10px] uppercase tracking-[0.12em] text-ink transition-colors hover:bg-fuchsia-bright disabled:opacity-50"
         >
           {busy ? "…" : "Go"}
         </button>
@@ -219,7 +219,7 @@ export function BrowseRewardsPanel() {
           onClick={() => void useInWorkspace()}
           disabled={busy}
           title="Copy URL, close browser, hand off to workspace import"
-          className="inline-flex h-7 items-center gap-1 rounded-md border border-fuchsia/50 bg-fuchsia/10 px-2 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia transition-colors enabled:hover:bg-fuchsia enabled:hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+          className="inline-flex h-7 items-center gap-1 rounded-md border border-fuchsia/50 bg-fuchsia/10 px-2 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia transition-colors enabled:hover:bg-fuchsia enabled:hover:text-ink disabled:cursor-not-allowed disabled:opacity-35"
         >
           <SendHorizontal size={12} />
           Use

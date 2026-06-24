@@ -2072,7 +2072,7 @@ export default function App() {
           {signedIn === false && (
             <button
               onClick={() => setView({ kind: "first-run" })}
-              className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-fuchsia-soft/30 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep transition-colors hover:bg-fuchsia hover:text-white"
+              className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia bg-fuchsia-soft/30 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-fuchsia-deep transition-colors hover:bg-fuchsia hover:text-ink"
               aria-label="Sign in to Liquid Clips"
             >
               <LogIn className="h-3.5 w-3.5" strokeWidth={2} />
@@ -2552,7 +2552,7 @@ export default function App() {
                     m.openUpgradeWhenSignedIn(),
                   );
                 }}
-                className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-white hover:bg-fuchsia-bright"
+                className="rounded-full bg-fuchsia px-5 py-2.5 font-sans text-[14px] font-medium text-ink hover:bg-fuchsia-bright"
               >
                 Upgrade to Solo · $29.99/mo
               </button>
@@ -2744,7 +2744,7 @@ export default function App() {
           </div>
           <button
             onClick={() => { setNeedsActivation(false); setView({ kind: "first-run" }); }}
-            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
+            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-ink hover:bg-fuchsia-bright"
           >
             Sign in
           </button>
@@ -2775,7 +2775,7 @@ export default function App() {
               }
             }}
             disabled={engineRestarting}
-            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright disabled:opacity-50"
+            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-ink hover:bg-fuchsia-bright disabled:opacity-50"
           >
             {engineRestarting ? "Restarting…" : "Restart Liquid Clips"}
           </button>
@@ -2792,7 +2792,7 @@ export default function App() {
               if (updateBanner.kind !== "available") return;
               await applyUpdate(updateBanner.update, setUpdateBanner);
             }}
-            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
+            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-ink hover:bg-fuchsia-bright"
           >
             Install + relaunch
           </button>
@@ -2856,7 +2856,7 @@ export default function App() {
                       );
                     }
                   }}
-                  className="mt-4 inline-flex items-center gap-2 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-semibold text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
+                  className="mt-4 inline-flex items-center gap-2 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-semibold text-ink transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)]"
                 >
                   Restart now
                 </button>
@@ -2876,7 +2876,7 @@ export default function App() {
               setUpdateBanner({ kind: "checking" });
               setUpdateBanner(await checkForUpdate());
             }}
-            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
+            className="rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-ink hover:bg-fuchsia-bright"
           >
             Retry
           </button>
@@ -3317,7 +3317,7 @@ function BrowserEdgeTab({ open }: { open: boolean }) {
       onClick={() => void toggle()}
       disabled={busy}
       title={open ? "Close browser" : "Open browser"}
-      className="fixed top-1/2 z-40 flex -translate-y-1/2 items-center gap-2 rounded-l-xl border border-r-0 border-fuchsia/70 bg-fuchsia px-2.5 py-4 font-mono text-[10px] uppercase tracking-[0.14em] text-white shadow-[0_14px_40px_rgba(255,26,140,0.3)] transition-[right,opacity,background-color] duration-200 hover:bg-fuchsia-bright disabled:opacity-50"
+      className="fixed top-1/2 z-40 flex -translate-y-1/2 items-center gap-2 rounded-l-xl border border-r-0 border-fuchsia/70 bg-fuchsia px-2.5 py-4 font-mono text-[10px] uppercase tracking-[0.14em] text-ink shadow-[0_14px_40px_rgba(255,26,140,0.3)] transition-[right,opacity,background-color] duration-200 hover:bg-fuchsia-bright disabled:opacity-50"
       style={{ right: open ? 566 : 0, writingMode: "vertical-rl" }}
     >
       {busy ? "…" : open ? "Close" : "Browse"}

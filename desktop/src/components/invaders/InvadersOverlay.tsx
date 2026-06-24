@@ -190,7 +190,7 @@ export function InvadersOverlay() {
               </span>
               <button
                 onClick={handleReplay}
-                className="rounded-full bg-fuchsia px-4 py-2 font-mono text-[12px] text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] active:scale-[0.98]"
+                className="rounded-full bg-fuchsia px-4 py-2 font-mono text-[12px] text-ink transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] active:scale-[0.98]"
               >
                 Play again ▶
               </button>

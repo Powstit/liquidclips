@@ -516,14 +516,14 @@ function UndoToast({
     >
       <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-line bg-paper-elev/95 px-4 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur-md">
         <Trash2 className="h-3.5 w-3.5 shrink-0 text-text-tertiary" strokeWidth={2.2} />
-        <span className="max-w-[280px] truncate font-sans text-[12px] text-white">
+        <span className="max-w-[280px] truncate font-sans text-[12px] text-ink">
           Deleted{" "}
-          <span className="font-medium text-white">{project.source_filename}</span>
+          <span className="font-medium text-ink">{project.source_filename}</span>
         </span>
         <button
           type="button"
           onClick={onUndo}
-          className="inline-flex items-center gap-1 rounded-full bg-fuchsia px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-white transition-colors hover:bg-fuchsia-bright"
+          className="inline-flex items-center gap-1 rounded-full bg-fuchsia px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-ink transition-colors hover:bg-fuchsia-bright"
         >
           <RotateCcw className="h-3 w-3" strokeWidth={2.4} />
           Undo
@@ -611,7 +611,7 @@ function ConfirmBulkDelete({
             type="button"
             onClick={onConfirm}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-danger)] px-4 py-2 font-sans text-[13px] font-medium text-white transition-colors hover:bg-[#B91C1C] disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-danger)] px-4 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:bg-[#B91C1C] disabled:opacity-60"
           >
             <Trash2 className="h-3.5 w-3.5" strokeWidth={2.2} />
             {busy ? "Deleting…" : `Delete ${count}`}
@@ -706,7 +706,7 @@ function ConfirmDelete({
             type="button"
             onClick={onConfirm}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-danger)] px-4 py-2 font-sans text-[13px] font-medium text-white transition-colors hover:bg-[#B91C1C] disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-danger)] px-4 py-2 font-sans text-[13px] font-medium text-ink transition-colors hover:bg-[#B91C1C] disabled:opacity-60"
           >
             <Trash2 className="h-3.5 w-3.5" strokeWidth={2.2} />
             {busy ? "Deleting…" : "Delete project"}

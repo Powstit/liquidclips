@@ -441,7 +441,7 @@ export function DirectPublishQueue({
                 )}
                 <button
                   onClick={startBulkSchedule}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-white hover:bg-fuchsia-bright"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-medium text-ink hover:bg-fuchsia-bright"
                   title="Walks the queue clip-by-clip — pick a time + caption for each."
                 >
                   schedule all ({queue.length})

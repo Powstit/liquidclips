@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { openSmart as openExternal } from "../../lib/openSmart";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { ExternalLink, PanelRightOpen, Check, Copy } from "lucide-react";
+import { PanelRightOpen, Copy } from "lucide-react";
+import { ExternalLink, Check } from "../icons/BrandGlyphs";
 import type { WhopBounty } from "../../lib/sidecar";
 import { PlatformIcon } from "../PlatformIcon";
 import { allowedPlatforms, formatPayout, whopBountyUrl } from "./types";

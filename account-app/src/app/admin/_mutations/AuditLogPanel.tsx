@@ -49,7 +49,7 @@ export function AuditLogPanel({ refreshKey }: { refreshKey: number }) {
   }, [rows]);
 
   return (
-    <section className="rounded-3xl border border-neutral-200 bg-white p-5">
+    <section className="rounded-3xl border border-neutral-200 bg-ink p-5">
       <header className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-500">
@@ -62,7 +62,7 @@ export function AuditLogPanel({ refreshKey }: { refreshKey: number }) {
         <button
           type="button"
           onClick={load}
-          className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-neutral-800 hover:border-pink-500"
+          className="rounded-full border border-neutral-300 bg-ink px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-neutral-800 hover:border-pink-500"
         >
           refresh
         </button>
@@ -73,12 +73,12 @@ export function AuditLogPanel({ refreshKey }: { refreshKey: number }) {
           value={filterActor}
           onChange={(e) => setFilterActor(e.target.value)}
           placeholder="actor email contains…"
-          className="rounded-xl border border-neutral-300 bg-white px-3 py-2 font-mono text-[11px] text-neutral-900 placeholder:text-neutral-400 focus:border-pink-500 focus:outline-none"
+          className="rounded-xl border border-neutral-300 bg-ink px-3 py-2 font-mono text-[11px] text-neutral-900 placeholder:text-neutral-400 focus:border-pink-500 focus:outline-none"
         />
         <select
           value={filterAction}
           onChange={(e) => setFilterAction(e.target.value)}
-          className="rounded-xl border border-neutral-300 bg-white px-3 py-2 font-mono text-[11px] text-neutral-900 focus:border-pink-500 focus:outline-none"
+          className="rounded-xl border border-neutral-300 bg-ink px-3 py-2 font-mono text-[11px] text-neutral-900 focus:border-pink-500 focus:outline-none"
         >
           <option value="">all actions</option>
           {actions.map((a) => (
@@ -91,7 +91,7 @@ export function AuditLogPanel({ refreshKey }: { refreshKey: number }) {
           value={filterTarget}
           onChange={(e) => setFilterTarget(e.target.value)}
           placeholder="target id exact match…"
-          className="rounded-xl border border-neutral-300 bg-white px-3 py-2 font-mono text-[11px] text-neutral-900 placeholder:text-neutral-400 focus:border-pink-500 focus:outline-none"
+          className="rounded-xl border border-neutral-300 bg-ink px-3 py-2 font-mono text-[11px] text-neutral-900 placeholder:text-neutral-400 focus:border-pink-500 focus:outline-none"
         />
       </div>
 

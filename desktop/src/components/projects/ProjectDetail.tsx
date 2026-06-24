@@ -529,7 +529,7 @@ function ProjectDetailUnlocked({
           <button
             type="button"
             onClick={() => onResume(project)}
-            className="inline-flex h-11 items-center gap-2 rounded-full bg-fuchsia px-6 font-sans text-sm font-semibold text-white shadow-[var(--glow-md)] transition-all hover:bg-fuchsia-bright focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            className="inline-flex h-11 items-center gap-2 rounded-full bg-fuchsia px-6 font-sans text-sm font-semibold text-ink shadow-[var(--glow-md)] transition-all hover:bg-fuchsia-bright focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           >
             <Play className="h-4 w-4" strokeWidth={2.2} />
             {/* v0.7.77 Sprint 2 V5 — "Resume" implies prior work; for
@@ -722,7 +722,7 @@ function ProjectDetailUnlocked({
               <button
                 type="button"
                 onClick={() => void onAddFile()}
-                className="mt-6 inline-flex h-11 items-center gap-2 rounded-full bg-fuchsia px-6 font-sans text-sm font-semibold text-white shadow-[var(--glow-md)] transition-all hover:bg-fuchsia-bright focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+                className="mt-6 inline-flex h-11 items-center gap-2 rounded-full bg-fuchsia px-6 font-sans text-sm font-semibold text-ink shadow-[var(--glow-md)] transition-all hover:bg-fuchsia-bright focus-visible:ring-2 focus-visible:ring-fuchsia focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
               >
                 <FilePlus className="h-4 w-4" strokeWidth={2.2} />
                 Or pick a file

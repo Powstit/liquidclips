@@ -10,7 +10,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { openSmart as openExternal } from "../../lib/openSmart";
-import { AlertTriangle, BarChart3, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { BarChart3, Loader2 } from "lucide-react";
+import { AlertTriangle, ExternalLink, RefreshCw } from "../icons/BrandGlyphs";
 import { PlatformIcon, type PlatformId } from "../PlatformIcon";
 import * as backend from "../../lib/backend";
 import { humanError } from "../../lib/sidecar";

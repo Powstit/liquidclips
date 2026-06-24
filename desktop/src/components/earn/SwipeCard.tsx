@@ -38,7 +38,7 @@ export function SwipeCard({ bounty, index, active, direction }: SwipeCardProps) 
       {/* Brand header */}
       <div className="flex items-center gap-3 px-5 pt-5">
         <div
-          className="grid h-10 w-10 place-items-center rounded-xl font-display text-[14px] font-bold text-white"
+          className="grid h-10 w-10 place-items-center rounded-xl font-display text-[14px] font-bold text-ink"
           style={{ backgroundColor: bounty.brand_color }}
         >
           {bounty.brand[0]}

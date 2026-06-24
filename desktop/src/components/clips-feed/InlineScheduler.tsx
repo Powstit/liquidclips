@@ -489,7 +489,7 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
     return (
       <button
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-semibold text-white shadow-[0_0_14px_rgba(255,26,140,0.4)] transition-all hover:bg-fuchsia-bright"
+        className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia px-4 py-1.5 font-sans text-[12px] font-semibold text-ink shadow-[0_0_14px_rgba(255,26,140,0.4)] transition-all hover:bg-fuchsia-bright"
       >
         <Send className="h-3 w-3" />
         Schedule
@@ -799,7 +799,7 @@ export function InlineScheduler({ clip, projectTitle, compact: _compact = false 
                 : "Pick at least one platform to schedule to."
               : undefined
         }
-        className="mt-1 inline-flex items-center justify-center gap-2 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-semibold text-white shadow-[0_0_22px_rgba(255,26,140,0.5)] transition-all hover:bg-fuchsia-bright disabled:opacity-40"
+        className="mt-1 inline-flex items-center justify-center gap-2 rounded-full bg-fuchsia px-5 py-2 font-sans text-[13px] font-semibold text-ink shadow-[0_0_22px_rgba(255,26,140,0.5)] transition-all hover:bg-fuchsia-bright disabled:opacity-40"
       >
         {status.kind === "busy" ? (
           <>

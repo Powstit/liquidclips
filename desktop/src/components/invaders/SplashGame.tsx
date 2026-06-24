@@ -143,7 +143,7 @@ export function SplashGame({
         <span className="opacity-60">·</span>
         <span className="tabular-nums">BEST {best}</span>
         {newBest && (
-          <span className="rounded-full border border-fuchsia bg-fuchsia px-2 py-0.5 text-[10px] font-medium uppercase tracking-[var(--tracking-eyebrow)] text-white shadow-[var(--glow-md)] animate-pulse">
+          <span className="rounded-full border border-fuchsia bg-fuchsia px-2 py-0.5 text-[10px] font-medium uppercase tracking-[var(--tracking-eyebrow)] text-ink shadow-[var(--glow-md)] animate-pulse">
             new best!
           </span>
         )}
@@ -177,7 +177,7 @@ export function SplashGame({
             </span>
             <button
               onClick={handleReplay}
-              className="rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[11px] text-white transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] active:scale-[0.98]"
+              className="rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[11px] text-ink transition-all hover:bg-fuchsia-bright hover:shadow-[var(--glow-md)] active:scale-[0.98]"
             >
               Play again ▶
             </button>
@@ -198,7 +198,7 @@ export function SplashGame({
         disabled={!continueLive}
         className={`rounded-full px-6 py-2.5 font-sans text-[14px] font-semibold transition-all ${
           continueLive
-            ? "bg-fuchsia text-white shadow-[var(--glow-md)] hover:bg-fuchsia-bright hover:shadow-[var(--glow-lg)] animate-pulse"
+            ? "bg-fuchsia text-ink shadow-[var(--glow-md)] hover:bg-fuchsia-bright hover:shadow-[var(--glow-lg)] animate-pulse"
             : "border border-white/40 bg-black/40 text-white/60 backdrop-blur-sm cursor-wait"
         }`}
       >

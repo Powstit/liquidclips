@@ -424,7 +424,7 @@ export function ReactionControls({
                   isLocked
                     ? "border-fuchsia-soft bg-fuchsia-soft/15 text-fuchsia-deep hover:border-fuchsia hover:bg-fuchsia-soft/30"
                     : active
-                    ? "border-fuchsia bg-fuchsia text-white shadow-[var(--glow-sm)]"
+                    ? "border-fuchsia bg-fuchsia text-ink shadow-[var(--glow-sm)]"
                     : "border-line bg-paper text-ink hover:border-fuchsia hover:bg-fuchsia-soft/20"
                 } disabled:opacity-50`}
               >
@@ -560,7 +560,7 @@ export function ReactionControls({
                       compact ? "px-2 py-1" : "px-3 py-2"
                     } font-sans ${compact ? "text-[11px]" : "text-[12px]"} font-medium transition-colors ${
                       on
-                        ? "border-fuchsia bg-fuchsia text-white"
+                        ? "border-fuchsia bg-fuchsia text-ink"
                         : "border-line bg-paper text-text-secondary hover:border-fuchsia hover:text-ink"
                     }`}
                   >
@@ -615,7 +615,7 @@ export function ReactionControls({
                 compact ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-[11px]"
               } ${
                 hasPendingChanges && !busy
-                  ? "border-fuchsia bg-fuchsia text-white hover:bg-fuchsia-deep"
+                  ? "border-fuchsia bg-fuchsia text-ink hover:bg-fuchsia-deep"
                   : "border-line bg-paper text-text-tertiary opacity-50"
               }`}
             >

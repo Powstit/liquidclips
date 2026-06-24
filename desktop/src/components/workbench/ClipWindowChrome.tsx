@@ -64,7 +64,7 @@ export function ClipWindowChrome({
         onClick={handleTick}
         className={`grid h-4 w-4 shrink-0 place-items-center rounded-[3px] border transition-colors ${
           selected
-            ? "border-fuchsia bg-fuchsia text-white"
+            ? "border-fuchsia bg-fuchsia text-ink"
             : "border-line bg-paper text-transparent hover:border-fuchsia"
         }`}
       >
