@@ -19,15 +19,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Two parallel jobs — each runs natively on its architecture's runner so
-        # the brew sidecar (ffmpeg, ffprobe) is the matching arch. Apple Silicon
-        # users get _aarch64.dmg, Intel users get _x86_64.dmg. Both DMGs upload
-        # to the same release tag.
+        # Per-arch native jobs. Mac entries run on Apple runners and follow the
+        # IG-013 notarisation chain (codesign + notarytool + stapler). Windows
+        # + Linux entries (added 2026-06-24 Sprint C — multi-platform launch)
+        # are file-disjoint from the Apple path: every Apple-specific step is
+        # gated `if: matrix.target.os_kind == 'mac'` so Windows/Linux runners
+        # skip them entirely. Windows ships UNSIGNED until Daniel procures an
+        # EV cert — see desktop/CLAUDE.md "Windows + Linux release path".
         target:
           - runner: macos-latest
             arch: aarch64
             rust_target: aarch64-apple-darwin
             slug: aarch64
+            os_kind: mac
           # GitHub deprecated/retired macos-13 Intel capacity; use the
           # supported standard Intel image so x86_64 releases do not sit
           # queued until the run is cancelled.
@@ -35,6 +39,17 @@ jobs:
             arch: x86_64
             rust_target: x86_64-apple-darwin
             slug: x86_64
+            os_kind: mac
+          - runner: windows-latest
+            arch: x86_64
+            rust_target: x86_64-pc-windows-msvc
+            slug: windows-x86_64
+            os_kind: windows
+          - runner: ubuntu-latest
+            arch: x86_64
+            rust_target: x86_64-unknown-linux-gnu
+            slug: linux-x86_64
+            os_kind: linux
     runs-on: ${{ matrix.target.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -44,17 +59,48 @@ jobs:
         with:
           node-version: lts/*
 
-      - name: install Rust stable
+      - name: install Rust stable (mac — both Apple targets for lipo)
+        if: matrix.target.os_kind == 'mac'
         uses: dtolnay/rust-toolchain@stable
         with:
           # Universal builds need BOTH targets so lipo can combine them.
           targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: install Rust stable (windows/linux — single native target)
+        if: matrix.target.os_kind != 'mac'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target.rust_target }}
+
+      # Linux Tauri needs system libs (webkit2gtk, librsvg, libayatana-appindicator
+      # for tray, libsoup for HTTP, libssl). AppImage bundling also needs file +
+      # squashfs-tools. Run BEFORE npm install so any native-build node modules
+      # have their headers available.
+      - name: install Linux Tauri system dependencies
+        if: matrix.target.os_kind == 'linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev \
+            libssl-dev \
+            patchelf \
+            file \
+            squashfs-tools \
+            build-essential \
+            curl \
+            wget
 
       - name: install frontend dependencies
         run: npm install
         working-directory: ./desktop
 
       - name: verify updater signing key matches tauri pubkey
+        if: matrix.target.os_kind == 'mac'
         working-directory: ./desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -83,7 +129,8 @@ jobs:
       # bundle.resources entries in tauri.conf.json hard-require these paths.
       # Falling back to brew + huggingface_hub keeps the workflow
       # self-contained (no third-party CDN auth, no LFS).
-      - name: fetch ffmpeg + ffprobe (sidecar binaries)
+      - name: fetch ffmpeg + ffprobe (mac sidecar binaries via brew)
+        if: matrix.target.os_kind == 'mac'
         run: |
           set -euo pipefail
           mkdir -p desktop/python-sidecar/bin
@@ -97,6 +144,43 @@ jobs:
           chmod +x desktop/python-sidecar/bin/ffmpeg desktop/python-sidecar/bin/ffprobe
           file desktop/python-sidecar/bin/ffmpeg
           ls -lah desktop/python-sidecar/bin/
+
+      - name: fetch ffmpeg + ffprobe (linux sidecar binaries via apt)
+        if: matrix.target.os_kind == 'linux'
+        run: |
+          set -euo pipefail
+          mkdir -p desktop/python-sidecar/bin
+          sudo apt-get install -y ffmpeg
+          cp -f "$(command -v ffmpeg)"  desktop/python-sidecar/bin/ffmpeg
+          cp -f "$(command -v ffprobe)" desktop/python-sidecar/bin/ffprobe
+          chmod +x desktop/python-sidecar/bin/ffmpeg desktop/python-sidecar/bin/ffprobe
+          file desktop/python-sidecar/bin/ffmpeg
+          ls -lah desktop/python-sidecar/bin/
+
+      - name: fetch ffmpeg + ffprobe (windows sidecar binaries via gyan.dev)
+        if: matrix.target.os_kind == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path desktop/python-sidecar/bin | Out-Null
+          # gyan.dev publishes static ffmpeg builds for Windows under a stable
+          # "essentials" name. The release_xxx archive contains ffmpeg.exe +
+          # ffprobe.exe at known paths. We pin to the "essentials" stable build
+          # so future ffmpeg majors don't silently change CLI flags.
+          $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+          $zip = "$env:RUNNER_TEMP\ffmpeg.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath "$env:RUNNER_TEMP\ffmpeg-extracted" -Force
+          $exe = Get-ChildItem -Path "$env:RUNNER_TEMP\ffmpeg-extracted" -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+          $probe = Get-ChildItem -Path "$env:RUNNER_TEMP\ffmpeg-extracted" -Recurse -Filter "ffprobe.exe" | Select-Object -First 1
+          if (-not $exe -or -not $probe) { throw "ffmpeg/ffprobe not found in archive" }
+          Copy-Item -Force $exe.FullName desktop/python-sidecar/bin/ffmpeg.exe
+          Copy-Item -Force $probe.FullName desktop/python-sidecar/bin/ffprobe.exe
+          # Tauri bundle.resources still references unsuffixed names; mirror
+          # them too so the bundler finds the file regardless of platform path.
+          Copy-Item -Force $exe.FullName desktop/python-sidecar/bin/ffmpeg
+          Copy-Item -Force $probe.FullName desktop/python-sidecar/bin/ffprobe
+          Get-ChildItem desktop/python-sidecar/bin/
 
       - name: fetch faster-whisper-tiny model
         run: |
@@ -119,6 +203,7 @@ jobs:
       # xattr strip: prevents codesign "resource fork" failure on bundled files
       # that were fetched from brew/huggingface and carry macOS quarantine/Finder metadata.
       - name: strip extended attributes from bundled files
+        if: matrix.target.os_kind == 'mac'
         run: |
           set -euo pipefail
           xattr -cr desktop/python-sidecar/bin/
@@ -136,6 +221,7 @@ jobs:
           echo "✓ xattrs stripped"
 
       - name: import Developer ID certificate
+        if: matrix.target.os_kind == 'mac'
         uses: apple-actions/import-codesign-certs@v3
         with:
           p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
@@ -147,6 +233,7 @@ jobs:
       # though the cert is imported. Force the keychain to the front of the
       # user search list and dump identities so we can confirm what's loaded.
       - name: register codesign keychain + verify identity
+        if: matrix.target.os_kind == 'mac'
         run: |
           set -euo pipefail
           security list-keychains -d user -s signing_temp.keychain login.keychain
@@ -163,6 +250,7 @@ jobs:
       # into the bundle. Tolerant of missing optional binaries (e.g.
       # junior-face-detect is a local-only Swift binary, not fetched in CI).
       - name: sign sidecar helper binaries
+        if: matrix.target.os_kind == 'mac'
         run: |
           set -euo pipefail
           IDENTITY='Developer ID Application: daniel diyepriye dokubo (KT68NGT4LX)'
@@ -193,6 +281,7 @@ jobs:
           echo "✓ sidecar binaries signed"
 
       - name: build signed macOS app
+        if: matrix.target.os_kind == 'mac'
         working-directory: ./desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -206,6 +295,7 @@ jobs:
         run: npm run tauri -- build --target ${{ matrix.target.rust_target }} --bundles app
 
       - name: repair-sign macOS app bundle
+        if: matrix.target.os_kind == 'mac'
         run: |
           set -euo pipefail
           APP=$(find desktop/src-tauri/target -path '*/bundle/macos/Liquid Clips.app' -type d | head -1)
@@ -216,6 +306,7 @@ jobs:
           desktop/scripts/sign-clean-macos-app.sh "$APP"
 
       - name: rebuild DMG + updater tarball from repaired app
+        if: matrix.target.os_kind == 'mac'
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -230,6 +321,7 @@ jobs:
           desktop/scripts/package-signed-macos-artifacts.sh "$APP" ${{ matrix.target.slug }}
 
       - name: notarize and staple .dmg
+        if: matrix.target.os_kind == 'mac'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
@@ -245,6 +337,7 @@ jobs:
           desktop/scripts/notarize.sh "$DMG"
 
       - name: verify notarized installer
+        if: matrix.target.os_kind == 'mac'
         run: |
           set -euo pipefail
           DMG=$(find desktop/src-tauri/target -path '*/bundle/dmg/Liquid.Clips_*.dmg' -type f | head -1)
@@ -252,6 +345,86 @@ jobs:
           spctl --assess -vv --type install "$DMG"
           # Hard-require the staple ticket — without it, offline users hit Gatekeeper.
           xcrun stapler validate "$DMG"
+
+      # ── Windows build ────────────────────────────────────────────────────
+      # Tauri 2 supports both NSIS (consumer-friendly, smaller, classic
+      # installer) and MSI / WiX (enterprise-friendly, group-policy
+      # deployable). We ship BOTH so individual users grab .exe (nsis) and
+      # IT admins grab .msi.
+      #
+      # CODE-SIGNING: Gated behind the `WINDOWS_CERT_AVAILABLE` repo variable.
+      # When `true`, the signed-build step runs and Tauri's bundler picks up
+      # the cert via tauri.conf.json `windows.certificateThumbprint`. When
+      # NOT set (the current state — Daniel has not procured an EV cert),
+      # the unsigned-build step runs and SmartScreen warns on launch. Users
+      # click "More info" → "Run anyway". Documented on the download page +
+      # in desktop/CLAUDE.md.
+      - name: build Windows installers (signed)
+        if: matrix.target.os_kind == 'windows' && vars.WINDOWS_CERT_AVAILABLE == 'true'
+        working-directory: ./desktop
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          # cert thumbprint passed through tauri.conf.json windows.certificateThumbprint;
+          # exposed here so a future EV-cert import step can stage the .pfx into the
+          # runner's user store before bundling.
+          WINDOWS_CERT_THUMBPRINT: ${{ secrets.WINDOWS_CERT_THUMBPRINT }}
+        run: npm run tauri -- build --target ${{ matrix.target.rust_target }} --bundles nsis,msi
+
+      - name: build Windows installers (unsigned — SmartScreen will warn)
+        if: matrix.target.os_kind == 'windows' && vars.WINDOWS_CERT_AVAILABLE != 'true'
+        working-directory: ./desktop
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+        run: npm run tauri -- build --target ${{ matrix.target.rust_target }} --bundles nsis,msi
+
+      - name: verify Windows installers built
+        if: matrix.target.os_kind == 'windows'
+        shell: pwsh
+        run: |
+          $nsis = Get-ChildItem -Path desktop/src-tauri/target -Recurse -Filter "*-setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $msi = Get-ChildItem -Path desktop/src-tauri/target -Recurse -Filter "*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $nsis) { Write-Error "NSIS .exe not produced"; exit 1 }
+          if (-not $msi) { Write-Error "MSI not produced"; exit 1 }
+          Write-Output "nsis: $($nsis.FullName)"
+          Write-Output "msi:  $($msi.FullName)"
+
+      # ── Linux build ──────────────────────────────────────────────────────
+      # .deb for apt-installable consumer use (Debian/Ubuntu family).
+      # .AppImage for distro-agnostic portable use (anything glibc ≥ 2.31).
+      # No signing on Linux — AppImage embeds a sha, .deb is signed by the
+      # repo if hosted in one. We ship raw artifacts; users verify by sha
+      # alongside the release page.
+      - name: build Linux installers (deb + appimage)
+        if: matrix.target.os_kind == 'linux'
+        working-directory: ./desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+        run: npm run tauri -- build --target ${{ matrix.target.rust_target }} --bundles deb,appimage
+
+      - name: verify Linux installers built
+        if: matrix.target.os_kind == 'linux'
+        run: |
+          set -euo pipefail
+          DEB=$(find desktop/src-tauri/target -path '*/bundle/deb/*.deb' -type f | head -1 || true)
+          APPIMG=$(find desktop/src-tauri/target -path '*/bundle/appimage/*.AppImage' -type f | head -1 || true)
+          if [ -z "$DEB" ]; then echo "✗ .deb not produced" >&2; exit 1; fi
+          if [ -z "$APPIMG" ]; then echo "✗ .AppImage not produced" >&2; exit 1; fi
+          echo "deb:      $DEB"
+          echo "appimage: $APPIMG"
 
       - name: create draft GitHub release
         uses: softprops/action-gh-release@v2
@@ -263,11 +436,31 @@ jobs:
             **What's new**
             See [CHANGELOG.md](./CHANGELOG.md) for full details.
 
-            **Install**
+            **Install — Mac**
             1. Download `Liquid.Clips_*_aarch64.dmg` for Apple Silicon or `Liquid.Clips_*_x86_64.dmg` for Intel
             2. Open the DMG, drag **Liquid Clips** to **Applications**
             3. Double-click from Applications — the app is signed and notarized by Apple.
+
+            **Install — Windows**
+            1. Download `*-setup.exe` (NSIS, recommended) or `*.msi` (MSI, enterprise)
+            2. Run the installer. SmartScreen may warn ("Microsoft Defender SmartScreen prevented an unrecognized app from starting") — click **More info** → **Run anyway**. (We are working on an EV code-signing cert to remove this prompt.)
+            3. Launch **Liquid Clips** from the Start menu.
+
+            **Install — Linux**
+            1. Download `*.AppImage` (portable, no install) or `*.deb` (Debian/Ubuntu apt-installable)
+            2. AppImage: `chmod +x Liquid.Clips_*.AppImage && ./Liquid.Clips_*.AppImage`
+            3. .deb: `sudo apt install ./liquid-clips_*.deb`
           files: |
             desktop/src-tauri/target/**/bundle/dmg/Liquid.Clips_*.dmg
             desktop/src-tauri/target/**/bundle/macos/*.app.tar.gz
             desktop/src-tauri/target/**/bundle/macos/*.app.tar.gz.sig
+            desktop/src-tauri/target/**/bundle/nsis/*-setup.exe
+            desktop/src-tauri/target/**/bundle/nsis/*-setup.nsis.zip
+            desktop/src-tauri/target/**/bundle/nsis/*-setup.nsis.zip.sig
+            desktop/src-tauri/target/**/bundle/msi/*.msi
+            desktop/src-tauri/target/**/bundle/msi/*.msi.zip
+            desktop/src-tauri/target/**/bundle/msi/*.msi.zip.sig
+            desktop/src-tauri/target/**/bundle/deb/*.deb
+            desktop/src-tauri/target/**/bundle/appimage/*.AppImage
+            desktop/src-tauri/target/**/bundle/appimage/*.AppImage.tar.gz
+            desktop/src-tauri/target/**/bundle/appimage/*.AppImage.tar.gz.sig
