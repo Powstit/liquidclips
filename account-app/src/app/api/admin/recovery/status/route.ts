@@ -18,12 +18,25 @@ const BACKEND_URL =
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET(_req: NextRequest): Promise<Response> {
+function clientIp(req: NextRequest): string {
+  const fwd = req.headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0].trim();
+  const real = req.headers.get("x-real-ip");
+  if (real) return real;
+  return "unknown";
+}
+
+export async function GET(req: NextRequest): Promise<Response> {
   try {
+    const ip = clientIp(req);
     const res = await fetch(`${BACKEND_URL}/admin/recovery/status`, {
       method: "GET",
       headers: {
         "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "",
+        // Pass-through so backend's ip_allowlisted check sees the real
+        // client IP, not Vercel's edge proxy.
+        "x-forwarded-for": ip,
+        "x-real-ip": ip,
       },
       cache: "no-store",
     });
