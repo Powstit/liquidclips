@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-24
 **Session id:** d11d2b24-4ee6-48c4-8d62-09daf0dac363
-**Final main HEAD:** `f8c2030` (5 HQ-build branches merged + 2 patches)
+**Final main HEAD:** `499c7f3` (5 HQ-build branches merged + 2 patches + 9-fix ship-lens remediation pass)
 
 ## How to resume this exact conversation
 
@@ -77,13 +77,42 @@ And re-dispatch ship-lens via the Agent tool.
 
 ## Pending (per task list, not yet done)
 
+- **MORNING SPRINT (Daniel said "when i wake up we wire wallet and ship this app"):**
+  - Build wallet page per `/Users/dipdip/code/jnr/docs/WALLET_PAGE_SCOPE.md`
+  - Then ship (push HQ + remediation + wallet together)
 - #91 Whop submission POST scope
 - #92 Settings page completion
 - #93 First-run tile-tour
 - #105 Refactor agent scaffold (WHOP_AGENT_PERSONAS not 100 keys)
 - #107 Whop main-lead on /connect-desktop
 - Phase D · Full AI Terminal (Claude + Codex + Kimi, action buttons, cost dashboard)
-- Push / deploy decision (BLOCKED on Daniel's review + greenlight)
+
+## Resume command (morning)
+
+```bash
+cd /Users/dipdip/code/jnr && claude --resume d11d2b24-4ee6-48c4-8d62-09daf0dac363
+# Then say: "build wallet per docs/WALLET_PAGE_SCOPE.md, then seed onboarding rooms, then we ship"
+```
+
+## Tonight's saved artifacts (everything you need is on disk)
+
+- `docs/WALLET_PAGE_SCOPE.md` — full wallet page spec (~700 lines build, ~1.5h)
+- `docs/ONBOARDING_ROOMS_SCOPE.md` — 4 new rooms to add to seed script (~45 min)
+- `docs/BUG_LIST_2026-06-24.md` — full bug list with resolved/open/priorities
+- Memory: `hq-build-session-state` · `wallet-page-morning-resume` · `ship-day-congratulations`
+- Main HEAD `499c7f3` — HQ build + 9-fix remediation merged (LOCAL only)
+
+## App % complete (corrected · verified 2026-06-24 night)
+
+- **Legacy `desktop/` (v0.7.63 path): ~82% end-to-end** — fully wired sidecar, renders real clips, publishes, submits
+- **`desktop-2/` (LC 2.2 redesign): ~55%** — only 4 sidecar methods wired (ingest/startRun/getProject/exportClip), rest mock fallback
+
+## Overnight policy (Daniel's instruction 2026-06-24 sleep)
+
+- No build, no install, no push, no deploy while Daniel sleeps
+- Scoping + reading is fine
+- No agent dispatches that change code
+- Daniel approves morning before wallet build dispatches
 
 ## Hard constraints carried into next session
 
