@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import "@/app/admin/_brand/tokens.css";
+import { AdminBrandHeader } from "@/app/admin/_brand/AdminBrandHeader";
 import {
   AgentsTab,
   APIToolsTab,
@@ -175,16 +177,19 @@ function chipTone(value: string): ChipTone {
 
 function Chip({ label, tone }: { label: string; tone?: ChipTone }) {
   const t = tone ?? chipTone(label);
-  const cls =
+  const style: React.CSSProperties =
     t === "ok"
-      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700"
+      ? { borderColor: "rgba(77, 198, 168, 0.42)", background: "rgba(77, 198, 168, 0.10)", color: "var(--lc-ok)" }
       : t === "pending"
-        ? "border-amber-500/40 bg-amber-500/10 text-amber-700"
+        ? { borderColor: "rgba(217, 155, 45, 0.42)", background: "rgba(217, 155, 45, 0.10)", color: "var(--lc-warn)" }
         : t === "fail"
-          ? "border-fuchsia-deep/40 bg-fuchsia-soft/40 text-fuchsia-deep"
-          : "border-line bg-paper-warm/60 text-text-tertiary";
+          ? { borderColor: "rgba(255, 102, 184, 0.40)", background: "var(--lc-accent-soft)", color: "var(--lc-accent-mid)" }
+          : { borderColor: "var(--lc-stroke)", background: "color-mix(in srgb, var(--lc-bg-warm) 70%, transparent)", color: "var(--lc-fg-faint)" };
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] ${cls}`}>
+    <span
+      className="inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em]"
+      style={style}
+    >
       {label}
     </span>
   );
@@ -240,17 +245,18 @@ function AdminStatusPill({ onOpen }: { onOpen: () => void }) {
   const status = error ? "fail" : data?.overall ?? "warn";
   const label = error ? "red" : status === "ok" ? "ok" : status === "warn" ? "warn" : "red";
   const score = error ? "—" : data?.score ?? "—";
-  const tone =
+  const style: React.CSSProperties =
     status === "ok"
-      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700"
+      ? { borderColor: "rgba(77, 198, 168, 0.42)", background: "rgba(77, 198, 168, 0.10)", color: "var(--lc-ok)" }
       : status === "warn"
-        ? "border-amber-500/40 bg-amber-500/10 text-amber-700"
-        : "border-fuchsia-deep/40 bg-fuchsia-soft/40 text-fuchsia-deep";
+        ? { borderColor: "rgba(217, 155, 45, 0.42)", background: "rgba(217, 155, 45, 0.10)", color: "var(--lc-warn)" }
+        : { borderColor: "rgba(255, 102, 184, 0.40)", background: "var(--lc-accent-soft)", color: "var(--lc-accent-mid)" };
   return (
     <button
       type="button"
       onClick={onOpen}
-      className={`mb-2 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] transition hover:border-fuchsia ${tone}`}
+      className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] transition hover:border-fuchsia"
+      style={style}
       title="Open Function Heat Map"
     >
       <span className="h-1.5 w-1.5 rounded-full bg-current" />
@@ -301,32 +307,21 @@ export function AdminHQ({
   const [tab, setTab] = useState<Tab>("Overview");
 
   return (
-    <div className="mx-auto max-w-[1200px] px-5 py-8 sm:py-12">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia">
-            <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-            MRR protection dashboard
-          </div>
-          <h1 className="mt-2 font-display text-[clamp(28px,4vw,42px)] font-semibold leading-[1.05] tracking-[-0.03em] text-ink">
-            Liquid Clips HQ.
-          </h1>
-        </div>
-        <div className="text-right font-mono text-[11px] text-text-tertiary">
-          <AdminStatusPill onOpen={() => setTab("Function Heat Map")} />
-          <div>signed in</div>
-          <div className="text-ink">{adminEmail}</div>
-        </div>
-      </header>
+    <div className="lc-hq-shell mx-auto max-w-[1200px] px-5 pb-8 sm:pb-12">
+      <AdminBrandHeader
+        adminEmail={adminEmail}
+        rightSlot={<AdminStatusPill onOpen={() => setTab("Function Heat Map")} />}
+      />
 
-      <nav className="mt-7 flex flex-wrap gap-1.5 border-b border-line pb-3">
+      <nav className="mt-2 flex flex-wrap gap-1.5 pb-3" aria-label="HQ command tabs">
         {TABS.map((t) => (
           <button
             key={t}
+            type="button"
             onClick={() => setTab(t)}
-            className={`rounded-full px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] transition ${
-              tab === t ? "bg-ink text-paper" : "border border-line bg-paper text-ink hover:border-fuchsia"
-            }`}
+            className="lc-tab"
+            data-active={tab === t ? "true" : "false"}
+            aria-current={tab === t ? "page" : undefined}
           >
             {t}
           </button>
@@ -1883,7 +1878,7 @@ function BonusLedgerTab() {
                       <button
                         onClick={() => void markPaid(r)}
                         disabled={busyId === r.id}
-                        className="rounded-full bg-fuchsia px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-white hover:bg-fuchsia-bright disabled:opacity-60"
+                        className="rounded-full bg-fuchsia px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink hover:bg-fuchsia-bright disabled:opacity-60"
                       >
                         {busyId === r.id ? "Saving…" : "Mark bonus paid"}
                       </button>
@@ -2004,7 +1999,7 @@ function BonusLedgerImport({
         <button
           onClick={() => void submit()}
           disabled={busy}
-          className="rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-white hover:bg-fuchsia-bright disabled:opacity-60"
+          className="rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink hover:bg-fuchsia-bright disabled:opacity-60"
         >
           {busy ? "Saving…" : "Import row"}
         </button>
@@ -2352,7 +2347,7 @@ function ChannelDraftForm({
           type="button"
           onClick={() => void save()}
           disabled={busy}
-          className="ml-auto rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-white hover:bg-fuchsia-bright disabled:opacity-60"
+          className="ml-auto rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink hover:bg-fuchsia-bright disabled:opacity-60"
         >
           {busy ? "Saving…" : editingSlug ? "Save changes" : "Create channel"}
         </button>
@@ -2702,7 +2697,7 @@ function MissionDraftForm({
         {bool("is_high_rpm", "high RPM")}
         {bool("is_invite_only", "invite only")}
         {bool("affiliate_enabled", "affiliate enabled")}
-        <button onClick={() => void save()} disabled={busy} className="ml-auto rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-white hover:bg-fuchsia-bright disabled:opacity-60">
+        <button onClick={() => void save()} disabled={busy} className="ml-auto rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink hover:bg-fuchsia-bright disabled:opacity-60">
           {busy ? "Saving…" : editingSlug ? "Save changes" : "Create mission"}
         </button>
       </div>
@@ -2926,7 +2921,7 @@ function BannerForm({
       </div>
       {error && <p className="mt-3 rounded-md border border-[#DC2626]/40 bg-[#DC2626]/5 px-3 py-2 font-mono text-[11px] text-[#F87171]">{error}</p>}
       <div className="mt-3 flex items-center">
-        <button onClick={() => void save()} disabled={busy} className="ml-auto rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-white hover:bg-fuchsia-bright disabled:opacity-60">{busy ? "Saving…" : "Create banner"}</button>
+        <button onClick={() => void save()} disabled={busy} className="ml-auto rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink hover:bg-fuchsia-bright disabled:opacity-60">{busy ? "Saving…" : "Create banner"}</button>
       </div>
     </div>
   );
@@ -3144,7 +3139,7 @@ function AnnouncementForm({
       </div>
       {error && <p className="mt-3 rounded-md border border-[#DC2626]/40 bg-[#DC2626]/5 px-3 py-2 font-mono text-[11px] text-[#F87171]">{error}</p>}
       <div className="mt-3 flex items-center">
-        <button onClick={() => void save()} disabled={busy} className="ml-auto rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-white hover:bg-fuchsia-bright disabled:opacity-60">{busy ? "Saving…" : "Publish"}</button>
+        <button onClick={() => void save()} disabled={busy} className="ml-auto rounded-full bg-fuchsia px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink hover:bg-fuchsia-bright disabled:opacity-60">{busy ? "Saving…" : "Publish"}</button>
       </div>
     </div>
   );

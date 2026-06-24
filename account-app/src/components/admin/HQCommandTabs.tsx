@@ -22,16 +22,19 @@ function chipTone(value: string): ChipTone {
 
 function Chip({ label, tone }: { label: string; tone?: ChipTone }) {
   const t = tone ?? chipTone(label);
-  const cls =
+  const style: React.CSSProperties =
     t === "ok"
-      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700"
+      ? { borderColor: "rgba(77, 198, 168, 0.42)", background: "rgba(77, 198, 168, 0.10)", color: "var(--lc-ok)" }
       : t === "pending"
-        ? "border-amber-500/40 bg-amber-500/10 text-amber-700"
+        ? { borderColor: "rgba(217, 155, 45, 0.42)", background: "rgba(217, 155, 45, 0.10)", color: "var(--lc-warn)" }
         : t === "fail"
-          ? "border-fuchsia-deep/40 bg-fuchsia-soft/40 text-fuchsia-deep"
-          : "border-line bg-paper-warm/60 text-text-tertiary";
+          ? { borderColor: "rgba(255, 102, 184, 0.40)", background: "var(--lc-accent-soft)", color: "var(--lc-accent-mid)" }
+          : { borderColor: "var(--lc-stroke)", background: "color-mix(in srgb, var(--lc-bg-warm) 70%, transparent)", color: "var(--lc-fg-faint)" };
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] ${cls}`}>
+    <span
+      className="inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em]"
+      style={style}
+    >
       {label}
     </span>
   );
@@ -1803,7 +1806,10 @@ function InboxCard({
   onMove: (id: string, status: InboxStatus) => void;
 }) {
   return (
-    <div className="rounded-2xl border border-line bg-paper p-3 shadow-sm transition hover:border-fuchsia">
+    <div
+      className="rounded-2xl border border-line bg-paper p-3 transition hover:border-fuchsia"
+      style={{ boxShadow: "var(--lc-shadow-resting)" }}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="truncate font-display text-[14px] font-semibold text-ink">{msg.subject}</div>
