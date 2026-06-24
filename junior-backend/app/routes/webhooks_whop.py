@@ -140,7 +140,17 @@ async def whop_webhook(
     _MEMBERSHIP_INVALID = ("membership_went_invalid", "membership.went_invalid", "membership_canceled", "membership.canceled", "membership_deactivated", "membership.deactivated")
     _PAYMENT = ("payment_succeeded", "payment.succeeded")
     _REFUND = ("payment_refunded", "payment.refunded", "refund_created", "refund.created", "dispute_created", "dispute.created")
-    recognized = event_type in (_MEMBERSHIP_VALID + _MEMBERSHIP_INVALID + _PAYMENT + _REFUND)
+    # 2026-06-24 · submission events from Whop content-rewards · flip
+    # CampaignSubmission.status + RewardClip.status from "submitted" to the
+    # Whop verdict (approved · rejected · paid). Without these, clippers
+    # see "submitted · waiting" forever even after Whop pays out.
+    _SUBMISSION_APPROVED = ("submission_approved", "submission.approved", "content_reward.submission.approved", "content_reward.approved")
+    _SUBMISSION_REJECTED = ("submission_rejected", "submission.rejected", "content_reward.submission.rejected", "content_reward.rejected")
+    _SUBMISSION_PAID = ("submission_paid", "submission.paid", "content_reward.payout.paid", "payout.paid")
+    recognized = event_type in (
+        _MEMBERSHIP_VALID + _MEMBERSHIP_INVALID + _PAYMENT + _REFUND
+        + _SUBMISSION_APPROVED + _SUBMISSION_REJECTED + _SUBMISSION_PAID
+    )
 
     try:
         if event_type in _MEMBERSHIP_VALID:
@@ -151,6 +161,12 @@ async def whop_webhook(
             _handle_payment_succeeded(db, data)
         elif event_type in _REFUND:
             _handle_payment_refunded(db, data)
+        elif event_type in _SUBMISSION_APPROVED:
+            _handle_submission_verdict(db, data, verdict="approved")
+        elif event_type in _SUBMISSION_REJECTED:
+            _handle_submission_verdict(db, data, verdict="rejected")
+        elif event_type in _SUBMISSION_PAID:
+            _handle_submission_verdict(db, data, verdict="paid")
         # else: unsupported — accepted but ignored.
 
         db.add(WebhookEvent(
@@ -693,6 +709,129 @@ def _fire_affiliate_lifecycle_emails(db: Session, *, buyer_affiliate_id: str) ->
             "affiliate lifecycle side-effects failed for aff=%s — webhook continues",
             buyer_affiliate_id,
         )
+
+
+def _handle_submission_verdict(db: Session, data: dict, *, verdict: str) -> None:
+    """2026-06-24 · close the clipper-submission feedback loop.
+
+    Whop fires submission webhooks once moderators flip a submission's status.
+    We map the verdict to our CampaignSubmission.status column. Without this,
+    clippers see "submitted · waiting" forever even after Whop pays out.
+
+    verdict values map 1:1 to CampaignSubmission.status:
+      - "approved" · mod said clip qualifies · still awaiting view-payout
+      - "rejected" · violated rules · payout blocked · clipper sees reason
+      - "paid"     · view-RPM verified · USD landed in Whop balance
+
+    Resolution strategy (whichever ID Whop sends):
+      1. data.submission_id or data.id      → match CampaignSubmission.whop_submission_id
+      2. data.clip_url                       → match CampaignSubmission.clip_url
+      3. (last resort) data.user.id + recent → most recent submission for the user
+
+    Also mirrors verdict to RewardClip.status when whop_submission_id matches —
+    the Earn dashboard / $50 carrot module read this field for the per-clip
+    status pill.
+    """
+    from app.models import CampaignSubmission, RewardClip
+
+    sub_id = (
+        data.get("submission_id")
+        or data.get("id")
+        or (data.get("submission") or {}).get("id")
+    )
+    clip_url = data.get("clip_url") or (data.get("submission") or {}).get("clip_url")
+
+    row: CampaignSubmission | None = None
+
+    if sub_id:
+        row = (
+            db.query(CampaignSubmission)
+            .filter(CampaignSubmission.whop_submission_id == sub_id)
+            .order_by(CampaignSubmission.created_at.desc())
+            .first()
+        )
+
+    if row is None and clip_url:
+        row = (
+            db.query(CampaignSubmission)
+            .filter(CampaignSubmission.clip_url == clip_url)
+            .order_by(CampaignSubmission.created_at.desc())
+            .first()
+        )
+
+    if row is None:
+        # Last resort · match by user + most recent submission. Whop usually
+        # includes the buyer in the event payload.
+        user = _find_user_for_event(db, data)
+        if user:
+            row = (
+                db.query(CampaignSubmission)
+                .filter(CampaignSubmission.user_id == user.id)
+                .order_by(CampaignSubmission.created_at.desc())
+                .first()
+            )
+
+    if row is None:
+        # Webhook arrived for a submission we don't know about · idempotent no-op.
+        # Whop's at-least-once delivery means this will retry; if it never matches,
+        # the audit log shows status="ignored" for the event_type.
+        return
+
+    # Apply the verdict. Map "approved" → "accepted" (our existing enum value).
+    db_status_for_verdict = {
+        "approved": "accepted",
+        "rejected": "rejected",
+        "paid":     "paid",
+    }
+    new_status = db_status_for_verdict.get(verdict, row.status)
+    row.status = new_status
+
+    # Pull payout amount if Whop sent it on a "paid" event.
+    if verdict == "paid":
+        amount = (
+            data.get("amount_cents")
+            or data.get("payout_amount_cents")
+            or ((data.get("payout") or {}).get("amount_cents"))
+        )
+        if amount is not None:
+            try:
+                row.payout_usd_cents = max(0, int(amount))
+            except (TypeError, ValueError):
+                pass
+        verified_views = (
+            data.get("verified_views")
+            or ((data.get("submission") or {}).get("verified_views"))
+        )
+        if verified_views is not None:
+            try:
+                row.verified_views = max(0, int(verified_views))
+            except (TypeError, ValueError):
+                pass
+
+    # Pull rejection reason if present.
+    if verdict == "rejected":
+        reason = (
+            data.get("rejection_reason")
+            or data.get("reason")
+            or ((data.get("submission") or {}).get("rejection_reason"))
+        )
+        if reason:
+            row.rejection_reason = str(reason)[:1000]
+
+    # Stamp the Whop ID on the row if we matched via clip_url or user fallback
+    # (idempotent · already stamped when matched via whop_submission_id).
+    if sub_id and not row.whop_submission_id:
+        row.whop_submission_id = str(sub_id)
+
+    # Mirror to RewardClip if one exists (Earn dashboard reads from here).
+    if sub_id:
+        rc = (
+            db.query(RewardClip)
+            .filter(RewardClip.whop_submission_id == sub_id)
+            .one_or_none()
+        )
+        if rc:
+            rc.status = new_status
 
 
 def _handle_payment_refunded(db: Session, data: dict) -> None:

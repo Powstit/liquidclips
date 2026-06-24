@@ -55,10 +55,13 @@ If the user has not explicitly authorized the change on this turn, STOP and ask.
 
 ## IG-002 — Sidecar RPC contract
 
-**Locked at:** v0.7.13 (with additions through v0.7.25)
+**Locked at:** v0.7.13 (with additions through v0.7.25; desktop-2 lift-and-shift extension 2026-06-20)
 **Files:**
-- `python-sidecar/sidecar.py` — the methods map at the bottom of the file (line ~2855) plus every `method_*` function it references.
-- `src/lib/sidecar.ts` — the entire RPC surface (1100+ lines). Each method on the `sidecar` object is paired with a Python `method_*` of the same snake_case name.
+- `python-sidecar/sidecar.py` — the methods map at the bottom of the file (line ~2855) plus every `method_*` function it references. Canonical source moves to repo-root `/Users/dipdip/code/jnr/python-sidecar/` in Batch C of the desktop-2 port.
+- `desktop/src/lib/sidecar.ts` — the entire RPC surface (1100+ lines). Each method on the `sidecar` object is paired with a Python `method_*` of the same snake_case name.
+- `desktop/src-tauri/src/sidecar.rs` — the Rust JSON-RPC bridge. JSON framing, restart-cap, structured error envelope, and event re-emit shape are part of the gate.
+- `desktop-2/src-tauri/src/sidecar.rs` — lift-and-shift copy (Batch A · 2026-06-20). Same framing, same restart cap, same envelope. Any drift between desktop and desktop-2 is a gate violation; both must move together. Sentinel comment at top of file.
+- `desktop-2/src/design-os/engine/sidecar-stub.ts` — Batch B target. Real wrappers for `ingestUrl`, `startRun`, `getProject`, `exportApi.exportClip` must preserve the legacy TS contract (signature, return shape, event names). Other methods stay mocked until later phases.
 
 **What survived the loop:**
 - Stable wire format: newline-delimited JSON over stdin/stdout, `{method, params, id}` request → `{result, id}` or `{error, id}` response.

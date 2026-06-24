@@ -273,6 +273,180 @@ if contract_passed; then
 fi
 
 # ---------------------------------------------------------------------------
+# Contract 9 — App shell: Browser/Browse panel must close on core flows
+# ---------------------------------------------------------------------------
+step "Contract 9 — App shell closes Browse panel on core flows"
+contract_start
+
+# Robust Python assertions for the app-shell contract.
+# We extract JSX/TSX handler bodies by brace counting and strip single-line
+# comments before inspecting code, so comments/JSX formatting never cause
+# false positives.
+PY_CONTRACT9=$(cat <<'PY'
+import re, sys
+
+def strip_line_comment(line: str) -> str:
+    return re.sub(r"//.*", "", line)
+
+def extract_block(lines, start_pat, max_lines=80):
+    """Extract a { ... } block starting at the first line matching start_pat."""
+    start_idx = None
+    for i, line in enumerate(lines):
+        if re.search(start_pat, line):
+            start_idx = i
+            break
+    if start_idx is None:
+        return None
+    depth = 0
+    body = []
+    # The opening brace may be on the same line as the pattern.
+    for i in range(start_idx, min(start_idx + max_lines, len(lines))):
+        raw = lines[i]
+        code = strip_line_comment(raw)
+        # count braces ignoring simple string literals (best-effort)
+        # We remove quoted strings to avoid counting braces inside them.
+        no_strings = re.sub(r'"(?:\\.|[^"\\])*"', '""', code)
+        no_strings = re.sub(r"'(?:\\.|[^'\\])*'", "''", no_strings)
+        # ignore template literals for brace count (rare in handlers)
+        no_strings = re.sub(r'`(?:\\.|[^`\\])*`', '``', no_strings)
+        if depth == 0:
+            depth += no_strings.count("{") - no_strings.count("}")
+            if depth <= 0:
+                # pattern line had no brace and no body; skip
+                continue
+        else:
+            body.append(raw)
+            depth += no_strings.count("{") - no_strings.count("}")
+            if depth <= 0:
+                break
+    return "".join(body)
+
+def code_only(body: str) -> str:
+    out = []
+    in_block = False
+    for line in body.splitlines(keepends=True):
+        if not in_block:
+            if "/*" in line:
+                before, _, after = line.partition("/*")
+                if "*/" in after:
+                    after = after.partition("*/")[2]
+                    out.append(before + after)
+                else:
+                    in_block = True
+                    out.append(before)
+            else:
+                out.append(strip_line_comment(line))
+        else:
+            if "*/" in line:
+                in_block = False
+                out.append(line.partition("*/")[2])
+    return "".join(out)
+
+errors = []
+
+def assert_true(cond, msg):
+    if not cond:
+        errors.append(msg)
+
+with open("src/App.tsx") as f:
+    app_lines = f.readlines()
+with open("src/components/ResultsGrid.tsx") as f:
+    rg_lines = f.readlines()
+
+# 1. openSettings helper calls closeBrowsePanel.
+open_settings_body = extract_block(app_lines, r"const openSettings = useCallback\(")
+assert_true(open_settings_body is not None, "App.tsx must define openSettings helper")
+if open_settings_body:
+    assert_true("closeBrowsePanel" in code_only(open_settings_body),
+                "App.tsx openSettings helper must call closeBrowsePanel")
+
+# 2-4. onCreate/onScript/onThumbnails handlers call closeBrowsePanel.
+for handler in ("onCreate", "onScript", "onThumbnails"):
+    body = extract_block(app_lines, rf"^\s*{handler}=\{{\(\) => {{")
+    assert_true(body is not None, f"App.tsx must define {handler} handler")
+    if body:
+        assert_true("closeBrowsePanel" in code_only(body),
+                    f"App.tsx {handler} must call closeBrowsePanel")
+
+# 5. A useEffect on view.kind closes Browse for non-browser views.
+# There are many useEffects; find the one containing keepOpenViews.
+view_effect_body = None
+remaining = app_lines[:]
+while True:
+    block = extract_block(remaining, r"useEffect\(\(\) => {")
+    if block is None:
+        break
+    if "keepOpenViews" in block:
+        view_effect_body = block
+        break
+    # Advance remaining past the first line of this block to avoid infinite loop
+    first_line = next((i for i, l in enumerate(remaining) if re.search(r"useEffect\(\(\) => {", l)), None)
+    if first_line is None:
+        break
+    remaining = remaining[first_line + 1:]
+assert_true(view_effect_body is not None,
+            "App.tsx must have a useEffect that closes Browse panel on view.kind changes")
+if view_effect_body:
+    assert_true("keepOpenViews" in view_effect_body and "closeBrowsePanel" in view_effect_body,
+                "App.tsx view.kind effect must close Browse panel for non-browser views")
+
+# 6. ResultsGrid imports closeBrowsePanel.
+rg_imports = "\n".join(line for line in rg_lines if line.strip().startswith("import"))
+assert_true("closeBrowsePanel" in rg_imports,
+            "ResultsGrid.tsx must import closeBrowsePanel")
+
+# 7. ResultsGrid editor/captions/publish handlers call closeBrowsePanel.
+for handler in ("onOpenEditor", "onOpenCaptions", "onPublish"):
+    # JSX arrow-handler form: onOpenEditor={(args) => {
+    body = extract_block(rg_lines, rf"^\s*{handler}=\{{\([^{{]*\) => {{")
+    if body is None:
+        continue
+    assert_true("closeBrowsePanel" in code_only(body),
+                f"ResultsGrid.tsx {handler} must call closeBrowsePanel")
+# Also verify the file actually uses closeBrowsePanel somewhere in handlers.
+rg_code = code_only("".join(rg_lines))
+assert_true("closeBrowsePanel" in rg_code,
+            "ResultsGrid.tsx must call closeBrowsePanel in its handlers")
+
+# 8. Core surfaces must not call openBrowsePanel.
+core_files = [
+    "src/components/workspace/StudioHome.tsx",
+    "src/components/cockpit/UploadPortal.tsx",
+    "src/components/IntentPicker.tsx",
+    "src/components/ResultsGrid.tsx",
+]
+for path in core_files:
+    with open(path) as f:
+        text = f.read()
+    code = code_only(text)
+    if "openBrowsePanel" in code:
+        errors.append(f"{path} must not call openBrowsePanel in core surface code")
+
+# 9. Create URL flow does not route to YouTubeView.
+on_create_body = extract_block(app_lines, r"^\s*onCreate=\{\(\) => {")
+if on_create_body:
+    create_code = code_only(on_create_body)
+    assert_true("YouTubeView" not in create_code,
+                "App.tsx onCreate must not route to YouTubeView")
+    assert_true("openBrowsePanel" not in create_code,
+                "App.tsx onCreate must not open Browse panel")
+
+if errors:
+    print("\n".join(f"CONTRACT9_FAIL: {e}" for e in errors), file=sys.stderr)
+    sys.exit(1)
+PY
+)
+
+if ! python3 -c "$PY_CONTRACT9"; then
+  # python already printed details
+  ERRORS=$((ERRORS + 1))
+fi
+
+if contract_passed; then
+  ok "Contract 9 passed — App shell closes Browse panel on core flows"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo ""

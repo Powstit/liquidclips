@@ -207,6 +207,24 @@ def _serialize(c: SponsoredCampaign, viewer_tier: str | None = None) -> dict[str
         "whop_campaign_url": c.whop_campaign_url,
         "your_rpm_cents": your_rpm,
         "is_premium_caller": is_premium,
+        # ── 6N-G · §8 URL-first snapshot reads ──────────────────────
+        # Exposes the agency_campaigns surface to clipper-facing
+        # discovery without an additional endpoint. Optional in the
+        # public list: legacy rows return null/empty for these.
+        "description": c.description or "",
+        "campaign_type": c.campaign_type or "clip",
+        "whop_reward_id": getattr(c, "whop_reward_id", None),
+        "whop_reward_url": getattr(c, "whop_reward_url", None),
+        "whop_reward_snapshot": getattr(c, "whop_reward_snapshot", None),
+        "whop_reward_snapshot_status": getattr(c, "whop_reward_snapshot_status", None) or "not_attempted",
+        "whop_reward_state": getattr(c, "whop_reward_state", None),
+        "whop_reward_snapshot_business_goal": getattr(c, "whop_reward_snapshot_business_goal", None),
+        "whop_reward_snapshot_bounty_type": getattr(c, "whop_reward_snapshot_bounty_type", None),
+        "whop_reward_synced_at": (
+            c.whop_reward_synced_at.isoformat()
+            if getattr(c, "whop_reward_synced_at", None) else None
+        ),
+        "whop_reward_last_error": getattr(c, "whop_reward_last_error", None),
     }
 
 
@@ -233,9 +251,12 @@ def list_campaigns(
         user = db.query(User).filter(User.clerk_id == clerk_user_id).one_or_none()
         if user:
             viewer_tier = user.tier or "free"
+    # 6N-G · §8 alignment · agency-created rows land as `status="draft"`
+    # until publish. Public discovery must NOT show drafts (agency-only
+    # visibility was always implied; legacy filter only blocked `closed`).
     rows = (
         db.query(SponsoredCampaign)
-        .filter(SponsoredCampaign.status != "closed")
+        .filter(SponsoredCampaign.status.notin_(["closed", "draft"]))
         .order_by(SponsoredCampaign.sort_order.asc(), SponsoredCampaign.created_at.desc())
         .all()
     )

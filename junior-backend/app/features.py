@@ -122,15 +122,47 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
         "white_label":              {"value": True,  "built": False, "sprint": "v1.1"},
         "priority_support":         {"value": True,  "built": False, "sprint": "S6"},
     },
+    # 2026-06-23 — Daniel's monetisation pass added a dedicated `growth`
+    # entry so the $79 Clerk Growth plan no longer collapses into `pro`
+    # caps. Cloned from `pro` for now (both tiers occupy the $79 slot in
+    # the v2 backend matrix, where backend "pro" historically meant $79).
+    # The desktop-2 frontend has its own TIER_CAPS.growth with the real
+    # Growth-specific UI caps (10 channels, 750 posts/mo, 180-day history,
+    # priority queue + hosted compute). Diverge feature flags here only
+    # when Growth-specific behaviour ships on the backend.
+    "growth": {
+        "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},
+        "clips_per_ip":             {"value": None,  "built": True,  "sprint": None},
+        "accounts_included":        {"value": 10,    "built": True,  "sprint": None},
+        "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
+        "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
+        "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
+        "watermark":                {"value": False, "built": True,  "sprint": None},
+        "byo_openai_key_required":  {"value": True,  "built": True,  "sprint": None},
+        "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
+        "hosted_llm":               {"value": True,  "built": False, "sprint": "S5"},
+        "platform_connections_max": {"value": None,  "built": True,  "sprint": None},
+        "publish_now":              {"value": True,  "built": True,  "sprint": None},
+        "publish_multi_platform":   {"value": True,  "built": True,  "sprint": None},
+        "schedule_one":             {"value": True,  "built": True,  "sprint": None},
+        "drip_scheduling":          {"value": True,  "built": True,  "sprint": None},
+        "sub_accounts":             {"value": False, "built": False, "sprint": "v1.1"},
+        "white_label":              {"value": False, "built": False, "sprint": "v1.1"},
+        "priority_support":         {"value": True,  "built": False, "sprint": "S6"},
+    },
 }
 
 
 # Legacy tier names from 0.4.x. Webhooks may still set these — alias to new
 # tier names so existing rows + Whop-side titles continue to work without a
 # data migration pass.
+#
+# 2026-06-23 — Daniel's monetisation pass removed the `growth → pro` line
+# below so the $79 Clerk Growth plan resolves to its own `growth` entry
+# in FEATURES_BY_TIER (added above) instead of getting collapsed into the
+# legacy `pro` caps. `channel` and `autopilot` stay aliased.
 _LEGACY_TIER_ALIASES = {
     "channel": "pro",
-    "growth": "pro",
     "autopilot": "agency",
 }
 
@@ -205,6 +237,59 @@ ADMIN_EMAILS: frozenset[str] = _load_admin_emails()
 
 def is_admin_email(email: str | None) -> bool:
     return bool(email) and email.strip().lower() in ADMIN_EMAILS
+
+
+# ---------------------------------------------------------------------------
+# TASK 3 · canonical tier-limit table for routes that previously only had
+# client-side caps in `desktop-2/src/design-os/state/useTierCaps.ts`. Mirrors
+# the client TIER_CAPS dict exactly so the HTTP layer enforces the same
+# numbers the UI advertises. Founders and admin allowlist override with the
+# `agency` block (no separate founder row · keeps the matrix flat).
+# ---------------------------------------------------------------------------
+TIER_LIMITS: dict[str, dict[str, int]] = {
+    # `free` mirrors `clipper` on the client (free + solo collapse to one
+    # row · backend keeps the 4-tier split so JWT carries the real tier).
+    "free": {
+        "channels_per_platform": 1,
+        "monthly_posts":          25,
+        "campaigns_per_brand":    1,
+        "clips_per_campaign":     10,
+        "bulk_scheduling_rows":   1,
+    },
+    "solo": {
+        "channels_per_platform": 1,
+        "monthly_posts":          25,
+        "campaigns_per_brand":    1,
+        "clips_per_campaign":     10,
+        "bulk_scheduling_rows":   1,
+    },
+    "pro": {
+        "channels_per_platform": 3,
+        "monthly_posts":          250,
+        "campaigns_per_brand":    5,
+        "clips_per_campaign":     50,
+        "bulk_scheduling_rows":   25,
+    },
+    "agency": {
+        "channels_per_platform": 5,
+        "monthly_posts":          2500,
+        "campaigns_per_brand":    20,
+        "clips_per_campaign":     200,
+        # `Infinity` on the client → arbitrarily large sentinel server-side
+        # so a request that would crash the DB still trips the cap honestly.
+        "bulk_scheduling_rows":   1000,
+    },
+}
+
+
+def tier_limit(tier: str, key: str, founder: bool = False) -> int:
+    """Return the server-side cap for `key` at this tier.
+    Founders + admin-promoted users resolve to `agency` per `_resolve_tier`
+    semantics (founder_flag is checked separately at JWT mint). Unknown
+    tiers fall through to `free`."""
+    effective = "agency" if founder else _resolve_tier(tier)
+    block = TIER_LIMITS.get(effective) or TIER_LIMITS["free"]
+    return int(block.get(key) or TIER_LIMITS["free"].get(key, 0))
 
 
 def tier_features(tier: str, founder: bool = False) -> dict[str, Any]:

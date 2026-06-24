@@ -5,6 +5,7 @@ import { usePickEvents } from "../lib/usePickEvents";
 // "Open folder" / "Open project folder" buttons below. shell.open's scope
 // regex rejects `/Users/...` paths; the opener plugin handles them.
 import { openSmart as openExternal } from "../lib/openSmart";
+import { closeBrowsePanel } from "../lib/browse";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { CheckCircle2, FolderOpen, Plus, Film, Sparkles, Loader2, Lock } from "lucide-react";
 import { EmptyState } from "./brand";
@@ -537,10 +538,12 @@ export function ResultsGrid({
               onOpenSettings={onOpenSettings}
               onOpenSchedule={onOpenSchedule}
               onOpenEditor={(clipIdx, scrollTo) => {
+                void closeBrowsePanel().catch(() => undefined);
                 setPreviewIdx(clipIdx);
                 setPreviewScrollTo(scrollTo ?? null);
               }}
               onOpenCaptions={(clipIdx) => {
+                void closeBrowsePanel().catch(() => undefined);
                 setPreviewIdx(clipIdx);
                 setOpenCaptionsForIdx(clipIdx);
                 setPreviewScrollTo("captions");
@@ -605,8 +608,8 @@ export function ResultsGrid({
                         project={project}
                         ratio={ratio}
                         onProjectChange={onProjectChange}
-                        onOpenEditor={() => setPreviewIdx(idx)}
-                        onOpenCaptions={() => { setPreviewIdx(idx); setOpenCaptionsForIdx(idx); }}
+                        onOpenEditor={() => { void closeBrowsePanel().catch(() => undefined); setPreviewIdx(idx); }}
+                        onOpenCaptions={() => { void closeBrowsePanel().catch(() => undefined); setPreviewIdx(idx); setOpenCaptionsForIdx(idx); }}
                         previewSoundOn={previewSoundOn}
                         previewMotionOn={previewMotionOn}
                         selected={isSelected(idx)}
@@ -695,6 +698,9 @@ export function ResultsGrid({
             // Open PublishModal pre-selected to THIS clip (not
             // firstRenderedClipIdx). ClipPreview already gates on
             // clip.vertical_path so we don't need to re-check here.
+            // v0.7.79 P0 — App shell contract: close Browse panel so the
+            // modal has the full canvas.
+            void closeBrowsePanel().catch(() => undefined);
             setPublishModal({ mode: "publish-now", clipIdx });
           }}
         />

@@ -145,9 +145,15 @@ class Settings(BaseSettings):
     # tauri://localhost; Windows/Linux from http(s)://tauri.localhost. Without
     # these, browser-side packaged calls (e.g. notifications/unread-count) fail
     # the CORS preflight with 400 even though sidecar→backend calls are fine.
+    #
+    # 2026-06-20 — Liquid Clips public domains (liquidclips.app + www) added
+    # so the marketing-site checkout return + funnel-session handoff don't
+    # fail CORS. http://localhost:1420 is the Vite dev origin used by the
+    # desktop-2 Tauri webview in `npm run tauri dev`.
     cors_origins: str = (
         "http://localhost:3000,http://localhost:3500,http://localhost:1420,"
-        "tauri://localhost,https://tauri.localhost,http://tauri.localhost"
+        "tauri://localhost,https://tauri.localhost,http://tauri.localhost,"
+        "https://liquidclips.app,https://www.liquidclips.app"
     )
 
     @property

@@ -1,0 +1,538 @@
+{
+  "$schema": "internal:liquid-clips/ui-audit-v1",
+  "generated_at": "2026-06-15",
+  "purpose": "Side-by-side UI audit. For each surface in the canonical demo (desktop/docs/demo-pages.html) we record the demo's design vocabulary + key JSX, and the live React surface's equivalent JSX + class drift. ChatGPT (or any reviewer) can use the `delta` arrays per surface to decide what to keep, change, or import.",
+  "files": {
+    "demo": "desktop/docs/demo-pages.html",
+    "live_root": "desktop/src/components/",
+    "tokens_source_of_truth": "desktop/src/index.css (IG-012)",
+    "iron_gates_doc": "desktop/docs/IRON_GATES.md"
+  },
+  "iron_gate_constraints": {
+    "IG-001": "Do not edit import pipeline.",
+    "IG-002": "Do not edit sidecar RPC.",
+    "IG-003": "Do not edit cinematic intro.",
+    "IG-004": "Do not edit auth + activation.",
+    "IG-005": "Do not edit workspace UI design (treat as read-only target).",
+    "IG-007": "Do not edit ClipCard structure.",
+    "IG-012": "Brand tokens in src/index.css mirror desktop/docs/demo*.html (verified by scripts/brand-kit-drift-check.sh)."
+  },
+  "brand_tokens_canonical": {
+    "fuchsia": "#FF1A8C",
+    "fuchsia-bright": "#FF44A5",
+    "fuchsia-deep": "#E10778",
+    "paper": "#FAF7F1",
+    "paper-warm": "#F4EFE6",
+    "paper-elev": "#FFFFFF",
+    "ink": "#0B0B10",
+    "ink-soft": "#3A3A40",
+    "line": "rgba(11,11,16,0.10)",
+    "t2": "#5A5A60",
+    "t3": "#8A857E"
+  },
+  "global_metrics": {
+    "live_uses_dot_eyebrow_class": false,
+    "live_eyebrow_pattern_inline": "font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia",
+    "live_dot_pill_class_count": 2,
+    "demo_dot_pill_class_usage": "primary control vocabulary across earn / schedule / settings / youtube / thumbnail tabs",
+    "live_dot_library_card_count": 204,
+    "live_dot_library_card_corner_count": "every card uses 4× span.library-card-corner-{tl,tr,bl,br}",
+    "live_dot_hud_frame_count": 11,
+    "live_dot_cockpit_tile_count": 130,
+    "live_atmosphere_class_prefix": "deck-atmosphere-*",
+    "demo_atmosphere_class_prefix": "atm-*",
+    "atmosphere_class_drift": "Demo uses `.atm-workspace / .atm-library / .atm-earn / .atm-schedule / .atm-settings / .atm-thumbnail / .atm-signin / .atm-create`. Live renames the family to `.deck-atmosphere-*` (RoomShell.tsx:84). Both layered backgrounds exist; the names differ. Either rename live to atm-* to match docs, or rename docs to deck-atmosphere-*. Pick one.",
+    "live_uses_lc_sidenav_system": true,
+    "live_uses_motion_react": "Framer Motion via 'motion/react' package across projects/* modals"
+  },
+  "canonical_demo_classes": {
+    "eyebrow": ".eyebrow { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--color-fuchsia); }",
+    "pill": ".pill { padding: 6px 12px; border-radius: 9999px; border: 1px solid var(--color-line); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-ink-soft); }   .pill.is-active { background: var(--color-fuchsia); color: white; border-color: transparent; }",
+    "library-card": ".library-card { background: var(--color-paper-warm); border: 1px solid var(--color-line); } + 4× absolute-positioned .lcc.lcc-tl/.lcc-tr/.lcc-bl/.lcc-br bracket spans",
+    "hud-frame": ".hud-frame { position: relative; border: 1px solid var(--color-line); background: var(--color-paper-warm); } + scanline overlay",
+    "cockpit-tile": ".cockpit-tile { position: relative; padding: 16px; } + 4× ctc-* bracket spans",
+    "lc-sidenav": "112px rail, 56px badge tiles, 80px min-height per item, ::after halo on hover, lc-bar-pulse + lc-badge-active animations",
+    "browse-tab": "Side rail tab item with embedded webview affordance",
+    "halo-digit": "circular SVG badge with glow ring used in step indicators"
+  },
+  "demo_animations": [
+    "@keyframes pulse-dot (1.4s fuchsia heartbeat)",
+    "@keyframes breathe (3s, ease-in-out, scale + opacity)",
+    "@keyframes marquee (linear, used for hud-frame + working-bar)",
+    "@keyframes lc-brand-breathe (sidenav logo)",
+    "@keyframes lc-badge-bob (sidenav badges on idle)",
+    "@keyframes lc-bar-pulse (sidenav active bar)",
+    "@keyframes lc-badge-active (badge halo on active)"
+  ],
+
+  "surfaces": [
+
+    {
+      "id": "sidenav",
+      "demo": {
+        "lines": "95-186, 230-310",
+        "container": "<aside class=\"lc-sidenav\"> with .lc-sidenav-logo + .lc-sidenav-list of .lc-sidenav-item buttons; each item has .lc-sidenav-bar (left active bar), .lc-sidenav-halo (hover/active glow), .lc-sidenav-icon, .lc-sidenav-label, .lc-sidenav-tooltip, optional .lc-sidenav-progress / .lc-sidenav-dot.",
+        "rail_width_px": 112,
+        "badge_size_px": 56,
+        "item_min_height_px": 80,
+        "icon_kind": "112×64 image badges (animated PNG/SVG)"
+      },
+      "live": {
+        "file": "desktop/src/components/nav/SideNav.tsx",
+        "item_file": "desktop/src/components/nav/SideNavItem.tsx",
+        "heading_range": "SideNav.tsx:82-107",
+        "main_range": "SideNav.tsx:109-176",
+        "item_jsx": "<button className=\"lc-sidenav-item\" data-active={active}><span className=\"lc-sidenav-bar\" /><span className=\"lc-sidenav-halo\" /><img className=\"lc-sidenav-icon lc-sidenav-item-icon-img\" /><span className=\"lc-sidenav-label\">{label}</span><span className=\"lc-sidenav-tooltip\">{label}</span></button>",
+        "uses_atmosphere_bg": false,
+        "uses_library_card": false,
+        "icon_strategy": "custom image badges (png from /src/assets/nav-badges/) + lucide ChevronLeft on collapse toggle"
+      },
+      "delta": [
+        "PARITY: full lc-sidenav-* class system mounted live (logo, list, item, bar, halo, icon, label, tooltip, dot, progress, halo animations). No drift."
+      ],
+      "verdict": "MATCH"
+    },
+
+    {
+      "id": "earn",
+      "demo": {
+        "lines": "338-438",
+        "container": "<section class=\"surface\" data-surface=\"earn\"><div class=\"atm-earn absolute inset-0\"></div><div class=\"relative px-8 pt-6 pb-10 max-w-6xl mx-auto\">",
+        "heading": "<div class=\"eyebrow\">earn</div><h1 class=\"font-display text-[26px] font-semibold tracking-[-0.025em] text-ink mt-0.5\">Sponsored payouts</h1>",
+        "controls": "<button class=\"pill is-active\">Open · 3</button><button class=\"pill\">My Submissions</button><button class=\"pill\">Leaderboard · top 100</button>",
+        "primary_card": "library-card rounded-2xl p-5 + 4× lcc bracket spans, sponsor logo + brief title + payout tile",
+        "key_classes": [".eyebrow", ".pill", ".pill.is-active", ".library-card", "lcc-tl/tr/bl/br"]
+      },
+      "live": {
+        "file": "desktop/src/components/earn/EarnTab.tsx",
+        "layout_file": "desktop/src/components/earn/EarnLayout.tsx",
+        "main_range": "EarnTab.tsx:436-451 (mount), EarnLayout.tsx:49-101 (3-column ticker + rail + main + sidebar shell)",
+        "main_jsx": "<EarnLayout ticker={<EarnTickerStrip/>} rail={<EarnIconRail .../>} main={ <SponsoredBannerCarousel/> + BountyCard list }/>",
+        "uses_atmosphere_bg": true,
+        "atmosphere_class": "deck-atmosphere-earn (via RoomShell)",
+        "uses_library_card": false,
+        "uses_pill_class": false,
+        "uses_eyebrow_class": false,
+        "icon_strategy": "lucide-react (PanelRightClose, PanelRightOpen, Sparkles, ExternalLink)"
+      },
+      "delta": [
+        "P1 — Live earn has its own ticker + rail + sidebar shell (EarnLayout) instead of the demo's single-column eyebrow→h1→pill-row→library-card pattern. Acceptable divergence if Earn is the most operational surface, but the docs/demo currently disagree with the production shape. Reconcile docs to the EarnLayout shape OR introduce eyebrow/h1 header above the ticker.",
+        "P2 — Pill control vocabulary (Open · 3 / My Submissions / Leaderboard) is missing in live. The same controls exist via EarnIconRail (icon-only). Add labels on hover (already present via lc-sidenav-style tooltip) — verify tooltip parity.",
+        "P2 — BountyCard does not use .library-card class chrome (4 bracket corners). Demo's primary card pattern is library-card; live BountyCard uses custom card styling. Consider unifying to library-card to match the visual language used elsewhere."
+      ],
+      "verdict": "DIVERGE_PRODUCTION_AHEAD"
+    },
+
+    {
+      "id": "workspace",
+      "demo": {
+        "lines": "443-505",
+        "container": "<section data-surface=\"workspace\"><div class=\"atm-workspace absolute inset-0\"></div>",
+        "heading": "<div class=\"eyebrow\">workspace</div><h1 class=\"font-display text-[26px] font-semibold tracking-[-0.025em] text-ink mt-0.5\">Today's clips</h1>",
+        "controls": "<button class=\"pill is-active\">All · 4</button><button class=\"pill\">Pinned</button>",
+        "primary_grid": "id=\"workspace-grid\" — 4× aspect-[9/16] .library-card cards rendered by JS; each has top-right duration pill + bottom caption with text-shadow",
+        "key_classes": [".eyebrow", ".pill", ".library-card", "atm-workspace"]
+      },
+      "live": {
+        "file": "desktop/src/components/UnifiedDropZone.tsx",
+        "secondary_file": "desktop/src/components/DropZone.tsx",
+        "iron_gate": "IG-005 (workspace UI design locked)",
+        "heading_range": "UnifiedDropZone.tsx:66-180",
+        "main_jsx": "Two-lane hero <button> ('Make clips' / 'Import finished') over <DropZone> dashed drop area with platform pills (YouTube · TikTok · IG · X · Local).",
+        "uses_atmosphere_bg": true,
+        "atmosphere_class": "deck-atmosphere-workspace",
+        "uses_library_card": false,
+        "uses_library_card_corner": true,
+        "icon_strategy": "lucide-react (Upload, FileUp, PlayCircle, Scissors, Layers)"
+      },
+      "delta": [
+        "P0 — Live workspace IS the drop zone (an entry-state shell). Demo workspace is the post-import clip grid (4 cards). These are two different lifecycle states. Either: a) split demo into 'workspace.empty' + 'workspace.clips', or b) document live workspace's TODAY'S-CLIPS view if it exists in another file (likely workbench/ or cockpit/).",
+        "P1 — Demo's 4-card clip grid pattern (`.library-card` 9/16 tiles with caption text-shadow + duration pill) does not appear in the workspace empty state. If a 'today's clips' grid is rendered post-pipeline, confirm its file path and add to this audit.",
+        "INFO — Atmosphere mounted but class name diverges (deck-atmosphere-workspace vs atm-workspace)."
+      ],
+      "verdict": "DIVERGE_LIFECYCLE_STATE"
+    },
+
+    {
+      "id": "import",
+      "demo": {
+        "lines": "508-548",
+        "container": "<section data-surface=\"import\"><div class=\"atm-import absolute inset-0\"></div>",
+        "heading": "<div class=\"eyebrow\">import</div><h1 class=\"font-display text-[26px] font-semibold tracking-[-0.025em] text-ink mt-0.5\">Bring it in</h1>",
+        "primary_card": "hud-frame rounded-2xl with marquee animation, two action paths (paste URL / drop file), library-card 'recent imports' grid below",
+        "key_classes": [".eyebrow", ".hud-frame", ".library-card", "atm-import", "@keyframes marquee"]
+      },
+      "live": {
+        "file": "desktop/src/components/upload/* + desktop/src/components/DropZone.tsx",
+        "note": "Live consolidates Import and Workspace into a single UnifiedDropZone (lane state). No standalone Import surface.",
+        "uses_atmosphere_bg": "inherits workspace atmosphere",
+        "uses_library_card_corner": true
+      },
+      "delta": [
+        "P1 — No standalone import view in live. Demo has a dedicated `data-surface=\"import\"` with a marquee hud-frame + recent-imports grid. Live merges import into UnifiedDropZone lane=\"import\". Either rebuild demo to show the unified two-lane DropZone, or split UnifiedDropZone into two surfaces for visual hierarchy.",
+        "P2 — Demo's 'recent imports' library-card grid (id=import-recents, 4 cards) has no live equivalent. If we want users to re-import previously processed sources, add a row of recent imports below the drop zone."
+      ],
+      "verdict": "ARCHITECTURAL_MERGE"
+    },
+
+    {
+      "id": "create",
+      "demo": {
+        "lines": "551-599",
+        "container": "<section data-surface=\"create\"><div class=\"atm-create absolute inset-0\"></div>",
+        "heading": "<div class=\"eyebrow\">create</div><h1 class=\"font-display text-[26px] font-semibold tracking-[-0.025em] text-ink mt-0.5\">Set the goal</h1>",
+        "primary_card": "library-card with mode selector + working-bar marquee + 'Stage 3 / 6 · ~58 seconds left' eyebrow + grid-cols-5 'recently created' card grid (create-recents)",
+        "key_classes": [".eyebrow", ".library-card", ".working-bar", "@keyframes marquee", "atm-create"]
+      },
+      "live": {
+        "file": "desktop/src/components/projects/ProjectsTab.tsx",
+        "heading_range": "ProjectsTab.tsx:240-287",
+        "heading_jsx": "<span className=\"font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia\">projects</span><h1 className=\"mt-0.5 font-display text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] text-ink\">Organise your clips around campaigns, clients, and earning goals.</h1>",
+        "controls": "<button>New Project (h-11 rounded-full bg-fuchsia)</button><button>Add file (h-11 rounded-full border)</button><button>↻ refresh (h-11 w-11)</button>",
+        "grid": "<div className=\"grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4\">{filtered.map(p => <ProjectCard .../>)}</div>",
+        "uses_atmosphere_bg": true,
+        "atmosphere_class": "deck-atmosphere-workspace (routed via App.tsx view=projects)",
+        "uses_library_card": false,
+        "icon_strategy": "lucide-react (Plus, FilePlus, RefreshCw)"
+      },
+      "delta": [
+        "P0 — Demo's 'create' is a goal-setting / progress surface (working-bar marquee + 6-stage progress). Live 'create' is the Projects list view. Naming mismatch. If 'create' = clip-generation-from-source, live equivalent is the WorkingStage component (src/components/WorkingStage.tsx) not ProjectsTab.",
+        "P1 — Live Projects has no working-bar marquee or stage progress block. If we keep ProjectsTab as the create surface, add a global progress strip when a project is actively rendering clips.",
+        "P2 — Recent-projects 5-card grid (id=create-recents) maps loosely to ProjectsTab's main grid, but uses 5-col compact thumbnails. Live uses 3-col ProjectCards. Add a recents row above the main grid?",
+        "INFO — Live eyebrow is achieved via Tailwind utility classes inline (font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia) rather than a .eyebrow class. The visual result is identical to demo's .eyebrow — purely a naming concern."
+      ],
+      "verdict": "NAMING_MISMATCH"
+    },
+
+    {
+      "id": "youtube",
+      "demo": {
+        "lines": "603-703",
+        "container": "<section data-surface=\"youtube\"><div class=\"atm-thumbnail absolute inset-0\"></div>",
+        "heading": "<div class=\"eyebrow\" style=\"color:#ff66b8\">youtube</div><h1 class=\"font-display text-[26px] ...\">Title, thumbnail, publish</h1>",
+        "controls": "<button class=\"pill is-active\">Edit</button><button class=\"pill\">Preview</button><button class=\"h-9 px-5 rounded-full bg-fuchsia ...\">Publish to YouTube</button>",
+        "layout": "grid-cols-[1fr_360px] — LEFT: title library-card + tags library-card + schedule library-card. RIGHT: thumbnail library-card + visibility library-card.",
+        "key_classes": [".eyebrow", ".pill", ".library-card", "shadow-glow-sm", "atm-thumbnail (shared with thumbnail surface)"]
+      },
+      "live": {
+        "file": "desktop/src/components/YouTubeView.tsx",
+        "heading_range": "YouTubeView.tsx:108-150",
+        "heading_jsx": "Poster image (h-[88px] aspect-video) + PlatformIcon youtube + 'for YouTube long-form' label + h3 title + 'Copy in Studio order' button + 'saving / unsaved' status",
+        "uses_atmosphere_bg": "inherits deck-atmosphere-workspace",
+        "uses_library_card": false,
+        "uses_pill_class": false,
+        "icon_strategy": "Custom PlatformIcon + plain buttons (no Edit/Preview pill toggle, no Publish-to-YouTube primary CTA at top)"
+      },
+      "delta": [
+        "P0 — Live YouTubeView lacks the demo's three primary controls (Edit/Preview/Publish-to-YouTube). The 'Copy in Studio order' button is the only top-level action. Add a Publish button if publish flow is wired in this view.",
+        "P1 — Live YouTubeView uses a single horizontal poster-meta strip instead of demo's grid-cols-[1fr_360px] two-column layout (title/tags/schedule on left; thumbnail/visibility on right). The current shape is closer to a 'meta editor' than a 'publish composer'. Pick which the surface is.",
+        "P2 — No tags library-card visible in live. No visibility (Public/Unlisted/Private) toggle visible in live. Add or document why they're absent.",
+        "P2 — Live wraps in gradient-to-r from-paper-warm/60 via-paper to-paper-warm/40 instead of using library-card chrome with bracket corners."
+      ],
+      "verdict": "DIVERGE_FEATURE_PARITY_GAP"
+    },
+
+    {
+      "id": "library",
+      "demo": {
+        "lines": "706-723, 1008-1024",
+        "container": "<section data-surface=\"library\"><div class=\"atm-library absolute inset-0\"></div>",
+        "heading": "<div class=\"eyebrow\">library</div><h1 class=\"font-display text-[26px] ...\">Previously loved</h1>",
+        "controls": "<input type=\"text\" placeholder=\"Search archived clips\" class=\"w-72 h-10 pl-9 pr-3 rounded-xl border border-line bg-paper-elev focus:border-fuchsia/60\"/>",
+        "grid": "<div id=\"library-grid\" class=\"grid grid-cols-6 gap-3\">12× .library-card aspect-[9/16] tiles — each with 4× lcc brackets, archived label, duration pill, caption (line-clamp-2), Restore button (h-7 bg-paper/85 hover:bg-fuchsia)",
+        "key_classes": [".eyebrow", ".library-card", "lcc-tl/tr/bl/br", "atm-library", "line-clamp"]
+      },
+      "live": {
+        "file": "desktop/src/components/library/LibraryTab.tsx",
+        "wall_file": "desktop/src/components/cockpit/LibraryWall.tsx",
+        "heading_range": "LibraryWall.tsx:109-150 (header HUD strip — eyebrow + h1 + refresh)",
+        "select_mode_jsx": "<span className=\"font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia\">select</span><h1 ...>{selectedSlugs.size} selected</h1> + Select all / Cancel / Delete buttons",
+        "uses_atmosphere_bg": true,
+        "atmosphere_class": "deck-atmosphere-clips",
+        "uses_library_card": true,
+        "uses_library_card_corner": true,
+        "icon_strategy": "lucide-react (RefreshCw, Search, Trash2, X)"
+      },
+      "delta": [
+        "P1 — Demo title is 'Previously loved' (luxury voice — DDB voice carry-over). Live title varies based on state (e.g. '{n} selected' in select mode). Confirm default-state title matches 'Previously loved'.",
+        "P2 — Demo has a dedicated search input top-right (w-72 h-10). Verify live LibraryWall exposes the same input in the same position.",
+        "INFO — Live uses .library-card and 4× corner spans correctly. atmosphere class drift only (deck-atmosphere-clips vs atm-library)."
+      ],
+      "verdict": "MOSTLY_MATCH"
+    },
+
+    {
+      "id": "schedule",
+      "demo": {
+        "lines": "726-772, 1026-1054",
+        "container": "<section data-surface=\"schedule\"><div class=\"atm-schedule absolute inset-0\"></div>",
+        "heading": "<div class=\"eyebrow\">schedule</div><h1 class=\"font-display text-[26px] ...\">Mission control</h1>",
+        "controls": "<button class=\"pill is-active\">Queue · 5</button><button class=\"pill\">Channels · 4</button><button class=\"pill\">Analytics</button>",
+        "routed_chips_row": "<span class=\"eyebrow text-t3\">routed to</span> <span class=\"pill is-active\">@ddbeauty</span><span class=\"pill is-active\">@danieldiyepriyebeauty</span><span class=\"pill\">finish linking · ig</span><span class=\"pill\">+ add</span>",
+        "layout": "grid-cols-3 gap-6 — col-span-2: schedule queue list (id=schedule-list, 5 rows of .library-card rounded-xl, time + clip caption + platform mini-pills + ⋯ menu). col-span-1: library-card 'this week' calendar (7-day grid) + queued/posted/channels stats.",
+        "key_classes": [".eyebrow", ".pill", ".library-card", "atm-schedule"]
+      },
+      "live": {
+        "file": "desktop/src/components/schedule/SchedulePage.tsx",
+        "heading_range": "SchedulePage.tsx:117-142",
+        "heading_jsx": "<div className=\"font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-text-tertiary\"><Calendar size={11} className=\"text-fuchsia\"/>schedule</div><h1 className=\"font-display text-[28px] ...\">Plan your next post.</h1><p>Manage every social channel, queue posts to fire automatically, and see what's working — all from one place.</p>",
+        "controls": "TabButton row (Loadout / Queue / Analytics) underlined border-b border-line — not the demo's pill row",
+        "queue_region": "SchedulePage.tsx:144-150 — uses cockpit-tile-corner brackets instead of library-card",
+        "uses_atmosphere_bg": true,
+        "atmosphere_class": "deck-atmosphere-schedule",
+        "uses_library_card": false,
+        "uses_cockpit_tile_corner": true,
+        "icon_strategy": "lucide-react (Calendar, Layers, BarChart3)"
+      },
+      "delta": [
+        "P1 — Headline copy differs: demo 'Mission control' vs live 'Plan your next post.' Both work; pick one.",
+        "P1 — Demo uses pill row for tabs (Queue · 5 / Channels · 4 / Analytics). Live uses underlined-tab style (border-b active state). Pick: pills give counts in label, tabs are quieter. Demo's pills carry information; live's tabs lose it.",
+        "P1 — Demo has a 'routed to' eyebrow + handle pill chip row. Live does not surface routed handles inline. Add chip row above queue.",
+        "P1 — Demo right column has a calendar + queue stats library-card. Live has neither in the queue view. Add or document removal.",
+        "P2 — Live queue rows use cockpit-tile-corner instead of demo's library-card chrome. Both are brand-kit primitives; pick one and use consistently."
+      ],
+      "verdict": "DIVERGE_INFORMATION_DENSITY_LOWER"
+    },
+
+    {
+      "id": "settings",
+      "demo": {
+        "lines": "775-806, 1101-1125",
+        "container": "<section data-surface=\"settings\"><div class=\"atm-settings absolute inset-0\"></div>",
+        "heading": "<div class=\"eyebrow\">settings</div><h1 class=\"font-display text-[26px] ...\">Loadout</h1>",
+        "layout": "grid-cols-[220px_1fr] gap-6 — LEFT: nav with active item using .library-card chrome (4 brackets + 1×1 fuchsia dot + 13px font-semibold label) and inactive items as text-only px-3 py-2.5 buttons. RIGHT: section header h2 + description + id=settings-channels list of .library-card rows.",
+        "settings_categories": ["Channels", "Account", "API keys", "Billing", "Brand", "Updates"],
+        "channel_row_jsx": "<div class=\"library-card flex items-center gap-4 px-4 py-3.5 rounded-xl\"><div class=\"w-10 h-10 rounded-[10px]\" style=\"background:{platform-bg}\"></div><div>label + handle + status (color-coded mono eyebrow)</div><button class=\"h-9 px-4 rounded-full mono text-[10px] uppercase ...\">Manage / Connect</button></div>",
+        "key_classes": [".eyebrow", ".library-card", "atm-settings"]
+      },
+      "live": {
+        "file": "desktop/src/components/Settings.tsx",
+        "heading_range": "Settings.tsx:428-444",
+        "shell_jsx": "<SettingsCompactHeader/> + <SettingsLeftRail active={category} onSelect={setCategory}/> + <div className=\"flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-7 py-7 pb-24\"> + dynamic content per category",
+        "uses_atmosphere_bg": true,
+        "atmosphere_class": "deck-atmosphere-settings",
+        "uses_library_card": false,
+        "icon_strategy": "lucide-react (Camera, Trash2, User, Key, Shield, Info, ChevronLeft, Droplet, Mail, Copy)"
+      },
+      "delta": [
+        "P1 — Demo headline is 'Loadout' (single word, brand voice). Live uses SettingsCompactHeader (no h1 in the same position). Confirm whether 'Loadout' lives at the top of the right column or has been removed.",
+        "P1 — Demo left rail's ACTIVE item uses .library-card chrome with 4 bracket corners + dot indicator. Live SettingsLeftRail item-active style needs verification — if it's a flat background change, drift.",
+        "P1 — Channel rows in demo use .library-card with platform-coloured 40×40 badge + handle/status/manage CTA. Live may use a different row layout (verify with read of SettingsCompactHeader/Channels panel).",
+        "P2 — Demo lists 6 categories (Channels / Account / API keys / Billing / Brand / Updates). Live category set unknown from this excerpt — verify SettingsLeftRail item list matches."
+      ],
+      "verdict": "NEEDS_RAIL_LIBRARY_CARD_PARITY"
+    },
+
+    {
+      "id": "thumbnail",
+      "demo": {
+        "lines": "809-866",
+        "container": "<section data-surface=\"thumbnail\"><div class=\"atm-thumbnail absolute inset-0\"></div>",
+        "heading": "<div class=\"eyebrow\">thumbnails</div><h1 class=\"font-display text-[26px] ...\">Thumbnail setup</h1>",
+        "controls": "<div class=\"flex p-0.5 rounded-full border border-line bg-paper-elev\"><button class=\"pill\">Cover Pack</button><button class=\"pill is-active\">AI Generate</button></div> + <span class=\"font-mono text-[12px] text-t3\">$0.00</span>",
+        "hero_strip": "<div class=\"hud-frame rounded-2xl overflow-hidden mb-6 h-44\"> + horizontal marquee of 12× yt-reference png at h-full w-auto, 55s linear infinite + left/right gradient fade",
+        "step_grid": "grid-cols-3 gap-4 max-w-2xl mx-auto — 3× .library-card with .halo-digit SVG + step label + sublabel (Upload identity / Pick your style / Generate $0.07 per image)",
+        "key_classes": [".eyebrow", ".pill", ".hud-frame", ".library-card", ".halo-digit", "@keyframes marquee", "atm-thumbnail"]
+      },
+      "live": {
+        "file": "desktop/src/components/ThumbnailStudio.tsx",
+        "kind": "modal — fixed overlay opened from project/clip context",
+        "heading_range": "ThumbnailStudio.tsx:70-200 (modal mount + state)",
+        "view_states": ["cover_pack", "ai_generate"],
+        "uses_atmosphere_bg": "modal-scoped (not full surface atmosphere)",
+        "uses_library_card": false,
+        "uses_hud_frame": false,
+        "uses_halo_digit": false,
+        "icon_strategy": "lucide-react (Camera, Palette, Sparkles)"
+      },
+      "delta": [
+        "P0 — Demo treats Thumbnail as a full surface (data-surface=thumbnail), live treats it as a modal. Different lifecycle. If user enters via project deep-link, modal is wrong UX; if via clip-card overflow, modal is right. Lock the entry pattern.",
+        "P1 — Live has no hud-frame marquee strip of yt-references. Add an inspiration/reference carousel at the top of the modal or migrate to a full surface and adopt the demo pattern.",
+        "P1 — Live has no 3-step library-card row with halo-digit. The Upload identity → Pick style → Generate flow is a major UX framing affordance. Add as the bottom-of-modal stepper.",
+        "P1 — Demo has a Cover Pack / AI Generate pill toggle. Confirm live exposes the same view switcher in the same visual style.",
+        "P2 — Demo shows '$0.00' price chip top-right. Live should mirror this for transparency on AI generation cost."
+      ],
+      "verdict": "DIVERGE_LIFECYCLE_STATE_MODAL_VS_SURFACE"
+    },
+
+    {
+      "id": "learn",
+      "demo": {
+        "lines": "870-903",
+        "container": "<section data-surface=\"learn\"><div class=\"atm-library absolute inset-0\"></div>",
+        "heading": "<div class=\"eyebrow\">learn</div><h1 class=\"font-display text-[26px] ...\">Walkthroughs</h1>",
+        "grid": "grid-cols-3 gap-4 — 3× .library-card rounded-2xl p-5 with: eyebrow duration (5 min/3 min/7 min), h3 font-display text-[16px] title, p text-[12px] description, button mono text-[10px] uppercase 'Start →' link",
+        "topics": ["Your first viral clip", "Brand a caption style", "Earn from sponsored briefs"],
+        "key_classes": [".eyebrow", ".library-card", "atm-library (shared)"]
+      },
+      "live": {
+        "file": "desktop/src/components/learn/LearnTab.tsx",
+        "heading_range": "LearnTab.tsx:12-24",
+        "heading_jsx": "<PageHeader glyph={GraduationCap} eyebrow=\"doctrine deck\" title=\"Learn the craft.\" subtitle=\"Doctrine episodes that turn first-time clippers into long-term operators.\"/>",
+        "main": "<DoctrineLibrary/>",
+        "uses_atmosphere_bg": true,
+        "atmosphere_class": "deck-atmosphere-learn",
+        "uses_library_card": "TBD — depends on DoctrineLibrary implementation; not visible in this excerpt",
+        "icon_strategy": "lucide-react (GraduationCap)"
+      },
+      "delta": [
+        "P1 — Demo title is 'Walkthroughs' (concrete). Live title is 'Learn the craft.' / eyebrow 'doctrine deck' (poetic). Pick one voice; doctrine-deck framing is more brand-locked but less scannable.",
+        "P1 — Read DoctrineLibrary.tsx to verify it uses 3× library-card grid with eyebrow duration + Start → link. If not, drift.",
+        "P2 — Demo has 3 specific topics tied to product flows (clip → caption → earn). Live DoctrineLibrary topic set is opaque from this audit; document the doctrine list."
+      ],
+      "verdict": "NEEDS_DOCTRINE_LIBRARY_AUDIT"
+    },
+
+    {
+      "id": "community",
+      "demo": {
+        "lines": "906-936",
+        "container": "<section data-surface=\"community\"><div class=\"atm-earn absolute inset-0\"></div>",
+        "heading": "<div class=\"eyebrow\">community</div><h1 class=\"font-display text-[26px] ...\">The crew</h1>",
+        "list": "space-y-3 — vertical stack of .library-card rounded-2xl p-5 announcement/brief rows; each row has eyebrow tag-left + eyebrow tag-right (with optional fuchsia color) + h3 + description",
+        "card_examples": ["announcement · today / team / v0.7.50 ships tonight", "campaign brief · liquid lift / $50K POOL / Clip Liquid Lift demos, earn $9 RPM recurring"],
+        "key_classes": [".eyebrow", ".library-card", "atm-earn (shared)"]
+      },
+      "live": {
+        "file": "desktop/src/components/CommunityTab.tsx",
+        "heading_range": "CommunityTab.tsx:~150-200",
+        "heading_jsx": "<span className=\"font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia\">community</span><h1 className=\"font-display text-[28px] ...\">Connect and grow.</h1><p>Join channels for your tier, ask questions, share tactics, and unlock rewards.</p>",
+        "layout": "Grouped channel sections by tier (SECTION_META) — sectionKey header (eyebrow + icon) + library-card grid per section",
+        "uses_atmosphere_bg": true,
+        "atmosphere_class": "deck-atmosphere-community",
+        "uses_library_card": true,
+        "uses_library_card_corner": true,
+        "icon_strategy": "lucide-react (Bell, Crown, Flame, MessageCircle, Sparkles, Trophy)"
+      },
+      "delta": [
+        "P1 — Demo title is 'The crew' (brand voice). Live title is 'Connect and grow.' (functional). Brand voice wins for cinematic positioning.",
+        "P1 — Demo Community is announcement/brief feed (1-column stack). Live Community is channel directory (grouped sections). Different products — verify which is the actual surface. If both are needed, split into Community (feed) + Channels (directory).",
+        "INFO — Live uses .library-card + 4 corners correctly. The chrome matches."
+      ],
+      "verdict": "INFORMATION_ARCHITECTURE_MISMATCH"
+    },
+
+    {
+      "id": "signin",
+      "demo": {
+        "lines": "939-965",
+        "container": "<section data-surface=\"signin\"><div class=\"atm-signin absolute inset-0\"></div>",
+        "heading": "<div class=\"eyebrow mb-6\">first run</div> + breathing pixel-invader SVG (h-20 w-28) fuchsia drop-shadow + <h1 class=\"font-display text-[32px] ...\">Welcome to the dojo.</h1>",
+        "subheading": "<p class=\"text-[14px] text-ink-soft leading-relaxed max-w-md mx-auto mb-8\">Sign in to count your first 100 free clips. No card. Sign-in just makes you a known clipper.</p>",
+        "cta": "<button class=\"h-12 px-6 rounded-full bg-fuchsia text-white text-sm font-semibold hover:bg-fuchsia-bright shadow-glow-md inline-flex items-center gap-2\">Sign in to Liquid Clips →</button>",
+        "stays_in_window_hint": "<div class=\"mt-3 eyebrow text-t3\">stays in this window · no route change</div>",
+        "activate_link": "<button class=\"eyebrow text-fuchsia hover:text-fuchsia-bright\">activate this mac →</button>",
+        "key_classes": [".eyebrow", ".breathing.pixel", "shadow-glow-md", "atm-signin"]
+      },
+      "live": {
+        "file": "desktop/src/components/FirstRun.tsx",
+        "auth_panel": "desktop/src/components/auth/AuthPanel.tsx",
+        "splash": "desktop/src/components/Splash.tsx",
+        "iron_gate": "IG-004 (auth + activation locked)",
+        "heading_range": "FirstRun.tsx:35-95",
+        "heading_jsx": "<Logo size=\"md\"/> + <span pulse-dot/>first run + <span fuchsia eyebrow>Liquid Clips</span> + <h1 className=\"mt-3 font-display text-[36px] ...\">Sign in to start clipping.</h1> + <p>Your videos stay on your machine. Sign in to activate your plan, unlock Earn, and turn any link or file into vertical clips.</p>",
+        "cta": "<button className=\"btn-primary min-w-[220px]\">{activation state copy}</button>",
+        "uses_atmosphere_bg": true,
+        "atmosphere_class": "deck-atmosphere-signin",
+        "icon_strategy": "Custom Logo component; no lucide"
+      },
+      "delta": [
+        "P1 — Demo headline is 'Welcome to the dojo.' (brand voice — dojo metaphor). Live headline is 'Sign in to start clipping.' (functional). The dojo voice is more on-brand and was the locked direction during the rebrand. Confirm with brand kit doc.",
+        "P1 — Demo uses a breathing pixel-invader SVG as the hero glyph (continuation of the Liquid Clips invaders motif). Live uses the Logo component. Verify whether the breathing invader is intended (cinematic) or the wordmark Logo (calm).",
+        "P1 — Demo CTA copy is 'Sign in to Liquid Clips'. Live CTA copy varies based on activation state ('opening'/'waiting'/'activating'). Both are fine; demo defines the resting label.",
+        "P2 — Demo has 'stays in this window · no route change' hint + 'activate this mac →' secondary link. Confirm live exposes the same secondary affordance (likely yes via activate-this-mac path).",
+        "INFO — Iron gate IG-004 locks auth/activation logic. Visual reshape OK; do not touch state machine."
+      ],
+      "verdict": "VOICE_AND_HERO_GLYPH_DRIFT"
+    },
+
+    {
+      "id": "project-detail",
+      "demo_note": "Demo does not have a project-detail surface — project-detail is a live-only navigation state.",
+      "live": {
+        "file": "desktop/src/components/projects/ProjectDetail.tsx",
+        "heading_range": "ProjectDetail.tsx:200-300",
+        "heading_jsx": "<button onClick={onBack} aria-label=\"Back to projects\"><ArrowLeft/></button> + eyebrow {classifyProject(project)} + h1 {whop_bounty_title || source_filename || slug}",
+        "main_region": "Hero drop zone with pixel-invader SVG landmark + 'Drop files into this Project.' h2 + 'Or pick a file' h-11 CTA, then membership grid",
+        "uses_atmosphere_bg": "inherits deck-atmosphere-workspace",
+        "uses_library_card_corner": true,
+        "icon_strategy": "lucide-react (ArrowLeft, ExternalLink, FileImage, FilePlus, FileVideo)"
+      },
+      "delta": [
+        "P2 — No demo counterpart. If we want the demo to be exhaustive, add a `data-surface=\"project-detail\"` to demo-pages.html showing the hero drop zone + clip grid pattern."
+      ],
+      "verdict": "DEMO_MISSING_SURFACE"
+    },
+
+    {
+      "id": "library-clip-strip-in-projects",
+      "demo_note": "Demo does not include the LibraryClipStrip (added v0.7.77 as the cross-tab drag bridge).",
+      "live": {
+        "file": "desktop/src/components/projects/LibraryClipStrip.tsx",
+        "kind": "Embedded strip rendered between Projects error banner and filter chips",
+        "tiles": "library-card 160px-wide horizontal scroll tiles, each draggable with custom MIME application/x-liquidclips-asset and discriminator kind:'library-clip'",
+        "uses_library_card": true,
+        "uses_library_card_corner": true
+      },
+      "delta": [
+        "P2 — Add to demo if we want the cross-tab Library→Projects affordance documented as part of the canonical UI."
+      ],
+      "verdict": "DEMO_MISSING_SURFACE"
+    }
+  ],
+
+  "global_observations": [
+    "Atmosphere class family was renamed (`atm-*` → `deck-atmosphere-*`) between docs and code. Cheap to reconcile; pick one canonical prefix and run a single search/replace pass.",
+    ".eyebrow CSS class is documented but absent in live; every live surface inlines `font-mono text-[10px] uppercase tracking-[0.32em] text-fuchsia` instead. Identical visual output. If we want code brevity, add the .eyebrow utility class to index.css. If we want explicit Tailwind tokens, update demo to drop .eyebrow.",
+    ".pill / .pill.is-active is documented but absent in live (count=2). Most surfaces lost the pill control vocabulary and replaced with underlined tabs (schedule), icon rails (earn), or omitted control rows entirely. This is the biggest single source of perceived 'demo is more crafted than live'. Either add a .pill utility or restore pill rows to surfaces where they previously had information (Queue · 5 / Channels · 4 etc.).",
+    ".library-card + 4 .lcc-* bracket corners is the dominant card primitive in demo. Live uses .library-card-corner-{tl,tr,bl,br} naming and is consistent (204 usages). Naming alias only — `.lcc` is the shorter demo alias for `.library-card-corner`.",
+    ".cockpit-tile + ctc-* brackets is heavily used in live (130 occurrences) but does NOT appear in demo HTML. Either demo is out of date (cockpit-tile is a newer brand primitive), or cockpit-tile is overused in live and should be replaced with library-card on some surfaces (especially schedule queue rows).",
+    "Demo headlines use poetic / brand voice ('Mission control' / 'Loadout' / 'Previously loved' / 'The crew' / 'Welcome to the dojo.'). Live tends toward functional voice ('Plan your next post.' / 'Connect and grow.' / 'Sign in to start clipping.'). The poetic voice is on-brand for Liquid Clips and was the locked direction during the v0.6.31 rebrand. Restoring poetic voice across these 5 surfaces is the highest-impact-lowest-risk single pass.",
+    "Demo .halo-digit SVG-step-indicator pattern exists only on the Thumbnail surface. Worth preserving as an explicit step-indicator vocabulary if we add other onboarding/wizard flows (e.g. Caption Studio first-run).",
+    "Demo .hud-frame marquee strip (yt-references horizontal scroll on thumbnail, sponsored-banner-style on earn) does not appear in live. If we want pre-visualised inspiration carousels (a recurring demo motif), the .hud-frame primitive should be promoted to a reusable component."
+  ],
+
+  "priority_p0_p1_summary": {
+    "P0": [
+      "workspace — lifecycle state mismatch (demo shows post-import clip grid; live shows empty drop zone). Decide whether demo represents empty or populated state.",
+      "create — naming mismatch (demo shows clip-generation wizard; live shows Projects list). Either rename live or rewrite demo.",
+      "thumbnail — modal-vs-surface mismatch. Pick one entry pattern.",
+      "youtube — missing top-level controls (Edit/Preview/Publish-to-YouTube)."
+    ],
+    "P1": [
+      "earn — restore pill row + library-card chrome OR document EarnLayout as the new canonical and rewrite demo.",
+      "schedule — restore pill row, routed-handles chip row, and right-column calendar/stats card.",
+      "settings — verify left rail active state uses library-card chrome with bracket corners.",
+      "library — confirm default title is 'Previously loved' and search input is in same position.",
+      "import — decide whether to split UnifiedDropZone into two surfaces or rewrite demo to show the unified shape.",
+      "signin — restore 'Welcome to the dojo.' headline + breathing pixel-invader hero glyph.",
+      "community — split into Community (announcement feed, demo) and Channels (directory, live) OR pick one.",
+      "learn — pick voice between 'Walkthroughs' (demo) and 'doctrine deck' (live); verify DoctrineLibrary uses library-card pattern.",
+      "atmosphere class family — pick atm-* vs deck-atmosphere-* once and rename."
+    ],
+    "P2": [
+      "Add .eyebrow utility to index.css (or remove from demo and unify on Tailwind tokens).",
+      "Add .pill utility class to index.css (or remove from demo and unify on Tailwind tokens).",
+      "Audit cockpit-tile usage in live; replace with library-card where it represents a card (not a section header).",
+      "Add demo entries for project-detail and library-clip-strip-in-projects."
+    ]
+  },
+
+  "instructions_for_reviewer": {
+    "how_to_use_this_file": "For each surface entry, compare `demo` and `live` blocks. Treat `delta` as the candidate change set. Use `verdict` as the one-word categorisation of the gap. Final decisions live in `priority_p0_p1_summary` — flag any item you want me to act on by its surface id + P0/P1/P2 priority.",
+    "do_not_touch_files": [
+      "desktop/src/App.tsx",
+      "desktop/src/index.css",
+      "desktop/src/components/cockpit/LibraryCard.tsx (IG-007)",
+      "desktop/src/components/ClipPreview.tsx (IG-007)",
+      "desktop/src/components/ReactionControls.tsx",
+      "desktop/src/components/OverlaySourcePicker.tsx",
+      "desktop/src/components/earn/EarnTab.tsx (IG-related — confirm before edit)",
+      "desktop/src/components/Settings.tsx (IG-related — confirm before edit)",
+      "desktop/src-tauri/**",
+      "desktop/python-sidecar/**",
+      "latest.json + release artifacts"
+    ],
+    "ship_workflow": "design target locked → patch → validate → install → ASK before commit. No commits, no pushes, no tags, no releases without explicit per-turn green-light."
+  }
+}
