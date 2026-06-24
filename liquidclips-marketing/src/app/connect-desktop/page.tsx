@@ -1,29 +1,45 @@
 "use client";
 
-// v0.7.59 — Native /connect-desktop on the Clerk primary domain.
+// v0.7.70 — Whop-primary sign-in on /connect-desktop.
 //
-// Ported from account-app/src/app/connect-desktop/page.tsx so the page +
-// every /_next/static/* asset it pulls resolve against the same Vercel
-// deployment that owns liquidclips.app. The prior cross-Next rewrite
-// returned the page HTML correctly but 404'd every CSS/JS chunk, giving
-// the user a white unstyled "Activating Liquid Clips on this device…"
-// page.
+// Architecture (LOCKED 2026-06-24 — memory liquid-clips-whop-lead-decision):
+//   Whop owns auth / subs / agents / community / payouts. Clerk stays as
+//   the SECONDARY door — backwards-compat for users created before the
+//   Whop-primary flip plus a fallback when Whop is down.
 //
-// Flow (unchanged):
+// /connect-desktop is the browser half of the desktop activation bridge.
+// The Liquid Clips desktop opens this URL with a one-time ?challenge=<nonce>.
+//
+// Sign-in flow (Whop primary):
 //   1. ?challenge=<nonce> arrives from the desktop's startActivation().
-//   2. Not signed in → embedded Clerk SignIn (hash routing) lands back
-//      here on completion.
-//   3. Signed in → POST /api/desktop/connect { challenge } against the
-//      junior-backend proxy (next.config.ts keeps that rewrite alive).
-//   4. Backend mints + returns license_jwt. We deep-link
-//      liquidclips://activate?token=&challenge= and surface a manual
-//      "Open Liquid Clips" fallback.
+//   2. Page renders TWO doors:
+//        • PRIMARY  → "Sign in with Whop" (fuchsia, top of fold)
+//          → 302 /api/whop-oauth/start?challenge=… → same-origin shim
+//          → 302 to backend /auth/whop/start
+//          → Whop consent → backend /auth/whop/callback
+//          → backend mints license JWT → 302 liquidclips://activate?…
+//        • SECONDARY → "Sign in with email" (Clerk, collapsed by default)
+//          → POST /api/desktop/connect on success
+//          → 302 liquidclips://activate?…
+//   3. Either path ends at the same deep-link — desktop verifies the
+//      challenge, stores the JWT, flips signed-in. No restart, no paste.
 //
 // The challenge is stashed in sessionStorage so it survives the Clerk
 // sign-in round-trip even when the redirect drops the query string.
 
 import { useEffect, useRef, useState } from "react";
-import { SignIn, useUser } from "@clerk/nextjs";
+import { useUser } from "@clerk/nextjs";
+
+import { ClerkFallbackBlock } from "@/components/connect-desktop/ClerkFallbackBlock";
+import { WhopBanner } from "@/components/connect-desktop/WhopBanner";
+import { WhopSignInButton } from "@/components/connect-desktop/WhopSignInButton";
+import {
+  WHOP_ENABLED,
+  buildAffiliateUrl,
+  isValidChallenge,
+  readWhopUrlState,
+  type WhopUrlState,
+} from "@/lib/whop-oauth";
 
 type Phase =
   | { k: "loading" }
@@ -55,11 +71,13 @@ function readChallenge(): string {
 export default function ConnectDesktopPage() {
   const { isLoaded, isSignedIn } = useUser();
   const [challenge, setChallenge] = useState("");
+  const [whopUrlState, setWhopUrlState] = useState<WhopUrlState>("none");
   const [phase, setPhase] = useState<Phase>({ k: "loading" });
   const minted = useRef(false);
 
   useEffect(() => {
     setChallenge(readChallenge());
+    setWhopUrlState(readWhopUrlState());
   }, []);
 
   useEffect(() => {
@@ -71,7 +89,7 @@ export default function ConnectDesktopPage() {
     if (!challenge) {
       setPhase({
         k: "error",
-        msg: "Missing activation code. Re-open this from the Liquid Clips desktop app’s Sign in button.",
+        msg: "Missing activation code. Re-open this from the Liquid Clips desktop app's Sign in button.",
       });
       return;
     }
@@ -120,7 +138,7 @@ export default function ConnectDesktopPage() {
       } catch {
         setPhase({
           k: "error",
-          msg: "Couldn’t reach Liquid Clips’s servers. Check your connection and retry.",
+          msg: "Couldn't reach Liquid Clips's servers. Check your connection and retry.",
         });
       }
     })();
@@ -128,14 +146,35 @@ export default function ConnectDesktopPage() {
 
   if (phase.k === "need_signin") {
     const back = `/connect-desktop?challenge=${encodeURIComponent(challenge)}`;
+
+    // Same-origin start URL. Only render if (a) we have a valid challenge,
+    // (b) Whop feature flag is on, and (c) the URL state isn't telling us
+    // Whop is disabled at the backend (env vars missing on Railway).
+    const whopStartHref =
+      WHOP_ENABLED &&
+      whopUrlState !== "disabled" &&
+      isValidChallenge(challenge)
+        ? `/api/whop-oauth/start?challenge=${encodeURIComponent(challenge)}`
+        : "";
+
+    // When the Whop button is unavailable (flag off OR no challenge), reveal
+    // the Clerk widget immediately — there's no point burying it behind a
+    // disclosure click when it's the only working door.
+    const clerkMode = whopStartHref ? "cta" : "open";
+
     return (
       <Shell eyebrow="connect desktop" title="Sign in to activate Liquid Clips.">
-        <SignIn
-          routing="hash"
-          signUpUrl={`/sign-up?redirect=${encodeURIComponent(back)}`}
-          forceRedirectUrl={back}
-          signUpForceRedirectUrl={back}
-        />
+        <WhopBanner state={whopUrlState} affiliateUrl={buildAffiliateUrl()} />
+
+        {/* PRIMARY — Whop. Shown first / above the fold per
+            liquid-clips-whop-lead-decision. */}
+        {WHOP_ENABLED && (
+          <WhopSignInButton href={whopStartHref} />
+        )}
+
+        {/* SECONDARY — Clerk fallback. Always rendered (the FALLBACK rule);
+            collapsed by default so it doesn't compete with the primary CTA. */}
+        <ClerkFallbackBlock backUrl={back} mode={clerkMode} />
       </Shell>
     );
   }
@@ -170,8 +209,8 @@ export default function ConnectDesktopPage() {
         )}
         {phase.k === "ready" && (
           <p className="text-center font-sans text-[12px] text-text-tertiary">
-            If nothing happened, click “Open Liquid Clips”. You can close this tab once
-            the desktop says you’re signed in.
+            If nothing happened, click &ldquo;Open Liquid Clips&rdquo;. You can close this tab once
+            the desktop says you&rsquo;re signed in.
           </p>
         )}
         {phase.k === "error" && (
