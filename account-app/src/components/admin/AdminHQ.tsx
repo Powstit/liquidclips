@@ -16,6 +16,7 @@ import {
   RevenueTab,
 } from "./HQCommandTabs";
 import { SurfacesTab } from "./SurfacesTab";
+import { PromoCodesTab } from "./PromoCodesTab";
 
 // Read-only Admin HQ v0 — dense, utilitarian, on-brand (paper/ink + fuchsia).
 // All data is fetched THROUGH /api/admin/* proxy routes that re-check admin on
@@ -162,6 +163,7 @@ const TABS = [
   "Missions",
   "Banners",
   "Announcements",
+  "Promo Codes",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -361,6 +363,7 @@ export function AdminHQ({
         {tab === "Missions" && <MissionsTab />}
         {tab === "Banners" && <BannersTab />}
         {tab === "Announcements" && <AnnouncementsTab />}
+        {tab === "Promo Codes" && <PromoCodesTab />}
       </div>
 
       <footer className="mt-14 border-t border-line pt-5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">

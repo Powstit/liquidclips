@@ -50,6 +50,9 @@ const READ_PATHS = [
   /^announcements$/,
   /^campaigns$/,
   /^campaigns\/[^/]+$/,
+  // 2026-06-25 · Promo / discount-code admin reads
+  /^promo$/,
+  /^promo\/[^/]+\/stats$/,
 ];
 const WRITE_PATHS = [
   /^claims\/[^/]+\/expire$/,
@@ -70,6 +73,9 @@ const WRITE_PATHS = [
   /^announcements\/[^/]+$/,
   /^campaigns$/,
   /^campaigns\/[^/]+$/,
+  // 2026-06-25 · Promo / discount-code admin writes (create + revoke)
+  /^promo$/,
+  /^promo\/[^/]+\/revoke$/,
 ];
 
 function pathAllowed(path: string, method: string): boolean {

@@ -138,4 +138,8 @@ export type AnalyticsEvent =
   | "download_clicked"           // installer / download CTA (alias for desktop_download_clicked)
   // Connections
   | "whop_connect_clicked"
-  | "connection_added";
+  | "connection_added"
+  // Promo / discount-code funnel (2026-06-25)
+  | "promo_code_captured"      // sign-up captured a ?promo=CODE URL param
+  | "promo_code_prefilled"     // checkout pre-filled from URL or sessionStorage
+  | "promo_code_validated";    // checkout live-validation returned (valid + reason in props)
