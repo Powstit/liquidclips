@@ -97,6 +97,11 @@ fn bundled_dist_dir(app: &AppHandle) -> Option<PathBuf> {
     // Resources/_up_/_up_/dist OR Resources/dist depending on version.
     // Try both and return the first that has index.html.
     for candidate in &[
+        // Tauri 2 resource bundler maps `../dist/**/*` (from
+        // tauri.conf.json bundle.resources) to Resources/_up_/dist/.
+        resource_dir.join("_up_").join("dist"),
+        // `../../dist/**/*` would map to Resources/_up_/_up_/dist/ —
+        // kept as a fallback in case the conf changes.
         resource_dir.join("_up_").join("_up_").join("dist"),
         resource_dir.join("dist"),
         resource_dir.clone(),
@@ -251,31 +256,44 @@ fn write_last_check(result: &str, manifest_version: Option<String>) {
 /// signature + hash check out, extracts to bundles/<v>/ and flips
 /// `current.json`. The NEXT cold boot picks up the new bundle.
 pub async fn check_and_stage_runtime(app: AppHandle) -> Result<(), String> {
+    eprintln!("[runtime] check_and_stage_runtime START");
     let _ = fs::create_dir_all(runtime_root_dir());
+    write_last_check("start", None);
 
     let current_version = staged_bundle_path()
         .and_then(|p| read_bundle_version(&p))
         .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+    eprintln!("[runtime] current_version={}", current_version);
 
     let url = format!(
         "{}?channel={}&current_version={}",
         MANIFEST_URL, CHANNEL, current_version
     );
 
-    let client = reqwest::Client::builder()
+    write_last_check("building reqwest client", None);
+    let client = match reqwest::Client::builder()
         .user_agent(format!("liquid-clips-shell/{}", env!("CARGO_PKG_VERSION")))
         .timeout(std::time::Duration::from_secs(30))
         .build()
-        .map_err(|e| format!("reqwest client build: {e}"))?;
+    {
+        Ok(c) => c,
+        Err(e) => {
+            let msg = format!("reqwest client build: {e}");
+            eprintln!("[runtime] {}", msg);
+            write_last_check(&msg, None);
+            return Err(msg);
+        }
+    };
+    write_last_check("client built · GETting manifest", None);
 
-    let resp = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| {
-            write_last_check(&format!("manifest fetch failed: {e}"), None);
-            format!("manifest fetch failed: {e}")
-        })?;
+    let resp = match client.get(&url).send().await {
+        Ok(r) => { write_last_check(&format!("manifest http {}", r.status().as_u16()), None); r }
+        Err(e) => {
+            let msg = format!("manifest fetch failed: {e}");
+            write_last_check(&msg, None);
+            return Err(msg);
+        }
+    };
 
     if resp.status().as_u16() == 204 {
         write_last_check("up-to-date (204)", Some(current_version.clone()));
@@ -287,10 +305,18 @@ pub async fn check_and_stage_runtime(app: AppHandle) -> Result<(), String> {
         return Err(format!("manifest endpoint returned {s}"));
     }
 
-    let manifest: ManifestEnvelope = resp.json().await.map_err(|e| {
-        write_last_check(&format!("manifest decode: {e}"), None);
-        format!("manifest decode: {e}")
-    })?;
+    let manifest: ManifestEnvelope = match resp.json().await {
+        Ok(m) => m,
+        Err(e) => {
+            let msg = format!("manifest decode: {e}");
+            write_last_check(&msg, None);
+            return Err(msg);
+        }
+    };
+    write_last_check(
+        &format!("manifest decoded · v={} verdict={}", manifest.version, manifest.ship_lens_verdict),
+        Some(manifest.version.clone()),
+    );
 
     // Server should NEVER return a non-PASS bundle (the /runtime/manifest.json
     // query has a WHERE clause). Defense-in-depth: refuse client-side too.
@@ -311,31 +337,35 @@ pub async fn check_and_stage_runtime(app: AppHandle) -> Result<(), String> {
     }
 
     // ─── download the bundle ──────────────────────────────────────────
-    let bundle_resp = client
-        .get(&manifest.url)
-        .send()
-        .await
-        .map_err(|e| {
-            write_last_check(&format!("bundle download failed: {e}"), Some(manifest.version.clone()));
-            format!("bundle download: {e}")
-        })?;
+    write_last_check(&format!("GETting bundle {}", manifest.url), Some(manifest.version.clone()));
+    let bundle_resp = match client.get(&manifest.url).send().await {
+        Ok(r) => r,
+        Err(e) => {
+            let msg = format!("bundle download failed: {e}");
+            write_last_check(&msg, Some(manifest.version.clone()));
+            return Err(msg);
+        }
+    };
+    write_last_check(&format!("bundle http {}", bundle_resp.status().as_u16()), Some(manifest.version.clone()));
     if !bundle_resp.status().is_success() {
         let s = bundle_resp.status().as_u16();
-        write_last_check(&format!("bundle http {s}"), Some(manifest.version.clone()));
         return Err(format!("bundle endpoint returned {s}"));
     }
-    let bundle_bytes = bundle_resp
-        .bytes()
-        .await
-        .map_err(|e| {
-            write_last_check(&format!("bundle read failed: {e}"), Some(manifest.version.clone()));
-            format!("bundle read: {e}")
-        })?;
+    let bundle_bytes = match bundle_resp.bytes().await {
+        Ok(b) => b,
+        Err(e) => {
+            let msg = format!("bundle read failed: {e}");
+            write_last_check(&msg, Some(manifest.version.clone()));
+            return Err(msg);
+        }
+    };
+    write_last_check(&format!("bundle bytes read · {}MB", bundle_bytes.len() / 1024 / 1024), Some(manifest.version.clone()));
 
     // ─── verify sha256 ────────────────────────────────────────────────
     let mut hasher = Sha256::new();
     hasher.update(&bundle_bytes);
     let actual_hash = format!("{:x}", hasher.finalize());
+    write_last_check(&format!("sha256 computed: {}", &actual_hash[..16]), Some(manifest.version.clone()));
     if actual_hash != manifest.sha256 {
         write_last_check(
             &format!("hash mismatch: got {} expected {}", actual_hash, manifest.sha256),
@@ -345,15 +375,64 @@ pub async fn check_and_stage_runtime(app: AppHandle) -> Result<(), String> {
     }
 
     // ─── verify minisign signature ────────────────────────────────────
-    let pubkey_pem = String::from_utf8(
-        base64_decode(RUNTIME_MINISIGN_PUBKEY_B64)
-            .map_err(|e| format!("pubkey b64 decode: {e}"))?,
-    )
-    .map_err(|e| format!("pubkey utf8: {e}"))?;
-    let pubkey = minisign_verify::PublicKey::decode(&pubkey_pem)
-        .map_err(|e| format!("pubkey parse: {e}"))?;
-    let sig = minisign_verify::Signature::decode(&manifest.signature)
-        .map_err(|e| format!("signature decode: {e}"))?;
+    // Tauri's minisign signature is delivered base64-encoded over the wire
+    // (the .sig file is itself base64). Decode the b64 wrapper to get the
+    // raw `untrusted comment: …\n<base64-blob>\n` string minisign_verify
+    // expects.
+    use base64::Engine as _;
+    let pubkey_decoded = match base64::engine::general_purpose::STANDARD.decode(RUNTIME_MINISIGN_PUBKEY_B64) {
+        Ok(b) => b,
+        Err(e) => {
+            let msg = format!("pubkey b64 decode: {e}");
+            write_last_check(&msg, Some(manifest.version.clone()));
+            return Err(msg);
+        }
+    };
+    let pubkey_pem = match String::from_utf8(pubkey_decoded) {
+        Ok(s) => s,
+        Err(e) => {
+            let msg = format!("pubkey utf8: {e}");
+            write_last_check(&msg, Some(manifest.version.clone()));
+            return Err(msg);
+        }
+    };
+    let pubkey = match minisign_verify::PublicKey::decode(&pubkey_pem) {
+        Ok(k) => k,
+        Err(e) => {
+            let msg = format!("pubkey parse: {e}");
+            write_last_check(&msg, Some(manifest.version.clone()));
+            return Err(msg);
+        }
+    };
+    write_last_check("pubkey decoded", Some(manifest.version.clone()));
+
+    // The manifest's `signature` field is base64 — decode to get the raw
+    // minisign .sig text.
+    let sig_decoded = match base64::engine::general_purpose::STANDARD.decode(&manifest.signature) {
+        Ok(b) => b,
+        Err(e) => {
+            let msg = format!("signature b64 decode: {e}");
+            write_last_check(&msg, Some(manifest.version.clone()));
+            return Err(msg);
+        }
+    };
+    let sig_str = match String::from_utf8(sig_decoded) {
+        Ok(s) => s,
+        Err(e) => {
+            let msg = format!("signature utf8: {e}");
+            write_last_check(&msg, Some(manifest.version.clone()));
+            return Err(msg);
+        }
+    };
+    let sig = match minisign_verify::Signature::decode(&sig_str) {
+        Ok(s) => s,
+        Err(e) => {
+            let msg = format!("signature parse: {e}");
+            write_last_check(&msg, Some(manifest.version.clone()));
+            return Err(msg);
+        }
+    };
+    write_last_check("signature decoded · verifying…", Some(manifest.version.clone()));
     if let Err(e) = pubkey.verify(&bundle_bytes, &sig, false) {
         write_last_check(
             &format!("signature verify failed: {e}"),
@@ -361,6 +440,7 @@ pub async fn check_and_stage_runtime(app: AppHandle) -> Result<(), String> {
         );
         return Err(format!("signature verify failed: {e}"));
     }
+    write_last_check("signature verified · extracting", Some(manifest.version.clone()));
 
     // ─── extract to bundles/<v>/ via staged temp dir + atomic rename ──
     let final_dir = bundles_dir().join(&manifest.version);
@@ -370,9 +450,12 @@ pub async fn check_and_stage_runtime(app: AppHandle) -> Result<(), String> {
 
     let decoder = GzDecoder::new(Cursor::new(bundle_bytes.as_ref()));
     let mut archive = Archive::new(decoder);
-    archive
-        .unpack(&staging_dir)
-        .map_err(|e| format!("untar failed: {e}"))?;
+    if let Err(e) = archive.unpack(&staging_dir) {
+        let msg = format!("untar failed: {e}");
+        write_last_check(&msg, Some(manifest.version.clone()));
+        return Err(msg);
+    }
+    write_last_check("untar done · atomic rename", Some(manifest.version.clone()));
 
     // Atomic-rename → bundles/<v>/. If a prior version dir is there, blow it
     // away first (we only keep one inactive version for Phase 1 simplicity;
@@ -396,7 +479,7 @@ pub async fn check_and_stage_runtime(app: AppHandle) -> Result<(), String> {
     )
     .map_err(|e| format!("pointer write: {e}"))?;
 
-    write_last_check("staged", Some(manifest.version.clone()));
+    write_last_check(&format!("staged · v{}", manifest.version), Some(manifest.version.clone()));
 
     // Emit an event so the Settings UI can refresh the "Runtime version" row
     // without a polling loop.
@@ -410,37 +493,6 @@ pub async fn check_and_stage_runtime(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn runtime_check_now(app: AppHandle) -> Result<(), String> {
     check_and_stage_runtime(app).await
-}
-
-// ─── tiny base64 decoder (avoid an extra crate; bundled key is short) ──
-
-fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
-    use std::collections::HashMap;
-    static B64_ALPHA: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let map: HashMap<u8, u8> = B64_ALPHA.iter().enumerate().map(|(i, &c)| (c, i as u8)).collect();
-    let mut out = Vec::with_capacity(input.len() * 3 / 4);
-    let trimmed: Vec<u8> = input.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
-    for chunk in trimmed.chunks(4) {
-        if chunk.len() < 2 {
-            return Err("incomplete b64 chunk".to_string());
-        }
-        let mut buf = [0u8; 4];
-        for (i, &b) in chunk.iter().enumerate() {
-            if b == b'=' {
-                buf[i] = 0;
-            } else {
-                buf[i] = *map.get(&b).ok_or_else(|| format!("invalid b64 byte {}", b))?;
-            }
-        }
-        out.push((buf[0] << 2) | (buf[1] >> 4));
-        if chunk.len() >= 3 && chunk[2] != b'=' {
-            out.push((buf[1] << 4) | (buf[2] >> 2));
-        }
-        if chunk.len() >= 4 && chunk[3] != b'=' {
-            out.push((buf[2] << 6) | buf[3]);
-        }
-    }
-    Ok(out)
 }
 
 // ─── custom URI scheme resolver ─────────────────────────────────────────

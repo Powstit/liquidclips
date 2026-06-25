@@ -39,7 +39,7 @@ export function HomeBanner(): JSX.Element {
         <div className="lc-home-banner-rim" />
       </div>
       <div className="lc-home-banner-copy">
-        <span className="lc-home-banner-eb">NEW · IN-APP BROWSER</span>
+        <span className="lc-home-banner-eb">RUNTIME UPDATE TEST · v2.3.1</span>
         <h3 className="lc-home-banner-h">
           Stack paid Whop skills without leaving the app.
         </h3>
