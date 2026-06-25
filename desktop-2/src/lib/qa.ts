@@ -113,6 +113,18 @@ export interface QASnapshot {
     routeHeadPresent: boolean;
     routeHeadHeight: number | null;
   };
+  /** PHASE 2 split-workbench evidence (locked 2026-06-25). Workstation
+   *  must use a split-pane layout (grid + inspector), with internal
+   *  scrolling — not a whole-page vertical stack. Null on non-
+   *  Workstation surfaces. */
+  workbench: {
+    splitBodyPresent: boolean;
+    inspectorPresent: boolean;
+    inspectorHasClipFlag: string | null;
+    /** Computed `overflow` on `.lc-app` for this route. On workstation
+     *  it must be `hidden` so internal scroll regions own the scroll. */
+    appOverflow: string | null;
+  };
 }
 
 export interface SurfaceReport {
@@ -275,6 +287,10 @@ async function snapshot(): Promise<QASnapshot> {
   const simH1 = document.querySelector(".sim-h1");
   const routeHead = document.querySelector<HTMLElement>(".lc-route-head");
   const routeHeadHeight = routeHead ? Math.round(routeHead.getBoundingClientRect().height) : null;
+
+  const splitBody = document.querySelector(".lc-ws-body");
+  const inspector = document.querySelector<HTMLElement>(".lc-ws-body-inspector");
+  const appOverflow = app ? getComputedStyle(app).overflow : null;
   // Prefer the real card preview's resolved background; fall back to a
   // synthetic probe so the CSS rule itself is verified when no card is
   // present.
@@ -365,6 +381,12 @@ async function snapshot(): Promise<QASnapshot> {
       simH1Present: !!simH1,
       routeHeadPresent: !!routeHead,
       routeHeadHeight,
+    },
+    workbench: {
+      splitBodyPresent: !!splitBody,
+      inspectorPresent: !!inspector,
+      inspectorHasClipFlag: inspector?.dataset.hasClip ?? null,
+      appOverflow,
     },
   };
 }
@@ -500,6 +522,23 @@ function evalPassConditions(snap: QASnapshot, intent: SurfaceReport["intent"]): 
       snap.viewport.routeHeadHeight === null
         ? false
         : snap.viewport.routeHeadHeight <= 60;
+  }
+
+  // PHASE 2 split workbench (locked 2026-06-25). Only fires on the
+  // Workstation family (Schedule is aliased into it). Asserts:
+  //   · .lc-ws-body grid is mounted (clip column + inspector)
+  //   · inspector pane is mounted (selected-clip preview lives there)
+  //   · .lc-app overflow is hidden so the whole route doesn't scroll —
+  //     internal columns + CockpitDock are the only things that move.
+  // Workstation empty state is exempt from grid/inspector — a clean
+  // session with no clips renders EngineEmptyState centered instead.
+  if (routeFamily(intent.route) === "workstation") {
+    conds.workbenchAppOverflowHidden = snap.workbench.appOverflow === "hidden";
+    // The empty state means no grid yet — that's OK. Only require the
+    // split body + inspector when there's a working session.
+    if (snap.workbench.splitBodyPresent) {
+      conds.workbenchInspectorMounted = snap.workbench.inspectorPresent;
+    }
   }
 
   return conds;

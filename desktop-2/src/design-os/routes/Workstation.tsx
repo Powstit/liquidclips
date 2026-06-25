@@ -215,12 +215,12 @@ function WorkstationBody() {
         sessionStatus={chromeSessionStatus}
         sessionStage={chromeSessionStage}
       >
-        {/* PHASE 1 · viewport discipline · the 80px H1 + sub-copy hero
-            was a landing-page block on a tool route. Identity already
-            lives in TopHud + ConsoleNav. State-dependent phrasing
-            (scanning / clips ready / error) survives as a compact status
-            pill — same info, ~140px less vertical real estate, clip
-            grid + actions now land in the first viewport. */}
+        {/* PHASE 2 · split workbench (locked 2026-06-25). Top row is the
+            compact route head + inline session controls. Body below is a
+            2-column grid: clip grid (left/main, scrolls internally) and
+            the selected-clip inspector (right, scrolls internally). The
+            whole route no longer scrolls — only the two columns + the
+            CockpitDock tab strip at the bottom move. */}
         <div className="lc-route-head" data-kade-anchor>
           <span className="lc-route-head-eb">{hero.eyebrow}</span>
           <div className="lc-route-head-pills">
@@ -239,28 +239,29 @@ function WorkstationBody() {
               </span>
             )}
           </div>
+          {/* Session controls inline — EngineActions renders null when
+              nothing is actionable, so this stays empty + invisible on a
+              clean session and never becomes a slab. */}
+          <EngineErrorBoundary route="workstation" component="EngineActions">
+            <EngineActions onGoCreate={openCreatePanel} />
+          </EngineErrorBoundary>
         </div>
 
         {isEmpty ? (
           <EngineEmptyState onGoCreate={openCreatePanel} />
         ) : (
-          <>
-            <EngineErrorBoundary route="workstation" component="EngineActions">
-              <EngineActions onGoCreate={openCreatePanel} />
-            </EngineErrorBoundary>
+          <div className="lc-ws-body" data-testid="ws-split-workbench">
+            <div className="lc-ws-body-main">
+              {/* BUG-029.6 · Kade ignition is a transient pre-scan float
+                  that self-clears once clipsReady > 0. Lives in the main
+                  column so the inspector stays uncluttered. */}
+              <EngineErrorBoundary route="workstation" component="KadeIgnition">
+                <KadeIgnition />
+              </EngineErrorBoundary>
 
-            {/* BUG-029.6 · Kade ignition — big 3D-float loading state
-                immediately after Analyze & Clip. Auto-clears the moment
-                the first generated clip lands (clipsReady > 0) so the
-                ResultsGrid + ClipPreviewShell take over without
-                competing for the user's eye. */}
-            <EngineErrorBoundary route="workstation" component="KadeIgnition">
-              <KadeIgnition />
-            </EngineErrorBoundary>
-
-            <EngineErrorBoundary route="workstation" component="StageRail">
-              <StageRail />
-            </EngineErrorBoundary>
+              <EngineErrorBoundary route="workstation" component="StageRail">
+                <StageRail />
+              </EngineErrorBoundary>
 
             {/* BUG-023 · live heartbeat strip — positioned ABOVE the grid so
                 it stays above the cockpit dock fold. */}
@@ -299,41 +300,61 @@ function WorkstationBody() {
               </div>
             )}
 
-            {/* ───── IRON GATE IG-LC2-016 — see docs/lc2/IRON_GATES_LC2.md ─────
-                Workstation IS the editor. ClipPreviewShell mounts here
-                directly, fed by `focusedClip` resolved from
-                session.project.clips (NOT FIXTURE_PROJECT). When
-                session.project exists, fixture-sourced clips in the editor
-                are forbidden. See BUG-028. */}
-            {focusedClip && (
-              <EngineErrorBoundary route="workstation" component="ClipPreviewShell">
-                <ClipPreviewShell clip={focusedClip} />
+              <EngineErrorBoundary route="workstation" component="ResultsGrid">
+                <ResultsGrid
+                  project={session.project}
+                  pendingCount={Math.max(session.clipsReady, session.clipsTotal ?? 0)}
+                  onSelectionChange={setSelectedCount}
+                  onOpenClip={(c) => {
+                    setFocusedClipIdx(c.idx);
+                    selectClipForStudio(c.idx);
+                    bus.emit("toast", {
+                      kind: "info",
+                      title: "Selected",
+                      body: `Focused clip · ${c.title}`,
+                    });
+                  }}
+                />
               </EngineErrorBoundary>
-            )}
-            {/* ───── END IRON GATE IG-LC2-016 (mount site) ───── */}
+            </div>
+            <aside
+              className="lc-ws-body-inspector"
+              data-testid="ws-inspector"
+              data-has-clip={focusedClip ? "1" : "0"}
+            >
+              {/* ───── IRON GATE IG-LC2-016 — see docs/lc2/IRON_GATES_LC2.md ─────
+                  Workstation IS the editor. ClipPreviewShell mounts here,
+                  fed by `focusedClip` resolved from session.project.clips
+                  (NOT FIXTURE_PROJECT). When session.project exists,
+                  fixture-sourced clips in the editor are forbidden. Phase 2
+                  moved the mount from the flat main flow into the inspector
+                  column — the gate's contract (mounts iff focusedClip,
+                  reads same focusedClip as CockpitDock) is preserved. */}
+              {focusedClip ? (
+                <EngineErrorBoundary route="workstation" component="ClipPreviewShell">
+                  <ClipPreviewShell clip={focusedClip} />
+                </EngineErrorBoundary>
+              ) : (
+                <div className="lc-ws-inspector-empty">
+                  <span className="lc-ws-inspector-empty-eb">Pick a clip</span>
+                  <p className="lc-ws-inspector-empty-body">
+                    Select a clip from the grid to preview, edit, and publish.
+                  </p>
+                </div>
+              )}
+              {/* ───── END IRON GATE IG-LC2-016 (mount site) ───── */}
 
-            <EngineErrorBoundary route="workstation" component="ResultsGrid">
-              <ResultsGrid
-                project={session.project}
-                pendingCount={Math.max(session.clipsReady, session.clipsTotal ?? 0)}
-                onSelectionChange={setSelectedCount}
-                onOpenClip={(c) => {
-                  setFocusedClipIdx(c.idx);
-                  selectClipForStudio(c.idx);
-                  bus.emit("toast", {
-                    kind: "info",
-                    title: "Selected",
-                    body: `Focused clip · ${c.title}`,
-                  });
-                }}
-              />
-            </EngineErrorBoundary>
-          </>
+              {/* Diagnostics collapsed by default. Replaces the EngineHealthPanel
+                  slab that previously dominated the bottom of the route. */}
+              <details className="lc-ws-diagnostics">
+                <summary className="lc-ws-diagnostics-summary">Diagnostics</summary>
+                <EngineErrorBoundary route="workstation" component="EngineHealthPanel">
+                  <EngineHealthPanel />
+                </EngineErrorBoundary>
+              </details>
+            </aside>
+          </div>
         )}
-
-        <EngineErrorBoundary route="workstation" component="EngineHealthPanel">
-          <EngineHealthPanel />
-        </EngineErrorBoundary>
       </WorkstationFrame>
       </fm.div>
 

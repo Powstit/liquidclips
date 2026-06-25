@@ -43,3 +43,211 @@
   background: linear-gradient(180deg, rgba(255, 90, 90, .10), rgba(255, 90, 90, .03));
 }
 .lc-engine-heartbeat-error .lc-engine-heartbeat-eb { color: #ff7a7a; }
+
+/* ── PHASE 2 · split workbench (locked 2026-06-25) ──────────────────────
+   Workstation is a desktop tool, not a webpage. The whole route stops
+   scrolling at the .lc-app level on this route only; the two body
+   columns and the CockpitDock are the only things that move. Other
+   routes are untouched. */
+
+.lc-app[data-route="workstation"] {
+  overflow: hidden;
+}
+/* The AppShell scroll container that wraps every route's children stops
+   being the page scroller on Workstation. It becomes a fixed-height
+   flex column that hands its remaining height to the WorkstationFrame. */
+.lc-app[data-route="workstation"] .lc-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Drop the bottom padding that reserved space for the dock — the dock
+     is position: fixed; the body column handles its own clearance now. */
+  padding-bottom: 26px;
+  overflow: hidden;
+}
+.lc-app[data-route="workstation"] .lc-main {
+  min-height: 0;
+}
+.lc-app[data-route="workstation"] .sim-stage.lc-ws-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* Override the older bottom padding — the inspector column carries its
+     own breathing room above the dock now. */
+  padding-bottom: 0;
+}
+.lc-app[data-route="workstation"] .lc-ws-frame {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* The two-column body. Inspector lives on the right; on narrow
+   widths it collapses to a row below the grid so the app still works
+   at small window sizes. */
+.lc-ws-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 16px;
+  padding: 14px 18px;
+  /* Bottom breathing room above the fixed CockpitDock. */
+  padding-bottom: calc(var(--lc-dock-h, 360px) + 16px);
+  box-sizing: border-box;
+}
+@media (max-width: 1100px) {
+  .lc-ws-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+}
+
+.lc-ws-body-main,
+.lc-ws-body-inspector {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  /* Custom scroll chrome that doesn't fight the cockpit palette. */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 26, 140, .35) transparent;
+}
+.lc-ws-body-main::-webkit-scrollbar,
+.lc-ws-body-inspector::-webkit-scrollbar {
+  width: 8px;
+}
+.lc-ws-body-main::-webkit-scrollbar-thumb,
+.lc-ws-body-inspector::-webkit-scrollbar-thumb {
+  background: rgba(255, 26, 140, .35);
+  border-radius: 4px;
+}
+
+.lc-ws-body-inspector {
+  /* The inspector is a translucent panel inside the cockpit world. */
+  background: rgba(11, 11, 16, 0.32);
+  border: 1px solid rgba(255, 26, 140, 0.18);
+  border-radius: 14px;
+  padding: 14px;
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+          backdrop-filter: blur(12px) saturate(1.1);
+}
+
+.lc-ws-inspector-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 28px 16px;
+  text-align: center;
+  color: #c8c4be;
+}
+.lc-ws-inspector-empty-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: #ff66b8;
+}
+.lc-ws-inspector-empty-body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.lc-ws-diagnostics {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(255, 255, 255, .08);
+}
+.lc-ws-diagnostics-summary {
+  list-style: none;
+  cursor: pointer;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: #86837e;
+  padding: 6px 4px;
+  user-select: none;
+}
+.lc-ws-diagnostics-summary::-webkit-details-marker { display: none; }
+.lc-ws-diagnostics-summary::before {
+  content: "▸";
+  margin-right: 8px;
+  display: inline-block;
+  transition: transform .15s ease;
+}
+.lc-ws-diagnostics[open] .lc-ws-diagnostics-summary::before {
+  transform: rotate(90deg);
+}
+
+/* ── EngineActions compact (inline in route head) ─────────────────────
+   The "Run controls" slab becomes a small horizontal row of action
+   chips. No eyebrow, no card background, no last-source paragraph
+   dominating the viewport — the source URL collapses into a hover-only
+   tooltip on the row. */
+.lc-route-head .lc-eng-actions {
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.lc-route-head .lc-eng-actions-eb { display: none; }
+.lc-route-head .lc-eng-actions-row {
+  display: inline-flex;
+  gap: 6px;
+}
+.lc-route-head .lc-eng-btn {
+  padding: 4px 10px;
+  font-size: 11.5px;
+  border-radius: 8px;
+}
+.lc-route-head .lc-eng-btn-quiet {
+  border-color: rgba(255, 90, 90, .25);
+  color: rgba(255, 154, 154, .85);
+  background: transparent;
+}
+.lc-route-head .lc-eng-btn-quiet:hover {
+  border-color: rgba(255, 90, 90, .55);
+  background: rgba(255, 90, 90, .08);
+  color: #ff9a9a;
+}
+/* Last-source URL — collapse from a paragraph to a tiny truncated pill
+   with the full URL in the title attribute. Daniel's rule: detail
+   drawer, not landing-page paragraph. */
+.lc-route-head .lc-eng-actions-source {
+  font-size: 10.5px;
+  color: #86837e;
+  max-width: 220px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  background: rgba(11, 11, 16, .35);
+}
+
+/* ── EngineEmptyState compact on Workstation ──────────────────────────
+   Daniel's rule: empty state is a compact card with one CTA, not a
+   marketing page. Cuts the 30px H + 14px paragraph + extra padding to
+   a tight panel. */
+.lc-app[data-route="workstation"] .lc-eng-empty {
+  padding: 18px 22px !important;
+  max-width: 520px;
+  margin: 0 auto;
+  align-self: center;
+}
+.lc-app[data-route="workstation"] .lc-eng-empty-h {
+  font-size: 20px;
+  margin: 0;
+}
+.lc-app[data-route="workstation"] .lc-eng-empty-sub {
+  font-size: 13px;
+  margin: 0;
+}
