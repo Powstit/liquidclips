@@ -22,13 +22,20 @@ import {
 import { bus } from "../../design-os/bridge";
 import {
   useBrowseOverlay,
-  urlIsLikelyBlocked,
   WHOP_REWARDS_URL,
 } from "../../state/browseOverlay";
 import { navigateTo } from "../../shell/routes";
 import { SECTION_IDS } from "../../shell/sectionIds";
 import { setActiveCampaignId } from "../../shell/modeStore";
 import { openSmart } from "../../lib/openSmart";
+import {
+  openBrowsePanel,
+  closeBrowsePanel,
+  updateBrowsePanelBounds,
+  browseBack as nativeBrowseBack,
+  browseForward as nativeBrowseForward,
+  browseReload as nativeBrowseReload,
+} from "../../lib/browse";
 
 /** v1 quick-link surface: Whop only + internal app routes per Daniel's call. */
 interface QuickLink {
@@ -73,12 +80,24 @@ export function BrowseOverlay(): JSX.Element | null {
   const back = useBrowseOverlay((s) => s.back);
   const forward = useBrowseOverlay((s) => s.forward);
   const reload = useBrowseOverlay((s) => s.reload);
+  // 2026-06-25 · back/forward/reload use Rust's window.history so in-webview
+  // link clicks count. The store back/forward also fire so the address bar
+  // pointer + button-enable state track typed-URL history. Phase 2 will
+  // emit a URL-change event from Rust to keep React's address bar in sync
+  // with the webview's actual location.
+  const handleBack = useCallback(() => { back(); void nativeBrowseBack(); }, [back]);
+  const handleForward = useCallback(() => { forward(); void nativeBrowseForward(); }, [forward]);
+  const handleReload = useCallback(() => { reload(); void nativeBrowseReload(); }, [reload]);
   const close = useBrowseOverlay((s) => s.close);
   const push = useBrowseOverlay((s) => s.push);
   const useInEngine = useBrowseOverlay((s) => s.useInEngine);
 
   const [draft, setDraft] = useState(currentUrl ?? WHOP_REWARDS_URL);
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  // 2026-06-25 · slotRef is an empty div the Rust webview is positioned over.
+  // React measures slot.getBoundingClientRect() and passes those bounds to
+  // open_browse_panel / update_browse_panel_bounds so the native webview
+  // sits exactly inside the React overlay layout.
+  const slotRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (currentUrl) setDraft(currentUrl);
@@ -100,17 +119,46 @@ export function BrowseOverlay(): JSX.Element | null {
       document.removeEventListener("keydown", onKey, { capture: true });
   }, [open, close]);
 
-  // 10s "still loading" → treat as blocked so the footer fallback nudges
-  // the user instead of pretending the page loaded.
+  // 2026-06-25 · webview lifecycle. The native Rust child webview sits
+  // exactly over slotRef's rect. On open / URL change → spawn or navigate.
+  // On window resize → reposition. On close → destroy.
+  //
+  // (Removed: 10s "still loading → blocked" fallback. The Rust webview
+  // bypasses iframe CSP entirely so the only blocking path now is the
+  // commerce-redirect filter, which is fast + handled in Rust.)
   useEffect(() => {
-    if (!open || loadState !== "loading") return;
-    const t = window.setTimeout(() => {
-      if (useBrowseOverlay.getState().loadState === "loading") {
-        setLoadState("blocked");
-      }
-    }, 10_000);
-    return () => window.clearTimeout(t);
-  }, [open, loadState, currentUrl, setLoadState]);
+    if (!open || !currentUrl) {
+      void closeBrowsePanel();
+      return;
+    }
+    const slot = slotRef.current;
+    if (!slot) return;
+
+    const measure = () => {
+      const r = slot.getBoundingClientRect();
+      return { x: r.left, y: r.top, width: r.width, height: r.height };
+    };
+
+    // Spawn / navigate the webview at the current slot bounds.
+    void openBrowsePanel(currentUrl, measure())
+      .then(() => setLoadState("loaded"))
+      .catch(() => setLoadState("blocked"));
+
+    // Resize observer keeps the webview locked to the slot on window
+    // resize, sidebar collapse, hero settle, etc.
+    const ro = new ResizeObserver(() => {
+      void updateBrowsePanelBounds(measure());
+    });
+    ro.observe(slot);
+    const onWindowResize = () => void updateBrowsePanelBounds(measure());
+    window.addEventListener("resize", onWindowResize);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", onWindowResize);
+      void closeBrowsePanel();
+    };
+  }, [open, currentUrl, setLoadState]);
 
   const handleGo = useCallback(
     (raw: string) => {
@@ -178,8 +226,6 @@ export function BrowseOverlay(): JSX.Element | null {
 
   const canBack = historyIdx > 0;
   const canForward = historyIdx < history.length - 1;
-  const likelyBlocked = urlIsLikelyBlocked(currentUrl);
-  const showBlockedFallback = loadState === "blocked" || likelyBlocked;
 
   const overlay = (
     <section
@@ -193,7 +239,7 @@ export function BrowseOverlay(): JSX.Element | null {
           <button
             type="button"
             className="lc-browse-icon-btn"
-            onClick={back}
+            onClick={handleBack}
             disabled={!canBack}
             aria-label="Back"
             title="Back"
@@ -203,7 +249,7 @@ export function BrowseOverlay(): JSX.Element | null {
           <button
             type="button"
             className="lc-browse-icon-btn"
-            onClick={forward}
+            onClick={handleForward}
             disabled={!canForward}
             aria-label="Forward"
             title="Forward"
@@ -213,7 +259,7 @@ export function BrowseOverlay(): JSX.Element | null {
           <button
             type="button"
             className="lc-browse-icon-btn"
-            onClick={reload}
+            onClick={handleReload}
             aria-label="Reload"
             title="Reload"
           >
@@ -289,10 +335,6 @@ export function BrowseOverlay(): JSX.Element | null {
               <span className="lc-browse-loading-dot">
                 <span className="lc-browse-loading-pulse" /> loading…
               </span>
-            ) : loadState === "blocked" ? (
-              <span className="lc-browse-loading-err">
-                this site blocks embedded viewing
-              </span>
             ) : (
               <span className="lc-browse-loading-hint">esc to close</span>
             )}
@@ -301,56 +343,16 @@ export function BrowseOverlay(): JSX.Element | null {
       </div>
 
       <div className="lc-browse-body">
-        {showBlockedFallback ? (
-          <div className="lc-browse-blocked">
-            <div className="lc-browse-blocked-eyebrow">embedded view blocked</div>
-            <h3 className="lc-browse-blocked-title">
-              This site blocks embedded viewing.
-            </h3>
-            <p className="lc-browse-blocked-body">
-              Many reward platforms (Whop, X, YouTube, Discord) refuse to render
-              inside an embedded frame. Pick one of the honest paths below.
-            </p>
-            <div className="lc-browse-blocked-actions">
-              <button
-                type="button"
-                className="lc-btn"
-                data-variant="secondary"
-                onClick={() => currentUrl && openInSystemBrowser(currentUrl)}
-              >
-                <ExternalLink size={14} /> Open in system browser ↗
-              </button>
-              <button
-                type="button"
-                className="lc-btn"
-                data-variant="primary"
-                onClick={handleUseInEngine}
-              >
-                <ArrowUpRight size={14} /> Use this link in Engine ↗
-              </button>
-            </div>
-            <div className="lc-browse-blocked-url" title={currentUrl ?? ""}>
-              {currentUrl}
-            </div>
-          </div>
-        ) : (
-          <iframe
-            ref={iframeRef}
-            key={currentUrl ?? "blank"}
-            src={currentUrl ?? "about:blank"}
-            title="Liquid Clips browse overlay"
-            referrerPolicy="no-referrer"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-            className="lc-browse-iframe"
-            onLoad={() => setLoadState("loaded")}
-            onError={() => setLoadState("blocked")}
-          />
-        )}
+        {/* 2026-06-25 · webview slot — the Rust child webview is positioned
+            over this rect. No iframe (Whop/X/YT/Discord block iframe via
+            X-Frame-Options: DENY). The slot stays empty in dev / vite
+            preview where Rust isn't available. */}
+        <div ref={slotRef} className="lc-browse-webview-slot" aria-hidden="true" />
       </div>
 
       <div className="lc-browse-footer">
         <span className="lc-browse-footer-meta">
-          Browser overlay · v1 · iframe only · no Whop / Ayrshare API
+          Browser overlay · native WebKit · commerce URLs open in system browser
         </span>
         <div className="lc-browse-footer-actions">
           <button

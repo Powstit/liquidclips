@@ -3927,6 +3927,20 @@ input, textarea, code, pre { user-select: text; font: inherit; color: inherit; }
   background: var(--color-paper);
 }
 
+/* 2026-06-25 · webview slot · empty div that the Rust child webview is
+ * positioned over. React measures its bounding rect and passes coords to
+ * open_browse_panel / update_browse_panel_bounds. The slot itself is
+ * transparent and pointer-events: none so clicks land on the webview, not
+ * on this div. In vite preview (no Rust runtime) the slot stays empty +
+ * the body shows the paper background underneath. */
+.lc-browse-webview-slot {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  background: var(--color-paper);
+  pointer-events: none;
+}
+
 /* Honest CSP-blocked fallback */
 .lc-browse-blocked {
   flex: 1;
