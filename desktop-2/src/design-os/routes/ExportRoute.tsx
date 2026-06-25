@@ -140,7 +140,7 @@ function ExportBody() {
 
   return (
     <DesignOSAppShell
-      world="studio-deck"
+      world="cockpit-home"
       route="export"
       defaultKade={session.kade}
       kadePlacement={spec.kadePlacement}

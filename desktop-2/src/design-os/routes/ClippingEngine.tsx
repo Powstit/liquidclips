@@ -50,7 +50,7 @@ function EngineBody() {
 
   return (
     <DesignOSAppShell
-      world="cutting-floor"
+      world="cockpit-home"
       route="engine"
       defaultKade={session.kade}
       kadePlacement={spec.kadePlacement}

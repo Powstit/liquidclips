@@ -60,7 +60,7 @@ function CommunityBody() {
 
   return (
     <DesignOSAppShell
-      world="squad-lounge"
+      world="cockpit-home"
       route="community"
       defaultKade={session.kade}
       kadePlacement="helper-right"

@@ -114,15 +114,13 @@ function ScheduleBody() {
         initial="initial"
         animate="animate"
       >
-        <fm.div
-          className="sim-welcome"
-          data-kade-anchor
-          variants={presets.staggerContainer}
-          initial="initial"
-          animate="animate"
-        >
-          <fm.span className="sim-eb" variants={presets.staggerItem}>
-            {hero.eyebrow}
+        {/* PHASE 1 · viewport discipline · WeekStrip + DayColumnList now
+            land in the first viewport. Tier + cap pills survive as
+            compact status; 80px H1 + sub-copy cut (route identity is in
+            TopHud + ConsoleNav). */}
+        <div className="lc-route-head" data-kade-anchor>
+          <span className="lc-route-head-eb">{hero.eyebrow}</span>
+          <div className="lc-route-head-pills">
             {sched.source !== "mock" ? (
               <span
                 className="lc-runtime-tag is-live"
@@ -139,14 +137,8 @@ function ScheduleBody() {
             <span className="lc-schedule-cap-tag" title="Monthly post cap usage">
               {sched.scheduledThisMonth} / {tier.caps.monthlyPosts} posts this month
             </span>
-          </fm.span>
-          <fm.h1 className="sim-h1" variants={presets.staggerItem}>
-            {hero.h1}
-          </fm.h1>
-          <fm.p className="sim-sub" variants={presets.staggerItem}>
-            {hero.sub}
-          </fm.p>
-        </fm.div>
+          </div>
+        </div>
 
         {/* Surfaces publish/bake/regen/thumbnail errors when they fire on this route */}
         <BakeErrorStrip />

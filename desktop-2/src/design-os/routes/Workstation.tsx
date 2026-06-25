@@ -195,7 +195,7 @@ function WorkstationBody() {
   return (
     <CockpitProvider clip={providerClip} slug={slug}>
     <DesignOSAppShell
-      world="cutting-floor"
+      world="cockpit-home"
       route="workstation"
       defaultKade={session.kade}
       kadePlacement={spec.kadePlacement}
@@ -215,38 +215,31 @@ function WorkstationBody() {
         sessionStatus={chromeSessionStatus}
         sessionStage={chromeSessionStage}
       >
-        <fm.div
-          className="sim-welcome"
-          data-kade-anchor
-          variants={presets.staggerContainer}
-          initial="initial"
-          animate="animate"
-        >
-          <fm.span className="sim-eb" variants={presets.staggerItem}>
-            {hero.eyebrow}
-            {/* UX-4 · drop the "Preview" runtime tag in non-DEV builds. It
-                leaks "we have a mock backend" to first-time creators. Keep
-                visible only when running in Vite dev so engineers still see
-                the honesty signal. */}
+        {/* PHASE 1 · viewport discipline · the 80px H1 + sub-copy hero
+            was a landing-page block on a tool route. Identity already
+            lives in TopHud + ConsoleNav. State-dependent phrasing
+            (scanning / clips ready / error) survives as a compact status
+            pill — same info, ~140px less vertical real estate, clip
+            grid + actions now land in the first viewport. */}
+        <div className="lc-route-head" data-kade-anchor>
+          <span className="lc-route-head-eb">{hero.eyebrow}</span>
+          <div className="lc-route-head-pills">
+            <span className="lc-runtime-tag" data-testid="ws-phase-pill">
+              {session.phase === "running"
+                ? `Scanning · ${session.stage ?? ""}`
+                : session.phase === "complete"
+                  ? "Clips ready"
+                  : session.phase === "error"
+                    ? "Run hit a snag"
+                    : hero.h1}
+            </span>
             {runtime.mode === "mock" && import.meta.env.DEV && (
               <span className="lc-runtime-tag" title="Mock pipeline · real ingest lands when the sidecar runtime is installed.">
                 Preview
               </span>
             )}
-          </fm.span>
-          <fm.h1 className="sim-h1" variants={presets.staggerItem}>
-            {session.phase === "running"
-              ? `Scanning · ${session.stage ?? ""}`
-              : session.phase === "complete"
-                ? "Clips ready"
-                : session.phase === "error"
-                  ? "Run hit a snag"
-                  : hero.h1}
-          </fm.h1>
-          <fm.p className="sim-sub" variants={presets.staggerItem}>
-            {session.note ?? hero.sub}
-          </fm.p>
-        </fm.div>
+          </div>
+        </div>
 
         {isEmpty ? (
           <EngineEmptyState onGoCreate={openCreatePanel} />

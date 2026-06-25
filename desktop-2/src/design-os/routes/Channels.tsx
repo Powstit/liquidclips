@@ -56,7 +56,7 @@ function ChannelsBody() {
 
   return (
     <DesignOSAppShell
-      world="relay-tower"
+      world="cockpit-home"
       route="channels"
       defaultKade={session.kade}
       kadePlacement={spec.kadePlacement}

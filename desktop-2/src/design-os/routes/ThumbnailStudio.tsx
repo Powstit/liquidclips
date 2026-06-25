@@ -201,7 +201,7 @@ function ThumbnailBody() {
 
   return (
     <DesignOSAppShell
-      world="studio-deck"
+      world="cockpit-home"
       route="thumbnail"
       defaultKade={session.kade}
       kadePlacement={spec.kadePlacement}

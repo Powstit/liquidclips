@@ -56,7 +56,7 @@ function CreateClipsBody() {
     <>
       <SimPage
         route="create"
-        world="source-bay"
+        world="cockpit-home"
         defaultKade={session.kade}
         keyPanel={{
           eyebrow:
