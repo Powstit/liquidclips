@@ -93,7 +93,7 @@ function HomeContent() {
         <fm.div variants={presets.staggerItem} data-testid="home-tile-1">
           <CockpitTile
             label={isAgency ? "Create Campaign" : "Create Clips"}
-            hint={isAgency ? "launch a paid bounty" : "paste a video URL"}
+            hint={isAgency ? "post a paid skill" : "paste a video URL"}
             icon={<IconPlus />}
             onClick={isAgency ? goCampaigns : () => openPanel("url")}
           />
@@ -113,7 +113,7 @@ function HomeContent() {
         <fm.div variants={presets.staggerItem} data-testid="home-tile-3">
           <CockpitTile
             label={isAgency ? "Review Submissions" : "Find Rewards"}
-            hint={isAgency ? "approve clippers' work" : "browse Whop paid bounties"}
+            hint={isAgency ? "approve clippers' work" : "browse paid Whop skills"}
             icon={isAgency ? <IconReview /> : <IconReward />}
             onClick={isAgency ? goSubmissions : goFindRewards}
           />

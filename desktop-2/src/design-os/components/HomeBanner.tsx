@@ -26,7 +26,7 @@ export function HomeBanner(): JSX.Element {
       variants={presets.staggerItem}
       whileHover={{ y: -2 }}
       whileTap={{ y: 0 }}
-      aria-label="Open in-app browser to discover paid Whop bounties"
+      aria-label="Open in-app browser to find paid Whop skills"
     >
       <div className="lc-home-banner-art" aria-hidden="true">
         <img
@@ -41,11 +41,11 @@ export function HomeBanner(): JSX.Element {
       <div className="lc-home-banner-copy">
         <span className="lc-home-banner-eb">NEW · IN-APP BROWSER</span>
         <h3 className="lc-home-banner-h">
-          Hunt paid bounties without leaving the app.
+          Stack paid Whop skills without leaving the app.
         </h3>
         <p className="lc-home-banner-sub">
-          Browse Whop content rewards in a side panel · Copy URL or Use in Engine
-          beams the campaign straight to Create Clips.
+          Scout skills in-app · Copy URL or Use in Engine pulls them straight
+          into Create Clips. No tabs, no juggling.
         </p>
       </div>
       <div className="lc-home-banner-cta">
