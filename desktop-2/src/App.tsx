@@ -5,7 +5,8 @@ import { FLOW_IDS } from "./contracts/flowRegistry";
 import { IntroSplash } from "./overlays/IntroSplash";
 import { InvadersOverlay } from "./overlays/invaders/InvadersOverlay";
 import { BrowseOverlay, BrowserScrim } from "./components/browser";
-import { initAuthStorage, hasJwt } from "./lib/authStorage";
+import { initAuthStorage, hasJwt, resumeJwtFromKeychainForAuthAction } from "./lib/authStorage";
+import { attachQA, qaGateEnabled } from "./lib/qa";
 import { mountDeepLinkSubscriber, type DeepLinkBootHandle } from "./lib/deepLinkBoot";
 import { useActivation } from "./lib/activation";
 import { LoginOnboardingRoute } from "./design-os/routes/LoginOnboarding";
@@ -14,8 +15,11 @@ import { readSessionIdFromLaunch, clearFunnelSession } from "./lib/funnelSession
 
 export function App() {
   // Dev-only escape hatch so headless screenshots can land on the main UI
-  // without sitting through the 28.5s intro. Not exposed to users.
-  const skipIntro = new URLSearchParams(window.location.search).get("skipIntro") === "1";
+  // without sitting through the 28.5s intro. Not exposed to users. QA mode
+  // (VITE_LC_QA build / lc.qa.enabled localStorage / vite DEV) also skips
+  // so deterministic snapshots see steady state instead of the splash.
+  const skipIntro =
+    new URLSearchParams(window.location.search).get("skipIntro") === "1" || qaGateEnabled();
   const [splashAcked, setSplashAcked] = useState(skipIntro);
   const [splashReady, setSplashReady] = useState(false);
 
@@ -53,6 +57,22 @@ export function App() {
         // eslint-disable-next-line no-console
         console.warn("[app-boot] initAuthStorage failed:", e);
       }
+      // IG-014 cold-boot keychain resume · one of the six approved auth
+      // actions. Fires only when localStorage came up empty — covers the
+      // returning-user case where webview storage got cleared (rebuild,
+      // runtime bundle swap, WKWebView profile flip) but the JWT survives
+      // in the OS Keychain. macOS may prompt once for keychain access on
+      // first ever run; subsequent boots are silent. Without this call a
+      // returning user is stranded on LoginOnboarding even though their
+      // license is valid and present.
+      if (!hasJwt()) {
+        try {
+          await resumeJwtFromKeychainForAuthAction();
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.warn("[app-boot] keychain resume failed:", e);
+        }
+      }
       try {
         const h = await mountDeepLinkSubscriber();
         if (cancelled) {
@@ -64,6 +84,15 @@ export function App() {
       } catch (e) {
         // eslint-disable-next-line no-console
         console.warn("[app-boot] mountDeepLinkSubscriber failed:", e);
+      }
+      // QA control surface · attaches window.__lcQA only when the local-QA
+      // gate is open (VITE_LC_QA=true bundle, vite DEV, or lc.qa.enabled=1
+      // localStorage). Never exposed in shipping user bundles.
+      try {
+        attachQA();
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("[app-boot] attachQA failed:", e);
       }
     })();
     return () => {

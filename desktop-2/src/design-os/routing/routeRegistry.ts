@@ -25,23 +25,29 @@ export interface RouteSpec {
   hideStickyKade?: boolean;
 }
 
+// PRODUCT STANDARD (locked 2026-06-25): ONE cockpit room. Routes change
+// the content panel inside the room, not the room itself. Daniel's call:
+// "This is a simple clipping app … Build one unified shell, then place
+// the clipping features inside it." Every world below is `cockpit-home`
+// by design — do not reintroduce per-route worlds. Kade placement still
+// varies because Kade is a CHARACTER inside the room, not a room.
 export const ROUTE_REGISTRY: Record<RouteId, RouteSpec> = {
-  home:        { world: "cockpit-home",     defaultKade: "idle",                kadePlacement: "center" },
-  workstation: { world: "cutting-floor",    defaultKade: "cutting-clips",       kadePlacement: "helper-right" }, // UI-1 · unified engine + studio + export + schedule
-  submissions: { world: "cockpit-home",     defaultKade: "reading-brief",       kadePlacement: "helper-right" }, // UI-3 · agency-only review surface
-  analytics:   { world: "cockpit-home",     defaultKade: "idle",                kadePlacement: "helper-right" }, // UX-4 · agency analytics stub
-  create:    { world: "source-bay",       defaultKade: "create-clips",        kadePlacement: "center" },        // near source/drop zone
-  engine:    { world: "cutting-floor",    defaultKade: "cutting-clips",       kadePlacement: "center" },        // near scan/candidate area
-  studio:    { world: "studio-deck",      defaultKade: "generating-captions", kadePlacement: "helper-right" },  // workspace dominates
-  thumbnail: { world: "studio-deck",      defaultKade: "reading-brief",       kadePlacement: "helper-right" },  // dense workspace · shares studio-deck
-  export:    { world: "studio-deck",      defaultKade: "exporting",           kadePlacement: "helper-right" },  // dense queue/history surface
-  campaigns: { world: "mission-pedestal", defaultKade: "reading-brief",       kadePlacement: "helper-right" },  // UX-1-c R-30/R-31 · was "center" · Kade overlapped featured card + filter row at 1440×900
-  clipper:   { world: "cockpit-home",     defaultKade: "campaign-mode",       kadePlacement: "center" },        // overlay-only world
-  earn:      { world: "cockpit-home",     defaultKade: "earn-mode",           kadePlacement: "center" },        // near vault/payout panel
-  community: { world: "squad-lounge",     defaultKade: "community-mode",      kadePlacement: "center" },        // near squad/rank panel
-  library:   { world: "cockpit-home",     defaultKade: "idle",                kadePlacement: "helper-right" },  // dense archive
-  channels:  { world: "relay-tower",      defaultKade: "publishing",          kadePlacement: "helper-right" },  // dense connections grid
-  schedule:  { world: "cockpit-home",     defaultKade: "publishing",          kadePlacement: "helper-right" },  // dense calendar
-  settings:  { world: "cockpit-home",     defaultKade: "settings-mode",       kadePlacement: "helper-right" },  // dense forms
-  support:   { world: "cockpit-home",     defaultKade: "idle",                kadePlacement: "helper-right" },
+  home:        { world: "cockpit-home", defaultKade: "idle",                kadePlacement: "helper-right" },
+  workstation: { world: "cockpit-home", defaultKade: "cutting-clips",       kadePlacement: "helper-right" },
+  submissions: { world: "cockpit-home", defaultKade: "reading-brief",       kadePlacement: "helper-right" },
+  analytics:   { world: "cockpit-home", defaultKade: "idle",                kadePlacement: "helper-right" },
+  create:    { world: "cockpit-home", defaultKade: "create-clips",        kadePlacement: "center" },
+  engine:    { world: "cockpit-home", defaultKade: "cutting-clips",       kadePlacement: "center" },
+  studio:    { world: "cockpit-home", defaultKade: "generating-captions", kadePlacement: "helper-right" },
+  thumbnail: { world: "cockpit-home", defaultKade: "reading-brief",       kadePlacement: "helper-right" },
+  export:    { world: "cockpit-home", defaultKade: "exporting",           kadePlacement: "helper-right" },
+  campaigns: { world: "cockpit-home", defaultKade: "reading-brief",       kadePlacement: "helper-right" },
+  clipper:   { world: "cockpit-home", defaultKade: "campaign-mode",       kadePlacement: "center" },
+  earn:      { world: "cockpit-home", defaultKade: "earn-mode",           kadePlacement: "center" },
+  community: { world: "cockpit-home", defaultKade: "community-mode",      kadePlacement: "center" },
+  library:   { world: "cockpit-home", defaultKade: "idle",                kadePlacement: "helper-right" },
+  channels:  { world: "cockpit-home", defaultKade: "publishing",          kadePlacement: "helper-right" },
+  schedule:  { world: "cockpit-home", defaultKade: "publishing",          kadePlacement: "helper-right" },
+  settings:  { world: "cockpit-home", defaultKade: "settings-mode",       kadePlacement: "helper-right" },
+  support:   { world: "cockpit-home", defaultKade: "idle",                kadePlacement: "helper-right" },
 };
