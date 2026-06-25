@@ -6,6 +6,7 @@ import { getSectionById } from "./sectionRegistry";
 import { SECTION_IDS } from "./sectionIds";
 import { SignalLine } from "../overlays/SignalLine";
 import { BrowseRailTab } from "../components/browser";
+import { InlineCreatePanel } from "../design-os/components/InlineCreatePanel";
 import { flowTrace } from "../lib/flowTrace";
 import { FLOW_IDS } from "../contracts/flowRegistry";
 import { atmosphereFor } from "../brand/brandAssets";
@@ -122,6 +123,11 @@ export function AppShell() {
           the Browser feature reads like the old app's right-anchored tab.
           Hidden while the overlay is open. */}
       <BrowseRailTab />
+      {/* 2026-06-25 · global InlineCreatePanel mount. Lifted out of
+          CommandRoom so the lc:browse-url-handoff event from BrowseOverlay
+          lands in a panel that survives any route — previously the panel
+          unmounted with home before its state could commit. */}
+      <InlineCreatePanel />
     </div>
   );
 }
