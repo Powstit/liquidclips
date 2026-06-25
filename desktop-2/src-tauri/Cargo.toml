@@ -16,7 +16,10 @@ tauri-build = { version = "2", features = [] }
 # Batch C (2026-06-20) — `protocol-asset` feature lets the webview play
 # clip preview .mp4 files from CLIPS_HOME via the `asset:` URL scheme.
 # Required by ResultsGrid + Studio preview wiring (lands in Batch D).
-tauri = { version = "2", features = ["protocol-asset"] }
+# 2026-06-25 — `unstable` enables child-webview APIs (add_child, get_webview)
+# that browse.rs needs to spawn a native WKWebView inside the main window
+# for the in-app browser overlay. Matches legacy desktop's Tauri features.
+tauri = { version = "2", features = ["protocol-asset", "unstable"] }
 tauri-plugin-deep-link = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -36,6 +39,11 @@ tauri-plugin-process = "2"
 # in tauri.conf.json) — not directly via fs — so this is mostly a forward
 # enablement for batch D consumers. Plugin only adds ~150 KB to binary.
 tauri-plugin-fs = "2"
+# 2026-06-25 · browse panel native webview. Commerce-URL filter
+# (App Store guideline 3.1.1) redirects /checkout, /pay, /billing,
+# /upgrade, /subscribe, /purchase, /cart navigations to the system
+# browser. See `src/browse.rs`.
+tauri-plugin-opener = "2"
 # Sidecar bridge (Batch A · 2026-06-20) — Rust ⇄ Python JSON-RPC over stdio.
 # `anyhow` for error chaining inside sidecar.rs.
 # `tokio` with the full set the desktop sidecar.rs uses: io-util for line
