@@ -23,7 +23,7 @@ from app.cron import start_cron, stop_cron
 # block is a no-op until Daniel flips the env.
 from app.agents import start_agent_fleet, stop_agent_fleet
 from app.db import Base, engine
-from app.routes import admin, admin_mutations, admin_recovery, affiliate, agency_campaigns, analytics, auth_whop, bonus_ledger, campaign_asset_links, campaigns, carrot, channels, community, connections, desktop, doctrine, leaderboard, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_llm, publish, redirect, reward_clips, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, admin_mutations, admin_recovery, affiliate, agency_campaigns, analytics, auth_whop, bonus_ledger, campaign_asset_links, campaigns, carrot, channels, community, connections, desktop, doctrine, leaderboard, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -466,6 +466,25 @@ async def lifespan(_app: FastAPI):
         "CREATE INDEX IF NOT EXISTS ix_promo_code_redemptions_promo ON promo_code_redemptions (promo_code_id)",
         "CREATE INDEX IF NOT EXISTS ix_promo_code_redemptions_user ON promo_code_redemptions (user_id)",
         "CREATE INDEX IF NOT EXISTS ix_promo_code_redemptions_applied ON promo_code_redemptions (applied_at)",
+        # ─── 2026-06-25 · Runtime Update v1 · Phase 1 ──────────────────
+        # Frontend bundle manifest. The desktop shell hits /runtime/manifest.json
+        # on boot; the ship_lens_verdict gate prevents an active user ever
+        # downloading a bundle the reviewer subagent marked broken.
+        # See docs/lc2/RUNTIME_UPDATE_ARCHITECTURE.md §13.
+        """CREATE TABLE IF NOT EXISTS runtime_manifests (
+            version varchar(64) PRIMARY KEY,
+            channel varchar(32) NOT NULL DEFAULT 'stable',
+            sha256 varchar(64) NOT NULL,
+            signature text NOT NULL,
+            file varchar(255) NOT NULL,
+            notes text NOT NULL DEFAULT '',
+            pub_date timestamptz NOT NULL DEFAULT now(),
+            ship_lens_verdict varchar(16) NOT NULL DEFAULT 'PENDING',
+            ship_lens_review_url text,
+            promoted_at timestamptz,
+            created_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_runtime_manifests_channel_verdict ON runtime_manifests (channel, ship_lens_verdict, pub_date DESC)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -543,6 +562,7 @@ app.include_router(sync.router)
 app.include_router(schedules.router)
 app.include_router(usage.router)
 app.include_router(updates.router)
+app.include_router(runtime.router)
 app.include_router(notifications.router)
 app.include_router(transcribe.router)
 app.include_router(telemetry.router)

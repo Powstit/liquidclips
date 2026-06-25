@@ -44,6 +44,20 @@ tauri-plugin-fs = "2"
 # /upgrade, /subscribe, /purchase, /cart navigations to the system
 # browser. See `src/browse.rs`.
 tauri-plugin-opener = "2"
+# 2026-06-25 · Runtime Update v1 · Phase 1.
+# `reqwest` — manifest + bundle download. `sha2` — bundle hash verify.
+# `flate2` + `tar` — untar the .tar.gz bundle. `dirs` — ~/Library/AppSupport
+# resolution. `mime_guess` — Content-Type for the custom URI scheme handler.
+# `minisign-verify` — already a transitive dep via tauri-plugin-updater;
+# re-declared here so we can call it directly. See `src/runtime.rs`.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+sha2 = "0.10"
+flate2 = "1.0"
+tar = "0.4"
+dirs = "5"
+mime_guess = "2"
+minisign-verify = "0.2"
+futures-util = "0.3"
 # Sidecar bridge (Batch A · 2026-06-20) — Rust ⇄ Python JSON-RPC over stdio.
 # `anyhow` for error chaining inside sidecar.rs.
 # `tokio` with the full set the desktop sidecar.rs uses: io-util for line
