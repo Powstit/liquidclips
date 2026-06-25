@@ -19,6 +19,22 @@
   <key>com.apple.security.cs.allow-jit</key>
   <true/>
 
+  <!-- Uncomment for Python sidecar (numpy / torch / faster-whisper):
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  -->
+
+  <!-- 2026-06-25 · Runtime Update v1 · Phase 1.
+       Rust code in `src/runtime.rs` uses reqwest to GET the runtime
+       manifest + download bundle tarballs. Hardened runtime silently
+       blocks main-process outbound network without this entitlement
+       (WKWebView has its own sandboxed network process so the iframe
+       worked; reqwest in the main process did not). -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+
   <!-- Uncomment when Python sidecar lands (numpy / torch / faster-whisper):
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
