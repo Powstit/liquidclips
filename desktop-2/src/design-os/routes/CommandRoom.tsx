@@ -18,7 +18,6 @@
 import { motion as fm } from "framer-motion";
 import { DesignOSAppShell } from "../components/AppShell";
 import { CockpitTile } from "../components/CockpitTile";
-import { InlineCreatePanel } from "../components/InlineCreatePanel";
 import { HomeBanner } from "../components/HomeBanner";
 import { bus, useMode } from "../bridge";
 import { presets } from "../motion";
@@ -38,11 +37,14 @@ function formatUsd(n: number): string {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+// 2026-06-25 · InlineCreatePanel mount lifted to src/shell/AppShell.tsx so
+// the lc:browse-url-handoff event from BrowseOverlay (anywhere) lands in
+// a panel that's still mounted. Previously mounted here, but navigateTo
+// during handoff unmounted CommandRoom + lost the panel state mid-handoff.
 export function CommandRoom() {
   return (
     <DesignOSAppShell world="cockpit-home" route="home" defaultKade="idle" kadePlacement="center">
       <HomeContent />
-      <InlineCreatePanel />
     </DesignOSAppShell>
   );
 }

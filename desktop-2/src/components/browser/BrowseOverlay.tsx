@@ -181,23 +181,39 @@ export function BrowseOverlay(): JSX.Element | null {
   );
 
   const handleUseInEngine = useCallback(() => {
+    // Read currentUrl BEFORE the store mutation in useInEngine (which
+    // doesn't actually clear currentUrl, but reading first is defensive).
+    const urlAtClick = useBrowseOverlay.getState().currentUrl ?? "";
     const payload = useInEngine();
     if (payload.campaignId) {
       setActiveCampaignId(payload.campaignId);
     }
-    // 2026-06-24 · also dispatch lc:browse-url-handoff so InlineCreatePanel
-    // (Home Create tile) can pre-fill the URL field even if the user is
-    // navigated to a different surface. Mirrors legacy desktop pattern.
-    if (payload.sourceUrl && typeof window !== "undefined") {
+    // 2026-06-25 · dispatch lc:browse-url-handoff. InlineCreatePanel is now
+    // mounted globally in AppShell (lifted from CommandRoom), so the panel
+    // opens on whichever route the user was on when they clicked the tab.
+    //
+    // Per Daniel's directive: "Closing the browser returns the user to
+    // exactly where they were." So we DO NOT navigate. The user stays put,
+    // the create panel pops up on top, they choose to clip or dismiss.
+    //
+    // The event ALWAYS fires with the URL — even when payload.sourceUrl is
+    // null (URL matched a campaign fixture), InlineCreatePanel still needs
+    // the raw URL so it can pre-fill the input. campaignId rides along for
+    // any caller that wants to map back to a known campaign.
+    const handoffUrl = payload.sourceUrl ?? urlAtClick;
+    if (handoffUrl && typeof window !== "undefined") {
       try {
         window.dispatchEvent(
           new CustomEvent("lc:browse-url-handoff", {
-            detail: { url: payload.sourceUrl, source: "browse-overlay" },
+            detail: {
+              url: handoffUrl,
+              campaignId: payload.campaignId,
+              source: "browse-overlay",
+            },
           }),
         );
       } catch { /* swallow */ }
     }
-    navigateTo(SECTION_IDS.SECTION_EDITOR);
   }, [useInEngine]);
 
   const handleCopyUrl = useCallback(async () => {
