@@ -466,6 +466,77 @@ shell first, runtime that depends on its new commands second.
 
 ---
 
+## 13 · Pre-promotion review gate (white-screen prevention for active users)
+
+**Added 2026-06-25 after analysing the ship-lens-reviewer subagent.** The
+critical failure mode this section closes: a frontend bundle compiles
+clean, signature verifies, manifest publishes, active users download +
+swap on next launch, the bundle's runtime React tree throws on mount,
+they see a white screen. The watchdog (§7) catches this AFTER the user
+sees it. This section catches it BEFORE.
+
+### The gate
+
+Every new runtime bundle must pass the `ship-lens-reviewer` subagent
+review BEFORE the manifest is updated. The flow:
+
+```
+runtime-ship.sh <channel> <ver>
+  ↓
+build dist/ + sha256 + minisign signature
+  ↓
+upload tarball to R2 + POST /runtime/upload (uploaded but NOT live)
+  ↓
+deploy to STAGING URL · https://staging-runtime.liquidclips.app/<ver>/
+  ↓
+dispatch ship-lens-reviewer agent
+  ↓ runs:
+    - curl staging URL · assert 200 · assert NO `template data-dgst=` pattern
+    - inventory state variants in the diff
+    - per-route walk (Playwright headless against staging)
+    - write verdict JSON to desktop-2/docs/ship-lens-review.json
+  ↓
+verdict == PASS  → POST /runtime/promote (manifest updated, active users get update on next launch)
+verdict == BLOCK → reject, alert, manifest unchanged, active users stay on previous good bundle
+```
+
+### What the reviewer asserts before promotion
+
+1. **SSR / hydration smoke** — `curl -fsSL https://staging-runtime.liquidclips.app/<ver>/` returns 200 AND the HTML does NOT contain Next.js error-boundary digest (`template data-dgst=`). Tauri webview loads HTML statically so this applies to any SSR-prerendered shell.
+2. **Render smoke** — Playwright headless against the staging URL: assert home renders, pink Browse tab is visible, no `pageerror` events fired in the first 5s. Same harness pattern as `tests/e2e/browse-tab-omnipresent.spec.ts`.
+3. **State coverage** — diff-based: every new component touched must enumerate its data variants in a UI map (see ship-lens phase 2). Silent empty render = P0 finding = BLOCK.
+4. **Iron-gate intact** — sentinels not deleted, brand-kit drift check green, no IG-protected files modified outside override.
+5. **Bundle delta sanity** — bundle size hasn't grown >40% vs previous, no new external script tags injected, CSP-allowed origins unchanged.
+
+### Manifest-side audit trail
+
+The `runtime_manifests` SQL row gets two new columns:
+
+```sql
+ALTER TABLE runtime_manifests
+  ADD COLUMN ship_lens_verdict TEXT NOT NULL DEFAULT 'PENDING',
+  ADD COLUMN ship_lens_review_url TEXT;  -- link to the saved verdict JSON
+```
+
+`/runtime/manifest.json` does NOT serve a manifest whose `ship_lens_verdict != 'PASS'`. The route's WHERE clause makes this mechanical.
+
+### Rollback chain unchanged
+
+§3 still handles AFTER-promotion failures (e.g. bundle reviewer-passed but a real-user environment breaks something the staging probe didn't catch — bad font cache, third-party widget down, browser-extension conflict). The reviewer reduces this failure mode's surface area; it doesn't eliminate it.
+
+### Phase 1 implementation note
+
+Phase 1 (§ RECOMMENDED PHASE 1 SCOPE) is single-channel (stable only). The reviewer gate is REQUIRED in phase 1 because the first time we have active users on the runtime model is the moment of highest risk. Manual override (`--skip-review`) exists for Daniel's own dev iteration but is BLOCKED for `stable` channel without a `--break-glass` flag + an explicit reason logged.
+
+### Why this is the right gate position
+
+- **Earlier than user-side watchdog** = no user impact when broken
+- **Later than tsc-green** = catches actual mounted-React errors that types can't see
+- **Mechanical** (curl + grep + Playwright) = not "trust me it works"
+- **Reuses existing infrastructure** (ship-lens-reviewer subagent already installed at `~/.claude/agents/ship-lens-reviewer.md`; the SSR smoke pattern is in the skill)
+
+---
+
 ## Open questions
 
 1. **CDN vendor lock-in.** R2 is recommended, but Daniel may prefer
@@ -512,12 +583,21 @@ until the swap survives a real-world week.
    symlink BEFORE constructing the webview.
 6. **CI script** tars `dist/`, computes sha256, signs with the
    existing minisign key, uploads to R2, POSTs to `/runtime/upload`.
+7. **Pre-promotion review gate (§13).** `runtime-ship.sh` dispatches
+   the `ship-lens-reviewer` subagent against the staging URL. Verdict
+   PASS → `POST /runtime/promote` updates manifest. Verdict BLOCK →
+   reject, no manifest change, active users stay on previous good
+   bundle. SSR smoke + render smoke + state coverage mandatory.
 
 **Explicitly NOT in phase 1:** rollback (manual `rm -rf` for now),
 watchdog / `runtime:ready` event, channel/rollout-percent, Windows +
 Linux (phase 2), admin UI for rollouts (POST + psql one-liner is
 fine), in-session 6h re-check (boot-time only), force-update modal,
 telemetry beyond a single `runtime_swap` PostHog event.
+
+**Reviewer gate IS in phase 1 (non-optional).** Daniel's --break-glass
+override exists for solo emergency hotfixes but is logged + reviewed
+the next session.
 
 **Done definition.** Daniel can:
 
