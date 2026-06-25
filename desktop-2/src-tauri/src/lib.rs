@@ -14,6 +14,7 @@
 // the app launches and the frontend continues to use the mock stub.
 
 mod sidecar;
+mod browse;
 
 use keyring::Entry;
 use std::path::PathBuf;
@@ -338,6 +339,9 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_deep_link::init())
+        // 2026-06-25 · opener plugin needed by browse.rs commerce filter
+        // (App Store 3.1.1 — checkout URLs redirect to system browser).
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // Register the liquidclips:// scheme at runtime. The bundled
             // .app gets it from Info.plist (config schemes), but `tauri dev`
@@ -443,6 +447,13 @@ pub fn run() {
             sidecar_log_read,
             sidecar_log_open,
             sidecar_repair,
+            browse::open_browse_panel,
+            browse::update_browse_panel_bounds,
+            browse::close_browse_panel,
+            browse::is_browse_panel_open,
+            browse::browse_back,
+            browse::browse_forward,
+            browse::browse_reload,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Liquid Clips shell");

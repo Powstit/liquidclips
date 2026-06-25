@@ -6,9 +6,16 @@
   "permissions": [
     "core:default",
     "core:event:default",
+    "core:webview:default",
+    "core:webview:allow-create-webview",
+    "core:webview:allow-set-webview-position",
+    "core:webview:allow-set-webview-size",
+    "core:webview:allow-webview-close",
     "deep-link:default",
     "fs:default",
     "fs:allow-appdata-write-recursive",
-    "fs:allow-appdata-meta-recursive"
+    "fs:allow-appdata-meta-recursive",
+    "opener:default",
+    "opener:allow-open-url"
   ]
 }
