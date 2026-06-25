@@ -43,7 +43,7 @@ function formatUsd(n: number): string {
 // during handoff unmounted CommandRoom + lost the panel state mid-handoff.
 export function CommandRoom() {
   return (
-    <DesignOSAppShell world="cockpit-home" route="home" defaultKade="idle" kadePlacement="center">
+    <DesignOSAppShell world="cockpit-home" route="home" defaultKade="idle" kadePlacement="helper-right">
       <HomeContent />
     </DesignOSAppShell>
   );

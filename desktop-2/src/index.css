@@ -69,7 +69,10 @@ img {
 
 input, textarea, code, pre { user-select: text; font: inherit; color: inherit; }
 
-/* ─── Aurora background (lc-aurora-pulse 14s) ─── */
+/* ─── Aurora background (lc-aurora-pulse 14s) ───
+ * Legacy-shell only · design-os routes hide this via the boundary CSS
+ * (AppShell.css:24-36). Don't change here; the cinematic atmosphere on
+ * design-os routes comes from WorldLayer. */
 .lc-aurora {
   position: fixed;
   inset: 0;

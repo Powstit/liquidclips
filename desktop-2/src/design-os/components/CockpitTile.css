@@ -11,7 +11,13 @@
   width: 100%;
   min-height: 144px;
   padding: 22px 22px 20px;
-  background: rgba(18, 14, 24, .55);
+  /* 2026-06-25 · merge pass · was solid-ish rgba(18,14,24,.55) opaque
+   * over WorldLayer cockpit. Now: dark wash + backdrop-filter blur so
+   * the cinematic atmosphere bleeds through the card AND text stays
+   * readable against the blurred backdrop. */
+  background: rgba(11, 11, 16, 0.42);
+  backdrop-filter: blur(12px) saturate(1.1);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
   border: 1px solid rgba(255, 255, 255, .08);
   border-radius: 14px;
   color: #f4f1ea;
@@ -25,7 +31,7 @@
 
 .lc-ctile:hover {
   transform: translateY(-3px);
-  background: rgba(28, 22, 38, .7);
+  background: rgba(28, 22, 38, .56);
   border-color: rgba(255, 26, 140, .35);
 }
 

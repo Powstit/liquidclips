@@ -10,7 +10,10 @@
   position: absolute; inset: -4%;
   background-size: cover;
   background-position: center;
-  filter: saturate(1.06) brightness(.92);
+  /* 2026-06-25 · merge pass · was saturate(1.06) brightness(.92) — too
+   * dim under content. Lift saturation + restore brightness so the
+   * cockpit interior reads cinematic between cards. */
+  filter: saturate(1.18) brightness(1.02);
   transform: scale(1.04);
   animation: lc-world-pan 44s cubic-bezier(.4, 0, .2, 1) infinite;
   will-change: transform;
