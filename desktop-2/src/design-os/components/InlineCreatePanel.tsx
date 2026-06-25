@@ -330,7 +330,13 @@ export function InlineCreatePanel() {
   // UX-4 · openWorkstation removed; Library tab folded into the "My Clips"
   // tile on Home, which deep-links to /workstation directly.
 
-  if (!open || !modalHost) return null;
+  if (!open) return null;
+  // 2026-06-25 · fall back to document.body when no ModalPortal context is
+  // available. The panel is now mounted globally in AppShell (above the
+  // ModalPortal provider), so on non-home routes modalHost is null but the
+  // panel still needs to render for the browse → handoff workflow.
+  const portalHost = modalHost ?? (typeof document !== "undefined" ? document.body : null);
+  if (!portalHost) return null;
 
   return createPortal(
     <div
@@ -534,7 +540,7 @@ export function InlineCreatePanel() {
         )}
       </div>
     </div>,
-    modalHost,
+    portalHost,
   );
 }
 

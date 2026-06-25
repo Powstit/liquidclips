@@ -31,9 +31,14 @@ body[data-design-os="active"] .lc-canvas,
 body[data-design-os="active"] .lc-deck-atmosphere,
 body[data-design-os="active"] .lc-page,
 body[data-design-os="active"] .lc-section,
-body[data-design-os="active"] .lc-browse-rail-tab,
 body[data-design-os="active"] .lc-signal-line {
   visibility: hidden !important;
+}
+/* 2026-06-25 · Daniel locked the persistent Browse tab as a permanent
+ * application primitive. It must remain visible UNDER Design OS — was
+ * previously in the hide-list above. */
+body[data-design-os="active"] .lc-browse-rail-tab {
+  visibility: visible !important;
 }
 /* Re-show the Design OS shell + every descendant. */
 body[data-design-os="active"] .lc-app,

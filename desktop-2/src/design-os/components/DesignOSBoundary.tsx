@@ -33,7 +33,10 @@ const BANNED_SELECTORS = [
   ".lc-deck-atmosphere",
   ".lc-page",
   ".lc-section",
-  ".lc-browse-rail-tab",
+  // 2026-06-25 · `.lc-browse-rail-tab` removed from banned list. Daniel
+  // locked the persistent Browse tab as a permanent application primitive
+  // (see docs/lc2/BROWSE_TAB_ARCHITECTURE.md). The tab is now allowed in
+  // every render layer; only the legacy shell chrome is banned.
   ".lc-signal-line",
   ".lucide",
 ];
