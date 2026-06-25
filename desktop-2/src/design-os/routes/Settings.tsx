@@ -31,7 +31,7 @@
  *   - bus.emit("toast", …)            (existing toast convention)
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion as fm } from "framer-motion";
 import { useActivation } from "../../lib/activation";
 import {
@@ -893,6 +893,10 @@ function SettingsBody() {
               <div className="lc-settings-rows">
                 <SettingsRow label="Backend URL" value={backendUrl} mono />
                 <SettingsRow label="Runtime" value={inTauri() ? "Desktop · Tauri" : "Browser preview"} mono />
+                {/* 2026-06-25 · Runtime Update v1 · live frontend bundle version.
+                    Reads runtime_info() Tauri command — staged bundle if
+                    present, else bundled dist. */}
+                <RuntimeVersionRow />
                 <SettingsRow label="Storage source" value={authSource} mono />
                 <div className="lc-settings-key-row">
                   <div>
@@ -1187,6 +1191,105 @@ function OpenAIKeyCard() {
         </div>
       </div>
     </section>
+  );
+}
+
+/* ─── Runtime version row (Runtime Update v1 · Phase 1) ──────────────
+ *
+ * 2026-06-25 · reads `runtime_info()` Tauri command. Active bundle
+ * version + source (bundled vs staged) + last-check status + a "Check
+ * now" button that forces an immediate manifest poll. Listens for the
+ * `lc:runtime-staged` Tauri event so the row refreshes the moment a
+ * new bundle is staged (no polling). See `src-tauri/src/runtime.rs`. */
+interface RuntimeInfoShape {
+  active_version: string;
+  source: "bundled" | "staged" | string;
+  staged_bundle_path: string | null;
+  last_check: { at: string; result: string; manifest_version: string | null } | null;
+  manifest_url: string;
+  channel: string;
+}
+
+function RuntimeVersionRow() {
+  const [info, setInfo] = useState<RuntimeInfoShape | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
+
+  const refresh = async () => {
+    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
+      setUnavailable(true);
+      return;
+    }
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const data = await invoke<RuntimeInfoShape>("runtime_info");
+      setInfo(data);
+    } catch {
+      setUnavailable(true);
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+    let cleanup: (() => void) | undefined;
+    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+      void (async () => {
+        const { listen } = await import("@tauri-apps/api/event");
+        const off = await listen("lc:runtime-staged", () => void refresh());
+        cleanup = off;
+      })();
+    }
+    return () => { if (cleanup) cleanup(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const onCheckNow = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("runtime_check_now");
+      await refresh();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("[runtime] check_now failed:", e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (unavailable) {
+    return <SettingsRow label="Runtime version" value="Browser preview" mono />;
+  }
+  if (!info) {
+    return <SettingsRow label="Runtime version" value="checking…" mono />;
+  }
+
+  const sourceLabel = info.source === "staged" ? "hosted runtime" : "bundled with app";
+  const value = `${info.active_version} · ${sourceLabel}`;
+  const lastCheck = info.last_check?.result ?? "never";
+
+  return (
+    <>
+      <SettingsRow label="Runtime version" value={value} mono tone={info.source === "staged" ? "live" : "muted"} />
+      <SettingsRow label="Last runtime check" value={lastCheck} mono />
+      <div className="lc-settings-key-row">
+        <div>
+          <span className="lc-settings-key-label">Runtime channel</span>
+          <code className="lc-settings-key-code">{info.channel}</code>
+        </div>
+        <button
+          type="button"
+          className="lc-settings-cta lc-settings-cta-quiet lc-settings-cta-compact"
+          onClick={onCheckNow}
+          disabled={busy}
+          aria-label="Check for runtime update"
+          title="Force an immediate /runtime/manifest.json poll"
+        >
+          {busy ? "Checking…" : "Check now"}
+        </button>
+      </div>
+    </>
   );
 }
 

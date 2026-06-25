@@ -15,6 +15,7 @@
 
 mod sidecar;
 mod browse;
+mod runtime;
 
 use keyring::Entry;
 use std::path::PathBuf;
@@ -342,6 +343,30 @@ pub fn run() {
         // 2026-06-25 · opener plugin needed by browse.rs commerce filter
         // (App Store 3.1.1 — checkout URLs redirect to system browser).
         .plugin(tauri_plugin_opener::init())
+        // 2026-06-25 · Runtime Update v1 · Phase 1.
+        // Custom URI scheme `runtime://` serves frontend assets from either
+        // the STAGED runtime bundle (~/Library/Application Support/Liquid
+        // Clips/runtime/bundles/<v>/) if present, or the BUNDLED dist
+        // (compiled into Resources) otherwise. The webview's window.url is
+        // `runtime://app/index.html` (set in tauri.conf.json windows[0].url).
+        // Swapping the staged bundle is instant on next launch — no
+        // .app reinstall.
+        .register_uri_scheme_protocol("runtime", |ctx, request| {
+            let app = ctx.app_handle().clone();
+            let path = request.uri().path().to_string();
+            let (status, mime, body) = runtime::serve_runtime_uri(&app, &path);
+            tauri::http::Response::builder()
+                .status(status)
+                .header("Content-Type", mime)
+                .header("Access-Control-Allow-Origin", "*")
+                .body(body)
+                .unwrap_or_else(|_| {
+                    tauri::http::Response::builder()
+                        .status(500)
+                        .body(b"build response failed".to_vec())
+                        .unwrap()
+                })
+        })
         .setup(|app| {
             // Register the liquidclips:// scheme at runtime. The bundled
             // .app gets it from Info.plist (config schemes), but `tauri dev`
@@ -351,6 +376,23 @@ pub fn run() {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 let _ = app.deep_link().register("liquidclips");
             }
+
+            // 2026-06-25 · Runtime Update v1 · cache the active runtime root
+            // (so the URI scheme handler doesn't re-read current.json on
+            // every asset request) + fire the background staging task. The
+            // task downloads + verifies + stages the next bundle so the
+            // user picks it up on NEXT relaunch. Failures are silent +
+            // logged to `last_check.json` for the Settings UI.
+            runtime::cache_active_root(&app.handle());
+            let runtime_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = runtime::check_and_stage_runtime(runtime_app.clone()).await {
+                    eprintln!("[runtime] background stage skipped: {}", e);
+                }
+                // Refresh the cached root after staging so the URI scheme
+                // handler picks up the new pointer on the NEXT cold boot.
+                runtime::cache_active_root(&runtime_app);
+            });
 
             // Sidecar spawn — graceful no-op when script absent (Batch A).
             match resolve_sidecar_script(&app.handle()) {
@@ -454,6 +496,8 @@ pub fn run() {
             browse::browse_back,
             browse::browse_forward,
             browse::browse_reload,
+            runtime::runtime_info,
+            runtime::runtime_check_now,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Liquid Clips shell");
