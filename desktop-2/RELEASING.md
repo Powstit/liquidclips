@@ -16,10 +16,10 @@ artefacts to the backend so the auto-update manifest flips.
 |---|---|
 | Apple Developer ID cert in login Keychain | `security find-identity -p codesigning -v` shows `Developer ID Application: daniel diyepriye dokubo (KT68NGT4LX)` |
 | notarytool keychain profile `LIQUIDCLIPS_NOTARY` | `xcrun notarytool store-credentials …` (only needed for LOCAL rehearsal of P1-4-b · CI uses APPLE_ID + APPLE_PASSWORD + APPLE_TEAM_ID secrets directly) |
-| GitHub CLI auth | `gh auth status` returns logged-in to `Powstit/Jnr-employee` |
+| GitHub CLI auth | `gh auth status` returns logged-in to `Powstit/liquidclips` |
 | Backend secret on PATH | `INTERNAL_API_SECRET` env var · either exported or in `~/.claude-credentials/junior-internal.env` (the script sources it automatically) |
 | Tooling | `node`, `npm`, `cargo`, `git`, `gh`, `jq`, `curl` |
-| 6 GitHub secrets on `Powstit/Jnr-employee` | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`, `TAURI_SIGNING_PRIVATE_KEY` (verified P1-4-d) |
+| 6 GitHub secrets on `Powstit/liquidclips` | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`, `TAURI_SIGNING_PRIVATE_KEY` (verified P1-4-d) |
 
 A passphrased Tauri signing key would also need
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The current key is unpassphrased

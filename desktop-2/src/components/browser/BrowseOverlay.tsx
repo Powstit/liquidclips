@@ -17,7 +17,9 @@ import {
   ArrowUpRight,
   ExternalLink,
   Sparkles,
+  ClipboardCopy,
 } from "lucide-react";
+import { bus } from "../../design-os/bridge";
 import {
   useBrowseOverlay,
   urlIsLikelyBlocked,
@@ -124,8 +126,39 @@ export function BrowseOverlay(): JSX.Element | null {
     if (payload.campaignId) {
       setActiveCampaignId(payload.campaignId);
     }
+    // 2026-06-24 · also dispatch lc:browse-url-handoff so InlineCreatePanel
+    // (Home Create tile) can pre-fill the URL field even if the user is
+    // navigated to a different surface. Mirrors legacy desktop pattern.
+    if (payload.sourceUrl && typeof window !== "undefined") {
+      try {
+        window.dispatchEvent(
+          new CustomEvent("lc:browse-url-handoff", {
+            detail: { url: payload.sourceUrl, source: "browse-overlay" },
+          }),
+        );
+      } catch { /* swallow */ }
+    }
     navigateTo(SECTION_IDS.SECTION_EDITOR);
   }, [useInEngine]);
+
+  const handleCopyUrl = useCallback(async () => {
+    const url = currentUrl ?? "";
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      bus.emit("toast", {
+        kind: "success",
+        title: "URL copied",
+        body: "Paste it into Create Clips to start clipping this video.",
+      });
+    } catch {
+      bus.emit("toast", {
+        kind: "error",
+        title: "Copy failed",
+        body: "Clipboard access blocked — open in system browser and copy from the address bar.",
+      });
+    }
+  }, [currentUrl]);
 
   const handleQuickLink = useCallback(
     (q: QuickLink) => {
@@ -204,6 +237,18 @@ export function BrowseOverlay(): JSX.Element | null {
             className="lc-browse-url"
             aria-label="URL bar"
           />
+
+          <button
+            type="button"
+            className="lc-btn"
+            data-variant="secondary"
+            data-size="sm"
+            onClick={handleCopyUrl}
+            title="Copy this URL to clipboard"
+            disabled={!currentUrl}
+          >
+            <ClipboardCopy size={13} /> Copy URL
+          </button>
 
           <button
             type="button"

@@ -71,65 +71,86 @@ export function getJwt(): string | null {
   return null;
 }
 
-/** SYNC write. Writes to memory + localStorage immediately · also fires
- *  a best-effort native-Keychain write on Tauri (no `await` · the
- *  function stays sync · failures are swallowed because the
- *  localStorage path is the durable fallback). */
+/** SYNC write. Writes to memory + localStorage. Mirrors legacy IG-014:
+ *  NEVER touches OS Keychain from a hot path. Keychain writes are gated
+ *  behind the explicit `setJwtKeychainForAuthAction()` function — only
+ *  the sign-in / reconnect / connect-desktop flows may call it. */
 export function setJwt(jwt: string): void {
   if (!jwt) return;
   memoryCache = jwt;
   const s = readStorage();
   if (s) s.setItem(LICENSE_JWT_STORAGE_KEY, jwt);
-  /* P1-1F-b · best-effort native Keychain write. Errors are swallowed
-   * silently · the JWT is already in memory + localStorage · the
-   * Keychain mirror is bonus, not a guarantee. We do NOT log the JWT. */
-  void writeJwtToKeychain(jwt);
+  /* 2026-06-24 · IG-014 mirror — removed passive `void writeJwtToKeychain(jwt)`
+   * call. That auto-invocation triggered the macOS Keychain "allow access"
+   * prompt on every fresh install / rebuild. Callers that genuinely need
+   * the native mirror call `setJwtKeychainForAuthAction()` explicitly. */
 }
 
-/** SYNC clear. Removes from memory + localStorage immediately · also
- *  fires a best-effort native-Keychain delete on Tauri. */
+/** SYNC clear. Removes from memory + localStorage. Mirrors legacy IG-014:
+ *  NEVER touches OS Keychain from a hot path. Explicit sign-out flows
+ *  may call `clearJwtKeychainForAuthAction()` if they want the native
+ *  mirror cleared too. */
 export function clearJwt(): void {
   memoryCache = null;
   const s = readStorage();
   if (s) s.removeItem(LICENSE_JWT_STORAGE_KEY);
-  /* P1-1F-b · best-effort native Keychain delete. Errors swallowed. */
-  void deleteJwtFromKeychain();
+  /* 2026-06-24 · IG-014 mirror — removed passive `void deleteJwtFromKeychain()`
+   * call for the same reason as setJwt() above. */
 }
 
-/* ─── P1-1F-b · Tauri Keychain bridge (best-effort) ───────────────── */
+/* ─── IG-014 mirror · Tauri Keychain bridge (explicit-auth-action only) ───
+ *
+ * 2026-06-24 — these functions WILL trigger a macOS Keychain Access prompt
+ * the first time the OS sees this binary identity. The legacy IG-014
+ * invariant: only the 6 approved auth actions may call them (sign-in,
+ * sign-out, reconnect, connect-desktop callback, reset-login-session
+ * button, cold-boot resume). Passive callers MUST use getJwt() / setJwt()
+ * / clearJwt() which only touch memory + localStorage. */
 
-async function writeJwtToKeychain(jwt: string): Promise<void> {
-  if (!isTauriRuntime()) return;
+/** AUTH-ACTION ONLY · explicit Keychain write. Use after sign-in /
+ *  reconnect when the user has just authenticated and a Keychain prompt
+ *  feels in-context. Returns true if the write succeeded. */
+export async function setJwtKeychainForAuthAction(jwt: string): Promise<boolean> {
+  if (!jwt || !isTauriRuntime()) return false;
   try {
     const mod = await import("@tauri-apps/api/core");
     await mod.invoke("secret_set_jwt", { jwt });
-    /* On the FIRST successful write, flip the diagnostic label so
-     * getAuthSource() reports the truth. */
     cachedSource = "tauri-keychain";
+    return true;
   } catch {
-    /* Command not registered · OS keychain denied · runtime not Tauri ·
-     * any failure is fine because localStorage already has the JWT.
-     * NEVER log the JWT itself.
-     *
-     * P1-1F-b · gap-fix 2 · if the Keychain previously held an older
-     * value AND this write failed for the new one, the next boot's
-     * prime would pick up the stale Keychain value and overwrite the
-     * correct newer JWT in localStorage. Best-effort delete the native
-     * entry so next-boot prime returns null and localStorage wins.
-     * Best-effort means: if the delete also fails, we accept the
-     * theoretical stale-on-restart risk · localStorage is still the
-     * working fallback for this session. */
-    void deleteJwtFromKeychain();
+    return false;
   }
 }
 
-async function deleteJwtFromKeychain(): Promise<void> {
+/** AUTH-ACTION ONLY · explicit Keychain delete. Use during full sign-out. */
+export async function clearJwtKeychainForAuthAction(): Promise<void> {
   if (!isTauriRuntime()) return;
   try {
     const mod = await import("@tauri-apps/api/core");
     await mod.invoke("secret_delete_jwt");
   } catch {
-    /* Same swallow rationale as writeJwtToKeychain. */
+    /* swallow — localStorage is the durable backing */
+  }
+}
+
+/** AUTH-ACTION ONLY · explicit Keychain read. Use during cold-boot
+ *  session resume AFTER confirming via presence file that a JWT exists.
+ *  Primes the memory cache + localStorage when successful. */
+export async function resumeJwtFromKeychainForAuthAction(): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  try {
+    const mod = await import("@tauri-apps/api/core");
+    const v = await mod.invoke<string | null>("secret_get_jwt");
+    if (typeof v === "string" && v.length > 0) {
+      memoryCache = v;
+      cachedSource = "tauri-keychain";
+      const s = readStorage();
+      if (s) s.setItem(LICENSE_JWT_STORAGE_KEY, v);
+      return v;
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 
@@ -151,55 +172,26 @@ export function getAuthSource(): AuthSource {
   return cachedSource;
 }
 
-/** Async one-shot init · primes the module cache from the most
- *  authoritative source available. P1-1B today: localStorage. P1-1F
- *  tomorrow: tries Tauri keychain command first, falls back to
- *  localStorage if the command isn't registered.
+/** Async one-shot init · primes the module cache from localStorage.
+ *
+ *  2026-06-24 · IG-014 mirror — this used to ALSO read the Tauri Keychain
+ *  on boot via `invoke("secret_get_jwt")`, which triggered the macOS
+ *  Keychain Access prompt on every fresh install / rebuild. Removed.
+ *  Cold-boot keychain resume is now opt-in via
+ *  `resumeJwtFromKeychainForAuthAction()`, called by the explicit
+ *  resume-session flow only.
  *
  *  Safe to call multiple times · second + calls no-op. */
 export async function initAuthStorage(): Promise<AuthSource> {
   if (initialized) return cachedSource;
   initialized = true;
 
-  // localStorage prime · sync, fast, always runs first.
+  // localStorage prime · sync, fast, always runs.
   const s = readStorage();
   if (s) {
     const v = s.getItem(LICENSE_JWT_STORAGE_KEY);
     if (v && v.length > 0) memoryCache = v;
     cachedSource = "browser-localstorage";
-  }
-
-  // Tauri Keychain prime · forward-ready hook · gracefully no-ops when
-  // the secret_get_jwt command isn't registered in the Rust shell yet.
-  if (isTauriRuntime()) {
-    let keychainHadValue = false;
-    try {
-      const mod = await import("@tauri-apps/api/core");
-      const v = await mod.invoke<string | null>("secret_get_jwt");
-      if (typeof v === "string" && v.length > 0) {
-        memoryCache = v;
-        cachedSource = "tauri-keychain";
-        if (s) s.setItem(LICENSE_JWT_STORAGE_KEY, v);
-        keychainHadValue = true;
-      }
-    } catch {
-      // Command not registered (P1-1B reality). Stay on localStorage.
-      // The label above already reflects "browser-localstorage".
-    }
-    /* P1-1F-b · gap-fix 1 · localStorage → Keychain migration backfill.
-     *
-     * If we're in a Tauri runtime, the Keychain prime did NOT return a
-     * value (either it was empty or the command threw), AND the
-     * localStorage prime above populated memoryCache, then this is an
-     * existing user upgrading to the P1-1F-b build · seed the Keychain
-     * with the current JWT so future boots benefit from native storage.
-     *
-     * Fire-and-forget so we never block initAuthStorage() on the
-     * backfill. Failure is silent · localStorage stays the working
-     * fallback. */
-    if (!keychainHadValue && memoryCache) {
-      void writeJwtToKeychain(memoryCache);
-    }
   }
 
   if (cachedSource === "unavailable") cachedSource = "browser-localstorage";
@@ -211,10 +203,8 @@ export function _resetAuthStorageForTests(): void {
   memoryCache = null;
   cachedSource = "unavailable";
   initialized = false;
-  /* P1-1F-b · gap-fix 3 · also clear the native Keychain entry so test
-   * isolation holds when tests run under a Tauri runtime. Safe no-op in
-   * browser preview (deleteJwtFromKeychain early-returns when
-   * isTauriRuntime() is false). Failure is silent · this is a test
-   * seam, not production. */
-  void deleteJwtFromKeychain();
+  /* 2026-06-24 · IG-014 mirror — clear native Keychain via the explicit
+   * auth-action function instead of the removed private helper. Safe no-op
+   * in browser preview (early-returns when isTauriRuntime() is false). */
+  void clearJwtKeychainForAuthAction();
 }

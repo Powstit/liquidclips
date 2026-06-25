@@ -19,10 +19,12 @@ import { motion as fm } from "framer-motion";
 import { DesignOSAppShell } from "../components/AppShell";
 import { CockpitTile } from "../components/CockpitTile";
 import { InlineCreatePanel } from "../components/InlineCreatePanel";
+import { HomeBanner } from "../components/HomeBanner";
 import { bus, useMode } from "../bridge";
 import { presets } from "../motion";
 import { useEarnSummary } from "../state/useEarnSummary";
 import { SponsoredRewardStrip } from "../earn";
+import { useBrowseOverlay, WHOP_REWARDS_URL } from "../../state/browseOverlay";
 import "./CommandRoom.css";
 
 /**
@@ -54,6 +56,12 @@ function HomeContent() {
   const goSubmissions = () => bus.emit("nav:click", { route: "submissions" });
   const goAnalytics   = () => bus.emit("nav:click", { route: "analytics" });
   const goEarn        = () => bus.emit("nav:click", { route: "earn" });
+  // 2026-06-24 · Find Rewards opens the in-app browser at Whop content rewards
+  // so clippers can scout real paying bounties without leaving the app.
+  // The Copy URL + Use buttons inside the browser hand the campaign back
+  // into the workspace.
+  const openBrowser   = useBrowseOverlay((s) => s.openWith);
+  const goFindRewards = () => openBrowser(WHOP_REWARDS_URL, "browse-campaign");
 
   const isAgency = mode === "agency";
 
@@ -70,6 +78,11 @@ function HomeContent() {
       animate="animate"
       exit="exit"
     >
+      {/* 2026-06-24 · clipper-only brand banner above the 4-tile grid.
+          Promotes the new in-app browser + Whop bounty hunt. Agency mode
+          keeps its tile grid uncluttered. */}
+      {!isAgency && <HomeBanner />}
+
       <fm.div
         className="lc-home-grid"
         variants={presets.staggerContainer}
@@ -100,9 +113,9 @@ function HomeContent() {
         <fm.div variants={presets.staggerItem} data-testid="home-tile-3">
           <CockpitTile
             label={isAgency ? "Review Submissions" : "Find Rewards"}
-            hint={isAgency ? "approve clippers' work" : "paid bounties to clip"}
+            hint={isAgency ? "approve clippers' work" : "browse Whop paid bounties"}
             icon={isAgency ? <IconReview /> : <IconReward />}
-            onClick={isAgency ? goSubmissions : goCampaigns}
+            onClick={isAgency ? goSubmissions : goFindRewards}
           />
         </fm.div>
 
