@@ -20,11 +20,12 @@
         "decorations": true,
         "transparent": false,
         "titleBarStyle": "Visible",
-        "dragDropEnabled": true
+        "dragDropEnabled": true,
+        "url": "runtime://app/index.html"
       }
     ],
     "security": {
-      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost; media-src 'self' blob: asset: http://asset.localhost https://asset.localhost; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost http://localhost:8000 https://updates.liquidclips.app https://api.liquidclips.app https://api.jnremployee.com https://release-assets.githubusercontent.com; frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+      "csp": "default-src 'self' runtime: ipc: http://ipc.localhost; img-src 'self' runtime: data: blob: asset: http://asset.localhost https://asset.localhost; media-src 'self' runtime: blob: asset: http://asset.localhost https://asset.localhost; style-src 'self' runtime: 'unsafe-inline'; font-src 'self' runtime: data:; script-src 'self' runtime: 'wasm-unsafe-eval'; worker-src 'self' runtime: blob:; connect-src 'self' runtime: ipc: http://ipc.localhost http://localhost:8000 https://updates.liquidclips.app https://api.liquidclips.app https://api.jnremployee.com https://release-assets.githubusercontent.com; frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
       "assetProtocol": {
         "enable": true,
         "scope": [
