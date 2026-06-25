@@ -140,9 +140,20 @@ export function BrowseOverlay(): JSX.Element | null {
     };
 
     // Spawn / navigate the webview at the current slot bounds.
+    // 2026-06-25 · regression-lens fix · legacy v0.7.8 E6 — silent failure
+    // on openBrowsePanel was the #1 historical bug. Set blocked state AND
+    // emit user-visible toast so the user never sees a dark empty overlay
+    // without explanation.
     void openBrowsePanel(currentUrl, measure())
       .then(() => setLoadState("loaded"))
-      .catch(() => setLoadState("blocked"));
+      .catch((err) => {
+        setLoadState("blocked");
+        bus.emit("toast", {
+          kind: "error",
+          title: "Browser couldn't open",
+          body: err instanceof Error ? err.message : "The in-app browser failed to spawn. Try the system-browser link in the footer.",
+        });
+      });
 
     // Resize observer keeps the webview locked to the slot on window
     // resize, sidebar collapse, hero settle, etc.

@@ -84,6 +84,10 @@ export function InlineCreatePanel() {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("url");
   const [url, setUrl] = useState("");
+  // 2026-06-25 · lane-1 acceptance criterion · "Editor shows an 'imported
+  // from browser' chip below the source chipbar." The flag flips true when
+  // lc:browse-url-handoff fires + clears when the user types a fresh URL.
+  const [importedFromBrowser, setImportedFromBrowser] = useState(false);
   const [count, setCount] = useState<Count>(30);
   const [phase, setPhase] = useState<Phase>("idle");
   const [activeStage, setActiveStage] = useState<StageName | null>(null);
@@ -151,6 +155,7 @@ export function InlineCreatePanel() {
       setOpen(true);
       setTab("url");
       setUrl(incoming);
+      setImportedFromBrowser(true);
       setUrlError(null);
       setErrorMsg(null);
       setPhase("idle");
@@ -354,13 +359,26 @@ export function InlineCreatePanel() {
 
             {tab === "url" && (
               <div className="lc-icp-body">
+                {/* 2026-06-25 · lane-1 acceptance criterion · "imported from
+                    browser" chip · proves the handoff happened so the user
+                    knows this isn't a stale URL. Clears the moment they
+                    edit the field. */}
+                {importedFromBrowser && (
+                  <span className="lc-icp-handoff-chip" aria-label="URL imported from in-app browser">
+                    <span className="lc-icp-handoff-dot" /> imported from browser
+                  </span>
+                )}
                 <input
                   ref={inputRef}
                   className={`lc-icp-input ${urlError ? "err" : ""}`}
                   type="url"
                   placeholder="Paste a URL — YouTube, Drive, Twitch…"
                   value={url}
-                  onChange={(e) => { setUrl(e.target.value); if (urlError) setUrlError(null); }}
+                  onChange={(e) => {
+                    setUrl(e.target.value);
+                    if (urlError) setUrlError(null);
+                    if (importedFromBrowser) setImportedFromBrowser(false);
+                  }}
                   onKeyDown={(e) => e.key === "Enter" && analyze()}
                   aria-invalid={!!urlError}
                   aria-describedby={urlError ? "lc-icp-url-err" : undefined}
