@@ -1,9 +1,9 @@
 {
   "name": "liquid-clips-shell",
   "private": true,
-  "version": "0.8.0-shell",
+  "version": "2.2.0",
   "type": "module",
-  "description": "Liquid Clips 2.0 raw shell. Placeholder sections only. No real feature wiring.",
+  "description": "Liquid Clips 2.0 shell — design-OS routes + real Python sidecar wire (BUG-017 clip_count, IG-001/002/010).",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

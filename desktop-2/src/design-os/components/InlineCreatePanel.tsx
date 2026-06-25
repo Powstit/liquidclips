@@ -139,6 +139,26 @@ export function InlineCreatePanel() {
     };
   }, []);
 
+  /* 2026-06-24 · listen for the lc:browse-url-handoff CustomEvent that the
+   * BrowseOverlay dispatches when the user clicks "Use in Engine" on a raw
+   * URL. We auto-open the panel on the URL tab + pre-fill the URL field so
+   * the clipper can hit Generate immediately. */
+  useEffect(() => {
+    const onHandoff = (e: Event) => {
+      const detail = (e as CustomEvent<{ url?: string; source?: string }>).detail;
+      const incoming = detail?.url?.trim();
+      if (!incoming) return;
+      setOpen(true);
+      setTab("url");
+      setUrl(incoming);
+      setUrlError(null);
+      setErrorMsg(null);
+      setPhase("idle");
+    };
+    window.addEventListener("lc:browse-url-handoff", onHandoff);
+    return () => window.removeEventListener("lc:browse-url-handoff", onHandoff);
+  }, []);
+
   /* Esc dismisses when idle (running sequence is non-dismissible by Esc). */
   useEffect(() => {
     if (!open) return;

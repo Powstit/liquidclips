@@ -31,7 +31,7 @@
  *   - bus.emit("toast", …)            (existing toast convention)
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { motion as fm } from "framer-motion";
 import { useActivation } from "../../lib/activation";
 import {
@@ -87,6 +87,13 @@ function SettingsBody() {
 
   const spec = ROUTE_REGISTRY["settings"];
   const hero = ROUTE_HERO["settings"];
+
+  // 2026-06-24 · Settings was one long scroll. Split into 4 tabs so
+  // users don't have to hunt: Account (you + key + plan + actions) ·
+  // Connections (channels + schedules) · Plan (tier + Whop explainer) ·
+  // Diagnostics (storage + beta + support).
+  type SettingsTab = "account" | "connections" | "plan" | "diagnostics";
+  const [tab, setTab] = useState<SettingsTab>("account");
 
   const activation = useActivation();
   const channels = useChannels();
@@ -367,10 +374,32 @@ function SettingsBody() {
           </fm.p>
         </fm.div>
 
-        <div className="lc-settings">
+        {/* 2026-06-24 · tab nav · splits a long scroll into 4 honest groups. */}
+        <nav className="lc-settings-tabs" role="tablist" aria-label="Settings sections">
+          {([
+            ["account",     "Account"],
+            ["connections", "Connections"],
+            ["plan",        "Plan"],
+            ["diagnostics", "Diagnostics"],
+          ] as const).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              className="lc-settings-tab"
+              data-active={tab === id ? "true" : undefined}
+              onClick={() => setTab(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="lc-settings" data-active-tab={tab}>
           {/* Section 1 · Account */}
           <EngineErrorBoundary route="settings" component="Account">
-            <section className="lc-settings-card">
+            <section className="lc-settings-card" data-tab="account">
               <span className="lc-settings-card-eb">Account</span>
               <div className="lc-settings-rows">
                 <SettingsRow
@@ -406,7 +435,7 @@ function SettingsBody() {
               with live pricing + webhook-driven tier mutation on the
               backend. We just link out. */}
           <EngineErrorBoundary route="settings" component="UpgradePlaceholder">
-            <section className="lc-settings-card">
+            <section className="lc-settings-card" data-tab="account">
               <span className="lc-settings-card-eb">Upgrade</span>
               <div className="lc-settings-rows">
                 <SettingsRow
@@ -445,7 +474,7 @@ function SettingsBody() {
 
           {/* Section 2 · Connection status */}
           <EngineErrorBoundary route="settings" component="ConnectionStatus">
-            <section className="lc-settings-card">
+            <section className="lc-settings-card" data-tab="connections">
               <span className="lc-settings-card-eb">Connection status</span>
               <div className="lc-settings-rows">
                 <SettingsRow
@@ -479,7 +508,7 @@ function SettingsBody() {
            *  Honest provider state · no fake "Connected" pills.
            *  Surfaces only signals we ACTUALLY know about client-side. */}
           <EngineErrorBoundary route="settings" component="ConnectedAccounts">
-            <section className="lc-settings-card">
+            <section className="lc-settings-card" data-tab="connections">
               <span className="lc-settings-card-eb">Connected accounts</span>
               <div className="lc-settings-rows">
 
@@ -665,7 +694,7 @@ function SettingsBody() {
            *  all require /me on mount · P1-3-e scope · until then they
            *  read "Not checked yet". */}
           <EngineErrorBoundary route="settings" component="PlanAccess">
-            <section className="lc-settings-card">
+            <section className="lc-settings-card" data-tab="plan">
               <span className="lc-settings-card-eb">Plan &amp; access</span>
               <div className="lc-settings-rows">
 
@@ -797,7 +826,7 @@ function SettingsBody() {
 
           {/* Section 5 · Whop role */}
           <EngineErrorBoundary route="settings" component="WhopRole">
-            <section className="lc-settings-card">
+            <section className="lc-settings-card" data-tab="plan">
               <span className="lc-settings-card-eb">What Whop does · what Liquid Clips does</span>
               <div className="lc-settings-prose">
                 <p>
@@ -821,7 +850,7 @@ function SettingsBody() {
 
           {/* Section 4 · Storage & security */}
           <EngineErrorBoundary route="settings" component="Storage">
-            <section className="lc-settings-card">
+            <section className="lc-settings-card" data-tab="diagnostics">
               <span className="lc-settings-card-eb">Storage &amp; security</span>
               <div className="lc-settings-rows">
                 <SettingsRow
@@ -859,7 +888,7 @@ function SettingsBody() {
 
           {/* Section 5 · Beta diagnostics */}
           <EngineErrorBoundary route="settings" component="Diagnostics">
-            <section className="lc-settings-card">
+            <section className="lc-settings-card" data-tab="diagnostics">
               <span className="lc-settings-card-eb">Beta diagnostics</span>
               <div className="lc-settings-rows">
                 <SettingsRow label="Backend URL" value={backendUrl} mono />
@@ -892,7 +921,7 @@ function SettingsBody() {
            *  Lives BEFORE Actions so a stuck user finds it without
            *  having to scroll past the Refresh button first. */}
           <EngineErrorBoundary route="settings" component="Support">
-            <section className="lc-settings-card">
+            <section className="lc-settings-card" data-tab="diagnostics">
               <span className="lc-settings-card-eb">Support &amp; help</span>
               <div className="lc-settings-rows">
                 <p className="lc-settings-hint">
@@ -962,7 +991,7 @@ function SettingsBody() {
 
           {/* Section 7 · Actions */}
           <EngineErrorBoundary route="settings" component="Actions">
-            <section className="lc-settings-card">
+            <section className="lc-settings-card" data-tab="account">
               <span className="lc-settings-card-eb">Actions</span>
               <div className="lc-settings-actions">
                 <button
@@ -1022,33 +1051,25 @@ export function SettingsRoute() {
  * Web preview / no-Tauri fallback: shows "Studio preview · key entry needs
  * the desktop app" with the buttons disabled.
  */
+/* 2026-06-24 · IG-014 mirror — was reading `openai_key_get` from Keychain
+ * on every Settings mount, which triggered the macOS Keychain Access
+ * prompt every time the user opened Settings. Now uses a localStorage
+ * presence flag — no Keychain read on mount, only on explicit user
+ * action (Save / Remove). The flag flips after a successful Keychain
+ * write/delete. Matches legacy `licenseJwtPresence()` pattern. */
+const OPENAI_KEY_PRESENCE_FLAG = "lc.openai_key.present.v1";
 function OpenAIKeyCard() {
-  const [status, setStatus] = useState<"loading" | "saved" | "missing" | "unavailable">("loading");
+  const [status, setStatus] = useState<"saved" | "missing" | "unavailable">(() => {
+    if (typeof window === "undefined") return "unavailable";
+    if (!("__TAURI_INTERNALS__" in window)) return "unavailable";
+    try {
+      return window.localStorage.getItem(OPENAI_KEY_PRESENCE_FLAG) === "1" ? "saved" : "missing";
+    } catch {
+      return "missing";
+    }
+  });
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
-          if (!cancelled) setStatus("unavailable");
-          return;
-        }
-        const { invoke } = await import("@tauri-apps/api/core");
-        const existing = await invoke<string | null>("openai_key_get");
-        if (cancelled) return;
-        setStatus(existing ? "saved" : "missing");
-      } catch (e) {
-        if (!cancelled) setStatus("unavailable");
-        // eslint-disable-next-line no-console
-        console.warn("[settings/openai] get failed:", e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const onSave = async () => {
     const key = draft.trim();
@@ -1060,6 +1081,7 @@ function OpenAIKeyCard() {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       await invoke("openai_key_set", { key });
+      try { window.localStorage.setItem(OPENAI_KEY_PRESENCE_FLAG, "1"); } catch { /* swallow */ }
       setStatus("saved");
       setDraft("");
       bus.emit("toast", { kind: "success", title: "OpenAI key saved", body: "Stored in your macOS Keychain." });
@@ -1079,6 +1101,7 @@ function OpenAIKeyCard() {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       await invoke("openai_key_delete");
+      try { window.localStorage.removeItem(OPENAI_KEY_PRESENCE_FLAG); } catch { /* swallow */ }
       setStatus("missing");
       bus.emit("toast", { kind: "info", title: "OpenAI key removed", body: "stage_llm will fail until you add a new one." });
     } catch (e) {
@@ -1095,10 +1118,6 @@ function OpenAIKeyCard() {
   let statusValue: string;
   let statusTone: "live" | "warn" | "muted";
   switch (status) {
-    case "loading":
-      statusValue = "Checking…";
-      statusTone = "muted";
-      break;
     case "saved":
       statusValue = "Saved · stays on this Mac";
       statusTone = "live";
@@ -1113,10 +1132,10 @@ function OpenAIKeyCard() {
       break;
   }
 
-  const disabled = busy || status === "loading" || status === "unavailable";
+  const disabled = busy || status === "unavailable";
 
   return (
-    <section className="lc-settings-card">
+    <section className="lc-settings-card" data-tab="account">
       <span className="lc-settings-card-eb">OpenAI key</span>
       <div className="lc-settings-rows">
         <SettingsRow label="Status" value={statusValue} tone={statusTone} />
