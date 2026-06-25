@@ -258,10 +258,21 @@ Each lane is sized for **one Claude session** of focused work. Lanes are sequent
 - `src/index.css` *(touch)* — `.lc-browse-overlay`, `.lc-browse-scrim`, animations.
 - `scripts/assert-shell-contracts.sh` *(touch)* — add positive checks: `BrowseOverlay` mounted, scrim present, "Use in Engine" copy, "Esc to close" copy. Negative: no `openBrowsePanel`, no `paddingRight: 566`, no global mount.
 
-**Files forbidden**
-- `src-tauri/src/browse.rs` (Rust v2 deferred).
-- `src-tauri/src/lib.rs` (no new invoke handler).
-- `src-tauri/capabilities/default.json` (no new permissions).
+**Architectural rule (LOCKED 2026-06-25 by Daniel — overrides the original "Files forbidden" list):**
+
+> "Persistent in-app browsing is REQUIRED.
+> The old fixed-width right-rail implementation is FORBIDDEN.
+> Any implementation that preserves workspace while allowing persistent in-app browsing is PERMITTED."
+
+The guard describes BEHAVIOUR, not implementation.
+
+**Files allowed (with constraints):**
+- `src-tauri/src/browse.rs` — PERMITTED if and only if bounds are caller-provided (React measures slot rect, passes x/y/width/height to Rust) and the webview never reserves a fixed right-rail width. Commerce-redirect filter (App Store 3.1.1) must be present. Currently implemented.
+- `src-tauri/src/lib.rs` — invoke handlers for `open_browse_panel`, `close_browse_panel`, `update_browse_panel_bounds`, `is_browse_panel_open`, `browse_back`, `browse_forward`, `browse_reload` PERMITTED on the same constraint.
+- `src-tauri/capabilities/default.json` — `core:webview:*` perms + `opener:default` + `opener:allow-open-url` PERMITTED on the same constraint.
+
+**Still forbidden:**
+- A fixed `paddingRight: 566px` or any equivalent permanent right-rail layout. (The legacy bug being prevented.)
 - Anything in `src/sections/editor/Engine*.tsx` internals (EngineTimeline / EngineEditorOverlay / EngineRightRail / EngineClipGrid bodies).
 - IG-protected files (intro, watermark composer).
 - The old `desktop/src/lib/browse.ts` file (don't import — port the *idea* only).

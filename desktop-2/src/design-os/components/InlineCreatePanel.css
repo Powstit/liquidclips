@@ -97,6 +97,33 @@
   gap: 14px;
 }
 
+/* 2026-06-25 · lane-1 acceptance criterion · handoff chip · proves URL
+ * came from in-app browser. Pink dot + mono label. Slides down then
+ * fades. Clears the moment user edits the URL field. */
+.lc-icp-handoff-chip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px 5px 8px;
+  border-radius: 999px;
+  background: rgba(255, 26, 140, 0.12);
+  border: 1px solid rgba(255, 26, 140, 0.4);
+  color: #ff48a4;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.lc-icp-handoff-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff1a8c;
+  box-shadow: 0 0 8px rgba(255, 26, 140, 0.7);
+}
+
 /* URL input */
 .lc-icp-input {
   width: 100%;
