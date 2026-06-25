@@ -91,19 +91,16 @@ function EarnBody() {
         initial="initial"
         animate="animate"
       >
-        <fm.div
-          className="sim-welcome"
-          data-kade-anchor
-          variants={presets.staggerContainer}
-          initial="initial"
-          animate="animate"
-        >
-          <fm.span className="sim-eb" variants={presets.staggerItem}>
-            {hero.eyebrow}
-            {/* BUG-045 · source-aware honesty pill visible in ALL builds.
-                The customer can't be lied to about their balance · the pill
-                tells them whether the number derives from real backend
-                rows or from a no-backend fallback. */}
+        {/* PHASE 1 · viewport discipline · earnings summary + Whop payout
+            CTA + first reward rows now land in the first viewport.
+            Source/tier/RPM tags survive as compact status pills; the
+            80px H1 + sub-copy cut. Journey + affiliate links promoted to
+            a dedicated compact action row so the primary CTA (affiliate
+            dashboard · Whop's payout entry point) stays visible without
+            the landing-page hero. */}
+        <div className="lc-route-head" data-kade-anchor>
+          <span className="lc-route-head-eb">{hero.eyebrow}</span>
+          <div className="lc-route-head-pills">
             {!honestyTag ? (
               <span
                 data-testid="earn-source-pill"
@@ -137,39 +134,26 @@ function EarnBody() {
             >
               ${earn.summary.totalEarnedUsd.toFixed(2)} earned
             </span>
-          </fm.span>
-          <fm.h1 className="sim-h1" variants={presets.staggerItem}>
-            {hero.h1}
-          </fm.h1>
-          <fm.p className="sim-sub" variants={presets.staggerItem}>
-            {hero.sub}
-          </fm.p>
-          {/* UX-4 · cross-link to the Clipper Journey · promotes the 5-chip
-              mission map without consuming a homepage tile. */}
-          <fm.button
-            type="button"
-            className="lc-earn-journey-link"
-            variants={presets.staggerItem}
-            onClick={() => bus.emit("nav:click", { route: "clipper" })}
-          >
-            Track progress · open the mission map →
-          </fm.button>
-
-          {/* TASK 2 · bridge to the proven referral / affiliate dashboard
-           *  on the marketing site. First-touch attribution + share link
-           *  + click ledger all live at liquidclips.app/refer. */}
-          <fm.button
+          </div>
+        </div>
+        <div className="lc-route-actions">
+          <button
             type="button"
             className="lc-earn-journey-link"
             data-testid="earn-open-affiliate"
             data-open-url="https://liquidclips.app/refer"
-            variants={presets.staggerItem}
             onClick={() => { void openSmart("https://liquidclips.app/refer"); }}
-            style={{ marginTop: 4 }}
           >
             Open affiliate dashboard ↗
-          </fm.button>
-        </fm.div>
+          </button>
+          <button
+            type="button"
+            className="lc-earn-journey-link"
+            onClick={() => bus.emit("nav:click", { route: "clipper" })}
+          >
+            Track progress · mission map →
+          </button>
+        </div>
 
         {/* Picks up backend errors (publish / earn / bake) when they fire. */}
         <BakeErrorStrip />

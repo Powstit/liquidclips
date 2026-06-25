@@ -172,7 +172,7 @@ function CampaignsBody() {
 
   return (
     <DesignOSAppShell
-      world="mission-pedestal"
+      world="cockpit-home"
       route="campaigns"
       defaultKade={session.kade}
       kadePlacement="helper-right"
@@ -187,17 +187,13 @@ function CampaignsBody() {
         initial="initial"
         animate="animate"
       >
-        <fm.div
-          className="sim-welcome"
-          data-kade-anchor
-          variants={presets.staggerContainer}
-          initial="initial"
-          animate="animate"
-        >
-          <fm.span className="sim-eb" variants={presets.staggerItem}>
-            {hero.eyebrow}
-            {/* BUG-044 · source-aware honesty pill · visible in ALL builds
-                when source = "mock" (not just dev). Mirrors Channels BUG-043. */}
+        {/* PHASE 1 · viewport discipline · CampaignBanner / list lands in
+            the first viewport. Source/tier/count tags survive as compact
+            status pills; the 80px H1 + sub-copy cut. Agency/clipper
+            primary-CTA split is a Phase 5 decision — not in scope here. */}
+        <div className="lc-route-head" data-kade-anchor>
+          <span className="lc-route-head-eb">{hero.eyebrow}</span>
+          <div className="lc-route-head-pills">
             {!isMockSource ? (
               <span
                 data-testid="campaigns-source-pill"
@@ -231,14 +227,8 @@ function CampaignsBody() {
             >
               {camps.visible.length} live · {camps.byPlacement.featured.length} featured
             </span>
-          </fm.span>
-          <fm.h1 className="sim-h1" variants={presets.staggerItem}>
-            {hero.h1}
-          </fm.h1>
-          <fm.p className="sim-sub" variants={presets.staggerItem}>
-            {hero.sub}
-          </fm.p>
-        </fm.div>
+          </div>
+        </div>
 
         <BakeErrorStrip />
 
