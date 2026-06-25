@@ -4,6 +4,50 @@
  * file only styles the cards · the page chrome / hero / background
  * comes from the design-OS shell. */
 
+/* 2026-06-24 · tab nav. Splits the long Settings scroll into 4 honest
+ * groups (Account / Connections / Plan / Diagnostics). Sections with
+ * data-tab attributes are hidden when the active tab doesn't match. */
+.lc-settings-tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 22px;
+  padding: 4px;
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 12px;
+  width: fit-content;
+  max-width: 640px;
+}
+.lc-settings-tab {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(244, 241, 234, .55);
+  cursor: pointer;
+  transition: background .14s ease, color .14s ease;
+}
+.lc-settings-tab:hover {
+  color: rgba(244, 241, 234, .85);
+  background: rgba(255, 255, 255, .04);
+}
+.lc-settings-tab[data-active="true"] {
+  background: rgba(255, 26, 140, .14);
+  color: #ff1a8c;
+}
+
+/* Active-tab visibility. Sections without data-tab always render
+ * (legacy / un-tagged cards stay visible). */
+.lc-settings[data-active-tab="account"]     section.lc-settings-card[data-tab]:not([data-tab="account"])     { display: none; }
+.lc-settings[data-active-tab="connections"] section.lc-settings-card[data-tab]:not([data-tab="connections"]) { display: none; }
+.lc-settings[data-active-tab="plan"]        section.lc-settings-card[data-tab]:not([data-tab="plan"])        { display: none; }
+.lc-settings[data-active-tab="diagnostics"] section.lc-settings-card[data-tab]:not([data-tab="diagnostics"]) { display: none; }
+
 .lc-settings {
   display: flex;
   flex-direction: column;
