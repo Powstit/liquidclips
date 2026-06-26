@@ -75,39 +75,139 @@ test("agency-preview-upgrade-cta · click handler runs · toast emits on failure
   /* Click. */
   await cta.click();
 
-  /* Wait for a toast to arrive on the bus capture. In test dev there's
-   * no Tauri opener, so the real adapter's openSmart throws and the
-   * handler's catch fires a toast. If a future build supplies a Tauri-
-   * mocked opener, the success path also emits no toast — in that case
-   * we still verify the click reached the handler by observing the
-   * billing snapshot transition through `checkout_started`. */
-  const toastSeen = await page.waitForFunction(
+  /* LC-UI-P0-001 (2026-06-26) — the prior version of this assertion
+   * had an `else` branch that asserted `1 === 1` whenever no toast
+   * fired. That made the spec a fake pass: the broken silent-success
+   * path (Mock returning {ok:true} without an opener) sailed through
+   * with no observable signal.
+   *
+   * After the adapter fix, the Agency CTA in an authenticated path
+   * MUST either:
+   *   (a) succeed at opening the real account-app checkout · in the
+   *       Playwright dev env there is no Tauri opener, so the real
+   *       adapter's openSmart throws → handler catches → bus emits a
+   *       toast tagged "checkout".
+   *   (b) fall through to the explicit failure toast.
+   * Either way, a toast event MUST land within 4s. No toast = real bug.
+   */
+  await page.waitForFunction(
     () => {
       const w = window as unknown as { __lcToastCapture?: Array<unknown> };
       return (w.__lcToastCapture?.length ?? 0) > 0;
     },
     { timeout: 4_000 },
-  ).then(() => true).catch(() => false);
+  );
 
   const toasts = await page.evaluate(() => {
     const w = window as unknown as { __lcToastCapture?: Array<unknown> };
     return w.__lcToastCapture ?? [];
   });
 
-  /* If a toast fired, it must be honest about checkout failing — proves
-   * the FAILURE handling path Daniel wanted. */
-  if (toastSeen) {
-    const t = toasts[0] as { kind?: string; title?: string };
-    expect(t.kind).toBe("error");
-    expect((t.title ?? "").toLowerCase()).toContain("checkout");
-  } else {
-    /* Success path · openSmart resolved (Tauri mock or browser fallback).
-     * Either way the click reached the handler · pending button label is
-     * the cheapest proof. */
-    /* Best-effort: the button may have already reset · just ensure the
-     * click registered something. We assert no console error fired as
-     * the floor: clicking a live handler must not crash. */
-    const opens = await page.evaluate(() => 1);
-    expect(opens).toBe(1);
-  }
+  const t = toasts[0] as { kind?: string; title?: string };
+  expect(t.kind).toBe("error");
+  expect((t.title ?? "").toLowerCase()).toContain("checkout");
+});
+
+/* LC-UI-P0-001 regression test — Agency upgrade CTA must EITHER open
+ * an external checkout URL OR surface a visible failure toast. Mock
+ * returning {ok:true} without an opener is forbidden in authenticated
+ * paths. This is the gate that proves the adapter selection fix and
+ * the call-site await fix hold together. */
+test("LC-UI-P0-001 · Agency upgrade CTA · authenticated click opens checkout OR shows fallback toast · NEVER silent success", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
+
+  /* Capture toasts + capture every navigation/open attempt the page makes. */
+  await page.addInitScript(() => {
+    const w = window as unknown as {
+      __lcToastCapture?: Array<unknown>;
+      __lcOpenAttempts?: Array<string>;
+      __lcBus?: { on: (e: string, h: (p: unknown) => void) => () => void };
+    };
+    w.__lcToastCapture = [];
+    w.__lcOpenAttempts = [];
+
+    /* Monkey-patch window.open to record (the real adapter's openSmart
+     * falls back to window.open in browser preview). */
+    const realOpen = window.open;
+    window.open = ((...args: Parameters<typeof window.open>) => {
+      try {
+        const url = String(args[0] ?? "");
+        if (url) w.__lcOpenAttempts!.push(url);
+      } catch { /* noop */ }
+      return realOpen.apply(window, args);
+    }) as typeof window.open;
+
+    const tryWire = () => {
+      const b = w.__lcBus;
+      if (b && typeof b.on === "function") {
+        b.on("toast", (p) => { w.__lcToastCapture!.push(p); });
+      } else {
+        setTimeout(tryWire, 50);
+      }
+    };
+    tryWire();
+  });
+
+  /* Authenticated path · JWT present · the adapter MUST be the real one. */
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
+      window.localStorage.setItem("lc.mode", "agency");
+    } catch { /* noop */ }
+  });
+  await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".lc-app", { timeout: 15_000 });
+
+  await page.waitForFunction(
+    () => {
+      const w = window as unknown as { __lcBus?: unknown };
+      return !!w.__lcBus;
+    },
+    { timeout: 5_000 },
+  );
+  await page.evaluate(() => {
+    try { window.localStorage.setItem("lc.mode", "agency"); } catch { /* noop */ }
+    const w = window as unknown as { __lcBus?: { emit: (e: string, p: unknown) => void } };
+    w.__lcBus?.emit?.("mode:change", { mode: "agency" });
+  });
+  await page.waitForTimeout(400);
+
+  const cta = page.locator('[data-testid="agency-preview-upgrade-cta"]');
+  await expect(cta).toBeVisible({ timeout: 5_000 });
+  await expect(cta).toBeEnabled();
+  await cta.click();
+
+  /* Wait up to 4s for EITHER an open attempt OR a toast. */
+  await page.waitForFunction(
+    () => {
+      const w = window as unknown as {
+        __lcOpenAttempts?: Array<string>;
+        __lcToastCapture?: Array<unknown>;
+      };
+      const opens = w.__lcOpenAttempts?.length ?? 0;
+      const toasts = w.__lcToastCapture?.length ?? 0;
+      return opens > 0 || toasts > 0;
+    },
+    { timeout: 4_000 },
+  );
+
+  const { opens, toasts } = await page.evaluate(() => {
+    const w = window as unknown as {
+      __lcOpenAttempts?: Array<string>;
+      __lcToastCapture?: Array<unknown>;
+    };
+    return { opens: w.__lcOpenAttempts ?? [], toasts: w.__lcToastCapture ?? [] };
+  });
+
+  /* At least one of A or B must be true. */
+  const openedCheckout = opens.some((u) => /account\.liquidclips\.app/.test(u) || /dashboard#plans/.test(u));
+  const toastedFailure = toasts.some((t) => {
+    const tt = t as { kind?: string; title?: string };
+    return tt.kind === "error" && /checkout/i.test(tt.title ?? "");
+  });
+  expect(openedCheckout || toastedFailure).toBe(true);
+
+  /* Belt + braces: clicking the live handler must NOT crash. */
+  expect(consoleErrors.filter((e) => !/tauri-adapter|favicon|sourcemap/i.test(e))).toEqual([]);
 });
