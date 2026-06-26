@@ -64,6 +64,19 @@
 }
 .lc-icp-close:hover { background: rgba(255, 255, 255, .07); color: #f4f1ea; }
 
+/* 2026-06-26 · C2A · panel eyebrow. Single line of small-caps that
+ * anchors what the panel is for in one glance. Replaces a missing
+ * "what is this?" cue without becoming a hero slab. */
+.lc-icp-eb {
+  display: block;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: rgba(244, 241, 234, .58);
+  margin-bottom: 10px;
+}
+
 /* Tabs */
 .lc-icp-tabs {
   display: flex;
@@ -88,6 +101,16 @@
   background: rgba(255, 26, 140, .12);
   border-color: rgba(255, 26, 140, .42);
   color: #ff66b8;
+}
+/* 2026-06-26 · C2A · demote COMING SOON tabs visually so URL feels
+ * canonical. Tabs stay clickable (existing tests still verify the
+ * honest disabled state) but they no longer compete with URL for
+ * the eye. data-canonical="false" is set by TabButton for non-URL. */
+.lc-icp-tab[data-canonical="false"]:not(.on) {
+  opacity: .55;
+}
+.lc-icp-tab[data-canonical="false"]:not(.on):hover {
+  opacity: .8;
 }
 
 /* Body shared */
