@@ -46,9 +46,10 @@
   align-items: baseline;
   gap: 10px;
   padding: 14px 20px;
-  /* 2026-06-25 · merge pass · backdrop blur so cockpit atmosphere
-   * shimmers behind earn strip while values stay readable. */
-  background: rgba(11, 11, 16, 0.4);
+  /* 2026-06-25 · blend pass · .55 was too solid — earn strip read as a
+   * dark slab on a dark page. .42 thins enough for cockpit depth to
+   * register behind, blur keeps the values crisp. */
+  background: rgba(11, 11, 16, 0.42);
   backdrop-filter: blur(10px) saturate(1.08);
   -webkit-backdrop-filter: blur(10px) saturate(1.08);
   border: 1px solid rgba(255, 26, 140, .22);
@@ -113,9 +114,12 @@
    * the banner's fuchsia wash. */
   backdrop-filter: blur(14px) saturate(1.1);
   -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  /* 2026-06-25 · blend pass · linear .50/.40 fully blocked cockpit behind
+   * the banner. .40/.28 lets cinematic depth show through while the fuchsia
+   * wash + backdrop blur keep the eyebrow + headline + sub-copy readable. */
   background:
     radial-gradient(120% 200% at 0% 50%, rgba(255, 26, 140, .14), transparent 60%),
-    linear-gradient(180deg, rgba(11, 11, 16, .35), rgba(11, 11, 16, .25));
+    linear-gradient(180deg, rgba(11, 11, 16, .40), rgba(11, 11, 16, .28));
   border-radius: 16px;
   padding: 18px 22px;
   display: grid;
