@@ -297,7 +297,27 @@ export function SponsoredRewardModule({
             bonus.withdraw();
             void getCarrot().then(setCarrot);
           }}
-          onUpgrade={() => void billing.adapter.startCheckout("pro")}
+          onUpgrade={() => {
+            // LC-UI-P0-001: await + visible failure feedback. No silent ok:true.
+            void (async () => {
+              try {
+                const outcome = await billing.adapter.startCheckout("pro");
+                if (!outcome.ok) {
+                  bus.emit("toast", {
+                    kind: "error",
+                    title: "Couldn't open checkout",
+                    body: outcome.error ?? "Open Settings → Plan → Manage plan on Whop and pick the right tier from there.",
+                  });
+                }
+              } catch (err) {
+                bus.emit("toast", {
+                  kind: "error",
+                  title: "Couldn't open checkout",
+                  body: err instanceof Error && err.message ? err.message : "Open Settings → Plan → Manage plan on Whop and pick the right tier from there.",
+                });
+              }
+            })();
+          }}
         />
         {carrot && (
           <span

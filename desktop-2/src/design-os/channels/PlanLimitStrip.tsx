@@ -17,6 +17,7 @@ import { useChannels } from "../state/useChannels";
 import { useTierCaps, type Tier } from "../state/useTierCaps";
 import { bus } from "../bridge";
 import { useBillingState } from "../../lib/billing/adapter";
+import type { PlanKey } from "../../lib/billing/types";
 import "./PlanLimitStrip.css";
 
 export interface PlanLimitStripProps {
@@ -35,6 +36,32 @@ export function PlanLimitStrip({ showAttention = true }: PlanLimitStripProps) {
   const tier = useTierCaps();
   const channels = useChannels();
   const billing = useBillingState();
+
+  // LC-UI-P0-001: await checkout, surface a visible failure if the opener
+  // never ran. Shared between the accountpack add-on CTA and the tier
+  // upgrade CTA so both behave identically.
+  const handleCheckout = async (plan: PlanKey) => {
+    try {
+      const outcome = await billing.adapter.startCheckout(plan);
+      if (!outcome.ok) {
+        bus.emit("toast", {
+          kind: "error",
+          title: "Couldn't open checkout",
+          body:
+            outcome.error ??
+            "Open Settings → Plan → Manage plan on Whop and pick the right tier from there.",
+        });
+      }
+    } catch (err) {
+      bus.emit("toast", {
+        kind: "error",
+        title: "Couldn't open checkout",
+        body: err instanceof Error && err.message
+          ? err.message
+          : "Open Settings → Plan → Manage plan on Whop and pick the right tier from there.",
+      });
+    }
+  };
 
   const used = channels.connectedCount;
   const cap = tier.caps.totalChannels;
@@ -78,7 +105,7 @@ export function PlanLimitStrip({ showAttention = true }: PlanLimitStripProps) {
               type="button"
               className="lc-pls-cta"
               data-testid="accountpack-cta"
-              onClick={() => void billing.adapter.startCheckout("accountpack")}
+              onClick={() => { void handleCheckout("accountpack"); }}
               style={{
                 background: "linear-gradient(135deg, var(--lc-accent, #FF1A8C), var(--lc-accent-deep, #C70066))",
                 color: "white",
@@ -97,12 +124,12 @@ export function PlanLimitStrip({ showAttention = true }: PlanLimitStripProps) {
               onClick={() => {
                 // Open the upgrade flow when one exists for this tier;
                 // adapter routes pro/growth/agency to the right plan UI.
-                const targetPlan = tier.tier === "clipper" ? "pro"
+                const targetPlan: PlanKey | null = tier.tier === "clipper" ? "pro"
                   : tier.tier === "pro" ? "growth"
                   : tier.tier === "growth" ? "agency"
                   : null;
                 if (targetPlan) {
-                  void billing.adapter.startCheckout(targetPlan);
+                  void handleCheckout(targetPlan);
                 } else {
                   bus.emit("toast", { kind: "info", title: "Plan", body: "You're on the top tier." });
                 }

@@ -86,13 +86,70 @@ function AgencyPreviewBannerInner() {
   // plugin permission was missing from capabilities). Now: async handler,
   // catch the outcome, surface a user-visible toast on failure. Honest
   // payment truth · we never claim checkout succeeded when it didn't.
+  //
+  // 2026-06-26 second pass · file-based diagnostic channel because the
+  // production build has no DevTools. Every step writes to
+  // appdata/debug/agency-upgrade-click.json so the operator can read the
+  // last click's full trace from disk without the user inspecting
+  // anything. STRICTLY observational · removed after the cause lands.
   const [pending, setPending] = useState(false);
-  async function onUpgradeClick(): Promise<void> {
-    if (pending) return;
-    setPending(true);
+  async function writeDiag(steps: Array<Record<string, unknown>>): Promise<void> {
     try {
+      const fs = await import("@tauri-apps/plugin-fs");
+      await fs
+        .mkdir("debug", { baseDir: fs.BaseDirectory.AppData, recursive: true })
+        .catch(() => undefined);
+      await fs.writeTextFile(
+        "debug/agency-upgrade-click.json",
+        JSON.stringify({ at: Date.now(), steps }, null, 2),
+        { baseDir: fs.BaseDirectory.AppData },
+      );
+    } catch {
+      /* fs unavailable · keep handler honest */
+    }
+  }
+  async function onUpgradeClick(): Promise<void> {
+    const trace: Array<Record<string, unknown>> = [];
+    const log = (step: string, extra: Record<string, unknown> = {}) => {
+      trace.push({ step, at: Date.now(), ...extra });
+      void writeDiag(trace);
+    };
+    log("handler_entered", { pendingBefore: pending });
+    if (pending) {
+      log("handler_aborted_already_pending");
+      return;
+    }
+    setPending(true);
+    log("pending_state_set");
+    try {
+      log("opener_import_started", {
+        adapterIsMock: billing.adapter.isMock,
+        snapshotState: billing.state ?? null,
+      });
+      /* LC-UI-P0-001 · 2026-06-26 · short-circuit when we're on the mock
+       * adapter. The mock fake-grants `state: active` and returns
+       * `{ok:true}` even though no checkout URL ever opened — that's the
+       * silent-success bug the banner used to ship. The mock is ONLY a
+       * dev-preview adapter; an upgrade CTA on a real preview banner
+       * should ALWAYS toast in mock mode, never claim success. */
+      if (billing.adapter.isMock) {
+        log("opener_short_circuit_mock");
+        bus.emit("toast", {
+          kind: "error",
+          title: "Couldn't open checkout",
+          body: "Sign in first · checkout is unavailable in preview mode.",
+        });
+        log("toast_emit_done");
+        return;
+      }
+      log("opener_call_started", { plan: "agency" });
       const outcome = await billing.adapter.startCheckout("agency");
-      if (!outcome.ok) {
+      log("opener_call_resolved", { outcomeOk: outcome.ok, error: outcome.error ?? null });
+      if (outcome.ok) {
+        log("opener_success", { planKey: outcome.planKey });
+      } else {
+        log("opener_error", { reason: outcome.error ?? "unspecified" });
+        log("toast_emit_started", { kind: "error" });
         bus.emit("toast", {
           kind: "error",
           title: "Couldn't open checkout",
@@ -100,8 +157,15 @@ function AgencyPreviewBannerInner() {
             outcome.error ??
             "Open Settings → Plan → Manage plan on Whop and pick Agency from there.",
         });
+        log("toast_emit_done");
       }
     } catch (err) {
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : String(err ?? "unknown");
+      log("opener_throw", { message: msg });
+      log("toast_emit_started", { kind: "error", source: "catch" });
       bus.emit("toast", {
         kind: "error",
         title: "Couldn't open checkout",
@@ -110,8 +174,10 @@ function AgencyPreviewBannerInner() {
             ? err.message
             : "Open Settings → Plan → Manage plan on Whop and pick Agency from there.",
       });
+      log("toast_emit_done");
     } finally {
       setPending(false);
+      log("finally_reset");
     }
   }
 
