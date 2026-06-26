@@ -8,7 +8,7 @@
  * Mock-only — mode is a UI affordance, no backend persistence.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useEvent } from "./useEvent";
 import { bus } from "./events";
 import type { AppMode } from "./events";
@@ -43,5 +43,16 @@ if (typeof window !== "undefined") {
 export function useMode(): AppMode {
   const [mode, setMode] = useState<AppMode>(() => readPersistedMode());
   useEvent("mode:change", (p) => setMode(p.mode));
+  /* 2026-06-26 · C2 hardening · belt-and-braces · the module-level
+   * `bus.on("mode:change", ...)` listener above races React's re-render
+   * under CPU load (splash-and-agency-palette flake). When React state
+   * lands, push the body attribute again so `data-app-mode` is
+   * authoritative on the rendered React tree, not on the bus listener
+   * firing order. Test seeding pathways that bypass useMode (e.g. the
+   * splash test that emits mode:change directly without a remount) get
+   * a deterministic body attribute. */
+  useEffect(() => {
+    applyBodyModeAttribute(mode);
+  }, [mode]);
   return mode;
 }
