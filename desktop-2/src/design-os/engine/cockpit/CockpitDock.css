@@ -18,6 +18,29 @@
   pointer-events: auto;
 }
 
+/* 2026-06-26 · C2 hardening · decorative text + non-interactive
+ * containers inside the dock should never block pointer events on
+ * whatever sits visually beneath. These elements are read-only labels
+ * / value displays / decorative headers; clicking them does nothing
+ * useful, so passing the click through to underlying clip-cards (when
+ * the dock's module pane visually overlaps the grid) is the correct
+ * behaviour. Interactive elements (buttons, inputs, sliders, role=
+ * radio) keep their default `pointer-events: auto` and intercept
+ * correctly. `.lc-cd-mod-head` contains only an eyebrow + sub-copy
+ * span, so the header container itself is also pass-through. */
+.lc-cd-mod-head,
+.lc-cd-mod-eb,
+.lc-cd-mod-sub,
+.lc-cd-lbl,
+.lc-cd-readout-key,
+.lc-cd-readout-val,
+.lc-cd-slider-val,
+.lc-cd-clip-num,
+.lc-cd-clip-title,
+.lc-cd-clip-meta {
+  pointer-events: none;
+}
+
 /* Top strip: clip pill + state pills + back */
 .lc-cd-head {
   display: grid;

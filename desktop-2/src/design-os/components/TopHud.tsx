@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { bus, type AppMode } from "../bridge";
+import { bus, useEvent, type AppMode } from "../bridge";
 import { getJwt, clearJwt } from "../../lib/authStorage";
 import { unreadCount } from "../../inbox";
 import { InboxSheet } from "../../shell/InboxSheet";
@@ -57,6 +57,16 @@ export function TopHud({
     try { window.localStorage.setItem(MODE_STORAGE_KEY, mode); } catch { /* noop */ }
     bus.emit("mode:change", { mode });
   }, [mode]);
+
+  /* 2026-06-26 · C2 hardening · TopHud's mode state used to be write-only
+   * (emit mode:change when its own pill flipped, but never listen). That
+   * left the .on class out-of-sync with any external mode flip — the
+   * splash-and-agency-palette test emits mode:change programmatically
+   * via window.__lcBus and the pill stayed on the prior mode. Subscribe
+   * so external flips reach the pill render. setMode is idempotent for
+   * the same value, so the round-trip with the emit effect above does
+   * not create a feedback loop. */
+  useEvent("mode:change", (p) => setMode(p.mode));
 
   // BUG-046 · the user pill in TopHud is the customer-visible avatar
   // affordance on every Design OS route. Until now it was a decorative
