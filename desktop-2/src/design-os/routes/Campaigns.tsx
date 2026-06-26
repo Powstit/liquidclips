@@ -191,7 +191,7 @@ function CampaignsBody() {
             the first viewport. Source/tier/count tags survive as compact
             status pills; the 80px H1 + sub-copy cut. Agency/clipper
             primary-CTA split is a Phase 5 decision — not in scope here. */}
-        <div className="lc-route-head" data-kade-anchor>
+        <div className="lc-route-head" data-kade-anchor data-route-title={hero.eyebrow}>
           <span className="lc-route-head-eb">{hero.eyebrow}</span>
           <div className="lc-route-head-pills">
             {!isMockSource ? (

@@ -120,6 +120,22 @@ export function InlineCreatePanel() {
     window.setTimeout(() => inputRef.current?.focus(), 80);
   });
 
+  /* 2026-06-26 · close on navigation away from home. Without this the
+   * full-screen scrim stays mounted while the user navigates via
+   * ConsoleNav, blocking clicks on chrome (avatar, browse tab, etc.).
+   * Real-user UX: navigating away should dismiss the modal. Phase
+   * "running" is preserved (active analysis stays visible). The "home"
+   * + "create" + "import" SimulatorRouter aliases re-trigger
+   * home:open-panel via onArrive, so they re-open immediately. */
+  useEvent("route:enter", ({ route }) => {
+    if (route === "home") return;
+    setOpen((wasOpen) => {
+      if (!wasOpen) return false;
+      // Don't kill an in-flight analysis · user can navigate back.
+      return phase === "running";
+    });
+  });
+
   /* DEV-only screenshot hook · lets the headless harness open the panel
    *  imperatively without firing a real DOM click (which would race the
    *  scrim's mouseup-to-close handler). Stripped in production builds by
