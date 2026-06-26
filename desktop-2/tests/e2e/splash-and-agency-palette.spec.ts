@@ -158,8 +158,11 @@ test.describe("Splash and Agency Palette Journey", () => {
             window.localStorage.setItem("lc.mode", "clipper");
           } catch {}
         });
-        /* Boot WITHOUT ?skipIntro=1 so the splash actually mounts. */
-        await page.goto("/", { waitUntil: "domcontentloaded" });
+        /* Boot WITHOUT ?skipIntro=1 so the splash actually mounts. The
+         * ?forceIntro=1 query param reverses the vite-DEV / qaGateEnabled
+         * auto-skip so this test can exercise the mount path · App.tsx
+         * routes forceIntro through the escape hatch added 2026-06-26. */
+        await page.goto("/?forceIntro=1", { waitUntil: "domcontentloaded" });
         await expect(page.locator('[data-testid="intro-splash"]')).toBeVisible({ timeout: 15_000 });
         const stage = await page.locator('[data-testid="intro-splash"]').first().getAttribute("data-splash-stage");
         rec.assert("first_launch_stage", stage);
@@ -212,7 +215,7 @@ test.describe("Splash and Agency Palette Journey", () => {
         await page.addInitScript(() => {
           try { window.localStorage.removeItem("lc:intro-seen:v1"); } catch {}
         });
-        await page.goto("/", { waitUntil: "domcontentloaded" });
+        await page.goto("/?forceIntro=1", { waitUntil: "domcontentloaded" });
         await expect(page.locator('[data-testid="intro-splash"]')).toBeVisible({ timeout: 12_000 });
         const skip = page.locator('[data-testid="intro-splash-skip"]').first();
         await skip.click();
