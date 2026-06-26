@@ -366,7 +366,26 @@ export function ScheduleFromExportDrawer({
                       cap: monthlyCap ? tier.caps.monthlyPosts : tier.caps.accountsPerClip,
                       nextTier: upsell.name,
                     });
-                    void billing.adapter.startCheckout(next === "agency" ? "agency" : next === "growth" ? "growth" : "pro");
+                    // LC-UI-P0-001: await and surface a toast on opener failure.
+                    const plan = next === "agency" ? "agency" : next === "growth" ? "growth" : "pro";
+                    void (async () => {
+                      try {
+                        const outcome = await billing.adapter.startCheckout(plan);
+                        if (!outcome.ok) {
+                          bus.emit("toast", {
+                            kind: "error",
+                            title: "Couldn't open checkout",
+                            body: outcome.error ?? "Open Settings → Plan → Manage plan on Whop and pick the right tier from there.",
+                          });
+                        }
+                      } catch (err) {
+                        bus.emit("toast", {
+                          kind: "error",
+                          title: "Couldn't open checkout",
+                          body: err instanceof Error && err.message ? err.message : "Open Settings → Plan → Manage plan on Whop and pick the right tier from there.",
+                        });
+                      }
+                    })();
                   }}
                 >
                   Upgrade to {upsell.name} · {upsell.price}

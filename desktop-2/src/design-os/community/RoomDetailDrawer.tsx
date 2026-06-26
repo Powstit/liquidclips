@@ -111,11 +111,27 @@ export function RoomDetailDrawer({ discussion, open, onClose }: RoomDetailDrawer
     }
   };
 
-  const handleUpgrade = () => {
+  const handleUpgrade = async () => {
     // 2026-06-23 · wire to real billing adapter (no more Phase 7+ toast).
     // Required tier for locked discussions is typically "paid" or higher;
     // start by upselling Pro · billing handles the route to /dashboard#plans.
-    void billing.adapter.startCheckout("pro");
+    // LC-UI-P0-001: await + surface failure as a toast — no silent ok:true.
+    try {
+      const outcome = await billing.adapter.startCheckout("pro");
+      if (!outcome.ok) {
+        bus.emit("toast", {
+          kind: "error",
+          title: "Couldn't open checkout",
+          body: outcome.error ?? "Open Settings → Plan → Manage plan on Whop and pick the right tier from there.",
+        });
+      }
+    } catch (err) {
+      bus.emit("toast", {
+        kind: "error",
+        title: "Couldn't open checkout",
+        body: err instanceof Error && err.message ? err.message : "Open Settings → Plan → Manage plan on Whop and pick the right tier from there.",
+      });
+    }
   };
 
   const perks = discussion.perks ?? DISCUSSION.perks_default;
@@ -247,7 +263,7 @@ export function RoomDetailDrawer({ discussion, open, onClose }: RoomDetailDrawer
             <button
               type="button"
               className="lc-rdd-btn lc-rdd-btn-primary"
-              onClick={handleUpgrade}
+              onClick={() => { void handleUpgrade(); }}
             >
               {DISCUSSION.upgrade_cta}
             </button>

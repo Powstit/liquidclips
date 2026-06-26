@@ -127,6 +127,21 @@ class MockBillingAdapter implements BillingAdapter {
     for (const l of this.listeners) l(next);
   }
   async startCheckout(planKey: PlanKey): Promise<CheckoutOutcome> {
+    // LC-UI-P0-001 hardening: a mock adapter must NEVER silently report
+    // success in an authenticated path — that's how the Agency upgrade CTA
+    // returned {ok:true} without ever opening checkout. If a JWT is present
+    // the caller should be on the real adapter; if it isn't, that's a
+    // selection bug we want to surface, not paper over with a fake "active"
+    // snapshot. Refuse with an explicit error so the toast/feedback path
+    // upstream fires.
+    if (hasJwt()) {
+      this.setSnapshot({ ...this.snapshot, state: "checkout_failed", lastCheckoutFailed: true });
+      return {
+        ok: false,
+        planKey,
+        error: "mock_adapter_in_authenticated_path",
+      };
+    }
     this.setSnapshot({ ...this.snapshot, state: "checkout_started", lastCheckoutFailed: false });
     await new Promise((r) => setTimeout(r, 100));
     this.setSnapshot({
@@ -177,22 +192,28 @@ class MeBackedBillingAdapter implements BillingAdapter {
 
 /* ─── Singleton selection · real preferred · mock fallback ──────────
  *
- * v0.7.68 — simplified to break the infinite re-render loop that
- * crashed the app when AgencyPreviewBanner mounted. The prior version
- * had a useEffect that called `adapter.setSnapshot(initial)`; that
- * setter triggered `setSnap` via the listener pattern, which re-ran
- * the hook → useMemo re-computed `initial` (sometimes with a new
- * reference) → useEffect re-fired → infinite loop.
+ * LC-UI-P0-001 (2026-06-26) — the prior implementation cached ONE
+ * adapter at first render. Because that first render almost always
+ * predates the /me fetch resolving, the cache permanently latched to
+ * MockBillingAdapter even after the user logged in, and Mock's
+ * startCheckout returned {ok:true} without ever opening a checkout
+ * URL. Result: silent Agency-upgrade CTA failure.
  *
  * New shape:
- *   - ONE module-scope adapter, picked at first hook call based on
- *     hasJwt() at that moment. Hot-swap removed — picking the right
- *     adapter on later /me transitions can be added back when there's
- *     a real-source signal worth swapping for.
- *   - Snapshot derivation is INSIDE the adapter, recomputed on
- *     every render of any subscriber via a small `recompute()` step
- *     in the hook. No useMemo on the snapshot · React's reconciliation
- *     handles same-value bails. */
+ *   - TWO stable module-scope singletons (`_realAdapter`, `_mockAdapter`).
+ *     Both keep stable identity per category so React effects keyed off
+ *     `billing.adapter` don't churn.
+ *   - The hook selects between them per-render based on `loggedIn`
+ *     (hasJwt()), which is synchronous and authoritative — no waiting
+ *     on /me. Authenticated paths always use the real (opener-backed)
+ *     adapter; unauthenticated dev preview uses mock.
+ *   - Mock startCheckout refuses to silently succeed when a JWT is
+ *     present (defence in depth — see MockBillingAdapter above).
+ *
+ * Snapshot derivation stays a pure recomputation per render — no
+ * useState/useEffect/subscribe loop. The infinite-re-render bug that
+ * v0.7.68 fixed is preserved.
+ */
 
 function derivePlanKey(tier: string | null | undefined): PlanKey {
   return tierToPlanKey(typeof tier === "string" ? tier : null);
@@ -200,25 +221,9 @@ function derivePlanKey(tier: string | null | undefined): PlanKey {
 
 /* ─── Public hook · used by every UI surface ──────────────────────── */
 
-let _adapter: BillingAdapter | null = null;
+let _realAdapter: MeBackedBillingAdapter | null = null;
+let _mockAdapter: MockBillingAdapter | null = null;
 
-/**
- * Pure derived hook · no useState, no useEffect. Re-derives the
- * snapshot from /me + tier on every render. The adapter is a stable
- * module-singleton, so `billing.adapter.startCheckout(...)` is always
- * safe to call.
- *
- * Live state updates (e.g., user comes back from external checkout)
- * propagate naturally because useMe re-fetches /me and tier flips →
- * this hook re-derives a new snapshot.
- *
- * The earlier subscribe/setState pattern caused (a) an infinite
- * re-render loop that crashed the app via AgencyPreviewBanner, and
- * (b) added ~10s to every brand-consistency walk because every
- * consumer mount paid the subscribe + effect cost. Pure derivation
- * avoids both problems · the cost of NOT propagating local mock
- * setSnapshot calls is acceptable (mock is dev-only).
- */
 export function useBillingState(): BillingSnapshot & {
   adapter: BillingAdapter;
 } {
@@ -242,23 +247,21 @@ export function useBillingState(): BillingSnapshot & {
     }
     const planKey = derivePlanKey(tierCtx.tier);
     const state: BillingState = planKey === "free" ? "free" : "active";
-    return { state, currentPlan: planKey, source: "mock", lastCheckoutFailed: false };
+    // Authenticated but /me hasn't resolved yet · snapshot source is "real"
+    // because the user IS authenticated even if the snapshot is derived
+    // from the tier fallback. The adapter selected below is the real one.
+    return { state, currentPlan: planKey, source: "real", lastCheckoutFailed: false };
   })();
 
-  // First-call picks the adapter and never swaps after. The MockBilling
-  // case stays "mock" forever for that mount; reload picks up a real
-  // adapter once /me has resolved.
-  if (!_adapter) {
-    _adapter = meSourceReal && me.snapshot
-      ? new MeBackedBillingAdapter(snapshot)
-      : new MockBillingAdapter(snapshot);
-  }
+  const adapter: BillingAdapter = loggedIn
+    ? (_realAdapter ??= new MeBackedBillingAdapter(snapshot))
+    : (_mockAdapter ??= new MockBillingAdapter(snapshot));
 
-  return { ...snapshot, adapter: _adapter };
+  return { ...snapshot, adapter };
 }
 
-// Test seam · lets unit tests reset the module singleton between cases.
-// Not used in production code; safe no-op when undefined.
+// Test seam · lets unit tests reset the module singletons between cases.
 export function __resetBillingAdapterForTests(): void {
-  _adapter = null;
+  _realAdapter = null;
+  _mockAdapter = null;
 }

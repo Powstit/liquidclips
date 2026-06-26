@@ -1088,14 +1088,36 @@ function PublishCtaGated({
   onPublish: () => Promise<void>;
 }) {
   const billing = useBillingState();
+  // LC-UI-P0-001: await the adapter so a failed opener becomes a visible
+  // toast instead of a silent {ok:true} from mock.
+  const handleUpgrade = async () => {
+    notifyCampaignPublishBlocked(campaignName);
+    try {
+      const outcome = await billing.adapter.startCheckout("agency");
+      if (!outcome.ok) {
+        bus.emit("toast", {
+          kind: "error",
+          title: "Couldn't open checkout",
+          body:
+            outcome.error ??
+            "Open Settings → Plan → Manage plan on Whop and pick Agency from there.",
+        });
+      }
+    } catch (err) {
+      bus.emit("toast", {
+        kind: "error",
+        title: "Couldn't open checkout",
+        body: err instanceof Error && err.message
+          ? err.message
+          : "Open Settings → Plan → Manage plan on Whop and pick Agency from there.",
+      });
+    }
+  };
   return (
     <PaywallGate
       requiredTier="agency"
       action="Launch campaign"
-      onUpgrade={() => {
-        notifyCampaignPublishBlocked(campaignName);
-        void billing.adapter.startCheckout("agency");
-      }}
+      onUpgrade={() => { void handleUpgrade(); }}
     >
       <button type="button" className="lc-step-cta-primary" onClick={onPublish} disabled={publishing}>
         {publishing ? "Publishing…" : "Publish campaign"}
