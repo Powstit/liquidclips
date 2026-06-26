@@ -1,17 +1,51 @@
-import { useEffect, useState } from "react";
-import { AppShell } from "./shell/AppShell";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { flowTrace } from "./lib/flowTrace";
 import { FLOW_IDS } from "./contracts/flowRegistry";
-import { IntroSplash } from "./overlays/IntroSplash";
-import { InvadersOverlay } from "./overlays/invaders/InvadersOverlay";
 import { BrowseOverlay, BrowserScrim } from "./components/browser";
 import { initAuthStorage, hasJwt, resumeJwtFromKeychainForAuthAction } from "./lib/authStorage";
 import { attachQA, qaGateEnabled } from "./lib/qa";
 import { mountDeepLinkSubscriber, type DeepLinkBootHandle } from "./lib/deepLinkBoot";
 import { useActivation } from "./lib/activation";
-import { LoginOnboardingRoute } from "./design-os/routes/LoginOnboarding";
-import { ClaimScreen } from "./design-os/routes/ClaimScreen";
 import { readSessionIdFromLaunch, clearFunnelSession } from "./lib/funnelSession";
+
+/* LC-UI-P0-BOOT · Patch A · 2026-06-26
+ *
+ * Heavy components lazy-loaded so the initial JS chunk drops dramatically
+ * and first paint lands immediately on a black brand stage instead of
+ * waiting on the full app shell + intro splash + invaders game + auth
+ * chrome to parse.
+ *
+ * Behaviour preserved · auth/storage/deeplink effects still run on App
+ * mount · the conditional render logic in IntroSplash/AuthGate/FunnelGate
+ * is unchanged · the only difference is each heavy module's bytes arrive
+ * AFTER the first paint instead of blocking it. */
+const AppShell = lazy(() => import("./shell/AppShell").then((m) => ({ default: m.AppShell })));
+const IntroSplash = lazy(() => import("./overlays/IntroSplash").then((m) => ({ default: m.IntroSplash })));
+const InvadersOverlay = lazy(() =>
+  import("./overlays/invaders/InvadersOverlay").then((m) => ({ default: m.InvadersOverlay })),
+);
+const LoginOnboardingRoute = lazy(() =>
+  import("./design-os/routes/LoginOnboarding").then((m) => ({ default: m.LoginOnboardingRoute })),
+);
+const ClaimScreen = lazy(() =>
+  import("./design-os/routes/ClaimScreen").then((m) => ({ default: m.ClaimScreen })),
+);
+
+/* Tiny first-paint fallback · matches brand background so the screen is
+ * never white. No fonts, no images, no animation · the cheapest possible
+ * frame so paint can land while the heavy modules stream in. */
+function BootFallback(): React.ReactElement {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "#0b0b10",
+      }}
+    />
+  );
+}
 
 export function App() {
   // Dev-only escape hatch so headless screenshots can land on the main UI
@@ -111,7 +145,7 @@ export function App() {
   }, []);
 
   return (
-    <>
+    <Suspense fallback={<BootFallback />}>
       {!splashAcked && (
         <IntroSplash
           ready={splashReady}
@@ -128,10 +162,11 @@ export function App() {
       )}
       <InvadersOverlay />
       {/* Browser overlay (Lane 1) — never globally mounted; each component
-          returns null unless the store says open. */}
+          returns null unless the store says open. Kept eager · they're
+          guard-rendered to null and add ~2KB. */}
       <BrowserScrim />
       <BrowseOverlay />
-    </>
+    </Suspense>
   );
 }
 
