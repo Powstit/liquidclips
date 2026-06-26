@@ -4,12 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Liquid Clips 2.0 — Shell Simulator</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
+    <!--
+      Gate 8 (2026-06-26) — runtime Google Fonts dependency removed.
+      The desktop shell blocks first paint on an external CDN that may
+      be unreachable (corp proxies, offline boots, slow nets). Inter
+      and Geist Mono are now declared via @font-face in
+      src/brand/brandTheme.css, sourced from /brand/fonts/. The system
+      stack ui-sans-serif / ui-monospace renders while the woff2 files
+      load (font-display: swap). When woff2 files are not yet on disk
+      the system stack remains visible — no broken remote reference,
+      no FOIT, no boot stall.
+
+      Ship-ready action: drop Inter + Geist Mono woff2 files into
+      public/brand/fonts/ (Inter weights 400/500/600/700/800, Geist
+      Mono weights 400/500/600). They activate automatically.
+    -->
   </head>
   <body>
     <div id="root"></div>
