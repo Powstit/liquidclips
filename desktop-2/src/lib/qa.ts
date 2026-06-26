@@ -27,6 +27,11 @@ import { bus } from "../design-os/bridge";
 import { useBrowseOverlay, WHOP_REWARDS_URL } from "../state/browseOverlay";
 import { hasJwt, getAuthSource, LICENSE_JWT_STORAGE_KEY } from "./authStorage";
 import type { RouteId } from "../design-os/bridge";
+import {
+  assertSurfaceContract,
+  getSurfaceContract,
+  type SurfaceId,
+} from "../design-os/surfaces/surfaceRegistry";
 
 const QA_GATE_KEY = "lc.qa.enabled";
 const QA_AUTOBOOT_KEY = "lc.qa.autoboot";
@@ -606,7 +611,67 @@ function evalPassConditions(snap: QASnapshot, intent: SurfaceReport["intent"]): 
     conds.registryNoUnresolvedAssets = snap.registry.unresolvedCount === 0;
   }
 
+  // C1 · 2026-06-26 · surface-contract assertions. Looks up the
+  // SurfaceContract for this (route, mode, openBrowse) intent and lets
+  // the registry add its own contract.* conditions ALONGSIDE the
+  // hardcoded ones above. The hardcoded conditions stay (no behaviour
+  // change to the green user-lens state); the contract layer adds
+  // executable assertions that fail loudly when a future change drifts
+  // away from the registered purpose / CTA / world / mode contract.
+  const surfaceId = resolveSurfaceId(intent);
+  if (surfaceId) {
+    const contract = getSurfaceContract(surfaceId);
+    if (contract) {
+      const contractConds = assertSurfaceContract(
+        {
+          route: snap.shell.route,
+          mode: snap.shell.mode,
+          world: snap.shell.world,
+          kadePlacement: snap.kade.placement,
+          browseOpen: snap.overlay.browseOpen,
+          loginPresent: snap.dashboard.loginPresent,
+        },
+        contract,
+      );
+      for (const [k, v] of Object.entries(contractConds)) {
+        conds[k] = v;
+      }
+    }
+  }
+
   return conds;
+}
+
+/**
+ * Map a QA harness intent to a SurfaceId. Returns null when the intent
+ * doesn't yet have a registered surface (the contract layer is additive,
+ * so unmapped intents skip the contract block without failing the gate).
+ */
+function resolveSurfaceId(intent: SurfaceReport["intent"]): SurfaceId | null {
+  if (intent.openBrowse) return "browse-overlay";
+  switch (intent.route) {
+    case "home":
+      return intent.mode === "agency" ? "home.agency" : "home.clipper";
+    case "create":
+      return "create";
+    case "workstation":
+    case "library":
+      return "workstation";
+    case "schedule":
+      return "schedule";
+    case "earn":
+      return "earn";
+    case "campaigns":
+      return intent.mode === "agency" ? "campaigns.agency" : "campaigns.clipper";
+    case "community":
+      return "community";
+    case "settings":
+      return "settings";
+    case "login":
+      return "login";
+    default:
+      return null;
+  }
 }
 
 async function runVerification(): Promise<VerificationReport> {
