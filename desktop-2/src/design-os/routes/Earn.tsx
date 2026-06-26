@@ -98,7 +98,7 @@ function EarnBody() {
             a dedicated compact action row so the primary CTA (affiliate
             dashboard · Whop's payout entry point) stays visible without
             the landing-page hero. */}
-        <div className="lc-route-head" data-kade-anchor>
+        <div className="lc-route-head" data-kade-anchor data-route-title={hero.eyebrow}>
           <span className="lc-route-head-eb">{hero.eyebrow}</span>
           <div className="lc-route-head-pills">
             {!honestyTag ? (

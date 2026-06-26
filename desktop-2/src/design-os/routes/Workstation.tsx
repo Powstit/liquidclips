@@ -221,7 +221,7 @@ function WorkstationBody() {
             the selected-clip inspector (right, scrolls internally). The
             whole route no longer scrolls — only the two columns + the
             CockpitDock tab strip at the bottom move. */}
-        <div className="lc-route-head" data-kade-anchor>
+        <div className="lc-route-head" data-kade-anchor data-route-title={hero.eyebrow}>
           <span className="lc-route-head-eb">{hero.eyebrow}</span>
           <div className="lc-route-head-pills">
             <span className="lc-runtime-tag" data-testid="ws-phase-pill">

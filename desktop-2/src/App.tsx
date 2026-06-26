@@ -18,8 +18,14 @@ export function App() {
   // without sitting through the 28.5s intro. Not exposed to users. QA mode
   // (VITE_LC_QA build / lc.qa.enabled localStorage / vite DEV) also skips
   // so deterministic snapshots see steady state instead of the splash.
+  //
+  // forceIntro=1 reverses the QA/DEV auto-skip so the splash test in
+  // tests/e2e/splash-and-agency-palette.spec.ts can exercise the actual
+  // mount path. Has no effect for real users (they would never set it).
+  const _urlParams = new URLSearchParams(window.location.search);
+  const _forceIntro = _urlParams.get("forceIntro") === "1";
   const skipIntro =
-    new URLSearchParams(window.location.search).get("skipIntro") === "1" || qaGateEnabled();
+    !_forceIntro && (_urlParams.get("skipIntro") === "1" || qaGateEnabled());
   const [splashAcked, setSplashAcked] = useState(skipIntro);
   const [splashReady, setSplashReady] = useState(false);
 

@@ -152,6 +152,12 @@ async function navigateToRoute(page: Page, r: RouteCase): Promise<void> {
 
 test.describe("Brand Consistency Journey", () => {
   test(`${JOURNEY} · every route fits viewport · chrome stays visible · canonical copy locked`, async ({ page }, testInfo) => {
+    // 2026-06-26 · 12-route loop + post-loop chrome/inbox/nav assertions
+    // legitimately exceed the 90s default. The pre-D failure mode was a
+    // missing route-title (steps short-circuited at step 9 missingTitles
+    // assertion). After the data-route-title + InlineCreatePanel
+    // close-on-nav fixes, the loop completes properly and needs more time.
+    testInfo.setTimeout(150_000);
     const rec = new JourneyRecorder(page, testInfo);
 
     try {
