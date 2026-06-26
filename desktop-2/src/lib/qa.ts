@@ -125,6 +125,24 @@ export interface QASnapshot {
      *  it must be `hidden` so internal scroll regions own the scroll. */
     appOverflow: string | null;
   };
+  /** STAGE B-1 registry-wiring evidence (locked 2026-06-26). WorldLayer
+   *  / KadeController / ClipCard now resolve their visual assets via
+   *  `assetRegistry.getWorld/getKade/getClipCardFallback`. The `*-
+   *  registry-resolved` flags they expose on the DOM must read "true";
+   *  any "false" means the registry doesn't carry that asset and the
+   *  component is on its hardcoded fallback. */
+  registry: {
+    worldRegistryResolved: string | null;
+    worldRegistryId: string | null;
+    kadeRegistryResolved: string | null;
+    kadeRegistryId: string | null;
+    clipFallbackId: string | null;
+    clipFallbackResolved: string | null;
+    /** Count of any DOM elements that opted into the registry-resolved
+     *  pattern and reported `false`. Failure signal — surfaces drift
+     *  the moment a new asset isn't catalogued. */
+    unresolvedCount: number;
+  };
 }
 
 export interface SurfaceReport {
@@ -291,6 +309,23 @@ async function snapshot(): Promise<QASnapshot> {
   const splitBody = document.querySelector(".lc-ws-body");
   const inspector = document.querySelector<HTMLElement>(".lc-ws-body-inspector");
   const appOverflow = app ? getComputedStyle(app).overflow : null;
+
+  // Stage B-1 · registry resolution evidence. WorldLayer / KadeController /
+  // ClipCard set data-* flags so QA can confirm the live components are
+  // reading from the registry instead of their old hardcoded maps.
+  const worldRegistryResolved = world?.dataset.worldRegistryResolved ?? null;
+  const worldRegistryId = world?.dataset.worldRegistryId ?? null;
+  const kadeHost = document.querySelector<HTMLElement>(".lc-kade-host");
+  const kadeRegistryResolved = kadeHost?.dataset.kadeRegistryResolved ?? null;
+  const kadeRegistryId = kadeHost?.dataset.kadeRegistryId ?? null;
+  const clipFallbackId = firstPreview?.dataset.clipFallbackId ?? null;
+  const clipFallbackResolved = firstPreview?.dataset.clipFallbackResolved ?? null;
+  // Count any registry-aware element that reported `false`. The matcher
+  // is generic so every future registry-wired surface contributes to one
+  // failure signal.
+  const unresolvedCount = document.querySelectorAll(
+    "[data-world-registry-resolved=\"false\"],[data-kade-registry-resolved=\"false\"],[data-clip-fallback-resolved=\"0\"]",
+  ).length;
   // Prefer the real card preview's resolved background; fall back to a
   // synthetic probe so the CSS rule itself is verified when no card is
   // present.
@@ -387,6 +422,15 @@ async function snapshot(): Promise<QASnapshot> {
       inspectorPresent: !!inspector,
       inspectorHasClipFlag: inspector?.dataset.hasClip ?? null,
       appOverflow,
+    },
+    registry: {
+      worldRegistryResolved,
+      worldRegistryId,
+      kadeRegistryResolved,
+      kadeRegistryId,
+      clipFallbackId,
+      clipFallbackResolved,
+      unresolvedCount,
     },
   };
 }
@@ -539,6 +583,27 @@ function evalPassConditions(snap: QASnapshot, intent: SurfaceReport["intent"]): 
     if (snap.workbench.splitBodyPresent) {
       conds.workbenchInspectorMounted = snap.workbench.inspectorPresent;
     }
+  }
+
+  // STAGE B-1 registry wiring (locked 2026-06-26). Every customer
+  // surface that paints the cockpit world / Kade / clip-card art must
+  // resolve through the registry — no surface should be on a hardcoded
+  // path. The scene-loadable check from the atmosphere block already
+  // proves the cockpit-home file decodes; these add the contract that
+  // it was resolved THROUGH the registry, not pasted as a string.
+  if (atmosphereRequired) {
+    conds.registryWorldResolved = snap.registry.worldRegistryResolved === "true";
+    conds.registryWorldIsCockpitHome = snap.registry.worldRegistryId === "world.cockpit-home";
+    conds.registryKadeResolved = snap.registry.kadeRegistryResolved === "true";
+    // Clip-card fallback assertion only fires when a real card preview is
+    // mounted (Workstation has clips, Home does not). The unresolved-count
+    // assertion below still catches a card-fallback drift even when the
+    // explicit check skips.
+    if (snap.registry.clipFallbackResolved !== null) {
+      conds.registryClipFallbackResolved = snap.registry.clipFallbackResolved === "1";
+      conds.registryClipFallbackIdPresent = (snap.registry.clipFallbackId ?? "").startsWith("clip-card-fallback.");
+    }
+    conds.registryNoUnresolvedAssets = snap.registry.unresolvedCount === 0;
   }
 
   return conds;

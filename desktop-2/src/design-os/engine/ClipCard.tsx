@@ -14,10 +14,11 @@
  * (Earn ledger row, Submissions Review feed) but do NOT call the sidecar.
  */
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { GlassCard } from "../components";
 import { bus, useEvent, useMode } from "../bridge";
+import { getClipCardFallback } from "../assets/assetRegistry";
 import type { Clip, Platform } from "./types";
 
 // BUG-027 · Grid tiles render the sidecar-generated thumbnail PNG, not the
@@ -94,6 +95,18 @@ export function ClipCard({
   // Agency mode hides the Submit-to-Whop affordance (it's a clipper action).
   const showSubmitChrome = mode === "clipper" && cta.showSubmit;
 
+  // Stage B-1 · clip-card fallback art is registry-driven (was a CSS
+  // `:nth-child(6n+N)` cycle in ClipCard.css). The 6-pose Kade cycle is
+  // keyed off `clip.idx` so the same clip always shows the same fallback
+  // pose — stable visual identity rather than positional churn. The real
+  // poster <img> below still wins when present; the fallback only shows
+  // through the preview's background when posterPath is null OR the img
+  // errors out.
+  const fallbackAsset = getClipCardFallback(Math.max(0, clip.idx));
+  const previewStyle: CSSProperties = {
+    ["--lc-clip-fallback-url" as string]: `url(${fallbackAsset.publicPath})`,
+  };
+
   return (
     <GlassCard
       density="default"
@@ -119,7 +132,12 @@ export function ClipCard({
             BUG-027 in desktop-2/docs/BUGS_ERRORS_FIXES.md). Video belongs
             ONLY in the single-clip editor pane, after user click. Mirrors
             desktop/src/components/projects/LibraryClipStrip.tsx:244. */}
-        <div className="lc-clip-preview">
+        <div
+          className="lc-clip-preview"
+          style={previewStyle}
+          data-clip-fallback-id={fallbackAsset.id}
+          data-clip-fallback-resolved="1"
+        >
           {(() => {
             const posterPath = clipPosterPath(clip);
             if (!posterPath || posterError) return null;
