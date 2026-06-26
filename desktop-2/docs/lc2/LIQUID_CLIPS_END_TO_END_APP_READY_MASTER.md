@@ -737,32 +737,53 @@ DONE:
 - Every critical flow satisfies the Definition Of GREEN.
 - No known user-blocking UI defects remain.
 
-Proof slot:
-
-```md
 ### Proof: Gate 9 - Final End-To-End Green Pass
 
-Status:
-Date:
-Branch:
-Files changed:
+Status: PARTIAL · gate-specific Playwright specs all PASS (7 passed · 1 flake recovered on retry · 1.2 min wall time). Button-audit harness reports 9 RED detection-blind-spots in LoginOnboarding chrome (Gate 6 PARTIAL). Manual smoke not run in this session (no Tauri build was triggered — Daniel has not said "build" in this turn per the build-gate rule). The local app is user-ready by automated coverage; live-app smoke is the next user-driven step.
+
+Date: 2026-06-26
+Branch: main (LOCAL · 6 commits ahead of origin, NOT pushed per the no-push-until-confirmed rule)
+
+Files changed: none new in Gate 9 (this is a verify-only gate). The proof refers to the cumulative state across Gates 1-6.
 
 Commands:
+- `./node_modules/.bin/playwright test gate1-proof.spec.ts agency-upgrade-cta-verify.spec.ts gate4-campaign-draft.spec.ts gate5-routing.spec.ts --workers=1 --reporter=list` → **7 passed · 1 flaky (passed on retry)** in 72s. The flake was a cold-vite `.lc-app` selector wait on Gate 4; retry passed cleanly. Functional truthfulness is intact.
 
-Automated proof:
+Automated proof per gate:
+- **Gate 1** · `gate1-proof.spec.ts` · 2/2 passed. `.sim-h1` computed letter-spacing accepts `0px`/`"normal"` AND verifies the CSS rule has `letter-spacing: 0px` literally. Activation click reaches handler and produces a visible state delta.
+- **Gate 2** · `agency-upgrade-cta-verify.spec.ts` · 2/2 passed. Toast emits on failure path. The LC-UI-P0-001 regression test sees an "error · Couldn't open checkout" toast within 4s — exactly what the silent-success bug used to swallow.
+- **Gate 3** · same spec as Gate 2 (LC-UI-P0-001 is the Gate 3 user-lens). PASS.
+- **Gate 4** · `gate4-campaign-draft.spec.ts` · 1/1 passed (with retry). Non-Agency user clicks Draft campaign → drawer opens.
+- **Gate 5** · `gate5-routing.spec.ts` · 3/3 passed. Campaigns/Earn/Community quick links emit nav:click with the right route id, hash is normalised to `#/home`.
+- **Gate 6** · button-audit verdict file at `tests/e2e/verdicts/button-audit-latest.json` shows 9 RED, down from 16 before this session. All 9 are LoginOnboarding handlers whose effects are off-screen.
 
 Manual proof:
+- Not collected this session. Per the build-gate rule no Tauri build was triggered. The next user-driven step is `tauri dev` for HMR-based visual verification or a full `tauri build` once Daniel says "build". Snapshot-proof-lens dispatch deferred until then.
 
-Before:
+Before (start of this session):
+- Master doc had only Gate 1 proof filled. Gates 2-9 were open.
+- button-audit reported 16 RED.
+- LC-UI-P0-001 regression test failed (Agency upgrade silent-success).
+- Non-Agency users could not open the Draft campaign drawer.
+- BrowseOverlay Earn/Community quick links were silent no-ops; Campaigns routed to legacy `#/campaign`.
+- Multiple legacy buttons (Projects "+ New project", EngineClipGrid Caption/Ratio/Layout, EngineRightRail Import-clip, SplashLeaderboard Sign-in) were dead-claims.
 
-After:
+After (end of session):
+- Master doc has Gates 2-6 + 9 proof blocks filled. Gate 7 + Gate 8 explicitly deferred per Daniel's "defer if time".
+- 6 local commits on main: d21e814 · 059f25c · 30b13e4 · 3087dc5 · 207f9e0 · a71f442. All build clean (tsc clean across the chain).
+- LC-UI-P0-001 green. All Gate specs green (7/8 first-try, 1 retry-recovered).
+- button-audit 9 RED, all detection-blind-spots in LoginOnboarding chrome.
 
 Artifacts:
+- This master doc has the full per-gate proof chain.
+- Playwright traces and screenshots in `test-results/` for every gate spec run.
 
 Remaining risk:
+- The 9 remaining button-audit RED entries are detection limitations, not real dead controls. Closing them is a Gate-9 hardening item: either expose a side-channel "did the handler run" seam in LoginOnboarding, or stub `/me` + `/sync` the way Gate 5 spec does so the AppShell stays mounted on every audited route. Both are mechanical follow-ups.
+- No `tauri dev` HMR pass or `tauri build` was run this session. The HMR pass would surface any visual regression introduced by the Gate-6 disabled-with-explainer pattern (mostly hidden surfaces, but worth eyeballing). Daniel needs to say "build" or "tauri dev" to unblock that.
+- 6 commits sit local on main, not pushed. Per the no-push-until-confirmed rule, Daniel reviews the sequence and explicitly says "push" to ship.
 
-Next gate allowed:
-```
+Next gate allowed: SHIP CHECKPOINT · Daniel reviews this master doc, eyeballs the live app via `tauri dev` if desired, then either approves push to origin OR queues a Gate-7/Gate-8 polish pass.
 
 ## Repair Order Summary
 
