@@ -320,17 +320,21 @@ function CampaignsBody() {
         </EngineErrorBoundary>
 
         {/* Agency creation flow · 8-step drawer · Phase 6N-E v1.
-         *  P1-1G-c · only mount when the tier source is TRUSTED. Fixture
-         *  fallback / debug-override never instantiate the flow. */}
-        {canWriteAgency && (
-          <EngineErrorBoundary route="campaigns" component="AgencyCreationFlow">
-            <AgencyCreationFlow
-              open={creationOpen}
-              onClose={() => setCreationOpen(false)}
-              onPublished={() => void camps.reload()}
-            />
-          </EngineErrorBoundary>
-        )}
+         *
+         * LC-UI-P0-001 (2026-06-26) — the prior `canWriteAgency && (...)`
+         * gate around the mount silently swallowed every lower-tier click
+         * on the "Draft campaign" button: setCreationOpen flipped to true
+         * but the drawer never existed in the tree. Per Codex root-cause
+         * fix: every tier opens the drawer; publish/launch is the only
+         * paywalled commitment, and that gate lives inside the drawer at
+         * StepReviewPublish → PaywallGate(requiredTier="agency"). */}
+        <EngineErrorBoundary route="campaigns" component="AgencyCreationFlow">
+          <AgencyCreationFlow
+            open={creationOpen}
+            onClose={() => setCreationOpen(false)}
+            onPublished={() => void camps.reload()}
+          />
+        </EngineErrorBoundary>
 
         {/* 2026-06-23 monetisation pass · commitment-point paywall.
          *
