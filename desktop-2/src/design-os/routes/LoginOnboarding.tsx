@@ -99,7 +99,7 @@ function LoginOnboardingBody() {
   return (
     <DesignOSAppShell
       world="boot-sequence"
-      route="home"
+      route="login"
       defaultKade={session.kade ?? "idle"}
       kadePlacement="center"
     >
