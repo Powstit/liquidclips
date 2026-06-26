@@ -532,7 +532,7 @@ const SURFACES: Record<SurfaceId, SurfaceContract> = {
     defaultKade: ROUTE_REGISTRY.campaigns.defaultKade,
     kadePlacement: ROUTE_REGISTRY.campaigns.kadePlacement,
     purpose:
-      "Find paid clip missions. Read brief, join, generate, submit. No campaign management controls.",
+      "Find paid clip missions. Read brief, join, generate, submit. Sponsored Reward card surfaces the $50 activation bonus.",
     previousStep: "home.clipper",
     nextStep: "create",
     primaryCTA: {
@@ -540,20 +540,28 @@ const SURFACES: Record<SurfaceId, SurfaceContract> = {
       testId: null,
       origin: "above-the-fold",
     },
-    secondaryActions: ["Read brief / rules", "Filter campaigns", "Open Earn for context"],
+    secondaryActions: [
+      "Read brief / rules",
+      "Filter campaigns",
+      "Open Earn for context",
+      "Draft a campaign (commitment-paywall · publish gated to Agency)",
+    ],
     aboveFold: [
       "Compact route head",
+      "Sponsored Reward card ($50 · clipper-only)",
       "Campaigns grid (mission pedestals)",
       "Filter chips",
+      "Draft campaign CTA (paywall fires at publish)",
     ],
     internalScrollZones: ["lc-campaigns-grid"],
     forbiddenContent: [
-      "Agency campaign creation / management controls",
+      "AgencyManageStrip (Agency-only · IG · keep mode-gated)",
+      "Live publish without paywall (commitment-paywall fires at publish step)",
       "Landing-page hero (Phase 1 lock)",
       "Fake invite-link writes (IRON GATE)",
     ],
     viewportDiscipline: "landing-hero-banned",
-    journeyVerdict: "YELLOW",
+    journeyVerdict: "GREEN",
     allowedBanners: bannersForRoute("campaigns"),
     allowedAssetGroups: BASE_ASSET_GROUPS,
     requiredQAAssertions: [
@@ -577,7 +585,7 @@ const SURFACES: Record<SurfaceId, SurfaceContract> = {
     defaultKade: ROUTE_REGISTRY.campaigns.defaultKade,
     kadePlacement: ROUTE_REGISTRY.campaigns.kadePlacement,
     purpose:
-      "Create + manage campaigns. Invite clippers. Watermark / paywall messaging where needed. No live native payout tracking.",
+      "Create + manage campaigns. AgencyManageStrip gives invite/lifecycle controls. No live Whop payout tracking — Whop owns clipper payouts.",
     previousStep: "home.agency",
     nextStep: null,
     primaryCTA: {
@@ -585,20 +593,27 @@ const SURFACES: Record<SurfaceId, SurfaceContract> = {
       testId: null,
       origin: "above-the-fold",
     },
-    secondaryActions: ["Manage existing campaigns", "Invite clippers", "Open Submissions"],
+    secondaryActions: [
+      "Manage existing campaigns via AgencyManageStrip",
+      "Invite clippers (gated on backend wire)",
+      "Open Submissions",
+    ],
     aboveFold: [
       "Compact route head",
-      "Create-campaign CTA",
+      "Featured campaign banner",
+      "AgencyManageStrip (Agency-only)",
+      "Filter chips",
+      "Create campaign CTA",
       "Active campaign list",
     ],
     internalScrollZones: ["lc-campaigns-grid"],
     forbiddenContent: [
-      "Clipper join-campaign flow (mode-mismatch)",
+      "SponsoredRewardCard (clipper-only · $50 is paid TO clippers)",
       "Fake live Whop payout tracking",
       "Landing-page hero (Phase 1 lock)",
     ],
     viewportDiscipline: "landing-hero-banned",
-    journeyVerdict: "YELLOW",
+    journeyVerdict: "GREEN",
     allowedBanners: bannersForRoute("campaigns"),
     allowedAssetGroups: BASE_ASSET_GROUPS,
     requiredQAAssertions: [

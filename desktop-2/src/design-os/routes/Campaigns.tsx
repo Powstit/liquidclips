@@ -270,16 +270,23 @@ function CampaignsBody() {
         {/* 2026-06-23 · $50 Sponsored Reward · pinned ABOVE discovery
          *  grid · IG-SOV-2.2-001 · NOT inside .lc-campaigns-grid so the
          *  campaigns-station BUG-044 spec (zero fake campaigns in grid)
-         *  isn't broken by our owned-reward card. */}
-        <EngineErrorBoundary route="campaigns" component="SponsoredRewardCard">
-          <div
-            className="lc-campaigns-sponsored-slot"
-            data-testid="sponsored-reward-slot"
-            style={{ marginBottom: 16 }}
-          >
-            <SponsoredRewardCard viewCount={0} />
-          </div>
-        </EngineErrorBoundary>
+         *  isn't broken by our owned-reward card.
+         *
+         *  2026-06-26 · C2 · clipper-only · the $50 Sponsored Reward
+         *  is paid TO clippers for activation. Agency users don't earn
+         *  it (they fund campaigns), so hiding the card in agency mode
+         *  removes a mode-mismatch on the Campaigns surface. */}
+        {mode === "clipper" && (
+          <EngineErrorBoundary route="campaigns" component="SponsoredRewardCard">
+            <div
+              className="lc-campaigns-sponsored-slot"
+              data-testid="sponsored-reward-slot"
+              style={{ marginBottom: 16 }}
+            >
+              <SponsoredRewardCard viewCount={0} />
+            </div>
+          </EngineErrorBoundary>
+        )}
 
         {/* Discovery grid. */}
         <EngineErrorBoundary route="campaigns" component="CampaignsGrid">
