@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { getWorld } from "../assets/assetRegistry";
 import "./WorldLayer.css";
 
 export type WorldKey =
@@ -25,16 +26,37 @@ export type WorldKey =
   | "relay-tower"
   | "boot-sequence";
 
-const PATH_FOR: Record<WorldKey, string> = {
-  "cockpit-home":     "/brand/worlds/cockpit-home.webp",
-  "source-bay":       "/brand/worlds/source-bay.webp",
-  "cutting-floor":    "/brand/worlds/cutting-floor.webp",
-  "studio-deck":      "/brand/worlds/studio-deck.webp",
-  "mission-pedestal": "/brand/worlds/mission-pedestal.webp",
-  "squad-lounge":     "/brand/worlds/squad-lounge.webp",
-  "relay-tower":      "/brand/worlds/relay-tower.webp",
-  "boot-sequence":    "/brand/worlds/boot-sequence.webp",
-};
+/** PRODUCT STANDARD (locked 2026-06-25 · one cockpit room): when a
+ *  requested world is absent from the asset registry, fall back to the
+ *  cockpit-home anchor instead of going dark. The DOM exposes the
+ *  fallback status via `data-world-registry-resolved` so QA can fail
+ *  loudly when the registry drifts away from a consuming surface. */
+const FALLBACK_WORLD: WorldKey = "cockpit-home";
+
+interface ResolvedWorld {
+  path: string;
+  resolvedFromRegistry: boolean;
+  registryId: string | null;
+}
+
+function resolveWorldPath(world: WorldKey): ResolvedWorld {
+  const entry = getWorld(world);
+  if (entry) {
+    return { path: entry.publicPath, resolvedFromRegistry: true, registryId: entry.id };
+  }
+  // Loud signal in console + DOM so the QA gate and devtools both
+  // surface the drift — never silently swallow a missing world.
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[WorldLayer] world "${world}" missing from assetRegistry · falling back to ${FALLBACK_WORLD}.`,
+  );
+  const fallback = getWorld(FALLBACK_WORLD);
+  return {
+    path: fallback?.publicPath ?? "/brand/worlds/cockpit-home.webp",
+    resolvedFromRegistry: false,
+    registryId: fallback?.id ?? null,
+  };
+}
 
 export interface WorldLayerProps {
   world: WorldKey;
@@ -108,11 +130,19 @@ export function WorldLayer({ world, particles = true }: WorldLayerProps) {
     };
   }, [particles]);
 
+  const resolved = resolveWorldPath(world);
+
   return (
-    <div className="lc-world" aria-hidden="true">
+    <div
+      className="lc-world"
+      aria-hidden="true"
+      data-world-key={world}
+      data-world-registry-resolved={String(resolved.resolvedFromRegistry)}
+      data-world-registry-id={resolved.registryId ?? ""}
+    >
       <div
         className="lc-world-scene"
-        style={{ backgroundImage: `url(${PATH_FOR[world]})` }}
+        style={{ backgroundImage: `url(${resolved.path})` }}
       />
       <div className="lc-world-tint" />
       <div className="lc-world-rim" />

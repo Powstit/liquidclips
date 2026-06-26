@@ -13,28 +13,37 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { presets, useMotionGate } from "../motion";
 import type { KadeState } from "../bridge";
+import { getKade } from "../assets/assetRegistry";
 import "./KadeController.css";
 
-const POSE_PATH: Record<KadeState, string> = {
-  "idle":                "/brand/kade/kade-idle.webp",
-  "hover":               "/brand/kade/kade-hover.webp",
-  "create-clips":        "/brand/kade/kade-create-clips.webp",
-  "import-footage":      "/brand/kade/kade-import-footage.webp",
-  "reading-brief":       "/brand/kade/kade-reading-brief.webp",
-  "cutting-clips":       "/brand/kade/kade-cutting-clips.webp",
-  "generating-captions": "/brand/kade/kade-generating-captions.webp",
-  "exporting":           "/brand/kade/kade-exporting.webp",
-  "publishing":          "/brand/kade/kade-publishing.webp",
-  "campaign-mode":       "/brand/kade/kade-campaign-mode.webp",
-  "earn-mode":           "/brand/kade/kade-earn-mode.webp",
-  "community-mode":      "/brand/kade/kade-community-mode.webp",
-  "settings-mode":       "/brand/kade/kade-settings-mode.webp",
-  "shooter":             "/brand/kade/kade-shooter.webp",
-  "success":             "/brand/kade/kade-success.webp",
-  "celebration":         "/brand/kade/kade-celebration.webp",
-  "warning":             "/brand/kade/kade-warning.webp",
-  "error":               "/brand/kade/kade-error.webp",
-};
+/** Stage B-1: the 18 KadeState poses now resolve via the asset registry
+ *  (`getKade(state)`). Idle is the safety fallback when a state is added
+ *  to the union before its pose is registered — never silently blank,
+ *  always loud in console + DOM so QA catches the drift. */
+const FALLBACK_KADE_STATE: KadeState = "idle";
+
+interface ResolvedKade {
+  path: string;
+  resolvedFromRegistry: boolean;
+  registryId: string | null;
+}
+
+function resolveKadePath(state: KadeState): ResolvedKade {
+  const entry = getKade(state);
+  if (entry) {
+    return { path: entry.publicPath, resolvedFromRegistry: true, registryId: entry.id };
+  }
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[KadeController] pose "${state}" missing from assetRegistry · falling back to ${FALLBACK_KADE_STATE}.`,
+  );
+  const fallback = getKade(FALLBACK_KADE_STATE);
+  return {
+    path: fallback?.publicPath ?? "/brand/kade/kade-idle.webp",
+    resolvedFromRegistry: false,
+    registryId: fallback?.id ?? null,
+  };
+}
 
 export interface KadeControllerProps {
   state: KadeState;
@@ -43,10 +52,15 @@ export interface KadeControllerProps {
 
 export function KadeController({ state, className = "" }: KadeControllerProps) {
   const { reduced } = useMotionGate();
-  const path = POSE_PATH[state];
+  const resolved = resolveKadePath(state);
 
   return (
-    <div className={`lc-kade-host ${className}`}>
+    <div
+      className={`lc-kade-host ${className}`}
+      data-kade-state={state}
+      data-kade-registry-resolved={String(resolved.resolvedFromRegistry)}
+      data-kade-registry-id={resolved.registryId ?? ""}
+    >
       <motion.div
         className="lc-kade-bob"
         variants={presets.kadeBob}
@@ -55,7 +69,7 @@ export function KadeController({ state, className = "" }: KadeControllerProps) {
         <AnimatePresence mode="popLayout">
           <motion.img
             key={state}
-            src={path}
+            src={resolved.path}
             alt=""
             className="lc-kade-pose"
             initial={{ opacity: 0 }}
