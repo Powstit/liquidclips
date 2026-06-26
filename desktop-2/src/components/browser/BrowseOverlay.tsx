@@ -24,8 +24,6 @@ import {
   useBrowseOverlay,
   WHOP_REWARDS_URL,
 } from "../../state/browseOverlay";
-import { navigateTo } from "../../shell/routes";
-import { SECTION_IDS } from "../../shell/sectionIds";
 import { setActiveCampaignId } from "../../shell/modeStore";
 import { openSmart } from "../../lib/openSmart";
 import {
@@ -37,19 +35,30 @@ import {
   browseReload as nativeBrowseReload,
 } from "../../lib/browse";
 
-/** v1 quick-link surface: Whop only + internal app routes per Daniel's call. */
+/** v1 quick-link surface: Whop only + internal app routes per Daniel's call.
+ *
+ * Gate 5 (2026-06-26) — `sectionId` removed. The deprecated SECTION_IDS
+ * (`SECTION_EARN`, `SECTION_COMMUNITY`) were dropped from the active
+ * registry per BUG-047, so passing them to `navigateTo()` was a silent
+ * no-op. `SECTION_CAMPAIGNS` still resolved to the legacy hidden
+ * `#/campaign` surface. Every quick link now emits `nav:click` for the
+ * Design-OS surface, ensuring SimulatorRouter (mounted under `#/home`)
+ * actually swaps the surface. */
+type DesignOsRoute = "campaigns" | "earn" | "community";
 interface QuickLink {
   label: string;
-  /** If url present, opens in the browser overlay. If sectionId present, closes overlay and navigates. */
+  /** If url present, opens in the browser overlay. If designOsRoute is
+   *  present, closes overlay and routes to the matching Design-OS surface
+   *  via bus.emit("nav:click"). */
   url?: string;
-  sectionId?: keyof typeof SECTION_IDS;
+  designOsRoute?: DesignOsRoute;
 }
 
 const QUICK_LINKS: QuickLink[] = [
   { label: "Whop Rewards", url: WHOP_REWARDS_URL },
-  { label: "Campaigns", sectionId: "SECTION_CAMPAIGNS" },
-  { label: "Earn", sectionId: "SECTION_EARN" },
-  { label: "Community", sectionId: "SECTION_COMMUNITY" },
+  { label: "Campaigns", designOsRoute: "campaigns" },
+  { label: "Earn", designOsRoute: "earn" },
+  { label: "Community", designOsRoute: "community" },
 ];
 
 function normalizeUrl(raw: string): string {
@@ -241,9 +250,22 @@ export function BrowseOverlay(): JSX.Element | null {
         handleGo(q.url);
         return;
       }
-      if (q.sectionId) {
+      if (q.designOsRoute) {
         close();
-        navigateTo(SECTION_IDS[q.sectionId]);
+        /* SimulatorRouter is only mounted under `#/home`. If the user
+         * triggered the overlay from the legacy `#/campaign` hidden
+         * surface (or any other non-home hash), the bus.emit would have
+         * no subscriber. Force-set the hash so the design-os shell is
+         * live, then emit · the route swap lands every time. */
+        if (window.location.hash !== "#/home" && window.location.hash !== "#") {
+          window.location.hash = "#/home";
+        }
+        const route = q.designOsRoute;
+        /* One-tick wait so SimulatorRouter's useEvent subscription is
+         * wired before the emit (covers the cold-hash-set case). */
+        window.setTimeout(() => {
+          bus.emit("nav:click", { route });
+        }, 30);
       }
     },
     [handleGo, close],
