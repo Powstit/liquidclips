@@ -41,12 +41,27 @@ export function FeaturedDiscussion({ room, onOpenDetail }: FeaturedDiscussionPro
     });
   };
 
+  /* Gate 9 (2026-06-26) — was a <button> wrapping a <footer> that
+   * contained another <button>. React's validateDOMNesting flagged it
+   * as invalid: nested interactive elements can't be activated
+   * separately, and the audit captured the warning as a real bug.
+   * Outer is now a div with role="button" + tabIndex so it stays
+   * keyboard-accessible; the inner Whop button stops propagation so a
+   * click on it doesn't ALSO open the discussion detail. */
+  const handleShellKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onOpenDetail();
+    }
+  };
   return (
     <GlassCard density="default" className="lc-fd" hoverLift>
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         className="lc-fd-shell"
         onClick={onOpenDetail}
+        onKeyDown={handleShellKeyDown}
         aria-label={`Open featured discussion · ${channel.name}`}
       >
         <header className="lc-fd-head">
@@ -75,7 +90,10 @@ export function FeaturedDiscussion({ room, onOpenDetail }: FeaturedDiscussionPro
               <button
                 type="button"
                 className="lc-fd-cta-secondary"
-                onClick={handleOpenWhop}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenWhop(e);
+                }}
                 title={DISCUSSION.whop_subtext}
               >
                 {DISCUSSION.whop_secondary}
@@ -83,7 +101,7 @@ export function FeaturedDiscussion({ room, onOpenDetail }: FeaturedDiscussionPro
             )}
           </div>
         </footer>
-      </button>
+      </div>
     </GlassCard>
   );
 }

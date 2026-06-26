@@ -86,6 +86,24 @@ export interface WalletSummary {
 
 /* ──────── Fetcher ──────── */
 
+/** Defensive validator · a 200 with malformed JSON should NEVER reach
+ *  the UI. The bike-on-the-road audit (2026-06-26) found that a 200
+ *  with an empty body crashed WalletPanel on `stats.total_submissions`.
+ *  Source of truth: the WalletSummary interface above; if any of the
+ *  five top-level blocks is missing or non-object, return null so the
+ *  panel renders the "Wallet briefly out of reach" state. */
+function isWalletSummaryShape(x: unknown): x is WalletSummary {
+  if (!x || typeof x !== "object") return false;
+  const o = x as Record<string, unknown>;
+  return (
+    typeof o.pipeline === "object" && o.pipeline !== null &&
+    typeof o.stats === "object" && o.stats !== null &&
+    Array.isArray(o.campaigns) &&
+    Array.isArray(o.recent_activity) &&
+    typeof o.withdraw === "object" && o.withdraw !== null
+  );
+}
+
 export async function getWalletSummary(): Promise<WalletSummary | null> {
   const jwt = getJwt();
   const headers = new Headers();
@@ -107,7 +125,13 @@ export async function getWalletSummary(): Promise<WalletSummary | null> {
       console.warn(`[wallet] GET /me/wallet/summary → ${r.status}`);
       return null;
     }
-    return (await r.json()) as WalletSummary;
+    const body = await r.json();
+    if (!isWalletSummaryShape(body)) {
+      // eslint-disable-next-line no-console
+      console.warn("[wallet] /me/wallet/summary returned 200 with malformed shape · treating as null");
+      return null;
+    }
+    return body;
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn("[wallet] fetch failed:", err);
