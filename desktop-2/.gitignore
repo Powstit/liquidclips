@@ -11,6 +11,7 @@ src-tauri/gen
 
 # Build artifacts
 *.tsbuildinfo
+dist-runtime-pack/
 
 # Editor
 .vscode
