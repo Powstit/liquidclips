@@ -373,7 +373,18 @@ export function InlineCreatePanel() {
       >
         {phase !== "running" && phase !== "done" && (
           <>
-            <div className="lc-icp-tabs" role="tablist" data-testid="create-panel-tabs">
+            {/* 2026-06-26 · C2A · compact eyebrow anchors what this panel
+                is for. No hero slab — single line of small-caps under the
+                edge of the panel. Sets user expectation in one glance. */}
+            <span className="lc-icp-eb" data-testid="create-panel-eb">
+              Drop a clip source · pick a path
+            </span>
+            <div
+              className="lc-icp-tabs"
+              role="tablist"
+              data-testid="create-panel-tabs"
+              data-active-tab={tab}
+            >
               <TabButton id="url"     active={tab} onPick={setTab}>YouTube URL</TabButton>
               <TabButton id="upload"  active={tab} onPick={setTab}>Upload Video</TabButton>
               <TabButton id="script"  active={tab} onPick={setTab}>Script</TabButton>
@@ -408,6 +419,13 @@ export function InlineCreatePanel() {
                 {urlError && (
                   <span id="lc-icp-url-err" className="lc-icp-err">{urlError}</span>
                 )}
+                {/* 2026-06-26 · C2A · removed the "Open Engine →" backdoor pill.
+                    It sat alongside the count chips but was a NON-source-intake
+                    CTA — clicking it bypassed Create entirely and dumped the
+                    user on Workstation. That broke the "source → generate →
+                    workstation" contract and added a duplicate Create concept.
+                    Users who want to jump straight to clips already have the
+                    "My Clips" home tile. */}
                 <div className="lc-icp-count" role="radiogroup" aria-label="Clip count target">
                   {COUNT_OPTIONS.map((n) => (
                     <button
@@ -422,19 +440,6 @@ export function InlineCreatePanel() {
                       {n} clips
                     </button>
                   ))}
-                  {/* Spec pill · skip the ingest, jump straight into the
-                      Workstation. For users who already have clips and just
-                      want to go edit. Closes the panel after firing. */}
-                  <button
-                    type="button"
-                    className="lc-icp-chip lc-icp-chip-engine"
-                    onClick={() => {
-                      bus.emit("nav:click", { route: "workstation" });
-                      close();
-                    }}
-                  >
-                    Open Engine →
-                  </button>
                 </div>
                 <button
                   type="button"
@@ -570,6 +575,10 @@ function TabButton({
       type="button"
       role="tab"
       aria-selected={active === id}
+      // 2026-06-26 · C2A · mark URL tab as canonical so CSS can demote
+      // the COMING SOON tabs without removing them (the existing tests
+      // still need them clickable to verify the honest disabled state).
+      data-canonical={id === "url" ? "true" : "false"}
       className={`lc-icp-tab ${active === id ? "on" : ""}`}
       onClick={() => onPick(id)}
     >{children}</button>
