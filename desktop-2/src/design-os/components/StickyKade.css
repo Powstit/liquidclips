@@ -29,13 +29,17 @@
   height: clamp(220px, 20vw, 300px);
 }
 
-/* Helper-right: workspace routes (Studio, Engine). Smaller than centre,
-   docked to the right rail so the workspace canvas stays primary. */
+/* Helper-right: workspace routes (Studio, Engine) AND Command Room.
+   Docked to the right rail so the workspace canvas stays primary.
+   2026-06-25 · blend pass · was clamp(220px,22vw,320px) — Kade was
+   dominating the dashboard right-edge and overlapping the banner /
+   earn module visually. Scaled to clamp(160px,18vw,240px) so he
+   supports the chrome instead of competing for the eye. */
 .lc-sticky-kade.is-helper-right {
   right: clamp(28px, 4vw, 64px);
   top: clamp(160px, 24vh, 260px);
-  width: clamp(220px, 22vw, 320px);
-  height: clamp(220px, 22vw, 320px);
+  width: clamp(160px, 18vw, 240px);
+  height: clamp(160px, 18vw, 240px);
 }
 
 /* Bottom-right: legacy/default — used by Stop Pages and dense ops. */

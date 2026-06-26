@@ -10,10 +10,11 @@
   position: absolute; inset: -4%;
   background-size: cover;
   background-position: center;
-  /* 2026-06-25 · merge pass · was saturate(1.06) brightness(.92) — too
-   * dim under content. Lift saturation + restore brightness so the
-   * cockpit interior reads cinematic between cards. */
-  filter: saturate(1.18) brightness(1.02);
+  /* 2026-06-25 · blend pass · prior tuning (.96/1.10) over-flattened the
+   * cockpit — atmosphere was invisible. Sweet spot between the original
+   * over-bright merge (1.02/1.18) and the dim tuning: cinematic depth
+   * visible behind chrome, no fight with text. */
+  filter: saturate(1.16) brightness(1.02);
   transform: scale(1.04);
   animation: lc-world-pan 44s cubic-bezier(.4, 0, .2, 1) infinite;
   will-change: transform;
@@ -38,10 +39,13 @@
 
 .lc-world-rim {
   position: absolute; inset: 0;
+  /* 2026-06-25 · blend pass · rim sweep is the cinematic "cockpit
+   * passing-light" cue. Walked alphas up from the over-flat tuning
+   * (.06/.10) but kept below the merge's chrome-fighting (.10/.18). */
   background: linear-gradient(115deg,
     transparent 30%,
-    rgba(255, 26, 140, .10) 48%,
-    rgba(255, 143, 203, .18) 52%,
+    rgba(255, 26, 140, .08) 48%,
+    rgba(255, 143, 203, .14) 52%,
     transparent 70%);
   mix-blend-mode: screen;
   animation: lc-world-sweep 20s cubic-bezier(.4, 0, .2, 1) infinite;

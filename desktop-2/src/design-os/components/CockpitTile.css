@@ -11,11 +11,10 @@
   width: 100%;
   min-height: 144px;
   padding: 22px 22px 20px;
-  /* 2026-06-25 · merge pass · was solid-ish rgba(18,14,24,.55) opaque
-   * over WorldLayer cockpit. Now: dark wash + backdrop-filter blur so
-   * the cinematic atmosphere bleeds through the card AND text stays
-   * readable against the blurred backdrop. */
-  background: rgba(11, 11, 16, 0.42);
+  /* 2026-06-25 · blend pass · .60 fully eclipsed the cockpit; chrome
+   * dominated and the world was invisible. .48 keeps the dark veil for
+   * readability while letting the cockpit shimmer through behind. */
+  background: rgba(11, 11, 16, 0.48);
   backdrop-filter: blur(12px) saturate(1.1);
   -webkit-backdrop-filter: blur(12px) saturate(1.1);
   border: 1px solid rgba(255, 255, 255, .08);
