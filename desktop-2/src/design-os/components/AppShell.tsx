@@ -25,7 +25,11 @@ import "./AppShell.css";
 
 export interface DesignOSAppShellProps {
   world: WorldKey;
-  route: RouteId;
+  /** RouteId for navigable routes; "login" is allowed for the activation
+   *  surface so data-route in the DOM is honest about which surface is
+   *  mounted. RouteId-keyed lookups (copyMap, routeRegistry) don't need
+   *  to grow for "login" since LoginOnboarding bypasses them. */
+  route: RouteId | "login";
   /** Default Kade pose for this route — used when no nav-hover or demo is active. */
   defaultKade: KadeState;
   /** Where Kade sits in the first viewport. Defaults to "bottom-right".
@@ -43,9 +47,14 @@ export function DesignOSAppShell({
   world, route, defaultKade, kadePlacement = "bottom-right", children, hideStickyKade = false,
 }: DesignOSAppShellProps) {
   // Emit route:enter on every route change. Kade lives in StickyKade now.
+  // "login" is allowed on the route prop for DOM-attribute honesty, but the
+  // bus contract + ConsoleNav lookup tables are keyed by RouteId. Fall back
+  // to "home" for those consumers — the login route is a chrome-only state
+  // where bus listeners / nav highlighting don't have a meaningful target.
+  const routeForRegistry: RouteId = route === "login" ? "home" : route;
   useEffect(() => {
-    bus.emit("route:enter", { route });
-  }, [route]);
+    bus.emit("route:enter", { route: routeForRegistry });
+  }, [routeForRegistry]);
 
   // NOTE: body[data-design-os="active"] is owned by DesignOSBoundary (the
   // single source of truth). See SimulatorRouter — it wraps the whole tree.
@@ -55,7 +64,7 @@ export function DesignOSAppShell({
       <CursorGlow />
       <WorldLayer world={world} />
 
-      <ConsoleNav activeRoute={route} />
+      <ConsoleNav activeRoute={routeForRegistry} />
 
       <section className="lc-main">
         {/* AgencyPreviewBanner renders nothing in clipper mode; shows
