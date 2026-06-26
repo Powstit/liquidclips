@@ -16,8 +16,8 @@
  * flag `lc.agency-preview.seen.v1`).
  */
 
-import { useEffect } from "react";
-import { useMode } from "../../design-os/bridge";
+import { useEffect, useState } from "react";
+import { bus, useMode } from "../../design-os/bridge";
 import { useTierCaps } from "../../design-os/state/useTierCaps";
 import { useBillingState } from "../../lib/billing/adapter";
 import { notifyAgencyPreviewUnlocked } from "../../inbox/notify";
@@ -81,6 +81,40 @@ function AgencyPreviewBannerInner() {
   const agencyPlan = PLAN_CATALOG.agency;
   const ctaLabel = `Upgrade to ${agencyPlan.displayName} · $${agencyPlan.priceMonthlyUsd}/mo`;
 
+  // 2026-06-26 · button-audit P0 · the prior `void billing.adapter
+  // .startCheckout(...)` swallowed every failure silently (Tauri shell
+  // plugin permission was missing from capabilities). Now: async handler,
+  // catch the outcome, surface a user-visible toast on failure. Honest
+  // payment truth · we never claim checkout succeeded when it didn't.
+  const [pending, setPending] = useState(false);
+  async function onUpgradeClick(): Promise<void> {
+    if (pending) return;
+    setPending(true);
+    try {
+      const outcome = await billing.adapter.startCheckout("agency");
+      if (!outcome.ok) {
+        bus.emit("toast", {
+          kind: "error",
+          title: "Couldn't open checkout",
+          body:
+            outcome.error ??
+            "Open Settings → Plan → Manage plan on Whop and pick Agency from there.",
+        });
+      }
+    } catch (err) {
+      bus.emit("toast", {
+        kind: "error",
+        title: "Couldn't open checkout",
+        body:
+          err instanceof Error && err.message
+            ? err.message
+            : "Open Settings → Plan → Manage plan on Whop and pick Agency from there.",
+      });
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <div
       className="lc-agency-preview"
@@ -103,9 +137,12 @@ function AgencyPreviewBannerInner() {
         type="button"
         className="lc-agency-preview-cta"
         data-testid="agency-preview-upgrade-cta"
-        onClick={() => void billing.adapter.startCheckout("agency")}
+        data-checkout-pending={pending ? "1" : "0"}
+        disabled={pending}
+        aria-busy={pending}
+        onClick={onUpgradeClick}
       >
-        {ctaLabel}
+        {pending ? "Opening checkout…" : ctaLabel}
       </button>
     </div>
   );

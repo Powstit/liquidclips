@@ -41,11 +41,22 @@ export async function openSmart(target: string): Promise<void> {
     throw new Error("openSmart: empty target");
   }
   if (URL_PREFIX.test(target)) {
-    await shellOpen(target);
+    // 2026-06-26 · button-audit P0 root cause · capabilities/default.json
+    // permits `opener:allow-open-url` but NOT `shell:default` + `shell:
+    // allow-open`. The historical shellOpen route silently rejected every
+    // https URL — every checkout / external link click silently no-op'd.
+    // Route URLs through the opener plugin (which IS permitted) so they
+    // actually reach the OS. The shell plugin import is retained below
+    // for potential future re-introduction with proper scope.
+    await openerOpenUrl(target);
     return;
   }
   await openerOpenPath(target);
 }
+
+/** Suppress unused-import warning while the shell plugin is staged for a
+ *  future re-introduction with proper capability scope. */
+void shellOpen;
 
 /**
  * Force-open a URL through the opener plugin's URL channel. Useful when
