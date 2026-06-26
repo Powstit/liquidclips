@@ -31,6 +31,7 @@
 import { useTierCaps, type Tier } from "../../design-os/state/useTierCaps";
 import { PLAN_CATALOG, type PlanKey } from "../../lib/billing/types";
 import { useBillingState } from "../../lib/billing/adapter";
+import { bus } from "../../design-os/bridge";
 import { notifyUpgradeRequired } from "../../inbox/notify";
 import "./PaywallGate.css";
 
@@ -78,7 +79,7 @@ export function PaywallGate({
   if (unlocked) return <>{children}</>;
   if (mode === "hidden") return null;
 
-  const fireUpgrade = () => {
+  const fireUpgrade = async () => {
     // Log a notification so the user has an inbox trail after dismissing.
     notifyUpgradeRequired({
       action,
@@ -89,7 +90,41 @@ export function PaywallGate({
       onUpgrade();
       return;
     }
-    void billing.adapter.startCheckout(TIER_TO_PLAN[requiredTier]);
+    /* LC-UI-P0-001 · short-circuit when adapter is the mock (dev preview /
+     * cleared-JWT state). The mock can fake-grant `{ok:true}` without
+     * ever opening a checkout URL — that's the silent-success bug. Toast
+     * instead of pretending it worked. */
+    if (billing.adapter.isMock) {
+      bus.emit("toast", {
+        kind: "error",
+        title: "Couldn't open checkout",
+        body: "Sign in first · checkout is unavailable in preview mode.",
+      });
+      return;
+    }
+    // LC-UI-P0-001: await the adapter and surface a visible failure if the
+    // opener never ran. No silent {ok:true}.
+    try {
+      const outcome = await billing.adapter.startCheckout(TIER_TO_PLAN[requiredTier]);
+      if (!outcome.ok) {
+        bus.emit("toast", {
+          kind: "error",
+          title: "Couldn't open checkout",
+          body:
+            outcome.error ??
+            "Open Settings → Plan → Manage plan on Whop and pick the right tier from there.",
+        });
+      }
+    } catch (err) {
+      bus.emit("toast", {
+        kind: "error",
+        title: "Couldn't open checkout",
+        body:
+          err instanceof Error && err.message
+            ? err.message
+            : "Open Settings → Plan → Manage plan on Whop and pick the right tier from there.",
+      });
+    }
   };
 
   // 2026-06-23 · surface checkout_failed state so the user knows their
@@ -119,7 +154,7 @@ export function PaywallGate({
             type="button"
             className="lc-paywall-card-cta"
             data-testid="paywall-upgrade-cta"
-            onClick={fireUpgrade}
+            onClick={() => { void fireUpgrade(); }}
           >
             {showCheckoutFailedTag ? "Retry checkout" : `Upgrade to ${requiredPlan.displayName} · $${requiredPlan.priceMonthlyUsd}/mo`}
           </button>
@@ -142,7 +177,7 @@ export function PaywallGate({
         // Stop the inner button's onClick · fire upgrade instead.
         e.stopPropagation();
         e.preventDefault();
-        fireUpgrade();
+        void fireUpgrade();
       }}
     >
       {children}

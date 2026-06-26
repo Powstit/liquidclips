@@ -251,11 +251,23 @@ function SettingsBody() {
       : tier.tier === "growth"? "agency"
       : null;
     if (targetPlan) {
+      // LC-UI-P0-001: check the outcome and surface a toast if checkout
+      // never actually opened. Mock + opener-failure paths must NOT slip
+      // through as silent success.
       try {
-        await billing.adapter.startCheckout(targetPlan);
+        const outcome = await billing.adapter.startCheckout(targetPlan);
+        if (!outcome.ok) {
+          bus.emit("toast", {
+            kind: "error",
+            title: "Couldn't open checkout",
+            body:
+              outcome.error ??
+              "Open Whop in your browser and pick the plan from there.",
+          });
+        }
       } catch (e) {
         bus.emit("toast", {
-          kind: "warning",
+          kind: "error",
           title: "Couldn't open checkout",
           body: e instanceof Error ? e.message : String(e),
         });
