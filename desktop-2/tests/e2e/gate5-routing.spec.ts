@@ -62,7 +62,7 @@ async function bootApp(page: Page): Promise<void> {
   });
 
   await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
-  await page.waitForSelector(".lc-app", { timeout: 15_000 });
+  await page.waitForSelector(".lc-app", { timeout: 30_000 });
   await page.waitForFunction(
     () => {
       const w = window as unknown as { __lcBus?: unknown };

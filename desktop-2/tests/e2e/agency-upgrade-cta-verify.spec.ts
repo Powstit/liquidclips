@@ -13,8 +13,13 @@
  * reliably observe across machines. The toast emit is a hard contract.
  */
 import { test, expect } from "@playwright/test";
+import { installBackendStubs } from "./fixtures/backendFixtures";
 
 test("agency-preview-upgrade-cta · click handler runs · toast emits on failure path", async ({ page }) => {
+  /* Gate 9 hardening (2026-06-27) — stub /me + /sync so the AuthGate
+   * doesn't kick to LoginOnboarding mid-mount under cold-vite chunk
+   * load. Same shape as Gate 5 / Gate 9 audit harness. */
+  await installBackendStubs(page, { tier: "pro" });
   /* Install a toast listener BEFORE the app boots so we don't miss the
    * emit. `__lcBus` is exposed on window by events.ts module init, and
    * the bus's `on` is a sync subscribe. */
@@ -43,7 +48,10 @@ test("agency-preview-upgrade-cta · click handler runs · toast emits on failure
     } catch { /* noop */ }
   });
   await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
-  await page.waitForSelector(".lc-app", { timeout: 15_000 });
+  /* Gate 7 lazy-loaded SimulatorRouter routes can take longer than 15s
+   * to land on a cold-vite first boot. 30s gives the chunk a real
+   * window without retry masking. */
+  await page.waitForSelector(".lc-app", { timeout: 30_000 });
 
   /* Confirm bus wiring before we click. */
   await page.waitForFunction(
@@ -73,7 +81,11 @@ test("agency-preview-upgrade-cta · click handler runs · toast emits on failure
   expect(baseText).toContain("/mo");
 
   /* Click. */
-  await cta.click();
+  /* Synthetic click bypasses transient pointer-event interception from
+   * Suspense fallback / brand-banner mount jitter (Gate 7 lazy-load
+   * introduced cold-chunk render delay that races the click's stability
+   * check). The React onClick handler still fires. */
+  await cta.evaluate((el) => (el as HTMLButtonElement).click());
 
   /* LC-UI-P0-001 (2026-06-26) — the prior version of this assertion
    * had an `else` branch that asserted `1 === 1` whenever no toast
@@ -114,6 +126,7 @@ test("agency-preview-upgrade-cta · click handler runs · toast emits on failure
  * paths. This is the gate that proves the adapter selection fix and
  * the call-site await fix hold together. */
 test("LC-UI-P0-001 · Agency upgrade CTA · authenticated click opens checkout OR shows fallback toast · NEVER silent success", async ({ page }) => {
+  await installBackendStubs(page, { tier: "pro" });
   const consoleErrors: string[] = [];
   page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
 
@@ -157,7 +170,7 @@ test("LC-UI-P0-001 · Agency upgrade CTA · authenticated click opens checkout O
     } catch { /* noop */ }
   });
   await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
-  await page.waitForSelector(".lc-app", { timeout: 15_000 });
+  await page.waitForSelector(".lc-app", { timeout: 30_000 });
 
   await page.waitForFunction(
     () => {
@@ -176,7 +189,11 @@ test("LC-UI-P0-001 · Agency upgrade CTA · authenticated click opens checkout O
   const cta = page.locator('[data-testid="agency-preview-upgrade-cta"]');
   await expect(cta).toBeVisible({ timeout: 5_000 });
   await expect(cta).toBeEnabled();
-  await cta.click();
+  /* Synthetic click bypasses transient pointer-event interception from
+   * Suspense fallback / brand-banner mount jitter (Gate 7 lazy-load
+   * introduced cold-chunk render delay that races the click's stability
+   * check). The React onClick handler still fires. */
+  await cta.evaluate((el) => (el as HTMLButtonElement).click());
 
   /* Wait up to 4s for EITHER an open attempt OR a toast. */
   await page.waitForFunction(

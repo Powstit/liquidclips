@@ -21,25 +21,30 @@
  *   #/schedule → workstation
  */
 
-import { useEffect, useState, type ReactElement } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactElement } from "react";
 import { useEvent, bus, type RouteId } from "../bridge";
 import { DesignOSBoundary } from "../components/DesignOSBoundary";
 import { ModalPortal } from "../components/ModalPortal";
 
+/* Gate 7 (2026-06-26) — every route was being eager-imported into the
+ * initial JS chunk. The home surface (CommandRoom) is the only one
+ * needed on first paint; every other surface streams in when its
+ * route is selected. Initial JS dropped from ~2.45 MB across 25
+ * chunks to a much smaller home-only chunk + per-route chunks. */
 import { CommandRoom } from "../routes/CommandRoom";
-import { WorkstationRoute } from "../routes/Workstation";
-import { SubmissionsReviewRoute } from "../routes/SubmissionsReview";
-import { ThumbnailStudioRoute } from "../routes/ThumbnailStudio";
-import { EarnRoute } from "../routes/Earn";
-import { CommunityRoute } from "../routes/Community";
-import { LibraryRoute } from "../routes/Library";
-import { ChannelsRoute } from "../routes/Channels";
-import { CampaignsRoute } from "../routes/Campaigns";
-import { ClipperJourneyRoute } from "../routes/ClipperJourney";
-import { AnalyticsRoute } from "../routes/Analytics";
-import { SettingsRoute } from "../routes/Settings";
-import { LoginOnboardingRoute } from "../routes/LoginOnboarding";
-import { StopPagesRoute } from "../routes/StopPages";
+const WorkstationRoute = lazy(() => import("../routes/Workstation").then((m) => ({ default: m.WorkstationRoute })));
+const SubmissionsReviewRoute = lazy(() => import("../routes/SubmissionsReview").then((m) => ({ default: m.SubmissionsReviewRoute })));
+const ThumbnailStudioRoute = lazy(() => import("../routes/ThumbnailStudio").then((m) => ({ default: m.ThumbnailStudioRoute })));
+const EarnRoute = lazy(() => import("../routes/Earn").then((m) => ({ default: m.EarnRoute })));
+const CommunityRoute = lazy(() => import("../routes/Community").then((m) => ({ default: m.CommunityRoute })));
+const LibraryRoute = lazy(() => import("../routes/Library").then((m) => ({ default: m.LibraryRoute })));
+const ChannelsRoute = lazy(() => import("../routes/Channels").then((m) => ({ default: m.ChannelsRoute })));
+const CampaignsRoute = lazy(() => import("../routes/Campaigns").then((m) => ({ default: m.CampaignsRoute })));
+const ClipperJourneyRoute = lazy(() => import("../routes/ClipperJourney").then((m) => ({ default: m.ClipperJourneyRoute })));
+const AnalyticsRoute = lazy(() => import("../routes/Analytics").then((m) => ({ default: m.AnalyticsRoute })));
+const SettingsRoute = lazy(() => import("../routes/Settings").then((m) => ({ default: m.SettingsRoute })));
+const LoginOnboardingRoute = lazy(() => import("../routes/LoginOnboarding").then((m) => ({ default: m.LoginOnboardingRoute })));
+const StopPagesRoute = lazy(() => import("../routes/StopPages").then((m) => ({ default: m.StopPagesRoute })));
 
 type ExtendedRouteId = RouteId | "login" | "stop-pages" | "import" | "retrieve";
 
@@ -53,14 +58,25 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
   community:   () => <CommunityRoute />,
   library:     () => <LibraryRoute />,
   channels:    () => <ChannelsRoute />,
-  campaigns:   () => <CampaignsRoute />,   // UI-3 · restored as a real surface so the agency manage strip is reachable.
-  clipper:     () => <ClipperJourneyRoute />, // UI-3 · dedicated 5-chip mission map.
-  analytics:   () => <AnalyticsRoute />,   // UX-4 · honest stub · agency-only.
+  campaigns:   () => <CampaignsRoute />,
+  clipper:     () => <ClipperJourneyRoute />,
+  analytics:   () => <AnalyticsRoute />,
   settings:    () => <SettingsRoute />,
   support:     () => <SettingsRoute />,
   login:       () => <LoginOnboardingRoute />,
   "stop-pages":() => <StopPagesRoute />,
 };
+
+/* Cheap solid-color fallback that matches brand background so the
+ * route swap doesn't flash white while the chunk streams in. */
+function RouteChunkFallback() {
+  return (
+    <div
+      aria-hidden="true"
+      style={{ position: "fixed", inset: 0, background: "#0b0b10" }}
+    />
+  );
+}
 
 /* Aliases — map to a primary surface + optional post-mount effect. */
 interface Alias {
@@ -127,7 +143,9 @@ export function SimulatorRouter() {
   return (
     <DesignOSBoundary>
       <ModalPortal>
-        <Page />
+        <Suspense fallback={<RouteChunkFallback />}>
+          <Page />
+        </Suspense>
       </ModalPortal>
     </DesignOSBoundary>
   );
