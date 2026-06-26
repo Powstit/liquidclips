@@ -379,7 +379,18 @@ export function EngineRightRail({
       <p className="lc2-engine-note">
         Split stacks a second clip in the frame. Import a clip into the empty cell from the timeline.
       </p>
-      <button type="button" className="lc2-engine-btn" style={{ marginTop: 12, width: "100%", justifyContent: "center" }}>
+      {/* Gate 6 (2026-06-26) — Import-clip-into-frame is a legacy split-
+       *  layout entry point. The customer-facing Design-OS split-layout
+       *  lives at /workstation. Disabled with explainer instead of dead-
+       *  click. */}
+      <button
+        type="button"
+        className="lc2-engine-btn"
+        style={{ marginTop: 12, width: "100%", justifyContent: "center" }}
+        disabled
+        title="Split layouts are in the Design-OS workstation export panel."
+        aria-disabled="true"
+      >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M12 5v14M5 12h14" />
         </svg>

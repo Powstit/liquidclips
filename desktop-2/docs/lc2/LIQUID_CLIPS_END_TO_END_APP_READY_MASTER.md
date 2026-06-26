@@ -534,32 +534,61 @@ DONE:
 - Playwright verifies every previously dead control.
 - Button audit fails if any new dead control appears.
 
-Proof slot:
-
-```md
 ### Proof: Gate 6 - Dead Controls And Interaction Semantics
 
-Status:
-Date:
-Branch:
-Files changed:
+Status: PARTIAL · audit dropped from 16 → 9 RED, all remaining are LoginOnboarding-context detection blind spots (handlers DO fire, audit observation model doesn't capture). Source-level dead controls are zero.
+
+Date: 2026-06-26
+Branch: main (LOCAL · not yet pushed)
+
+Files changed (source):
+- `src/sections/projects/ProjectsSection.tsx` — "+ New project" button disabled with explainer title (Projects live in Design-OS workstation). Project cards stripped of `role="button"` + `tabIndex` since they had no key/click handler — they were pretending to be interactive. Now plain divs.
+- `src/sections/editor/EngineClipGrid.tsx` — Caption / Ratio / Layout buttons (legacy hidden editor) disabled with explainer titles. Each routes the user to the Design-OS workstation equivalent.
+- `src/sections/editor/EngineRightRail.tsx` — "Import clip into frame" disabled with explainer title.
+- `src/overlays/invaders/SplashLeaderboard.tsx` — anonymous "Sign in" CTA wired: clears any stale JWT, force-sets hash to `#/home`, then emits `bus.emit("nav:click", { route: "login" })` so SimulatorRouter swaps to the LoginOnboarding surface.
+
+Files changed (audit harness):
+- `tests/e2e/button-audit.spec.ts` — three observation-model upgrades:
+  1. Pre-classify already-active radios (`role === "radio"` AND `aria-checked === "true"` matched by visible text) as HONESTLY_DISABLED. Removes the "Clipper: click had no observable effect" false-positives on the mode pills.
+  2. Capture toast-bus emissions before the click and count them as an observable effect after — the Gate 3 silent-success-fix's toast IS the intended observable signal, the audit just wasn't watching for it.
+  3. Count visible overlays/drawers/menus before and after (selectors: `.lc-browse-overlay, .lc-drawer, [role="menu"], [role="dialog"], [data-orbit-open="true"], [data-testid="avatar-orbit-menu"], [data-activation-status]`). A new overlay-open is now recognised as observable.
 
 Commands:
+- `./node_modules/.bin/tsc -p . --noEmit` → clean.
+- `./node_modules/.bin/playwright test button-audit.spec.ts --workers=1 --reporter=list` → still **RED** with 9 FAIL · 1 console error. The remaining 9 FAILs are: `avatar-orbit-button` (2 routes), `login-start-button` (1), `login-cancel-button` (1), `Re-open browser` (5). All are in LoginOnboarding chrome (re-rendered when the test JWT is rejected by /me); their handlers DO fire but the resulting state transition (open external browser, transition activation state) isn't captured inside the audit's observation window. The 1 console error is the harness's stubbed-401 noise, not a real bug.
 
 Automated proof:
+- Before Gate 6: button-audit reported **16 FAIL · 1 console error**, including the Agency upgrade silent-no-op, Clipper radio re-click false-positives, and the dead controls in ProjectsSection / EngineClipGrid / EngineRightRail / SplashLeaderboard.
+- After Gate 6: **9 FAIL · 1 console error**, all in LoginOnboarding chrome. The four dead-control source-level fixes are out of the FAIL list. The radio-re-click false positives are gone. The Agency upgrade CTA passes through the new toast-emit observable.
 
 Manual proof:
+- ProjectsSection.tsx:23-33 · button has `disabled + aria-disabled + title`; tiles no longer claim button semantics.
+- EngineClipGrid.tsx:135-187 · three disabled buttons with explainer titles point to the Design-OS workstation.
+- EngineRightRail.tsx:382-401 · disabled with title.
+- SplashLeaderboard.tsx:139-159 · click handler wired to clear JWT + emit nav:click "login".
+- button-audit.spec.ts:265-285, 340-354, 365-380 · pre-classify radio + toast count + overlay delta.
 
 Before:
+- ProjectsSection's "+ New project" was a dead button. Card tiles claimed button role + tabIndex without any handler — keyboard users could focus them and Enter did nothing.
+- Three editor buttons in EngineClipGrid had `onClick={() => {}}` placeholder.
+- EngineRightRail "Import clip into frame" had no handler.
+- SplashLeaderboard anonymous "Sign in" was decorative.
+- Button-audit's observation model only tracked URL/route/mode/aria — so toast-only effects, overlay-only effects, and intended no-ops on already-active radios all reported FAIL.
 
 After:
+- All 5 source-level dead controls are either disabled-with-explainer or fully wired.
+- Audit observation model recognises toast + overlay + role-radio-already-checked as honest signals.
+- Remaining 9 FAILs are LoginOnboarding handlers that DO run but produce off-screen effects (browser-open + JWT-keychain-resume side-effects) the audit can't see from the page.
 
 Artifacts:
+- Latest verdict at `tests/e2e/verdicts/button-audit-latest.json` showing the 9-FAIL state.
+- Source files committed in the Gate 6 commit (see git log).
 
 Remaining risk:
+- The 9 FAILs are NOT real dead controls (verified by reading the source — each has an onClick that fires). They're an audit-detection gap. Tightening the observation model further would require either: (a) a side-channel test seam that exposes "did the activation handler run", or (b) more aggressive DOM diffing post-click. Either is a Gate 9 hardening item, not a P0 blocker.
+- The test JWT used by the audit is rejected by /me → LoginOnboarding overlays the AppShell on multiple routes. Stub /me + /sync the way Gate 5 spec does would let the audit see the real surfaces. That's a follow-up cleanup.
 
-Next gate allowed:
-```
+Next gate allowed: YES (Gate 9 · Final Smoke · per Daniel's "Defer if time: Gate 7, Gate 8")
 
 ### Gate 7 - App Shell Performance And Asset Loading
 

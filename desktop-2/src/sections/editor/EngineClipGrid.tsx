@@ -127,19 +127,42 @@ export function EngineClipGrid({
           </svg>
           Publish
         </button>
-        <button type="button" className="lc2-engine-mbtn" onClick={() => {}}>
+        {/* Gate 6 (2026-06-26) — Caption / Ratio / Layout were stub
+         *  buttons with `onClick={() => {}}` placeholders. The customer
+         *  facing editor lives in Design-OS WorkstationRoute; this legacy
+         *  grid is hidden in production. Disable + reason to remove the
+         *  dead-control verdict. */}
+        <button
+          type="button"
+          className="lc2-engine-mbtn"
+          disabled
+          title="Caption editing is in the Design-OS workstation · Edit clip → Captions."
+          aria-disabled="true"
+        >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M4 7V4h16v3M9 20h6M12 4v16" />
           </svg>
           Caption
         </button>
-        <button type="button" className="lc2-engine-mbtn" onClick={() => {}}>
+        <button
+          type="button"
+          className="lc2-engine-mbtn"
+          disabled
+          title="Ratio is set in the Design-OS workstation export panel."
+          aria-disabled="true"
+        >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <rect x="6" y="3" width="12" height="18" rx="2" />
           </svg>
           Ratio
         </button>
-        <button type="button" className="lc2-engine-mbtn" onClick={() => {}}>
+        <button
+          type="button"
+          className="lc2-engine-mbtn"
+          disabled
+          title="Layout is set in the Design-OS workstation export panel."
+          aria-disabled="true"
+        >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <rect x="3" y="3" width="8" height="18" rx="1" />
             <rect x="13" y="3" width="8" height="8" rx="1" />

@@ -136,7 +136,26 @@ function YouCallout({
             Sign in to save your score
           </span>
         </div>
-        <button type="button" className="splash-lb-you-cta">Sign in</button>
+        {/* Gate 6 (2026-06-26) — was a dead button. Wired to fire the
+         *  activation flow: clear any stale JWT (signals AuthGate to
+         *  re-evaluate) and emit nav:click to "login" so SimulatorRouter
+         *  swaps to the LoginOnboarding surface. */}
+        <button
+          type="button"
+          className="splash-lb-you-cta"
+          onClick={() => {
+            try {
+              window.localStorage.removeItem("lc.license.jwt.v1");
+            } catch { /* noop */ }
+            window.location.hash = "#/home";
+            window.setTimeout(() => {
+              const w = window as unknown as { __lcBus?: { emit: (e: string, p: unknown) => void } };
+              w.__lcBus?.emit?.("nav:click", { route: "login" });
+            }, 30);
+          }}
+        >
+          Sign in
+        </button>
       </div>
     );
   }

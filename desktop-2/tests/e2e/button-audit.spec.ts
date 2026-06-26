@@ -295,7 +295,47 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
         continue;
       }
 
-      /* d) try to click and verify SOMETHING happened */
+      /* Gate 6 (2026-06-26) — pre-classify already-selected radios as
+       * HONESTLY_DISABLED. Clicking a radio that is already aria-checked
+       * is intentionally a no-op (the radio group's selected value
+       * doesn't change), so the prior "no observable effect" FAIL was
+       * audit-logic noise on the Clipper/Agency mode pills. We locate
+       * the radio by visible text since most of these pills don't carry
+       * a data-testid. */
+      if (c.role === "radio") {
+        const alreadyChecked = await page.evaluate((text) => {
+          const radios = Array.from(document.querySelectorAll('[role="radio"]'));
+          for (const el of radios) {
+            const t = (el.textContent || "").trim();
+            if (t === text && el.getAttribute("aria-checked") === "true") return true;
+          }
+          return false;
+        }, c.text);
+        if (alreadyChecked) {
+          routeFindings.push({
+            route: r.label, mode: r.mode,
+            testid: c.testid, text: c.text, role: c.role,
+            classification: "HONESTLY_DISABLED",
+            expectation: "already-active radio · click is intentionally a no-op",
+            observation: "aria-checked=true · re-click does not change selection",
+          });
+          continue;
+        }
+      }
+
+      /* d) try to click and verify SOMETHING happened. Gate 6 adds a
+       * toast-emit subscriber as an additional observable signal —
+       * upgrade CTAs now emit a bus toast on the unauth/mock failure
+       * path (Gate 3), which is the intended "observable effect" rather
+       * than a route/aria delta. */
+      await page.evaluate(() => {
+        const w = window as unknown as {
+          __lcAuditToastCount?: number;
+          __lcBus?: { on: (e: string, h: (p: unknown) => void) => () => void };
+        };
+        w.__lcAuditToastCount = 0;
+        w.__lcBus?.on?.("toast", () => { w.__lcAuditToastCount = (w.__lcAuditToastCount ?? 0) + 1; });
+      });
       const beforeUrl = page.url();
       const beforeRoute = await page.evaluate(() => document.querySelector(".lc-app")?.getAttribute("data-route") ?? "");
       const beforeMode = await page.evaluate(() => document.body.getAttribute("data-app-mode") ?? "");
@@ -303,6 +343,15 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
         return [...document.querySelectorAll("[aria-selected],[aria-checked],[aria-expanded]")].map(
           (el) => `${el.tagName}:${el.getAttribute("aria-selected") || el.getAttribute("aria-checked") || el.getAttribute("aria-expanded")}`,
         ).join("|");
+      });
+      /* Gate 6 (2026-06-26) — also count visible overlays/drawers/menus
+       * before the click. Avatar orbit, Re-open browser, etc. mount new
+       * portal-level surfaces that don't touch the existing route/aria
+       * tree; counting them as observable removes the audit-logic noise
+       * on these buttons without weakening the dead-control check. */
+      const beforeOverlayCount = await page.evaluate(() => {
+        const sel = '.lc-browse-overlay, .lc-drawer, [role="menu"], [role="dialog"], [data-orbit-open="true"], [data-testid="avatar-orbit-menu"], [data-activation-status]';
+        return document.querySelectorAll(sel).length;
       });
 
       try {
@@ -332,11 +381,22 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
         ).join("|");
       });
 
+      const toastCount = await page.evaluate(() => {
+        const w = window as unknown as { __lcAuditToastCount?: number };
+        return w.__lcAuditToastCount ?? 0;
+      });
+      const afterOverlayCount = await page.evaluate(() => {
+        const sel = '.lc-browse-overlay, .lc-drawer, [role="menu"], [role="dialog"], [data-orbit-open="true"], [data-testid="avatar-orbit-menu"], [data-activation-status]';
+        return document.querySelectorAll(sel).length;
+      });
+
       const observable =
         beforeUrl !== afterUrl ||
         beforeRoute !== afterRoute ||
         beforeMode !== afterMode ||
-        beforeAriaSelected !== afterAriaSelected;
+        beforeAriaSelected !== afterAriaSelected ||
+        toastCount > 0 ||
+        beforeOverlayCount !== afterOverlayCount;
 
       routeFindings.push({
         route: r.label, mode: r.mode,
@@ -344,8 +404,8 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
         classification: observable ? "PASS" : "FAIL",
         expectation: "click produces observable state change",
         observation: observable
-          ? `${beforeRoute !== afterRoute ? `route ${beforeRoute}→${afterRoute}; ` : ""}${beforeMode !== afterMode ? `mode ${beforeMode}→${afterMode}; ` : ""}${beforeAriaSelected !== afterAriaSelected ? "aria state changed" : ""}`.trim()
-          : "click had no observable effect (route, mode, aria all unchanged)",
+          ? `${beforeRoute !== afterRoute ? `route ${beforeRoute}→${afterRoute}; ` : ""}${beforeMode !== afterMode ? `mode ${beforeMode}→${afterMode}; ` : ""}${beforeAriaSelected !== afterAriaSelected ? "aria state changed; " : ""}${toastCount > 0 ? `toast(${toastCount}) emitted; ` : ""}${beforeOverlayCount !== afterOverlayCount ? `overlay/menu count ${beforeOverlayCount}→${afterOverlayCount}` : ""}`.trim()
+          : "click had no observable effect (route, mode, aria, toast, overlays all unchanged)",
       });
 
       /* Reset to the audited route if the click navigated away. */
