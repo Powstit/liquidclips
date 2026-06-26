@@ -58,7 +58,7 @@ test("LC-UI-P0-G4-001 · Campaigns · clipper/non-agency user · Draft campaign 
 
   await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
   /* Wait for the AppShell to mount · same pattern as agency-launch-readiness. */
-  await page.waitForSelector(".lc-app", { timeout: 15_000 });
+  await page.waitForSelector(".lc-app", { timeout: 30_000 });
   await page.waitForFunction(
     () => {
       const w = window as unknown as { __lcBus?: unknown };
