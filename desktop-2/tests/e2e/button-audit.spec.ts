@@ -387,5 +387,17 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
   /* Attach the verdict so playwright shows it. */
   await testInfo.attach("button-audit", { body: JSON.stringify(verdict, null, 2), contentType: "application/json" });
 
-  /* Don't .fail the test — produce the report, let the operator decide. */
+  /* LC-UI-P0-001 (2026-06-26) — a RED verdict MUST fail the suite. The
+   * prior "let the operator decide" stance let silent-success bugs ship
+   * because the report was advisory only. Promotion gates are gates,
+   * not advisories: failing controls or unhandled console errors fail
+   * the build. The verdict files on disk remain the diagnostic trail. */
+  if (overall === "RED") {
+    const summary = [
+      `button audit RED — ${failingControls.length} FAIL · ${consoleErrors.length} console error${consoleErrors.length === 1 ? "" : "s"}`,
+      ...failingControls.slice(0, 12).map((f) => `  · [${f.route}] ${f.testid ?? f.text}: ${f.observation}`),
+      ...consoleErrors.slice(0, 6).map((e) => `  · ${e}`),
+    ].join("\n");
+    throw new Error(summary);
+  }
 });
