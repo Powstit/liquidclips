@@ -36,7 +36,16 @@
 .sim-eb { font-family: "Geist Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: .15em; color: #86837e; text-transform: uppercase; }
 .sim-h1 {
   margin: 0;
-  font-weight: 800; font-size: 80px; line-height: .98; letter-spacing: -.038em;
+  /* LC-UI-P0-BOOT · Patch B · 2026-06-26
+   * Was: 80px / .98 / -.038em — that computed to -3.04px tracking at
+   * 80px which squashed every glyph and made the auth heading look
+   * compressed at all widths. App-scale headings should use neutral
+   * tracking (0). Size is now a responsive clamp so narrow widths get
+   * 42px and wide widths cap at 64px instead of overflowing at 80px. */
+  font-weight: 800;
+  font-size: clamp(42px, 6vw, 64px);
+  line-height: 1.05;
+  letter-spacing: 0;
   background: linear-gradient(180deg, #ffffff 0%, #d8d4ce 70%, #b6b2ac 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
