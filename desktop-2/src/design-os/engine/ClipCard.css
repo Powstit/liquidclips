@@ -16,7 +16,20 @@
   position: relative;
   aspect-ratio: 9 / 16;
   width: 100%;
-  background: #08080c;
+  /* Stage B-1 (locked 2026-06-26) · registry-driven Kade character
+   * fallback. ClipCard.tsx sets `--lc-clip-fallback-url` per clip via
+   * `getClipCardFallback(clip.idx)` so the same clip always shows the
+   * same fallback pose (was a CSS-only `:nth-child(6n+N)` cycle that
+   * shuffled poses on grid reflow). The `<img>` rendered above this
+   * background still wins when a real poster exists — fallback only
+   * shows through when posterPath is null or img errors. Honors
+   * IG-LC2-015: no <video>, just background-image + <img>. The default
+   * url() inside the var() guard keeps tests / synthetic probes
+   * resolving to a known Kade pose if the variable isn't set. */
+  background: #08080c center/cover no-repeat;
+  background-image:
+    linear-gradient(180deg, rgba(11, 11, 16, 0) 55%, rgba(11, 11, 16, .65) 100%),
+    var(--lc-clip-fallback-url, url("/brand/kade/kade-celebration.webp"));
   overflow: hidden;
   border-bottom: 1px solid rgba(255, 255, 255, .06);
 }
