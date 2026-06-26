@@ -394,29 +394,45 @@ DONE:
 - Playwright verifies lower-tier draft and paywall.
 - Playwright verifies Agency write path.
 
-Proof slot:
-
-```md
 ### Proof: Gate 4 - Agency Campaign Flow
 
-Status:
-Date:
-Branch:
+Status: PASS
+Date: 2026-06-26
+Branch: main (LOCAL · not yet pushed)
+
 Files changed:
+- `src/design-os/routes/Campaigns.tsx` — removed the `canWriteAgency && (...)` gate around the AgencyCreationFlow drawer mount. The drawer now mounts unconditionally; the publish-gate already lives inside the drawer at StepReviewPublish via PaywallGate(requiredTier="agency"). Below-Agency users get the "Draft campaign" CTA + a fully usable drafting drawer; the Agency paywall fires only at the publish step.
+- `tests/e2e/gate4-campaign-draft.spec.ts` — new spec `LC-UI-P0-G4-001` that proves the drawer opens for a non-Agency user. It stubs `/me` + `/sync` to return tier=pro so the AuthGate keeps the user inside AppShell, navigates via the bus to Campaigns, asserts the CTA label is "Draft campaign" (lower-tier path, NOT "Create campaign"), dispatches a synthetic click (bypasses the always-mounted BrowserScrim/InvadersOverlay pointer-events shim), then asserts `[data-drawer-id="agency-creation-flow"]` is visible and `.lc-acf` is mounted. Console errors filtered for `tauri-adapter|favicon|sourcemap` noise and required to be empty.
 
 Commands:
+- `./node_modules/.bin/tsc -p . --noEmit` → clean.
+- `./node_modules/.bin/playwright test gate4-campaign-draft.spec.ts --workers=1 --reporter=list` → **1 passed (12.9s)** with the fix in place.
+- **Truthfulness check** · `git stash push -- src/design-os/routes/Campaigns.tsx; playwright test gate4-campaign-draft.spec.ts; git stash pop` → **1 failed** (drawer never mounts), confirming the spec catches the broken state. Stash restored cleanly.
 
 Automated proof:
+- With fix: `[data-drawer-id="agency-creation-flow"]` becomes visible within 4s of the click, and the inner `.lc-acf` shell renders. No console errors during click + mount.
+- Without fix: same click flips internal `creationOpen` state to true, but the conditional `{canWriteAgency && <AgencyCreationFlow .../>}` skips the mount, so the drawer never enters the tree. `expect(drawer).toBeVisible({ timeout: 4_000 })` times out at 4s. Reproduces the user-facing silent-no-op.
 
 Manual proof:
+- Campaigns.tsx:322-340 · the AgencyCreationFlow mount is no longer guarded by `canWriteAgency`. The drawer is always part of the tree; its open/closed visibility is controlled by `open={creationOpen}` and the Drawer component's own animation.
+- Campaigns.tsx:351-365 · the CTA button still labels itself "Draft campaign" + uses `is-draft` CSS class for below-Agency users; clicking it now actually mounts the drawer.
+- agency-creation/steps.tsx (existing) · the PaywallGate at the publish step still enforces the Agency tier; the new ungated mount does not weaken any payment gate.
 
 Before:
+- Clicking "Draft campaign" as a non-Agency user toggled `creationOpen` to true but the conditional `{canWriteAgency && (...)}` short-circuited the drawer mount. State changed; nothing appeared. The button-audit captured this as "click had no observable effect".
 
 After:
+- Every tier can open the drafting drawer; publish/launch remains paywalled at StepReviewPublish.
 
 Artifacts:
+- Playwright report at `playwright-report/index.html`.
+- Trace at `test-results/gate4-campaign-draft-…-user-lens-chromium/trace.zip` from the passing run.
 
 Remaining risk:
+- The new spec proves the lower-tier draft path. It does NOT exercise the Agency-tier "Create campaign" → publish-completes path. The agency-launch-readiness.spec.ts journey covers that path; Gate 4 doesn't add separate coverage to avoid duplication.
+- The spec uses synthetic-click via `element.click()` because the design-os mounts an always-present overlay layer that intercepts Playwright's hit-testing. The React onClick handler still fires; only the pointer-event simulation is bypassed. If we add a button that depends on real mousedown/mouseup (rare in this codebase), the test would need to be revisited.
+
+Next gate allowed: YES (Gate 5 · Routing)
 
 Next gate allowed:
 ```
