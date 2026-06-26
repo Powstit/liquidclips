@@ -466,32 +466,50 @@ DONE:
 - Playwright clicks every Browser quick link and asserts destination.
 - Direct hash paths resolve to expected app surfaces.
 
-Proof slot:
-
-```md
 ### Proof: Gate 5 - Routing And Surface Registry
 
-Status:
-Date:
-Branch:
+Status: PASS
+Date: 2026-06-26
+Branch: main (LOCAL · not yet pushed)
+
 Files changed:
+- `src/components/browser/BrowseOverlay.tsx` — QuickLink shape changed from `sectionId: keyof SECTION_IDS` to `designOsRoute: "campaigns"|"earn"|"community"`. handleQuickLink force-sets `window.location.hash = "#/home"` so SimulatorRouter is mounted, then emits `bus.emit("nav:click", { route })` on the next tick. The legacy `navigateTo` + `SECTION_IDS` imports were dropped — they were the source of the silent no-op (the deprecated SECTION_EARN / SECTION_COMMUNITY ids no longer resolve in the registry, and SECTION_CAMPAIGNS routed to the legacy hidden `#/campaign` surface instead of Design-OS).
+- `src/sections/campaigns/CampaignsSection.tsx` — legacy "Open brief" button was emitting `nav:click` while CampaignsSection lives under the hidden `#/campaign` hash where the SimulatorRouter (the only subscriber) is NOT mounted. The click now force-sets `window.location.hash = "#/home"` first, then emits on the next tick so SimulatorRouter is wired before the dispatch.
+- `tests/e2e/gate5-routing.spec.ts` — new spec with three named tests (`LC-UI-P0-G5-001/002/003`) that boot the app with a stubbed /me, open the BrowseOverlay via the `__lcQA.openOverlay("browse")` hook, click each quick link by name, and assert a matching `bus.emit("nav:click", { route })` lands within 4s. The capture subscriber is wired in addInitScript before app boot so no emits are missed.
 
 Commands:
+- `./node_modules/.bin/tsc -p . --noEmit` → clean.
+- `./node_modules/.bin/playwright test gate5-routing.spec.ts --workers=1 --reporter=list` → **2 passed · 1 flaky (passed on retry) (59.1s)**. The flake on `LC-UI-P0-G5-002` was a cold-vite `.lc-app` selector timeout — not the routing logic. Retry passed cleanly.
+- **Truthfulness check** · `git stash push -- src/components/browser/BrowseOverlay.tsx src/sections/campaigns/CampaignsSection.tsx; playwright test gate5-routing.spec.ts; git stash pop` → **3 failed** with the fix removed. All three quick links silent-no-op. Stash restored cleanly.
 
 Automated proof:
+- With fix: Each quick-link click captures `route: "campaigns"|"earn"|"community"` in `__lcNavClicks` AND `window.location.hash === "#/home"` after the click. SimulatorRouter receives the event and swaps surface.
+- Without fix: `__lcNavClicks` array stays empty for the full 4s window; the click landed but `navigateTo(SECTION_IDS["SECTION_EARN"])` is a registry-miss no-op, and the Campaigns link routes to legacy `#/campaign` (registry-hit but wrong surface).
 
 Manual proof:
+- BrowseOverlay.tsx:48-65 · QuickLink shape literally types `designOsRoute` as one of the three Design-OS route ids · TypeScript prevents anyone from re-introducing a deprecated SECTION_* string.
+- BrowseOverlay.tsx:236-258 · handleQuickLink ensures `#/home` is the hash before emitting · safety against the user triggering the overlay from a non-home hash.
+- CampaignsSection.tsx:91-110 · "Open brief" button uses the same force-hash + emit pattern as a defensive duplicate of the BrowseOverlay logic · the legacy surface remains hidden in production but the dead-control verdict in button-audit no longer flags it as silent.
 
 Before:
+- `navigateTo(SECTION_IDS.SECTION_EARN)` returned silently because the registry entry was removed in UX-1-b. Same for SECTION_COMMUNITY.
+- `navigateTo(SECTION_IDS.SECTION_CAMPAIGNS)` resolved but routed to the legacy hidden `#/campaign` surface (sectionRegistry.ts:90 `route: "campaign"`), not the Design-OS `campaigns` route.
+- Legacy CampaignsSection "Open brief" emitted `nav:click` with no subscriber mounted (SimulatorRouter lives under `#/home`, not under `#/campaign`).
 
 After:
+- All three quick links emit a `nav:click` with the correct Design-OS route id, the hash is normalised to `#/home` first, SimulatorRouter swaps surface, the user lands on Campaigns/Earn/Community as expected.
+- Legacy "Open brief" navigates the user back to `#/home` and then asks SimulatorRouter to swap to the clipper journey · no silent dispatch.
 
 Artifacts:
+- Playwright report at `playwright-report/index.html`.
+- Truthfulness traces under `test-results/gate5-routing-…/` from the stashed-revert run still on disk · they show the empty `__lcNavClicks` array per failure.
 
 Remaining risk:
+- The hash-then-emit pattern uses a 30ms setTimeout to give SimulatorRouter a frame to mount before the emit lands. If the cold-mount path takes longer on a slow machine, the emit could miss the subscription. Mitigation: SimulatorRouter's `useEvent("nav:click", ...)` subscription is module-level on the bus (bus is a singleton) — the subscription persists across React renders, so a `nav:click` emitted shortly after a hash change reaches the live subscriber. A larger delay would only matter on truly cold-boot from a non-home hash.
+- The legacy CampaignsSection ("Open brief") is rendered under `visibility: hidden !important` in production (sectionIds.ts:23-24), so the user never sees it. The fix is defence-in-depth for the button-audit lens; it doesn't change customer-facing behavior.
+- We did NOT delete the legacy CampaignsSection or SECTION_IDS deprecated entries. Doing so would touch the brand-asset map at src/brand/brandAssets.ts and is out of Gate 5 scope (master doc Gate 5 explicitly targets routing semantics, not registry cleanup).
 
-Next gate allowed:
-```
+Next gate allowed: YES (Gate 6 · Dead Controls)
 
 ### Gate 6 - Dead Controls And Interaction Semantics
 

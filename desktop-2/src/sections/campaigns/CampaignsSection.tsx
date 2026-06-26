@@ -89,7 +89,25 @@ export function CampaignsSection() {
           </div>
 
           <div className="lc-row">
-            <button type="button" className="lc-btn" data-variant="primary" onClick={() => bus.emit("nav:click", { route: "clipper" })}>
+            <button
+              type="button"
+              className="lc-btn"
+              data-variant="primary"
+              onClick={() => {
+                /* Gate 5 (2026-06-26) — this legacy CampaignsSection is
+                 * mounted under the hidden `#/campaign` hash. The
+                 * SimulatorRouter that subscribes to `nav:click` only
+                 * lives under `#/home`, so emitting before navigating
+                 * was a silent no-op. Force the design-os shell back up
+                 * first, then emit on the next tick. */
+                if (window.location.hash !== "#/home") {
+                  window.location.hash = "#/home";
+                }
+                window.setTimeout(() => {
+                  bus.emit("nav:click", { route: "clipper" });
+                }, 30);
+              }}
+            >
               Open brief
             </button>
             <button type="button" className="lc-btn" data-variant="whop" onClick={() => openOverlay(selected.rewardPoolUrl, "browse-campaign")}>
