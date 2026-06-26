@@ -19,6 +19,7 @@ import { test, type Page, type TestInfo } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { installBackendStubs } from "./fixtures/backendFixtures";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -207,7 +208,11 @@ function isWhitelistedExternal(url: string): boolean {
   }
 }
 
-test.describe.configure({ mode: "serial" });
+/* Gate 9 (2026-06-26) — retries disabled for the audit. A retry-pass
+ * was hiding the WalletPanel crash that the authenticated walk
+ * surfaced. Daniel-locked: the audit must show every regression on
+ * the first attempt or it's not an audit. */
+test.describe.configure({ mode: "serial", retries: 0 });
 
 test("button audit · every interactive control across 11 surfaces", async ({ page }, testInfo: TestInfo) => {
   testInfo.setTimeout(900_000);
@@ -223,6 +228,12 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
     }
   });
 
+  /* Gate 9 hardening · the audit was rendering the LoginOnboarding
+   * shell on every route because the harness JWT was being rejected
+   * by the live /me. Wire schema-valid /me + /sync + /me/wallet/summary
+   * fixtures so the AppShell mounts fully and the audit sees the real
+   * authenticated surfaces · NOT the degraded login chrome. */
+  await installBackendStubs(page, { tier: "pro" });
   await page.addInitScript(() => {
     try {
       window.localStorage.setItem("lc.license.jwt.v1", "harness.fake.jwt");
@@ -350,7 +361,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
        * tree; counting them as observable removes the audit-logic noise
        * on these buttons without weakening the dead-control check. */
       const beforeOverlayCount = await page.evaluate(() => {
-        const sel = '.lc-browse-overlay, .lc-drawer, [role="menu"], [role="dialog"], [data-orbit-open="true"], [data-testid="avatar-orbit-menu"], [data-activation-status]';
+        const sel = '.lc-browse-overlay, .lc-drawer-host, [data-drawer-id], [role="menu"], [role="dialog"], [data-orbit-open="true"], [data-testid="avatar-orbit-menu"], [data-activation-status], [data-testid="create-panel"], [data-testid="home-create-panel"]';
         return document.querySelectorAll(sel).length;
       });
 
@@ -386,7 +397,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
         return w.__lcAuditToastCount ?? 0;
       });
       const afterOverlayCount = await page.evaluate(() => {
-        const sel = '.lc-browse-overlay, .lc-drawer, [role="menu"], [role="dialog"], [data-orbit-open="true"], [data-testid="avatar-orbit-menu"], [data-activation-status]';
+        const sel = '.lc-browse-overlay, .lc-drawer-host, [data-drawer-id], [role="menu"], [role="dialog"], [data-orbit-open="true"], [data-testid="avatar-orbit-menu"], [data-activation-status], [data-testid="create-panel"], [data-testid="home-create-panel"]';
         return document.querySelectorAll(sel).length;
       });
 
