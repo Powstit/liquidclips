@@ -80,6 +80,16 @@ function DockShell() {
   // Re-seed on clip switch lives inside CockpitProvider now (IG-LC2-018).
   // DockShell only needs the focused clip to label the head pill.
 
+  // NOTE · 2026-06-26 · the CockpitDock intentionally does NOT register
+  // itself as a modal via useRegisterModal. Registering would flip the
+  // ModalPortal root to data-modal-active="1" and pointer-events: auto,
+  // which then covers the entire viewport and blocks clicks on the
+  // world / clip-grid. The dock has its own pointer-events: auto on
+  // .lc-cockpit-dock so it stays interactive while the portal root
+  // stays inert. Clip-card CTAs get clearance via scroll-margin-bottom
+  // (see ClipCard.css). Decorative text inside the dock has
+  // pointer-events: none (see CockpitDock.css) so it never intercepts.
+
   // UI-3 · ClipCard "Export" CTA brings the user straight to the Publish module.
   // Also force-open the dock so the Publish module is actually visible.
   useEvent("clip:open-export", () => {
