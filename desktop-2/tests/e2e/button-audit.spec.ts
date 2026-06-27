@@ -122,6 +122,11 @@ interface EnumeratedControl {
   ariaDisabled: boolean;
   comingSoon: boolean;
   hasOpenUrl: string | null;
+  /** Gate 9 (2026-06-27) — title attribute. A disabled button with a
+   *  title explains WHY it's disabled (e.g. "Enter your API key
+   *  first"), which is honest copy by intent even if the button text
+   *  itself ("Save key") doesn't match the legacy honest-copy regex. */
+  title: string | null;
   classes: string;
   hidden: boolean;
 }
@@ -138,6 +143,7 @@ async function enumerate(page: Page): Promise<EnumeratedControl[]> {
       ariaDisabled: boolean;
       comingSoon: boolean;
       hasOpenUrl: string | null;
+      title: string | null;
       classes: string;
       hidden: boolean;
     }> = [];
@@ -182,10 +188,11 @@ async function enumerate(page: Page): Promise<EnumeratedControl[]> {
           const openUrl = el.getAttribute("data-open-url");
           const href = (el as HTMLAnchorElement).href || null;
           const hasOpenUrl = openUrl || (href && href !== window.location.href ? href : null) || null;
+          const title = el.getAttribute("title");
           const classes = el.className?.toString() || "";
 
           ctrls.push({
-            testid, text, role, tag, disabled, ariaDisabled, comingSoon, hasOpenUrl, classes, hidden: false,
+            testid, text, role, tag, disabled, ariaDisabled, comingSoon, hasOpenUrl, title, classes, hidden: false,
           });
         }
       }
@@ -267,15 +274,26 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
     for (const c of auditList) {
       const label = c.testid || c.text || c.tag;
 
-      /* a) honestly disabled · honest is required */
+      /* a) honestly disabled · honest is required.
+       *
+       * Gate 9 (2026-06-27) — also accept a non-empty `title` attribute
+       * as honest copy. A disabled button with title="Enter your API
+       * key first" tells the user WHY it's disabled, even if the
+       * button text itself ("Save key") is the success-state label.
+       * Source-side requirement: when a button is disabled for any
+       * non-obvious reason, add a `title` that says why. */
       if (c.disabled || c.ariaDisabled) {
-        const honest = c.comingSoon || /coming soon|disabled|locked|preview|pending|sign in|select first/i.test(c.text);
+        const honestText = c.comingSoon || /coming soon|disabled|locked|preview|pending|sign in|select first/i.test(c.text);
+        const honestTitle = !!c.title && c.title.trim().length > 0;
+        const honest = honestText || honestTitle;
         routeFindings.push({
           route: r.label, mode: r.mode,
           testid: c.testid, text: c.text, role: c.role,
           classification: honest ? "HONESTLY_DISABLED" : "FAIL",
-          expectation: "disabled with honest copy",
-          observation: honest ? "disabled + honest text" : `disabled BUT no honest copy ("${c.text}")`,
+          expectation: "disabled with honest copy or title attribute",
+          observation: honest
+            ? honestTitle ? `disabled + title("${c.title}")` : "disabled + honest text"
+            : `disabled BUT no honest copy or title ("${c.text}")`,
         });
         continue;
       }
@@ -381,7 +399,31 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
         continue;
       }
 
-      await page.waitForTimeout(150);
+      /* Gate 9 (2026-06-27) — wait up to 1500ms for an observable
+       * delta. Gate 7's lazy SimulatorRouter routes mean a nav:click
+       * triggers an async chunk fetch before the new surface mounts;
+       * 150ms was too tight, causing audit to record "no observable
+       * effect" for clicks that ARE swapping the route. Poll for a
+       * route/aria/overlay/toast change every 80ms and exit early as
+       * soon as one fires. If nothing in 1500ms, treat as FAIL — that's
+       * the honest dead-control verdict. */
+      const beforeForPoll = { url: beforeUrl, route: beforeRoute, mode: beforeMode, aria: beforeAriaSelected };
+      const overlaySelForPoll = '.lc-browse-overlay, .lc-drawer-host, [data-drawer-id], [role="menu"], [role="dialog"], [data-orbit-open="true"], [data-testid="avatar-orbit-menu"], [data-activation-status], [data-testid="create-panel"], [data-testid="home-create-panel"]';
+      await page.waitForFunction(
+        ({ before, sel }) => {
+          const w = window as unknown as { __lcAuditToastCount?: number };
+          const route = document.querySelector(".lc-app")?.getAttribute("data-route") ?? "";
+          const mode = document.body.getAttribute("data-app-mode") ?? "";
+          const aria = [...document.querySelectorAll("[aria-selected],[aria-checked],[aria-expanded]")].map(
+            (el) => `${el.tagName}:${el.getAttribute("aria-selected") || el.getAttribute("aria-checked") || el.getAttribute("aria-expanded")}`,
+          ).join("|");
+          const overlayCount = document.querySelectorAll(sel).length;
+          const toastCount = w.__lcAuditToastCount ?? 0;
+          return route !== before.route || mode !== before.mode || aria !== before.aria || overlayCount > 0 || toastCount > 0 || window.location.href !== before.url;
+        },
+        { before: beforeForPoll, sel: overlaySelForPoll },
+        { timeout: 1500, polling: 80 },
+      ).catch(() => { /* timeout · the click was a true no-op · proceed with after-snapshot read */ });
 
       const afterUrl = page.url();
       const afterRoute = await page.evaluate(() => document.querySelector(".lc-app")?.getAttribute("data-route") ?? "");
