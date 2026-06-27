@@ -6,13 +6,11 @@
  * Keychain via Tauri secret command · P1-1F polish) can layer in without
  * touching call sites.
  *
- * Today's behavior (P1-1B scope):
+ * Current behavior:
  *   - Browser preview · localStorage at `lc.license.jwt.v1`.
- *   - Tauri runtime  · localStorage SAME key (the native Keychain command
- *     does not exist yet in desktop-2's Rust shell · see
- *     `src-tauri/Cargo.toml`). `initAuthStorage()` includes a forward-
- *     ready hook that tries `invoke("secret_get_jwt")` and gracefully
- *     falls through when the command is absent.
+ *   - Tauri runtime · localStorage hot-path cache plus an OS Keychain mirror.
+ *     Boot checks the non-secret presence file before reading a credential,
+ *     preventing macOS permission prompts for signed-out users.
  *
  * Scope discipline (locked):
  *   - Pure storage adapter · no UI · no deep-link · no Clerk SDK · no
@@ -33,8 +31,8 @@ export const LICENSE_JWT_STORAGE_KEY = "lc.license.jwt.v1";
 export const NATIVE_KEYCHAIN_NAMESPACE = "app.liquidclips.auth.v1";
 
 export type AuthSource =
-  | "tauri-keychain"      // Native macOS/Windows credential store (P1-1F · not yet wired)
-  | "browser-localstorage" // Browser preview AND today's Tauri shell (P1-1B fallback)
+  | "tauri-keychain"       // Native macOS/Windows credential store
+  | "browser-localstorage" // Browser preview and Tauri hot-path fallback
   | "memory-only"          // Tauri secret command failed · in-memory cache only
   | "unavailable";         // SSR / Node test runner / `window` not present
 
@@ -151,6 +149,19 @@ export async function resumeJwtFromKeychainForAuthAction(): Promise<string | nul
     return null;
   } catch {
     return null;
+  }
+}
+
+/** Boot-safe presence check. Reads the plaintext boolean mirror shared with
+ * the Python sidecar; it never asks macOS Keychain for a secret value. */
+export async function hasJwtKeychainPresence(): Promise<boolean> {
+  if (!isTauriRuntime()) return false;
+  try {
+    const mod = await import("@tauri-apps/api/core");
+    const presence = await mod.invoke<Record<string, boolean>>("secret_presence_get");
+    return presence.LICENSE_JWT === true;
+  } catch {
+    return false;
   }
 }
 
