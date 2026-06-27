@@ -12,6 +12,7 @@ import { defineConfig } from "@playwright/test";
 
 const PORT = 1420;
 const BASE_URL = `http://localhost:${PORT}`;
+const USE_PRODUCTION_PREVIEW = process.env.PW_USE_PREVIEW === "1";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -28,14 +29,9 @@ export default defineConfig({
   expect: { timeout: 8_000 },
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  // 2026-06-26 · retry once to absorb suite-level timing flake. Hard
-  // regressions still surface (a real failure fails twice). caption-
-  // editing / channels-station / reaction-journey have shown
-  // intermittent CockpitDock-portal pointer interception under load
-  // — that's clip-card layout overlap with the bottom dock, not the
-  // contract under test. Suite parity with a single fresh manual run
-  // is preserved at workers=1, fullyParallel=false.
-  retries: 1,
+  // Launch gates must pass first try. Pointer interception and cold-route
+  // timing are defects to fix, not failures to hide with retry.
+  retries: 0,
   workers: 1,
   reporter: [
     ["list"],
@@ -50,7 +46,9 @@ export default defineConfig({
     actionTimeout: 8_000,
   },
   webServer: {
-    command: "npm run dev",
+    command: USE_PRODUCTION_PREVIEW
+      ? `npm run preview -- --host 127.0.0.1 --port ${PORT}`
+      : "npm run dev",
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,

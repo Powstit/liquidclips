@@ -80,12 +80,8 @@ test("agency-preview-upgrade-cta · click handler runs · toast emits on failure
   expect(baseText).toContain("Upgrade to Agency");
   expect(baseText).toContain("/mo");
 
-  /* Click. */
-  /* Synthetic click bypasses transient pointer-event interception from
-   * Suspense fallback / brand-banner mount jitter (Gate 7 lazy-load
-   * introduced cold-chunk render delay that races the click's stability
-   * check). The React onClick handler still fires. */
-  await cta.evaluate((el) => (el as HTMLButtonElement).click());
+  /* Exercise the same pointer path as a customer. */
+  await cta.click();
 
   /* LC-UI-P0-001 (2026-06-26) — the prior version of this assertion
    * had an `else` branch that asserted `1 === 1` whenever no toast
@@ -118,6 +114,8 @@ test("agency-preview-upgrade-cta · click handler runs · toast emits on failure
   const t = toasts[0] as { kind?: string; title?: string };
   expect(t.kind).toBe("error");
   expect((t.title ?? "").toLowerCase()).toContain("checkout");
+  await expect(cta).toHaveAttribute("data-checkout-failed", "1");
+  await expect(cta).toContainText("Retry Agency checkout");
 });
 
 /* LC-UI-P0-001 regression test — Agency upgrade CTA must EITHER open
@@ -189,11 +187,7 @@ test("LC-UI-P0-001 · Agency upgrade CTA · authenticated click opens checkout O
   const cta = page.locator('[data-testid="agency-preview-upgrade-cta"]');
   await expect(cta).toBeVisible({ timeout: 5_000 });
   await expect(cta).toBeEnabled();
-  /* Synthetic click bypasses transient pointer-event interception from
-   * Suspense fallback / brand-banner mount jitter (Gate 7 lazy-load
-   * introduced cold-chunk render delay that races the click's stability
-   * check). The React onClick handler still fires. */
-  await cta.evaluate((el) => (el as HTMLButtonElement).click());
+  await cta.click();
 
   /* Wait up to 4s for EITHER an open attempt OR a toast. */
   await page.waitForFunction(

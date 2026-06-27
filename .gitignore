@@ -64,6 +64,7 @@ test-results/
 **/test-results/
 playwright-report/
 **/playwright-report/
+**/tests/e2e/boot-baseline-*.json
 
 # --- Tauri build outputs ----------------------------------------------------
 *.dmg

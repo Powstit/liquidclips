@@ -86,7 +86,10 @@ async function navigateTo(page: Page, route: string) {
     const w = window as unknown as { __lcBus?: { emit: (e: string, p: unknown) => void } };
     w.__lcBus?.emit?.("nav:click", { route: r });
   }, route);
-  await page.waitForTimeout(700);
+  await page.locator(`.lc-app[data-route="${route}"]`).waitFor({
+    state: "visible",
+    timeout: 20_000,
+  });
 }
 
 const FAKE_JWT = "harness.onboarding.jwt.v1";

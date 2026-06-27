@@ -98,11 +98,9 @@ export async function installBackendStubs(page: Page, opts: InstallBackendStubsO
   const sync = syncFixture(opts);
   const wallet = opts.walletMalformed ? { /* 200 but missing every field the UI reads */ } : walletSummaryFixture();
 
-  /* Endpoint-specific routes registered FIRST · Playwright tries them
-   * in registration order. The catch-all is registered last. */
-  await page.route(/api\.liquidclips\.app\/me(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(me) }));
-  await page.route(/api\.liquidclips\.app\/sync(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sync) }));
-  await page.route(/api\.liquidclips\.app\/me\/wallet\/summary(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wallet) }));
+  /* Playwright evaluates matching routes in reverse registration order.
+   * Register the broad fallback first so the endpoint-specific handlers
+   * below win for /me, /sync, and wallet. */
   /* Catch-all for any other GET to the backend · 200 with empty body
    * so the UI's "degraded but not offline" paths fire instead of
    * cascading failures. */
@@ -110,4 +108,7 @@ export async function installBackendStubs(page: Page, opts: InstallBackendStubsO
     if (r.request().method() === "GET") return r.fulfill({ status: 200, contentType: "application/json", body: "{}" });
     return r.continue();
   });
+  await page.route(/api\.liquidclips\.app\/me(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(me) }));
+  await page.route(/api\.liquidclips\.app\/sync(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sync) }));
+  await page.route(/api\.liquidclips\.app\/me\/wallet\/summary(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wallet) }));
 }

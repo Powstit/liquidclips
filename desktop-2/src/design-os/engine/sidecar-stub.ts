@@ -470,6 +470,7 @@ export const sidecar = {
     const adaptedPosition = ((): { align: 2 | 5 | 8; marginV: number } => {
       switch (payload.position) {
         case "top":    return { align: 8 as const, marginV: 60 };
+        case "mid":
         case "middle": return { align: 5 as const, marginV: 0 };
         case "bottom":
         default:       return { align: 2 as const, marginV: 80 };
@@ -498,7 +499,12 @@ export const sidecar = {
       if (!isSidecarUnavailable(e)) throw e;
     }
     bus.emit("engine:progress", { stage: "captions", percent: 0.5, slug, idx });
-    window.setTimeout(() => bus.emit("engine:complete", { kind: "captions", slug, idx }), 900);
+    await new Promise<void>((resolve) => {
+      window.setTimeout(() => {
+        bus.emit("engine:complete", { kind: "captions", slug, idx });
+        resolve();
+      }, 900);
+    });
     return { ok: true };
   },
 

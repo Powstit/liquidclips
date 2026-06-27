@@ -93,14 +93,64 @@ export interface WalletSummary {
  *  five top-level blocks is missing or non-object, return null so the
  *  panel renders the "Wallet briefly out of reach" state. */
 function isWalletSummaryShape(x: unknown): x is WalletSummary {
-  if (!x || typeof x !== "object") return false;
-  const o = x as Record<string, unknown>;
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    !!value && typeof value === "object" && !Array.isArray(value);
+  const isFiniteNumber = (value: unknown): value is number =>
+    typeof value === "number" && Number.isFinite(value);
+  const isNullableString = (value: unknown): value is string | null =>
+    value === null || typeof value === "string";
+
+  if (!isRecord(x)) return false;
+  const o = x;
+  if (!isRecord(o.pipeline) || !isRecord(o.stats) || !isRecord(o.withdraw)) return false;
+
+  const pipeline = o.pipeline;
+  const stats = o.stats;
+  const withdraw = o.withdraw;
+  const pipelineFields = [
+    "in_review_usd_cents",
+    "approved_usd_cents",
+    "paid_usd_cents",
+    "rejected_usd_cents",
+    "total_pipeline_usd_cents",
+  ];
+  const statsFields = [
+    "lifetime_views",
+    "total_submissions",
+    "approval_rate_pct",
+    "affiliate_revenue_usd_cents",
+  ];
+
   return (
-    typeof o.pipeline === "object" && o.pipeline !== null &&
-    typeof o.stats === "object" && o.stats !== null &&
+    pipelineFields.every((field) => isFiniteNumber(pipeline[field])) &&
+    statsFields.every((field) => isFiniteNumber(stats[field])) &&
     Array.isArray(o.campaigns) &&
+    o.campaigns.every((row) =>
+      isRecord(row) &&
+      typeof row.slug === "string" &&
+      typeof row.title === "string" &&
+      isNullableString(row.brand) &&
+      isNullableString(row.banner_url) &&
+      isFiniteNumber(row.views) &&
+      isFiniteNumber(row.submissions) &&
+      isFiniteNumber(row.approved) &&
+      isFiniteNumber(row.earned_usd_cents) &&
+      typeof row.status === "string"
+    ) &&
     Array.isArray(o.recent_activity) &&
-    typeof o.withdraw === "object" && o.withdraw !== null
+    o.recent_activity.every((row) =>
+      isRecord(row) &&
+      typeof row.at === "string" &&
+      ["submitted", "approved", "paid", "rejected"].includes(String(row.kind)) &&
+      typeof row.label === "string" &&
+      isNullableString(row.campaign_slug) &&
+      (row.amount_usd_cents === null || isFiniteNumber(row.amount_usd_cents))
+    ) &&
+    typeof withdraw.is_live === "boolean" &&
+    isFiniteNumber(withdraw.min_withdrawal_usd) &&
+    isFiniteNumber(withdraw.lc_fee_pct) &&
+    typeof withdraw.currency === "string" &&
+    isNullableString(withdraw.destination_wallet)
   );
 }
 

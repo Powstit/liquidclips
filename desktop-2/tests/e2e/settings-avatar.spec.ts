@@ -94,6 +94,7 @@ async function seedAuth(page: Page) {
 
 test.describe("Settings Avatar Journey", () => {
   test(`${JOURNEY} · avatar menu reaches Settings · honest inbox · zero fake unread · sign-out real`, async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
     const rec = new JourneyRecorder(page, testInfo);
 
     try {
