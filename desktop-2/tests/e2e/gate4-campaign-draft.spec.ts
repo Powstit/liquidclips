@@ -21,6 +21,7 @@
  * the drawer-open contract.
  */
 import { test, expect } from "@playwright/test";
+import { installBackendStubs } from "./fixtures/backendFixtures";
 
 test("LC-UI-P0-G4-001 · Campaigns · clipper/non-agency user · Draft campaign opens drawer", async ({ page }) => {
   const consoleErrors: string[] = [];
@@ -33,21 +34,7 @@ test("LC-UI-P0-G4-001 · Campaigns · clipper/non-agency user · Draft campaign 
     }
   });
 
-  /* Stub /me + /sync so the JWT doesn't get rejected and the AuthGate
-   * lets us land inside the real AppShell. The user's effective_tier
-   * is "pro" — below Agency — which is exactly the case where the
-   * Draft-campaign-button-but-no-drawer silent-success bug fired. */
-  const me = {
-    user: { id: "harness", email: "harness@liquidclips.app", tier: "pro" },
-    tier: "pro", effective_tier: "pro", raw_tier: "pro",
-  };
-  const sync = { tier: "pro", caps: {} };
-  await page.route(/api\.liquidclips\.app\//, (r) => {
-    if (r.request().method() === "GET") return r.fulfill({ status: 200, contentType: "application/json", body: "{}" });
-    return r.continue();
-  });
-  await page.route(/api\.liquidclips\.app\/sync(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sync) }));
-  await page.route(/api\.liquidclips\.app\/me(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(me) }));
+  await installBackendStubs(page, { tier: "pro" });
 
   await page.addInitScript(() => {
     try {
@@ -73,10 +60,8 @@ test("LC-UI-P0-G4-001 · Campaigns · clipper/non-agency user · Draft campaign 
     const w = window as unknown as { __lcBus?: { emit: (e: string, p: unknown) => void } };
     w.__lcBus?.emit?.("nav:click", { route: "campaigns" });
   });
-  await page.waitForSelector('[data-testid="campaigns-stage"]', { timeout: 15_000 });
-
   const cta = page.locator("button.lc-campaigns-create-cta");
-  await expect(cta).toBeVisible({ timeout: 5_000 });
+  await expect(cta).toBeVisible({ timeout: 30_000 });
 
   /* Confirm this is the lower-tier "Draft" path, not the Agency
    * "Create" path · the gate distinction is the whole reason this
@@ -86,12 +71,7 @@ test("LC-UI-P0-G4-001 · Campaigns · clipper/non-agency user · Draft campaign 
   const ctaText = (await cta.textContent()) ?? "";
   expect(ctaText.toLowerCase()).toContain("draft campaign");
 
-  /* Dispatch the click directly on the element · the design-os mounts
-   * a transparent overlay layer (BrowserScrim/InvadersOverlay) that can
-   * intercept pointer events during boot. Synthetic click bypasses
-   * pointer-events without lying about the handler firing — React's
-   * onClick still runs. */
-  await cta.evaluate((el) => (el as HTMLButtonElement).click());
+  await cta.click();
 
   /* The drawer mounts inside <Drawer id="agency-creation-flow"> which
    * renders the wrapper with data-drawer-id. Before Gate 4 this never

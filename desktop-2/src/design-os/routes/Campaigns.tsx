@@ -177,6 +177,7 @@ function CampaignsBody() {
       defaultKade={session.kade}
       kadePlacement="helper-right"
     >
+      <>
       <fm.div
         className="sim-stage"
         data-testid="campaigns-stage"
@@ -348,22 +349,26 @@ function CampaignsBody() {
          * inside the drawer (StepReviewPublish → PaywallGate(agency)).
          * Inbox notification on blocked publish fires
          * notifyCampaignPublishBlocked. */}
-        {!creationOpen && (
-          <button
-            type="button"
-            className={`lc-campaigns-create-cta ${canWriteAgency ? "" : "is-draft"}`}
-            onClick={() => setCreationOpen(true)}
-            aria-label={canWriteAgency ? "Create campaign" : "Draft campaign · Agency required to publish"}
-            title={
-              canWriteAgency
-                ? "Create campaign"
-                : "Draft a campaign now · upgrade to Agency to publish/launch"
-            }
-          >
-            + {canWriteAgency ? "Create campaign" : "Draft campaign"}
-          </button>
-        )}
       </fm.div>
+      {/* Keep the fixed CTA outside the animated fm.div. A transformed
+       * ancestor changes fixed-position containment and caused the button
+       * to render under the root hit-test layer after scrolling. */}
+      {!creationOpen && (
+        <button
+          type="button"
+          className={`lc-campaigns-create-cta ${canWriteAgency ? "" : "is-draft"}`}
+          onClick={() => setCreationOpen(true)}
+          aria-label={canWriteAgency ? "Create campaign" : "Draft campaign · Agency required to publish"}
+          title={
+            canWriteAgency
+              ? "Create campaign"
+              : "Draft a campaign now · upgrade to Agency to publish/launch"
+          }
+        >
+          + {canWriteAgency ? "Create campaign" : "Draft campaign"}
+        </button>
+      )}
+      </>
     </DesignOSAppShell>
   );
 }

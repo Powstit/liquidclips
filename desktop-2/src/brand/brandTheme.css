@@ -13,70 +13,9 @@
  * Tailwind 4 reads these via @theme in the importing CSS file.
  */
 
-/* Gate 8 (2026-06-26) — local font declarations · runtime Google Fonts
- * dependency removed from index.html. Files live under
- * public/brand/fonts/ and are streamed cold-cached after first paint
- * (font-display: swap means the system stack renders until ready,
- * never a FOIT). When woff2 files are not yet on disk, the browser
- * silently 404s on the URL and falls through to the system fallback
- * in --font-display / --font-sans / --font-mono below. No render
- * blocking either way. */
-@font-face {
-  font-family: "Inter";
-  src: url("/brand/fonts/Inter-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Inter";
-  src: url("/brand/fonts/Inter-Medium.woff2") format("woff2");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Inter";
-  src: url("/brand/fonts/Inter-SemiBold.woff2") format("woff2");
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Inter";
-  src: url("/brand/fonts/Inter-Bold.woff2") format("woff2");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Inter";
-  src: url("/brand/fonts/Inter-ExtraBold.woff2") format("woff2");
-  font-weight: 800;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Geist Mono";
-  src: url("/brand/fonts/GeistMono-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Geist Mono";
-  src: url("/brand/fonts/GeistMono-Medium.woff2") format("woff2");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Geist Mono";
-  src: url("/brand/fonts/GeistMono-SemiBold.woff2") format("woff2");
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
+/* Runtime Google Fonts are intentionally absent. Use the system fallbacks
+ * below until licensed local font assets are actually shipped; declaring
+ * missing files only creates avoidable runtime 404s. */
 
 @theme {
   /* ===== Brand — single fuchsia accent ===== */

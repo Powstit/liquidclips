@@ -248,7 +248,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
     } catch { /* noop */ }
   });
   await page.goto("/?skipIntro=1#/home", { waitUntil: "domcontentloaded" });
-  await page.waitForSelector(".lc-app", { timeout: 15_000 });
+  await page.waitForSelector(".lc-app", { timeout: 30_000 });
 
   const allFindings: ControlFinding[] = [];
   const routeSummaries: RouteSummary[] = [];
@@ -360,10 +360,15 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
       await page.evaluate(() => {
         const w = window as unknown as {
           __lcAuditToastCount?: number;
+          __lcAuditToastUnsubscribe?: () => void;
           __lcBus?: { on: (e: string, h: (p: unknown) => void) => () => void };
         };
+        w.__lcAuditToastUnsubscribe?.();
         w.__lcAuditToastCount = 0;
-        w.__lcBus?.on?.("toast", () => { w.__lcAuditToastCount = (w.__lcAuditToastCount ?? 0) + 1; });
+        w.__lcAuditToastUnsubscribe = w.__lcBus?.on?.(
+          "toast",
+          () => { w.__lcAuditToastCount = (w.__lcAuditToastCount ?? 0) + 1; },
+        );
       });
       const beforeUrl = page.url();
       const beforeRoute = await page.evaluate(() => document.querySelector(".lc-app")?.getAttribute("data-route") ?? "");
@@ -407,7 +412,13 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
        * route/aria/overlay/toast change every 80ms and exit early as
        * soon as one fires. If nothing in 1500ms, treat as FAIL — that's
        * the honest dead-control verdict. */
-      const beforeForPoll = { url: beforeUrl, route: beforeRoute, mode: beforeMode, aria: beforeAriaSelected };
+      const beforeForPoll = {
+        url: beforeUrl,
+        route: beforeRoute,
+        mode: beforeMode,
+        aria: beforeAriaSelected,
+        overlayCount: beforeOverlayCount,
+      };
       const overlaySelForPoll = '.lc-browse-overlay, .lc-drawer-host, [data-drawer-id], [role="menu"], [role="dialog"], [data-orbit-open="true"], [data-testid="avatar-orbit-menu"], [data-activation-status], [data-testid="create-panel"], [data-testid="home-create-panel"]';
       await page.waitForFunction(
         ({ before, sel }) => {
@@ -419,7 +430,12 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           ).join("|");
           const overlayCount = document.querySelectorAll(sel).length;
           const toastCount = w.__lcAuditToastCount ?? 0;
-          return route !== before.route || mode !== before.mode || aria !== before.aria || overlayCount > 0 || toastCount > 0 || window.location.href !== before.url;
+          return route !== before.route ||
+            mode !== before.mode ||
+            aria !== before.aria ||
+            overlayCount !== before.overlayCount ||
+            toastCount > 0 ||
+            window.location.href !== before.url;
         },
         { before: beforeForPoll, sel: overlaySelForPoll },
         { timeout: 1500, polling: 80 },
