@@ -9,7 +9,7 @@ Covers:
   - post.success flips schedule.status to 'published' + writes live url
   - post.error flips schedule.status to 'failed' + writes error
   - channel.linked flips SocialChannel.status to 'active'
-  - channel.unlinked flips SocialChannel.status to 'pending_link'
+  - channel.unlinked flips SocialChannel.status to 'unlinked'
   - out-of-order channel event (older than last_probe_at) is IGNORED
   - unknown event types 200-ack'd (forward compat)
   - no-match schedule / channel 200-ack'd (don't make Ayrshare retry forever)
@@ -33,6 +33,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.db import Base, get_db
 from app.models import Schedule, SocialChannel, User, WebhookEvent
@@ -53,6 +54,7 @@ def engine():
     eng = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
         future=True,
     )
     Base.metadata.create_all(bind=eng)
@@ -338,7 +340,7 @@ def test_channel_linked_flips_status_to_active(client, channel, db, monkeypatch)
     assert fresh.last_probe_at is not None
 
 
-def test_channel_unlinked_flips_status_to_pending_link(client, channel, db, monkeypatch):
+def test_channel_unlinked_flips_status_to_unlinked(client, channel, db, monkeypatch):
     monkeypatch.setenv("AYRSHARE_WEBHOOK_SECRET", SECRET)
     # Pre-condition: channel is currently active.
     channel.status = "active"
@@ -355,15 +357,15 @@ def test_channel_unlinked_flips_status_to_pending_link(client, channel, db, monk
         },
     )
     assert r.status_code == 200, r.text
-    assert r.json().get("new_status") == "pending_link"
+    assert r.json().get("new_status") == "unlinked"
     db.expire_all()
     fresh = db.query(SocialChannel).filter(SocialChannel.id == channel.id).one()
-    assert fresh.status == "pending_link"
+    assert fresh.status == "unlinked"
 
 
 def test_out_of_order_channel_event_ignored(client, channel, db, monkeypatch):
     """A channel.unlinked event with a webhook timestamp OLDER than the
-    channel's last_probe_at must NOT roll status back to pending_link."""
+    channel's last_probe_at must NOT roll status back to unlinked."""
     monkeypatch.setenv("AYRSHARE_WEBHOOK_SECRET", SECRET)
     # Channel was just probed (and is active).
     channel.status = "active"

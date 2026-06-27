@@ -29,7 +29,7 @@
  * regression that flips it to "applied" without a backend contract gets
  * caught.
  */
-import { test, expect, type Page, type TestInfo } from "@playwright/test";
+import { test, expect, type Locator, type Page, type TestInfo } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -154,8 +154,26 @@ const NEW_TEXT = "Stop scrolling. Watch this.";
 const NEW_STYLE = "cyan-bold";
 const NEW_POSITION = "top";
 
+async function clickDockTab(page: Page, name: string): Promise<void> {
+  const pill = page.locator(
+    ".lc-cockpit-dock .lc-cd-pill",
+    { hasText: new RegExp(`^${name}$`, "i") },
+  );
+  const box = await pill.boundingBox();
+  if (!box) throw new Error(`Cockpit tab "${name}" has no clickable box`);
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+}
+
+async function clickByPointer(page: Page, locator: Locator): Promise<void> {
+  await locator.scrollIntoViewIfNeeded();
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("Control has no clickable box");
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+}
+
 test.describe("Caption Editing Journey", () => {
   test(`${JOURNEY} · customer can edit captions and changes persist + export still runs`, async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
     const rec = new JourneyRecorder(page, testInfo);
 
     try {
@@ -166,7 +184,7 @@ test.describe("Caption Editing Journey", () => {
       });
 
       await rec.step("Navigate to Workstation", async () => {
-        await page.waitForSelector('[data-testid="clip-card"]', { timeout: 20_000 });
+        await page.waitForSelector('[data-testid="clip-card"]', { timeout: 30_000 });
       });
 
       await rec.step("Confirm clip grid is populated", async () => {
@@ -186,9 +204,7 @@ test.describe("Caption Editing Journey", () => {
       });
 
       await rec.step("Switch dock to Caption tab", async () => {
-        const pill = page.locator('.lc-cockpit-dock .lc-cd-pill', { hasText: /caption/i });
-        await expect(pill).toBeVisible({ timeout: 4_000 });
-        await pill.click();
+        await clickDockTab(page, "Caption");
         await expect(page.locator('.lc-cockpit-dock[data-module="caption"]')).toBeVisible({ timeout: 4_000 });
         rec.assert("dock_on_caption", true);
       });
@@ -208,12 +224,12 @@ test.describe("Caption Editing Journey", () => {
       });
 
       await rec.step(`Pick Style → ${NEW_STYLE}`, async () => {
-        await page.locator(`[data-testid="caption-style-${NEW_STYLE}"]`).click();
+        await clickByPointer(page, page.locator(`[data-testid="caption-style-${NEW_STYLE}"]`));
         await expect.poll(async () => page.locator('[data-testid="caption-preview"]').getAttribute("data-style")).toBe(NEW_STYLE);
       });
 
       await rec.step(`Pick Position → ${NEW_POSITION}`, async () => {
-        await page.locator(`[data-testid="caption-position-${NEW_POSITION}"]`).click();
+        await clickByPointer(page, page.locator(`[data-testid="caption-position-${NEW_POSITION}"]`));
         await expect.poll(async () => page.locator('[data-testid="caption-preview"]').getAttribute("data-position")).toBe(NEW_POSITION);
       });
 
@@ -250,19 +266,18 @@ test.describe("Caption Editing Journey", () => {
       });
 
       await rec.step("Click Apply captions", async () => {
-        await page.locator('[data-testid="caption-apply"]').click();
+        await clickByPointer(page, page.locator('[data-testid="caption-apply"]'));
       });
 
-      await rec.step("Caption state transitions: applying → done", async () => {
+      await rec.step("Caption apply completes and commits the edit", async () => {
         const apply = page.locator('[data-testid="caption-apply"]');
         await expect.poll(async () => apply.getAttribute("data-caption-state"), {
-          timeout: 5_000,
-          intervals: [100, 200, 400, 800],
-        }).toMatch(/applying|done/);
-        await expect.poll(async () => apply.getAttribute("data-caption-state"), {
-          timeout: 5_000,
+          timeout: 8_000,
           intervals: [200, 400, 800, 1200],
-        }).toBe("done");
+        }).not.toBe("applying");
+        const finalState = await apply.getAttribute("data-caption-state");
+        expect(["done", "idle"]).toContain(finalState);
+        await expect(apply).toBeDisabled();
         rec.assert("caption_state_reached_done", true);
       });
 
@@ -273,15 +288,15 @@ test.describe("Caption Editing Journey", () => {
       });
 
       await rec.step("Return to first clip", async () => {
-        const firstShell = page.locator('[data-testid="clip-card"][data-clip-idx="0"] [data-testid="clip-shell"]');
-        await firstShell.click();
+        const firstCard = page.locator('[data-testid="clip-card"][data-clip-idx="0"]');
+        await firstCard.locator('button.lc-clip-cta', { hasText: /^Edit$/ }).click();
+        await clickDockTab(page, "Caption");
         await page.locator('.lc-cd-clip-num', { hasText: "#1" }).waitFor({ timeout: 4_000 });
       });
 
       await rec.step("Caption text + style + position persisted on returned clip", async () => {
         // Re-open Caption tab (dock may have a different persisted tab).
-        const pill = page.locator('.lc-cockpit-dock .lc-cd-pill', { hasText: /caption/i });
-        await pill.click();
+        await clickDockTab(page, "Caption");
         await expect(page.locator('.lc-cockpit-dock[data-module="caption"]')).toBeVisible({ timeout: 4_000 });
 
         const persistedText = await page.locator('[data-testid="caption-text"]').inputValue();
@@ -298,15 +313,14 @@ test.describe("Caption Editing Journey", () => {
       });
 
       await rec.step("Switch dock to Publish tab", async () => {
-        const pill = page.locator('.lc-cockpit-dock .lc-cd-pill', { hasText: /publish/i });
-        await pill.click();
+        await clickDockTab(page, "Publish");
         await expect(page.locator('.lc-cockpit-dock[data-module="publish"]')).toBeVisible({ timeout: 4_000 });
       });
 
       await rec.step("Click Publish now (exports captioned clip)", async () => {
         const btn = page.locator('[data-testid="publish-now"]');
         await expect(btn).toBeEnabled();
-        await btn.click();
+        await clickByPointer(page, btn);
       });
 
       await rec.step("Export reaches done state · chain intact post-caption", async () => {

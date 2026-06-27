@@ -39,6 +39,7 @@ import { hasJwt } from "../authStorage";
 import { useMe } from "../../design-os/state/useMe";
 import { useTierCaps } from "../../design-os/state/useTierCaps";
 import { openSmart } from "../openSmart";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import type {
   BillingAdapter,
   BillingSnapshot,
@@ -123,9 +124,11 @@ class MockBillingAdapter implements BillingAdapter {
   constructor(initial: BillingSnapshot) { this.snapshot = initial; }
   getSnapshot(): BillingSnapshot { return this.snapshot; }
   setSnapshot(next: BillingSnapshot): void {
+    if (sameSnapshot(this.snapshot, next)) return;
     this.snapshot = next;
     for (const l of this.listeners) l(next);
   }
+  syncFromSource(next: BillingSnapshot): void { this.setSnapshot(next); }
   async startCheckout(planKey: PlanKey): Promise<CheckoutOutcome> {
     // LC-UI-P0-001 hardening: a mock adapter must NEVER silently report
     // success in an authenticated path — that's how the Agency upgrade CTA
@@ -168,9 +171,11 @@ class MeBackedBillingAdapter implements BillingAdapter {
   constructor(initial: BillingSnapshot) { this.snapshot = initial; }
   getSnapshot(): BillingSnapshot { return this.snapshot; }
   setSnapshot(next: BillingSnapshot): void {
+    if (sameSnapshot(this.snapshot, next)) return;
     this.snapshot = next;
     for (const l of this.listeners) l(next);
   }
+  syncFromSource(next: BillingSnapshot): void { this.setSnapshot(next); }
   async startCheckout(planKey: PlanKey): Promise<CheckoutOutcome> {
     // Real flow: redirect to account-app's checkout (Clerk-hosted).
     // The webhook back-channel updates /me; useMe re-fetches on focus
@@ -224,6 +229,15 @@ function derivePlanKey(tier: string | null | undefined): PlanKey {
 let _realAdapter: MeBackedBillingAdapter | null = null;
 let _mockAdapter: MockBillingAdapter | null = null;
 
+function sameSnapshot(a: BillingSnapshot, b: BillingSnapshot): boolean {
+  return (
+    a.state === b.state &&
+    a.currentPlan === b.currentPlan &&
+    a.source === b.source &&
+    a.lastCheckoutFailed === b.lastCheckoutFailed
+  );
+}
+
 export function useBillingState(): BillingSnapshot & {
   adapter: BillingAdapter;
 } {
@@ -253,11 +267,31 @@ export function useBillingState(): BillingSnapshot & {
     return { state, currentPlan: planKey, source: "real", lastCheckoutFailed: false };
   })();
 
-  const adapter: BillingAdapter = loggedIn
+  const adapter = loggedIn
     ? (_realAdapter ??= new MeBackedBillingAdapter(snapshot))
     : (_mockAdapter ??= new MockBillingAdapter(snapshot));
 
-  return { ...snapshot, adapter };
+  const subscribe = useCallback(
+    (listener: (next: BillingSnapshot) => void) => adapter.subscribe(listener),
+    [adapter],
+  );
+  const getSnapshot = useCallback(() => adapter.getSnapshot(), [adapter]);
+  const liveSnapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
+  /* Reconcile backend/tier changes into the stable adapter. Checkout state
+   * changes remain live through useSyncExternalStore instead of disappearing
+   * inside a private singleton that no component observes. */
+  useEffect(() => {
+    adapter.syncFromSource(snapshot);
+  }, [
+    adapter,
+    snapshot.state,
+    snapshot.currentPlan,
+    snapshot.source,
+    snapshot.lastCheckoutFailed,
+  ]);
+
+  return { ...liveSnapshot, adapter };
 }
 
 // Test seam · lets unit tests reset the module singletons between cases.

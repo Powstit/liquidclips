@@ -34,6 +34,22 @@ body[data-design-os="active"] .lc-section,
 body[data-design-os="active"] .lc-signal-line {
   visibility: hidden !important;
 }
+
+/* The Design-OS app is mounted inside the legacy `.lc-page > .lc-canvas >
+ * .lc-section` tree. Legacy perspective and the section entrance transform
+ * establish containing blocks for position:fixed descendants, which shifted
+ * the full-screen app and let `#root` intercept fixed CTA clicks after
+ * scrolling. Neutralise those legacy-only effects while Design OS is active. */
+body[data-design-os="active"] .lc-page {
+  perspective: none !important;
+}
+body[data-design-os="active"] .lc-section {
+  animation: none !important;
+  transform: none !important;
+  filter: none !important;
+  max-width: none;
+  margin: 0;
+}
 /* 2026-06-25 · Daniel locked the persistent Browse tab as a permanent
  * application primitive. It must remain visible UNDER Design OS — was
  * previously in the hide-list above. */

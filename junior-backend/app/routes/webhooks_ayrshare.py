@@ -299,10 +299,15 @@ async def ayrshare_webhook(
         # apparent send time, this event is stale and must NOT overwrite
         # state. Ayrshare provides `timestamp` (ISO string) on some events.
         webhook_ts = _parse_event_timestamp(payload)
+        last_probe_at = channel.last_probe_at
+        if last_probe_at and last_probe_at.tzinfo is None:
+            last_probe_at = last_probe_at.replace(tzinfo=timezone.utc)
+        if webhook_ts and webhook_ts.tzinfo is None:
+            webhook_ts = webhook_ts.replace(tzinfo=timezone.utc)
         if (
             webhook_ts
-            and channel.last_probe_at
-            and channel.last_probe_at > webhook_ts
+            and last_probe_at
+            and last_probe_at > webhook_ts
         ):
             log.info(
                 "[ayrshare] out-of-order channel event ignored "

@@ -17,7 +17,7 @@
  * what the export will carry.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { bus, useEvent } from "../../bridge";
 import { sidecar } from "../sidecar-stub";
 import { useEngineSession } from "../../state/useEngineSession";
@@ -54,6 +54,9 @@ export function CaptionModule() {
   const [committed, setCommitted] = useState<{
     text: string; style: CaptionStyleKey; position: CaptionPositionKey;
   }>({ text, style, position });
+  const pendingCommitRef = useRef<{
+    text: string; style: CaptionStyleKey; position: CaptionPositionKey;
+  } | null>(null);
   // Re-sync committed when the focused clip identity changes; the saved
   // settings restored by clipSettingsStore become the new baseline.
   useEffect(() => {
@@ -68,7 +71,8 @@ export function CaptionModule() {
     if (p.slug !== slug) return;
     if (typeof p.idx === "number" && p.idx !== focusedClip.idx) return;
     setCaptionState("done");
-    setCommitted({ text, style, position });
+    setCommitted(pendingCommitRef.current ?? { text, style, position });
+    pendingCommitRef.current = null;
     /* FEATURE-001 · in-app only. */
     inboxNotify({
       kind: "caption-apply-complete",
@@ -80,6 +84,7 @@ export function CaptionModule() {
     if (p.kind !== "captions") return;
     if (p.slug !== slug) return;
     if (typeof p.idx === "number" && p.idx !== focusedClip.idx) return;
+    pendingCommitRef.current = null;
     setCaptionState("error");
     setCaptionError(p.human ?? p.error ?? "Caption update failed");
   });
@@ -107,12 +112,20 @@ export function CaptionModule() {
       });
       return;
     }
+    const submitted = { text, style, position };
+    pendingCommitRef.current = submitted;
     setCaptionState("applying");
     setCaptionError(null);
     try {
-      await sidecar.editCaptions(slug, focusedClip.idx, { text, style, position });
-      // The "done" transition lands via the engine:complete listener above.
+      await sidecar.editCaptions(slug, focusedClip.idx, submitted);
+      // The RPC resolves only after the caption bake completes. Commit the
+      // exact submitted payload here as well as in the event listener so a
+      // delayed or unavailable event cannot leave the editor falsely dirty.
+      setCommitted(submitted);
+      pendingCommitRef.current = null;
+      setCaptionState("done");
     } catch (e) {
+      pendingCommitRef.current = null;
       setCaptionState("error");
       const msg = e instanceof Error ? e.message : String(e);
       setCaptionError(msg);

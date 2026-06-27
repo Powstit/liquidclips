@@ -129,13 +129,20 @@ async function seedCompletedSession(page: Page) {
 }
 
 async function tab(page: Page, name: string) {
-  await page.locator('.lc-cockpit-dock .lc-cd-pill', { hasText: new RegExp(`^${name}$`, "i") }).click();
+  const pill = page.locator(
+    '.lc-cockpit-dock .lc-cd-pill',
+    { hasText: new RegExp(`^${name}$`, "i") },
+  );
+  const box = await pill.boundingBox();
+  if (!box) throw new Error(`Cockpit tab "${name}" has no clickable box`);
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   const moduleKey = name.toLowerCase();
   await expect(page.locator(`.lc-cockpit-dock[data-module="${moduleKey}"]`)).toBeVisible({ timeout: 4_000 });
 }
 
 test.describe("Full Clipping Journey", () => {
   test(`${JOURNEY} · customer walks generate→edit→reaction→caption→trim→watermark→style→schedule honesty→export`, async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
     const rec = new JourneyRecorder(page, testInfo);
 
     try {
@@ -162,7 +169,7 @@ test.describe("Full Clipping Journey", () => {
         await expect(page.locator('[data-testid="reaction-overlay"]')).toBeVisible({ timeout: 4_000 });
         const layout = await page.locator('[data-testid="reaction-overlay"]').getAttribute("data-reaction-layout");
         rec.assert("reaction_overlay_layout", layout);
-        await page.locator('[data-testid="reaction-apply"]').click();
+        await page.locator('[data-testid="reaction-apply"]').click({ timeout: 15_000 });
         const apply = page.locator('[data-testid="reaction-apply"]');
         await expect.poll(async () => apply.getAttribute("data-bake-state"), {
           timeout: 8_000, intervals: [200, 400, 800, 1200],
@@ -316,7 +323,10 @@ test.describe("Full Clipping Journey", () => {
         // Switch to clip #2 and back.
         await page.locator('[data-testid="clip-card"][data-clip-idx="1"] [data-testid="clip-shell"]').click();
         await page.locator('.lc-cd-clip-num', { hasText: "#2" }).waitFor({ timeout: 4_000 });
-        await page.locator('[data-testid="clip-card"][data-clip-idx="0"] [data-testid="clip-shell"]').click();
+        await page
+          .locator('[data-testid="clip-card"][data-clip-idx="0"]')
+          .locator('button.lc-clip-cta', { hasText: /^Edit$/ })
+          .click();
         await page.locator('.lc-cd-clip-num', { hasText: "#1" }).waitFor({ timeout: 4_000 });
         // Re-open Caption tab; text must be the customer's value.
         await tab(page, "caption");
