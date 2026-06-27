@@ -2,7 +2,12 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { flowTrace } from "./lib/flowTrace";
 import { FLOW_IDS } from "./contracts/flowRegistry";
 import { BrowseOverlay, BrowserScrim } from "./components/browser";
-import { initAuthStorage, hasJwt, resumeJwtFromKeychainForAuthAction } from "./lib/authStorage";
+import {
+  initAuthStorage,
+  hasJwt,
+  hasJwtKeychainPresence,
+  resumeJwtFromKeychainForAuthAction,
+} from "./lib/authStorage";
 import { attachQA, qaGateEnabled } from "./lib/qa";
 import { mountDeepLinkSubscriber, type DeepLinkBootHandle } from "./lib/deepLinkBoot";
 import { useActivation } from "./lib/activation";
@@ -97,15 +102,11 @@ export function App() {
         // eslint-disable-next-line no-console
         console.warn("[app-boot] initAuthStorage failed:", e);
       }
-      // IG-014 cold-boot keychain resume · one of the six approved auth
-      // actions. Fires only when localStorage came up empty — covers the
-      // returning-user case where webview storage got cleared (rebuild,
-      // runtime bundle swap, WKWebView profile flip) but the JWT survives
-      // in the OS Keychain. macOS may prompt once for keychain access on
-      // first ever run; subsequent boots are silent. Without this call a
-      // returning user is stranded on LoginOnboarding even though their
-      // license is valid and present.
-      if (!hasJwt()) {
+      // IG-014 cold-boot keychain resume. The presence command reads only
+      // the plaintext boolean mirror, so a signed-out/fresh install never
+      // prompts merely because localStorage is empty. We read the actual JWT
+      // only when that mirror confirms a saved credential exists.
+      if (!hasJwt() && await hasJwtKeychainPresence()) {
         try {
           await resumeJwtFromKeychainForAuthAction();
         } catch (e) {

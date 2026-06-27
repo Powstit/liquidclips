@@ -18,6 +18,8 @@ mod browse;
 mod runtime;
 
 use keyring::Entry;
+use serde_json::{Map, Value};
+use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
 
@@ -40,6 +42,50 @@ use tauri::Manager;
 
 const KEYCHAIN_SERVICE: &str = "app.liquidclips.auth.v1";
 const KEYCHAIN_ACCOUNT: &str = "LICENSE_JWT";
+const SECRETS_PRESENCE_FILE: &str = "secrets_presence.json";
+
+fn secrets_presence_path() -> Result<PathBuf, String> {
+    let home = std::env::var_os("HOME").ok_or_else(|| "HOME is unavailable".to_string())?;
+    Ok(PathBuf::from(home)
+        .join("Library")
+        .join("Application Support")
+        .join("Liquid Clips")
+        .join(SECRETS_PRESENCE_FILE))
+}
+
+fn read_secrets_presence_at(path: &std::path::Path) -> Map<String, Value> {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default()
+}
+
+fn write_secret_presence_at(
+    path: &std::path::Path,
+    name: &str,
+    present: bool,
+) -> Result<(), String> {
+    let mut values = read_secrets_presence_at(&path);
+    values.insert(name.to_string(), Value::Bool(present));
+    let parent = path
+        .parent()
+        .ok_or_else(|| "presence path has no parent".to_string())?;
+    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let tmp = path.with_extension("json.tmp");
+    let encoded = serde_json::to_vec_pretty(&Value::Object(values)).map_err(|e| e.to_string())?;
+    fs::write(&tmp, encoded).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, &path).map_err(|e| e.to_string())
+}
+
+fn write_secret_presence(name: &str, present: bool) -> Result<(), String> {
+    write_secret_presence_at(&secrets_presence_path()?, name, present)
+}
+
+#[tauri::command]
+fn secret_presence_get() -> Result<Map<String, Value>, String> {
+    Ok(read_secrets_presence_at(&secrets_presence_path()?))
+}
 
 fn open_entry() -> Result<Entry, String> {
     Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).map_err(|e| e.to_string())
@@ -79,17 +125,18 @@ async fn openai_key_set(key: String) -> Result<(), String> {
         return Err("OpenAI key cannot be empty".to_string());
     }
     let entry = open_openai_entry()?;
-    entry.set_password(trimmed).map_err(|e| e.to_string())
+    entry.set_password(trimmed).map_err(|e| e.to_string())?;
+    write_secret_presence(OPENAI_KEYCHAIN_ACCOUNT, true)
 }
 
 #[tauri::command]
 async fn openai_key_delete() -> Result<(), String> {
     let entry = open_openai_entry()?;
     match entry.delete_credential() {
-        Ok(()) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(e.to_string()),
-    }
+        Ok(()) | Err(keyring::Error::NoEntry) => {}
+        Err(e) => return Err(e.to_string()),
+    };
+    write_secret_presence(OPENAI_KEYCHAIN_ACCOUNT, false)
 }
 
 #[tauri::command]
@@ -108,17 +155,18 @@ async fn secret_set_jwt(jwt: String) -> Result<(), String> {
         return Err("jwt cannot be empty".to_string());
     }
     let entry = open_entry()?;
-    entry.set_password(&jwt).map_err(|e| e.to_string())
+    entry.set_password(&jwt).map_err(|e| e.to_string())?;
+    write_secret_presence(KEYCHAIN_ACCOUNT, true)
 }
 
 #[tauri::command]
 async fn secret_delete_jwt() -> Result<(), String> {
     let entry = open_entry()?;
     match entry.delete_credential() {
-        Ok(()) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(e.to_string()),
-    }
+        Ok(()) | Err(keyring::Error::NoEntry) => {}
+        Err(e) => return Err(e.to_string()),
+    };
+    write_secret_presence(KEYCHAIN_ACCOUNT, false)
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -482,6 +530,7 @@ pub fn run() {
             secret_get_jwt,
             secret_set_jwt,
             secret_delete_jwt,
+            secret_presence_get,
             openai_key_get,
             openai_key_set,
             openai_key_delete,
@@ -501,4 +550,34 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Liquid Clips shell");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{read_secrets_presence_at, write_secret_presence_at};
+
+    #[test]
+    fn presence_updates_preserve_other_secret_flags() {
+        let path = std::env::temp_dir().join(format!(
+            "liquid-clips-presence-{}-{}.json",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        write_secret_presence_at(&path, "OPENAI_API_KEY", true).unwrap();
+        write_secret_presence_at(&path, "LICENSE_JWT", true).unwrap();
+        write_secret_presence_at(&path, "OPENAI_API_KEY", false).unwrap();
+
+        let values = read_secrets_presence_at(&path);
+        assert_eq!(
+            values.get("OPENAI_API_KEY").and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        assert_eq!(
+            values.get("LICENSE_JWT").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        let _ = std::fs::remove_file(path);
+    }
 }
