@@ -683,6 +683,7 @@ function SettingsBody() {
                   <button
                     type="button"
                     className="lc-settings-cta lc-settings-cta-secondary"
+                    data-open-url="https://whop.com/dashboard/"
                     onClick={handleOpenExternal(WHOP_DASHBOARD_URL, "Whop")}
                   >
                     Open Whop dashboard ↗
@@ -1022,6 +1023,7 @@ function SettingsBody() {
                 <button
                   type="button"
                   className="lc-settings-cta lc-settings-cta-secondary"
+                  data-open-url="https://whop.com/dashboard/"
                   onClick={handleOpenWhop}
                 >
                   Open Whop dashboard ↗
@@ -1185,6 +1187,13 @@ function OpenAIKeyCard() {
             className="lc-settings-cta lc-settings-cta-secondary"
             onClick={() => void onSave()}
             disabled={disabled || draft.trim().length === 0}
+            title={
+              disabled
+                ? "Sign in first"
+                : draft.trim().length === 0
+                  ? "Enter your API key first"
+                  : undefined
+            }
             style={disabled || draft.trim().length === 0 ? { opacity: 0.55, cursor: "not-allowed" } : undefined}
           >
             {status === "saved" ? "Replace key" : "Save key"}
