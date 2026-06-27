@@ -1072,22 +1072,43 @@ export function SettingsRoute() {
 /* 2026-06-24 · IG-014 mirror — was reading `openai_key_get` from Keychain
  * on every Settings mount, which triggered the macOS Keychain Access
  * prompt every time the user opened Settings. Now uses a localStorage
- * presence flag — no Keychain read on mount, only on explicit user
- * action (Save / Remove). The flag flips after a successful Keychain
- * write/delete. Matches legacy `licenseJwtPresence()` pattern. */
+ * presence mirror — no Keychain read on mount, only on explicit user
+ * action (Save / Remove). Rust and Python share the same presence file,
+ * so the status cannot stay red after a successful save. */
 const OPENAI_KEY_PRESENCE_FLAG = "lc.openai_key.present.v1";
 function OpenAIKeyCard() {
-  const [status, setStatus] = useState<"saved" | "missing" | "unavailable">(() => {
+  const [status, setStatus] = useState<"checking" | "saved" | "missing" | "unavailable">(() => {
     if (typeof window === "undefined") return "unavailable";
     if (!("__TAURI_INTERNALS__" in window)) return "unavailable";
     try {
-      return window.localStorage.getItem(OPENAI_KEY_PRESENCE_FLAG) === "1" ? "saved" : "missing";
+      return window.localStorage.getItem(OPENAI_KEY_PRESENCE_FLAG) === "1" ? "saved" : "checking";
     } catch {
-      return "missing";
+      return "checking";
     }
   });
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const presence = await invoke<Record<string, boolean>>("secret_presence_get");
+        if (cancelled) return;
+        const saved = presence.OPENAI_API_KEY === true;
+        setStatus(saved ? "saved" : "missing");
+        try {
+          if (saved) window.localStorage.setItem(OPENAI_KEY_PRESENCE_FLAG, "1");
+          else window.localStorage.removeItem(OPENAI_KEY_PRESENCE_FLAG);
+        } catch { /* swallow */ }
+      } catch {
+        if (!cancelled) setStatus("missing");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const onSave = async () => {
     const key = draft.trim();
@@ -1136,6 +1157,10 @@ function OpenAIKeyCard() {
   let statusValue: string;
   let statusTone: "live" | "warn" | "muted";
   switch (status) {
+    case "checking":
+      statusValue = "Checking secure storage…";
+      statusTone = "muted";
+      break;
     case "saved":
       statusValue = "Saved · stays on this Mac";
       statusTone = "live";
@@ -1150,7 +1175,7 @@ function OpenAIKeyCard() {
       break;
   }
 
-  const disabled = busy || status === "unavailable";
+  const disabled = busy || status === "checking" || status === "unavailable";
 
   return (
     <section className="lc-settings-card" data-tab="account">
