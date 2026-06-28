@@ -28,6 +28,7 @@
 
 import { useMemo, useState } from "react";
 import { motion as fm } from "framer-motion";
+import { ExternalLink } from "lucide-react";
 import { DesignOSAppShell } from "../components/AppShell";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { presets } from "../motion";
@@ -47,6 +48,9 @@ import {
   type ScheduleFilterKey,
 } from "../schedule";
 import type { ScheduledJob } from "../state/useSchedule";
+import type { Platform } from "../engine/types";
+import { platformComposerUrl, platformLabel } from "../schedule/assistedSchedule";
+import { useBrowseOverlay } from "../../state/browseOverlay";
 import "./SimPage.css";
 import "./Schedule.css";
 
@@ -63,6 +67,7 @@ function ScheduleBody() {
   const spec = ROUTE_REGISTRY["schedule"];
 
   const sched = useSchedule();
+  const openBrowser = useBrowseOverlay((state) => state.openWith);
   const [filter, setFilter] = useState<ScheduleFilterKey>("all");
   const [activeJob, setActiveJob] = useState<ScheduledJob | null>(null);
 
@@ -118,26 +123,45 @@ function ScheduleBody() {
           <div className="lc-schedule-heading">
             <span className="lc-route-head-eb">Schedule</span>
             <span className="lc-schedule-heading-copy">
-              Review queued posts and publishing results.
+              Review posting reminders and provider results.
             </span>
           </div>
           <div className="lc-route-head-pills">
-            {sched.source !== "mock" ? (
-              <span
-                className="lc-runtime-tag is-live"
-                title={`Source: ${sched.source} · /schedules backend reachable.`}
-              >
-                Live · backend
-              </span>
-            ) : (
-              <span className="lc-runtime-tag" title="Scheduling service is unavailable.">
-                Scheduling unavailable
-              </span>
-            )}
+            <span
+              className="lc-runtime-tag is-live"
+              title={sched.source === "assisted-local"
+                ? "Saved on this Mac. Junior prepares the browser handoff at posting time."
+                : `Source: ${sched.source} · provider queue reachable.`}
+            >
+              {sched.source === "assisted-local" ? "Assisted · this Mac" : "Automatic · provider"}
+            </span>
+            <span className="lc-runtime-tag" title="Automatic posting requires an approved publishing provider.">
+              Auto-post · coming soon
+            </span>
             <span className="lc-schedule-tier-tag">{tier.tier.toUpperCase()}</span>
             <span className="lc-schedule-cap-tag" title="Monthly post cap usage">
               {sched.scheduledThisMonth} / {tier.caps.monthlyPosts} posts this month
             </span>
+          </div>
+        </div>
+
+        <div className="lc-schedule-login-strip">
+          <div className="lc-schedule-login-copy">
+            <span className="lc-route-head-eb">Platform login</span>
+            <span>Sign in once here so the posting handoff is ready later.</span>
+          </div>
+          <div className="lc-schedule-login-actions">
+            {(["tiktok", "instagram", "youtube"] as Platform[]).map((platform) => (
+              <button
+                key={platform}
+                type="button"
+                className="lc-schedule-login-btn"
+                onClick={() => openBrowser(platformComposerUrl(platform), "read-only")}
+              >
+                {platformLabel(platform)}
+                <ExternalLink size={12} aria-hidden="true" />
+              </button>
+            ))}
           </div>
         </div>
 

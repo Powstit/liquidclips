@@ -76,6 +76,7 @@ function DockShell() {
   // size its padding-bottom dynamically (Bug 3). The head strip stays visible
   // when collapsed so tabs + clip pill + Back-to-Home remain reachable.
   const [open, setOpen] = useState<boolean>(() => readPersistedOpen());
+  const [scheduleOutputPath, setScheduleOutputPath] = useState<string | undefined>();
   const { focusedClip } = useCockpit();
   const rootRef = useRef<HTMLElement | null>(null);
   // Re-seed on clip switch lives inside CockpitProvider now (IG-LC2-018).
@@ -95,6 +96,12 @@ function DockShell() {
   // Also force-open the dock so the Publish module is actually visible.
   useEvent("clip:open-export", () => {
     setActive("publish");
+    setOpen(true);
+  });
+
+  useEvent("clip:open-schedule", (payload) => {
+    setScheduleOutputPath(payload.outputPath);
+    setActive("schedule");
     setOpen(true);
   });
 
@@ -138,10 +145,10 @@ function DockShell() {
       case "caption":  return <CaptionModule />;
       case "trim":     return <TrimModule />;
       case "style":    return <StyleModule />;
-      case "schedule": return <ScheduleModule />;
+      case "schedule": return <ScheduleModule outputPathOverride={scheduleOutputPath} />;
       case "publish":  return <PublishModule />;
     }
-  }, [active]);
+  }, [active, scheduleOutputPath]);
 
   const dur = focusedClip.duration_s ?? Math.max(1, focusedClip.end - focusedClip.start);
 

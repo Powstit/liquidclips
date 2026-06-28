@@ -44,6 +44,7 @@ tauri-plugin-fs = "2"
 # /upgrade, /subscribe, /purchase, /cart navigations to the system
 # browser. See `src/browse.rs`.
 tauri-plugin-opener = "2"
+tauri-plugin-notification = "2"
 # 2026-06-25 · Runtime Update v1 · Phase 1.
 # `reqwest` — manifest + bundle download. `sha2` — bundle hash verify.
 # `flate2` + `tar` — untar the .tar.gz bundle. `dirs` — ~/Library/AppSupport

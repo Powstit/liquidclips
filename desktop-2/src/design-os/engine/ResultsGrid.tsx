@@ -242,7 +242,11 @@ export function ResultsGrid({
           <ClipQuickScheduleDrawer
             open={scheduleClip !== null}
             onClose={() => setScheduleClip(null)}
-            clip={scheduleClip ? { idx: scheduleClip.idx, title: scheduleClip.title } : null}
+            clip={scheduleClip ? {
+              idx: scheduleClip.idx,
+              title: scheduleClip.title,
+              outputPath: scheduleClip.vertical_path ?? scheduleClip.cut_path,
+            } : null}
             projectSlug={project.slug}
             onScheduled={() => {
               setScheduleClip(null);

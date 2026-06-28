@@ -12,6 +12,11 @@ import { Drawer, GlassCard } from "../components";
 import { AccountChipState } from "../export/AccountChipState";
 import type { TargetAccount } from "../export/types";
 import type { ScheduledJob } from "../state/useSchedule";
+import {
+  platformLabel,
+  startAssistedHandoff,
+  type AssistedScheduleRecord,
+} from "./assistedSchedule";
 import "./ScheduleJobDrawer.css";
 
 export interface ScheduleJobDrawerProps {
@@ -53,7 +58,7 @@ export function ScheduleJobDrawer({
   job, open, onClose, onReschedule, onCancel, onRetry, hideBrand,
 }: ScheduleJobDrawerProps) {
   const [localTime, setLocalTime] = useState<string>("");
-  const [working, setWorking] = useState<"reschedule" | "cancel" | "retry" | null>(null);
+  const [working, setWorking] = useState<"reschedule" | "cancel" | "retry" | "handoff" | null>(null);
 
   /* Reset the input every time the drawer opens on a new job so it shows
    * the job's actual scheduled time (not a stale value from a prior open). */
@@ -67,7 +72,7 @@ export function ScheduleJobDrawer({
       <Drawer
         open={false}
         onClose={onClose}
-        eyebrow="Schedule"
+        eyebrow="Posting reminder"
         title=""
         width={460}
         id="schedule-job-drawer"
@@ -106,13 +111,23 @@ export function ScheduleJobDrawer({
     try { await onRetry(job.id); } finally { setWorking(null); }
   };
 
+  const handleHandoff = async () => {
+    if (working || job.deliveryMode !== "assisted" || !job.outputPath) return;
+    setWorking("handoff");
+    try {
+      await startAssistedHandoff(job as AssistedScheduleRecord);
+    } finally {
+      setWorking(null);
+    }
+  };
+
   return (
     <Drawer
       open={open}
       onClose={onClose}
       dirty={dirty}
       onDirtyClose={onClose}
-      eyebrow="Schedule"
+      eyebrow={job.deliveryMode === "assisted" ? "Assisted posting" : "Schedule"}
       title={job.clipTitle}
       width={460}
       id="schedule-job-drawer"
@@ -181,10 +196,32 @@ export function ScheduleJobDrawer({
           </GlassCard>
         )}
 
+        {job.deliveryMode === "assisted" && job.outputPath && !isCancelled && (
+          <GlassCard density="default" className="lc-sjd-handoff">
+            <div className="lc-sjd-handoff-copy">
+              <span className="lc-sjd-caption-eb">Assisted posting</span>
+              <p className="lc-sjd-caption-body">
+                Junior opens {platformLabel(job.platform)}, copies your caption,
+                and reveals the video. You choose the file and press Post.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="lc-sjd-btn lc-sjd-btn-handoff"
+              onClick={handleHandoff}
+              disabled={working !== null}
+            >
+              {working === "handoff" ? "Preparing…" : `Open ${platformLabel(job.platform)} handoff`}
+            </button>
+          </GlassCard>
+        )}
+
         {/* Reschedule control */}
         {!isCancelled && job.status !== "posted" && (
           <div className="lc-sjd-resched">
-            <label htmlFor="lc-sjd-time" className="lc-sjd-resched-eb">Scheduled time</label>
+            <label htmlFor="lc-sjd-time" className="lc-sjd-resched-eb">
+              {job.deliveryMode === "assisted" ? "Reminder time" : "Scheduled time"}
+            </label>
             <input
               id="lc-sjd-time"
               type="datetime-local"
@@ -199,7 +236,7 @@ export function ScheduleJobDrawer({
               onClick={handleReschedule}
               disabled={!dirty || working !== null}
             >
-              {working === "reschedule" ? "Saving…" : "Reschedule"}
+              {working === "reschedule" ? "Saving…" : job.deliveryMode === "assisted" ? "Move reminder" : "Reschedule"}
             </button>
           </div>
         )}

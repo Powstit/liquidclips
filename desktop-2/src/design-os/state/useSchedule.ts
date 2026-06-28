@@ -28,6 +28,7 @@ import {
 } from "../engine/sidecar-stub";
 import { useChannels } from "./useChannels";
 import { useTierCaps } from "./useTierCaps";
+import { subscribeAssistedSchedule } from "../schedule/assistedSchedule";
 
 export interface ScheduleApi {
   /** Raw list as returned by the sidecar (newest createdAt first). */
@@ -49,7 +50,7 @@ export interface ScheduleApi {
   /** Last error from a list/schedule/cancel/reschedule/retry call. */
   error: string | null;
   /** Where the last list resolved from · drives the route honesty pill. */
-  source: "real-rpc" | "real-http" | "mock";
+  source: "real-rpc" | "real-http" | "assisted-local";
   /* ---- Actions ---- */
   scheduleClip: (p: ScheduleClipParams) => Promise<ScheduledJob[]>;
   cancelJob: (id: string) => Promise<boolean>;
@@ -80,7 +81,7 @@ export function useSchedule(): ScheduleApi {
   const [jobs, setJobs] = useState<ScheduledJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [source, setSource] = useState<"real-rpc" | "real-http" | "mock">("mock");
+  const [source, setSource] = useState<"real-rpc" | "real-http" | "assisted-local">("assisted-local");
 
   const reload = useCallback(async () => {
     setError(null);
@@ -96,6 +97,7 @@ export function useSchedule(): ScheduleApi {
   }, []);
 
   useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => subscribeAssistedSchedule(() => { void reload(); }), [reload]);
 
   /* ============================================================
      Derived views

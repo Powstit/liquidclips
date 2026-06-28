@@ -25,7 +25,7 @@ export interface ClipQuickScheduleDrawerProps {
   open: boolean;
   onClose: () => void;
   /** Clip context · ScheduleFromExportDrawer expects `{ idx, title }`. */
-  clip: { idx: number; title: string } | null;
+  clip: { idx: number; title: string; outputPath?: string | null } | null;
   /** Project slug · falls into the new ScheduledJob.projectSlug field. */
   projectSlug: string;
   /** Hide brand badges (Clipper). */

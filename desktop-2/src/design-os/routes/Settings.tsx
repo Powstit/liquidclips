@@ -74,7 +74,10 @@ function inTauri(): boolean {
 }
 
 /** Customer-facing availability, without exposing implementation modes. */
-function sourceToHonestyLabel(s: "real-rpc" | "real-http" | "mock"): "Live" | "Unavailable" {
+function sourceToHonestyLabel(
+  s: "real-rpc" | "real-http" | "mock" | "assisted-local",
+): "Live" | "Unavailable" | "On this Mac" {
+  if (s === "assisted-local") return "On this Mac";
   return s === "real-rpc" || s === "real-http" ? "Live" : "Unavailable";
 }
 
@@ -475,7 +478,7 @@ function SettingsBody() {
                 <SettingsRow
                   label="Schedule"
                   value={sourceToHonestyLabel(schedule.source)}
-                  tone={schedule.source === "mock" ? "muted" : "live"}
+                  tone="live"
                   mono
                 />
                 <SettingsRow
