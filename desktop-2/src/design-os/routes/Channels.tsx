@@ -28,25 +28,21 @@ import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { presets } from "../motion";
 import { ChannelsGrid, PlanLimitStrip } from "../channels";
 import { BakeErrorStrip } from "../engine/BakeErrorStrip";
-import { useRuntimeInfo } from "../engine/runtimeInfo";
 import { useTierCaps } from "../state/useTierCaps";
 import { useChannels } from "../state/useChannels";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
-import { ROUTE_HERO } from "../copy/copyMap";
 import "./SimPage.css";
 import "./Channels.css";
 
 function ChannelsBody() {
   const session = useEngineSession();
-  const runtime = useRuntimeInfo();
   const tier = useTierCaps();
   const channels = useChannels();
   useKadeFromSession("channels");
 
   const spec = ROUTE_REGISTRY["channels"];
-  const hero = ROUTE_HERO["channels"];
 
   // BUG-043 · single honest signal for the entire surface. When source
   // is "mock" the customer is told (visibly, in EVERY build, not just
@@ -62,7 +58,7 @@ function ChannelsBody() {
       kadePlacement={spec.kadePlacement}
     >
       <fm.div
-        className="sim-stage"
+        className="sim-stage lc-channels-stage"
         data-testid="channels-stage"
         data-channels-source={channels.source}
         data-channels-connected-count={String(channels.connectedCount)}
@@ -70,15 +66,14 @@ function ChannelsBody() {
         initial="initial"
         animate="animate"
       >
-        <fm.div
-          className="sim-welcome"
-          data-kade-anchor
-          variants={presets.staggerContainer}
-          initial="initial"
-          animate="animate"
-        >
-          <fm.span className="sim-eb" variants={presets.staggerItem}>
-            {hero.eyebrow}
+        <div className="lc-route-head" data-kade-anchor data-route-title="Channels">
+          <div className="lc-channels-heading">
+            <span className="lc-route-head-eb">Channels</span>
+            <span className="lc-channels-heading-copy">
+              Connect publishing accounts and monitor their health.
+            </span>
+          </div>
+          <div className="lc-route-head-pills">
             {!isMockSource ? (
               <span
                 data-testid="channels-source-pill"
@@ -99,23 +94,9 @@ function ChannelsBody() {
                 Backend offline · preview only
               </span>
             )}
-            {/* keep the runtime-mode hint as a secondary cue when relevant */}
-            {isMockSource && runtime.mode === "mock" && (
-              <span className="lc-runtime-tag" style={{ opacity: 0.65 }} title="Vite preview runtime.">
-                Studio preview
-              </span>
-            )}
             <span className="lc-channels-tier-tag">{tier.tier.toUpperCase()}</span>
-          </fm.span>
-          <fm.h1 className="sim-h1" variants={presets.staggerItem}>
-            {hero.h1}
-          </fm.h1>
-          <fm.p className="sim-sub" variants={presets.staggerItem}>
-            {isMockSource
-              ? "Channels backend not reachable in this preview. Install the desktop app or connect a backend to manage real account connections — no fake-connected state is shown here."
-              : hero.sub}
-          </fm.p>
-        </fm.div>
+          </div>
+        </div>
 
         {/* BUG-043 · honest empty-state banner above the grid when source=mock.
             The grid below still mounts but renders empty platform sections. */}
@@ -127,9 +108,8 @@ function ChannelsBody() {
           >
             <span className="lc-cg-safe-eb">No connected channels</span>
             <p style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,.66)" }}>
-              The /channels endpoint isn't reachable from this build. You can
-              clip and export today; account connection lands when the
-              backend is wired.
+              Publishing setup is unavailable right now. You can still create
+              and export clips; reconnect before adding an account.
             </p>
           </div>
         )}

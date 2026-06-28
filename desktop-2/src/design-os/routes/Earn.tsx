@@ -36,7 +36,6 @@ import { bus } from "../bridge";
 import { openSmart } from "../../lib/openSmart";
 import { presets } from "../motion";
 import { BakeErrorStrip } from "../engine/BakeErrorStrip";
-import { useRuntimeInfo } from "../engine/runtimeInfo";
 import { useTierCaps } from "../state/useTierCaps";
 import { useRewardClips } from "../state/useRewardClips";
 import { useEarnSummary } from "../state/useEarnSummary";
@@ -60,7 +59,6 @@ import "./Earn.css";
 
 function EarnBody() {
   const session = useEngineSession();
-  const runtime = useRuntimeInfo();
   const tier = useTierCaps();
   const clips = useRewardClips();
   const earn = useEarnSummary();
@@ -81,7 +79,7 @@ function EarnBody() {
       kadePlacement="helper-right"
     >
       <fm.div
-        className="sim-stage"
+        className="sim-stage lc-earn-stage"
         data-testid="earn-stage"
         data-earn-source={clips.source}
         data-earn-clip-count={String(clips.clips.length)}
@@ -99,7 +97,12 @@ function EarnBody() {
             dashboard · Whop's payout entry point) stays visible without
             the landing-page hero. */}
         <div className="lc-route-head" data-kade-anchor data-route-title={hero.eyebrow}>
-          <span className="lc-route-head-eb">{hero.eyebrow}</span>
+          <div className="lc-earn-heading">
+            <span className="lc-route-head-eb">Earn</span>
+            <span className="lc-earn-heading-copy">
+              Track rewards, approvals, payouts, and referral income.
+            </span>
+          </div>
           <div className="lc-route-head-pills">
             {!honestyTag ? (
               <span
@@ -119,11 +122,6 @@ function EarnBody() {
                 style={{ textTransform: "uppercase", letterSpacing: ".15em" }}
               >
                 Backend offline · preview only
-              </span>
-            )}
-            {honestyTag && runtime.mode === "mock" && (
-              <span className="lc-runtime-tag" style={{ opacity: 0.65 }} title="Vite preview runtime.">
-                Studio preview
               </span>
             )}
             <span className="lc-earn-tier-tag">{tier.tier.toUpperCase()}</span>
@@ -177,12 +175,16 @@ function EarnBody() {
               No earnings yet
             </span>
             <span style={{ display: "block", marginTop: 6, fontSize: 12, color: "rgba(255,255,255,.66)" }}>
-              The /me/reward-clips endpoint isn't reachable from this build.
-              Real earnings, payouts, and the affiliate leaderboard appear here
-              once you connect a backend. No fake balance is shown.
+              Earnings could not be refreshed. Check your connection and try
+              again; the balances below remain at zero until live data returns.
             </span>
           </div>
         )}
+
+        {/* Put the user's numbers before promotional or operational modules. */}
+        <EngineErrorBoundary route="earn" component="EarnSummaryStrip">
+          <EarnSummaryStrip summary={earn.summary} />
+        </EngineErrorBoundary>
 
         {/* 2026-06-24 · Wallet panel · honest pipeline-money breakdown.
          *  Replaces the "Withdraw $X" silent-success risk · sits ABOVE the
@@ -193,21 +195,12 @@ function EarnBody() {
           <WalletPanel />
         </EngineErrorBoundary>
 
-        {/* 2026-06-23 · $50 Sponsored Reward module · IG-SOV-2.2-001
-         *  Renders the activation-bonus state machine below the wallet so
-         *  the carrot context is still right there for clippers who haven't
-         *  qualified yet. SOVEREIGN-2.2 marker · backend wires when
-         *  Sovereign 2.2 lands. */}
+        {/* Sponsored reward follows the personal money dashboard. */}
         <EngineErrorBoundary route="earn" component="SponsoredRewardModule">
           <SponsoredRewardModule
             viewCount={Math.max(0, earn.summary.totalClicks ?? 0)}
             referralCount={0}
           />
-        </EngineErrorBoundary>
-
-        {/* Summary strip · 5 tiles · DSEG7 totals. */}
-        <EngineErrorBoundary route="earn" component="EarnSummaryStrip">
-          <EarnSummaryStrip summary={earn.summary} />
         </EngineErrorBoundary>
 
         {/* Filter chips. */}

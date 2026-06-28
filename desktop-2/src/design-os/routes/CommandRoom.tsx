@@ -94,6 +94,7 @@ function HomeContent() {
         {/* Slot 1 · Create */}
         <fm.div variants={presets.staggerItem} data-testid="home-tile-1">
           <CockpitTile
+            testId="home-command-create"
             label={isAgency ? "Create Campaign" : "Create Clips"}
             hint={isAgency ? "post a paid skill" : "paste a video URL"}
             icon={<IconPlus />}
@@ -104,6 +105,7 @@ function HomeContent() {
         {/* Slot 2 · Manage / My Clips */}
         <fm.div variants={presets.staggerItem} data-testid="home-tile-2">
           <CockpitTile
+            testId="home-command-library"
             label={isAgency ? "Manage Campaigns" : "My Clips"}
             hint={isAgency ? "status and invites" : "everything you've made"}
             icon={isAgency ? <IconManage /> : <IconLibrary />}
@@ -114,6 +116,7 @@ function HomeContent() {
         {/* Slot 3 · Find Rewards / Review Submissions */}
         <fm.div variants={presets.staggerItem} data-testid="home-tile-3">
           <CockpitTile
+            testId="home-command-rewards"
             label={isAgency ? "Review Submissions" : "Find Rewards"}
             hint={isAgency ? "approve clippers' work" : "browse paid Whop skills"}
             icon={isAgency ? <IconReview /> : <IconReward />}
@@ -124,6 +127,7 @@ function HomeContent() {
         {/* Slot 4 · Analytics / Track Earnings */}
         <fm.div variants={presets.staggerItem} data-testid="home-tile-4">
           <CockpitTile
+            testId="home-command-earn"
             label={isAgency ? "Analytics" : "Track Earnings"}
             hint={isAgency ? "how your campaigns perform" : "see what you've earned"}
             icon={isAgency ? <IconAnalytics /> : <IconCoins />}

@@ -38,8 +38,16 @@
   background: rgba(255, 26, 140, .08);
   color: #ff66b8;
   cursor: pointer;
-  margin-top: 8px;
+  margin-top: 0;
   transition: all 160ms ease;
+}
+
+@media (max-width: 760px) {
+  .lc-earn-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
 }
 .lc-earn-journey-link:hover {
   background: rgba(255, 26, 140, .15);
@@ -56,4 +64,27 @@
   text-transform: uppercase;
   color: var(--dim, #86837e);
   margin-top: 2px;
+}
+.lc-earn-stage {
+  gap: 14px;
+  padding: 0 clamp(16px, 2.5vw, 32px) 72px;
+}
+
+.lc-earn-stage .lc-route-head {
+  justify-content: space-between;
+  margin-bottom: 0;
+}
+
+.lc-earn-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.lc-earn-heading-copy {
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.4;
 }

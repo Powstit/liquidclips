@@ -126,7 +126,7 @@ function AddAccountTile({ platform }: { platform: Platform }) {
         className="lc-cg-add-btn"
         disabled={isOffline}
         aria-disabled={isOffline}
-        title={isOffline ? "Channels backend not reachable in this preview" : undefined}
+        title={isOffline ? "Publishing setup is unavailable right now" : undefined}
         onClick={() => {
           if (isOffline) return;
           void channels.connect(platform);
@@ -134,7 +134,7 @@ function AddAccountTile({ platform }: { platform: Platform }) {
         aria-label={`Connect a new ${PLATFORM_DISPLAY[platform]} account`}
       >
         <span className="lc-cg-add-plus" aria-hidden="true">+</span>
-        <span className="lc-cg-add-eb">{isOffline ? "Coming soon" : "Add account"}</span>
+        <span className="lc-cg-add-eb">{isOffline ? "Publishing setup" : "Add account"}</span>
         <span className="lc-cg-add-body">{PLATFORM_DISPLAY[platform]}</span>
       </button>
     </GlassCard>

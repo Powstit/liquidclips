@@ -398,6 +398,7 @@ function SponsoredRewardCta({
           data-cta-kind="keep-clipping"
           onClick={() => { /* no-op · informational */ }}
           disabled
+          title="Reach 5,000 authenticated tracked views to unlock the next step"
         >
           Keep clipping → views unlock at 5,000
         </button>

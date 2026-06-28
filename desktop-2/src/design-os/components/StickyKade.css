@@ -42,6 +42,51 @@
   height: clamp(160px, 18vw, 240px);
 }
 
+/* Home keeps Kade in the chrome, above the command grid. The previous
+   helper position sat directly over the Whop CTA and obscured the first
+   command. Kade remains prominent without becoming an input blocker. */
+.lc-app[data-route="home"] .lc-sticky-kade.is-helper-right {
+  display: none;
+}
+
+/* Dense tools already carry Kade in the top HUD and clip artwork. A second
+   full-size helper obscures controls, so keep the working canvas clear. */
+.lc-app[data-route="workstation"] .lc-sticky-kade.is-helper-right {
+  display: none;
+}
+
+/* Campaign discovery benefits from a guide, but the cards remain primary. */
+.lc-app[data-route="campaigns"] .lc-sticky-kade.is-helper-right {
+  right: 34px;
+  top: 106px;
+  width: 104px;
+  height: 104px;
+}
+
+.lc-app[data-route="earn"] .lc-sticky-kade.is-helper-right {
+  display: none;
+}
+
+.lc-app[data-route="channels"] .lc-sticky-kade.is-helper-right,
+.lc-app[data-route="community"] .lc-sticky-kade.is-helper-right {
+  right: 34px;
+  top: 106px;
+  width: 104px;
+  height: 104px;
+}
+
+.lc-app[data-route="settings"] .lc-sticky-kade.is-helper-right {
+  display: none;
+}
+
+.lc-app[data-route="schedule"] .lc-sticky-kade.is-helper-right,
+.lc-app[data-route="clipper"] .lc-sticky-kade.is-helper-right {
+  right: 34px;
+  top: 106px;
+  width: 104px;
+  height: 104px;
+}
+
 /* Bottom-right: legacy/default — used by Stop Pages and dense ops. */
 .lc-sticky-kade.is-bottom-right {
   right: clamp(20px, 4vw, 80px);

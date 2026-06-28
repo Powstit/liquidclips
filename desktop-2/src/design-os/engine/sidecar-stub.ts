@@ -1914,17 +1914,7 @@ const communityState: {
   /** When true → the route surfaces "Studio preview · mock" tag. */
   isMockFallback: boolean;
 } = {
-  channels: [
-    { id: "cc-1", slug: "announcements",        name: "Announcements",       purpose: "Drops, payouts, rule changes.",     whop_channel_id: "chat_feed_anc_1", required_tier: "free",      business_unit: "liquid_clips", mission_lane: null,       is_admin_only: true,  is_locked_preview_enabled: true, section: "announcements", sort_order: 0 },
-    { id: "cc-2", slug: "free-clipper-lobby",   name: "Free Clipper Lobby",  purpose: "Get started · ask anything.",       whop_channel_id: "chat_feed_lob_2", required_tier: "free_paid", business_unit: "liquid_clips", mission_lane: "training", is_admin_only: false, is_locked_preview_enabled: true, section: "free_lobby",    sort_order: 0 },
-    { id: "cc-3", slug: "premium-rewards-hq",   name: "Premium Rewards HQ",  purpose: "Bounty drops + payouts.",           whop_channel_id: "chat_feed_prh_3", required_tier: "paid",      business_unit: "liquid_clips", mission_lane: "main",     is_admin_only: false, is_locked_preview_enabled: true, section: "paid_core",     sort_order: 0 },
-    { id: "cc-4", slug: "affiliate-growth-room",name: "Affiliate Growth Room", purpose: "Tactics, tear-downs, asks.",      whop_channel_id: "chat_feed_agr_4", required_tier: "paid",      business_unit: "liquid_clips", mission_lane: "main",     is_admin_only: false, is_locked_preview_enabled: true, section: "paid_core",     sort_order: 10 },
-    { id: "cc-5", slug: "brand-clip-lane-a",    name: "Brand · Clip Lane A",  purpose: "Brand-led clip lane preview.",        whop_channel_id: "chat_feed_brand_a", required_tier: "paid",   business_unit: "brand_lane_a", mission_lane: "brand",    is_admin_only: false, is_locked_preview_enabled: true, section: "mission",       sort_order: 0 },
-    { id: "cc-6", slug: "viral-reaction-missions", name: "Viral Reaction Missions", purpose: "Fast reactions to trending posts.", whop_channel_id: null, required_tier: "paid",      business_unit: "liquid_clips", mission_lane: "main",     is_admin_only: false, is_locked_preview_enabled: true, section: "mission",       sort_order: 10 },
-    { id: "cc-7", slug: "brand-clip-lane-b",    name: "Brand · Clip Lane B", purpose: "Brand-led clip lane preview.",      whop_channel_id: "chat_feed_brand_b", required_tier: "paid",     business_unit: "brand_lane_b", mission_lane: "brand",    is_admin_only: false, is_locked_preview_enabled: true, section: "mission",       sort_order: 20 },
-    { id: "cc-8", slug: "brand-clip-lane-c",    name: "Brand · Clip Lane C", purpose: "Brand-led clip lane preview.",      whop_channel_id: null,                required_tier: "paid",     business_unit: "brand_lane_c", mission_lane: "brand",    is_admin_only: false, is_locked_preview_enabled: true, section: "mission",       sort_order: 30 },
-    { id: "cc-9", slug: "sponsor-campaigns",    name: "Sponsor Campaigns",   purpose: "Paid sponsor lanes · monthly drops.", whop_channel_id: "chat_feed_spc_9", required_tier: "paid",     business_unit: "sponsors",     mission_lane: "sponsor",  is_admin_only: false, is_locked_preview_enabled: true, section: "mission",       sort_order: 40 },
-  ],
+  channels: [],
   viewerTier: "pro",
   /* BUG-045 · leaderboard cache. Initialized empty so mock-mode customers
    * never see fake top-earner handles (@maya.clips · $12,420 · 88 refs,
@@ -1941,22 +1931,7 @@ const communityState: {
    * fidelity. Real backend already exposes admin POST/PATCH for banners
    * (junior-backend/app/routes/admin.py:1819). A future public GET swaps
    * this seed without UI changes. */
-  banners: [
-    {
-      id: "ban-1",
-      title: "Premium Rewards · weekly drop",
-      subtitle: "New bounties land every Monday at 09:00 PT. Top earners get first pick.",
-      imageUrl: null,
-      ctaText: "Open Rewards HQ",
-      ctaUrl: "https://whop.com/c/chat_feed_prh_3",
-      placement: "community_top",
-      targetTier: null,
-      priority: 100,
-      startsAt: null,
-      endsAt: null,
-      isActive: true,
-    },
-  ] as BannerItem[],
+  banners: [] as BannerItem[],
   isMockFallback: true,
 };
 

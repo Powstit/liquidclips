@@ -88,9 +88,9 @@
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
-  gap: 16px;
-  padding: 14px 18px;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 12px;
+  padding: 12px 14px;
   /* Bottom breathing room above the fixed CockpitDock. */
   padding-bottom: calc(var(--lc-dock-h, 360px) + 16px);
   box-sizing: border-box;

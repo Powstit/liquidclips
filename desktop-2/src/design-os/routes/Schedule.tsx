@@ -32,13 +32,11 @@ import { DesignOSAppShell } from "../components/AppShell";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { presets } from "../motion";
 import { BakeErrorStrip } from "../engine/BakeErrorStrip";
-import { useRuntimeInfo } from "../engine/runtimeInfo";
 import { useTierCaps } from "../state/useTierCaps";
 import { useSchedule } from "../state/useSchedule";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
-import { ROUTE_HERO } from "../copy/copyMap";
 import {
   WeekStrip,
   ScheduleFilters,
@@ -59,12 +57,10 @@ const FILTER_LABEL: Record<ScheduleFilterKey, string> = {
 
 function ScheduleBody() {
   const session = useEngineSession();
-  const runtime = useRuntimeInfo();
   const tier = useTierCaps();
   useKadeFromSession("schedule");
 
   const spec = ROUTE_REGISTRY["schedule"];
-  const hero = ROUTE_HERO["schedule"];
 
   const sched = useSchedule();
   const [filter, setFilter] = useState<ScheduleFilterKey>("all");
@@ -109,7 +105,7 @@ function ScheduleBody() {
       kadePlacement={spec.kadePlacement}
     >
       <fm.div
-        className="sim-stage"
+        className="sim-stage lc-schedule-stage"
         variants={presets.routeEnter}
         initial="initial"
         animate="animate"
@@ -118,8 +114,13 @@ function ScheduleBody() {
             land in the first viewport. Tier + cap pills survive as
             compact status; 80px H1 + sub-copy cut (route identity is in
             TopHud + ConsoleNav). */}
-        <div className="lc-route-head" data-kade-anchor>
-          <span className="lc-route-head-eb">{hero.eyebrow}</span>
+        <div className="lc-route-head" data-kade-anchor data-route-title="Schedule">
+          <div className="lc-schedule-heading">
+            <span className="lc-route-head-eb">Schedule</span>
+            <span className="lc-schedule-heading-copy">
+              Review queued posts and publishing results.
+            </span>
+          </div>
           <div className="lc-route-head-pills">
             {sched.source !== "mock" ? (
               <span
@@ -128,9 +129,9 @@ function ScheduleBody() {
               >
                 Live · backend
               </span>
-            ) : runtime.mode === "mock" && (
-              <span className="lc-runtime-tag" title="Mock schedule queue · pass a license JWT via localStorage.lc.license.jwt.v1 (or run inside Tauri) to flip to real-http.">
-                Studio preview
+            ) : (
+              <span className="lc-runtime-tag" title="Scheduling service is unavailable.">
+                Scheduling unavailable
               </span>
             )}
             <span className="lc-schedule-tier-tag">{tier.tier.toUpperCase()}</span>
