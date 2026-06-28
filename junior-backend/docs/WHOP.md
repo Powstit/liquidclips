@@ -89,7 +89,7 @@ In `routes/webhooks_whop.py:PLAN_TIER_BY_ID`:
 |---|---|---|---|---|
 | `plan_qe8AFXj9J3SWi` | Liquid Clips Pro | jnr Solo *(legacy label)* | `solo` | $29.99/mo, 30-day trial |
 | `plan_dhssNse4FfPlI` | Liquid Clips Growth | jnr Pro *(legacy label)* | `growth` | $99.99/mo |
-| `plan_BvDBrtybhbxNg` | Liquid Clips Agency | jnr Agency | `autopilot` *(→ agency)* | $199.99/mo |
+| `plan_BvDBrtybhbxNg` | Liquid Clips Agency | jnr Agency | `autopilot` *(→ agency)* | $500/mo |
 | `plan_OieNCPrvkw9U4` | Liquid Clips Founder Lifetime | Founder Lifetime | `autopilot` + `founder_flag` | $500 one-time |
 
 Title-fallback (`PLAN_TIER_BY_TITLE`) handles three brand vocabularies in

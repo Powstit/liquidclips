@@ -234,7 +234,7 @@ export default async function StartPage() {
                 <h3>Direct sign-up (Google + Stripe)</h3>
                 <p>
                   Sign in with Google. 100 free clip credits on the Starter Pass. Upgrade to Solo
-                  ($29.99/mo), Growth ($99.99/mo), or Agency ($199.99/mo). Billing managed
+                  ($29.99/mo), Growth ($99.99/mo), or Agency ($500/mo). Billing managed
                   by Stripe on{" "}
                   <Link href={accountUrl + "/dashboard"} className="inline-link">
                     your dashboard

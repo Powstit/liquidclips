@@ -84,7 +84,7 @@ const PLANS: Plan[] = [
     slug: "agency",
     name: "Agency",
     tagline: "For client accounts and white-label teams.",
-    priceUsd: 199.99,
+    priceUsd: 500,
     features: [
       { label: "Everything in Pro", built: true },
       { label: "25 social accounts included", built: true },

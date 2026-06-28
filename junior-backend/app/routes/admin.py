@@ -2114,8 +2114,8 @@ _TIER_PRICE_CENTS = {
     "channel": 9999,     # legacy alias for Growth
     "pro": 9999,         # legacy direct-billing value
     "growth": 9999,
-    "autopilot": 19999,  # legacy alias for Agency
-    "agency": 19999,
+    "autopilot": 50000,  # legacy alias for Agency
+    "agency": 50000,
 }
 
 

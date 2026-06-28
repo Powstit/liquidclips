@@ -357,7 +357,7 @@ export const CTA = {
   upgrade_solo:      "Upgrade to Pro · $29/mo",
   upgrade_pro:       "Upgrade to Pro · $29/mo",
   upgrade_growth:    "Upgrade to Growth · $79/mo",
-  upgrade_agency:    "Upgrade to Agency · $199.99/mo",
+  upgrade_agency:    "Upgrade to Agency · $500/mo",
   open_external:     "Open on Whop ↗",
   back_to_home:      "Back to Command Room",
 } as const;
@@ -422,7 +422,7 @@ export const UPGRADE = {
   soloPitch:        "Pro · unlimited clips, watermark off, $29/mo.",
   proPitch:         "Pro · split-screen, Studio Engine, faster export, $29/mo.",
   growthPitch:      "Growth · hosted AI lane, priority queue, 750 posts/mo, $79/mo.",
-  agencyPitch:      "Agency · run campaigns, multi-brand, analytics rollups, $199.99/mo.",
+  agencyPitch:      "Agency · run campaigns, multi-brand, analytics rollups, $500/mo.",
 } as const;
 
 /* ============================================================

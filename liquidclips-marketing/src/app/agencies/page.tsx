@@ -107,7 +107,7 @@ const faqs = [
   },
   {
     q: "What does the Agency tier cost?",
-    a: "$199.99/mo. Includes 25 connected social accounts, every clipper feature, and the campaign creation flow. See the full comparison on the pricing page.",
+    a: "$500/mo. Includes 25 connected social accounts, every clipper feature, and the campaign creation flow. See the full comparison on the pricing page.",
   },
 ];
 
@@ -234,7 +234,7 @@ export default function AgenciesPage() {
               AGENCY TIER
             </div>
             <h2 className="section-title" style={{ marginTop: 22, textAlign: "center" }}>
-              $199.99/mo. Everything in the workbench, plus the campaign console.
+              $500/mo. Everything in the workbench, plus the campaign console.
             </h2>
             <p className="section-copy" style={{ marginTop: 18, textAlign: "center", maxWidth: 640, marginLeft: "auto", marginRight: "auto" }}>
               25 connected social accounts, unlimited campaigns, the approval queue, the metrics

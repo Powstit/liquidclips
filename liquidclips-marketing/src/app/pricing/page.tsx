@@ -21,7 +21,7 @@ import { SITE_URL } from "@/lib/env";
 export const metadata: Metadata = {
   title: "Pricing — Liquid Clips",
   description:
-    "Free, Pro $29.99, Growth $99.99, Agency $199.99 per month. Local-first clipping for one creator or a whole team. Cancel anytime. USD billed monthly via Whop.",
+    "Free, Pro $29.99, Growth $99.99, Agency $500 per month. Local-first clipping for one creator or a whole team. Cancel anytime. USD billed monthly via Whop.",
   alternates: { canonical: "/pricing" },
   keywords: [
     "Liquid Clips pricing",
@@ -91,7 +91,7 @@ const PLANS: Plan[] = [
   {
     id: "agency",
     name: "Agency",
-    priceUsd: 199.99,
+    priceUsd: 500,
     tagline: "Content-reward campaigns and team accounts.",
     highlights: [
       "Everything in Growth",
@@ -167,7 +167,7 @@ export default function PricingPage() {
       "@type": "AggregateOffer",
       priceCurrency: "USD",
       lowPrice: "0",
-      highPrice: "199.99",
+      highPrice: "500",
       offerCount: PLANS.length,
       offers: PLANS.map((p) => ({
         "@type": "Offer",
