@@ -39,16 +39,21 @@ class User(Base):
     # Locked at signup from the jnr_ref cookie. Never overwritten — see oauth-billing.md §6.
     affiliate_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
 
-    # This user's OWN Whop affiliate ID — cached on first /me/affiliate call so
-    # paid-conversion webhooks can resolve `buyer.affiliate_id → referrer user`
-    # without an extra Whop API call per webhook. Populated lazily by
-    # build_affiliate_me_response when Whop returns the affiliate record.
+    # This user's OWN Whop affiliate ID. Provisioned eagerly at signup and
+    # backfilled by /me/affiliate after transient Whop failures.
     whop_affiliate_id: Mapped[str | None] = mapped_column(String, nullable=True, unique=True, index=True)
+    # Whop's checkout embed expects the affiliate CODE (normally username),
+    # not the aff_* record id. Keep both so legacy aff_* links and current
+    # username links resolve to the same referrer.
+    whop_affiliate_code: Mapped[str | None] = mapped_column(String, nullable=True, unique=True, index=True)
 
     # Subscription state — trial | active | expired | refunded | canceled.
     subscription_status: Mapped[str] = mapped_column(String, nullable=False, default="trial")
     trial_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     paid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # First successful paid invoice. Used by the affiliate 7-day good-standing
+    # hold; renewals never move this timestamp.
+    first_paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
     # Starter pass — lifetime free clip-EXPORT counter (Junior-enforced, not Whop).
     # Free/starter users get 100 successful exports; #101 requires Solo. Paid tiers
@@ -109,6 +114,8 @@ class User(Base):
     tiktok_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     partner_unlocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     whop_commission_override_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    affiliate_qualified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    affiliate_commission_override_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
 
     # 2026-06-24 · Admin HQ Management Gap — soft ban marker. NULL =
     # not banned. A future date = banned until that date. A far-future

@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from svix.webhooks import Webhook, WebhookVerificationError
 
@@ -506,6 +507,26 @@ def _seat_count(db: Session) -> int:
     return db.query(User).filter(User.founder_flag.is_(True)).count()
 
 
+def _reconcile_affiliate_commission_best_effort(
+    db: Session,
+    user: User,
+    *,
+    context: str,
+) -> None:
+    try:
+        from app.services.affiliate_commission import reconcile_user
+
+        reconcile_user(db, user)
+    except Exception:  # noqa: BLE001
+        import logging as _logging
+
+        _logging.getLogger("junior.webhooks").exception(
+            "affiliate commission reconcile failed for user=%s context=%s",
+            user.id,
+            context,
+        )
+
+
 def _handle_membership_invalid(db: Session, data: dict) -> None:
     user = _find_user_for_event(db, data)
     if not user:
@@ -519,6 +540,11 @@ def _handle_membership_invalid(db: Session, data: dict) -> None:
         _bump_referrer_counter(db, user, delta=-1)
     user.subscription_status = "expired"
     user.tier = "free"
+    _reconcile_affiliate_commission_best_effort(
+        db,
+        user,
+        context="membership_invalid",
+    )
 
     from app.clerk_sync import sync_clerk_metadata
     sync_clerk_metadata(user.clerk_id, tier="free", subscription_status="expired", founder=user.founder_flag)
@@ -660,6 +686,8 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
     # the first true trial→paid transition, never on a renewal of an already-
     # active subscription.
     was_paid_before = user.subscription_status == "active"
+    if not was_paid_before and user.first_paid_at is None:
+        user.first_paid_at = datetime.now(timezone.utc)
     # A successful payment is the trial→paid conversion: promote to "active" so the
     # 100 free-export cap lifts (true paid → unlimited entitlement).
     # Whop does not guarantee webhook ordering. If payment.succeeded arrives
@@ -691,6 +719,15 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
         subscription_status="active",
         founder=user.founder_flag,
         whop_user_id=user.whop_user_id,
+    )
+
+    # A paid Liquid Clips member is eligible to promote. In live mode this
+    # provisions their 30%-first-payment baseline overrides immediately;
+    # qualification upgrades the same overrides after the 7-day hold.
+    _reconcile_affiliate_commission_best_effort(
+        db,
+        user,
+        context="payment_succeeded",
     )
 
     # Admin alert — Daniel gets pinged on every successful invoice. First-paid
@@ -735,9 +772,7 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
         # service is idempotent and safe when conditions aren't met yet.
         # Re-resolve the referrer (lifecycle helper has its own lookup, no
         # shared object).
-        referrer = (
-            db.query(User).filter_by(whop_affiliate_id=user.affiliate_id).one_or_none()
-        )
+        referrer = _find_referrer_by_affiliate_token(db, user.affiliate_id)
         if referrer:
             from app.services.partner_unlock import try_unlock_partner
             try:
@@ -763,39 +798,43 @@ def _bump_referrer_counter(db: Session, buyer: User, *, delta: int) -> None:
     """
     if not buyer.affiliate_id:
         return
-    referrer = (
-        db.query(User).filter_by(whop_affiliate_id=buyer.affiliate_id).one_or_none()
-    )
+    referrer = _find_referrer_by_affiliate_token(db, buyer.affiliate_id)
     if not referrer:
         return
     current = referrer.referred_paid_subs or 0
     referrer.referred_paid_subs = max(0, current + delta)
 
 
-def _fire_affiliate_lifecycle_emails(db: Session, *, buyer_affiliate_id: str) -> None:
-    """Side-effect emails to the affiliate (the referrer) when one of their
-    referrals first converts to paid. Two emails, both deduped per-affiliate:
-      - first_paid_referral: any time their first referral pays
-      - affiliate_qualified: once they cross 2 paid referrals (50% unlock)
-
-    Wrapped in try/except so a logging or external-API failure here can never
-    block the webhook from acknowledging."""
-    try:
-        referrer = (
-            db.query(User).filter_by(whop_affiliate_id=buyer_affiliate_id).one_or_none()
+def _find_referrer_by_affiliate_token(db: Session, token: str | None) -> User | None:
+    """Resolve legacy aff_* ids and current Whop username affiliate codes."""
+    if not token:
+        return None
+    return (
+        db.query(User)
+        .filter(
+            or_(
+                User.whop_affiliate_id == token,
+                User.whop_affiliate_code == token,
+            )
         )
+        .one_or_none()
+    )
+
+
+def _fire_affiliate_lifecycle_emails(db: Session, *, buyer_affiliate_id: str) -> None:
+    """Send the deduped first-paid-referral message.
+
+    Qualification is owned by the 7-day commission reconciler and fires only
+    after Whop confirms every required override. Wrapped so mail/analytics
+    failures never block the webhook acknowledgment.
+    """
+    try:
+        referrer = _find_referrer_by_affiliate_token(db, buyer_affiliate_id)
         if not referrer or not referrer.email:
-            # Referrer not cached yet — they haven't viewed /me/affiliate. We
-            # can't email them this time; we'll get the next paid conversion
-            # after they engage with their dashboard.
+            # A legacy referrer may predate eager affiliate provisioning.
             return
 
-        from app.mailer import (
-            send_admin_affiliate_milestone,
-            send_affiliate_qualified,
-            send_first_paid_referral,
-        )
-        from app.routes.affiliate import QUALIFY_PAID_REFERRALS, _fetch_whop_affiliate
+        from app.mailer import send_admin_affiliate_milestone, send_first_paid_referral
         from app.routes.notifications import write_notification
 
         # First-paid-referral email — write_notification's dedup_key check is
@@ -819,33 +858,9 @@ def _fire_affiliate_lifecycle_emails(db: Session, *, buyer_affiliate_id: str) ->
                 milestone="first_paid_referral",
             )
 
-        # Qualification email — fires when the affiliate's live paid count
-        # reaches the threshold. Re-query Whop for the authoritative count
-        # since the dashboard cache could be stale.
-        aff = _fetch_whop_affiliate((referrer.email or "").strip().lower())
-        if not aff:
-            return
-        try:
-            paid_count = int(aff.get("active_members_count") or 0)
-        except (TypeError, ValueError):
-            paid_count = 0
-        if paid_count >= QUALIFY_PAID_REFERRALS:
-            qual_row = write_notification(
-                db,
-                user_id=referrer.id,
-                category="affiliate",
-                title="50% recurring unlocked.",
-                body="Two paid referrals confirmed. 50% recurring is now active on every customer you refer.",
-                priority="high",
-                external_dedup_key=f"affiliate-qualified-{referrer.id}",
-            )
-            if qual_row is not None:
-                send_affiliate_qualified(referrer.email)
-                send_admin_affiliate_milestone(
-                    affiliate_email=referrer.email,
-                    milestone="qualified_50_percent",
-                    note=f"active paid referrals = {paid_count}",
-                )
+        # Qualification is intentionally NOT fired here. The commission
+        # reconciler waits for two buyers to remain paid for 7 days, creates
+        # the Whop overrides, and only then sends the qualified notification.
     except Exception:  # noqa: BLE001
         import logging
         logging.getLogger("junior.webhooks").exception(
@@ -999,6 +1014,11 @@ def _handle_payment_refunded(db: Session, data: dict) -> None:
     user.tier = "free"
     user.subscription_status = "refunded"
     user.paid_until = None
+    _reconcile_affiliate_commission_best_effort(
+        db,
+        user,
+        context="payment_refunded",
+    )
 
     from app.clerk_sync import sync_clerk_metadata
     sync_clerk_metadata(user.clerk_id, tier="free", subscription_status="refunded", founder=user.founder_flag)

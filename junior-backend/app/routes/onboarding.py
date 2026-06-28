@@ -62,6 +62,8 @@ def _activate_pending(db: Session, user: User, pending: PendingWhopMembership) -
         whop_user_id=pending.whop_user_id, renewal_at=pending.renewal_period_end,
         paid=pending.paid,
     )
+    if pending.paid and user.first_paid_at is None:
+        user.first_paid_at = datetime.now(timezone.utc)
     pending.consumed_at = datetime.now(timezone.utc)
     founder = bool(pending.founder)
     if user.founder_flag and founder:

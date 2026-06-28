@@ -187,12 +187,21 @@ def _user_detail(db: Session, user: User) -> dict[str, Any]:
     lic = _latest_license(db, user.id)
     eff_tier = "autopilot" if is_admin else user.tier
     eff_founder = True if is_admin else user.founder_flag
+    from app.services.affiliate_commission import eligible_referral_count
+
     return {
         "backend_user_id": user.id,
         "clerk_id": user.clerk_id,
         "email": user.email,  # full email — single-user detail only
         "whop_user_id": user.whop_user_id,
         "affiliate_id": user.affiliate_id,
+        "whop_affiliate_id": user.whop_affiliate_id,
+        "whop_affiliate_code": user.whop_affiliate_code,
+        "referred_paid_subs": user.referred_paid_subs or 0,
+        "eligible_affiliate_referrals": eligible_referral_count(db, user),
+        "first_paid_at": _iso(user.first_paid_at),
+        "affiliate_qualified_at": _iso(user.affiliate_qualified_at),
+        "affiliate_commission_override_ids": list(user.affiliate_commission_override_ids or []),
         "raw_tier": user.tier,
         "raw_founder": user.founder_flag,
         "effective_tier": eff_tier,
@@ -744,7 +753,7 @@ def search_users(
     query: Annotated[str, Query(min_length=1)],
     limit: int = 50,
 ) -> dict[str, Any]:
-    """Search by email / clerk id / whop user id / backend id / affiliate id.
+    """Search by identity ids and inbound/outbound affiliate tokens.
     Substring match on email; exact-ish elsewhere. Returns masked list rows."""
     q = query.strip()
     like = f"%{q.lower()}%"
@@ -757,6 +766,8 @@ def search_users(
                 User.whop_user_id == q,
                 User.id == q,
                 User.affiliate_id == q,
+                User.whop_affiliate_id == q,
+                User.whop_affiliate_code == q,
             )
         )
         .order_by(User.created_at.desc())
