@@ -257,11 +257,12 @@ TIER_LIMITS: dict[str, dict[str, int]] = {
         "bulk_scheduling_rows":   1,
     },
     "solo": {
-        "channels_per_platform": 1,
-        "monthly_posts":          25,
-        "campaigns_per_brand":    1,
-        "clips_per_campaign":     10,
-        "bulk_scheduling_rows":   1,
+        # Stored Whop tier for the public Pro plan.
+        "channels_per_platform": 3,
+        "monthly_posts":          250,
+        "campaigns_per_brand":    5,
+        "clips_per_campaign":     50,
+        "bulk_scheduling_rows":   25,
     },
     "pro": {
         "channels_per_platform": 3,
@@ -269,6 +270,13 @@ TIER_LIMITS: dict[str, dict[str, int]] = {
         "campaigns_per_brand":    5,
         "clips_per_campaign":     50,
         "bulk_scheduling_rows":   25,
+    },
+    "growth": {
+        "channels_per_platform": 4,
+        "monthly_posts":          750,
+        "campaigns_per_brand":    10,
+        "clips_per_campaign":     100,
+        "bulk_scheduling_rows":   75,
     },
     "agency": {
         "channels_per_platform": 5,

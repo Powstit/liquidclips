@@ -21,7 +21,7 @@ import { SITE_URL } from "@/lib/env";
 export const metadata: Metadata = {
   title: "Pricing — Liquid Clips",
   description:
-    "Free, Solo $29.99, Growth $79.99, Agency $500 per month. Local-first clipping for one creator or a whole team. Cancel anytime. USD billed monthly via Stripe.",
+    "Free, Pro $29.99, Growth $99.99, Agency $199.99 per month. Local-first clipping for one creator or a whole team. Cancel anytime. USD billed monthly via Whop.",
   alternates: { canonical: "/pricing" },
   keywords: [
     "Liquid Clips pricing",
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     "agency clipping plan",
   ],
   openGraph: {
-    title: "Liquid Clips pricing — Free, Solo, Growth, Agency",
+    title: "Liquid Clips pricing — Free, Pro, Growth, Agency",
     description:
       "Free to start. Upgrade only when 100 starter clips runs out.",
     url: `${SITE_URL}/pricing`,
@@ -64,8 +64,8 @@ const PLANS: Plan[] = [
     cta: { label: "Sign up free", href: "/sign-up", primary: false },
   },
   {
-    id: "solo",
-    name: "Solo",
+    id: "pro",
+    name: "Pro",
     priceUsd: 29.99,
     tagline: "Unlimited clips for one creator.",
     highlights: [
@@ -73,15 +73,15 @@ const PLANS: Plan[] = [
       "5 connected social accounts",
       "Local-only processing on your Mac",
     ],
-    cta: { label: "Start with Solo", href: `${accountUrl}/upgrade?plan=solo`, primary: true },
+    cta: { label: "Start with Pro", href: `${accountUrl}/upgrade?plan=pro`, primary: true },
   },
   {
     id: "growth",
     name: "Growth",
-    priceUsd: 79.99,
+    priceUsd: 99.99,
     tagline: "More accounts, more output, more clippers.",
     highlights: [
-      "Everything in Solo",
+      "Everything in Pro",
       "10 connected social accounts",
       "All platform connections wired",
     ],
@@ -91,7 +91,7 @@ const PLANS: Plan[] = [
   {
     id: "agency",
     name: "Agency",
-    priceUsd: 500,
+    priceUsd: 199.99,
     tagline: "Content-reward campaigns and team accounts.",
     highlights: [
       "Everything in Growth",
@@ -105,43 +105,39 @@ const PLANS: Plan[] = [
 type ComparisonRow = {
   feature: string;
   free: string;
-  solo: string;
+  pro: string;
   growth: string;
   agency: string;
 };
 
 const COMPARISON: ComparisonRow[] = [
-  { feature: "Clip exports per month", free: "100", solo: "Unlimited", growth: "Unlimited", agency: "Unlimited" },
-  { feature: "Connected social accounts", free: "1", solo: "5", growth: "10", agency: "25" },
-  { feature: "Multi-ratio export · 9:16 · 1:1 · 4:5", free: "Yes", solo: "Yes", growth: "Yes", agency: "Yes" },
-  { feature: "B-roll overlay and hook burn-in", free: "Yes", solo: "Yes", growth: "Yes", agency: "Yes" },
-  { feature: "Local-only processing on your Mac", free: "Yes", solo: "Yes", growth: "Yes", agency: "Yes" },
-  { feature: "Bring your own OpenAI key", free: "Yes", solo: "Yes", growth: "Yes", agency: "Yes" },
-  { feature: "Submit to Whop content-reward campaigns", free: "Yes", solo: "Yes", growth: "Yes", agency: "Yes" },
-  { feature: "Run your own content-reward campaigns", free: "—", solo: "—", growth: "—", agency: "Yes" },
-  { feature: "Priority support", free: "—", solo: "—", growth: "Soon", agency: "Soon" },
+  { feature: "Clip exports per month", free: "100", pro: "Unlimited", growth: "Unlimited", agency: "Unlimited" },
+  { feature: "Connected social accounts", free: "1", pro: "5", growth: "10", agency: "25" },
+  { feature: "Multi-ratio export · 9:16 · 1:1 · 4:5", free: "Yes", pro: "Yes", growth: "Yes", agency: "Yes" },
+  { feature: "B-roll overlay and hook burn-in", free: "Yes", pro: "Yes", growth: "Yes", agency: "Yes" },
+  { feature: "Local-only processing on your Mac", free: "Yes", pro: "Yes", growth: "Yes", agency: "Yes" },
+  { feature: "Bring your own OpenAI key", free: "Yes", pro: "Yes", growth: "Yes", agency: "Yes" },
+  { feature: "Submit to Whop content-reward campaigns", free: "Yes", pro: "Yes", growth: "Yes", agency: "Yes" },
+  { feature: "Run your own content-reward campaigns", free: "—", pro: "—", growth: "—", agency: "Yes" },
+  { feature: "Priority support", free: "—", pro: "—", growth: "Soon", agency: "Soon" },
 ];
 
 const faqs = [
   {
     q: "Can I cancel anytime?",
-    a: "Yes. Direct subscribers cancel from account.liquidclips.app/dashboard (Stripe). Whop subscribers cancel from whop.com. Your clips, exports, and license stay yours.",
+    a: "Yes. Whop handles your subscription, card, receipts, and cancellation. Your local projects and exported clips stay on your computer.",
   },
   {
     q: "Do I have to pay to clip?",
     a: "No. The Free tier covers 100 clip exports for new accounts with no card on file. Upgrade only when you outgrow the starter pass.",
   },
   {
-    q: "What does an extra social account cost?",
-    a: "$6/month per additional account on any tier. Bought as a stacking add-on inside the desktop app's account-limit prompt — see the add-on flow on your dashboard.",
-  },
-  {
     q: "Is annual billing available?",
     a: "Not yet. Monthly only until we have real cohort data to back a discount — no fake save-20% theatre. Annual ships once we can offer it honestly.",
   },
   {
-    q: "What changes between Solo, Growth, and Agency?",
-    a: "Account count and campaign access. Solo is one creator with 5 accounts. Growth is 10 accounts plus all platform connections. Agency is 25 accounts plus the ability to run your own content-reward campaigns through Whop.",
+    q: "What changes between Pro, Growth, and Agency?",
+    a: "Account count and campaign access. Pro is one creator with 5 accounts. Growth is 10 accounts plus higher capacity. Agency is 25 accounts plus the ability to run your own content-reward campaigns through Whop.",
   },
   {
     q: "Where do I see all the features?",
@@ -171,7 +167,7 @@ export default function PricingPage() {
       "@type": "AggregateOffer",
       priceCurrency: "USD",
       lowPrice: "0",
-      highPrice: "500",
+      highPrice: "199.99",
       offerCount: PLANS.length,
       offers: PLANS.map((p) => ({
         "@type": "Offer",
@@ -197,7 +193,7 @@ export default function PricingPage() {
               Free to start. Upgrade when <em>100 clips</em> runs out.
             </h1>
             <p className="hero-copy" style={{ margin: "20px auto 0", textAlign: "center", maxWidth: 680 }}>
-              Four tiers. USD billed monthly by Stripe via Clerk. Your bank converts at their
+              Four tiers. USD billed monthly by Whop. Your bank converts at their
               card-network rate. Cancel anytime from your dashboard.
             </p>
           </div>
@@ -212,7 +208,7 @@ export default function PricingPage() {
               ))}
             </div>
             <p className="section-copy muted" style={{ marginTop: 28, textAlign: "center", fontSize: 13 }}>
-              Billed monthly in USD by Stripe via Clerk. No annual lock-in today.
+              Billed monthly in USD by Whop. No annual lock-in today.
             </p>
           </div>
         </section>
@@ -235,7 +231,7 @@ export default function PricingPage() {
                   <tr>
                     <th scope="col" className="pricing-compare-feature">Feature</th>
                     <th scope="col">Free</th>
-                    <th scope="col">Solo</th>
+                    <th scope="col">Pro</th>
                     <th scope="col" className="pricing-compare-feature-active">Growth</th>
                     <th scope="col">Agency</th>
                   </tr>
@@ -245,7 +241,7 @@ export default function PricingPage() {
                     <tr key={row.feature}>
                       <th scope="row" className="pricing-compare-feature">{row.feature}</th>
                       <td>{row.free}</td>
-                      <td>{row.solo}</td>
+                    <td>{row.pro}</td>
                       <td className="pricing-compare-feature-active">{row.growth}</td>
                       <td>{row.agency}</td>
                     </tr>

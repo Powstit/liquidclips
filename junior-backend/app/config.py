@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     app_download_url: str = "https://liquidclips.app/download"
     tauri_update_endpoint: str = "https://updates.liquidclips.app/latest.json"
     tauri_update_targets: str = "darwin-aarch64,darwin-x86_64"
-    whop_manage_url: str = "https://whop.com/liquidclips"
+    whop_manage_url: str = "https://whop.com/@me/settings/memberships"
     # v0.7.68 P1 — partner.liquidclips.app is the canonical affiliate dashboard
     # domain. The old partner.jnremployee.com redirect chain is deprecated and
     # can land on a stale marketing page instead of the signed-in dashboard.

@@ -9,14 +9,17 @@
 
 import { useRouter } from "next/navigation";
 import { WhopCheckoutEmbed } from "@whop/checkout/react";
+import type { WhopPlanKey } from "@/lib/whopPlans";
 
 export function UpgradeCheckout({
   planId,
+  planKey,
   returnUrl,
   email,
   affiliateCode,
 }: {
   planId: string;
+  planKey: WhopPlanKey;
   returnUrl: string;
   email: string | null;
   affiliateCode: string | null;
@@ -30,12 +33,8 @@ export function UpgradeCheckout({
           checkout not configured
         </p>
         <p className="font-sans text-[13px] leading-relaxed text-text-secondary">
-          The Whop checkout plan id (
-          <code className="rounded bg-paper-warm/40 px-1.5 py-0.5 font-mono text-[11px] text-ink">
-            NEXT_PUBLIC_WHOP_CHECKOUT_PLAN_ID
-          </code>
-          ) isn&apos;t set on this deployment. Manage your plan in the dashboard
-          while we get the embedded path live.
+          This Whop plan is not configured. No payment was taken. Contact
+          support rather than retrying a different plan.
         </p>
         <a
           href="/dashboard"
@@ -59,7 +58,7 @@ export function UpgradeCheckout({
         onComplete={(_planId, _receiptId) => {
           // Keep the user inside the app — bounce them to the success
           // page so they can refresh entitlement + return to the desktop.
-          router.push("/checkout/complete?status=success");
+          router.push(`/checkout/complete?status=success&plan=${planKey}`);
         }}
         fallback={
           <div className="grid h-[420px] place-items-center font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">

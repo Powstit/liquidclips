@@ -705,7 +705,7 @@ export function APIToolsTab({ serviceConfig: _serviceConfig }: { serviceConfig: 
     claude: "Premium reasoning for backend planning + release tasks. Reads CLAUDE_API_KEY or CLAUDE_AGENT_API_KEY.",
     whop: "Sub-merchant payments + community + agent fleet. Reads WHOP_API_KEY — controls whether Whop carrot rail can fan out.",
     clerk: "Auth provider (sign-in, sessions, billing add-on packs). Reads CLERK_SECRET_KEY.",
-    stripe: "Primary payment rail (subscriptions, account packs, payouts). Reads STRIPE_SECRET_KEY.",
+    stripe: "Legacy billing and Stripe Connect payout support. Customer subscriptions use Whop.",
     railway: "Hosts junior-backend. Reads RAILWAY_TOKEN — only needed for CLI deploys, not runtime.",
     vercel: "Hosts account-app + marketing. Reads VERCEL_TOKEN — only needed for CLI deploys.",
     supabase: "Optional storage backend. Reads SUPABASE_SERVICE_ROLE_KEY.",

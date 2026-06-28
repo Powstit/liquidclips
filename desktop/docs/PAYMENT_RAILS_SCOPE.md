@@ -2,9 +2,14 @@
 
 ## Executive Summary
 
-Liquid Clips runs a **hybrid Whop + Clerk/Stripe** billing system. The desktop app never touches payment instruments directly. It embeds a webview for checkout and relies on a backend-authoritative license JWT stored in the OS keychain. Tier changes are detected via polling (`/sync` on window focus + auth-panel close), not webhooks.
+Liquid Clips uses **Whop as the customer-facing subscription rail**. Clerk is
+identity only for new purchases. Legacy Clerk rows remain readable for existing
+customers, but every current upgrade CTA opens the plan-aware Whop checkout.
+The desktop never touches payment instruments directly and relies on a
+backend-authoritative license JWT stored in the OS keychain. Whop webhooks
+update the tier; `/me` and `/sync` carry it into the desktop.
 
-**Current tiers:** Free → Solo ($29.99/mo) → Pro ($79.99/mo) → Agency ($149/mo)
+**Current tiers:** Free → Pro ($29.99/mo) → Growth ($99.99/mo) → Agency ($199.99/mo)
 
 **Free tier:** 100 clip exports, 3 visible clips in grid, watermarked exports, no publishing.
 
@@ -29,19 +34,15 @@ Liquid Clips runs a **hybrid Whop + Clerk/Stripe** billing system. The desktop a
 - `src/lib/sidecar.ts:814` — `licenseJwtRead()` RPC
 - `python-sidecar/secrets_store.py` — OS keychain read/write
 
-### 2. Two Parallel Billing Rails
+### 2. Subscription Rail
 
-#### Rail A: Clerk / Stripe (Primary)
-- Checkout: embedded Tauri webview (`auth_panel.rs`) hosting `account.jnremployee.com/upgrade`
-- Stripe Checkout handled server-side by Clerk
-- Post-payment: webview closes → Rust emits `auth-panel-closed` → desktop re-pulls `/sync`
-- Management: `openAuthPanel("dashboard")` loads `account.jnremployee.com/dashboard`
-
-#### Rail B: Whop (Secondary)
-- Checkout: external browser to Whop hosted page
-- Post-payment: user returns to app → window-focus `/sync` poll picks up new tier
-- Management: `openExternal("https://whop.com/jnremployee")`
-- Bounty integrations: `python-sidecar/whop_client.py`
+#### Whop (Primary)
+- Checkout: `account.liquidclips.app/upgrade?plan=pro|growth|agency`
+- Attribution: locked first-touch affiliate code is passed to the Whop embed
+- Fulfilment: Standard Webhooks-verified membership/payment events update DB tier
+- Desktop refresh: `/me` and `/sync` read the backend tier
+- Management: Whop owns card, receipt, cancellation, and plan status
+- Clerk remains the account identity and legacy billing compatibility layer
 
 **Files:**
 - `src/components/auth/AuthPanel.tsx` — in-app upgrade webview

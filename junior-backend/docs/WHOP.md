@@ -15,7 +15,7 @@ A visitor clicks `api.jnremployee.com/r/{tracking_id}` (an affiliate tracking li
 ### Backend (`junior-backend/app/`)
 | File | Purpose |
 |---|---|
-| `routes/webhooks_whop.py` | HMAC-verified webhook entry. Handles membership valid/invalid + payment succeeded/refunded. Idempotent via `WebhookEvent.external_id`. Fires affiliate lifecycle emails. |
+| `routes/webhooks_whop.py` | Standard Webhooks-verified entry. Handles membership valid/invalid + payment succeeded/refunded. Idempotent via `WebhookEvent.external_id`. Fires affiliate lifecycle emails. |
 | `routes/affiliate.py` | `/affiliate/me` (server-to-server, internal-secret-gated) + the `build_affiliate_me_response` shared builder also used by `/me/affiliate`. Idempotent Whop affiliate get-or-create. Caches `whop_affiliate_id`. |
 | `routes/whop.py` | Bounty proxy. Server-side App API Key calls `publicBounties` GraphQL. In-process cache (60s list / 120s detail / 30s submission). |
 | `routes/webhooks_clerk.py` | Locks `users.affiliate_id` from Clerk metadata at signup. **Never** overwrites it. |
@@ -64,7 +64,7 @@ If a paid-conversion webhook fires and the referrer hasn't viewed their dashboar
 | Var | Where used | Notes |
 |---|---|---|
 | `WHOP_API_KEY` | `routes/whop.py`, `routes/affiliate.py`, `cron.py` | **Company API key** (acts as the LiquidClips company). Server-side only. Never expose. |
-| `WHOP_WEBHOOK_SECRET` | `routes/webhooks_whop.py` | HMAC-SHA256 secret. If unset (dev), signature check is skipped. |
+| `WHOP_WEBHOOK_SECRET` | `routes/webhooks_whop.py` | Whop webhook secret. Verification covers `webhook-id`, `webhook-timestamp`, and `webhook-signature`. If unset locally, verification is skipped. |
 | `WHOP_COMPANY_ID` | `routes/affiliate.py` | `biz_0IMrpJRrTJID1u`. |
 | `WHOP_APP_ID` | (reserved) | `app_hLphExdFzjEQsM`. |
 | `WHOP_PARTNER_DASHBOARD_URL` | `routes/affiliate.py` | Where users go to manage their affiliate. |
@@ -77,7 +77,7 @@ If a paid-conversion webhook fires and the referrer hasn't viewed their dashboar
 
 ## 5. Whop plan IDs (live)
 
-Public-facing tier names on liquidclips.app are **Free / Solo / Pro / Agency**.
+Public-facing tier names are **Free / Pro / Growth / Agency**.
 Internally we still store the legacy values `solo / growth / autopilot`; the
 alias map in `app/features.py::_LEGACY_TIER_ALIASES` translates `growth → pro`
 and `autopilot → agency` for display. Renaming the stored values is a
@@ -87,8 +87,8 @@ In `routes/webhooks_whop.py:PLAN_TIER_BY_ID`:
 
 | Plan ID | Public name | Whop label | Stored tier | Price |
 |---|---|---|---|---|
-| `plan_qe8AFXj9J3SWi` | Liquid Clips Solo | jnr Solo | `solo` | $29.99/mo |
-| `plan_dhssNse4FfPlI` | Liquid Clips Pro | jnr Pro | `growth` *(→ pro)* | $99.99/mo |
+| `plan_qe8AFXj9J3SWi` | Liquid Clips Pro | jnr Solo *(legacy label)* | `solo` | $29.99/mo, 30-day trial |
+| `plan_dhssNse4FfPlI` | Liquid Clips Growth | jnr Pro *(legacy label)* | `growth` | $99.99/mo |
 | `plan_BvDBrtybhbxNg` | Liquid Clips Agency | jnr Agency | `autopilot` *(→ agency)* | $199.99/mo |
 | `plan_OieNCPrvkw9U4` | Liquid Clips Founder Lifetime | Founder Lifetime | `autopilot` + `founder_flag` | $500 one-time |
 
@@ -110,11 +110,17 @@ still resolve through them.
 | Group | Event names accepted | Handler |
 |---|---|---|
 | Membership valid | `membership_went_valid`, `membership.went_valid`, `membership_activated`, `membership.activated` | `_handle_membership_valid` |
-| Membership invalid | `membership_went_invalid`, `membership.went_invalid`, `membership_canceled`, `membership.canceled`, `membership_deactivated`, `membership.deactivated` | `_handle_membership_invalid` |
+| Membership invalid | `membership_went_invalid`, `membership.went_invalid`, `membership_deactivated`, `membership.deactivated` | `_handle_membership_invalid` |
+| Legacy canceled | `membership_canceled`, `membership.canceled` | `_handle_membership_canceled` |
 | Payment | `payment_succeeded`, `payment.succeeded` | `_handle_payment_succeeded` |
+| Cancel at period end | `membership.cancel_at_period_end_changed` | `_handle_membership_cancel_setting_changed` |
+| Payment failed | `payment_failed`, `payment.failed` | `_handle_payment_failed` |
 | Refund / dispute | `payment_refunded`, `payment.refunded`, `refund_created`, `refund.created`, `dispute_created`, `dispute.created` | `_handle_payment_refunded` |
 
 Unrecognized events return 200 (Whop won't retry) but are logged as `status=ignored`.
+
+Recognized billing events carrying an unknown plan ID fail closed and return
+an error for retry/inspection. They never default to a paid tier.
 
 **Idempotency:** every accepted event records a row in `webhook_events` keyed on `external_id`. A duplicate delivery returns `{status: duplicate}` without reprocessing. Body is NOT stored — only `body_hash` (sanitized log policy).
 

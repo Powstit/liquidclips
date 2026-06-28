@@ -70,14 +70,6 @@ export function PlanLimitStrip({ showAttention = true }: PlanLimitStripProps) {
   const attention = channels.needsAttentionCount;
   const nextLabel = NEXT_TIER_LABEL[tier.tier];
 
-  // 2026-06-23 · Daniel's spec: "Free tier gets 1 connected social account
-  // included. The 2nd connected account triggers the $6/mo accountpack
-  // CTA." Surface the accountpack CTA for clipper tier whenever the user
-  // is at or over the channel cap. Paid tiers still see the standard
-  // tier-upgrade CTA only — accountpack is the free-tier path so they can
-  // experience the product (Daniel: "Do not make free = 0 accounts.").
-  const showAccountpackCta = tier.tier === "clipper" && (atCap || overCap);
-
   const fill = Math.min(1, used / Math.max(1, cap));
 
   return (
@@ -90,32 +82,14 @@ export function PlanLimitStrip({ showAttention = true }: PlanLimitStripProps) {
           </span>
           <span className="lc-pls-sub">
             {overCap
-              ? `${used - cap} over · channels seeded from older session · add an account pack or upgrade to keep them all live`
+              ? `${used - cap} over · upgrade to keep every connected account live`
               : atCap
-                ? showAccountpackCta
-                  ? "1 account included on Free · add another for $6/mo or upgrade for more"
-                  : "Cap reached · upgrade to connect more accounts"
+                ? "Cap reached · upgrade to connect more accounts"
                 : `${cap - used} more slot${cap - used === 1 ? "" : "s"} available`}
           </span>
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {showAccountpackCta && (
-            <button
-              type="button"
-              className="lc-pls-cta"
-              data-testid="accountpack-cta"
-              onClick={() => { void handleCheckout("accountpack"); }}
-              style={{
-                background: "linear-gradient(135deg, var(--lc-accent, #FF1A8C), var(--lc-accent-deep, #C70066))",
-                color: "white",
-                border: "1px solid transparent",
-              }}
-              title="Stacks on Free — adds +1 connected social account for $6/mo"
-            >
-              + Add account · $6/mo
-            </button>
-          )}
           {nextLabel && (
             <button
               type="button"

@@ -1,17 +1,12 @@
 "use client";
 
-import { CheckoutButton } from "@clerk/nextjs/experimental";
-import { useSearchParams } from "next/navigation";
 import { track } from "@/lib/analytics";
+import { whopUpgradeHref, type WhopPlanKey } from "@/lib/whopPlans";
 
-// Custom pricing UI. Replaces Clerk's stock <PricingTable> so we control the
-// layout, copy, and brand expression while Clerk still owns the checkout +
-// card capture under the hood (CheckoutButton wraps any child element).
+// Custom pricing UI. Every paid CTA enters the plan-aware Whop checkout.
 //
-// Currency note: pricing is USD-native. Public v2 tiers are Free / Solo / Pro
-// / Agency. Pro/Agency checkout stays disabled until the verified Clerk plan
-// IDs are supplied via env; backend aliases map legacy billing events to the
-// new tier names.
+// Currency note: pricing is USD-native. Public tiers are Free / Pro / Growth /
+// Agency; backend aliases keep legacy stored tier values compatible.
 
 type Feature = {
   label: string;
@@ -21,31 +16,14 @@ type Feature = {
 
 type Plan = {
   id: string;            // Stable UI/analytics id.
-  checkoutPlanId?: string; // Clerk cplan_xxx. Omit until the public price is verified in Clerk.
+  checkoutPlan: WhopPlanKey | null;
   name: string;
-  slug: string;          // Clerk plan slug — also load-bearing for the webhook
+  slug: string;          // Backend tier alias used to mark the current plan.
   tagline: string;
   priceUsd: number;      // USD — what Clerk charges AND what we display
   features: Feature[];
   highlight?: boolean;   // "Most popular" badge
 };
-
-// Clerk plan IDs (live). Env vars override the defaults so Vercel can swap
-// without a redeploy. Defaults pinned 2026-06-01 after creating Pro + Agency
-// in the Clerk dashboard (Backend API is read-only for billing — `Allow: GET`
-// is explicit, so plan create/edit only happens in the dashboard UI).
-const SOLO_PLAN_ID =
-  process.env.NEXT_PUBLIC_CLERK_SOLO_PLAN_ID ?? "cplan_3E4VBeiWtZP0CJsvPwrIz91uDFk";
-const PRO_PLAN_ID =
-  process.env.NEXT_PUBLIC_CLERK_PRO_PLAN_ID ?? "cplan_3EV9Jjn8qLG130iSSRpAUOmqAfm";
-const AGENCY_PLAN_ID =
-  process.env.NEXT_PUBLIC_CLERK_AGENCY_PLAN_ID ?? "cplan_3E4VBfKWkQlIuYRQG0YE5LfJPjx";
-// Account Pack — $6/mo per extra social account add-on (one Clerk subscription
-// quantity = one additional account). Wired here as a const for the eventual
-// purchase flow in Settings; PricingCards doesn't render it as a card today
-// (it's an upsell shown at the account-limit wall later).
-export const ACCOUNT_PACK_PLAN_ID =
-  process.env.NEXT_PUBLIC_CLERK_ACCOUNT_PACK_PLAN_ID ?? "cplan_3EV9znSsguzmwoQoEr5kXpumkfM";
 
 // Mirrors junior-backend/app/features.py FEATURES_BY_TIER. Keep them in sync.
 // If a `built: false` line ships, flip BOTH this list AND the backend matrix
@@ -53,6 +31,7 @@ export const ACCOUNT_PACK_PLAN_ID =
 const PLANS: Plan[] = [
   {
     id: "free",
+    checkoutPlan: null,
     slug: "free_user",
     name: "Free",
     tagline: "Try it. 100 free clip exports, no card.",
@@ -67,9 +46,9 @@ const PLANS: Plan[] = [
   },
   {
     id: "solo",
-    checkoutPlanId: SOLO_PLAN_ID,
+    checkoutPlan: "pro",
     slug: "solo",
-    name: "Solo",
+    name: "Pro",
     tagline: "Unlimited clips for one creator.",
     priceUsd: 29.99,
     features: [
@@ -82,17 +61,14 @@ const PLANS: Plan[] = [
     ],
   },
   {
-    // 2026-06-23 · Clerk slug renamed Pro → Growth (same plan ID, new slug)
-    // SOVEREIGN-2.2 markup retained · backend /me effective_tier now returns
-    // "growth" for this plan after junior-backend redeploy.
     id: "growth",
-    checkoutPlanId: PRO_PLAN_ID,
+    checkoutPlan: "growth",
     slug: "growth",
     name: "Growth",
     tagline: "Hosted AI and multi-platform publishing.",
-    priceUsd: 79.99,
+    priceUsd: 99.99,
     features: [
-      { label: "Everything in Solo", built: true },
+      { label: "Everything in Pro", built: true },
       { label: "10 social accounts included", built: true },
       { label: "Hosted LLM — no OpenAI key needed", built: false, sprint: "Beta" },
       { label: "All platform connections", built: true },
@@ -104,11 +80,11 @@ const PLANS: Plan[] = [
   },
   {
     id: "agency",
-    checkoutPlanId: AGENCY_PLAN_ID,
+    checkoutPlan: "agency",
     slug: "agency",
     name: "Agency",
     tagline: "For client accounts and white-label teams.",
-    priceUsd: 500,
+    priceUsd: 199.99,
     features: [
       { label: "Everything in Pro", built: true },
       { label: "25 social accounts included", built: true },
@@ -120,21 +96,18 @@ const PLANS: Plan[] = [
   },
 ];
 
-export function PricingCards({ currentSlug }: { currentSlug?: string }) {
+export function PricingCards({
+  currentSlug,
+  affiliateCode,
+}: {
+  currentSlug?: string;
+  affiliateCode?: string | null;
+}) {
   const normalizedCurrentSlug = normalizePlanSlug(currentSlug);
-  // 2026-06-23 · ?addon=accountpack focuses the page on the +1 social
-  // account add-on. Desktop's PlanLimitStrip "+ Add account · $6/mo" CTA
-  // routes here so the customer lands on a focused CheckoutButton without
-  // hunting through the full plan grid. The regular grid still renders
-  // below so they can compare against upgrading to Pro instead.
-  const params = useSearchParams();
-  const focusedAddon = params?.get("addon");
-  const showAccountpackFocus = focusedAddon === "accountpack";
   // Monthly billing only — annual ships once we have real pricing data to
   // back a discount. No fake "save 20%" theatre.
   return (
     <div>
-      {showAccountpackFocus && <AccountpackFocusCard />}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {PLANS.map((p) => (
           <PlanCard
@@ -143,60 +116,14 @@ export function PricingCards({ currentSlug }: { currentSlug?: string }) {
             isCurrent={normalizedCurrentSlug === p.slug}
             isOnPaidPlan={!!normalizedCurrentSlug && normalizedCurrentSlug !== "free_user"}
             currentSlug={normalizedCurrentSlug}
+            affiliateCode={affiliateCode}
           />
         ))}
       </div>
 
       <p className="mt-6 text-center font-mono text-[11px] text-text-tertiary">
-        Billed monthly in USD by Stripe via Clerk. Your bank converts at their card-network rate.
+        Billed monthly in USD by Whop. Manage payment details and cancellation in Whop.
       </p>
-    </div>
-  );
-}
-
-/** AccountpackFocusCard · focused $6/mo add-on CTA.
- *  Rendered above the plan grid when ?addon=accountpack is present (deep
- *  link from desktop's PlanLimitStrip "+ Add account" CTA). One CheckoutButton
- *  wired to ACCOUNT_PACK_PLAN_ID. Stacks on any tier — the customer keeps
- *  their current subscription and gains +1 connected channel slot. */
-function AccountpackFocusCard() {
-  return (
-    <div
-      data-testid="accountpack-focus-card"
-      className="mb-6 rounded-3xl border border-fuchsia bg-fuchsia-soft/20 p-6 shadow-[0_20px_60px_rgba(255,26,140,0.10)]"
-    >
-      <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex-1">
-          <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
-            Account pack · add-on
-          </div>
-          <h3 className="mt-2 font-display text-[24px] font-semibold tracking-[-0.02em] text-ink">
-            +1 connected social account
-          </h3>
-          <p className="mt-2 font-sans text-[13px] leading-relaxed text-text-secondary">
-            Stacks on any plan. Add one extra account for $6/mo — cancel anytime.
-            Perfect for Free users who want to publish to a second platform without upgrading.
-          </p>
-        </div>
-        <div className="flex items-baseline gap-2 self-stretch sm:self-center">
-          <span className="font-display text-[32px] font-bold tracking-[-0.03em] text-ink">$6</span>
-          <span className="font-mono text-[12px] text-text-tertiary">/month</span>
-        </div>
-      </div>
-      <div className="mt-5">
-        <CheckoutButton planId={ACCOUNT_PACK_PLAN_ID} planPeriod="month">
-          <button
-            onClick={() => track("checkout_started", {
-              plan_id: ACCOUNT_PACK_PLAN_ID,
-              plan_name: "Account pack",
-              add_on: true,
-            })}
-            className="w-full rounded-full bg-fuchsia px-5 py-3 font-sans text-[14px] font-medium text-paper transition-all hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] sm:w-auto"
-          >
-            Add account pack · $6/mo
-          </button>
-        </CheckoutButton>
-      </div>
     </div>
   );
 }
@@ -217,14 +144,16 @@ function PlanCard({
   isCurrent,
   isOnPaidPlan,
   currentSlug,
+  affiliateCode,
 }: {
   plan: Plan;
   isCurrent: boolean;
   isOnPaidPlan: boolean;
   currentSlug?: string;
+  affiliateCode?: string | null;
 }) {
   const isFreePlan = plan.priceUsd === 0;
-  const canCheckout = !!plan.checkoutPlanId;
+  const canCheckout = !!plan.checkoutPlan;
   const accentClasses = plan.highlight
     ? "border-fuchsia bg-gradient-to-br from-fuchsia-soft/30 to-paper shadow-[0_20px_60px_rgba(255,26,140,0.10)]"
     : "border-line bg-paper";
@@ -281,30 +210,30 @@ function PlanCard({
           >
             Current plan
           </button>
-        ) : canCheckout ? (
-          <CheckoutButton planId={plan.checkoutPlanId!} planPeriod="month">
-            <button
-              onClick={() =>
-                track("checkout_started", {
-                  plan_id: plan.checkoutPlanId,
-                  plan_name: plan.name,
-                  current_tier: currentSlug,
-                })
-              }
-              className={`w-full rounded-full px-5 py-3 font-sans text-[13px] font-medium transition-all ${
-                plan.highlight
-                  ? "bg-fuchsia text-paper hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
-                  : "bg-ink text-paper hover:bg-fuchsia"
-              }`}
-            >
-              {isOnPaidPlan ? "Switch to " + plan.name : "Start with " + plan.name}
-            </button>
-          </CheckoutButton>
+        ) : canCheckout && plan.checkoutPlan ? (
+          <a
+            href={whopUpgradeHref(plan.checkoutPlan, affiliateCode)}
+            onClick={() =>
+              track("checkout_started", {
+                billing_provider: "whop",
+                plan_key: plan.checkoutPlan,
+                plan_name: plan.name,
+                current_tier: currentSlug,
+              })
+            }
+            className={`block w-full rounded-full px-5 py-3 text-center font-sans text-[13px] font-medium transition-all ${
+              plan.highlight
+                ? "bg-fuchsia text-paper hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)]"
+                : "bg-ink text-paper hover:bg-fuchsia"
+            }`}
+          >
+            {isOnPaidPlan ? "Change to " + plan.name : "Start with " + plan.name}
+          </a>
         ) : (
           <button
             disabled
             className="w-full rounded-full border border-line bg-paper px-5 py-3 font-sans text-[13px] font-medium text-text-tertiary"
-            title={`Set NEXT_PUBLIC_CLERK_${plan.slug.toUpperCase()}_PLAN_ID after verifying the public price in Clerk.`}
+            title="This Whop plan is not configured."
           >
             Join waitlist
           </button>

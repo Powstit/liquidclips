@@ -1,26 +1,26 @@
 """Whop webhook handler — see oauth-billing.md §5.
 
-Whop signs deliveries with HMAC-SHA256 against the webhook secret. We
-verify before processing.
+Whop follows the Standard Webhooks specification. We verify the signed
+webhook id, timestamp, and raw body before processing.
 
 Event handling:
-  - membership_went_valid   → tier=<plan>, subscription_status='active'
+  - membership_went_valid   → tier=<plan>, subscription_status='trialing'
   - membership_went_invalid → subscription_status='expired'
-  - membership_canceled     → same as invalid for now
+  - membership_canceled     → retain tier until period end
   - payment_succeeded       → bump paid_until
-  - payment_failed          → no-op (Whop retries; final failure fires _invalid)
+  - payment_failed          → past_due, retain tier while Whop retries
 """
 
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
+from svix.webhooks import Webhook, WebhookVerificationError
 
 from app.config import get_settings
 from app.db import get_db
@@ -75,8 +75,8 @@ PLAN_TIER_BY_TITLE = {
 # through them.
 PLAN_TIER_BY_ID = {
     "plan_qe8AFXj9J3SWi": "solo",       # Liquid Clips Solo   ($29.99/mo)
-    "plan_dhssNse4FfPlI": "growth",     # Liquid Clips Pro    ($79.99/mo) — internal tier still "growth"
-    "plan_BvDBrtybhbxNg": "autopilot",  # Liquid Clips Agency ($149/mo) — internal tier still "autopilot"
+    "plan_dhssNse4FfPlI": "growth",     # Liquid Clips Growth ($99.99/mo)
+    "plan_BvDBrtybhbxNg": "autopilot",  # Liquid Clips Agency ($199.99/mo)
 }
 
 # Founder is a $500 one-time unlock → Autopilot tier + founder_flag forever.
@@ -86,22 +86,31 @@ PLAN_TIER_BY_ID = {
 FOUNDER_PLAN_IDS = {"plan_OieNCPrvkw9U4"}  # "Liquid Clips Founder Lifetime" $500 one-time
 
 
-def _verify_signature(body: bytes, header_sig: str | None) -> None:
+def _verify_signature(body: bytes, headers: dict[str, str]) -> None:
     if not settings.whop_webhook_secret:
         return  # dev mode — skip
-    if not header_sig:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "missing signature header")
-    expected = hmac.new(settings.whop_webhook_secret.encode(), body, hashlib.sha256).hexdigest()
-    # Whop sends the hex digest; some integrations prefix with "sha256=".
-    received = header_sig.split("=")[-1].strip()
-    if not hmac.compare_digest(expected, received):
+    required = ("webhook-id", "webhook-timestamp", "webhook-signature")
+    if any(not headers.get(name) for name in required):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "missing webhook signature headers")
+    try:
+        # New Whop webhooks return a Standard Webhooks `whsec_` secret.
+        # Older dashboard hooks used a raw `ws_` secret, so retain a
+        # compatibility path until all production hooks have rotated.
+        secret: str | bytes = settings.whop_webhook_secret
+        if not secret.startswith("whsec_"):
+            secret = secret.encode()
+        Webhook(secret).verify(body, headers)
+    except WebhookVerificationError as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid signature")
+    except Exception as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid signature") from exc
 
 
-def _tier_from_event(event_data: dict) -> tuple[str, bool]:
+def _tier_from_event(event_data: dict) -> tuple[str, bool] | None:
     """Returns (tier, is_founder). Founder always maps to 'autopilot' tier so
     the £500 one-time unlock gives lifetime Autopilot entitlements. Other
-    paid plans default to 'growth' if the title doesn't match the map."""
+    unknown plans fail closed so an unrelated Whop product can never grant
+    paid Liquid Clips access."""
     plan = event_data.get("plan") or {}
     plan_id = (plan.get("id") or "").strip()
     if plan_id in FOUNDER_PLAN_IDS:
@@ -112,8 +121,16 @@ def _tier_from_event(event_data: dict) -> tuple[str, bool]:
     is_founder = "founder" in title
     if is_founder:
         return "autopilot", True
-    tier = PLAN_TIER_BY_TITLE.get(title, "growth")
-    return tier, False
+    tier = PLAN_TIER_BY_TITLE.get(title)
+    return (tier, False) if tier else None
+
+
+def _require_known_tier(event_data: dict) -> tuple[str, bool]:
+    resolved = _tier_from_event(event_data)
+    if resolved is None:
+        plan = event_data.get("plan") or {}
+        raise ValueError(f"unrecognized Whop plan id={plan.get('id')!r}")
+    return resolved
 
 
 @router.post("")
@@ -122,13 +139,15 @@ async def whop_webhook(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     body = await request.body()
-    _verify_signature(body, request.headers.get("x-whop-signature"))
+    headers = {key.lower(): value for key, value in request.headers.items()}
+    _verify_signature(body, headers)
     payload = json.loads(body.decode())
     event_type = payload.get("event") or payload.get("type", "")
     data = payload.get("data") or {}
 
     external_id = (
-        payload.get("id")
+        headers.get("webhook-id")
+        or payload.get("id")
         or data.get("id")
         or hashlib.sha256(body).hexdigest()
     )
@@ -137,8 +156,11 @@ async def whop_webhook(
 
     from app.webhook_log import log_webhook
     _MEMBERSHIP_VALID = ("membership_went_valid", "membership.went_valid", "membership_activated", "membership.activated")
-    _MEMBERSHIP_INVALID = ("membership_went_invalid", "membership.went_invalid", "membership_canceled", "membership.canceled", "membership_deactivated", "membership.deactivated")
+    _MEMBERSHIP_INVALID = ("membership_went_invalid", "membership.went_invalid", "membership_deactivated", "membership.deactivated")
+    _MEMBERSHIP_CANCELED = ("membership_canceled", "membership.canceled")
+    _MEMBERSHIP_CANCEL_SETTING = ("membership.cancel_at_period_end_changed",)
     _PAYMENT = ("payment_succeeded", "payment.succeeded")
+    _PAYMENT_FAILED = ("payment_failed", "payment.failed")
     _REFUND = ("payment_refunded", "payment.refunded", "refund_created", "refund.created", "dispute_created", "dispute.created")
     # 2026-06-24 · submission events from Whop content-rewards · flip
     # CampaignSubmission.status + RewardClip.status from "submitted" to the
@@ -148,7 +170,9 @@ async def whop_webhook(
     _SUBMISSION_REJECTED = ("submission_rejected", "submission.rejected", "content_reward.submission.rejected", "content_reward.rejected")
     _SUBMISSION_PAID = ("submission_paid", "submission.paid", "content_reward.payout.paid", "payout.paid")
     recognized = event_type in (
-        _MEMBERSHIP_VALID + _MEMBERSHIP_INVALID + _PAYMENT + _REFUND
+        _MEMBERSHIP_VALID + _MEMBERSHIP_INVALID + _MEMBERSHIP_CANCELED
+        + _MEMBERSHIP_CANCEL_SETTING
+        + _PAYMENT + _PAYMENT_FAILED + _REFUND
         + _SUBMISSION_APPROVED + _SUBMISSION_REJECTED + _SUBMISSION_PAID
     )
 
@@ -157,8 +181,14 @@ async def whop_webhook(
             _handle_membership_valid(db, data)
         elif event_type in _MEMBERSHIP_INVALID:
             _handle_membership_invalid(db, data)
+        elif event_type in _MEMBERSHIP_CANCELED:
+            _handle_membership_canceled(db, data)
+        elif event_type in _MEMBERSHIP_CANCEL_SETTING:
+            _handle_membership_cancel_setting_changed(db, data)
         elif event_type in _PAYMENT:
             _handle_payment_succeeded(db, data)
+        elif event_type in _PAYMENT_FAILED:
+            _handle_payment_failed(db, data)
         elif event_type in _REFUND:
             _handle_payment_refunded(db, data)
         elif event_type in _SUBMISSION_APPROVED:
@@ -236,7 +266,14 @@ def _find_user_for_event(db: Session, data: dict) -> User | None:
     return None
 
 
-def _stash_pending_membership(db: Session, data: dict, *, tier: str, founder: bool) -> None:
+def _stash_pending_membership(
+    db: Session,
+    data: dict,
+    *,
+    tier: str,
+    founder: bool,
+    paid: bool = False,
+) -> None:
     """Persist an entitlement for a buyer who paid before signing up.
 
     Keyed by email so /onboarding/link-whop can claim it on first sign-in.
@@ -261,6 +298,8 @@ def _stash_pending_membership(db: Session, data: dict, *, tier: str, founder: bo
         .one_or_none()
     )
     if existing:
+        if paid:
+            existing.paid = True
         return  # already parked — webhook retry
 
     renewal_at = data.get("renewal_period_end")
@@ -269,6 +308,7 @@ def _stash_pending_membership(db: Session, data: dict, *, tier: str, founder: bo
             email=email,
             tier=tier,
             founder=founder,
+            paid=paid,
             whop_user_id=user_block.get("id"),
             renewal_period_end=int(renewal_at) if isinstance(renewal_at, (int, float)) else None,
         )
@@ -295,6 +335,7 @@ def apply_membership_tier(
     founder: bool,
     whop_user_id: str | None = None,
     renewal_at: int | float | None = None,
+    paid: bool = False,
 ) -> str:
     """Apply a paid Whop tier to a user and issue a fresh license JWT.
 
@@ -313,7 +354,7 @@ def apply_membership_tier(
     # bypass the 100 free-export cap during a Whop trial; payment_succeeded then
     # promotes them to "active" (true paid → unlimited). Founder is a one-time
     # paid unlock. Never downgrade an already-active (paying) customer.
-    if user.founder_flag:
+    if user.founder_flag or paid:
         user.subscription_status = "active"
     elif user.subscription_status != "active":
         user.subscription_status = "trialing"
@@ -349,7 +390,7 @@ def apply_membership_tier(
 
 def _handle_membership_valid(db: Session, data: dict) -> None:
     user = _find_user_for_event(db, data)
-    tier, founder = _tier_from_event(data)
+    tier, founder = _require_known_tier(data)
     if not user:
         # No Clerk user yet — the buyer paid on Whop before signing up on the
         # website (common for affiliate-referred sales). Park the entitlement
@@ -523,9 +564,97 @@ def _handle_membership_invalid(db: Session, data: dict) -> None:
         )
 
 
-def _handle_payment_succeeded(db: Session, data: dict) -> None:
+def _handle_membership_canceled(db: Session, data: dict) -> None:
+    """Cancellation stops renewal but must not revoke already-paid access.
+
+    Whop later sends membership.deactivated at period end; that event performs
+    the actual downgrade to Free.
+    """
     user = _find_user_for_event(db, data)
     if not user:
+        return
+    user.subscription_status = "canceled"
+    renewal_at = data.get("renewal_period_end")
+    if isinstance(renewal_at, (int, float)):
+        user.paid_until = datetime.fromtimestamp(renewal_at, tz=timezone.utc)
+
+    from app.clerk_sync import sync_clerk_metadata
+    sync_clerk_metadata(
+        user.clerk_id,
+        tier=user.tier,
+        subscription_status="canceled",
+        founder=user.founder_flag,
+        whop_user_id=user.whop_user_id,
+    )
+    event_id = data.get("event_id") or data.get("id") or ""
+    write_notification(
+        db,
+        user_id=user.id,
+        category="billing",
+        title="Subscription canceled.",
+        body="Whop stopped renewal. Your paid access stays active until the end of the current billing period.",
+        priority="medium",
+        external_dedup_key=f"whop-canceled-{event_id}" if event_id else None,
+    )
+
+
+def _handle_membership_cancel_setting_changed(db: Session, data: dict) -> None:
+    """Apply Whop's current cancel-at-period-end event in either direction."""
+    if bool(data.get("cancel_at_period_end")):
+        _handle_membership_canceled(db, data)
+        return
+    user = _find_user_for_event(db, data)
+    if not user:
+        return
+    reported = str(data.get("status") or "").lower()
+    user.subscription_status = "trialing" if reported == "trialing" else "active"
+    from app.clerk_sync import sync_clerk_metadata
+    sync_clerk_metadata(
+        user.clerk_id,
+        tier=user.tier,
+        subscription_status=user.subscription_status,
+        founder=user.founder_flag,
+        whop_user_id=user.whop_user_id,
+    )
+
+
+def _handle_payment_failed(db: Session, data: dict) -> None:
+    """Keep the tier during Whop's retry window and surface the billing issue."""
+    user = _find_user_for_event(db, data)
+    if not user:
+        return
+    user.subscription_status = "past_due"
+    from app.clerk_sync import sync_clerk_metadata
+    sync_clerk_metadata(
+        user.clerk_id,
+        tier=user.tier,
+        subscription_status="past_due",
+        founder=user.founder_flag,
+        whop_user_id=user.whop_user_id,
+    )
+    event_id = data.get("event_id") or data.get("id") or ""
+    write_notification(
+        db,
+        user_id=user.id,
+        category="billing",
+        title="Payment needs attention.",
+        body="Whop could not renew your subscription. Update your payment method in Whop while it retries.",
+        priority="high",
+        external_dedup_key=f"whop-payment-failed-{event_id}" if event_id else None,
+    )
+
+
+def _handle_payment_succeeded(db: Session, data: dict) -> None:
+    user = _find_user_for_event(db, data)
+    tier, founder = _require_known_tier(data)
+    if not user:
+        _stash_pending_membership(
+            db,
+            data,
+            tier=tier,
+            founder=founder,
+            paid=True,
+        )
         return
     # Capture state BEFORE mutating — affiliate side-effects below only fire on
     # the first true trial→paid transition, never on a renewal of an already-
@@ -533,7 +662,21 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
     was_paid_before = user.subscription_status == "active"
     # A successful payment is the trial→paid conversion: promote to "active" so the
     # 100 free-export cap lifts (true paid → unlimited entitlement).
-    user.subscription_status = "active"
+    # Whop does not guarantee webhook ordering. If payment.succeeded arrives
+    # before membership.activated, apply the purchased tier here as well.
+    tier_changed = user.tier != tier or (founder and not user.founder_flag)
+    if tier_changed:
+        apply_membership_tier(
+            db,
+            user,
+            tier=tier,
+            founder=founder,
+            whop_user_id=(data.get("user") or {}).get("id"),
+            renewal_at=data.get("renewal_period_end"),
+            paid=True,
+        )
+    else:
+        user.subscription_status = "active"
     renewal_at = data.get("renewal_period_end")
     if isinstance(renewal_at, (int, float)):
         user.paid_until = datetime.fromtimestamp(renewal_at, tz=timezone.utc)
@@ -841,7 +984,10 @@ def _handle_payment_refunded(db: Session, data: dict) -> None:
     user = _find_user_for_event(db, data)
     if not user:
         return
-    _tier, founder = _tier_from_event(data)
+    resolved = _tier_from_event(data)
+    if resolved is None:
+        return
+    _tier, founder = resolved
     # Partner Engine — decrement the referrer's counter BEFORE mutating, same
     # rule as membership_invalid. Refund of a never-paid sub is a no-op
     # because was_paid_before will be false.
