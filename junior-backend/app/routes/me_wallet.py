@@ -120,6 +120,7 @@ class WalletWithdrawBlock(BaseModel):
     min_withdrawal_usd: float
     lc_fee_pct: float
     currency: str
+    payout_ready: bool
     destination_wallet: str | None  # first 4 + ellipsis · null when not onboarded
 
 
@@ -340,11 +341,20 @@ def get_wallet_summary(
     # ─── 7. Withdraw block · env-gated · destination_wallet from Whop wallet
     sub_merchant_id = getattr(user, "whop_sub_merchant_id", None)
     destination: str | None = None
+    payout_ready = (
+        bool(sub_merchant_id)
+        and getattr(user, "whop_sub_merchant_status", "") == "onboarded"
+    )
     if sub_merchant_id:
         try:
             acct = whop_payments.retrieve_account(sub_merchant_id)
             w = acct.get("wallet") or {}
             destination = _mask_wallet(w.get("address"))
+            if whop_payments.is_live() and acct.get("status") == "connected":
+                payout_ready = True
+                if user.whop_sub_merchant_status != "onboarded":
+                    user.whop_sub_merchant_status = "onboarded"
+                    db.commit()
         except Exception as e:  # noqa: BLE001
             _log.warning("[wallet] retrieve_account failed for %s: %s", sub_merchant_id, e)
 
@@ -353,6 +363,7 @@ def get_wallet_summary(
         min_withdrawal_usd=float(whop_payments.MIN_WITHDRAWAL_USD),
         lc_fee_pct=float(whop_payments.LC_PROTOCOL_FEE_PCT),
         currency=str(whop_payments.DEFAULT_PAYOUT_CURRENCY),
+        payout_ready=payout_ready,
         destination_wallet=destination,
     )
 

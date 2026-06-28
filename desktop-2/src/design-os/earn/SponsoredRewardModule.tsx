@@ -215,7 +215,7 @@ export function SponsoredRewardModule({
         <div className="lc-srm-bal" data-testid="sponsored-reward-approved">
           <span className="lc-srm-bal-eb">Approved</span>
           <span className="lc-srm-bal-amt is-emphasis">{fmtUsd(snap.approvedUsd)}</span>
-          <span className="lc-srm-bal-note">Withdrawable</span>
+          <span className="lc-srm-bal-note">Ready to claim</span>
         </div>
         <div className="lc-srm-bal" data-testid="sponsored-reward-paid">
           <span className="lc-srm-bal-eb">Paid</span>
@@ -227,7 +227,7 @@ export function SponsoredRewardModule({
       {/* Payout breakdown (visible when approved) */}
       {snap.state === "approved" && (
         <div className="lc-srm-breakdown" data-testid="sponsored-reward-breakdown">
-          <h4 className="lc-srm-breakdown-h">Withdrawal breakdown</h4>
+          <h4 className="lc-srm-breakdown-h">Reward credit</h4>
           <ul className="lc-srm-breakdown-list">
             <li><span>Gross bonus</span><span>{fmtUsd(gross)}</span></li>
             <li>
@@ -235,13 +235,13 @@ export function SponsoredRewardModule({
               <span>−{fmtUsd(fee)}</span>
             </li>
             <li className="is-net">
-              <span>Net to your Sui wallet</span>
+              <span>Net to your Whop balance</span>
               <span>{fmtUsd(net)}</span>
             </li>
           </ul>
           {!canWithdraw && (
             <p className="lc-srm-breakdown-note">
-              Withdrawal unlocks at {fmtUsd(SOVEREIGN_WITHDRAWAL_MIN_USD)} approved balance · {fmtUsd(SOVEREIGN_WITHDRAWAL_MIN_USD - snap.approvedUsd)} away.
+              Claiming unlocks at {fmtUsd(SOVEREIGN_WITHDRAWAL_MIN_USD)} approved balance · {fmtUsd(SOVEREIGN_WITHDRAWAL_MIN_USD - snap.approvedUsd)} away.
             </p>
           )}
         </div>
@@ -265,7 +265,6 @@ export function SponsoredRewardModule({
                 title: "Couldn't open onboarding",
                 body: res.error,
               });
-              bonus.claim();
               return;
             }
             try { await openSmart(res.onboarding_url); } catch { /* noop */ }
@@ -274,25 +273,25 @@ export function SponsoredRewardModule({
               title: "Whop wallet onboarding opened",
               body: res.is_live
                 ? "Complete the steps on Whop · we'll auto-detect when you're done."
-                : "[simulator] · backend in mock mode (CARROT_WHOP_LIVE=false)",
+                : "Payout setup is not live yet.",
             });
           }}
           onWithdraw={async () => {
-            // approved · trigger real Whop transfers.create
+            // approved · credit the connected Whop balance
             const res = await claimCarrot();
             // Type-narrow via `transfer_id` (only on ClaimResponse).
             if (!("transfer_id" in res)) {
               bus.emit("toast", {
                 kind: "warning",
-                title: "Withdrawal failed",
+                title: "Claim failed",
                 body: res.error,
               });
               return;
             }
             bus.emit("toast", {
               kind: "success",
-              title: res.is_live ? "Paid · $50 reward" : "Paid · [simulator]",
-              body: `$${res.net_usd.toFixed(2)} ${res.currency.toUpperCase()} → your Whop wallet · fee $${res.fee_usd.toFixed(2)}`,
+              title: "Paid · $50 reward",
+              body: `$${res.net_usd.toFixed(2)} ${res.currency.toUpperCase()} → your Whop balance · fee $${res.fee_usd.toFixed(2)}`,
             });
             bonus.withdraw();
             void getCarrot().then(setCarrot);
@@ -336,7 +335,7 @@ export function SponsoredRewardModule({
                 : "var(--lc-text-tertiary, rgba(255,255,255,.45))",
             }}
           >
-            {carrot.is_live ? "● Live Whop rail" : "○ Backend mock · CARROT_WHOP_LIVE=false"}
+            {carrot.is_live ? "● Live Whop rail" : "○ Whop payouts · coming soon"}
           </span>
         )}
       </div>

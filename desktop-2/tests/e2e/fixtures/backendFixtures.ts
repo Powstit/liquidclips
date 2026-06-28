@@ -79,6 +79,7 @@ export function walletSummaryFixture(): Record<string, unknown> {
       min_withdrawal_usd: 50,
       lc_fee_pct: 5,
       currency: "USD",
+      payout_ready: false,
       destination_wallet: null,
     },
   };

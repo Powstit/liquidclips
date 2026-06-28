@@ -5,8 +5,8 @@ reads. Feature-flag gated by CARROT_WHOP_LIVE env var (default FALSE → mock
 mode that returns deterministic fake data so the carrot UI can be developed +
 tested without touching real money).
 
-Reference: https://docs.whop.com/api-reference/beta/transfers/create-transfer
-            https://docs.whop.com/api-reference/accounts/retrieve-account
+Reference: https://docs.whop.com/api-reference/transfers/create-transfer
+            https://docs.whop.com/api-reference/ledger-accounts/retrieve-ledger-account
             (account_links + companies.create are platform-payouts endpoints)
 
 Each function returns a dict shaped for our internal use (see Result types at
@@ -17,10 +17,8 @@ testing without breaking on real Whop reads.
 
 Daniel-locked rules (2026-06-24):
   - LC charges a 5% protocol fee deducted from gross BEFORE the transfer
-  - Whop's own transfer fee is absorbed via platform_covers_fees: true so the
-    clipper sees the full net (5%-deducted) amount
-  - Default payout currency: USDC (network varies by clipper's wallet · Whop
-    picks based on AccountWallet.network · solana / ethereum / bitcoin)
+  - Transfers credit the clipper's Whop USD ledger. The clipper then chooses
+    their payout method in Whop's hosted payout portal.
 """
 
 from __future__ import annotations
@@ -41,7 +39,7 @@ WHOP_API_VERSION = "/api/v1"
 # Daniel-locked economics
 LC_PROTOCOL_FEE_PCT = 5.0
 MIN_WITHDRAWAL_USD = 10.0
-DEFAULT_PAYOUT_CURRENCY = "usdc"
+DEFAULT_PAYOUT_CURRENCY = "usd"
 
 
 def is_live() -> bool:
@@ -161,6 +159,32 @@ def create_onboarding_link(
         return {"url": data.get("url"), "live": True, "raw": data}
 
 
+def create_payouts_portal_link(
+    *,
+    sub_merchant_id: str,
+    return_url: str,
+    refresh_url: str,
+) -> dict[str, Any]:
+    """Generate a short-lived Whop-hosted portal URL for balances,
+    payout methods, KYC, and withdrawals."""
+    if not is_live():
+        raise RuntimeError("Whop payouts are not live")
+
+    with _client() as c:
+        r = c.post(
+            "/account_links",
+            json={
+                "company_id": sub_merchant_id,
+                "refresh_url": refresh_url,
+                "return_url": return_url,
+                "use_case": "payouts_portal",
+            },
+        )
+        r.raise_for_status()
+        data = r.json()
+        return {"url": data.get("url"), "live": True, "raw": data}
+
+
 # ──────── Transfer (the actual $50 carrot payout) ──────────────────────
 
 
@@ -173,9 +197,8 @@ def create_transfer(
     notes: str = "",
     idempotence_key: str | None = None,
     metadata: dict[str, Any] | None = None,
-    platform_covers_fees: bool = True,
 ) -> dict[str, Any]:
-    """Push USDC (or other Whop-supported currency) from our org account to a
+    """Credit USD (or another Whop-supported currency) from our org account to a
     clipper's sub-merchant. Returns the Whop transfer object.
 
     Mock mode returns a deterministic synthetic transfer (status="completed",
@@ -205,13 +228,11 @@ def create_transfer(
 
     idempotence = idempotence_key or ("lc_" + uuid.uuid4().hex)
     payload: dict[str, Any] = {
-        "type": "wallet_send",
         "origin_id": origin_id,
         "destination_id": destination_id,
         "amount": amount_usd,
         "currency": currency,
         "idempotence_key": idempotence,
-        "platform_covers_fees": platform_covers_fees,
     }
     if notes:
         payload["notes"] = notes
@@ -228,20 +249,16 @@ def create_transfer(
 
 
 def retrieve_account(account_id: str) -> dict[str, Any]:
-    """GET /accounts/{id} · returns wallet + capabilities + verification status.
+    """GET /ledger_accounts/{id} and adapt it to the small internal shape
+    consumed by the wallet and sponsored-reward routes.
 
-    Mock mode returns a "fake" account with a solana wallet pre-provisioned
-    and crypto_payout=active so the carrot UI can render the full state."""
+    The endpoint accepts a connected company's biz_* id directly."""
     if not is_live() or account_id.startswith("fake_"):
         return {
             "id": account_id,
             "title": "Mock Clipper Sub-Merchant",
             "status": "active",
-            "wallet": {
-                "id": "wallet_" + uuid.uuid4().hex[:14],
-                "address": "Mock7XJtw48m12345N6KsQrcMVdq1B7AceP6Yp1234567Z9",
-                "network": "solana",
-            },
+            "wallet": {"id": None, "address": None, "network": None},
             "capabilities": {
                 "crypto_payout": "active",
                 "transfer": "active",
@@ -265,6 +282,20 @@ def retrieve_account(account_id: str) -> dict[str, Any]:
         }
 
     with _client() as c:
-        r = c.get(f"/accounts/{account_id}")
+        r = c.get(f"/ledger_accounts/{account_id}")
         r.raise_for_status()
-        return {**r.json(), "live": True}
+        data = r.json()
+        payout = data.get("payout_account_details") or {}
+        payout_status = str(payout.get("status") or "not_started")
+        return {
+            **data,
+            "status": payout_status,
+            "wallet": {"id": None, "address": None, "network": None},
+            "capabilities": {
+                "crypto_payout": "active" if payout_status == "connected" else payout_status,
+                "standard_payout": "active" if payout_status == "connected" else payout_status,
+            },
+            "verification": payout.get("latest_verification"),
+            "payout_account_details": payout,
+            "live": True,
+        }

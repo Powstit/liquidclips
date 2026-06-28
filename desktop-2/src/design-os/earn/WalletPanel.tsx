@@ -35,7 +35,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { GlassCard } from "../components";
 import { bus } from "../bridge";
-import { claimCarrot } from "../../lib/carrot";
+import { claimCarrot, getPayoutsPortal, onboardCarrot } from "../../lib/carrot";
+import { openSmart } from "../../lib/openSmart";
 import {
   fmtUsdCents,
   fmtViews,
@@ -139,14 +140,56 @@ export function WalletPanel() {
       }
       bus.emit("toast", {
         kind: "success",
-        title: res.is_live ? "Withdrawal sent" : "Withdrawal sent · [simulator]",
-        body: `$${res.net_usd.toFixed(2)} ${res.currency.toUpperCase()} → your Whop wallet · fee $${res.fee_usd.toFixed(2)}`,
+        title: "Reward moved to Whop",
+        body: `$${res.net_usd.toFixed(2)} ${res.currency.toUpperCase()} credited to your Whop balance · Liquid Clips fee $${res.fee_usd.toFixed(2)}`,
       });
       await load("refresh");
     } finally {
       setWithdrawing(false);
     }
   }, [withdrawing, load]);
+
+  const onSetupPayouts = useCallback(async () => {
+    if (withdrawing) return;
+    setWithdrawing(true);
+    try {
+      const res = await onboardCarrot();
+      if (!("onboarding_url" in res)) {
+        bus.emit("toast", { kind: "warning", title: "Couldn't open Whop setup", body: res.error });
+        return;
+      }
+      await openSmart(res.onboarding_url);
+    } catch (err) {
+      bus.emit("toast", {
+        kind: "warning",
+        title: "Couldn't open Whop setup",
+        body: err instanceof Error ? err.message : "Try again in a moment.",
+      });
+    } finally {
+      setWithdrawing(false);
+    }
+  }, [withdrawing]);
+
+  const onOpenPayouts = useCallback(async () => {
+    if (withdrawing) return;
+    setWithdrawing(true);
+    try {
+      const res = await getPayoutsPortal();
+      if (!("url" in res)) {
+        bus.emit("toast", { kind: "warning", title: "Couldn't open Whop payouts", body: res.error });
+        return;
+      }
+      await openSmart(res.url);
+    } catch (err) {
+      bus.emit("toast", {
+        kind: "warning",
+        title: "Couldn't open Whop payouts",
+        body: err instanceof Error ? err.message : "Try again in a moment.",
+      });
+    } finally {
+      setWithdrawing(false);
+    }
+  }, [withdrawing]);
 
   // ─── Loading ─────────────────────────────────────────────────────────
   if (loading) {
@@ -303,7 +346,9 @@ export function WalletPanel() {
             data-testid="wallet-withdraw-live"
           >
             <div className="lc-wallet-withdraw-l">
-              <span className="lc-wallet-withdraw-eb">Withdraw to Whop wallet</span>
+              <span className="lc-wallet-withdraw-eb">
+                {withdraw.payout_ready ? "Whop balance" : "Set up Whop payouts"}
+              </span>
               <div className="lc-wallet-withdraw-breakdown">
                 <span>Gross <b>${grossUsd.toFixed(2)}</b></span>
                 <span>LC fee {withdraw.lc_fee_pct}% <b>−${feeUsd.toFixed(2)}</b></span>
@@ -317,17 +362,27 @@ export function WalletPanel() {
               type="button"
               className="lc-wallet-withdraw-cta"
               data-testid="wallet-withdraw-cta"
-              onClick={onWithdraw}
-              disabled={!meetsMin || withdrawing}
+              onClick={
+                !withdraw.payout_ready
+                  ? onSetupPayouts
+                  : meetsMin
+                    ? onWithdraw
+                    : onOpenPayouts
+              }
+              disabled={withdrawing}
               title={
-                meetsMin
-                  ? `Withdraw ${fmtUsdCents(pipeline.approved_usd_cents)}`
+                !withdraw.payout_ready
+                  ? "Complete identity and payout setup on Whop"
+                  : meetsMin
+                    ? `Claim ${fmtUsdCents(pipeline.approved_usd_cents)} to Whop`
                   : `$${withdraw.min_withdrawal_usd.toFixed(2)} minimum · keep clipping`
               }
             >
-              {meetsMin
-                ? `Withdraw ${fmtUsdCents(pipeline.approved_usd_cents)}`
-                : `$${withdraw.min_withdrawal_usd.toFixed(2)} minimum to withdraw`}
+              {!withdraw.payout_ready
+                ? "Set up on Whop"
+                : meetsMin
+                  ? `Claim ${fmtUsdCents(pipeline.approved_usd_cents)}`
+                  : "Open Whop payouts"}
             </button>
           </div>
         ) : (
@@ -371,7 +426,7 @@ export function WalletPanel() {
 
         <div className="lc-wallet-foot">
           {withdraw.is_live
-            ? `Live Whop rail · ${withdraw.currency.toUpperCase()} payouts`
+            ? `Live Whop rail · ${withdraw.currency.toUpperCase()} balance credits`
             : "Honest pipeline · withdrawals gated until Whop integration ships"}
         </div>
       </div>
