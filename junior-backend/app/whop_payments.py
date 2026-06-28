@@ -50,6 +50,21 @@ def is_live() -> bool:
     return flag in ("1", "true", "yes", "on") and key_ok
 
 
+def wallet_reads_live() -> bool:
+    """Read-only ledger access is safe independently of transfer enablement."""
+    return bool(_api_key())
+
+
+def wallet_onboarding_live() -> bool:
+    """Connected-account creation/KYC can be enabled before transfers."""
+    flag = os.environ.get("WHOP_WALLET_ONBOARDING_LIVE", "").strip().lower()
+    return (
+        flag in ("1", "true", "yes", "on")
+        and bool(_api_key())
+        and bool(_parent_company_id())
+    )
+
+
 def _parent_company_id() -> str:
     """Our parent Whop company that owns the sub-merchants we onboard.
     Sourced from WHOP_PARENT_COMPANY_ID (preferred) or WHOP_COMPANY_ID env."""
@@ -101,7 +116,7 @@ def create_sub_merchant(*, email: str, title: str, internal_user_id: str) -> dic
 
     Mock mode returns "fake_biz_<short_uuid>" so the rest of the stack can
     persist + verify the ledger without touching Whop."""
-    if not is_live():
+    if not wallet_onboarding_live():
         fake_id = "fake_biz_" + uuid.uuid4().hex[:12]
         _log.info("[carrot] mock sub-merchant created · fake_id=%s · email=%s", fake_id, email)
         return {"id": fake_id, "live": False}
@@ -136,7 +151,7 @@ def create_onboarding_link(
 
     Mock mode returns a synthetic URL we can land on locally to simulate the
     completion callback."""
-    if not is_live():
+    if not wallet_onboarding_live():
         fake = (
             f"https://api.liquidclips.app/dev/mock-whop-onboarding"
             f"?sub_merchant_id={sub_merchant_id}&return={return_url}"
@@ -167,7 +182,7 @@ def create_payouts_portal_link(
 ) -> dict[str, Any]:
     """Generate a short-lived Whop-hosted portal URL for balances,
     payout methods, KYC, and withdrawals."""
-    if not is_live():
+    if not wallet_onboarding_live():
         raise RuntimeError("Whop payouts are not live")
 
     with _client() as c:
@@ -253,7 +268,7 @@ def retrieve_account(account_id: str) -> dict[str, Any]:
     consumed by the wallet and sponsored-reward routes.
 
     The endpoint accepts a connected company's biz_* id directly."""
-    if not is_live() or account_id.startswith("fake_"):
+    if not wallet_reads_live() or account_id.startswith("fake_"):
         return {
             "id": account_id,
             "title": "Mock Clipper Sub-Merchant",
