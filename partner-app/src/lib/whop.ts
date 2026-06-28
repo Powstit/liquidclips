@@ -57,7 +57,7 @@ export function decodeIdToken(idToken: string): { sub: string; email?: string; n
   return JSON.parse(json);
 }
 
-/** Get-or-create the affiliate record for this user against the Junior company. */
+/** Get or create the affiliate record for this user against Liquid Clips. */
 export async function ensureAffiliate(userId: string) {
   return getWhop().affiliates.create({
     company_id: env.companyId,

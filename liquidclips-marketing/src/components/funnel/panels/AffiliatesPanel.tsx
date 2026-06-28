@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { KadeHead } from "./KadeHead";
+import { PARTNER_URL } from "@/lib/env";
 
 /**
- * Affiliates panel · 50% MRR offer + earnings ladder + referral journey.
+ * Affiliates panel · 30% baseline, qualified 50% MRR + referral journey.
  *
  * Above the fold ·
  *   eyebrow + headline + sub
- *   3 hero metrics · 50% MRR · $14.99/mo per ref · 30-day cookie
+ *   3 hero metrics · 30% first payment · qualified 50% MRR · 90-day cookie
  *   CTA
  *
  * Below the fold ·
@@ -22,13 +23,13 @@ import { KadeHead } from "./KadeHead";
  */
 
 const HERO_METRICS = [
-  { eb: "YOUR CUT",           value: "50%",     caption: "of every Pro subscription, every month" },
-  { eb: "YOU EARN",            value: "$14.99", caption: "per signup, every month they stay subscribed" },
-  { eb: "YOU GET CREDIT",     value: "30d",     caption: "if they sign up within 30 days of your link" },
+  { eb: "STARTING RATE",       value: "30%", caption: "of each eligible referral's first payment" },
+  { eb: "QUALIFIED RATE",      value: "50%", caption: "recurring after 2 paid referrals clear 7 days" },
+  { eb: "YOU GET CREDIT",      value: "90d", caption: "if they sign up within 90 days of your link" },
 ];
 
 const LADDER = [
-  { refs: 1,   monthly: 14.99,    label: "your first signup pays for your own Pro" },
+  { refs: 1,   monthly: 14.99,    label: "one qualified recurring Pro referral" },
   { refs: 10,  monthly: 149.90,   label: "covers Pro + a week of groceries" },
   { refs: 50,  monthly: 749.50,   label: "more than most clippers earn in a month" },
   { refs: 100, monthly: 1499.00,  label: "money landing every month while you sleep" },
@@ -39,7 +40,7 @@ const JOURNEY = [
   { t: "Share",   l: "Drop your link in your bio, your Discord, your videos, anywhere" },
   { t: "They click", l: "Someone clicks and lands on Liquid Clips" },
   { t: "They sign up", l: "They install the app and upgrade to Pro" },
-  { t: "You get paid", l: "You earn 50% every month they stay subscribed" },
+  { t: "You get paid", l: "Start at 30% of first payments; qualify for 50% recurring" },
 ];
 
 const AUDIENCES = [
@@ -102,15 +103,15 @@ export function AffiliatesPanel() {
         alt="Kade pointing forward to share a link"
       >
         <span className="lc-af-eb" style={{ animationDelay: "0ms" }}>
-          <span className="lc-af-eb-dot" /> AFFILIATES · 50% MRR
+          <span className="lc-af-eb-dot" /> AFFILIATES · UP TO 50% MRR
         </span>
         <h2 className="lc-af-h" style={{ animationDelay: "120ms" }}>
           Invite creators and clippers. <em>Earn recurring commission</em>
           every month they stay subscribed.
         </h2>
         <p className="lc-af-sub" style={{ animationDelay: "240ms" }}>
-          Share your link. When someone signs up through it, you get 50% of
-          what they pay — every single month, for as long as they stay.
+          Share your link. Earn 30% of each eligible first payment, then unlock
+          50% recurring after two paid referrals remain active for seven days.
         </p>
       </KadeHead>
 
@@ -133,17 +134,17 @@ export function AffiliatesPanel() {
       </ol>
 
       <div className="lc-af-cta-row" style={{ animationDelay: "1200ms" }}>
-        <Link href="#" className="lc-af-cta lc-btn lc-btn--primary">
+        <Link href={PARTNER_URL} className="lc-af-cta lc-btn lc-btn--primary">
           <span>Get my affiliate link</span>
           <span aria-hidden="true">→</span>
         </Link>
-        <span className="lc-af-cta-sub">no minimum signups · paid every month</span>
+        <span className="lc-af-cta-sub">active paid membership required · payouts by Whop</span>
       </div>
 
       {/* ── BELOW THE FOLD ── */}
       <section className="lc-af-ladder" aria-label="What you could earn">
         <header className="lc-af-ladder-head">
-          <span className="lc-af-ladder-eb">WHAT YOU COULD EARN</span>
+          <span className="lc-af-ladder-eb">WHAT QUALIFIED PARTNERS COULD EARN</span>
           <h3 className="lc-af-ladder-h">
             Every signup pays you <em>forever</em>.
           </h3>
@@ -154,9 +155,9 @@ export function AffiliatesPanel() {
           ))}
         </ol>
         <p className="lc-af-ladder-foot">
-          Based on Pro at $29.99/month. You earn 50% — $14.99/month per signup.
-          If they cancel, you stop earning from them. If they stay (most do),
-          you keep getting paid.
+          Qualified-rate illustration based on Pro at $29.99/month: 50% is
+          $14.99/month per active referral. Before qualification, eligible
+          referrals earn 30% of their first payment only. Results vary.
         </p>
       </section>
 
@@ -200,7 +201,7 @@ export function AffiliatesPanel() {
             Grab your link. Share it. Watch the payments stack up.
           </span>
         </div>
-        <Link href="#" className="lc-af-cta lc-btn lc-btn--primary">
+        <Link href={PARTNER_URL} className="lc-af-cta lc-btn lc-btn--primary">
           <span>Get my affiliate link</span>
           <span aria-hidden="true">→</span>
         </Link>

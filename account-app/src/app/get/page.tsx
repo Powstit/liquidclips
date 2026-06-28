@@ -31,7 +31,7 @@ function captureFirstTouchRef(): void {
     if (!/^[A-Za-z0-9_-]+$/.test(ref)) return;
     // First-touch: do not overwrite an existing referral.
     if (/(?:^|;\s*)jnr_ref=/.test(document.cookie)) return;
-    const oneYear = 60 * 60 * 24 * 365;
+    const attributionWindow = 60 * 60 * 24 * 90;
     // Share across apex + subdomains (account., partner.) so signup can read it.
     const domain = /(^|\.)liquidclips\.app$/.test(location.hostname)
       ? "; domain=.liquidclips.app"
@@ -40,7 +40,7 @@ function captureFirstTouchRef(): void {
       "jnr_ref=" +
       encodeURIComponent(ref) +
       "; path=/; max-age=" +
-      oneYear +
+      attributionWindow +
       domain +
       "; SameSite=Lax";
   } catch {

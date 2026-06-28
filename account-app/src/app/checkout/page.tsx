@@ -85,7 +85,7 @@ export default function CheckoutPage() {
         setAffiliateId(a);
         if (!/(?:^|;\s*)jnr_ref=/.test(document.cookie)) {
           const domain = /(^|\.)liquidclips\.app$/.test(location.hostname) ? "; domain=.liquidclips.app" : "";
-          document.cookie = `jnr_ref=${encodeURIComponent(a)}; path=/; max-age=${60 * 60 * 24 * 365}${domain}; SameSite=Lax`;
+          document.cookie = `jnr_ref=${encodeURIComponent(a)}; path=/; max-age=${60 * 60 * 24 * 90}${domain}; SameSite=Lax`;
         }
       }
     } catch {
@@ -214,7 +214,7 @@ export default function CheckoutPage() {
       {/* 1 — HERO */}
       <section className="grid items-center gap-8 lg:grid-cols-[1.05fr_0.95fr]">
         <div className="jnr-in">
-          <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-fuchsia">junior / employee</div>
+          <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-fuchsia">liquid / clips</div>
           <h1 className="mt-3 font-display text-4xl font-semibold leading-[1.04] tracking-tight text-ink sm:text-5xl">
             Turn long videos into paid-ready clips.
           </h1>

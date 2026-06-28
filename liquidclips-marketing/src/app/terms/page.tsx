@@ -75,10 +75,11 @@ export default function TermsPage() {
 
             <h2 id="affiliate">8. Affiliate and partner terms</h2>
             <ul>
-              <li>You must have an active paid Liquid Clips subscription, Solo or higher, to earn affiliate commission.</li>
+              <li>You must have an active paid Liquid Clips membership to earn affiliate commission.</li>
               <li>Commission applies only to qualifying referred paid customers, not free accounts, trials, refunds, chargebacks, test payments, self-referrals, or invalid traffic.</li>
-              <li>Attribution is first-touch where technically possible and may be rejected for fraud, abuse, duplicate accounts, or policy violations.</li>
-              <li>Payout setup, thresholds, and timing may be handled by Whop or Stripe Connect depending on the partner flow available to your account.</li>
+              <li>Before qualification, eligible referrals earn 30% of their first payment. Two paid referrals that remain active for 7 days unlock 50% on future recurring payments.</li>
+              <li>Attribution is first-touch for 90 days where technically possible and may be rejected for fraud, abuse, duplicate accounts, or policy violations.</li>
+              <li>Whop is the affiliate system of record and handles attribution, commission calculation, refund reversals, payout setup, and withdrawals.</li>
             </ul>
 
             <h2>9. Social publishing</h2>

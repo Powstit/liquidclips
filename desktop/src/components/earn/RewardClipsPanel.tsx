@@ -206,7 +206,7 @@ function RewardClipRow({ clip }: { clip: RewardClipBlock }) {
                 value={tl.short_url}
                 size={168}
                 caption="Scan to try Liquid Clips"
-                downloadName={`junior-${clip.id}`}
+                downloadName={`liquid-clips-${clip.id}`}
               />
             </div>
           )}
@@ -290,4 +290,3 @@ function SkeletonRows() {
     </div>
   );
 }
-

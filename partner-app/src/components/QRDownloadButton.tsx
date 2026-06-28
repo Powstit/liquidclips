@@ -17,7 +17,7 @@ export function QRDownloadButton({
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = blobUrl;
-      a.download = "junior-referral-qr.svg";
+      a.download = "liquid-clips-referral-qr.svg";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
