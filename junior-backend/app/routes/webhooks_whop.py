@@ -76,7 +76,7 @@ PLAN_TIER_BY_TITLE = {
 PLAN_TIER_BY_ID = {
     "plan_qe8AFXj9J3SWi": "solo",       # Liquid Clips Solo   ($29.99/mo)
     "plan_dhssNse4FfPlI": "growth",     # Liquid Clips Growth ($99.99/mo)
-    "plan_BvDBrtybhbxNg": "autopilot",  # Liquid Clips Agency ($199.99/mo)
+    "plan_BvDBrtybhbxNg": "autopilot",  # Liquid Clips Agency ($500/mo)
 }
 
 # Founder is a $500 one-time unlock → Autopilot tier + founder_flag forever.
