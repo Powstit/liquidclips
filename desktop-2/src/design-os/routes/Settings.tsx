@@ -102,9 +102,8 @@ function SettingsBody() {
    * on mount when a JWT is present · `useTierCaps()` reads from it. */
   const me = useMe();
   const tier = useTierCaps();
-  // 2026-06-23 · billing adapter wires Settings CTAs to Clerk checkout
-  // for the right plan (Pro $29.99 / Growth $79.99 / Agency $500) instead
-  // of dumping the user on the generic Whop dashboard.
+  // Billing adapter opens the plan-aware Whop checkout
+  // (Pro $29.99 / Growth $99.99 / Agency $199.99).
   const billing = useBillingState();
   const [hasLicense, setHasLicense] = useState<boolean>(() => readHasJwt());
   const [refreshing, setRefreshing] = useState(false);
@@ -218,7 +217,7 @@ function SettingsBody() {
 
   const handleOpenWhop = async () => {
     try {
-      await openSmart("https://whop.com/liquidclips/");
+      await openSmart("https://whop.com/@me/settings/memberships");
     } catch (e) {
       bus.emit("toast", {
         kind: "warning",
@@ -229,18 +228,16 @@ function SettingsBody() {
   };
 
   /**
-   * 2026-06-23 · Billing CTA via adapter (replaces hard-coded Whop URL).
+   * Billing CTA via the shared Whop adapter.
    *
-   * Routes upgrade through `billing.adapter.startCheckout()` so the right
-   * plan param lands on /dashboard#plans?plan=<tier> (Clerk-wired) instead
-   * of the generic Whop page where the user had to hunt for the upgrade
-   * button. For tier === "agency" (top tier), falls back to Whop manage URL
-   * since there's no upgrade target.
+   * Routes upgrade through `billing.adapter.startCheckout()` so the selected
+   * plan lands directly in the embedded Whop checkout. Agency users open
+   * Whop's management surface because they are already on the top tier.
    *
    * Path per tier:
-   *   - clipper → Clerk checkout for Pro ($29.99)
-   *   - pro     → Clerk checkout for Growth ($79.99)
-   *   - growth  → Clerk checkout for Agency ($500)
+   *   - clipper → Whop checkout for Pro ($29.99)
+   *   - pro     → Whop checkout for Growth ($99.99)
+   *   - growth  → Whop checkout for Agency ($199.99)
    *   - agency  → Whop manage URL (no upgrade target)
    */
   const handleManageBilling = async () => {

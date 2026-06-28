@@ -27,10 +27,10 @@ const FALLBACK_PAYMENTS: PaymentVisibility = {
   app_subscription: {
     key: "app_subscription",
     label: "Liquid Clips subscription",
-    provider: "Stripe via Clerk",
+    provider: "Whop",
     status: "unknown",
-    manage_url: "https://liquidclips.app/dashboard",
-    helper: "Manage your app plan and payment method from your Liquid Clips account.",
+    manage_url: "https://whop.com/@me/settings/memberships",
+    helper: "Whop manages your app plan, payment method, receipts, and cancellation.",
     in_app: true,
   },
   reward_payouts: {
@@ -98,7 +98,7 @@ export default async function DashboardPage() {
   const subStatus = c?.subscription_status ?? (isAdmin ? "admin" : "—");
   const isTrial = c?.is_trial ?? false;
   const remainingExports = c?.remaining_exports; // number | null (unlimited) | undefined (no backend)
-  const billingProvider = c?.billing_provider ?? "clerk";
+  const billingProvider = c?.billing_provider ?? "whop";
   const canEarn = c?.can_earn ?? !!isAdmin;
   const affiliateData = overview?.affiliate ?? FALLBACK_AFFILIATE;
   const paymentVisibility = overview?.payments ?? FALLBACK_PAYMENTS;
@@ -163,7 +163,7 @@ export default async function DashboardPage() {
               num="02"
               eyebrow="unlock"
               title="Outgrow free."
-              sub="Pick a plan below. Solo is for one creator, Pro adds hosted AI and multi-platform publishing, Agency is for client-heavy teams."
+            sub="Pick a plan below. Pro is for one creator, Growth adds capacity, and Agency is for client-heavy teams."
               actions={[
                 {
                   label: "See plans ↓",
@@ -292,12 +292,11 @@ export default async function DashboardPage() {
             </h2>
           </div>
           <p className="hidden max-w-[360px] font-sans text-[13px] text-text-secondary sm:block">
-            Card is held by Stripe via Clerk. Cancel or change plan any time — access stays live until the
-            period ends.
+            Whop handles checkout, receipts, and cancellation. Your access follows Whop&apos;s signed billing events.
           </p>
         </div>
         <div className="mt-8">
-          <PricingCards currentSlug={tier} />
+          <PricingCards currentSlug={tier} affiliateCode={affiliateId} />
         </div>
       </section>
 

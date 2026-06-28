@@ -138,26 +138,36 @@ def test_tier_limits_matrix_matches_useTierCaps():
     """Lock the canonical numbers from `desktop-2/src/design-os/state/useTierCaps.ts`.
     If anyone changes either side without changing the other, this fails."""
     assert TIER_LIMITS["free"]["channels_per_platform"] == 1
-    assert TIER_LIMITS["solo"]["channels_per_platform"] == 1
+    assert TIER_LIMITS["solo"]["channels_per_platform"] == 3
     assert TIER_LIMITS["pro"]["channels_per_platform"] == 3
+    assert TIER_LIMITS["growth"]["channels_per_platform"] == 4
     assert TIER_LIMITS["agency"]["channels_per_platform"] == 5
 
     assert TIER_LIMITS["free"]["monthly_posts"] == 25
-    assert TIER_LIMITS["solo"]["monthly_posts"] == 25
+    assert TIER_LIMITS["solo"]["monthly_posts"] == 250
     assert TIER_LIMITS["pro"]["monthly_posts"] == 250
+    assert TIER_LIMITS["growth"]["monthly_posts"] == 750
     assert TIER_LIMITS["agency"]["monthly_posts"] == 2500
 
-    assert TIER_LIMITS["solo"]["campaigns_per_brand"] == 1
+    assert TIER_LIMITS["solo"]["campaigns_per_brand"] == 5
     assert TIER_LIMITS["pro"]["campaigns_per_brand"] == 5
+    assert TIER_LIMITS["growth"]["campaigns_per_brand"] == 10
     assert TIER_LIMITS["agency"]["campaigns_per_brand"] == 20
 
-    assert TIER_LIMITS["solo"]["clips_per_campaign"] == 10
+    assert TIER_LIMITS["solo"]["clips_per_campaign"] == 50
     assert TIER_LIMITS["pro"]["clips_per_campaign"] == 50
+    assert TIER_LIMITS["growth"]["clips_per_campaign"] == 100
     assert TIER_LIMITS["agency"]["clips_per_campaign"] == 200
 
-    assert TIER_LIMITS["solo"]["bulk_scheduling_rows"] == 1
+    assert TIER_LIMITS["solo"]["bulk_scheduling_rows"] == 25
     assert TIER_LIMITS["pro"]["bulk_scheduling_rows"] == 25
+    assert TIER_LIMITS["growth"]["bulk_scheduling_rows"] == 75
     assert TIER_LIMITS["agency"]["bulk_scheduling_rows"] == 1000
+
+    assert channels._MAX_CHANNELS_BY_TIER["free"] == 1
+    assert channels._MAX_CHANNELS_BY_TIER["solo"] == 5
+    assert channels._MAX_CHANNELS_BY_TIER["growth"] == 10
+    assert channels._MAX_CHANNELS_BY_TIER["autopilot"] == 25
 
 
 def test_tier_limit_helper_resolves_legacy_aliases_and_founders():
@@ -273,7 +283,7 @@ def test_campaigns_per_brand_cap_blocks_after_tier_limit(SessionLocal, db, monke
 
 
 def test_bulk_scheduling_rows_cap_blocks_oversize_batch(SessionLocal, db, monkeypatch):
-    """Solo tier: 1 row per batch. Posting 2 must 402."""
+    """Stored Solo (public Pro) allows 25 rows; posting 26 must 402."""
     user = _make_user(db, "solo")
     # Skip the publishing-built gate (Ayrshare env not set in test env).
     monkeypatch.setattr(schedules, "_require_scheduling_built", lambda u: None)
@@ -292,7 +302,7 @@ def test_bulk_scheduling_rows_cap_blocks_oversize_batch(SessionLocal, db, monkey
                 "platform": "tiktok",
                 "scheduled_for": future,
             }
-            for i in range(2)
+            for i in range(26)
         ],
     }
     r = client.post("/schedules/drip-batch", json=body)
@@ -374,8 +384,8 @@ def test_monthly_posts_cap_blocks_after_tier_limit(SessionLocal, db, monkeypatch
 # ---------------------------------------------------------------------------
 
 
-def test_channels_per_platform_cap_blocks_second_handle(SessionLocal, db, monkeypatch):
-    """Solo tier: 1 channel per platform. A second tiktok must 402."""
+def test_channels_per_platform_create_reuses_existing_handle(SessionLocal, db, monkeypatch):
+    """A repeated create for the same handle reuses the existing channel."""
     user = _make_user(db, "solo")
     # Seed one active tiktok channel.
     db.add(SocialChannel(
@@ -416,7 +426,7 @@ def test_channels_per_platform_cap_blocks_second_handle(SessionLocal, db, monkey
             SocialChannel.platform == "tiktok",
             SocialChannel.status != "deleted",
         ).count()
-        assert n == 1, f"per-platform cap broken: {n} tiktok channels for solo user"
+        assert n == 1, f"reuse broken: {n} tiktok channels for Pro user"
     else:
         assert r.status_code == 402, r.text
         assert "tiktok" in r.json()["detail"].lower()

@@ -9,8 +9,8 @@ import {
   type ValidateResponse,
 } from "@/lib/promo";
 
-// Affiliate starter offer = ONE offer: 100 free clips, then Solo $29.99/mo.
-// The Whop Solo plan carries a 30-day free trial, so "30 days free then $29.99"
+// Affiliate starter offer = ONE offer: 100 free clips, then Pro $29.99/mo.
+// The first Whop plan carries a 30-day free trial, so "30 days free then $29.99"
 // is enforced by Whop. The 100-clip cap is an in-app soft limit (no auto-bill),
 // so the copy says the paid plan starts after 30 days; if 100 clips are used
 // first, Liquid Clips asks the user to continue on Solo. Pro/Agency are in-app
@@ -25,11 +25,11 @@ const STEPS = [
 ] as const;
 
 const FAQ = [
-  { q: "When am I billed?", a: "Your Solo plan starts after 30 days. If you use all 100 free exports before then, Liquid Clips will ask you to continue on Solo ($29.99/mo). Cancel anytime before the trial ends." },
+  { q: "When am I billed?", a: "Your Pro plan starts after 30 days. If you use all 100 free exports before then, Liquid Clips will ask you to continue on Pro ($29.99/mo). Cancel anytime before the trial ends." },
   { q: "Can I download the app after checkout?", a: "Yes. After checkout, create or sign in to your Liquid Clips account and download the desktop app." },
   { q: "Do I need a YouTube channel?", a: "No. You can clip local videos, client videos, podcasts, or Whop Content Rewards." },
   { q: "Can I upgrade later?", a: "Yes. Pro and Agency are available as upgrades once you've started." },
-  { q: "Who handles payment?", a: "Whop handles secure checkout and billing for affiliate purchases." },
+  { q: "Who handles payment?", a: "Whop handles secure checkout, receipts, subscription changes, and cancellation." },
 ] as const;
 
 function StepIcon({ name }: { name: string }) {
@@ -269,7 +269,7 @@ export default function CheckoutPage() {
             ))}
             <li className="flex gap-2.5 border-t border-line pt-2.5 text-text-secondary">
               <span className="mt-1 text-fuchsia">→</span>
-              <span><strong className="text-ink">Then $29.99/mo</strong> — your Solo plan starts after 30 days, or when you choose to continue after using your 100 free exports.</span>
+              <span><strong className="text-ink">Then $29.99/mo</strong> — your Pro plan starts after 30 days, or when you choose to continue after using your 100 free exports.</span>
             </li>
           </ul>
           <a href="#start" onClick={() => track("checkout_cta_clicked", { source: "offer_card", has_affiliate: hasAffiliate })} className="mt-6 inline-flex rounded-full bg-ink px-6 py-3 text-sm font-semibold text-paper transition-colors hover:bg-fuchsia">
@@ -381,7 +381,7 @@ export default function CheckoutPage() {
                     {promoStatus.reason === "revoked" && "This code is no longer active."}
                     {promoStatus.reason === "expired" && "This code has expired."}
                     {promoStatus.reason === "exhausted" && "This code has reached its usage limit."}
-                    {promoStatus.reason === "plan_mismatch" && "This code doesn't apply to the Solo plan."}
+                    {promoStatus.reason === "plan_mismatch" && "This code doesn't apply to the Pro plan."}
                     {promoStatus.reason === "shape" && "Check the code and try again."}
                     {promoStatus.reason == null && "Couldn't validate right now. Try again in a moment."}
                   </span>

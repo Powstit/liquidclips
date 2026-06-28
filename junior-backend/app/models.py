@@ -276,6 +276,10 @@ class PendingWhopMembership(Base):
     email: Mapped[str] = mapped_column(String, nullable=False, index=True)
     tier: Mapped[str] = mapped_column(String, nullable=False)
     founder: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # True once a payment.succeeded event has been seen. Membership activation
+    # can precede payment for trials; this flag prevents an out-of-order paid
+    # checkout from being claimed later as merely "trialing".
+    paid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     whop_user_id: Mapped[str | None] = mapped_column(String, nullable=True)
     renewal_period_end: Mapped[int | None] = mapped_column(Integer, nullable=True)  # unix ts from Whop
 

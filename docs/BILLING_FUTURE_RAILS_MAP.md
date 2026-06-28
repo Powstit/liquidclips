@@ -14,18 +14,18 @@
 
 ## Section 1 · Current source of truth (by domain)
 
-### 1.1 Clerk subscriptions
-- **Source of truth**: Clerk (external).
-- **Backend ingress**: `junior-backend/app/routes/webhooks_clerk.py` (svix-verified, idempotent via `WebhookEvent.external_id`).
+### 1.1 Whop subscriptions
+- **Source of truth**: Whop (external). Clerk remains the identity provider.
+- **Backend ingress**: `junior-backend/app/routes/webhooks_whop.py` (Standard Webhooks-verified, idempotent via `WebhookEvent.external_id`).
 - **What we cache locally**: `users.tier`, `users.subscription_status`, `users.paid_until`, `users.extra_accounts_purchased` (Account Pack add-ons).
 - **JWT mint**: `junior-backend/app/routes/desktop.py:POST /desktop/connect` embeds `tier` + `founder_flag` into the license JWT (Ed25519, 30 days, auto-rotated by `/sync` when ≤ 5 days remaining).
 - **Desktop reads**: `desktop-2/src/lib/activation.ts` parses the JWT, `desktop-2/src/design-os/state/useTierCaps.ts:mapBackendTier()` collapses the backend `free` / `solo` / `pro` / `agency` strings into the client enum `clipper` / `pro` / `agency`.
 - **Tier UI gate**: TopHud → Settings → upgrade button reads tier-aware copy (`tier.tier === "clipper" ? "View plans" : "Manage plan"`).
-- **Insertion point**: any future settlement layer plugs in BELOW the JWT, at the Whop / Clerk webhook handler. The shell never needs to know.
+- **Insertion point**: any future settlement layer plugs in below the JWT at a billing webhook handler. The shell never needs to know.
 
 ### 1.2 Whop rewards (campaigns + bounties + content rewards)
 - **Source of truth**: Whop API.
-- **Backend ingress**: `junior-backend/app/routes/webhooks_whop.py` (HMAC-verified). Also the proxy in `junior-backend/app/routes/whop.py` for live-queries.
+- **Backend ingress**: `junior-backend/app/routes/webhooks_whop.py` (Standard Webhooks-verified). Also the proxy in `junior-backend/app/routes/whop.py` for live queries.
 - **What we cache locally**:
   - `users.whop_user_id`, `users.whop_affiliate_id` (NEVER overwritten post-signup).
   - `SponsoredCampaign.whop_reward_id`, `SponsoredCampaign.whop_reward_state`, `SponsoredCampaign.whop_reward_snapshot_status`, `SponsoredCampaign.whop_reward_url`.

@@ -2105,16 +2105,17 @@ def _month_key(dt: datetime) -> str:
     return dt.date().strftime("%Y-%m")
 
 
-# Pricing baseline — Solo / Pro / Agency monthly cents. Used to estimate
+# Pricing baseline — Pro / Growth / Agency monthly cents. Used to estimate
 # MRR from the live users table. These are pricing constants, not mock
 # data; if Daniel re-prices, update here.
 _TIER_PRICE_CENTS = {
     "free": 0,
     "solo": 2999,
-    "channel": 4999,   # legacy alias for pro
-    "pro": 4999,
-    "autopilot": 14999,  # legacy alias for agency
-    "agency": 14999,
+    "channel": 9999,     # legacy alias for Growth
+    "pro": 9999,         # legacy direct-billing value
+    "growth": 9999,
+    "autopilot": 19999,  # legacy alias for Agency
+    "agency": 19999,
 }
 
 
@@ -2630,4 +2631,3 @@ def agent_reports(admin: AdminUser) -> dict[str, Any]:
             "wire a real ingest endpoint to populate this stream."
         ),
     }
-

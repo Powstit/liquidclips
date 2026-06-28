@@ -16,11 +16,13 @@
 import Link from "next/link";
 import { PoweredByWhop } from "@/components/embed/PoweredByWhop";
 import { ClientNotify } from "./ClientNotify";
+import { normalizeWhopPlanKey, WHOP_PLANS } from "@/lib/whopPlans";
 
 type SearchParams = Promise<{
   status?: string;
   receipt_id?: string;
   plan_id?: string;
+  plan?: string;
 }>;
 
 export const metadata = {
@@ -33,7 +35,9 @@ export default async function CheckoutCompletePage({
 }: {
   searchParams: SearchParams;
 }) {
-  const { status: rawStatus, receipt_id, plan_id } = await searchParams;
+  const { status: rawStatus, receipt_id, plan_id, plan } = await searchParams;
+  const planKey = normalizeWhopPlanKey(plan);
+  const selectedPlan = WHOP_PLANS[planKey];
   const status = (rawStatus ?? "").toLowerCase();
   const success = status === "success";
   const cancelled = status === "cancelled" || status === "canceled";
@@ -54,13 +58,12 @@ export default async function CheckoutCompletePage({
           <>
             <ClientNotify status="success" />
             <h1 className="font-display text-[34px] font-semibold leading-tight tracking-[-0.025em] text-ink">
-              You&apos;re Pro.
+              You&apos;re on {selectedPlan.name}.
             </h1>
             <p className="font-sans text-[15px] leading-relaxed text-text-secondary">
-              Welcome to Liquid Clips Pro. Watermark-free exports, the $5 RPM
-              premium ladder, and the 50% MRR affiliate rail are all unlocked.
-              Your tier will refresh in the desktop on the next sync (under
-              30s — or quit and reopen if you want it instantly).
+              Whop confirmed checkout. Your {selectedPlan.name} access will
+              refresh in the desktop as soon as the signed webhook reaches
+              Liquid Clips, normally within a few seconds.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <Link
@@ -94,7 +97,7 @@ export default async function CheckoutCompletePage({
               still waiting whenever you&apos;re ready.
             </p>
             <Link
-              href="/upgrade"
+              href={`/upgrade?plan=${planKey}`}
               className="inline-flex w-fit items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-ink transition-colors hover:bg-fuchsia-bright"
             >
               Restart checkout →
@@ -113,7 +116,7 @@ export default async function CheckoutCompletePage({
               method automatically.
             </p>
             <Link
-              href="/upgrade"
+              href={`/upgrade?plan=${planKey}`}
               className="inline-flex w-fit items-center gap-1.5 rounded-full bg-fuchsia px-5 py-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-ink transition-colors hover:bg-fuchsia-bright"
             >
               Try again →

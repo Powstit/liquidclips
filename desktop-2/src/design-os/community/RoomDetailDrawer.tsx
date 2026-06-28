@@ -114,7 +114,7 @@ export function RoomDetailDrawer({ discussion, open, onClose }: RoomDetailDrawer
   const handleUpgrade = async () => {
     // 2026-06-23 · wire to real billing adapter (no more Phase 7+ toast).
     // Required tier for locked discussions is typically "paid" or higher;
-    // start by upselling Pro · billing handles the route to /dashboard#plans.
+    // start by upselling Pro · billing opens the plan-aware Whop checkout.
     // LC-UI-P0-001: await + surface failure as a toast — no silent ok:true.
     try {
       const outcome = await billing.adapter.startCheckout("pro");

@@ -75,6 +75,7 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS starter_exports_used integer NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_affiliate_id varchar",
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_whop_affiliate_id ON users (whop_affiliate_id) WHERE whop_affiliate_id IS NOT NULL",
+        "ALTER TABLE pending_whop_memberships ADD COLUMN IF NOT EXISTS paid boolean NOT NULL DEFAULT false",
         # Stripe Connect Express — payout rail for non-Whop affiliates.
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_connect_account_id varchar",
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_stripe_connect_account_id ON users (stripe_connect_account_id) WHERE stripe_connect_account_id IS NOT NULL",

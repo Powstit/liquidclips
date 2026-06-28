@@ -15,17 +15,14 @@ import type { Tier } from "../../design-os/state/useTierCaps";
 /** Where the user is in the subscription lifecycle. */
 export type BillingState =
   | "free"               // No paid plan · default
-  | "checkout_started"   // Redirected to Clerk/Stripe checkout
+  | "checkout_started"   // Redirected to Whop checkout
   | "checkout_failed"    // Returned to app without an active subscription
   | "active"             // Subscription confirmed
   | "past_due"           // Payment failed; grace period; tier may still be active
   | "cancelled";         // Cancelled — tier remains until period end
 
-/** Plan keys the app knows about. Aligns with `Tier` from useTierCaps,
- *  plus the historical "solo" Clerk plan kept as an alias.
- *  "accountpack" is an ADD-ON (not a tier) — granted to free/paid users who
- *  buy extra connected social accounts at $6/mo each. Tier stays the same;
- *  channel cap grows by extra_accounts_purchased. */
+/** Plan keys the app knows about. `accountpack` remains for legacy state, but
+ *  new purchases route to Pro because there is no live Whop add-on plan. */
 export type PlanKey = "free" | "pro" | "growth" | "agency" | "accountpack";
 
 export interface Plan {
@@ -50,12 +47,7 @@ export interface Plan {
  *  of this when rendering checkout/upgrade UIs. Real Clerk plan IDs live
  *  on the server — the desktop only knows display + price.
  *
- *  Prices verified 2026-06-23 against GET https://api.clerk.com/v1/billing/plans
- *  on the production Clerk instance. desktop "pro" maps to Clerk Solo
- *  ($29.99, cplan_3E4VBeiWtZP0CJsvPwrIz91uDFk); desktop "growth" maps to
- *  Clerk Pro ($79.99, cplan_3EV9Jjn8qLG130iSSRpAUOmqAfm — slug rename to
- *  "growth" is pending Daniel's dashboard action); desktop "agency" maps to
- *  Clerk agency ($500.00, cplan_3E4VBfKWkQlIuYRQG0YE5LfJPjx). */
+ *  Prices verified 2026-06-28 against Whop's live Plans API. */
 export const PLAN_CATALOG: Record<PlanKey, Plan> = {
   free: {
     key: "free",
@@ -74,14 +66,14 @@ export const PLAN_CATALOG: Record<PlanKey, Plan> = {
   growth: {
     key: "growth",
     displayName: "Growth",
-    priceMonthlyUsd: 79.99,
+    priceMonthlyUsd: 99.99,
     tier: "growth",
     pitch: "Hosted AI lane · priority queue · 10 channels · 750 posts/mo",
   },
   agency: {
     key: "agency",
     displayName: "Agency",
-    priceMonthlyUsd: 500,
+    priceMonthlyUsd: 199.99,
     tier: "agency",
     pitch: "Multi-brand · campaign launch · analytics rollups · 2,500 posts/mo",
   },

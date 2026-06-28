@@ -49,13 +49,14 @@ admin_router = APIRouter(prefix="/admin/channels", tags=["channels-admin"])
 # us under the Ayrshare Business-plan 30-profile cap until we have real
 # revenue justifying an Enterprise upgrade.
 _MAX_CHANNELS_BY_TIER = {
-    "free": 0,
-    "solo": 2,
+    "free": 1,
+    "solo": 5,
     "pro": 5,
-    "agency": 15,
+    "agency": 25,
     # Legacy aliases — same caps as their v2 successor
-    "growth": 5,
-    "autopilot": 15,
+    "channel": 5,
+    "growth": 10,
+    "autopilot": 25,
 }
 
 _SUPPORTED_PLATFORMS = ("tiktok", "instagram", "youtube", "x", "linkedin", "facebook", "threads")
