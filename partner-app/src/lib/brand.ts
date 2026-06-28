@@ -1,6 +1,6 @@
 export const brand = {
-  name: "junior/employee",
-  productName: "Junior",
+  name: "liquid/clips",
+  productName: "Liquid Clips",
   tagline: "Your AI editor. Lives on your computer.",
   // v0.7.68 P1 — canonical marketing domain is liquidclips.app. The env var
   // still wins so deploy previews / staging can override without a code change.

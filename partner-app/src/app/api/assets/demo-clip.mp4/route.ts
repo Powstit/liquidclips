@@ -7,7 +7,7 @@ export async function GET() {
   // For v1.0, send the user to the public marketing site so they can grab a clip
   // from there. Replace with a CDN-hosted MP4 in v1.1.
   return NextResponse.redirect(
-    `${process.env.NEXT_PUBLIC_MARKETING_URL ?? "https://jnremployee.com"}/affiliate`,
+    `${process.env.NEXT_PUBLIC_MARKETING_URL ?? "https://liquidclips.app"}/affiliate`,
     302
   );
 }

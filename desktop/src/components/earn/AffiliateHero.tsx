@@ -933,7 +933,7 @@ function ReferralLinkRow({ url, disabled }: { url: string; disabled?: boolean })
             value={url}
             size={176}
             caption="Scan to try Liquid Clips"
-            downloadName="junior-referral"
+            downloadName="liquid-clips-referral"
           />
         </div>
       )}

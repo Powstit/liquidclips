@@ -6,11 +6,11 @@ export function ShareButtons({ referralUrl, username }: { referralUrl: string; u
   const slug = referralIdFromUrl(referralUrl);
   const fire = (channel: "x" | "email" | "demo_clip") =>
     track("affiliate_link_shared", { affiliate_id: slug, channel });
-  const tweet = `Junior turns Whop Content Rewards into submission-ready clips. My link gives you 100 reward clip exports to try it. ${referralUrl}`;
+  const tweet = `Liquid Clips turns Whop Content Rewards into submission-ready clips. My link gives you 100 reward clip exports to try it. ${referralUrl}`;
   const xUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(tweet)}`;
 
-  const mailSubject = `You should try Junior`;
-  const mailBody = `Hey,\n\nFound Junior. Pick a Whop Content Reward, paste the source, and it builds a clipping workspace around the brief. My invite gives you 100 reward clip exports. Bring your own OpenAI key, card required, then Solo if you keep going.\n\n${referralUrl}\n\n— ${username}`;
+  const mailSubject = `You should try Liquid Clips`;
+  const mailBody = `Hey,\n\nFound Liquid Clips. Pick a Whop Content Reward, paste the source, and it builds a clipping workspace around the brief. My invite gives you 100 reward clip exports. Bring your own OpenAI key, card required, then Solo if you keep going.\n\n${referralUrl}\n\n— ${username}`;
   const mailUrl = `mailto:?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`;
 
   return (
@@ -30,7 +30,7 @@ export function ShareButtons({ referralUrl, username }: { referralUrl: string; u
           <span>Post on X</span>
         </a>
         <a
-          href="https://app.jnremployee.com/clips/clip-featured.mp4"
+          href="https://liquidclips.app/clips/clip-featured.mp4"
           target="_blank"
           rel="noopener noreferrer"
           onClick={() => fire("demo_clip")}
