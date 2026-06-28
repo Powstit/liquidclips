@@ -43,9 +43,7 @@ export default async function DownloadPage({
             clipCount={session.clips.length}
             sourceTitle={session.sourceTitle}
             sourceDuration={session.sourceDuration}
-            downloadHref={
-              latest?.macUniversal ?? latest?.macArm ?? latest?.macIntel ?? null
-            }
+            artifacts={artifacts}
             version={latest?.version ?? null}
           />
         </main>
@@ -64,7 +62,7 @@ export default async function DownloadPage({
               Get Liquid Clips. <em>Run it locally.</em>
             </h1>
             <p className="hero-copy">
-              Apple Silicon macOS DMG, notarised by Apple. Files stay on your machine.
+              Apple Silicon and Intel macOS builds, notarised by Apple. Files stay on your machine.
             </p>
             <div className="hero-actions">
               <DownloadCTA variant="primary" artifacts={artifacts} version={latest?.version} />

@@ -1,19 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
+import { DownloadCTA } from "@/components/DownloadCTA";
 
 type Props = {
   sessionId: string;
   clipCount: number;
   sourceTitle: string;
   sourceDuration: string;
-  downloadHref: string | null;
+  artifacts?: {
+    macArm?: string;
+    macIntel?: string;
+    macUniversal?: string;
+  };
   version: string | null;
 };
 
 const STEPS = [
-  { label: "Download starts" },
+  { label: "Choose your Mac build" },
   { label: "Drag to Applications" },
   { label: "Open Liquid Clips" },
   { label: "Your 10 clips appear" },
@@ -24,23 +29,10 @@ export function ClaimRoom({
   clipCount,
   sourceTitle,
   sourceDuration,
-  downloadHref,
+  artifacts,
   version,
 }: Props) {
-  const [downloadStartedAt, setDownloadStartedAt] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
-
-  // Kick the DMG download immediately when the page loads. The user can
-  // also click the button manually — we never want them to wonder where
-  // it went.
-  useEffect(() => {
-    if (!downloadHref) return;
-    const id = window.setTimeout(() => {
-      window.location.href = downloadHref;
-      setDownloadStartedAt(Date.now());
-    }, 800);
-    return () => window.clearTimeout(id);
-  }, [downloadHref]);
 
   async function copySession() {
     try {
@@ -52,9 +44,6 @@ export function ClaimRoom({
     }
   }
 
-  const elapsedSec =
-    downloadStartedAt === null ? 0 : Math.floor((Date.now() - downloadStartedAt) / 1000);
-
   return (
     <div className="lc-claim">
       <header className="lc-claim-head">
@@ -62,26 +51,20 @@ export function ClaimRoom({
           session {sessionId} · {sourceTitle} · {sourceDuration} · {clipCount} clips locked
         </div>
         <h1 className="lc-claim-h1">
-          We&apos;ve started downloading the app. <em>Your clips are inside.</em>
+          Your clips are ready. <em>Choose the right Mac build.</em>
         </h1>
         <p className="lc-claim-sub">
-          Drag Liquid Clips to Applications. Open it once. Your clips will be there.
+          Download Liquid Clips, drag it to Applications, then open it. Your session follows you into the app.
         </p>
       </header>
 
       <div className="lc-claim-row">
         <div className="lc-claim-actions">
-          {downloadHref ? (
-            <a
-              className="lc-claim-cta"
-              href={downloadHref}
-              onClick={() => setDownloadStartedAt(Date.now())}
-            >
-              Restart the download
-            </a>
-          ) : (
-            <span className="lc-claim-cta is-disabled">Preparing your build…</span>
-          )}
+          <DownloadCTA
+            variant="primary"
+            artifacts={artifacts}
+            version={version ?? undefined}
+          />
           <button type="button" className="lc-claim-copy" onClick={copySession}>
             {copied ? "Session copied" : `Copy session · ${sessionId}`}
           </button>
@@ -94,7 +77,7 @@ export function ClaimRoom({
           {STEPS.map((s, i) => (
             <li
               key={s.label}
-              className={`lc-claim-step ${i === 0 && downloadStartedAt !== null ? "is-active" : ""}`}
+              className="lc-claim-step"
             >
               <span className="lc-claim-step-num">0{i + 1}</span>
               <span className="lc-claim-step-label">{s.label}</span>
@@ -117,7 +100,7 @@ export function ClaimRoom({
             <li>Your 10 clips · already loaded.</li>
             <li>Viral scores + hook lines · ranked.</li>
             <li>One-tap export · watermarked free, 4K on Pro.</li>
-            <li>Schedule to TikTok / Shorts / Reels / X · Pro.</li>
+            <li>Set assisted posting reminders for TikTok, Shorts, Reels, and X.</li>
             <li>Submit to creator campaigns · paid per clip.</li>
           </ul>
         </div>
@@ -125,7 +108,7 @@ export function ClaimRoom({
 
       <footer className="lc-claim-foot">
         <span>
-          Liquid Clips · 0.8.0-beta · the workbench for clippers · {elapsedSec > 0 ? `download ${elapsedSec}s` : "starting…"}
+          Liquid Clips{version ? ` · v${version}` : ""} · the workbench for clippers
         </span>
         <Link href="/" className="lc-claim-foot-link">
           Find more clips →
