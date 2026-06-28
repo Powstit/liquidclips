@@ -391,6 +391,7 @@ pub fn run() {
         // 2026-06-25 · opener plugin needed by browse.rs commerce filter
         // (App Store 3.1.1 — checkout URLs redirect to system browser).
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         // 2026-06-25 · Runtime Update v1 · Phase 1.
         // Custom URI scheme `runtime://` serves frontend assets from either
         // the STAGED runtime bundle (~/Library/Application Support/Liquid

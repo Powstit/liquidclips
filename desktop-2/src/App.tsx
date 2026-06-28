@@ -12,6 +12,7 @@ import { attachQA, qaGateEnabled } from "./lib/qa";
 import { mountDeepLinkSubscriber, type DeepLinkBootHandle } from "./lib/deepLinkBoot";
 import { useActivation } from "./lib/activation";
 import { readSessionIdFromLaunch, clearFunnelSession } from "./lib/funnelSession";
+import { AssistedScheduleMonitor } from "./design-os/schedule/AssistedScheduleMonitor";
 
 /* LC-UI-P0-BOOT · Patch A · 2026-06-26
  *
@@ -157,7 +158,10 @@ export function App() {
       {splashAcked && (
         <FunnelGate>
           <AuthGate>
-            <AppShell />
+            <>
+              <AppShell />
+              <AssistedScheduleMonitor />
+            </>
           </AuthGate>
         </FunnelGate>
       )}

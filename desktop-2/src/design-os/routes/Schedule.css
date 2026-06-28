@@ -56,3 +56,61 @@
   font-family: var(--font-sans);
   font-size: 13px;
 }
+
+.lc-schedule-login-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 48px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-fuchsia) 24%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--color-paper-warm) 78%, transparent);
+}
+
+.lc-schedule-login-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.lc-schedule-login-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lc-schedule-login-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--color-fuchsia) 34%, transparent);
+  border-radius: var(--radius-chip);
+  background: transparent;
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.lc-schedule-login-btn:hover,
+.lc-schedule-login-btn:focus-visible {
+  border-color: var(--color-fuchsia);
+  background: color-mix(in srgb, var(--color-fuchsia) 10%, transparent);
+  outline: none;
+}
+
+@media (max-width: 760px) {
+  .lc-schedule-login-strip,
+  .lc-schedule-login-copy {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

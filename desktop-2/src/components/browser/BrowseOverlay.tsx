@@ -85,6 +85,7 @@ export function BrowseOverlay(): JSX.Element | null {
   const history = useBrowseOverlay((s) => s.history);
   const historyIdx = useBrowseOverlay((s) => s.historyIdx);
   const loadState = useBrowseOverlay((s) => s.loadState);
+  const intent = useBrowseOverlay((s) => s.intent);
   const setLoadState = useBrowseOverlay((s) => s.setLoadState);
   const back = useBrowseOverlay((s) => s.back);
   const forward = useBrowseOverlay((s) => s.forward);
@@ -345,16 +346,18 @@ export function BrowseOverlay(): JSX.Element | null {
             <ClipboardCopy size={13} /> Copy URL
           </button>
 
-          <button
-            type="button"
-            className="lc-btn"
-            data-variant="primary"
-            data-size="sm"
-            onClick={handleUseInEngine}
-            title="Hand this URL or campaign into the Engine"
-          >
-            <ArrowUpRight size={13} /> Use in Engine ↗
-          </button>
+          {intent !== "read-only" && (
+            <button
+              type="button"
+              className="lc-btn"
+              data-variant="primary"
+              data-size="sm"
+              onClick={handleUseInEngine}
+              title="Hand this URL or campaign into the Engine"
+            >
+              <ArrowUpRight size={13} /> Use in Engine ↗
+            </button>
+          )}
 
           <button
             type="button"
@@ -368,17 +371,19 @@ export function BrowseOverlay(): JSX.Element | null {
         </div>
 
         <div className="lc-browse-chrome-quick">
-          <span className="lc-browse-quick-label">Quick</span>
-          {QUICK_LINKS.map((q) => (
-            <button
-              key={q.label}
-              type="button"
-              className="lc-browse-quick-chip"
-              onClick={() => handleQuickLink(q)}
-            >
-              <Sparkles size={10} /> {q.label}
-            </button>
-          ))}
+          <span className="lc-browse-quick-label">
+            {intent === "read-only" ? "Posting handoff" : "Quick"}
+          </span>
+          {intent !== "read-only" && QUICK_LINKS.map((q) => (
+              <button
+                key={q.label}
+                type="button"
+                className="lc-browse-quick-chip"
+                onClick={() => handleQuickLink(q)}
+              >
+                <Sparkles size={10} /> {q.label}
+              </button>
+            ))}
           <span className="lc-browse-quick-hint">
             {loadState === "loading" ? (
               <span className="lc-browse-loading-dot">
@@ -413,15 +418,17 @@ export function BrowseOverlay(): JSX.Element | null {
           >
             <ExternalLink size={12} /> Open in system browser ↗
           </button>
-          <button
-            type="button"
-            className="lc-btn"
-            data-variant="secondary"
-            data-size="sm"
-            onClick={handleUseInEngine}
-          >
-            <ArrowUpRight size={12} /> Use this link in Engine ↗
-          </button>
+          {intent !== "read-only" && (
+            <button
+              type="button"
+              className="lc-btn"
+              data-variant="secondary"
+              data-size="sm"
+              onClick={handleUseInEngine}
+            >
+              <ArrowUpRight size={12} /> Use this link in Engine ↗
+            </button>
+          )}
         </div>
       </div>
 

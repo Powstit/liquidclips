@@ -22,6 +22,7 @@ interface NavItem {
   label: string;
   icon: string;
   badge?: number;
+  status?: "Coming soon" | "Assisted";
   kade: KadeState;
   /** UI-3 · which TopHud modes show this row. Default = both. */
   modes?: AppMode[];
@@ -47,7 +48,7 @@ const ITEMS: ReadonlyArray<NavItem> = [
   { route: "earn",        label: "Earn",        icon: "/brand/icons/nav/earn.svg",       kade: "earn-mode",     modes: ["clipper"] },
   { route: "community",   label: "Community",   icon: "/brand/icons/nav/community.svg",  kade: "community-mode" },
   { route: "channels",    label: "Channels",    icon: "/brand/icons/nav/channels.svg",   kade: "publishing" },
-  { route: "schedule",    label: "Schedule",    icon: "/brand/icons/nav/schedule.svg",   kade: "publishing" },
+  { route: "schedule",    label: "Schedule",    icon: "/brand/icons/nav/schedule.svg",   kade: "publishing", status: "Assisted" },
 ];
 
 const FOOTER: ReadonlyArray<NavItem> = [
@@ -208,6 +209,7 @@ function NavRow({
       <img className="lc-nav-ico" src={item.icon} alt="" />
       <span className="lc-nav-label">{item.label}</span>
       {item.badge !== undefined && <span className="lc-nav-badge">{item.badge}</span>}
+      {item.status && <span className="lc-nav-status">{item.status}</span>}
 
       {/* Kade brief tooltip · position: fixed (CSS) + computed viewport
           coords (inline style) so the tooltip floats above route frames.

@@ -44,6 +44,7 @@ import { ROUTE_REGISTRY } from "../routing/routeRegistry";
 import { ROUTE_HERO } from "../copy/copyMap";
 import { BakeErrorStrip } from "../engine/BakeErrorStrip";
 import { bus, useEvent } from "../bridge";
+import { rememberExportPath } from "../schedule/exportPathStore";
 import "./ExportRoute.css";
 import "./SimPage.css";
 
@@ -89,6 +90,10 @@ function ExportBody() {
   const [captionsOpen, setCaptionsOpen] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [latestOutputPath, setLatestOutputPath] = useState<string | null>(null);
+  useEffect(() => {
+    setLatestOutputPath(null);
+  }, [selectedClipIdx]);
 
   /* Seed targets from connected channels once they load. Limit to the
    * tier's accountsPerClip cap so the targets row never opens over-cap. */
@@ -128,7 +133,7 @@ function ExportBody() {
      ============================================================ */
   const onExport = async (params: { format: "9:16" | "1:1" | "16:9" | "original"; preset: "tiktok" | "reels" | "shorts" | "linkedin" | "custom"; watermark: boolean }) => {
     if (!clip) return;
-    await exportApi.exportClip({
+    const result = await exportApi.exportClip({
       slug: FIXTURE_PROJECT.slug,
       idx: clip.idx,
       format: params.format,
@@ -136,6 +141,8 @@ function ExportBody() {
       watermark: params.watermark,
       targetAccountIds: targets.map((t) => t.id),
     });
+    setLatestOutputPath(result.outputPath);
+    rememberExportPath(FIXTURE_PROJECT.slug, clip.idx, result.outputPath);
   };
 
   return (
@@ -264,7 +271,11 @@ function ExportBody() {
             open={scheduleOpen}
             onClose={() => setScheduleOpen(false)}
             targets={targets}
-            clip={clip ? { idx: clip.idx, title: clip.title } : null}
+            clip={clip ? {
+              idx: clip.idx,
+              title: clip.title,
+              outputPath: latestOutputPath ?? clip.vertical_path ?? clip.cut_path,
+            } : null}
             projectSlug={FIXTURE_PROJECT.slug}
             hideBrand={tier.tier === "clipper"}
             onScheduled={() => {

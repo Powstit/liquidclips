@@ -106,6 +106,20 @@ async function interceptBackend(page: Page) {
   // 2. Specific routes LAST (highest priority — win for their patterns).
   await page.route(/api\.liquidclips\.app\/sync(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sync) }));
   await page.route(/api\.liquidclips\.app\/me(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(me) }));
+  await page.route(/api\.liquidclips\.app\/channels(\?.*)?$/, (r) => r.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify([{
+      id: "channel-tiktok-harness",
+      label: "TikTok",
+      platform: "tiktok",
+      handle: "@harness",
+      status: "active",
+      total_posts: 0,
+      last_refreshed_at: null,
+      created_at: new Date().toISOString(),
+    }]),
+  }));
 }
 
 async function seedCompletedSession(page: Page) {
@@ -152,6 +166,22 @@ test.describe("Full Clipping Journey", () => {
         await seedCompletedSession(page);
         await page.goto("/?skipIntro=1#/workstation", { waitUntil: "domcontentloaded" });
         await page.waitForSelector('[data-testid="clip-card"]', { timeout: 20_000 });
+        await page.evaluate(() => {
+          const app = window as Window & {
+            __lcDebugSeedChannels?: (rows: unknown[], source?: "real-http") => void;
+          };
+          app.__lcDebugSeedChannels?.([{
+            id: "channel-tiktok-harness",
+            platform: "tiktok",
+            label: "TikTok",
+            handle: "@harness",
+            status: "connected",
+            brandId: "brand-1",
+            tierRequirement: "pro",
+            monthlyPostCount: 0,
+            createdAt: new Date().toISOString(),
+          }], "real-http");
+        });
         const count = await page.locator('[data-testid="clip-card"]').count();
         rec.assert("generated_clip_count", count);
         expect(count).toBeGreaterThanOrEqual(2);
@@ -273,21 +303,20 @@ test.describe("Full Clipping Journey", () => {
         expect(publishEff).toBe("false");
       });
 
-      // ── 8. Schedule honesty · CTAs disabled on both surfaces ──
-      await rec.step("Schedule honesty · CTAs disabled on Publish + Schedule (single deriveSchedulePromise)", async () => {
+      // ── 8. Schedule honesty · assisted state shared across surfaces ──
+      await rec.step("Schedule honesty · assisted reminder state is shared", async () => {
         // Capture publish-side BEFORE leaving the publish tab — once we
         // tab away, PublishModule unmounts and the element is gone.
         await expect(page.locator('[data-testid="publish-schedule-hour"]')).toBeDisabled();
         const statePubSched = await page.locator('[data-testid="publish-schedule-hour"]').getAttribute("data-schedule-state");
         rec.assert("schedule_state_in_publish_tab", statePubSched);
-        expect(statePubSched).toBe("coming-soon");
+        expect(statePubSched).toBe("ready");
 
         // Now tab to schedule and capture its side.
         await tab(page, "schedule");
-        await expect(page.locator('[data-testid="schedule-queue"]')).toBeDisabled();
         const stateSched = await page.locator('[data-testid="schedule-block"]').getAttribute("data-schedule-state");
         rec.assert("schedule_state_in_schedule_tab", stateSched);
-        expect(stateSched).toBe("coming-soon");
+        expect(stateSched).toBe("ready");
         // Both surfaces read the SAME deriveSchedulePromise (BUG-038 single source).
         expect(stateSched).toBe(statePubSched);
       });
@@ -318,7 +347,36 @@ test.describe("Full Clipping Journey", () => {
         expect(successText?.toLowerCase()).toContain("clean");
       });
 
-      // ── 11. Cross-clip persistence check ──
+      // ── 11. Assisted schedule · exported path survives tab handoff ──
+      await rec.step("Set a durable assisted posting reminder", async () => {
+        const openReminder = page.locator('[data-testid="publish-schedule-hour"]');
+        await expect(openReminder).toBeEnabled();
+        await openReminder.click();
+        await expect(page.locator('.lc-cockpit-dock[data-module="schedule"]')).toBeVisible();
+        const queue = page.locator('[data-testid="schedule-queue"]');
+        await expect(queue).toBeEnabled();
+        await queue.click();
+        await expect.poll(async () => page.evaluate(() => {
+          const rows = JSON.parse(localStorage.getItem("lc.assisted-schedule.v1") ?? "[]");
+          return Array.isArray(rows) ? rows.length : 0;
+        })).toBe(1);
+        const stored = await page.evaluate(() => {
+          const rows = JSON.parse(localStorage.getItem("lc.assisted-schedule.v1") ?? "[]");
+          return rows[0] ?? null;
+        });
+        rec.assert("assisted_schedule_row", stored);
+        expect(stored.deliveryMode).toBe("assisted");
+        expect(stored.outputPath).toContain(FIXTURE_SLUG);
+
+        await page.goto("/?skipIntro=1#/workstation", { waitUntil: "domcontentloaded" });
+        await page.waitForSelector('[data-testid="clip-card"]', { timeout: 20_000 });
+        await page
+          .locator('[data-testid="clip-card"][data-clip-idx="0"]')
+          .locator('button.lc-clip-cta', { hasText: /^Edit$/ })
+          .click();
+      });
+
+      // ── 12. Cross-clip persistence check ──
       await rec.step("Cross-clip persistence · settings survive clip switch", async () => {
         // Switch to clip #2 and back.
         await page.locator('[data-testid="clip-card"][data-clip-idx="1"] [data-testid="clip-shell"]').click();

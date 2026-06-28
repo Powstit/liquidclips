@@ -117,6 +117,28 @@
   margin: 0;
 }
 
+.lc-sjd-handoff {
+  display: grid;
+  gap: 12px;
+  border-color: color-mix(in srgb, var(--color-fuchsia) 34%, transparent);
+}
+
+.lc-sjd-handoff-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.lc-sjd-btn-handoff {
+  width: 100%;
+  border-color: color-mix(in srgb, var(--color-fuchsia) 55%, transparent);
+  background: var(--color-fuchsia);
+  color: white;
+}
+
+.lc-sjd-btn-handoff:hover:not(:disabled) {
+  background: var(--color-fuchsia-deep);
+}
+
 .lc-sjd-resched {
   display: grid;
   grid-template-columns: 1fr auto;

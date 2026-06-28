@@ -11,6 +11,16 @@
  * button is disabled with a visible "Coming soon" affordance.
  */
 
+import { useState } from "react";
+import { bus } from "../../bridge";
+import { useChannels } from "../../state/useChannels";
+import { useEngineSession } from "../../state/useEngineSession";
+import { useSchedule } from "../../state/useSchedule";
+import {
+  isUploadableVideoPath,
+  requestAssistedSchedulePermission,
+} from "../../schedule/assistedSchedule";
+import { readExportPath } from "../../schedule/exportPathStore";
 import { useCockpit, type ScheduleLane, type ScheduleRepeat } from "./CockpitContext";
 import { deriveSchedulePromise } from "./scheduleStatus";
 import "./modules.css";
@@ -24,14 +34,73 @@ const LANES: ReadonlyArray<{ id: ScheduleLane; label: string }> = [
 
 const REPEAT: ReadonlyArray<{ id: ScheduleRepeat; label: string }> = [
   { id: "none",   label: "Once" },
-  { id: "daily",  label: "Daily" },
-  { id: "weekly", label: "Weekly" },
 ];
 
-export function ScheduleModule() {
-  const { settings, setSchedule } = useCockpit();
+export function ScheduleModule({ outputPathOverride }: { outputPathOverride?: string }) {
+  const { focusedClip, settings, setSchedule } = useCockpit();
   const { date, time, lane, repeat } = settings.schedule;
   const promise = deriveSchedulePromise();
+  const channels = useChannels();
+  const scheduler = useSchedule();
+  const session = useEngineSession();
+  const [queueing, setQueueing] = useState(false);
+  const slug = session.project?.slug ?? session.slug ?? "";
+  const outputPath = outputPathOverride
+    ?? focusedClip.vertical_path
+    ?? focusedClip.cut_path
+    ?? readExportPath(slug, focusedClip.idx)
+    ?? "";
+  const target = channels.asTargetAccounts.find((account) => (
+    account.platform === lane &&
+    (account.state === "connected" || account.state === "active-target")
+  ));
+  const canQueue = (
+    promise.available &&
+    !queueing &&
+    !!date &&
+    !!time &&
+    !!slug &&
+    isUploadableVideoPath(outputPath) &&
+    !!target
+  );
+
+  const queueReminder = async () => {
+    if (!canQueue || !target) return;
+    setQueueing(true);
+    try {
+      await requestAssistedSchedulePermission();
+      const created = await scheduler.scheduleClip({
+        clipId: `clip-${focusedClip.idx}`,
+        clipTitle: focusedClip.title,
+        projectSlug: slug,
+        targetAccountIds: [target.id],
+        accounts: [{
+          id: target.id,
+          platform: target.platform,
+          label: target.label,
+          handle: target.handle,
+        }],
+        outputPath,
+        scheduledFor: new Date(`${date}T${time}`).toISOString(),
+        captionOverride: settings.caption.text.trim() || undefined,
+      });
+      if (created.length > 0) {
+        bus.emit("nav:click", { route: "schedule" });
+      }
+    } finally {
+      setQueueing(false);
+    }
+  };
+
+  const blockedCopy = !isUploadableVideoPath(outputPath)
+    ? "Render this clip before scheduling."
+    : !target
+      ? `Connect a ${LANES.find((item) => item.id === lane)?.label} account first.`
+      : !date || !time
+        ? "Choose a date and time."
+        : !slug
+          ? "Open a project before scheduling."
+          : promise.copy;
 
   return (
     <section
@@ -45,7 +114,7 @@ export function ScheduleModule() {
           <span className="lc-cd-mod-eb">
             Schedule
             <span
-              data-testid="schedule-coming-soon-badge"
+              data-testid="schedule-status-badge"
               style={{
                 marginLeft: 8,
                 fontSize: 9,
@@ -63,9 +132,8 @@ export function ScheduleModule() {
           <span className="lc-cd-mod-sub" data-testid="schedule-copy">{promise.copy}</span>
         </header>
 
-        {/* Controls remain interactive so the customer's draft survives
-            clip-switch (Patch A round-trip). The honest "Queue" button
-            below is disabled — no fake toast can fire. */}
+        {/* Draft settings persist per clip. Queue writes a real local
+            reminder only when a rendered file and connected target exist. */}
         <div className="lc-cd-section">
           <div className="lc-cd-row">
             <div className="lc-cd-section" style={{ flex: 1 }}>
@@ -130,13 +198,14 @@ export function ScheduleModule() {
             type="button"
             data-testid="schedule-queue"
             className="lc-cd-primary"
-            disabled={!promise.available}
-            aria-disabled={!promise.available}
-            title={promise.available ? undefined : promise.copy}
+            disabled={!canQueue}
+            aria-disabled={!canQueue}
+            title={canQueue ? undefined : blockedCopy}
+            onClick={() => { void queueReminder(); }}
           >
-            {promise.available
-              ? `Queue on ${LANES.find((l) => l.id === lane)?.label}`
-              : "Queue · coming soon"}
+            {queueing
+              ? "Setting reminder…"
+              : `Remind me · ${LANES.find((l) => l.id === lane)?.label}`}
           </button>
           <button
             type="button"

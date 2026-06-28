@@ -581,6 +581,9 @@ function TabButton({
       data-canonical={id === "url" ? "true" : "false"}
       className={`lc-icp-tab ${active === id ? "on" : ""}`}
       onClick={() => onPick(id)}
-    >{children}</button>
+    >
+      <span>{children}</span>
+      {id === "upload" && <span className="lc-icp-tab-status">Coming soon</span>}
+    </button>
   );
 }
