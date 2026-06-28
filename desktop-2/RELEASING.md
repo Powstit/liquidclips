@@ -37,8 +37,8 @@ A version is only shipped when ALL of:
 3. The draft GitHub release `Liquid Clips desktop-2-vX.Y.Z` contains:
    - `Liquid.Clips_X.Y.Z_aarch64.dmg`
    - `Liquid.Clips_X.Y.Z_x86_64.dmg`
-   - `Liquid Clips.app.tar.gz` (× 2 · one per arch slot)
-   - `Liquid Clips.app.tar.gz.sig` (× 2)
+   - `Liquid.Clips_aarch64.app.tar.gz` + `.sig`
+   - `Liquid.Clips_x86_64.app.tar.gz` + `.sig`
 4. `POST https://api.jnremployee.com/updates/upload` has accepted both
    `darwin-aarch64` and `darwin-x86_64` artefacts.
 5. `GET https://updates.liquidclips.app/latest.json?target=…` reports
@@ -132,7 +132,9 @@ script bails before any upload step touches the backend.
 ### 4.f · Download artefacts
 
 `gh release download desktop-2-vX.Y.Z --dir <tmp>` pulls the DMGs,
-`.app.tar.gz`, and `.sig` files from the draft release.
+architecture-labelled `.app.tar.gz` and `.sig` files from the draft
+release. The ship script must never mirror one architecture into both
+manifest slots.
 
 ### 4.g · Upload to backend
 
@@ -187,14 +189,14 @@ to `0.8.0`:
 ```bash
 # Re-upload the prior signed artefact from the prior draft release.
 gh release download desktop-2-v0.8.0 --dir /tmp/rollback-0.8.0
-SIG="$(cat '/tmp/rollback-0.8.0/Liquid Clips.app.tar.gz.sig')"
+SIG="$(cat '/tmp/rollback-0.8.0/Liquid.Clips_aarch64.app.tar.gz.sig')"
 curl -X POST https://api.jnremployee.com/updates/upload \
   -H "x-internal-secret: $INTERNAL_API_SECRET" \
   -H "x-release-target: darwin-aarch64" \
   -H "x-release-version: 0.8.0" \
   -H "x-release-signature: $SIG" \
   -H "x-release-filename: Liquid Clips.app.tar.gz" \
-  --data-binary "@/tmp/rollback-0.8.0/Liquid Clips.app.tar.gz"
+  --data-binary "@/tmp/rollback-0.8.0/Liquid.Clips_aarch64.app.tar.gz"
 # Repeat for darwin-x86_64.
 ```
 

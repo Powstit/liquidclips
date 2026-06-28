@@ -52,14 +52,16 @@ case "$ARCH" in
   *) ARTIFACT_ARCH="$ARCH" ;;
 esac
 
-TAR_PATH="$BUNDLE_ROOT/$PRODUCT_NAME.app.tar.gz"
+TAR_PATH="$BUNDLE_ROOT/${SAFE_PRODUCT}_${ARTIFACT_ARCH}.app.tar.gz"
 DMG_PATH="$DMG_DIR/${SAFE_PRODUCT}_${VERSION}_${ARTIFACT_ARCH}.dmg"
 
 echo "=== Verifying signed app before packaging ==="
 codesign --verify --deep --strict --verbose=2 "$APP_ABS"
 
 echo "=== Rebuilding updater tarball ==="
-rm -f "$TAR_PATH" "$TAR_PATH.sig"
+# Remove Tauri's pre-repair updater archive as well as any prior arch-named
+# archive. Only the repaired, architecture-labelled payload may reach CI.
+rm -f "$BUNDLE_ROOT"/*.app.tar.gz "$BUNDLE_ROOT"/*.app.tar.gz.sig
 (cd "$BUNDLE_ROOT" && COPYFILE_DISABLE=1 tar --no-xattrs -czf "$TAR_PATH" "$(basename "$APP_ABS")")
 if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
   (cd "$ROOT" && npx tauri signer sign "$TAR_PATH")
