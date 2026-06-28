@@ -245,5 +245,5 @@ jobs:
             3. Double-click from Applications — the app is signed and notarized by Apple.
           files: |
             desktop-2/src-tauri/target/**/bundle/dmg/Liquid.Clips_*.dmg
-            desktop-2/src-tauri/target/**/bundle/macos/*.app.tar.gz
-            desktop-2/src-tauri/target/**/bundle/macos/*.app.tar.gz.sig
+            desktop-2/src-tauri/target/**/bundle/macos/Liquid.Clips_*.app.tar.gz
+            desktop-2/src-tauri/target/**/bundle/macos/Liquid.Clips_*.app.tar.gz.sig
