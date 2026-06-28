@@ -123,17 +123,24 @@ async def lifespan(_app: FastAPI):
         "CREATE INDEX IF NOT EXISTS ix_users_ip_address ON users (ip_address) WHERE ip_address IS NOT NULL",
         # Partner Engine (LiquidClips-Partner-Engine.md). The YT-Partner-style
         # ladder: clip bounties (open) → dedicated TikTok ($10 RPM) → Partner
-        # (50% recurring) at 10 paid referrals + verified dedicated account.
+        # campaign access at 10 paid referrals + verified dedicated account.
         # referred_paid_subs is incremented by webhooks_whop._handle_payment_succeeded
         # on the first trial→paid transition (and decremented on invalid/refund).
-        # The unlock service POSTs a per-affiliate Whop commission override and
-        # records its id here so we can later archive/update it.
+        # Affiliate commission qualification is a separate 2-referral/7-day
+        # service; these fields remain adjacent for migration compatibility.
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_paid_subs integer NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_affiliate_code varchar",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_whop_affiliate_code ON users (whop_affiliate_code) WHERE whop_affiliate_code IS NOT NULL",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS first_paid_at timestamptz",
+        "CREATE INDEX IF NOT EXISTS ix_users_first_paid_at ON users (first_paid_at) WHERE first_paid_at IS NOT NULL",
+        "UPDATE users SET first_paid_at = COALESCE(trial_started_at, created_at) WHERE subscription_status = 'active' AND first_paid_at IS NULL",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS tiktok_handle varchar",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS tiktok_verification_code varchar",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS tiktok_verified_at timestamptz",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS partner_unlocked_at timestamptz",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_commission_override_id varchar",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_qualified_at timestamptz",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_commission_override_ids jsonb NOT NULL DEFAULT '[]'::jsonb",
         # Legacy tier rename — "channel" was the 0.4.x name for what is now "pro"
         # in the v2 matrix. Idempotent because rerun affects zero rows after first pass.
         "UPDATE users SET tier = 'pro' WHERE tier = 'channel'",

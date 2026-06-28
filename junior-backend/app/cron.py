@@ -275,6 +275,23 @@ def _refresh_affiliate_cache_tick() -> None:
         log.info("[leaderboard] refreshed %d affiliate cache rows", refreshed)
 
 
+def _affiliate_commission_tick() -> None:
+    """Hourly 2-referral / 7-day commission reconciliation.
+
+    The service is read-only while AFFILIATE_COMMISSION_LIVE=false. In live
+    mode it creates qualified Whop overrides and removes them when the
+    referrer's own paid subscription is no longer active.
+    """
+    try:
+        from app.services.affiliate_commission import reconcile_all
+
+        with session_scope() as db:
+            counts = reconcile_all(db)
+        log.info("[affiliate_commission] reconcile %s", counts)
+    except Exception as e:  # noqa: BLE001
+        log.exception("[affiliate_commission] tick failed: %s", e)
+
+
 def _refresh_post_analytics_tick() -> None:
     """Schedule v2 — pull per-post engagement from Ayrshare for the last 90
     days of published rows. 30-min cadence + 60-post batch cap = max ~120
@@ -556,6 +573,7 @@ def start_cron() -> None:
     _scheduler.add_job(_tick, "interval", seconds=60, max_instances=1, coalesce=True, id="schedules_tick")
     _scheduler.add_job(_billing_sweep_tick, "interval", seconds=3600, max_instances=1, coalesce=True, id="billing_sweep")
     _scheduler.add_job(_refresh_affiliate_cache_tick, "interval", seconds=21600, max_instances=1, coalesce=True, id="leaderboard_refresh")
+    _scheduler.add_job(_affiliate_commission_tick, "interval", seconds=3600, max_instances=1, coalesce=True, id="affiliate_commission")
     _scheduler.add_job(_refresh_post_analytics_tick, "interval", seconds=1800, max_instances=1, coalesce=True, id="post_analytics_refresh")
     _scheduler.add_job(_refresh_channel_status_tick, "interval", seconds=21600, max_instances=1, coalesce=True, id="channel_status_refresh")
     _scheduler.add_job(_function_heatmap_tick, "interval", seconds=18000, max_instances=1, coalesce=True, id="function_heatmap")
@@ -563,7 +581,7 @@ def start_cron() -> None:
     # so adding the job is safe even when the feature is disabled.
     _scheduler.add_job(_trial_ending_soon_tick, "interval", seconds=86400, max_instances=1, coalesce=True, id="trial_ending_reminder")
     _scheduler.start()
-    log.info("[cron] started: schedules 60s, billing 3600s, leaderboard 21600s, analytics 1800s, channel status 21600s, function heatmap 18000s, trial reminders 86400s")
+    log.info("[cron] started: schedules 60s, billing 3600s, affiliate commissions 3600s, leaderboard 21600s, analytics 1800s, channel status 21600s, function heatmap 18000s, trial reminders 86400s")
 
 
 def stop_cron() -> None:

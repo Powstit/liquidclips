@@ -31,11 +31,14 @@ class Settings(BaseSettings):
     whop_company_id: str = "biz_0IMrpJRrTJID1u"
     whop_app_id: str = "app_hLphExdFzjEQsM"
 
-    # Partner Engine (LIQUIDCLIPS-PARTNER-ENGINE.md). When LIVE=true, the
-    # unlock service POSTs a 50% commission override to Whop for qualified
-    # affiliates. Stays false until the exact override endpoint is confirmed
-    # in Whop's API docs; until then the service stamps partner_unlocked_at
-    # locally so Campaign B gating still works but no Whop write happens.
+    # Affiliate commissions are reconciled separately from the Partner Engine.
+    # When live, qualified paid members receive per-plan Whop overrides for
+    # 50% on all recurring payments. Keep false until the product's member
+    # baseline rate is configured and a controlled checkout proves attribution.
+    affiliate_commission_live: bool = False
+
+    # Legacy Partner Engine flag retained for environment compatibility.
+    # Partner access no longer mutates affiliate commission settings.
     partner_unlock_live: bool = False
     # Content Rewards "experience" IDs — Campaign A = open ($5 RPM),
     # Campaign B = dedicated-channel ($10 RPM, Partner-gated). Set on

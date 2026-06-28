@@ -1,7 +1,7 @@
 // v0.7.0 — Affiliate landing. The destination of every "Get my affiliate link"
 // CTA across the product (sponsored banner on desktop, welcome email, founder
-// emails). Lays out terms + the payout-rail split (Whop vs Stripe Connect) so
-// the user can pick how they get paid before they ever start referring.
+// emails). Lays out terms + the Whop-owned payout path before the user starts
+// referring.
 //
 // Auth-soft: viewable signed-out (so an unauthed referrer landing from the
 // banner can still read terms + understand the offer). Action CTA gates on
@@ -12,7 +12,7 @@ import Link from "next/link";
 export const metadata = {
   title: "Liquid Clips Affiliate — 50% MRR for life",
   description:
-    "Refer two paid Liquid Clips users and unlock 50% recurring commission on every customer you refer — lifetime. Pick Whop or Stripe Connect as your payout rail.",
+    "Refer two paid Liquid Clips users and unlock 50% recurring commission on every customer you refer — tracked and paid by Whop.",
 };
 
 const FUCHSIA = "#FF1A8C";
@@ -30,7 +30,7 @@ export default function ReferPage() {
           <span className="text-[var(--fuchsia)]">For life.</span>
         </h1>
         <p className="max-w-[640px] font-sans text-[16px] leading-relaxed text-[#C9C0C5]">
-          Refer two paid Liquid Clips users and unlock <strong className="text-[#F5EFE7]">50% recurring commission</strong> on every customer you bring in — lifetime, not just first month. Pick how you get paid below.
+          Refer two paid Liquid Clips users and unlock <strong className="text-[#F5EFE7]">50% recurring commission</strong> on every customer you bring in — lifetime, not just first month. Whop tracks the sale, commission, refund window, and payout.
         </p>
         <div className="mt-2 flex flex-wrap gap-3">
           <Link
@@ -89,58 +89,35 @@ export default function ReferPage() {
         </div>
       </section>
 
-      {/* Payout split */}
+      {/* Payout rail */}
       <section className="mx-auto max-w-[920px] px-6 py-8">
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--fuchsia)]">
-          pick your payout rail
+          payout rail
         </p>
         <h2 className="mt-3 font-serif text-[28px] font-semibold tracking-[-0.02em] text-[#F5EFE7]">
-          Whop. Or Stripe.
+          One link. One ledger. Whop.
         </h2>
         <p className="mt-2 max-w-[640px] font-sans text-[14px] text-[#C9C0C5]">
-          You only set this up once. Pick the rail that matches where you already get paid for content work.
+          Your Liquid Clips referral link passes the affiliate code directly into Whop checkout. Whop records conversions, reverses refunded commission, and holds your payout balance.
         </p>
 
-        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="mt-5 max-w-[640px]">
           <div className="rounded-2xl border border-[var(--fuchsia)] bg-[#15151B] p-6">
-            <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fuchsia)]">
-              option a · creator default
-            </div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fuchsia)]">affiliate payouts · powered by Whop</div>
             <h3 className="mt-3 font-serif text-[22px] font-semibold text-[#F5EFE7]">Whop</h3>
             <p className="mt-2 font-sans text-[13.5px] leading-relaxed text-[#B5AFB2]">
-              The same Whop wallet your Content Reward payouts already land in. One identity, one payout cycle. Best for clippers who already have a Whop account.
+              The same Whop identity and balance used across Content Rewards. Liquid Clips never asks for bank details or pretends a transfer succeeded.
             </p>
             <ul className="mt-3 space-y-1.5 text-[13px] text-[#C9C0C5]">
-              <li>· Monthly payout via Whop's standard cycle</li>
-              <li>· Tax handled by Whop's W-8/W-9 collection</li>
-              <li>· No extra accounts to manage</li>
+              <li>· Attribution and commission calculation by Whop</li>
+              <li>· Refund and chargeback reversals handled automatically</li>
+              <li>· Identity, tax details, balance, and withdrawal stay on Whop</li>
             </ul>
             <Link
               href="/dashboard"
               className="mt-5 inline-flex items-center gap-2 rounded-full bg-[var(--fuchsia)] px-5 py-2.5 font-sans text-[13px] font-semibold text-ink"
             >
-              Set up Whop payout →
-            </Link>
-          </div>
-
-          <div className="rounded-2xl border border-[#231423] bg-[#0F0F14] p-6">
-            <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[#B5AFB2]">
-              option b · direct deposit
-            </div>
-            <h3 className="mt-3 font-serif text-[22px] font-semibold text-[#F5EFE7]">Stripe Connect</h3>
-            <p className="mt-2 font-sans text-[13.5px] leading-relaxed text-[#B5AFB2]">
-              Direct bank deposit via a Stripe Connect Express account. Best for affiliates outside the Whop ecosystem or who prefer their own ledger.
-            </p>
-            <ul className="mt-3 space-y-1.5 text-[13px] text-[#C9C0C5]">
-              <li>· Direct deposit to your bank, ~2 business days</li>
-              <li>· Stripe handles KYC + 1099 / tax forms</li>
-              <li>· $5 minimum payout before a transfer fires</li>
-            </ul>
-            <Link
-              href="/dashboard#payouts"
-              className="mt-5 inline-flex items-center gap-2 rounded-full border border-[#3a2530] bg-[#1a0f18] px-5 py-2.5 font-sans text-[13px] font-semibold text-ink"
-            >
-              Set up Stripe Connect →
+              Open affiliate dashboard →
             </Link>
           </div>
         </div>
@@ -160,7 +137,7 @@ export default function ReferPage() {
 
         <ol className="mt-6 list-decimal space-y-4 pl-5 text-[14px] leading-relaxed text-[#C9C0C5]">
           <li>
-            <strong className="text-[#F5EFE7]">Eligibility.</strong> Any Liquid Clips user (free or paid) can join the affiliate program by activating their referral link in the dashboard. Liquid Clips reserves the right to refuse or terminate affiliate status at its sole discretion.
+            <strong className="text-[#F5EFE7]">Eligibility.</strong> A referral link may be generated for any Liquid Clips account, but commission is payable only while the referrer keeps an active paid Liquid Clips subscription. Liquid Clips reserves the right to refuse or terminate affiliate status at its sole discretion.
           </li>
           <li>
             <strong className="text-[#F5EFE7]">Qualification threshold.</strong> The 50% recurring commission rate activates after <strong className="text-[#F5EFE7]">two of your referrals have become paying Liquid Clips customers and remained in good standing for at least 7 days</strong>. Before qualification, you earn the standard 30% first-month commission on each paid referral.
@@ -172,10 +149,10 @@ export default function ReferPage() {
             <strong className="text-[#F5EFE7]">Lifetime guarantee.</strong> "Lifetime" means the lifetime of the customer's paying account. If the customer cancels, pauses, or downgrades, commission pauses or recalculates accordingly. If they return as a paying customer later, commission resumes.
           </li>
           <li>
-            <strong className="text-[#F5EFE7]">Payout rails.</strong> You may choose either Whop or Stripe Connect as your payout rail in the dashboard. You may switch once per quarter. Liquid Clips does not handle funds directly — Whop or Stripe holds your balance.
+            <strong className="text-[#F5EFE7]">Payout rail.</strong> Whop is the affiliate system of record. Whop attributes eligible checkouts, calculates commissions, applies refund reversals, holds the affiliate balance, and manages withdrawals.
           </li>
           <li>
-            <strong className="text-[#F5EFE7]">Payout cycle.</strong> Commissions clear on the rail's standard schedule (Whop: monthly; Stripe: rolling, subject to Stripe's payout schedule for your account). A $5 minimum applies before a Stripe transfer fires; sub-$5 balances roll to the next cycle.
+            <strong className="text-[#F5EFE7]">Payout cycle.</strong> Commissions clear on Whop&apos;s standard affiliate schedule and remain subject to Whop&apos;s identity, fraud, reserve, and withdrawal requirements.
           </li>
           <li>
             <strong className="text-[#F5EFE7]">Attribution window.</strong> A referral is attributed to your link on a <strong className="text-[#F5EFE7]">first-touch, 30-day cookie</strong> basis. If a user clicks your link, doesn't sign up immediately, but returns within 30 days and converts to paying, you receive the commission. After 30 days the attribution expires.
@@ -190,7 +167,7 @@ export default function ReferPage() {
             <strong className="text-[#F5EFE7]">Trademark + content use.</strong> You may use the "Liquid Clips" name and brand mark in promotional content for the affiliate program. You may not register domains containing "liquidclips", "liquid-clips", or confusingly similar marks. You may not represent yourself as an employee, officer, or official spokesperson of Liquid Clips.
           </li>
           <li>
-            <strong className="text-[#F5EFE7]">Tax responsibility.</strong> You are responsible for declaring affiliate income to your local tax authority. Whop issues 1099s in the US where required; Stripe Connect issues 1099-K for US affiliates over the federal threshold. For non-US affiliates, Whop/Stripe collect W-8 forms at onboarding.
+            <strong className="text-[#F5EFE7]">Tax responsibility.</strong> You are responsible for declaring affiliate income to your local tax authority. Whop collects the identity and tax information required for its payout process.
           </li>
           <li>
             <strong className="text-[#F5EFE7]">Right to terminate.</strong> Liquid Clips may suspend or terminate any affiliate account at any time, for any reason — including but not limited to fraud, trademark abuse, brand misalignment, or program closure. Earned and approved commissions through the date of termination remain payable; commission accruing after termination is forfeit.
@@ -228,7 +205,7 @@ export default function ReferPage() {
             Get your link. Pick your payout. Start earning.
           </h2>
           <p className="mt-2 max-w-[640px] font-sans text-[14px] text-[#C9C0C5]">
-            Your unique referral link lives on your dashboard. Set up Whop or Stripe Connect there too — both pre-wired.
+            Your unique referral link lives on your dashboard. Whop tracks the checkout and pays the commission.
           </p>
           <div className="mt-5">
             <Link

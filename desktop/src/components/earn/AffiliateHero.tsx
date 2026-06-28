@@ -1007,11 +1007,11 @@ function QualificationRow({ q }: { q: NonNullable<AffiliateBlock["qualification"
           </span>
         ) : (
           <>
-            {have} / {need} paid referrals to unlock the 50% recurring rate
+            {have} / {need} paid referrals cleared through the 7-day hold
           </>
         )}
       </div>
-      <InfoHint text="Two paid referrals unlock 50% recurring commission." />
+      <InfoHint text="Two paid referrals held in good standing for 7 days unlock 50% recurring commission." />
     </div>
   );
 }
