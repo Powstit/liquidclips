@@ -169,36 +169,26 @@ step "Downloading signed artefacts from draft release $TAG"
 DL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/liquidclips-ship.XXXXXX")"
 trap 'rm -rf "$DL_DIR"' EXIT
 
-gh release download "$TAG" --dir "$DL_DIR" --pattern '*.app.tar.gz' --pattern '*.app.tar.gz.sig'
+gh release download "$TAG" --dir "$DL_DIR" --pattern 'Liquid.Clips_*.app.tar.gz' --pattern 'Liquid.Clips_*.app.tar.gz.sig'
 ok "downloaded to $DL_DIR"
 ls -lh "$DL_DIR"
-
-# Tauri publishes BOTH arches under the same `Liquid Clips.app.tar.gz`
-# filename (the matrix run uploads each arch in its own job). gh release
-# download appends a numeric suffix on filename collision, so we resolve
-# arch by the parent target dir of the .sig file inside the artefact
-# bundle. The pragmatic shape is: the release has 2 `.app.tar.gz` (with
-# `.1` suffix on the second) and 2 `.sig` (likewise). Pair them by
-# upload order.
-#
-# Safest path · iterate every .app.tar.gz / .app.tar.gz.sig pair and
-# upload them tagged with both arches in turn. The backend is keyed by
-# `x-release-target`; we POST the same artefact twice (once per slug)
-# because the universal binary is byte-identical across arches once
-# signed by the same minisign key.
-TARBALL="$(find "$DL_DIR" -name '*.app.tar.gz' -not -name '*.sig' | head -1)"
-SIGFILE="$(find "$DL_DIR" -name '*.app.tar.gz.sig' | head -1)"
-[ -f "$TARBALL" ] || fail "no .app.tar.gz found in $DL_DIR"
-[ -f "$SIGFILE" ] || fail "no .app.tar.gz.sig found in $DL_DIR"
-SIG="$(cat "$SIGFILE")"
-[ -n "$SIG" ] || fail "signature file is empty: $SIGFILE"
-
-ok "found tarball: $(basename "$TARBALL") ($(wc -c < "$TARBALL") bytes)"
-ok "found signature: $(basename "$SIGFILE")"
 
 # ── upload to backend (one POST per target) ─────────────────────────────
 step "Uploading signed artefact to $BASE/updates/upload (× 2 targets)"
 for TARGET in darwin-aarch64 darwin-x86_64; do
+  case "$TARGET" in
+    darwin-aarch64) ARTIFACT_ARCH="aarch64" ;;
+    darwin-x86_64)  ARTIFACT_ARCH="x86_64" ;;
+    *) fail "unsupported release target: $TARGET" ;;
+  esac
+  TARBALL="$DL_DIR/Liquid.Clips_${ARTIFACT_ARCH}.app.tar.gz"
+  SIGFILE="$TARBALL.sig"
+  [ -f "$TARBALL" ] || fail "missing $ARTIFACT_ARCH updater archive: $TARBALL"
+  [ -f "$SIGFILE" ] || fail "missing $ARTIFACT_ARCH updater signature: $SIGFILE"
+  SIG="$(cat "$SIGFILE")"
+  [ -n "$SIG" ] || fail "signature file is empty: $SIGFILE"
+  ok "$TARGET payload: $(basename "$TARBALL") ($(wc -c < "$TARBALL") bytes)"
+
   HTTP_BODY="$(mktemp "$DL_DIR/upload-$TARGET.body.XXXXXX")"
   HTTP_STATUS="$(curl -sS -o "$HTTP_BODY" -w '%{http_code}' \
     -X POST "$BASE/updates/upload" \
