@@ -155,7 +155,7 @@ export default function ReferPage() {
             <strong className="text-[#F5EFE7]">Payout cycle.</strong> Commissions clear on Whop&apos;s standard affiliate schedule and remain subject to Whop&apos;s identity, fraud, reserve, and withdrawal requirements.
           </li>
           <li>
-            <strong className="text-[#F5EFE7]">Attribution window.</strong> A referral is attributed to your link on a <strong className="text-[#F5EFE7]">first-touch, 30-day cookie</strong> basis. If a user clicks your link, doesn't sign up immediately, but returns within 30 days and converts to paying, you receive the commission. After 30 days the attribution expires.
+            <strong className="text-[#F5EFE7]">Attribution window.</strong> A referral is attributed to your link on a <strong className="text-[#F5EFE7]">first-touch, 90-day cookie</strong> basis. If a user clicks your link, doesn&apos;t sign up immediately, but returns within 90 days and converts to paying, you receive the commission. After 90 days the attribution expires.
           </li>
           <li>
             <strong className="text-[#F5EFE7]">Self-referrals prohibited.</strong> You may not refer yourself, members of your immediate household, or accounts you control. Liquid Clips uses IP, payment-instrument, and device fingerprints to detect self-referrals. Violations void commission and may terminate affiliate status.

@@ -30,8 +30,8 @@ export default async function SignInPage({
           </span>
 
           <h1 className="text-center font-display text-[32px] font-semibold leading-[1.1] tracking-[-0.025em] text-ink sm:text-[36px]">
-            Sign in to your{" "}
-            <em className="not-italic text-fuchsia">junior</em>.
+            Sign in to{" "}
+            <em className="not-italic text-fuchsia">Liquid Clips</em>.
           </h1>
 
           <SignIn

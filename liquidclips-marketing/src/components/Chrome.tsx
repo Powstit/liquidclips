@@ -56,11 +56,8 @@ export function Footer() {
               <h4>Earn</h4>
               <Link href="/#earn">Whop rewards</Link>
               <a href={`${accountUrl}/checkout`}>Start 100 free clips</a>
-              {/* Affiliate sign in removed — partner.jnremployee.com is
-                  404'ing on every path. Active campaigns removed —
-                  /lift/minecraft-challenge still uses "Liquid Lift" branding
-                  which is a different product. Restore both once their
-                  surfaces are live + on-brand. */}
+              <Link href="/affiliates">Affiliate programme</Link>
+              <a href={partnerUrl}>Affiliate sign in</a>
             </div>
             <div>
               <h4>Ops console</h4>

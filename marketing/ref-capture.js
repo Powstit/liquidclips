@@ -16,14 +16,14 @@
     if (!/^[A-Za-z0-9_-]+$/.test(ref)) return;
     // First-touch: do not overwrite an existing referral.
     if (/(?:^|;\s*)jnr_ref=/.test(document.cookie)) return;
-    var oneYear = 60 * 60 * 24 * 365;
+    var attributionWindow = 60 * 60 * 24 * 90;
     // Share across apex + subdomains (account., partner.) so signup can read it.
     var domain = /(^|\.)liquidclips\.app$/.test(location.hostname)
       ? "; domain=.liquidclips.app"
       : "";
     document.cookie =
       "jnr_ref=" + encodeURIComponent(ref) +
-      "; path=/; max-age=" + oneYear + domain + "; SameSite=Lax";
+      "; path=/; max-age=" + attributionWindow + domain + "; SameSite=Lax";
   } catch (e) {
     /* attribution is best-effort — never break the page */
   }

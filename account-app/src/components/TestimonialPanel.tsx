@@ -95,7 +95,7 @@ export function TestimonialPanel({ orientation = "beside" }: { orientation?: "be
       <header className="max-w-[640px]">
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-paper/60">
           <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
-          why creators ship with junior
+          why creators ship with Liquid Clips
         </div>
         <h2 className="mt-4 font-display text-[34px] font-semibold leading-[1.1] tracking-[-0.025em] text-paper">
           Clippers and YouTube creators use Liquid Clips to{" "}

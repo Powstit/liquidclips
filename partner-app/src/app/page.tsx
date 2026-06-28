@@ -20,15 +20,16 @@ function parseUsd(s: string | number | undefined | null): number {
 }
 
 // Referral URL → Liquid Clips-owned checkout (account.liquidclips.app/checkout),
-// which embeds the Whop checkout and passes the affiliate code through as
-// ?a=<id>. The customer stays on a Liquid Clips-branded page (no generic Whop
+// which embeds the Whop checkout and passes the affiliate username code through
+// as ?a=<code>. Whop's checkout does not accept the internal aff_* record ID.
+// The customer stays on a Liquid Clips-branded page (no generic Whop
 // storefront), Whop still attributes + pays the affiliate, and on completion
 // returns to /get to link the account. Override the base via
 // NEXT_PUBLIC_WHOP_CHECKOUT_URL if needed.
-function buildReferralUrl(affiliateId: string): string {
+function buildReferralUrl(affiliateCode: string): string {
   const base = process.env.NEXT_PUBLIC_WHOP_CHECKOUT_URL ?? "https://account.liquidclips.app/checkout";
   const sep = base.includes("?") ? "&" : "?";
-  return `${base}${sep}a=${affiliateId}`;
+  return `${base}${sep}a=${encodeURIComponent(affiliateCode)}`;
 }
 
 export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -78,7 +79,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
     failureNote = `Couldn't reach Whop. We'll retry. (${String(e).slice(0, 120)})`;
   }
 
-  const referralUrl = affiliate ? buildReferralUrl(affiliate.id) : "";
+  const affiliateCode = affiliate?.user?.username?.trim() ?? "";
+  const referralUrl = affiliateCode ? buildReferralUrl(affiliateCode) : "";
+  if (affiliate && !affiliateCode && !failureNote) {
+    failureNote = "Whop has not assigned a checkout code to this affiliate yet. Retry shortly.";
+  }
   const activeMrrUsd = parseUsd(affiliate?.monthly_recurring_revenue_usd);
   const lifetimeEarnedUsd = parseUsd(affiliate?.total_referral_earnings_usd);
   // "This month" tile reflects current MRR — accurate for the current billing cycle.
@@ -126,10 +131,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
             Welcome, {greetingName}.
           </h1>
           <p className="mt-2 text-text-secondary sm:text-lg">
-            Your referral link is ready. Unlock <strong className="text-ink">up to 50% recurring commission</strong> once you reach Qualified Partner status, while you keep an active Junior subscription.
+            Your referral link is ready. Earn <strong className="text-ink">30% of each referred customer&apos;s first payment</strong>, then unlock 50% recurring commission once you reach Qualified Partner status.
           </p>
           <p className="mt-2 font-mono text-[11px] leading-relaxed text-text-tertiary">
-            Solo or up qualifies. Commission is payable after qualification, only on referred customers&rsquo; successful payments; it pauses if your subscription lapses and resumes when you reactivate; already-paid commission is never clawed back except for fraud or abuse.
+            An active paid Liquid Clips membership is required. Commission pauses if your membership lapses and resumes when you reactivate. Refunds, chargebacks, fraud, and abuse remain ineligible.
           </p>
         </header>
 
@@ -164,22 +169,17 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
             Unlock 50% recurring commission.
           </h3>
           <p className="mt-1 text-sm text-text-secondary">
-            Reach <strong className="text-ink">either</strong> milestone to qualify:
+            Reach the paid-referral milestone to qualify:
           </p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="mt-4">
             <div className="rounded-xl border border-line bg-paper p-4">
               <div className="font-display text-2xl font-semibold text-fuchsia">2</div>
               <div className="mt-1 text-sm text-ink">referred paid customers</div>
-              <div className="mt-1 text-xs text-text-tertiary">using your tracked link</div>
-            </div>
-            <div className="rounded-xl border border-line bg-paper p-4">
-              <div className="font-display text-2xl font-semibold text-fuchsia">11,000</div>
-              <div className="mt-1 text-sm text-ink">Whop-verified views</div>
-              <div className="mt-1 text-xs text-text-tertiary">on approved Junior promo submissions</div>
+              <div className="mt-1 text-xs text-text-tertiary">using your tracked link · each active for 7 days</div>
             </div>
           </div>
           <p className="mt-4 text-sm text-text-secondary">
-            After qualification, <strong className="text-ink">50% starts from customer 3 onward</strong>, or from the next paid customer after view qualification. The first two paid customers qualify you — they don&rsquo;t earn commission.
+            Before qualification, eligible referrals pay <strong className="text-ink">30% of their first payment</strong>. After qualification, Whop applies 50% to future recurring payments from eligible referred customers.
           </p>
         </div>
 
@@ -191,15 +191,15 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
           <dl className="mt-3 space-y-4 text-sm">
             <div>
               <dt className="font-medium text-ink">When do I earn commission?</dt>
-              <dd className="mt-1 text-text-secondary">After you qualify — 2 referred paid customers or 11,000 Whop-verified views on approved Junior promo submissions.</dd>
+              <dd className="mt-1 text-text-secondary">You can earn 30% of an eligible referral&apos;s first payment while unqualified. Two paid referrals that remain active for 7 days unlock 50% recurring.</dd>
             </div>
             <div>
-              <dt className="font-medium text-ink">Do the first two paid customers earn commission?</dt>
-              <dd className="mt-1 text-text-secondary">No. They qualify you. 50% starts from the third referred paid customer onward.</dd>
+              <dt className="font-medium text-ink">Do my first two paid customers earn commission?</dt>
+              <dd className="mt-1 text-text-secondary">Yes. Each eligible first payment can earn 30%. Once both referrals clear the 7-day hold, your rate upgrades to 50% recurring.</dd>
             </div>
             <div>
-              <dt className="font-medium text-ink">What if I qualify by views first?</dt>
-              <dd className="mt-1 text-text-secondary">Once you reach 11,000 Whop-verified views, 50% applies to the next referred paid customer and onward.</dd>
+              <dt className="font-medium text-ink">Do campaign views qualify me?</dt>
+              <dd className="mt-1 text-text-secondary">No. Whop-verified campaign views can earn separate Content Reward payouts, but affiliate qualification is based on referred paid customers.</dd>
             </div>
             <div>
               <dt className="font-medium text-ink">Who pays me?</dt>
@@ -215,42 +215,42 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
             </div>
           </dl>
           <a
-            href="/Junior-Affiliate-Terms-FAQ.pdf"
+            href="https://account.liquidclips.app/refer#terms"
             target="_blank"
             rel="noopener noreferrer"
             className="mt-5 inline-flex items-center gap-2 rounded-full border border-line bg-paper px-5 py-2.5 text-sm font-medium text-ink hover:border-fuchsia hover:text-fuchsia"
           >
-            Download affiliate terms &amp; FAQ (PDF) →
+            Read affiliate terms &amp; conditions →
           </a>
         </div>
 
-        {/* Use Junior — guidance for new affiliates */}
+        {/* Product guidance for new affiliates */}
         <div className="mb-10 rounded-2xl border border-line bg-paper-warm/60 p-5 sm:p-6">
           <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-            Want to use Junior too?
+            Want to use Liquid Clips too?
           </div>
           <h3 className="mt-2 font-display text-xl font-semibold tracking-tight text-ink sm:text-2xl">
             See exactly what your link sells.
           </h3>
           <p className="mt-1 text-sm text-text-secondary">
-            Junior v1.0 desktop app ships in 10 weeks. Until then, try the live demo and see your audience exactly what they&apos;ll get.
+            Download the desktop app and see exactly what your audience gets when they follow your link.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <a
-              href="https://app.jnremployee.com"
+              href="https://liquidclips.app/download"
               target="_blank"
               rel="noopener noreferrer"
               className="rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-paper hover:bg-fuchsia"
             >
-              Open the live demo →
+              Download Liquid Clips →
             </a>
             <a
-              href="https://jnremployee.com/changelog"
+              href="https://liquidclips.app/changelog"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm font-medium text-fuchsia hover:underline"
             >
-              v1.0 build progress →
+              See what&apos;s new →
             </a>
           </div>
         </div>

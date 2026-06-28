@@ -39,4 +39,4 @@ export const GITHUB_RELEASES_PAGE =
  *  Kept here so partner links also flow through env. */
 export const PARTNER_URL =
   trim(process.env.NEXT_PUBLIC_PARTNER_URL) ||
-  "https://partner.jnremployee.com";
+  "https://partner.liquidclips.app";

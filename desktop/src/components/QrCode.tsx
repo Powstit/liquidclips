@@ -40,7 +40,7 @@ export function QrCode({
     const url = canvas.toDataURL("image/png");
     const a = document.createElement("a");
     a.href = url;
-    a.download = (downloadName || "junior-qr") + ".png";
+    a.download = (downloadName || "liquid-clips-qr") + ".png";
     document.body.appendChild(a);
     a.click();
     a.remove();

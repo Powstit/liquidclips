@@ -8,7 +8,7 @@ export function Logo({ href = "/" }: { href?: string }) {
         /
       </span>
       <span>
-        junior<span className="text-ink">/</span>employee
+        liquid<span className="text-ink">/</span>clips
       </span>
     </a>
   );

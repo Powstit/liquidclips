@@ -7,7 +7,7 @@ const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "sw
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "junior/employee — partner dashboard",
+  title: "liquid/clips — partner dashboard",
   description: "Your referral link, your earnings, your payouts.",
 };
 
