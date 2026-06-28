@@ -120,7 +120,12 @@ class WalletWithdrawBlock(BaseModel):
     min_withdrawal_usd: float
     lc_fee_pct: float
     currency: str
+    setup_available: bool
     payout_ready: bool
+    payout_status: str
+    available_usd_cents: int
+    pending_usd_cents: int
+    reserve_usd_cents: int
     destination_wallet: str | None  # first 4 + ellipsis · null when not onboarded
 
 
@@ -341,6 +346,10 @@ def get_wallet_summary(
     # ─── 7. Withdraw block · env-gated · destination_wallet from Whop wallet
     sub_merchant_id = getattr(user, "whop_sub_merchant_id", None)
     destination: str | None = None
+    payout_status = getattr(user, "whop_sub_merchant_status", "") or "not_started"
+    available_cents = 0
+    pending_cents = 0
+    reserve_cents = 0
     payout_ready = (
         bool(sub_merchant_id)
         and getattr(user, "whop_sub_merchant_status", "") == "onboarded"
@@ -350,7 +359,14 @@ def get_wallet_summary(
             acct = whop_payments.retrieve_account(sub_merchant_id)
             w = acct.get("wallet") or {}
             destination = _mask_wallet(w.get("address"))
-            if whop_payments.is_live() and acct.get("status") == "connected":
+            payout_status = str(acct.get("status") or payout_status)
+            for balance in acct.get("balances") or []:
+                if str(balance.get("currency") or "").lower() != "usd":
+                    continue
+                available_cents += int(round(float(balance.get("balance") or 0) * 100))
+                pending_cents += int(round(float(balance.get("pending_balance") or 0) * 100))
+                reserve_cents += int(round(float(balance.get("reserve_balance") or 0) * 100))
+            if whop_payments.wallet_reads_live() and acct.get("status") == "connected":
                 payout_ready = True
                 if user.whop_sub_merchant_status != "onboarded":
                     user.whop_sub_merchant_status = "onboarded"
@@ -363,7 +379,12 @@ def get_wallet_summary(
         min_withdrawal_usd=float(whop_payments.MIN_WITHDRAWAL_USD),
         lc_fee_pct=float(whop_payments.LC_PROTOCOL_FEE_PCT),
         currency=str(whop_payments.DEFAULT_PAYOUT_CURRENCY),
+        setup_available=whop_payments.wallet_onboarding_live(),
         payout_ready=payout_ready,
+        payout_status=payout_status,
+        available_usd_cents=available_cents,
+        pending_usd_cents=pending_cents,
+        reserve_usd_cents=reserve_cents,
         destination_wallet=destination,
     )
 

@@ -85,7 +85,7 @@ def test_connected_company_read_uses_ledger_account(monkeypatch):
             "payout_account_details": {"status": "connected"},
         }
     )
-    monkeypatch.setattr(whop_payments, "is_live", lambda: True)
+    monkeypatch.setattr(whop_payments, "wallet_reads_live", lambda: True)
     monkeypatch.setattr(whop_payments, "_client", lambda: client)
 
     result = whop_payments.retrieve_account("biz_clipper")

@@ -212,7 +212,7 @@ def get_carrot(
             acct = whop_payments.retrieve_account(sub_merchant_id)
             w = acct.get("wallet") or {}
             caps = acct.get("capabilities") or {}
-            if whop_payments.is_live() and acct.get("status") == "connected":
+            if whop_payments.wallet_reads_live() and acct.get("status") == "connected":
                 onboarded = True
                 if user.whop_sub_merchant_status != "onboarded":
                     user.whop_sub_merchant_status = "onboarded"
@@ -281,7 +281,7 @@ def onboard_carrot(
 ) -> OnboardResponse:
     """Create a Whop sub-merchant for the clipper if needed · return the
     onboarding URL (Whop hosts the KYC + bank/wallet linking flow)."""
-    if not whop_payments.is_live():
+    if not whop_payments.wallet_onboarding_live():
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "Whop wallet onboarding is not live yet.",
@@ -336,7 +336,7 @@ def open_payouts_portal(
     user: Annotated[User, Depends(current_user)],
 ) -> PayoutPortalResponse:
     """Return a short-lived Whop-hosted payout portal for an onboarded user."""
-    if not whop_payments.is_live():
+    if not whop_payments.wallet_onboarding_live():
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "Whop payouts are not live yet.",

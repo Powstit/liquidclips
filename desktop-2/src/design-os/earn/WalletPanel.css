@@ -10,6 +10,16 @@
   /* lc-glass already sets bg/border/radius/padding · keep this surface clean */
 }
 
+.lc-wallet-shell {
+  width: 100%;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: rgba(8, 8, 13, .58);
+  overflow: hidden;
+}
+
 /* ─── Header ────────────────────────────────────────────────────────── */
 
 .lc-wallet-head {
@@ -86,6 +96,181 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* ─── Whop balance hero ────────────────────────────────────────────── */
+
+.lc-wallet-balance-hero {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 170px;
+  min-height: 218px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 102, 184, .3);
+  border-radius: var(--radius-card);
+  background:
+    linear-gradient(90deg, rgba(7, 7, 12, .96) 0%, rgba(7, 7, 12, .8) 58%, rgba(7, 7, 12, .48) 100%),
+    url("/brand/atmospheres/atmosphere-earn.png") center / cover no-repeat;
+}
+
+.lc-wallet-balance-hero::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 2px;
+  background: var(--color-fuchsia);
+  opacity: .72;
+}
+
+.lc-wallet-balance-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 0;
+  padding: 24px;
+}
+
+.lc-wallet-balance-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.lc-wallet-balance-provider,
+.lc-wallet-balance-state,
+.lc-wallet-powered {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.lc-wallet-balance-provider { color: var(--color-fuchsia-deep); }
+
+.lc-wallet-balance-state {
+  padding: 3px 7px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-tertiary);
+  background: rgba(0, 0, 0, .22);
+}
+
+.lc-wallet-balance-state[data-ready="true"] {
+  color: #6ee7b7;
+  border-color: rgba(110, 231, 183, .34);
+}
+
+.lc-wallet-balance-label {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.lc-wallet-balance-amount {
+  margin-top: 2px;
+  font-family: var(--font-display);
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: white;
+  text-shadow: 0 0 26px rgba(255, 26, 140, .28);
+}
+
+.lc-wallet-balance-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 14px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.lc-wallet-balance-breakdown b {
+  margin-left: 4px;
+  color: white;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.lc-wallet-balance-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-top: 18px;
+}
+
+.lc-wallet-primary-action {
+  min-height: 38px;
+  padding: 9px 15px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-fuchsia);
+  color: white;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--glow-sm);
+  transition: transform 160ms var(--ease-spring), box-shadow 160ms ease;
+}
+
+.lc-wallet-primary-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--glow-md);
+}
+
+.lc-wallet-primary-action:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+  box-shadow: none;
+}
+
+.lc-wallet-powered { color: rgba(255, 255, 255, .44); }
+
+.lc-wallet-balance-art {
+  position: relative;
+  z-index: 1;
+  align-self: end;
+  justify-self: center;
+  width: 156px;
+  height: 156px;
+  object-fit: contain;
+  filter: drop-shadow(0 18px 32px rgba(255, 26, 140, .36));
+  transform: translateY(8px);
+}
+
+.lc-wallet-pipeline-head {
+  align-items: center;
+}
+
+.lc-wallet-pipeline-head > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lc-wallet-pipeline-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: .1em;
 }
 
 .lc-wallet-refresh {
@@ -220,8 +405,13 @@
   width: 18px;
   height: 18px;
   border-radius: 4px;
-  font-size: 12px;
-  line-height: 1;
+  overflow: hidden;
+}
+
+.lc-wallet-stat-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .lc-wallet-stat-value {
@@ -229,7 +419,7 @@
   font-size: 26px;
   font-weight: 700;
   letter-spacing: -.012em;
-  color: var(--color-ink);
+  color: white;
   line-height: 1.05;
 }
 
@@ -239,21 +429,18 @@
   color: var(--color-text-tertiary);
 }
 
-/* Tonal accent per bucket (matches EarnSummaryStrip palette) */
+/* Status remains visible through the border and icon. Financial values use
+   one colour so the four cards read as a single wallet. */
 .lc-wallet-stat[data-tone="in-review"]   { border-color: rgba(251, 191, 36, .28) !important; background: rgba(251, 191, 36, .04) !important; }
-.lc-wallet-stat[data-tone="in-review"] .lc-wallet-stat-value { color: #fbbf24; }
 .lc-wallet-stat[data-tone="in-review"] .lc-wallet-stat-icon  { background: rgba(251, 191, 36, .14); color: #fbbf24; }
 
 .lc-wallet-stat[data-tone="approved"]   { border-color: rgba(110, 231, 183, .28) !important; background: rgba(110, 231, 183, .04) !important; }
-.lc-wallet-stat[data-tone="approved"] .lc-wallet-stat-value { color: #6ee7b7; }
 .lc-wallet-stat[data-tone="approved"] .lc-wallet-stat-icon  { background: rgba(110, 231, 183, .14); color: #6ee7b7; }
 
 .lc-wallet-stat[data-tone="paid"]       { border-color: rgba(255, 26, 140, .28) !important; background: rgba(255, 26, 140, .04) !important; }
-.lc-wallet-stat[data-tone="paid"] .lc-wallet-stat-value { color: var(--color-fuchsia-deep); text-shadow: 0 0 12px rgba(255, 26, 140, .25); }
 .lc-wallet-stat[data-tone="paid"] .lc-wallet-stat-icon  { background: rgba(255, 26, 140, .14); color: var(--color-fuchsia-deep); }
 
 .lc-wallet-stat[data-tone="rejected"]   { border-color: rgba(255, 139, 139, .25) !important; background: rgba(255, 139, 139, .03) !important; }
-.lc-wallet-stat[data-tone="rejected"] .lc-wallet-stat-value { color: #ff8b8b; }
 .lc-wallet-stat[data-tone="rejected"] .lc-wallet-stat-icon  { background: rgba(255, 139, 139, .12); color: #ff8b8b; }
 
 /* ─── Withdraw section ──────────────────────────────────────────────── */
@@ -652,4 +839,83 @@
   color: var(--color-text-tertiary);
   text-align: center;
   padding-top: 6px;
+}
+
+@media (max-width: 920px) {
+  .lc-wallet-shell { padding: 16px; }
+  .lc-wallet-balance-hero {
+    grid-template-columns: minmax(0, 1fr) 128px;
+  }
+  .lc-wallet-balance-art {
+    width: 124px;
+    height: 124px;
+  }
+  .lc-wallet-table {
+    overflow-x: auto;
+  }
+  .lc-wallet-table-head,
+  .lc-wallet-row {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 640px) {
+  .lc-wallet-shell { padding: 14px; }
+  .lc-wallet {
+    gap: 14px;
+  }
+  .lc-wallet-balance-hero {
+    grid-template-columns: 1fr;
+    min-height: 252px;
+  }
+  .lc-wallet-balance-content {
+    padding: 20px;
+  }
+  .lc-wallet-balance-art {
+    position: absolute;
+    right: 4px;
+    bottom: 0;
+    width: 104px;
+    height: 104px;
+    opacity: .62;
+  }
+  .lc-wallet-balance-amount {
+    font-size: 40px;
+  }
+  .lc-wallet-balance-actions {
+    max-width: calc(100% - 74px);
+  }
+  .lc-wallet-powered {
+    line-height: 1.45;
+  }
+  .lc-wallet-pipeline-head,
+  .lc-wallet-section-h {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .lc-wallet-pipeline-meta {
+    justify-content: flex-start;
+  }
+  .lc-wallet-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .lc-wallet-stat {
+    padding: 13px !important;
+  }
+  .lc-wallet-stat-value {
+    font-size: 22px;
+  }
+  .lc-wallet-withdraw {
+    align-items: stretch;
+  }
+  .lc-wallet-withdraw-cta {
+    justify-content: center;
+    width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .lc-wallet-stats {
+    grid-template-columns: 1fr;
+  }
 }

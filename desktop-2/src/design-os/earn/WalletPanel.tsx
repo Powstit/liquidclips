@@ -33,7 +33,6 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { GlassCard } from "../components";
 import { bus } from "../bridge";
 import { claimCarrot, getPayoutsPortal, onboardCarrot } from "../../lib/carrot";
 import { openSmart } from "../../lib/openSmart";
@@ -194,16 +193,16 @@ export function WalletPanel() {
   // ─── Loading ─────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <GlassCard density="default" data-testid="wallet-panel" data-state="loading">
+      <section className="lc-wallet-shell" data-testid="wallet-panel" data-state="loading">
         <WalletLoadingSkeleton />
-      </GlassCard>
+      </section>
     );
   }
 
   // ─── Network error · backend unreachable ─────────────────────────────
   if (!summary) {
     return (
-      <GlassCard density="default" data-testid="wallet-panel" data-state="offline">
+      <section className="lc-wallet-shell" data-testid="wallet-panel" data-state="offline">
         <div className="lc-wallet">
           <WalletPanelHeader
             showNewBadge={showNewBadge}
@@ -235,31 +234,12 @@ export function WalletPanel() {
             </button>
           </div>
         </div>
-      </GlassCard>
+      </section>
     );
   }
 
   const { pipeline, stats, campaigns, recent_activity, withdraw } = summary;
   const isEmpty = stats.total_submissions === 0 && pipeline.paid_usd_cents === 0;
-
-  // ─── Empty state · zero submissions, zero paid ───────────────────────
-  if (isEmpty) {
-    return (
-      <GlassCard density="default" data-testid="wallet-panel" data-state="empty">
-        <div className="lc-wallet">
-          <WalletPanelHeader
-            showNewBadge={showNewBadge}
-            onRefresh={onRefresh}
-            refreshing={refreshing}
-          />
-          <WalletEmptyState onBrowseCampaigns={onBrowseCampaigns} />
-          <div className="lc-wallet-foot">
-            Earnings tracked end-to-end · withdrawals open once Whop integration ships
-          </div>
-        </div>
-      </GlassCard>
-    );
-  }
 
   // ─── Loaded state ────────────────────────────────────────────────────
   const decisions =
@@ -274,7 +254,7 @@ export function WalletPanel() {
   const netUsd = grossUsd - feeUsd;
 
   return (
-    <GlassCard density="default" data-testid="wallet-panel" data-state="loaded">
+    <section className="lc-wallet-shell" data-testid="wallet-panel" data-state={isEmpty ? "empty" : "loaded"}>
       <div className="lc-wallet">
         <WalletPanelHeader
           showNewBadge={showNewBadge}
@@ -282,72 +262,119 @@ export function WalletPanel() {
           refreshing={refreshing}
         />
 
-        {/* Hero pipeline total + approval rate */}
-        <div className="lc-wallet-hero" data-testid="wallet-hero">
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span className="lc-wallet-hero-eb">Pipeline total</span>
-            <span className="lc-wallet-hero-num" data-testid="wallet-hero-amount">
-              {fmtUsdCents(pipeline.total_pipeline_usd_cents)}
+        {/* Real Whop ledger balance. Liquid Clips owns presentation; Whop
+            owns KYC, payout methods, and withdrawal execution. */}
+        <div className="lc-wallet-balance-hero" data-testid="wallet-hero">
+          <div className="lc-wallet-balance-content">
+            <div className="lc-wallet-balance-status">
+              <span className="lc-wallet-balance-provider">Whop balance</span>
+              <span className="lc-wallet-balance-state" data-ready={String(withdraw.payout_ready)}>
+                {withdraw.payout_ready ? "Connected" : "Not connected"}
+              </span>
+            </div>
+            <span className="lc-wallet-balance-label">Available</span>
+            <span className="lc-wallet-balance-amount" data-testid="wallet-hero-amount">
+              {fmtUsdCents(withdraw.available_usd_cents)}
+            </span>
+            <div className="lc-wallet-balance-breakdown">
+              <span>Pending <b>{fmtUsdCents(withdraw.pending_usd_cents)}</b></span>
+              <span>Reserve <b>{fmtUsdCents(withdraw.reserve_usd_cents)}</b></span>
+              <span>Pipeline <b>{fmtUsdCents(pipeline.total_pipeline_usd_cents)}</b></span>
+            </div>
+            <div className="lc-wallet-balance-actions">
+              {!withdraw.payout_ready ? (
+                <button
+                  type="button"
+                  className="lc-wallet-primary-action"
+                  onClick={onSetupPayouts}
+                  disabled={!withdraw.setup_available || withdrawing}
+                >
+                  {withdraw.setup_available ? "Create wallet" : "Wallet setup coming soon"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="lc-wallet-primary-action"
+                  onClick={onOpenPayouts}
+                  disabled={!withdraw.setup_available || withdrawing}
+                >
+                  Manage payouts on Whop ↗
+                </button>
+              )}
+              <span className="lc-wallet-powered">Secure payouts powered by Whop</span>
+            </div>
+          </div>
+          <img
+            className="lc-wallet-balance-art"
+            src="/brand/reward/coin-stack.webp"
+            alt=""
+            aria-hidden="true"
+          />
+        </div>
+
+        <div className="lc-wallet-section-h lc-wallet-pipeline-head">
+          <div>
+            <h3 className="lc-wallet-section-h-title">Earnings pipeline</h3>
+            <span className="lc-wallet-section-h-sub">
+              Submission to payout, without mystery
             </span>
           </div>
-          <div className="lc-wallet-hero-meta">
-            <span className="lc-wallet-hero-meta-l">Lifetime views</span>
-            <span className="lc-wallet-hero-meta-v" data-testid="wallet-lifetime-views">
-              {fmtViews(stats.lifetime_views)}
-            </span>
+          <div className="lc-wallet-pipeline-meta">
+            <span>{fmtViews(stats.lifetime_views)} lifetime views</span>
+            {stats.total_submissions > 0 && (
+              <span
+                className="lc-wallet-hero-approval"
+                data-tone={approvalTone(stats.approval_rate_pct)}
+                data-testid="wallet-approval-rate"
+              >
+                {approvalCopy(stats.approval_rate_pct, stats.total_submissions)}
+              </span>
+            )}
           </div>
-          {stats.total_submissions > 0 && (
-            <span
-              className="lc-wallet-hero-approval"
-              data-tone={approvalTone(stats.approval_rate_pct)}
-              data-testid="wallet-approval-rate"
-            >
-              {approvalCopy(stats.approval_rate_pct, stats.total_submissions)}
-            </span>
-          )}
         </div>
 
         {/* Four hero stat cards */}
         <div className="lc-wallet-stats" data-testid="wallet-stats-grid">
           <WalletStatCard
             tone="in-review"
-            glyph="⏳"
+            iconSrc="/brand/reward/stamp-needs-changes.svg"
             label="In Review"
             value={fmtUsdCents(pipeline.in_review_usd_cents)}
             footer="Awaiting campaign owner"
           />
           <WalletStatCard
             tone="approved"
-            glyph="✓"
+            iconSrc="/brand/reward/stamp-approved.svg"
             label="Approved · Awaiting Payout"
             value={fmtUsdCents(pipeline.approved_usd_cents)}
             footer="Cleared to withdraw"
           />
           <WalletStatCard
             tone="paid"
-            glyph="$"
+            iconSrc="/brand/reward/stamp-payout.svg"
             label="Paid"
             value={fmtUsdCents(pipeline.paid_usd_cents)}
             footer="Money that moved"
           />
           <WalletStatCard
             tone="rejected"
-            glyph="×"
+            iconSrc="/brand/reward/stamp-rejected.svg"
             label="Rejected"
             value={fmtUsdCents(pipeline.rejected_usd_cents)}
             footer="Try a different angle"
           />
         </div>
 
-        {/* Withdraw section · env-gated · only renders the button when live */}
-        {withdraw.is_live ? (
+        {/* Approved Liquid Clips rewards are credited to the connected Whop
+            balance. Actual withdrawal remains inside Whop. */}
+        {pipeline.approved_usd_cents > 0 && (withdraw.is_live ? (
           <div
             className="lc-wallet-withdraw is-live"
             data-testid="wallet-withdraw-live"
           >
             <div className="lc-wallet-withdraw-l">
               <span className="lc-wallet-withdraw-eb">
-                {withdraw.payout_ready ? "Whop balance" : "Set up Whop payouts"}
+                Credit approved reward
               </span>
               <div className="lc-wallet-withdraw-breakdown">
                 <span>Gross <b>${grossUsd.toFixed(2)}</b></span>
@@ -365,24 +392,22 @@ export function WalletPanel() {
               onClick={
                 !withdraw.payout_ready
                   ? onSetupPayouts
-                  : meetsMin
-                    ? onWithdraw
-                    : onOpenPayouts
+                  : onWithdraw
               }
-              disabled={withdrawing}
+              disabled={!withdraw.payout_ready || !meetsMin || withdrawing}
               title={
                 !withdraw.payout_ready
                   ? "Complete identity and payout setup on Whop"
                   : meetsMin
-                    ? `Claim ${fmtUsdCents(pipeline.approved_usd_cents)} to Whop`
-                  : `$${withdraw.min_withdrawal_usd.toFixed(2)} minimum · keep clipping`
+                    ? `Credit ${fmtUsdCents(pipeline.approved_usd_cents)} to Whop`
+                    : `$${withdraw.min_withdrawal_usd.toFixed(2)} minimum · keep clipping`
               }
             >
               {!withdraw.payout_ready
                 ? "Set up on Whop"
                 : meetsMin
-                  ? `Claim ${fmtUsdCents(pipeline.approved_usd_cents)}`
-                  : "Open Whop payouts"}
+                  ? `Credit ${fmtUsdCents(pipeline.approved_usd_cents)}`
+                  : `$${withdraw.min_withdrawal_usd.toFixed(2)} minimum`}
             </button>
           </div>
         ) : (
@@ -390,19 +415,25 @@ export function WalletPanel() {
             <div className="lc-wallet-withdraw-l">
               <span className="lc-wallet-withdraw-eb">Withdrawals · coming soon</span>
               <p className="lc-wallet-withdraw-line">
-                Withdrawals open once Liquid Clips finishes Whop wallet
-                integration. Your earnings are tracked and safe — every dollar
-                above stays attributed to you.
+                This approved reward stays attributed to you. Balance credits
+                open after the controlled Whop payout test passes.
               </p>
             </div>
           </div>
-        )}
+        ))}
+
+        {isEmpty && <WalletEmptyState onBrowseCampaigns={onBrowseCampaigns} />}
 
         {/* Per-campaign drill-in table */}
         {campaigns.length > 0 && (
           <div className="lc-wallet-section">
             <div className="lc-wallet-section-h">
-              <h3 className="lc-wallet-section-h-title">Per campaign</h3>
+              <div>
+                <h3 className="lc-wallet-section-h-title">Your campaign earnings</h3>
+                <span className="lc-wallet-section-h-sub">
+                  Liquid Clips submissions · Whop-linked rewards pay through Whop
+                </span>
+              </div>
               <span className="lc-wallet-section-h-sub">
                 {campaigns.length} {campaigns.length === 1 ? "campaign" : "campaigns"}
               </span>
@@ -430,7 +461,7 @@ export function WalletPanel() {
             : "Honest pipeline · withdrawals gated until Whop integration ships"}
         </div>
       </div>
-    </GlassCard>
+    </section>
   );
 }
 
@@ -448,17 +479,15 @@ function WalletPanelHeader({
   return (
     <div className="lc-wallet-head">
       <div className="lc-wallet-head-l">
-        <span className="lc-wallet-eb">
-          {showNewBadge && (
-            <span className="lc-wallet-eb-new" data-testid="wallet-new-badge">New</span>
-          )}
-          <span className="lc-wallet-eb-beta" data-testid="wallet-beta-badge">Beta</span>
-          Wallet
+          <span className="lc-wallet-eb">
+            {showNewBadge && (
+              <span className="lc-wallet-eb-new" data-testid="wallet-new-badge">New</span>
+            )}
+          Wallet · powered by Whop
         </span>
-        <h2 className="lc-wallet-title">Your pipeline</h2>
+        <h2 className="lc-wallet-title">Your money, in one place</h2>
         <p className="lc-wallet-sub">
-          Every dollar tracked from submission through approval to payout · no
-          silent surprises.
+          Track campaign rewards, Liquid Clips bonuses, and money available on Whop.
         </p>
       </div>
       <div className="lc-wallet-head-r">

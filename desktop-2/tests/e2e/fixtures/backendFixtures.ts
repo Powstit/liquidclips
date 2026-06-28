@@ -79,7 +79,12 @@ export function walletSummaryFixture(): Record<string, unknown> {
       min_withdrawal_usd: 50,
       lc_fee_pct: 5,
       currency: "USD",
+      setup_available: false,
       payout_ready: false,
+      payout_status: "not_started",
+      available_usd_cents: 0,
+      pending_usd_cents: 0,
+      reserve_usd_cents: 0,
       destination_wallet: null,
     },
   };
