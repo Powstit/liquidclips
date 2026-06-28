@@ -29,13 +29,13 @@ import { ScheduleModule } from "./ScheduleModule";
 import { PublishModule }  from "./PublishModule";
 import "./CockpitDock.css";
 
-const DOCK_OPEN_KEY = "lc.dock.open";
+const DOCK_OPEN_KEY = "lc.dock.open.v2";
 
 function readPersistedOpen(): boolean {
   try {
     const raw = window.localStorage.getItem(DOCK_OPEN_KEY);
-    return raw === null ? true : raw === "1";
-  } catch { return true; }
+    return raw === "1";
+  } catch { return false; }
 }
 
 export type ModuleKey =
@@ -70,7 +70,8 @@ export function CockpitDock() {
 
 function DockShell() {
   const [active, setActive] = useState<ModuleKey>("reaction");
-  // Bug 2 · dock open/collapsed state. Defaults open (preserves first-run UX),
+  // The workbench stays visible until the user chooses a tool. Opening a clip
+  // action or a tab expands the dock and the preference then persists.
   // persists across reloads, and emits a CSS var on `<html>` so Workstation can
   // size its padding-bottom dynamically (Bug 3). The head strip stays visible
   // when collapsed so tabs + clip pill + Back-to-Home remain reachable.
@@ -158,7 +159,14 @@ function DockShell() {
           <span className="lc-cd-clip-meta">{fmtSec(dur)} · score {focusedClip.score ?? "—"}</span>
         </div>
 
-        <StatePillNav items={PILLS} active={active} onChange={setActive} />
+        <StatePillNav
+          items={PILLS}
+          active={active}
+          onChange={(next) => {
+            setActive(next);
+            setOpen(true);
+          }}
+        />
 
         <div className="lc-cd-actions">
           <button

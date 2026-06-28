@@ -584,6 +584,40 @@
   box-shadow: var(--glow-md);
 }
 
+/* A temporary service failure is a recovery row, not a second hero. */
+[data-testid="wallet-panel"][data-state="offline"] .lc-wallet {
+  gap: 12px;
+}
+[data-testid="wallet-panel"][data-state="offline"] .lc-wallet-empty {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  text-align: left;
+}
+[data-testid="wallet-panel"][data-state="offline"] .lc-wallet-empty-art {
+  width: 52px;
+  height: 52px;
+}
+[data-testid="wallet-panel"][data-state="offline"] .lc-wallet-empty-title {
+  font-size: 16px;
+}
+[data-testid="wallet-panel"][data-state="offline"] .lc-wallet-empty-sub {
+  max-width: 62ch;
+  font-size: 12.5px;
+}
+
+@media (max-width: 720px) {
+  [data-testid="wallet-panel"][data-state="offline"] .lc-wallet-empty {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+  [data-testid="wallet-panel"][data-state="offline"] .lc-wallet-empty-cta {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
 /* ─── Loading skeleton ──────────────────────────────────────────────── */
 
 .lc-wallet-sk-shimmer {

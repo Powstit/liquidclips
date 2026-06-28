@@ -25,8 +25,7 @@ import { DesignOSAppShell } from "../components/AppShell";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { presets } from "../motion";
 import { BakeErrorStrip } from "../engine/BakeErrorStrip";
-import { useRuntimeInfo } from "../engine/runtimeInfo";
-import { useMode } from "../bridge";
+import { bus, useMode } from "../bridge";
 import { CampaignLifecyclePill, type CampaignStatus } from "../components/CampaignLifecyclePill";
 import { useTierCaps, canUseAgencyActions } from "../state/useTierCaps";
 import { useCampaigns } from "../state/useCampaigns";
@@ -80,7 +79,7 @@ function AgencyManageStrip({ source }: { source: "real-rpc" | "real-http" | "moc
         <span className="lc-camp-manage-eb">My campaigns</span>
         <span className="lc-camp-manage-sub">
           {isOffline
-            ? "Backend offline · campaign ownership lands when /me/campaigns is wired."
+            ? "Campaign management is temporarily unavailable."
             : "Manage lifecycle · invite clippers · view submissions"}
         </span>
       </header>
@@ -97,7 +96,7 @@ function AgencyManageStrip({ source }: { source: "real-rpc" | "real-http" | "moc
           }}
         >
           {isOffline
-            ? "No campaigns to manage in this preview. Connect a backend to see your owned campaigns."
+            ? "No campaigns are available right now. Reconnect, then try again."
             : "You don't own any campaigns yet. Use the + Create campaign button to launch one."}
         </p>
       ) : (
@@ -133,7 +132,6 @@ function AgencyManageStrip({ source }: { source: "real-rpc" | "real-http" | "moc
 
 function CampaignsBody() {
   const session = useEngineSession();
-  const runtime = useRuntimeInfo();
   const tier = useTierCaps();
   const camps = useCampaigns();
   const mode = useMode();
@@ -179,7 +177,7 @@ function CampaignsBody() {
     >
       <>
       <fm.div
-        className="sim-stage"
+        className="sim-stage lc-campaigns-stage"
         data-testid="campaigns-stage"
         data-campaigns-source={camps.source}
         data-campaigns-visible-count={String(camps.visible.length)}
@@ -193,7 +191,12 @@ function CampaignsBody() {
             status pills; the 80px H1 + sub-copy cut. Agency/clipper
             primary-CTA split is a Phase 5 decision — not in scope here. */}
         <div className="lc-route-head" data-kade-anchor data-route-title={hero.eyebrow}>
-          <span className="lc-route-head-eb">{hero.eyebrow}</span>
+          <div className="lc-campaigns-heading">
+            <span className="lc-route-head-eb">Campaigns</span>
+            <span className="lc-campaigns-heading-copy">
+              Browse paid Content Rewards or manage campaigns you own.
+            </span>
+          </div>
           <div className="lc-route-head-pills">
             {!isMockSource ? (
               <span
@@ -213,11 +216,6 @@ function CampaignsBody() {
                 style={{ textTransform: "uppercase", letterSpacing: ".15em" }}
               >
                 Backend offline · preview only
-              </span>
-            )}
-            {isMockSource && runtime.mode === "mock" && (
-              <span className="lc-runtime-tag" style={{ opacity: 0.65 }} title="Vite preview runtime.">
-                Studio preview
               </span>
             )}
             <span className="lc-campaigns-tier-tag">{tier.tier.toUpperCase()}</span>
@@ -244,10 +242,23 @@ function CampaignsBody() {
           >
             <span className="lc-campaigns-empty-eb">No campaigns to discover</span>
             <span className="lc-campaigns-empty-body">
-              The /campaigns endpoint isn't reachable from this build. Real
-              campaigns appear here once you connect a backend or install the
-              desktop app. No fake bounty data is rendered.
+              Campaigns could not be loaded. Check your connection and try
+              again; nothing shown here is placeholder reward data.
             </span>
+            <button
+              type="button"
+              className="lc-campaigns-retry"
+              onClick={() => {
+                bus.emit("toast", {
+                  kind: "info",
+                  title: "Refreshing campaigns",
+                  body: "Checking for available Content Rewards.",
+                });
+                void camps.reload();
+              }}
+            >
+              Retry
+            </button>
           </div>
         )}
 

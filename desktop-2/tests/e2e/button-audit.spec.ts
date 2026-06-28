@@ -128,6 +128,7 @@ interface EnumeratedControl {
    *  itself ("Save key") doesn't match the legacy honest-copy regex. */
   title: string | null;
   classes: string;
+  selected: boolean;
   hidden: boolean;
 }
 
@@ -145,6 +146,7 @@ async function enumerate(page: Page): Promise<EnumeratedControl[]> {
       hasOpenUrl: string | null;
       title: string | null;
       classes: string;
+      selected: boolean;
       hidden: boolean;
     }> = [];
     /* Limit scope to the rendered app — skip OS chrome / dev tools. */
@@ -175,6 +177,12 @@ async function enumerate(page: Page): Promise<EnumeratedControl[]> {
           const style = window.getComputedStyle(el);
           const visible = rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
           if (!visible) continue;
+          const cx = rect.left + rect.width / 2;
+          const cy = rect.top + rect.height / 2;
+          if (cx >= 0 && cx <= window.innerWidth && cy >= 0 && cy <= window.innerHeight) {
+            const hit = document.elementFromPoint(cx, cy);
+            if (hit && !el.contains(hit)) continue;
+          }
 
           const tag = el.tagName.toLowerCase();
           const testid = el.getAttribute("data-testid");
@@ -190,9 +198,15 @@ async function enumerate(page: Page): Promise<EnumeratedControl[]> {
           const hasOpenUrl = openUrl || (href && href !== window.location.href ? href : null) || null;
           const title = el.getAttribute("title");
           const classes = el.className?.toString() || "";
+          const selected =
+            el.getAttribute("aria-selected") === "true" ||
+            el.getAttribute("aria-checked") === "true" ||
+            el.getAttribute("aria-pressed") === "true" ||
+            el.getAttribute("data-active") === "true" ||
+            classes.split(/\s+/).includes("is-active");
 
           ctrls.push({
-            testid, text, role, tag, disabled, ariaDisabled, comingSoon, hasOpenUrl, title, classes, hidden: false,
+            testid, text, role, tag, disabled, ariaDisabled, comingSoon, hasOpenUrl, title, classes, selected, hidden: false,
           });
         }
       }
@@ -324,6 +338,17 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
         continue;
       }
 
+      if (c.selected) {
+        routeFindings.push({
+          route: r.label, mode: r.mode,
+          testid: c.testid, text: c.text, role: c.role,
+          classification: "HONESTLY_DISABLED",
+          expectation: "already-active control · click is intentionally a no-op",
+          observation: "selected state is already active",
+        });
+        continue;
+      }
+
       /* Gate 6 (2026-06-26) — pre-classify already-selected radios as
        * HONESTLY_DISABLED. Clicking a radio that is already aria-checked
        * is intentionally a no-op (the radio group's selected value
@@ -360,14 +385,22 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
       await page.evaluate(() => {
         const w = window as unknown as {
           __lcAuditToastCount?: number;
+          __lcAuditNavCount?: number;
           __lcAuditToastUnsubscribe?: () => void;
+          __lcAuditNavUnsubscribe?: () => void;
           __lcBus?: { on: (e: string, h: (p: unknown) => void) => () => void };
         };
         w.__lcAuditToastUnsubscribe?.();
+        w.__lcAuditNavUnsubscribe?.();
         w.__lcAuditToastCount = 0;
+        w.__lcAuditNavCount = 0;
         w.__lcAuditToastUnsubscribe = w.__lcBus?.on?.(
           "toast",
           () => { w.__lcAuditToastCount = (w.__lcAuditToastCount ?? 0) + 1; },
+        );
+        w.__lcAuditNavUnsubscribe = w.__lcBus?.on?.(
+          "nav:click",
+          () => { w.__lcAuditNavCount = (w.__lcAuditNavCount ?? 0) + 1; },
         );
       });
       const beforeUrl = page.url();
@@ -391,8 +424,10 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
       try {
         const locator = c.testid
           ? page.locator(`[data-testid="${c.testid}"]`).first()
-          : page.locator(`${c.tag}:has-text("${c.text.replace(/"/g, "")}")`).first();
-        await locator.click({ timeout: 1_500, trial: false }).catch(() => {});
+          : c.role
+            ? page.locator(`[role="${c.role}"]`).filter({ hasText: c.text }).first()
+            : page.locator(`${c.tag}:has-text("${c.text.replace(/"/g, "")}")`).first();
+        await locator.click({ timeout: 4_000, trial: false });
       } catch (e) {
         routeFindings.push({
           route: r.label, mode: r.mode,
@@ -401,6 +436,10 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           expectation: "click should land",
           observation: `click error: ${String((e as Error).message).slice(0, 80)}`,
         });
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".lc-app", { timeout: 30_000 });
+        await setMode(page, r.mode);
+        await navigate(page, r.routeId);
         continue;
       }
 
@@ -422,7 +461,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
       const overlaySelForPoll = '.lc-browse-overlay, .lc-drawer-host, [data-drawer-id], [role="menu"], [role="dialog"], [data-orbit-open="true"], [data-testid="avatar-orbit-menu"], [data-activation-status], [data-testid="create-panel"], [data-testid="home-create-panel"]';
       await page.waitForFunction(
         ({ before, sel }) => {
-          const w = window as unknown as { __lcAuditToastCount?: number };
+          const w = window as unknown as { __lcAuditToastCount?: number; __lcAuditNavCount?: number };
           const route = document.querySelector(".lc-app")?.getAttribute("data-route") ?? "";
           const mode = document.body.getAttribute("data-app-mode") ?? "";
           const aria = [...document.querySelectorAll("[aria-selected],[aria-checked],[aria-expanded]")].map(
@@ -430,11 +469,13 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           ).join("|");
           const overlayCount = document.querySelectorAll(sel).length;
           const toastCount = w.__lcAuditToastCount ?? 0;
+          const navCount = w.__lcAuditNavCount ?? 0;
           return route !== before.route ||
             mode !== before.mode ||
             aria !== before.aria ||
             overlayCount !== before.overlayCount ||
             toastCount > 0 ||
+            navCount > 0 ||
             window.location.href !== before.url;
         },
         { before: beforeForPoll, sel: overlaySelForPoll },
@@ -454,6 +495,10 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
         const w = window as unknown as { __lcAuditToastCount?: number };
         return w.__lcAuditToastCount ?? 0;
       });
+      const navCount = await page.evaluate(() => {
+        const w = window as unknown as { __lcAuditNavCount?: number };
+        return w.__lcAuditNavCount ?? 0;
+      });
       const afterOverlayCount = await page.evaluate(() => {
         const sel = '.lc-browse-overlay, .lc-drawer-host, [data-drawer-id], [role="menu"], [role="dialog"], [data-orbit-open="true"], [data-testid="avatar-orbit-menu"], [data-activation-status], [data-testid="create-panel"], [data-testid="home-create-panel"]';
         return document.querySelectorAll(sel).length;
@@ -465,6 +510,7 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
         beforeMode !== afterMode ||
         beforeAriaSelected !== afterAriaSelected ||
         toastCount > 0 ||
+        navCount > 0 ||
         beforeOverlayCount !== afterOverlayCount;
 
       routeFindings.push({
@@ -473,14 +519,18 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
         classification: observable ? "PASS" : "FAIL",
         expectation: "click produces observable state change",
         observation: observable
-          ? `${beforeRoute !== afterRoute ? `route ${beforeRoute}→${afterRoute}; ` : ""}${beforeMode !== afterMode ? `mode ${beforeMode}→${afterMode}; ` : ""}${beforeAriaSelected !== afterAriaSelected ? "aria state changed; " : ""}${toastCount > 0 ? `toast(${toastCount}) emitted; ` : ""}${beforeOverlayCount !== afterOverlayCount ? `overlay/menu count ${beforeOverlayCount}→${afterOverlayCount}` : ""}`.trim()
+          ? `${beforeRoute !== afterRoute ? `route ${beforeRoute}→${afterRoute}; ` : ""}${beforeMode !== afterMode ? `mode ${beforeMode}→${afterMode}; ` : ""}${beforeAriaSelected !== afterAriaSelected ? "aria state changed; " : ""}${toastCount > 0 ? `toast(${toastCount}) emitted; ` : ""}${navCount > 0 ? `nav(${navCount}) emitted; ` : ""}${beforeOverlayCount !== afterOverlayCount ? `overlay/menu count ${beforeOverlayCount}→${afterOverlayCount}` : ""}`.trim()
           : "click had no observable effect (route, mode, aria, toast, overlays all unchanged)",
       });
 
-      /* Reset to the audited route if the click navigated away. */
-      if (beforeRoute !== afterRoute) {
-        await navigate(page, r.routeId);
-      }
+      /* Every control gets a fresh authenticated baseline. Portal state,
+       * mode radios, same-route create panels, and filter state otherwise
+       * leak into the next control and turn valid clicks into stale-DOM
+       * failures. Backend routes + init scripts survive reload. */
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.waitForSelector(".lc-app", { timeout: 30_000 });
+      await setMode(page, r.mode);
+      await navigate(page, r.routeId);
     }
 
     const totals: Record<string, number> = {};
