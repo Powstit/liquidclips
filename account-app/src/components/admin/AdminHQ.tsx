@@ -110,6 +110,13 @@ type UserDetail = {
   email: string;
   whop_user_id: string | null;
   affiliate_id: string | null;
+  whop_affiliate_id?: string | null;
+  whop_affiliate_code?: string | null;
+  referred_paid_subs?: number;
+  eligible_affiliate_referrals?: number;
+  first_paid_at?: string | null;
+  affiliate_qualified_at?: string | null;
+  affiliate_commission_override_ids?: string[];
   raw_tier: string;
   raw_founder: boolean;
   effective_tier: string;
@@ -1024,6 +1031,8 @@ function UserDetailCard({ d, timeline, onLoadTimeline }: { d: UserDetail; timeli
           <KV label="clerk id" hint="users.clerk_id · Clerk's user_xxxx id. Source for sign-in identity and (for Stripe path) billing.">{d.clerk_id}</KV>
           <KV label="whop user id" hint="users.whop_user_id · Whop user_xxxx id, set when account linked via /whop/* OAuth or webhook. Null = no Whop link.">{d.whop_user_id ?? <NA />}</KV>
           <KV label="affiliate id (referrer)" hint="users.referred_by · backend User.id of the affiliate who brought this user in. Drives starter-pass + Whop reward credit.">{d.affiliate_id ?? <NA />}</KV>
+          <KV label="own Whop affiliate" hint="users.whop_affiliate_id · this user's aff_* record in Whop. Distinct from the referrer token above.">{d.whop_affiliate_id ?? <NA />}</KV>
+          <KV label="affiliate checkout code" hint="users.whop_affiliate_code · username passed to the Whop checkout embed. Current referral links use this value.">{d.whop_affiliate_code ?? <NA />}</KV>
           <KV label="created" hint="users.created_at · UTC insert timestamp of this User row.">{d.created_at ?? <NA />}</KV>
         </div>
         <div>
@@ -1036,9 +1045,22 @@ function UserDetailCard({ d, timeline, onLoadTimeline }: { d: UserDetail; timeli
           <KV label="founder raw / effective" hint="raw = stored founder flag, effective = post-resolution (admin override can flip). Founder unlock is sticky across status changes.">{d.raw_founder ? "yes" : "no"} / {d.effective_founder ? "yes" : "no"}</KV>
           <KV label="subscription status" hint="users.subscription_status · last value written by Clerk/Whop webhook. Drives gating across desktop + account-app."><Chip label={d.subscription_status} /></KV>
           <KV label="billing provider" hint="users.billing_provider · 'whop' (Whop checkout/Affiliate) or 'stripe' (Clerk Billing direct). Determines which dashboard the Billing tab links to.">{d.billing_provider}</KV>
+          <KV label="first paid" hint="users.first_paid_at · immutable first successful paid invoice. Starts the affiliate 7-day good-standing hold for the referrer.">{d.first_paid_at ?? <NA />}</KV>
           <KV label="paid until" hint="users.paid_until · UTC expiry from the last Whop/Stripe subscription event. Null if free/never-paid.">{d.paid_until ?? <NA />}</KV>
           <KV label="exports used / cap" hint="users.starter_exports_used / .starter_export_cap · counter for the 100-export starter pass. Paid users bypass the cap.">{d.starter_exports_used} / {d.starter_export_cap}</KV>
           <KV label="remaining exports" hint="Derived: cap − used (paid users return null = unlimited). Drives the desktop export #101 block.">{d.remaining_exports === null ? "unlimited" : d.remaining_exports}</KV>
+          <KV label="affiliate referrals" hint="Transactional paid count / referrals that are still active and have cleared the 7-day good-standing hold.">
+            {d.referred_paid_subs ?? 0} total / {d.eligible_affiliate_referrals ?? 0} eligible
+          </KV>
+          <KV label="50% commission" hint="Active only when Whop override ids are stored. Qualification timestamp remains after a subscription lapse; overrides are removed until reactivation.">
+            {(d.affiliate_commission_override_ids?.length ?? 0) > 0
+              ? <Chip label="active" tone="ok" />
+              : d.affiliate_qualified_at
+                ? <Chip label="paused" tone="pending" />
+                : <Chip label="not qualified" tone="gray" />}
+          </KV>
+          <KV label="qualified at" hint="users.affiliate_qualified_at · set only after all recurring-plan Whop overrides succeeded.">{d.affiliate_qualified_at ?? <NA />}</KV>
+          <KV label="override ids" hint="Whop per-plan override ids. Three ids means Pro, Growth, and Agency qualified terms are reconciled.">{d.affiliate_commission_override_ids?.length ?? 0}</KV>
         </div>
       </div>
 
@@ -1194,7 +1216,7 @@ function BillingTab() {
         <div className="mt-5 rounded-2xl border border-line bg-paper p-5">
           <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
             <div>
-              <KV label="provider" hint="Subscription provider only. Stripe Connect affiliate payouts are tracked separately and do not change this label."><Chip label={d.billing_provider} /></KV>
+              <KV label="provider" hint="Subscription provider only. Affiliate attribution and payouts are handled separately by Whop."><Chip label={d.billing_provider} /></KV>
               <KV label="subscription status" hint="users.subscription_status · last value written by Clerk/Whop webhook. active/trialing/canceled/past_due/refunded."><Chip label={d.subscription_status} /></KV>
               <KV label="tier" hint="users.tier · effective tier after admin override + Whop sub. Determines feature gating across desktop + account-app."><Chip label={d.effective_tier} /></KV>
               <KV label="paid until" hint="users.paid_until · UTC expiry from the latest provider event. Null when user is free or never paid.">{d.paid_until ?? <NA />}</KV>

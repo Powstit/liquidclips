@@ -5,34 +5,6 @@ import { useState } from "react";
 // Affiliate/partner bridge card. Data comes from the backend /affiliate/me,
 // which get-or-creates the user's Whop affiliate by email — Whop stays the
 // source of truth for the link, referrals, and earnings.
-//
-// For non-Whop affiliates (payout_provider === "stripe_connect"), the "Set up
-// Stripe Connect" button no longer routes through a static href — it POSTs to
-// /api/affiliate/stripe-connect which calls the backend, gets or creates a
-// Stripe Connect Express account, mints a hosted onboarding URL, and we
-// window.location.assign() the user to Stripe. This is the only path that
-// actually creates the account; the static href is the fallback for when
-// JavaScript is unavailable.
-
-async function startStripeConnectOnboarding(): Promise<string | null> {
-  try {
-    const res = await fetch("/api/affiliate/stripe-connect", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      console.error("Stripe Connect onboarding failed", res.status, detail);
-      return null;
-    }
-    const body = (await res.json()) as { url?: string };
-    return body.url ?? null;
-  } catch (e) {
-    console.error("Stripe Connect onboarding network error", e);
-    return null;
-  }
-}
 
 export type Qualification = {
   paid_referrals_count: number;
@@ -45,6 +17,7 @@ export type Qualification = {
 export type AffiliateData = {
   connected: boolean;
   affiliate_id: string | null;
+  affiliate_code: string | null;
   referral_url: string | null;
   status: string | null;
   active_members_count: number | null;
@@ -103,7 +76,6 @@ export function AffiliateCard({ affiliate, canEarn }: { affiliate: AffiliateData
   const [copied, setCopied] = useState(false);
   const url = affiliate.referral_url ?? "";
   const q = affiliate.qualification;
-  const usesStripeConnect = affiliate.payout_provider === "stripe_connect";
 
   async function copy() {
     if (!url) return;
@@ -170,7 +142,8 @@ export function AffiliateCard({ affiliate, canEarn }: { affiliate: AffiliateData
                     {q.verified_views_count == null ? "—" : q.verified_views_count.toLocaleString()}/{q.verified_views_needed.toLocaleString()}
                   </span>{" "}
                   verified views{q.verified_views_count == null ? " (tracked on Whop)" : ""}.{" "}
-                  50% recurring commission starts from customer 3 onward once you qualify.
+                  Referrals count after 7 days in good standing. Once qualified,
+                  Whop applies 50% to future recurring payments.
                   {q.qualified ? " You've qualified on paid referrals." : ""}
                 </p>
               </div>
@@ -183,102 +156,35 @@ export function AffiliateCard({ affiliate, canEarn }: { affiliate: AffiliateData
             )}
 
             <p className="mt-4 font-sans text-[12px] text-text-tertiary">
-              {usesStripeConnect
-                ? "Liquid Clips pays affiliate commissions through Stripe Connect for affiliates who do not use Whop."
-                : "Whop handles all tracking and payouts."}{" "}
-              {usesStripeConnect ? (
-                <StripeConnectButton
-                  fallbackUrl={affiliate.payout_setup_url || affiliate.partner_dashboard_url}
-                  label="Set up Stripe Connect"
-                  className="text-fuchsia underline"
-                />
-              ) : (
-                <a
-                  href={affiliate.payout_setup_url || affiliate.partner_dashboard_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-fuchsia underline"
-                >
-                  Open the partner dashboard
-                </a>
-              )}{" "}
-              {usesStripeConnect ? "to receive payouts." : "for your QR code, share buttons, and payout setup."}
+              Whop handles affiliate attribution, commission calculation, refunds, and payouts.{" "}
+              <a
+                href={affiliate.payout_setup_url || affiliate.partner_dashboard_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-fuchsia underline"
+              >
+                Open the partner dashboard
+              </a>{" "}
+              for your balance and payout setup.
             </p>
           </>
         ) : (
           <>
             <p className="font-sans text-[14px] leading-relaxed text-text-secondary">
-              We couldn&apos;t load a Whop affiliate record right now. If you do not use Whop,
-              set up Stripe Connect so Liquid Clips can pay affiliate commissions directly.
+              We couldn&apos;t load your Whop affiliate record right now. Retry shortly or
+              open Whop to check your affiliate and payout setup.
             </p>
-            {usesStripeConnect ? (
-              <StripeConnectButton
-                fallbackUrl={affiliate.payout_setup_url || affiliate.partner_dashboard_url}
-                label="Set up Stripe Connect →"
-                className="mt-4 inline-block rounded-xl bg-ink px-5 py-2.5 font-mono text-[12px] uppercase tracking-[0.1em] text-paper hover:bg-fuchsia"
-              />
-            ) : (
-              <a
-                href={affiliate.payout_setup_url || affiliate.partner_dashboard_url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-4 inline-block rounded-xl bg-ink px-5 py-2.5 font-mono text-[12px] uppercase tracking-[0.1em] text-paper hover:bg-fuchsia"
-              >
-                Open partner dashboard →
-              </a>
-            )}
+            <a
+              href={affiliate.payout_setup_url || affiliate.partner_dashboard_url}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-4 inline-block rounded-xl bg-ink px-5 py-2.5 font-mono text-[12px] uppercase tracking-[0.1em] text-paper hover:bg-fuchsia"
+            >
+              Open partner dashboard →
+            </a>
           </>
         )}
       </div>
     </section>
-  );
-}
-
-function StripeConnectButton({
-  fallbackUrl,
-  label,
-  className,
-}: {
-  fallbackUrl: string;
-  label: string;
-  className: string;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function onClick(e: React.MouseEvent<HTMLButtonElement>) {
-    e.preventDefault();
-    setBusy(true);
-    setErr(null);
-    const url = await startStripeConnectOnboarding();
-    if (url) {
-      window.location.assign(url);
-      return;
-    }
-    setBusy(false);
-    setErr(
-      "Could not start Stripe Connect onboarding right now. Try again in a moment, or open the dashboard for manual setup.",
-    );
-  }
-
-  return (
-    <>
-      <button onClick={onClick} disabled={busy} className={className}>
-        {busy ? "Opening Stripe…" : label}
-      </button>
-      {err && (
-        <div className="mt-2 font-sans text-[12px] text-[#DC2626]">
-          {err}{" "}
-          <a
-            href={fallbackUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="underline"
-          >
-            open dashboard
-          </a>
-        </div>
-      )}
-    </>
   );
 }

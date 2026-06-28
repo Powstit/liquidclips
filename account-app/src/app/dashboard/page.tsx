@@ -10,6 +10,7 @@ import { isAdmin as isAdminEmail } from "@/lib/admin-allowlist";
 const FALLBACK_AFFILIATE: AffiliateData = {
   connected: false,
   affiliate_id: null,
+  affiliate_code: null,
   referral_url: null,
   status: null,
   active_members_count: null,
@@ -18,9 +19,9 @@ const FALLBACK_AFFILIATE: AffiliateData = {
   total_referral_earnings_usd: null,
   qualification: null,
   partner_dashboard_url: "https://partner.liquidclips.app",
-  payout_provider: "stripe_connect",
-  payout_status: "setup_required",
-  payout_setup_url: "https://liquidclips.app/dashboard#payouts",
+  payout_provider: "whop",
+  payout_status: "unavailable",
+  payout_setup_url: "https://partner.liquidclips.app",
 };
 
 const FALLBACK_PAYMENTS: PaymentVisibility = {
@@ -45,10 +46,10 @@ const FALLBACK_PAYMENTS: PaymentVisibility = {
   affiliate_payouts: {
     key: "affiliate_payouts",
     label: "Affiliate commissions",
-    provider: "Stripe Connect",
-    status: "setup_required",
-    manage_url: "https://liquidclips.app/dashboard#payouts",
-    helper: "No Whop affiliate account is linked. Set up Stripe Connect so Liquid Clips can pay affiliate commissions directly.",
+    provider: "Whop",
+    status: "unavailable",
+    manage_url: "https://partner.liquidclips.app",
+    helper: "Whop affiliate data is temporarily unavailable. Retry before sharing a link.",
     in_app: false,
   },
 };

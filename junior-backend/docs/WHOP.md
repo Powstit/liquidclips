@@ -6,7 +6,15 @@ If you're touching anything Whop-related (webhooks, affiliates, bounties, plans,
 
 ## 1. The funnel in one paragraph
 
-A visitor clicks `api.jnremployee.com/r/{tracking_id}` (an affiliate tracking link). The redirect handler plants `jnr_ref` + `jnr_tracking_link` cookies (first-touch, never overwritten) and 302s them to the destination. They sign up via Clerk; the account-app passes `unsafe_metadata.affiliate_id` from the cookie. Clerk's `user.created` webhook lands at `/webhooks/clerk`, which locks `users.affiliate_id` (= the referrer who sent them) — never overwritten thereafter. Separately, when the user opens their own affiliate dashboard, `/affiliate/me` (or `/me/affiliate` from the desktop) calls Whop's `POST /api/v1/affiliates` with `user_identifier=<email>` (idempotent get-or-create), caches the returned `id` on `users.whop_affiliate_id`, and returns a referral URL of the form `<account_site>/checkout?a=<aff_id>`. When a buyer lands on that URL and pays, Whop fires `membership_went_valid` → `payment_succeeded` to `/webhooks/whop`; the handler maps `data.plan.id` to a tier, mints a license JWT, and on the first paid transition fires affiliate-lifecycle emails to the referrer. Content Rewards bounties are surfaced through a server-side App API Key proxy at `/whop/bounties` (license-JWT-gated so a leaked desktop key only sees what the App key can already see).
+A visitor opens a Liquid Clips referral URL carrying Whop's affiliate username
+code in `?a=`. The account app passes that code into the Whop checkout embed
+and stores it in the first-touch `jnr_ref` cookie. Clerk locks the value into
+`users.affiliate_id` at signup. Each referrer stores both its Whop `aff_*`
+record id and username code, so old and new links resolve to the same user.
+Whop attributes checkout, earnings, refunds, and payout. Liquid Clips records
+the buyer's first paid timestamp; an hourly reconciler waits until two referred
+customers have remained active for seven days, then creates 50%-all-payments
+overrides for each recurring plan. Content Rewards remain a separate Whop rail.
 
 ---
 
@@ -17,6 +25,7 @@ A visitor clicks `api.jnremployee.com/r/{tracking_id}` (an affiliate tracking li
 |---|---|
 | `routes/webhooks_whop.py` | Standard Webhooks-verified entry. Handles membership valid/invalid + payment succeeded/refunded. Idempotent via `WebhookEvent.external_id`. Fires affiliate lifecycle emails. |
 | `routes/affiliate.py` | `/affiliate/me` (server-to-server, internal-secret-gated) + the `build_affiliate_me_response` shared builder also used by `/me/affiliate`. Idempotent Whop affiliate get-or-create. Caches `whop_affiliate_id`. |
+| `services/affiliate_commission.py` | 2-referral/7-day qualification; idempotently creates, restores, or pauses Whop per-plan commission overrides. Feature-gated by `AFFILIATE_COMMISSION_LIVE`. |
 | `routes/whop.py` | Bounty proxy. Server-side App API Key calls `publicBounties` GraphQL. In-process cache (60s list / 120s detail / 30s submission). |
 | `routes/webhooks_clerk.py` | Locks `users.affiliate_id` from Clerk metadata at signup. **Never** overwrites it. |
 | `routes/redirect.py` | `/r/{tracking_id}` tracking-link resolver. Plants first-touch cookies. |
@@ -48,11 +57,10 @@ User.affiliate_id            ← INBOUND. The referrer who sent THIS user.
                                Locked at signup from Clerk metadata.
                                NEVER overwritten. (oauth-billing.md §6.)
 
-User.whop_affiliate_id       ← OUTBOUND. THIS user's own Whop affiliate
-                               record id. Cached lazily on first
-                               /affiliate/me read. Used for reverse-lookup
-                               on paid-conversion webhooks (buyer's
-                               affiliate_id → referrer User row).
+User.whop_affiliate_id       ← OUTBOUND record id (`aff_*`).
+User.whop_affiliate_code     ← OUTBOUND checkout code (Whop username).
+                               Paid webhooks resolve either token so legacy
+                               links and current Whop links both work.
 ```
 
 If a paid-conversion webhook fires and the referrer hasn't viewed their dashboard yet, `whop_affiliate_id` will be `NULL` for them and `_fire_affiliate_lifecycle_emails` silently skips. Email lands on the next conversion after they engage. By design — see comment in `webhooks_whop.py::_fire_affiliate_lifecycle_emails`.
@@ -64,6 +72,7 @@ If a paid-conversion webhook fires and the referrer hasn't viewed their dashboar
 | Var | Where used | Notes |
 |---|---|---|
 | `WHOP_API_KEY` | `routes/whop.py`, `routes/affiliate.py`, `cron.py` | **Company API key** (acts as the LiquidClips company). Server-side only. Never expose. |
+| `AFFILIATE_COMMISSION_LIVE` | `services/affiliate_commission.py` | When true, writes/removes 50% recurring per-plan Whop overrides. Keep false until a controlled checkout proves attribution and product member affiliate settings are aligned. |
 | `WHOP_WEBHOOK_SECRET` | `routes/webhooks_whop.py` | Whop webhook secret. Verification covers `webhook-id`, `webhook-timestamp`, and `webhook-signature`. If unset locally, verification is skipped. |
 | `WHOP_COMPANY_ID` | `routes/affiliate.py` | `biz_0IMrpJRrTJID1u`. |
 | `WHOP_APP_ID` | (reserved) | `app_hLphExdFzjEQsM`. |
@@ -130,15 +139,18 @@ an error for retry/inspection. They never default to a paid tier.
 
 ## 7. Affiliate qualification — TODAY vs. Partner Engine spec
 
-**Today** (in `routes/affiliate.py`):
-- `QUALIFY_PAID_REFERRALS = 2` — at 2 paid referrals, the user sees the "50% unlocked" email and surface state.
-- Commission rate is whatever Whop's **global** affiliate rate is. There is NO per-affiliate override POSTed by us.
-- Paid-referral count is read **live** from Whop's `active_members_count` each request — there's no local counter.
+**Affiliate commission**:
+- Two referred paid customers must remain active for seven days.
+- The reconciler uses local first-paid timestamps and active subscription state.
+- Only after Whop returns all three recurring-plan override ids does the UI
+  report 50% as active and send the qualification email.
+- If the referrer's own paid plan lapses, those overrides are removed; the
+  qualification timestamp remains so they can resume after reactivation.
 
 **Partner Engine spec** (LIQUIDCLIPS-PARTNER-ENGINE.md):
 - Threshold: 10 paid referrals **AND** verified dedicated TikTok account.
-- Below threshold: company keeps 100% (Whop global rate stays low/off).
-- At threshold: backend POSTs a per-affiliate **commission override** (`commission_value=50`, `applies_to_payments=all_payments`) so referrals from now on pay 50% recurring. First 10 stay at 100% automatically — they were paid before the override existed.
+- This gate controls dedicated-channel campaign access only. It does not mutate
+  affiliate commission terms.
 - Local transactional counter on `users.referred_paid_subs` (Whop's live count is unsafe to gate state changes on).
 
 **See:** `LIQUIDCLIPS-PARTNER-ENGINE.md` §6 (state machine) + this repo's commit history.
@@ -153,10 +165,10 @@ Steps map 1:1 to the spec's build checklist.
 |---|---|---|
 | 1 | Verify attribution payload (does webhook include referring affiliate?) | **BLOCKED** — needs a `?a=` test checkout. Critical: blocks the whole gate logic. |
 | 2 | Schema additions (`referred_paid_subs`, `tiktok_handle`, `tiktok_verification_code`, `tiktok_verified_at`, `partner_unlocked_at`, `whop_commission_override_id`) | **DONE** — `routes/webhooks_clerk.py` unchanged, see `main.py` lifespan + `models.py User`. Migration applies on next Railway deploy. |
-| 3 | Eager affiliate creation at signup (`_handle_user_created` → `_fetch_whop_affiliate`) | not started |
-| 4 | Increment `referred_paid_subs` on first paid transition; decrement on invalid/refund | not started |
-| 5 | TikTok verification endpoints (`POST /me/tiktok/start`, `POST /me/tiktok/confirm`) | not started |
-| 6 | Unlock service (`app/services/partner_unlock.py`) — flag-gated by `PARTNER_UNLOCK_LIVE` | not started |
+| 3 | Eager affiliate creation at signup (`_handle_user_created` → `_fetch_whop_affiliate`) | **DONE** |
+| 4 | Increment `referred_paid_subs` on first paid transition; decrement on invalid/refund | **DONE** |
+| 5 | TikTok verification endpoints (`POST /me/tiktok/start`, `POST /me/tiktok/confirm`) | **DONE (MVP self-confirm; admin verification still needed)** |
+| 6 | Partner campaign-access unlock service | **DONE; separated from commission writes** |
 | 7 | Campaign B gating in `/whop/bounties` (filter by `WHOP_CAMPAIGN_B_ID` if `partner_unlocked_at IS NULL`) | not started |
 | 8 | Whop dashboard config — 4 new Plans + 2 Content Rewards campaigns + global rate low/off | not started (Daniel) |
 | 9 | Flip `QUALIFY_PAID_REFERRALS` 2 → 10 (DO LAST) | not started |

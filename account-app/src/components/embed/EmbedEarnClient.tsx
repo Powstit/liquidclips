@@ -365,7 +365,7 @@ function AffiliateStrip({ linkStatus }: { linkStatus: WhopLinkStatus }) {
         </span>
         <span className="text-text-tertiary">·</span>
         <span className="normal-case tracking-normal text-ink-soft">
-          pick Whop or Stripe payout
+          payouts handled by Whop
         </span>
       </div>
       <AffiliateStripCta label={ctaLabel} linkStatus={linkStatus} />

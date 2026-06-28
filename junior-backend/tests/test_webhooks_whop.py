@@ -126,6 +126,17 @@ def test_payment_before_membership_activation_still_applies_purchased_tier(db):
     assert user.tier == "growth"
     assert user.subscription_status == "active"
     assert user.paid_until is not None
+    assert user.first_paid_at is not None
+
+
+def test_affiliate_token_resolves_whop_username_and_legacy_id(db):
+    referrer = _user(db)
+    referrer.whop_affiliate_id = "aff_referrer"
+    referrer.whop_affiliate_code = "clippername"
+    db.commit()
+
+    assert webhooks_whop._find_referrer_by_affiliate_token(db, "aff_referrer") == referrer
+    assert webhooks_whop._find_referrer_by_affiliate_token(db, "clippername") == referrer
 
 
 def test_paid_purchase_before_signup_is_parked_as_paid(db):

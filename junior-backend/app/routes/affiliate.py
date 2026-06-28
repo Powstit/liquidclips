@@ -18,6 +18,7 @@ endpoint is not open.
 from __future__ import annotations
 
 from typing import Annotated, Any
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -29,11 +30,14 @@ from app.db import get_db
 from app.features import is_admin_email
 from app.models import User
 from app.routes.usage import starter_export_remaining
+from app.services.affiliate_commission import (
+    QUALIFY_PAID_REFERRALS,
+    eligible_referral_count,
+)
 
 router = APIRouter(prefix="/affiliate", tags=["affiliate"])
 
 WHOP_AFFILIATES_URL = "https://api.whop.com/api/v1/affiliates"
-QUALIFY_PAID_REFERRALS = 2       # 50% recurring kicks in from customer 3 after qualifying
 QUALIFY_VERIFIED_VIEWS = 11000   # OR this many Whop-verified views (Whop owns view truth)
 
 
@@ -48,6 +52,7 @@ class Qualification(BaseModel):
 class AffiliateBlock(BaseModel):
     connected: bool
     affiliate_id: str | None
+    affiliate_code: str | None
     referral_url: str | None
     status: str | None
     active_members_count: int | None
@@ -57,7 +62,7 @@ class AffiliateBlock(BaseModel):
     qualification: Qualification | None
     partner_dashboard_url: str
     payout_provider: str  # "whop" | "stripe_connect"
-    payout_status: str    # ready | setup_required | unavailable
+    payout_status: str    # ready | qualification_required | unavailable
     payout_setup_url: str
 
 
@@ -129,6 +134,20 @@ def _fetch_whop_affiliate(email: str) -> dict[str, Any] | None:
         return None
 
 
+def _affiliate_code(affiliate: dict[str, Any]) -> str | None:
+    """Return the Whop checkout code (normally the user's username).
+
+    Whop's embedded checkout does not accept the aff_* record id as the
+    affiliateCode. Keep the code separate from our internal record id.
+    """
+    user = affiliate.get("user") or {}
+    raw = user.get("username")
+    if not isinstance(raw, str):
+        return None
+    code = raw.strip()
+    return code[:64] if code and all(c.isalnum() or c in "_-" for c in code) else None
+
+
 def build_affiliate_me_response(user: User, db: Session | None = None) -> AffiliateMeResponse:
     """Shared builder — consumed by both `/affiliate/me` (account-app, internal
     secret + clerk id) and `/me/affiliate` (desktop, license JWT). Keeps the
@@ -169,13 +188,18 @@ def build_affiliate_me_response(user: User, db: Session | None = None) -> Affili
     aff = _fetch_whop_affiliate((user.email or "").strip().lower())
     if aff and aff.get("id"):
         aff_id = str(aff["id"])
+        aff_code = _affiliate_code(aff)
         # Cache the user's own Whop affiliate_id for reverse lookup in
         # paid-conversion webhooks. Skip if the user is detached (admin override
         # path expunges from the session). Wrap so a commit failure never breaks
         # the dashboard render.
-        if db is not None and user.whop_affiliate_id != aff_id:
+        if db is not None and (
+            user.whop_affiliate_id != aff_id
+            or user.whop_affiliate_code != aff_code
+        ):
             try:
                 user.whop_affiliate_id = aff_id
+                user.whop_affiliate_code = aff_code
                 db.commit()
             except Exception:  # noqa: BLE001
                 db.rollback()
@@ -185,10 +209,20 @@ def build_affiliate_me_response(user: User, db: Session | None = None) -> Affili
         except (TypeError, ValueError):
             # Whop returned a non-numeric value here once before — don't crash the dashboard.
             paid_count = 0
+        qualified_count = (
+            eligible_referral_count(db, user)
+            if db is not None
+            else paid_count
+        )
         affiliate = AffiliateBlock(
             connected=True,
             affiliate_id=aff_id,
-            referral_url=f"{settings.account_site_url}/checkout?a={aff_id}",
+            affiliate_code=aff_code,
+            referral_url=(
+                f"{settings.account_site_url}/checkout?{urlencode({'a': aff_code})}"
+                if aff_code
+                else None
+            ),
             status=aff.get("status"),
             active_members_count=active,
             total_referrals_count=aff.get("total_referrals_count"),
@@ -196,27 +230,28 @@ def build_affiliate_me_response(user: User, db: Session | None = None) -> Affili
             total_referral_earnings_usd=aff.get("total_referral_earnings_usd"),
             partner_dashboard_url=settings.whop_partner_dashboard_url,
             payout_provider="whop",
-            payout_status="ready",
+            payout_status=(
+                "ready"
+                if user.whop_commission_override_id
+                else "qualification_required"
+            ),
             payout_setup_url=settings.whop_partner_dashboard_url,
             qualification=Qualification(
-                paid_referrals_count=paid_count,
+                paid_referrals_count=qualified_count,
                 verified_views_count=None,
-                qualified=True if paid_count >= QUALIFY_PAID_REFERRALS else None,
+                # Do not claim the 50% rate is active merely because the count
+                # is met. It is active only after Whop override ids are stored.
+                qualified=bool(user.whop_commission_override_id),
             ),
         )
     else:
-        # Non-Whop affiliate → Stripe Connect payout rail. The persisted
-        # stripe_connect_status (kept honest by app/routes/webhooks_stripe.py)
-        # decides the surface state: "active" → ready, anything else still
-        # needs onboarding clicks. The setup URL always points at the account
-        # dashboard, which renders the "Set up Stripe Connect" CTA that calls
-        # /me/affiliate/stripe-connect/onboarding and redirects to Stripe's
-        # hosted page.
-        sc_status = (user.stripe_connect_status or "none").lower()
-        payout_status = "ready" if sc_status == "active" else "setup_required"
+        # Whop is the single affiliate attribution + payout rail. A transient
+        # Whop failure must surface as unavailable, never silently advertise a
+        # Stripe route that has onboarding but no commission transfer ledger.
         affiliate = AffiliateBlock(
             connected=False,
             affiliate_id=None,
+            affiliate_code=None,
             referral_url=None,
             status=None,
             active_members_count=None,
@@ -225,9 +260,9 @@ def build_affiliate_me_response(user: User, db: Session | None = None) -> Affili
             total_referral_earnings_usd=None,
             qualification=None,
             partner_dashboard_url=settings.whop_partner_dashboard_url,
-            payout_provider="stripe_connect",
-            payout_status=payout_status,
-            payout_setup_url=settings.stripe_connect_onboarding_url,
+            payout_provider="whop",
+            payout_status="unavailable",
+            payout_setup_url=settings.whop_partner_dashboard_url,
         )
 
     payments = PaymentVisibility(
@@ -256,14 +291,10 @@ def build_affiliate_me_response(user: User, db: Session | None = None) -> Affili
         affiliate_payouts=PaymentRoute(
             key="affiliate_payouts",
             label="Affiliate commissions",
-            provider="Whop payouts" if affiliate.payout_provider == "whop" else "Stripe Connect",
+            provider="Whop payouts",
             status=affiliate.payout_status,
             manage_url=affiliate.payout_setup_url,
-            helper=(
-                "Whop tracks referrals and handles payout setup for Whop affiliates."
-                if affiliate.payout_provider == "whop"
-                else "No Whop affiliate account is linked. Set up Stripe Connect so Liquid Clips can pay affiliate commissions directly."
-            ),
+            helper="Whop tracks referrals, calculates commissions, handles refunds, and pays affiliates.",
             in_app=False,
         ),
     )

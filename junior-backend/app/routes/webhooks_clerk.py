@@ -221,9 +221,11 @@ def _handle_user_created(db: Session, data: dict, ip_address: str | None = None)
     # /affiliate/me read if this fails.
     try:
         from app.routes.affiliate import _fetch_whop_affiliate
+        from app.routes.affiliate import _affiliate_code
         aff = _fetch_whop_affiliate((user.email or "").strip().lower())
         if aff and aff.get("id"):
             user.whop_affiliate_id = str(aff["id"])
+            user.whop_affiliate_code = _affiliate_code(aff)
     except Exception:  # noqa: BLE001
         import logging as _log
         _log.getLogger("junior.webhooks").exception(
