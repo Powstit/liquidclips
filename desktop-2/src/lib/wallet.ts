@@ -73,7 +73,12 @@ export interface WalletWithdrawBlock {
   min_withdrawal_usd: number;
   lc_fee_pct: number;
   currency: string;
+  setup_available: boolean;
   payout_ready: boolean;
+  payout_status: string;
+  available_usd_cents: number;
+  pending_usd_cents: number;
+  reserve_usd_cents: number;
   destination_wallet: string | null;
 }
 
@@ -151,7 +156,12 @@ function isWalletSummaryShape(x: unknown): x is WalletSummary {
     isFiniteNumber(withdraw.min_withdrawal_usd) &&
     isFiniteNumber(withdraw.lc_fee_pct) &&
     typeof withdraw.currency === "string" &&
+    typeof withdraw.setup_available === "boolean" &&
     typeof withdraw.payout_ready === "boolean" &&
+    typeof withdraw.payout_status === "string" &&
+    isFiniteNumber(withdraw.available_usd_cents) &&
+    isFiniteNumber(withdraw.pending_usd_cents) &&
+    isFiniteNumber(withdraw.reserve_usd_cents) &&
     isNullableString(withdraw.destination_wallet)
   );
 }
