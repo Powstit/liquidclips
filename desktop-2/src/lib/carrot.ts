@@ -1,15 +1,16 @@
 /**
  * Carrot API client · 2026-06-24 · talks to junior-backend /me/carrot.
  *
- * Three endpoints:
+ * Four endpoints:
  *   GET  /me/carrot         → carrot state + progress + wallet info
  *   POST /me/carrot/onboard → returns Whop hosted onboarding URL
- *   POST /me/carrot/claim   → triggers transfers.create (gated by paid sub +
+ *   POST /me/carrot/claim   → credits the connected Whop balance (gated by paid sub +
  *                              5K views OR 5 affiliates + onboarded)
+ *   POST /me/carrot/payouts-portal → opens Whop-hosted withdrawals
  *
  * Backend defaults to MOCK mode (CARROT_WHOP_LIVE=false) so all 3 endpoints
  * return deterministic synthetic data — safe to call without touching real
- * money. When Daniel flips the env var the same calls move real USDC.
+ * money. When Daniel flips the env var the same calls move real USD.
  *
  * IRON GATE IG-SOV-2.2-001 · economics (5% LC fee · $10 min withdraw · $50
  * gross per 5K views) must match backend whop_payments.py constants.
@@ -94,6 +95,11 @@ export interface ClaimResponse {
   is_live: boolean;
 }
 
+export interface PayoutPortalResponse {
+  url: string;
+  expires_at: string | null;
+}
+
 /* ──────── Fetchers ──────── */
 
 async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
@@ -135,6 +141,19 @@ export async function claimCarrot(): Promise<ClaimResponse | { error: string }> 
       return { error: (detail as { detail?: string } | null)?.detail ?? `HTTP ${r.status}` };
     }
     return (await r.json()) as ClaimResponse;
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "network error" };
+  }
+}
+
+export async function getPayoutsPortal(): Promise<PayoutPortalResponse | { error: string }> {
+  try {
+    const r = await authedFetch("/me/carrot/payouts-portal", { method: "POST" });
+    if (!r.ok) {
+      const detail = await r.json().catch(() => null);
+      return { error: (detail as { detail?: string } | null)?.detail ?? `HTTP ${r.status}` };
+    }
+    return (await r.json()) as PayoutPortalResponse;
   } catch (err) {
     return { error: err instanceof Error ? err.message : "network error" };
   }
