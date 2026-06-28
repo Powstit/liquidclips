@@ -202,6 +202,7 @@ export type LCEvents = {
   /** UI-3 · ClipCard CTA fired — Workstation routes the action. Avoids
    *  threading onExport / onSubmit props through ResultsGrid. */
   "clip:open-export": { clipIdx: number };
+  "clip:open-schedule": { clipIdx: number; outputPath?: string };
   "clip:open-submit": { clipIdx: number };
   /** BUG-031 · ClipCard "Edit" button fired — Workstation already focuses
    *  the clip via the onOpen callback chain, this event tells CockpitDock

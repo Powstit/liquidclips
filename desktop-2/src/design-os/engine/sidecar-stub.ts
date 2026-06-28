@@ -64,6 +64,15 @@ import {
 } from "../export/types";
 import type { Platform } from "./types";
 import {
+  cancelAssistedNotification,
+  isUploadableVideoPath,
+  patchAssistedJob,
+  readAssistedSchedule,
+  scheduleAssistedNotification,
+  upsertAssistedJobs,
+  type AssistedScheduleRecord,
+} from "../schedule/assistedSchedule";
+import {
   type BrandPreset,
   type ThumbnailItem,
   type ThumbnailGenerateResult,
@@ -108,6 +117,7 @@ async function tryInvoke<T>(method: string, params: unknown): Promise<T | null> 
 }
 
 const warned = new Set<string>();
+const HR = 3600_000;
 
 /** Sleep helper for mock pacing. */
 const wait = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
@@ -1464,6 +1474,12 @@ export interface ScheduledJob {
   error?: string;
   captionOverride?: string;
   postUrl?: string;
+  /** Local rendered video used by the assisted browser handoff. */
+  outputPath?: string;
+  /** Assisted = reminder + browser handoff; automatic = provider-owned. */
+  deliveryMode?: "assisted" | "automatic";
+  remindedAt?: string;
+  handoffOpenedAt?: string;
   createdAt: string;
 }
 
@@ -1482,6 +1498,8 @@ export interface ScheduleClipParams {
   /** Optional snapshots — used when the caller's account ids don't map to
    *  the connected-channel registry (e.g. legacy FIXTURE_TARGET_ACCOUNTS). */
   accounts?: ScheduleClipAccountSnapshot[];
+  /** A real rendered MP4/MOV path. Assisted scheduling is blocked without it. */
+  outputPath: string;
   scheduledFor: string;
   /** Single shared caption — used when every target gets the same copy. */
   captionOverride?: string;
@@ -1493,42 +1511,9 @@ export interface ScheduleClipParams {
   campaignName?: string;
 }
 
-const HR = 3600_000;
-const DAY = 24 * HR;
-
-/* Seed enough jobs to demo every status + the week view. Ties handles back
- * to the channels fixture so chips render real labels via channelToTargetAccount. */
-const scheduleState: { jobs: ScheduledJob[] } = {
-  jobs: [
-    { id: "sj-1", clipId: "c-1", clipTitle: "The cold-open that actually works", projectSlug: "preview-pilot", campaignId: "cmp-1", campaignName: "Cold-open Hook Series",
-      targetAccountIds: ["ch-1"], platform: "tiktok",    accountLabel: "TikTok · @preview-clipper-01",       accountHandle: "@preview-clipper-01",
-      scheduledFor: new Date(Date.now() + 2 * HR).toISOString(),  status: "scheduled", retryCount: 0, createdAt: new Date(Date.now() - 4 * HR).toISOString() },
-    { id: "sj-2", clipId: "c-2", clipTitle: "Why most clippers fail by minute 4", projectSlug: "preview-pilot",
-      targetAccountIds: ["ch-3"], platform: "instagram", accountLabel: "Instagram · @preview-clipper-03",        accountHandle: "@preview-clipper-03",
-      scheduledFor: new Date(Date.now() + 5 * HR).toISOString(),  status: "scheduled", retryCount: 0, createdAt: new Date(Date.now() - 3 * HR).toISOString() },
-    { id: "sj-3", clipId: "c-3", clipTitle: "How to stop sounding like every other clipper", projectSlug: "preview-pilot",
-      targetAccountIds: ["ch-5"], platform: "youtube",   accountLabel: "YouTube · Preview Channel", accountHandle: "Preview Channel",
-      scheduledFor: new Date(Date.now() + 26 * HR).toISOString(), status: "scheduled", retryCount: 0, createdAt: new Date(Date.now() - 6 * HR).toISOString() },
-    { id: "sj-4", clipId: "c-4", clipTitle: "The boring tip that beats every viral trick", projectSlug: "preview-pilot", campaignId: "cmp-1", campaignName: "Cold-open Hook Series",
-      targetAccountIds: ["ch-7"], platform: "x",         accountLabel: "X · @preview-clipper-04",             accountHandle: "@preview-clipper-04",
-      scheduledFor: new Date(Date.now() - 30 * 60_000).toISOString(), status: "failed", retryCount: 2, error: "Token revoked · reconnect required", createdAt: new Date(Date.now() - DAY).toISOString() },
-    { id: "sj-5", clipId: "c-5", clipTitle: "The one rule about hooks", projectSlug: "preview-pilot",
-      targetAccountIds: ["ch-1"], platform: "tiktok",    accountLabel: "TikTok · @preview-clipper-01",       accountHandle: "@preview-clipper-01",
-      scheduledFor: new Date(Date.now() - 5 * HR).toISOString(),  status: "posted",   retryCount: 0, postUrl: "https://tiktok.com/@preview-clipper-01/video/sj5", createdAt: new Date(Date.now() - 8 * HR).toISOString() },
-    { id: "sj-6", clipId: "c-6", clipTitle: "Three edits I refuse to ever skip", projectSlug: "preview-pilot", campaignId: "cmp-2", campaignName: "Edit-craft Tutorials",
-      targetAccountIds: ["ch-3"], platform: "instagram", accountLabel: "Instagram · @preview-clipper-03",        accountHandle: "@preview-clipper-03",
-      scheduledFor: new Date(Date.now() - 26 * HR).toISOString(), status: "posted",   retryCount: 0, postUrl: "https://instagram.com/p/sj6", createdAt: new Date(Date.now() - 28 * HR).toISOString() },
-    { id: "sj-7", clipId: "c-7", clipTitle: "What an editor sees that you don't", projectSlug: "preview-pilot",
-      targetAccountIds: ["ch-1"], platform: "tiktok",    accountLabel: "TikTok · @preview-clipper-01",       accountHandle: "@preview-clipper-01",
-      scheduledFor: new Date(Date.now() + 3 * DAY).toISOString(), status: "scheduled", retryCount: 0, createdAt: new Date(Date.now() - 2 * HR).toISOString() },
-    { id: "sj-8", clipId: "c-8", clipTitle: "Behind a single 30-second hook", projectSlug: "preview-pilot",
-      targetAccountIds: ["ch-5"], platform: "youtube",   accountLabel: "YouTube · Preview Channel", accountHandle: "Preview Channel",
-      scheduledFor: new Date(Date.now() + 5 * DAY).toISOString(), status: "draft",     retryCount: 0, captionOverride: "Long-form pull from this morning's session.", createdAt: new Date(Date.now() - HR).toISOString() },
-    { id: "sj-9", clipId: "c-9", clipTitle: "A live retry · uploading to TikTok", projectSlug: "preview-pilot",
-      targetAccountIds: ["ch-2"], platform: "tiktok",    accountLabel: "TikTok · @preview-clipper-02",  accountHandle: "@preview-clipper-02",
-      scheduledFor: new Date(Date.now() + 30 * 60_000).toISOString(), status: "retrying", retryCount: 1, error: "Rate-limited (last attempt)", createdAt: new Date(Date.now() - HR).toISOString() },
-  ],
-};
+/* Customer builds start empty. Assisted jobs hydrate from localStorage and
+ * real provider jobs merge in when the backend is reachable. */
+const scheduleState: { jobs: ScheduledJob[] } = { jobs: [] };
 
 const scheduleRetryTimeouts = new Set<ReturnType<typeof setTimeout>>();
 
@@ -1590,52 +1575,11 @@ function adaptBackendSchedule(b: BackendScheduleResponse, accountId?: string): S
 
 export const schedule = {
   async scheduleClip(p: ScheduleClipParams): Promise<{ jobs: ScheduledJob[] }> {
-    const real = await tryInvoke<{ jobs: ScheduledJob[] }>("schedule_clip", p);
-    if (real) {
-      scheduleState.jobs = [...real.jobs, ...scheduleState.jobs];
-      return real;
+    if (!isUploadableVideoPath(p.outputPath)) {
+      throw new Error("Export the clip before setting an assisted schedule.");
     }
-    /* Real HTTP backend · POST /schedules per target. The backend row
-     *  is per-platform so we still fan out per target on our side, but
-     *  the resulting ids come from the server cron. */
-    if (shouldTryHttpBackend()) try {
-      const created: ScheduledJob[] = [];
-      const clipIdxN = Number.parseInt(p.clipId.split("#").pop() ?? "0", 10) || 0;
-      for (const accountId of p.targetAccountIds) {
-        const snap = p.accounts?.find((a) => a.id === accountId);
-        const platform = snap?.platform ?? "tiktok";
-        const r = await fetch(`${backendUrl()}/schedules`, {
-          method: "POST",
-          cache: "no-store",
-          headers: { "content-type": "application/json", ...authHeaders() },
-          body: JSON.stringify({
-            project_slug: p.projectSlug,
-            clip_idx: clipIdxN,
-            clip_title: p.clipTitle,
-            vertical_path: "",
-            platform,
-            scheduled_for: p.scheduledFor,
-          }),
-        });
-        if (r.ok) {
-          const j = (await r.json()) as BackendScheduleResponse;
-          created.push(adaptBackendSchedule(j, accountId));
-        }
-      }
-      if (created.length > 0) {
-        scheduleState.jobs = [...created, ...scheduleState.jobs];
-        bus.emit("toast", {
-          kind: "success",
-          title: "Queued",
-          body: created.length === 1
-            ? `1 post scheduled · ${created[0].accountLabel}`
-            : `${created.length} posts scheduled.`,
-        });
-        return { jobs: created };
-      }
-    } catch { /* fall through */ }
     const ch = channelState.channels;
-    const created: ScheduledJob[] = [];
+    const created: AssistedScheduleRecord[] = [];
     for (const accountId of p.targetAccountIds) {
       const channel = ch.find((c) => c.id === accountId);
       const snap = p.accounts?.find((a) => a.id === accountId);
@@ -1648,8 +1592,8 @@ export const schedule = {
           : null;
       if (!account) continue;
       const perAccount = p.captionByAccountId?.[accountId];
-      const job: ScheduledJob = {
-        id: `sj-${Date.now()}-${accountId}`,
+      const job: AssistedScheduleRecord = {
+        id: `asj-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
         clipId: p.clipId,
         clipTitle: p.clipTitle,
         projectSlug: p.projectSlug,
@@ -1664,26 +1608,36 @@ export const schedule = {
         retryCount: 0,
         /* Phase 6J-D · per-account caption wins, then single shared, then none. */
         captionOverride: perAccount ?? p.captionOverride,
+        outputPath: p.outputPath,
+        deliveryMode: "assisted",
         createdAt: new Date().toISOString(),
       };
       created.push(job);
     }
-    scheduleState.jobs = [...created, ...scheduleState.jobs];
+    await Promise.all(created.map(async (job) => {
+      job.nativeNotificationScheduled = await scheduleAssistedNotification(job);
+    }));
+    upsertAssistedJobs(created);
+    scheduleState.jobs = [...created, ...scheduleState.jobs.filter((job) => job.deliveryMode !== "assisted")];
     if (created.length > 0) {
       bus.emit("toast", {
         kind: "success",
-        title: "Queued",
+        title: "Reminder set",
         body: created.length === 1
-          ? `1 post scheduled · ${created[0].accountLabel}`
-          : `${created.length} posts scheduled across ${new Set(created.map((c) => c.platform)).size} platforms.`,
+          ? `Junior will prepare the ${created[0].accountLabel} handoff at posting time.`
+          : `${created.length} assisted posting reminders created.`,
       });
     }
     return { jobs: created };
   },
 
-  async listScheduledClips(range?: { from?: string; to?: string }): Promise<{ jobs: ScheduledJob[]; source: "real-rpc" | "real-http" | "mock" }> {
+  async listScheduledClips(range?: { from?: string; to?: string }): Promise<{ jobs: ScheduledJob[]; source: "real-rpc" | "real-http" | "assisted-local" }> {
+    const local = readAssistedSchedule();
     const real = await tryInvoke<{ jobs: ScheduledJob[] }>("list_scheduled_clips", range ?? {});
-    if (real) return { jobs: real.jobs, source: "real-rpc" };
+    if (real) {
+      scheduleState.jobs = [...local, ...real.jobs];
+      return { jobs: scheduleState.jobs, source: "real-rpc" };
+    }
     /* Real HTTP backend · /schedules returns a bare array. */
     if (shouldTryHttpBackend()) try {
       const r = await fetch(`${backendUrl()}/schedules`, { cache: "no-store", headers: authHeaders() });
@@ -1692,12 +1646,13 @@ export const schedule = {
         const jobs = j.map((row) => adaptBackendSchedule(row));
         /* Cache so cancel/retry/reschedule can mutate locally between
          *  re-fetches without losing rows. */
-        scheduleState.jobs = jobs;
-        return { jobs, source: "real-http" };
+        scheduleState.jobs = [...local, ...jobs];
+        return { jobs: scheduleState.jobs, source: "real-http" };
       }
     } catch { /* fall through */ }
+    scheduleState.jobs = local;
     if (!range || (!range.from && !range.to)) {
-      return { jobs: [...scheduleState.jobs], source: "mock" };
+      return { jobs: [...scheduleState.jobs], source: "assisted-local" };
     }
     const fromT = range.from ? Date.parse(range.from) : -Infinity;
     const toT = range.to ? Date.parse(range.to) : Infinity;
@@ -1705,10 +1660,20 @@ export const schedule = {
       const t = Date.parse(j.scheduledFor);
       return t >= fromT && t <= toT;
     });
-    return { jobs, source: "mock" };
+    return { jobs, source: "assisted-local" };
   },
 
   async cancelScheduledJob(id: string): Promise<{ ok: boolean }> {
+    const local = readAssistedSchedule().find((job) => job.id === id);
+    if (local) {
+      await cancelAssistedNotification(id);
+      patchAssistedJob(id, { status: "cancelled" });
+      scheduleState.jobs = scheduleState.jobs.map((job) => (
+        job.id === id ? { ...job, status: "cancelled" } : job
+      ));
+      bus.emit("toast", { kind: "info", title: "Reminder cancelled", body: local.clipTitle });
+      return { ok: true };
+    }
     const real = await tryInvoke<{ ok: boolean }>("cancel_scheduled_job", { id });
     if (real) {
       scheduleState.jobs = scheduleState.jobs.map((j) => j.id === id ? { ...j, status: "cancelled" } : j);
@@ -1738,6 +1703,24 @@ export const schedule = {
   },
 
   async rescheduleJob(id: string, scheduledFor: string): Promise<{ job: ScheduledJob | null }> {
+    const local = readAssistedSchedule().find((job) => job.id === id);
+    if (local) {
+      await cancelAssistedNotification(id);
+      const next = patchAssistedJob(id, {
+        scheduledFor,
+        status: "scheduled",
+        remindedAt: undefined,
+        handoffOpenedAt: undefined,
+        nativeNotificationScheduled: false,
+      });
+      if (next) {
+        const nativeNotificationScheduled = await scheduleAssistedNotification(next);
+        const persisted = patchAssistedJob(id, { nativeNotificationScheduled }) ?? next;
+        scheduleState.jobs = scheduleState.jobs.map((job) => job.id === id ? persisted : job);
+        bus.emit("toast", { kind: "info", title: "Reminder moved", body: local.clipTitle });
+      }
+      return { job: readAssistedSchedule().find((job) => job.id === id) ?? next };
+    }
     const real = await tryInvoke<{ job: ScheduledJob | null }>("reschedule_job", { id, scheduledFor });
     if (real) {
       if (real.job) scheduleState.jobs = scheduleState.jobs.map((j) => j.id === id ? real.job! : j);

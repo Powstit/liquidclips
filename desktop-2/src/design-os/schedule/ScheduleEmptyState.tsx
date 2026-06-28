@@ -22,12 +22,12 @@ export function ScheduleEmptyState({ filterLabel, totalJobs }: ScheduleEmptyStat
       <span className="lc-se-eb">Nothing here yet</span>
       <h2 className="lc-se-h">
         {isAllEmpty
-          ? "No clips queued."
+          ? "No posting reminders."
           : `No ${(filterLabel ?? "matching").toLowerCase()} jobs.`}
       </h2>
       <p className="lc-se-body">
         {isAllEmpty
-          ? "Schedule a clip from Export · or queue from Library. Each queued post fires at its set time."
+          ? "Choose a rendered clip and set a time. Junior will notify you, copy the caption, reveal the video, and open the platform."
           : "Try a different filter, or schedule a fresh clip from Export."}
       </p>
     </GlassCard>

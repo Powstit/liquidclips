@@ -35,6 +35,7 @@ import { bus } from "../bridge";
 import { useBillingState } from "../../lib/billing/adapter";
 import { PLAN_CATALOG } from "../../lib/billing/types";
 import { notifyCapReached } from "../../inbox/notify";
+import { isUploadableVideoPath, requestAssistedSchedulePermission } from "./assistedSchedule";
 import "./ScheduleFromExportDrawer.css";
 
 // 2026-06-23 monetisation pass · ladder-aware cap upsell label.
@@ -64,7 +65,7 @@ export interface ScheduleFromExportDrawerProps {
   /** Target accounts pulled from the live Export TargetAccountsRow. */
   targets: ReadonlyArray<TargetAccount>;
   /** Clip context. */
-  clip: { idx: number; title: string } | null;
+  clip: { idx: number; title: string; outputPath?: string | null } | null;
   /** Project slug for the ScheduledJob.projectSlug field. */
   projectSlug: string;
   /** Hide brand badges (Clipper). */
@@ -114,15 +115,17 @@ export function ScheduleFromExportDrawer({
   const overAccountsCap = targets.length > tier.caps.accountsPerClip;
   const noTargets = targets.length === 0;
   const noClip = !clip;
+  const noRenderedFile = !!clip && !isUploadableVideoPath(clip.outputPath);
   const monthlyCap = sched.isAtMonthlyCap;
 
   const blockedReason = useMemo<string | null>(() => {
     if (noClip)          return "Pick a clip in the Clipping Engine first.";
+    if (noRenderedFile)  return "Render the clip before setting a posting reminder.";
     if (noTargets)       return "Add at least one target account first.";
     if (overAccountsCap) return `Selected ${targets.length} of ${tier.caps.accountsPerClip} accounts-per-clip cap (${tier.tier.toUpperCase()}).`;
     if (monthlyCap)      return `Monthly post cap reached · ${sched.scheduledThisMonth} of ${tier.caps.monthlyPosts}.`;
     return null;
-  }, [noClip, noTargets, overAccountsCap, monthlyCap, targets.length, tier, sched.scheduledThisMonth]);
+  }, [noClip, noRenderedFile, noTargets, overAccountsCap, monthlyCap, targets.length, tier, sched.scheduledThisMonth]);
 
   const canSubmit = blockedReason === null && !submitting;
   const anyPerAccount = Object.values(captionByAccountId).some((s) => (s ?? "").length > 0);
@@ -133,6 +136,7 @@ export function ScheduleFromExportDrawer({
     setSubmitting(true);
     setInlineError(null);
     try {
+      const notificationReady = await requestAssistedSchedulePermission();
       const iso = new Date(scheduledFor).toISOString();
       /* Phase 6J-D · pick the right caption surface. "Same caption for all"
        *  → pass single captionOverride. Off → pass captionByAccountId map
@@ -149,6 +153,7 @@ export function ScheduleFromExportDrawer({
         clipId: `clip-${clip.idx}`,
         clipTitle: clip.title,
         projectSlug,
+        outputPath: clip.outputPath ?? "",
         targetAccountIds: targets.map((t) => t.id),
         accounts: targets.map((t) => ({
           id: t.id,
@@ -166,8 +171,10 @@ export function ScheduleFromExportDrawer({
       }
       bus.emit("toast", {
         kind: "success",
-        title: "Scheduled",
-        body: created.length === 1 ? "1 post scheduled" : `${created.length} posts scheduled`,
+        title: "Assisted schedule ready",
+        body: notificationReady
+          ? "Junior will notify you, copy the caption, reveal the video, and open the platform."
+          : "Reminder saved. Enable macOS notifications so Junior can alert you at posting time.",
       });
       onScheduled?.(created.length);
       onClose();
@@ -185,8 +192,8 @@ export function ScheduleFromExportDrawer({
       onClose={onClose}
       dirty={dirty}
       onDirtyClose={onClose}
-      eyebrow="Schedule"
-      title={clip ? clip.title : "Schedule clip"}
+      eyebrow="Assisted schedule"
+      title={clip ? clip.title : "Set posting reminder"}
       width={480}
       id="schedule-from-export-drawer"
     >
@@ -235,9 +242,9 @@ export function ScheduleFromExportDrawer({
           )}
         </section>
 
-        {/* Scheduled time */}
+        {/* Reminder time */}
         <section className="lc-sfed-section">
-          <label htmlFor="lc-sfed-time" className="lc-sfed-eb">Scheduled time</label>
+          <label htmlFor="lc-sfed-time" className="lc-sfed-eb">Posting reminder</label>
           <input
             id="lc-sfed-time"
             type="datetime-local"
@@ -321,7 +328,7 @@ export function ScheduleFromExportDrawer({
             cheapest tier whose monthlyPosts beats current; Pro users
             get Growth ($79), not Agency ($500). */}
         <GlassCard density="quiet" className={`lc-sfed-cap-card ${monthlyCap ? "is-over" : ""}`}>
-          <span className="lc-sfed-cap-eb">Monthly posts</span>
+          <span className="lc-sfed-cap-eb">Monthly reminders</span>
           <span className="lc-sfed-cap-body">
             {sched.scheduledThisMonth} of {tier.caps.monthlyPosts} this month
           </span>
@@ -329,7 +336,7 @@ export function ScheduleFromExportDrawer({
             const upsell = upsellLabel(tier.nextTierFor("monthlyPosts"));
             return upsell ? (
               <span className="lc-sfed-cap-warn">
-                Upgrade to {upsell.name} · {upsell.price} to queue more this month.
+                Upgrade to {upsell.name} · {upsell.price} to set more reminders this month.
               </span>
             ) : (
               <span className="lc-sfed-cap-warn">
@@ -397,16 +404,17 @@ export function ScheduleFromExportDrawer({
 
         {inlineError && (
           <GlassCard density="default" className="lc-sfed-err">
-            <span className="lc-sfed-err-eb">Schedule failed</span>
+            <span className="lc-sfed-err-eb">Reminder failed</span>
             <span className="lc-sfed-err-body">{inlineError}</span>
           </GlassCard>
         )}
 
         {!blockedReason && (
           <p className="lc-sfed-preview">
-            This will create <strong>{targets.length}</strong> scheduled {targets.length === 1 ? "post" : "posts"}
+            This will create <strong>{targets.length}</strong> posting {targets.length === 1 ? "reminder" : "reminders"}
             {" "}across {new Set(targets.map((t) => t.platform)).size}
             {" "}{new Set(targets.map((t) => t.platform)).size === 1 ? "platform" : "platforms"}.
+            {" "}Junior prepares everything; you still press Post.
           </p>
         )}
 
@@ -426,7 +434,7 @@ export function ScheduleFromExportDrawer({
             onClick={handleSubmit}
             disabled={!canSubmit}
           >
-            {submitting ? "Scheduling…" : `Schedule ${targets.length} ${targets.length === 1 ? "post" : "posts"}`}
+            {submitting ? "Saving…" : `Set ${targets.length} ${targets.length === 1 ? "reminder" : "reminders"}`}
           </button>
         </footer>
       </div>

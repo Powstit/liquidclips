@@ -104,7 +104,7 @@ async function seedCompletedSession(page: Page) {
 }
 
 test.describe("Schedule Honesty", () => {
-  test(`${JOURNEY} · all schedule CTAs honestly disabled; no fake-toast lie`, async ({ page }, testInfo) => {
+  test(`${JOURNEY} · assisted reminders are real; automatic posting is not claimed`, async ({ page }, testInfo) => {
     const rec = new JourneyRecorder(page, testInfo);
 
     // Install a toast-bus probe BEFORE app boots. Captures every
@@ -135,18 +135,18 @@ test.describe("Schedule Honesty", () => {
         await expect(page.locator('.lc-cockpit-dock[data-module="schedule"]')).toBeVisible({ timeout: 4_000 });
       });
 
-      await rec.step("Schedule block exposes honest 'coming-soon' state", async () => {
+      await rec.step("Schedule block exposes ready assisted state", async () => {
         const block = page.locator('[data-testid="schedule-block"]');
         const available = await block.getAttribute("data-schedule-available");
         const state = await block.getAttribute("data-schedule-state");
         rec.assert("schedule_available", available);
         rec.assert("schedule_state", state);
-        expect(available).toBe("false");
-        expect(state).toBe("coming-soon");
+        expect(available).toBe("true");
+        expect(state).toBe("ready");
       });
 
-      await rec.step("Schedule tab shows 'Coming soon' badge + honest copy", async () => {
-        const badge = page.locator('[data-testid="schedule-coming-soon-badge"]');
+      await rec.step("Schedule tab explains the assisted handoff", async () => {
+        const badge = page.locator('[data-testid="schedule-status-badge"]');
         const copy = page.locator('[data-testid="schedule-copy"]');
         await expect(badge).toBeVisible();
         await expect(copy).toBeVisible();
@@ -154,8 +154,8 @@ test.describe("Schedule Honesty", () => {
         const copyText = await copy.textContent();
         rec.assert("schedule_badge", badgeText);
         rec.assert("schedule_copy", copyText);
-        expect(badgeText?.toLowerCase()).toMatch(/coming soon/);
-        expect(copyText?.toLowerCase()).toMatch(/coming soon|connect/);
+        expect(badgeText?.toLowerCase()).toMatch(/assisted|ready/);
+        expect(copyText?.toLowerCase()).toMatch(/remind|handoff|press post/);
       });
 
       await rec.step("Date/time/lane/repeat controls still persist drafts", async () => {
@@ -174,12 +174,15 @@ test.describe("Schedule Honesty", () => {
         rec.assert("draft_date_after_set", await dateInput.inputValue());
       });
 
-      await rec.step("Queue button is disabled (no click can fire a fake toast)", async () => {
+      await rec.step("Reminder button blocks until the clip has a real rendered file", async () => {
         const queue = page.locator('[data-testid="schedule-queue"]');
         await expect(queue).toBeDisabled();
         const label = await queue.textContent();
+        const title = await queue.getAttribute("title");
         rec.assert("queue_label", label);
-        expect(label?.toLowerCase()).toContain("coming soon");
+        rec.assert("queue_blocked_reason", title);
+        expect(label?.toLowerCase()).toContain("remind");
+        expect(title?.toLowerCase()).toContain("render");
       });
 
       await rec.step("Switch dock to Publish tab", async () => {
@@ -187,33 +190,20 @@ test.describe("Schedule Honesty", () => {
         await expect(page.locator('.lc-cockpit-dock[data-module="publish"]')).toBeVisible({ timeout: 4_000 });
       });
 
-      await rec.step("Publish 'Schedule +1h' is disabled + reads SAME promise", async () => {
+      await rec.step("Publish reminder handoff stays disabled until export", async () => {
         const pubSched = page.locator('[data-testid="publish-schedule-hour"]');
         await expect(pubSched).toBeDisabled();
         const state = await pubSched.getAttribute("data-schedule-state");
         const label = await pubSched.textContent();
         rec.assert("publish_schedule_state", state);
         rec.assert("publish_schedule_label", label);
-        expect(state).toBe("coming-soon");
-        expect(label?.toLowerCase()).toContain("coming soon");
+        expect(state).toBe("ready");
+        expect(label?.toLowerCase()).toContain("reminder");
       });
 
-      await rec.step("Force-click both disabled CTAs · no toast fires", async () => {
-        // Force-click both disabled buttons. Disabled <button>s don't fire
-        // onClick, so no toast should appear. Capture any toast that
-        // DOES appear (locator-based) and assert it's empty.
-        const dismissedBefore = await page.locator('.lc-toast').count();
+      await rec.step("Disabled pre-export handoff cannot claim a scheduled post", async () => {
         await page.locator('[data-testid="publish-schedule-hour"]').click({ force: true }).catch(() => {});
-        await page.locator('.lc-cockpit-dock .lc-cd-pill', { hasText: /schedule/i }).click();
-        await page.locator('[data-testid="schedule-queue"]').click({ force: true }).catch(() => {});
-        // Wait a beat for any async toast to propagate.
         await page.waitForTimeout(500);
-        const toasts = await page.locator('.lc-toast').count();
-        rec.assert("toasts_before", dismissedBefore);
-        rec.assert("toasts_after_force_click", toasts);
-        // The post-click count must not exceed pre-click count (no new toasts).
-        expect(toasts).toBeLessThanOrEqual(dismissedBefore);
-        // Also verify no "Scheduled" or "Queued" text ever appears.
         const scheduledToast = page.locator('.lc-toast', { hasText: /scheduled|queued/i });
         await expect(scheduledToast).toHaveCount(0);
       });

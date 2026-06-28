@@ -88,6 +88,9 @@ export function ScheduleJobRow({ job, onOpen, onCancel, onRetry, hideBrand }: Sc
   const isCancelled = job.status === "cancelled";
   const isPosted = job.status === "posted";
   const isFuture = !isPosted && !isCancelled;
+  const statusLabel = job.deliveryMode === "assisted" && job.status === "scheduled"
+    ? "Reminder set"
+    : STATUS_LABEL[job.status];
 
   return (
     <GlassCard density="default" className={`lc-sjr is-${job.status}`} hoverLift>
@@ -129,7 +132,7 @@ export function ScheduleJobRow({ job, onOpen, onCancel, onRetry, hideBrand }: Sc
         <div className="lc-sjr-right">
           <span className={`lc-sjr-status is-${job.status}`}>
             <span className="lc-sjr-status-dot" aria-hidden="true" />
-            {STATUS_LABEL[job.status]}
+            {statusLabel}
           </span>
           {(isFailed || isRetrying) && job.retryCount > 0 && (
             <span className="lc-sjr-retry" title={job.error ?? "Retry counter"}>

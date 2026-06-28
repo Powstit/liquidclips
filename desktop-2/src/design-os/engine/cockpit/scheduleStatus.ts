@@ -30,16 +30,15 @@ export interface SchedulePromise {
 }
 
 /**
- * Today's truth: no scheduling backend in desktop-2's sidecar-stub. No
- * Ayrshare wrapper. No local queue. Return `available: false` with
- * honest copy. Future: replace this body with a real check against the
- * scheduler RPC's readiness.
+ * Assisted scheduling is available without a publishing provider. Junior
+ * stores the reminder locally, then prepares the browser/file/caption
+ * handoff. Automatic posting remains a separate provider-owned feature.
  */
 export function deriveSchedulePromise(): SchedulePromise {
   return {
-    available: false,
-    state: "coming-soon",
-    copy: "Scheduling coming soon — connect a provider in Settings to enable.",
-    badge: "Coming soon · not scheduled yet",
+    available: true,
+    state: "ready",
+    copy: "Assisted schedule: Junior reminds you and prepares the platform handoff. You press Post.",
+    badge: "Assisted · ready",
   };
 }

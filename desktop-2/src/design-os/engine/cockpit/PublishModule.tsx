@@ -19,6 +19,7 @@ import {
   type ExportPresetKey,
 } from "./CockpitContext";
 import { deriveSchedulePromise } from "./scheduleStatus";
+import { rememberExportPath } from "../../schedule/exportPathStore";
 import "./modules.css";
 
 /**
@@ -228,6 +229,7 @@ export function PublishModule() {
         targetAccountIds,
       });
       setExportOutputPath(outputPath);
+      rememberExportPath(slug, focusedClip.idx, outputPath);
       // exportState flips to "done" on the engine:complete{kind:"export"}
       // event the RPC emits (real or mock). Leaves a deterministic
       // observable for the harness.
@@ -427,11 +429,15 @@ export function PublishModule() {
             data-testid="publish-schedule-hour"
             data-schedule-state={schedulePromise.state}
             className="lc-cd-ghost"
-            disabled={!schedulePromise.available}
-            aria-disabled={!schedulePromise.available}
-            title={schedulePromise.available ? undefined : schedulePromise.copy}
+            disabled={!schedulePromise.available || !exportOutputPath}
+            aria-disabled={!schedulePromise.available || !exportOutputPath}
+            title={!exportOutputPath ? "Export this clip first." : schedulePromise.copy}
+            onClick={() => bus.emit("clip:open-schedule", {
+              clipIdx: focusedClip.idx,
+              outputPath: exportOutputPath ?? undefined,
+            })}
           >
-            {schedulePromise.available ? "Schedule +1h" : "Schedule · coming soon"}
+            Set posting reminder
           </button>
         </div>
         {/* BUG-033 · honest success/error affordance. Mirrors the ReactionModule
