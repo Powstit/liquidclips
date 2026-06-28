@@ -50,7 +50,7 @@ export async function getLatestRelease(): Promise<LatestRelease | null> {
     };
 
     return {
-      version: (data.tag_name ?? "").replace(/^v/, ""),
+      version: (data.tag_name ?? "").replace(/^(?:desktop-2-)?v/, ""),
       tagName: data.tag_name ?? "",
       publishedAt: data.published_at ?? "",
       macArm: find(/aarch64\.dmg$/i),
