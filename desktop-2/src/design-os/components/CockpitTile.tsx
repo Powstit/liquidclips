@@ -19,15 +19,17 @@ export interface CockpitTileProps {
   /** Visual emphasis. `engine` keeps the fuchsia halo always on. */
   tone?: "default" | "engine";
   ariaLabel?: string;
+  testId?: string;
 }
 
 export function CockpitTile({
-  label, hint, icon, onClick, tone = "default", ariaLabel,
+  label, hint, icon, onClick, tone = "default", ariaLabel, testId,
 }: CockpitTileProps) {
   return (
     <button
       type="button"
       className={`lc-ctile lc-ctile-${tone}`}
+      data-testid={testId}
       onClick={onClick}
       aria-label={ariaLabel ?? `${label} · ${hint}`}
     >

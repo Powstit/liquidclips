@@ -53,9 +53,7 @@ import { useKadeFromSession } from "../state/useKadeFromSession";
 import { useChannels } from "../state/useChannels";
 import { useSchedule } from "../state/useSchedule";
 import { useCommunity } from "../state/useCommunity";
-import { useRuntimeInfo } from "../engine/runtimeInfo";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
-import { ROUTE_HERO } from "../copy/copyMap";
 import { presets } from "../motion";
 import "./SimPage.css";
 import "./Settings.css";
@@ -75,18 +73,16 @@ function inTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-/** "real-rpc" / "real-http" → "Live", anything else → "Studio preview". */
-function sourceToHonestyLabel(s: "real-rpc" | "real-http" | "mock"): "Live" | "Studio preview" {
-  return s === "real-rpc" || s === "real-http" ? "Live" : "Studio preview";
+/** Customer-facing availability, without exposing implementation modes. */
+function sourceToHonestyLabel(s: "real-rpc" | "real-http" | "mock"): "Live" | "Unavailable" {
+  return s === "real-rpc" || s === "real-http" ? "Live" : "Unavailable";
 }
 
 function SettingsBody() {
   const session = useEngineSession();
-  const runtime = useRuntimeInfo();
   useKadeFromSession("settings");
 
   const spec = ROUTE_REGISTRY["settings"];
-  const hero = ROUTE_HERO["settings"];
 
   // 2026-06-24 · Settings was one long scroll. Split into 4 tabs so
   // users don't have to hunt: Account (you + key + plan + actions) ·
@@ -346,45 +342,26 @@ function SettingsBody() {
       kadePlacement={spec.kadePlacement}
     >
       <fm.div
-        className="sim-stage"
+        className="sim-stage lc-settings-stage"
         variants={presets.routeEnter}
         initial="initial"
         animate="animate"
       >
-        <fm.div
-          className="sim-welcome"
-          data-kade-anchor
-          variants={presets.staggerContainer}
-          initial="initial"
-          animate="animate"
-        >
-          <fm.span className="sim-eb" variants={presets.staggerItem}>
-            {hero.eyebrow}
-            {runtime.mode === "mock" && (
-              <span
-                className="lc-runtime-tag"
-                title={`Settings live data lights up when backend is reachable · pass a license JWT via localStorage.${LICENSE_JWT_STORAGE_KEY} (or run inside Tauri) to flip to real-http.`}
-              >
-                Studio preview
-              </span>
-            )}
-            {runtime.mode !== "mock" && (
-              <span
-                className="lc-runtime-tag is-live"
-                title="Settings sees real backend state for the live surfaces."
-              >
-                Live · backend
-              </span>
-            )}
-          </fm.span>
-          <fm.h1 className="sim-h1" variants={presets.staggerItem}>
-            {hero.h1}
-          </fm.h1>
-          <fm.p className="sim-sub" variants={presets.staggerItem}>
-            Account state · live connections · how Liquid Clips handles your data.
-            Kade keeps the wrench out · billing isn't here yet.
-          </fm.p>
-        </fm.div>
+        <div className="lc-route-head" data-kade-anchor data-route-title="Settings">
+          <div className="lc-settings-heading">
+            <span className="lc-route-head-eb">Settings</span>
+            <span className="lc-settings-heading-copy">
+              Manage your account, connections, plan, and app diagnostics.
+            </span>
+          </div>
+          <div className="lc-route-head-pills">
+            <span
+              className={`lc-runtime-tag ${hasLicense ? "is-live" : ""}`}
+            >
+              {hasLicense ? "Account connected" : "Account unavailable"}
+            </span>
+          </div>
+        </div>
 
         {/* 2026-06-24 · tab nav · splits a long scroll into 4 honest groups. */}
         <nav className="lc-settings-tabs" role="tablist" aria-label="Settings sections">
@@ -503,14 +480,13 @@ function SettingsBody() {
                 />
                 <SettingsRow
                   label="Community"
-                  value={community.isMockFallback ? "Studio preview" : "Live"}
+                  value={community.isMockFallback ? "Unavailable" : "Live"}
                   tone={community.isMockFallback ? "muted" : "live"}
                   mono
                 />
                 <p className="lc-settings-hint">
-                  Kade · live surfaces talk to the backend with your license.
-                  Studio preview uses seeded mocks so the app stays usable when
-                  offline.
+                  Live services use your local activation. Unavailable services
+                  can be retried without affecting exported clips.
                 </p>
               </div>
             </section>
@@ -595,12 +571,12 @@ function SettingsBody() {
                     · clipping workflow.
                   </p>
                   <div className="lc-settings-provider-meta">
-                    <span className="lc-settings-meta-label">Login capability</span>
-                    <span className="lc-settings-meta-value">Available · activation flow exposes Whop OAuth as a co-equal door (scope · read_user)</span>
+                    <span className="lc-settings-meta-label">Sign in</span>
+                    <span className="lc-settings-meta-value">Whop sign-in is available</span>
                   </div>
                   <div className="lc-settings-provider-meta">
                     <span className="lc-settings-meta-label">Current state</span>
-                    <span className="lc-settings-meta-value">verified by /me on Refresh · not fetched on mount in v1</span>
+                    <span className="lc-settings-meta-value">Use Refresh account status to verify</span>
                   </div>
                   <button
                     type="button"
@@ -641,8 +617,10 @@ function SettingsBody() {
                         in the Channels route.
                       </p>
                       <div className="lc-settings-provider-meta">
-                        <span className="lc-settings-meta-label">Source</span>
-                        <span className="lc-settings-meta-value">{channels.source}</span>
+                        <span className="lc-settings-meta-label">Service</span>
+                        <span className="lc-settings-meta-value">
+                          {sourceKnown ? "Available" : "Unavailable"}
+                        </span>
                       </div>
                       <button
                         type="button"
@@ -691,10 +669,8 @@ function SettingsBody() {
                 </div>
 
                 <p className="lc-settings-hint">
-                  Kade · we don't fetch /me on mount in v1. Whop +
-                  Stripe Connect connection state lands when you tap
-                  <em> Refresh account status</em> in Actions OR when the
-                  P1-3-e useMe() hook ships.
+                  Use <em>Refresh account status</em> to verify Whop and payout
+                  connections without leaving this page.
                 </p>
               </div>
             </section>
@@ -722,13 +698,13 @@ function SettingsBody() {
                   mono={tier.source !== "real-http" && tier.source !== "session-cache"}
                 />
                 <SettingsRow
-                  label="Tier source"
+                  label="Account status"
                   value={
-                    tier.source === "real-http"        ? "real · /me effective_tier" :
-                    tier.source === "session-cache"    ? "real · cached from last /me" :
-                    tier.source === "fixture-fallback" ? (tier.loading ? "checking · /me in flight" : "fallback · fixture default while /me unavailable") :
-                    tier.source === "unknown"          ? "unknown · no license · activate first" :
-                                                         "debug · puppeteer override"
+                    tier.source === "real-http"        ? "Verified just now" :
+                    tier.source === "session-cache"    ? "Verified previously" :
+                    tier.source === "fixture-fallback" ? (tier.loading ? "Checking account…" : "Could not verify") :
+                    tier.source === "unknown"          ? "Sign in to verify" :
+                                                         "Test override"
                   }
                   tone={tier.source === "real-http" || tier.source === "session-cache" ? "live" : "muted"}
                   mono
@@ -736,15 +712,15 @@ function SettingsBody() {
 
                 {/* Beta provisioning · real from /me.admin_override */}
                 <div className="lc-settings-provider-meta">
-                  <span className="lc-settings-meta-label">Beta provisioning</span>
+                  <span className="lc-settings-meta-label">Access</span>
                   <span className="lc-settings-meta-value">
                     {me.snapshot && tier.adminOverride
-                      ? "Admin allowlist · tier elevated by LC team"
+                      ? "Admin access"
                       : me.snapshot
-                        ? "Standard beta tier · no admin override"
+                        ? "Standard access"
                         : me.degraded
-                          ? "Not checked · /me degraded"
-                          : "Not checked yet · /me not fetched"
+                          ? "Could not verify"
+                          : "Not checked yet"
                     }
                   </span>
                 </div>
@@ -769,13 +745,13 @@ function SettingsBody() {
 
                 {/* Billing owner · real from /me.billing_provider */}
                 <div className="lc-settings-provider-meta">
-                  <span className="lc-settings-meta-label">Billing owner</span>
+                  <span className="lc-settings-meta-label">Billing provider</span>
                   <span className="lc-settings-meta-value">
                     {me.snapshot?.billingProvider === "whop"  ? "Whop" :
                      me.snapshot?.billingProvider === "clerk" ? "Clerk" :
-                     me.snapshot                              ? "Unknown · /me did not return billing_provider" :
-                     me.degraded                              ? "Not checked · /me degraded" :
-                                                                "Not checked yet · /me not fetched"
+                     me.snapshot                              ? "Not available" :
+                     me.degraded                              ? "Could not verify" :
+                                                                "Not checked yet"
                     }
                   </span>
                 </div>
@@ -789,22 +765,21 @@ function SettingsBody() {
                       : me.snapshot
                         ? "no subscription on file"
                         : me.degraded
-                          ? "Not checked · /me degraded"
-                          : "Not checked yet · /me not fetched"
+                          ? "Could not verify"
+                          : "Not checked yet"
                     }
                   </span>
                 </div>
 
                 {/* Native billing · coming soon · explicit · unchanged */}
                 <div className="lc-settings-provider-meta">
-                  <span className="lc-settings-meta-label">Native billing</span>
-                  <span className="lc-settings-meta-value">Coming soon</span>
+                  <span className="lc-settings-meta-label">Plan management</span>
+                  <span className="lc-settings-meta-value">Managed in your browser</span>
                 </div>
 
                 <p className="lc-settings-hint">
-                  Kade · tier + provisioning + billing now read from /me
-                  when fetched · honest "Not checked yet" otherwise.
-                  Refresh re-fetches both /me and /sync.
+                  Refresh verifies your plan, access, billing provider, and
+                  subscription status.
                 </p>
 
                 <div className="lc-settings-actions">
@@ -820,7 +795,7 @@ function SettingsBody() {
                       ]);
                     }}
                     disabled={refreshing || tier.loading || !hasLicense}
-                    title={!hasLicense ? "Sign in first" : "Re-fetch /sync and /me · updates tier, billing, subscription state"}
+                    title={!hasLicense ? "Sign in first" : "Verify plan, billing, and subscription status"}
                   >
                     {refreshing || tier.loading ? "Refreshing…" : "Refresh to verify"}
                   </button>
@@ -854,8 +829,8 @@ function SettingsBody() {
                   is Whop's.
                 </p>
                 <p className="lc-settings-prose-small">
-                  Kade · no <code>bounty:create</code> · no native payout in
-                  beta. Reward creation happens on Whop · we paste the URL.
+                  Reward creation, approval, and payout stay on Whop. Liquid
+                  Clips keeps the creation and tracking workflow in one place.
                 </p>
               </div>
             </section>
@@ -1013,6 +988,7 @@ function SettingsBody() {
               <div className="lc-settings-actions">
                 <button
                   type="button"
+                  data-testid="settings-refresh-account"
                   className="lc-settings-cta lc-settings-cta-secondary"
                   onClick={handleRefreshAccount}
                   disabled={refreshing || !hasLicense}
@@ -1166,11 +1142,11 @@ function OpenAIKeyCard() {
       statusTone = "live";
       break;
     case "missing":
-      statusValue = "Not set · LLM stage will fail";
+      statusValue = "Not set · required for clip analysis";
       statusTone = "warn";
       break;
     case "unavailable":
-      statusValue = "Studio preview · key entry needs the desktop app";
+      statusValue = "Secure key storage is available in the desktop app";
       statusTone = "muted";
       break;
   }

@@ -26,13 +26,12 @@ import { motion as fm } from "framer-motion";
 import { DesignOSAppShell } from "../components/AppShell";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { presets } from "../motion";
+import { bus } from "../bridge";
 import { BakeErrorStrip } from "../engine/BakeErrorStrip";
-import { useRuntimeInfo } from "../engine/runtimeInfo";
 import { useTierCaps } from "../state/useTierCaps";
 import { useCommunity } from "../state/useCommunity";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
 import { useKadeFromSession } from "../state/useKadeFromSession";
-import { ROUTE_HERO } from "../copy/copyMap";
 import {
   RoomGrid,
   AnnouncementsRail,
@@ -49,13 +48,11 @@ import "./Community.css";
 
 function CommunityBody() {
   const session = useEngineSession();
-  const runtime = useRuntimeInfo();
   const tier = useTierCaps();
   const community = useCommunity();
   useKadeFromSession("community");
   const [detailRoom, setDetailRoom] = useState<CommunityRoom | null>(null);
 
-  const hero = ROUTE_HERO["community"];
   const featured = community.featuredDiscussion;
 
   return (
@@ -66,40 +63,55 @@ function CommunityBody() {
       kadePlacement="helper-right"
     >
       <fm.div
-        className="sim-stage"
+        className="sim-stage lc-community-stage"
         variants={presets.routeEnter}
         initial="initial"
         animate="animate"
       >
-        <fm.div
-          className="sim-welcome"
-          data-kade-anchor
-          variants={presets.staggerContainer}
-          initial="initial"
-          animate="animate"
-        >
-          <fm.span className="sim-eb" variants={presets.staggerItem}>
-            {hero.eyebrow}
-            {(runtime.mode === "mock" || community.isMockFallback) && (
+        <div className="lc-route-head" data-kade-anchor data-route-title="Community">
+          <div className="lc-community-heading">
+            <span className="lc-route-head-eb">Community</span>
+            <span className="lc-community-heading-copy">
+              Open your Whop rooms, announcements, and creator leaderboard.
+            </span>
+          </div>
+          <div className="lc-route-head-pills">
+            {community.isMockFallback && (
               <span
                 className="lc-runtime-tag"
-                title={`Channels source: ${community.channelsSource} · real Whop wiring lands in later phases.`}
+                title="Whop community rooms could not be loaded."
               >
-                Studio preview
+                Whop rooms unavailable
               </span>
             )}
             <span className="lc-community-tier-tag">{tier.tier.toUpperCase()}</span>
             <span className="lc-community-rooms-tag" title="Rooms visible at this tier (locked-preview rows included).">
               {community.rooms.length} rooms · {community.lockedRooms.length} locked
             </span>
-          </fm.span>
-          <fm.h1 className="sim-h1" variants={presets.staggerItem}>
-            {hero.h1}
-          </fm.h1>
-          <fm.p className="sim-sub" variants={presets.staggerItem}>
-            {hero.sub}
-          </fm.p>
-        </fm.div>
+          </div>
+        </div>
+
+        {community.isMockFallback && (
+          <div className="lc-community-offline" role="status">
+            <div>
+              <span className="lc-community-offline-eb">Community is offline</span>
+              <p>We could not load your Whop rooms. No placeholder chats are shown.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                bus.emit("toast", {
+                  kind: "info",
+                  title: "Refreshing community",
+                  body: "Checking for your Whop rooms.",
+                });
+                void community.reload();
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* BakeErrorStrip picks up publish/community errors when they fire here. */}
         <BakeErrorStrip />

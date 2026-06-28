@@ -39,13 +39,13 @@ export function HomeBanner(): JSX.Element {
         <div className="lc-home-banner-rim" />
       </div>
       <div className="lc-home-banner-copy">
-        <span className="lc-home-banner-eb">RUNTIME UPDATE TEST · v2.3.1</span>
+        <span className="lc-home-banner-eb">Kade's reward scout · powered by Whop</span>
         <h3 className="lc-home-banner-h">
-          Stack paid Whop skills without leaving the app.
+          Find paid clipping opportunities without leaving the app.
         </h3>
         <p className="lc-home-banner-sub">
-          Scout skills in-app · Copy URL or Use in Engine pulls them straight
-          into Create Clips. No tabs, no juggling.
+          Browse rewards, inspect the brief, then send the source straight
+          into Create Clips.
         </p>
       </div>
       <div className="lc-home-banner-cta">

@@ -30,6 +30,7 @@ export function CampaignFilters({ active, onChange, campaigns }: CampaignFilters
           <button
             key={k}
             type="button"
+            data-testid={`campaign-filter-${k}`}
             role="tab"
             aria-selected={isActive}
             className={`lc-camp-filter-chip is-${k} ${isActive ? "is-active" : ""}`}

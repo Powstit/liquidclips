@@ -31,3 +31,28 @@
   text-align: center;
   padding: 60px 0;
 }
+
+@media (max-width: 760px) {
+  .lc-schedule-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+}
+.lc-schedule-stage {
+  gap: 14px;
+  padding: 0 clamp(16px, 2.5vw, 32px) 72px;
+}
+.lc-schedule-stage .lc-route-head {
+  justify-content: space-between;
+}
+.lc-schedule-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.lc-schedule-heading-copy {
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}

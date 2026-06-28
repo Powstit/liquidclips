@@ -14,12 +14,10 @@ import { motion as fm } from "framer-motion";
 import { DesignOSAppShell } from "../components/AppShell";
 import { bus, useMode } from "../bridge";
 import { presets } from "../motion";
-import { FIXTURE_PROJECT } from "../engine/types";
-import type { ClipStatus } from "../engine/clipCardStatus";
 import "./SimPage.css";
 import "./ClipperJourney.css";
 
-type ChipState = "done" | "current" | "locked";
+type ChipState = "available";
 
 interface ChipSpec {
   id: "join" | "clip" | "post" | "submit" | "earn";
@@ -44,16 +42,12 @@ export function ClipperJourneyRoute() {
 
   if (mode === "agency") return null;
 
-  // Derive chip states from the highest-status fixture clip + a mock earn flag.
-  const statuses = FIXTURE_PROJECT.clips.map((c) => (c.status ?? "draft") as ClipStatus);
-  const has = (s: ClipStatus) => statuses.includes(s);
-
   const chips: ChipSpec[] = [
     {
       id: "join",
       label: "Join",
       verb: "Pick a brief",
-      state: "done",
+      state: "available",
       go: () => bus.emit("nav:click", { route: "campaigns" }),
       art: "/brand/kade/kade-campaign-mode.webp",
     },
@@ -61,7 +55,7 @@ export function ClipperJourneyRoute() {
       id: "clip",
       label: "Clip",
       verb: "Paste a URL",
-      state: has("ready") || has("posted") || has("submitted") ? "done" : "current",
+      state: "available",
       go: () => { bus.emit("nav:click", { route: "home" }); window.setTimeout(() => bus.emit("home:open-panel", { tab: "url" }), 60); },
       art: "/brand/kade/kade-create-clips.webp",
     },
@@ -69,7 +63,7 @@ export function ClipperJourneyRoute() {
       id: "post",
       label: "Post",
       verb: "TikTok · YT · IG",
-      state: has("posted") || has("submitted") ? "done" : has("ready") ? "current" : "locked",
+      state: "available",
       go: () => bus.emit("nav:click", { route: "workstation" }),
       art: "/brand/kade/kade-publishing.webp",
     },
@@ -77,11 +71,9 @@ export function ClipperJourneyRoute() {
       id: "submit",
       label: "Submit",
       verb: "Hand it to Whop",
-      state: has("submitted") ? "done" : has("posted") ? "current" : "locked",
+      state: "available",
       go: () => {
-        const clip = FIXTURE_PROJECT.clips.find((c) => c.status === "posted") ?? FIXTURE_PROJECT.clips[0];
         bus.emit("nav:click", { route: "workstation" });
-        window.setTimeout(() => bus.emit("clip:open-submit", { clipIdx: clip.idx }), 80);
       },
       art: "/brand/kade/kade-earn-mode.webp",
     },
@@ -89,42 +81,26 @@ export function ClipperJourneyRoute() {
       id: "earn",
       label: "Earn",
       verb: "Whop pays out",
-      state: has("submitted") ? "current" : "locked",
+      state: "available",
       go: () => bus.emit("nav:click", { route: "earn" }),
       art: "/brand/kade/kade-success.webp",
     },
   ];
 
-  const advancedCount = chips.filter((c) => c.state === "done").length;
-  const total = chips.length;
-  // VAL.5 · progress strip · "Step N of 5" + visual bar
-  const pct = Math.round((advancedCount / total) * 100);
-
   return (
-    <DesignOSAppShell world="cockpit-home" route="clipper" defaultKade="campaign-mode" kadePlacement="center">
+    <DesignOSAppShell world="cockpit-home" route="clipper" defaultKade="campaign-mode" kadePlacement="helper-right">
       <fm.div
         className="sim-stage lc-cj-stage"
         variants={presets.routeEnter}
         initial="initial"
         animate="animate"
       >
-        <fm.div
-          className="sim-welcome"
-          data-kade-anchor
-          variants={presets.staggerContainer}
-          initial="initial"
-          animate="animate"
-        >
-          <fm.span className="sim-eb" variants={presets.staggerItem}>Clipper journey</fm.span>
-          <fm.h1 className="sim-h1" variants={presets.staggerItem}>From mission to payout.</fm.h1>
-        </fm.div>
-
-        {/* VAL.5 · progress strip — replaces the previous paragraph. */}
-        <div className="lc-cj-progress" aria-label={`Step ${Math.min(advancedCount + 1, total)} of ${total}`}>
-          <span className="lc-cj-progress-eb">Step {Math.min(advancedCount + 1, total)} of {total}</span>
-          <span className="lc-cj-progress-bar">
-            <span className="lc-cj-progress-fill" style={{ width: `${pct}%` }} />
-          </span>
+        <div className="lc-route-head" data-kade-anchor data-route-title="My journey">
+          <div className="lc-cj-heading">
+            <span className="lc-route-head-eb">My journey</span>
+            <span className="lc-cj-heading-copy">Move from a paid brief to a verified payout.</span>
+          </div>
+          <span className="lc-cj-honesty">Progress tracking activates with your first Reward Clip</span>
         </div>
 
         <div className="lc-cj-chain" role="list">
@@ -138,7 +114,6 @@ export function ClipperJourneyRoute() {
                 type="button"
                 className={`lc-cj-chip lc-cj-chip-${c.state}`}
                 onClick={c.go}
-                aria-current={c.state === "current" ? "step" : undefined}
               >
                 <span className="lc-cj-chip-art-wrap" aria-hidden="true">
                   <img className="lc-cj-chip-art" src={c.art} alt="" />
@@ -146,10 +121,10 @@ export function ClipperJourneyRoute() {
                 <span className="lc-cj-chip-num">{String(i + 1).padStart(2, "0")}</span>
                 <span className="lc-cj-chip-label">{c.label}</span>
                 <span className="lc-cj-chip-verb">{c.verb}</span>
-                <span className="lc-cj-chip-state">{c.state === "done" ? "Done" : c.state === "current" ? "Up next" : "Locked"}</span>
+                <span className="lc-cj-chip-state">Open</span>
               </button>
               {i < chips.length - 1 && (
-                <span className={`lc-cj-link lc-cj-link-${chips[i + 1].state === "locked" ? "locked" : "lit"}`} aria-hidden="true" />
+                <span className="lc-cj-link lc-cj-link-lit" aria-hidden="true" />
               )}
             </div>
           ))}

@@ -112,6 +112,11 @@ export function WalletPanel() {
 
   const onRefresh = useCallback(() => {
     if (refreshing) return;
+    bus.emit("toast", {
+      kind: "info",
+      title: "Refreshing wallet",
+      body: "Checking your latest reward and payout activity.",
+    });
     void load("refresh");
   }, [refreshing, load]);
 

@@ -75,6 +75,8 @@ body[data-design-os="active"] .lc-drawer-host * {
 }
 
 .lc-main {
+  position: relative;
+  z-index: 1;
   display: flex; flex-direction: column;
   min-width: 0;
 }

@@ -232,16 +232,16 @@
    UI-3 · CTA row (under meta)
    ============================================================ */
 .lc-clip-ctas {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   padding: 10px 14px 14px;
   border-top: 1px solid rgba(255, 255, 255, .06);
 }
 .lc-clip-cta {
-  flex: 1 1 0;
   font-family: "Geist Mono", ui-monospace, monospace;
   font-size: 10px;
-  letter-spacing: .14em;
+  letter-spacing: .08em;
   text-transform: uppercase;
   padding: 8px 4px;
   border-radius: 8px;
