@@ -37,7 +37,7 @@ export const WHOP_PLANS: Record<WhopPlanKey, WhopPlan> = {
       process.env.NEXT_PUBLIC_WHOP_AGENCY_PLAN_ID ??
       "plan_BvDBrtybhbxNg",
     name: "Agency",
-    priceMonthlyUsd: 199.99,
+    priceMonthlyUsd: 500,
     summary: "Campaign operations, multi-brand capacity, and 25 connected accounts.",
   },
 };

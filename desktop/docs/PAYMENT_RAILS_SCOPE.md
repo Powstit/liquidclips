@@ -9,7 +9,7 @@ The desktop never touches payment instruments directly and relies on a
 backend-authoritative license JWT stored in the OS keychain. Whop webhooks
 update the tier; `/me` and `/sync` carry it into the desktop.
 
-**Current tiers:** Free → Pro ($29.99/mo) → Growth ($99.99/mo) → Agency ($199.99/mo)
+**Current tiers:** Free → Pro ($29.99/mo) → Growth ($99.99/mo) → Agency ($500/mo)
 
 **Free tier:** 100 clip exports, 3 visible clips in grid, watermarked exports, no publishing.
 

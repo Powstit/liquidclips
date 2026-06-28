@@ -73,7 +73,7 @@ export const PLAN_CATALOG: Record<PlanKey, Plan> = {
   agency: {
     key: "agency",
     displayName: "Agency",
-    priceMonthlyUsd: 199.99,
+    priceMonthlyUsd: 500,
     tier: "agency",
     pitch: "Multi-brand · campaign launch · analytics rollups · 2,500 posts/mo",
   },

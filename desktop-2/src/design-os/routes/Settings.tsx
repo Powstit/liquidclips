@@ -103,7 +103,7 @@ function SettingsBody() {
   const me = useMe();
   const tier = useTierCaps();
   // Billing adapter opens the plan-aware Whop checkout
-  // (Pro $29.99 / Growth $99.99 / Agency $199.99).
+  // (Pro $29.99 / Growth $99.99 / Agency $500).
   const billing = useBillingState();
   const [hasLicense, setHasLicense] = useState<boolean>(() => readHasJwt());
   const [refreshing, setRefreshing] = useState(false);
@@ -237,7 +237,7 @@ function SettingsBody() {
    * Path per tier:
    *   - clipper → Whop checkout for Pro ($29.99)
    *   - pro     → Whop checkout for Growth ($99.99)
-   *   - growth  → Whop checkout for Agency ($199.99)
+   *   - growth  → Whop checkout for Agency ($500)
    *   - agency  → Whop manage URL (no upgrade target)
    */
   const handleManageBilling = async () => {

@@ -242,7 +242,7 @@ def test_refund_returns_user_to_free_and_clears_paid_until(db):
 def test_hq_mrr_uses_live_whop_prices():
     assert admin._tier_price_cents("solo") == 2999
     assert admin._tier_price_cents("growth") == 9999
-    assert admin._tier_price_cents("autopilot") == 19999
+    assert admin._tier_price_cents("autopilot") == 50000
 
 
 def test_stripe_connect_does_not_mislabel_whop_subscription(db):
