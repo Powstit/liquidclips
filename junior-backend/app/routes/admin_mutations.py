@@ -286,11 +286,10 @@ def _mask_email(email: str | None) -> str | None:
 
 
 def _resolve_provider(u: User) -> str:
-    """P1-008 · single-column provider inference was mislabelling Stripe
-    Connect subscribers as 'clerk'. Priority: stripe → whop → clerk. Use
-    this helper anywhere a provider label is derived from a User row."""
-    if getattr(u, "stripe_connect_account_id", None):
-        return "stripe"
+    """Resolve the subscription provider, not the affiliate payout provider.
+
+    Stripe Connect is where some affiliates receive money; it does not mean
+    their Liquid Clips subscription is paid through Stripe."""
     if getattr(u, "whop_user_id", None):
         return "whop"
     return "clerk"

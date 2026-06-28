@@ -3,7 +3,7 @@
  *
  * Architecture (post-Batch-2):
  *
- *   Clerk ─→ backend webhook ─→ /me.subscription_status + paid_until
+ *   Whop ─→ backend webhook ─→ /me.subscription_status + paid_until
  *                                      │
  *                                      ▼
  *                          useMe() in desktop-2 src/design-os/state
@@ -14,16 +14,15 @@
  *                                      ▼
  *                              useBillingState()
  *
- *   The "real Clerk subscription source" in desktop-2 IS /me — there is
- *   NO direct @clerk/clerk-react in this repo (only account-app has
- *   @clerk/nextjs). Clerk plan changes propagate through:
- *      Clerk → svix-verified webhook → DB.users.subscription_status →
+ *   Whop is the customer-facing payment rail. Clerk remains identity only.
+ *   Whop plan changes propagate through:
+ *      Whop → Standard Webhook-verified event → DB.users.subscription_status →
  *      /me response → useMe.snapshot.subscriptionStatus → adapter
  *      → BillingSnapshot.state.
  *
  *   For STARTING a checkout: desktop-2 redirects to account-app
- *   (`https://account.liquidclips.app/checkout?plan=<plan>`) via the
- *   existing `openSmart` helper. account-app hosts the Clerk-backed
+ *   (`https://account.liquidclips.app/upgrade?plan=<plan>`) via the
+ *   existing `openSmart` helper. account-app hosts the Whop-backed
  *   checkout UI. After completion, the webhook lands and /me updates
  *   on next poll.
  *
@@ -48,7 +47,7 @@ import type {
   PlanKey,
 } from "./types";
 
-/* ─── Clerk subscription_status → BillingState mapping ────────────── */
+/* ─── Backend subscription_status → BillingState mapping ──────────── */
 function mapSubscriptionStatus(
   status: string | null,
   hasActiveJwt: boolean,
@@ -73,43 +72,19 @@ function tierToPlanKey(tier: string | null): PlanKey {
   return "free";
 }
 
-/* ─── account-app checkout URL ──────────────────────────────────────
- *
- * 2026-06-23 audit fix: the /checkout page in account-app is a
- * Whop-only affiliate funnel selling Solo $29.99 — it does not branch
- * on ?plan= and does not render Clerk's CheckoutButton. The
- * Clerk-wired pricing surface lives at /dashboard#plans (which
- * mounts PricingCards with all four plan cards + per-card
- * CheckoutButton wrappers). Sending desktop users there closes the
- * money loop for pro/growth/agency without rebuilding /checkout.
- *
- * For the `solo` plan key (Whop-rail), keep the /checkout funnel.
- */
-const ACCOUNT_APP_CLERK_PLANS = "https://account.liquidclips.app/dashboard";
+/* ─── account-app Whop checkout URL ───────────────────────────────── */
+const ACCOUNT_APP_WHOP_UPGRADE = "https://account.liquidclips.app/upgrade";
 const ACCOUNT_APP_WHOP_CHECKOUT = "https://account.liquidclips.app/checkout";
 
 function checkoutUrl(plan: PlanKey): string {
-  // free shouldn't trigger checkout, but fall back to plans surface anyway.
-  if (plan === "free") {
-    return `${ACCOUNT_APP_CLERK_PLANS}#plans`;
-  }
-  // Clerk-rail plans land on the dashboard's PricingCards section so the
-  // CheckoutButton component handles plan selection + redirect.
-  // accountpack uses ?addon=accountpack so PricingCards renders the focused
-  // $6/mo add-on CheckoutButton above the regular plan grid.
-  const url = new URL(ACCOUNT_APP_CLERK_PLANS);
-  url.hash = "plans";
-  if (plan === "accountpack") {
-    url.searchParams.set("addon", "accountpack");
-  } else {
-    url.searchParams.set("plan", plan);
-  }
+  // Free never charges. Send the user to the first paid Whop plan.
+  const target = plan === "free" || plan === "accountpack" ? "pro" : plan;
+  const url = new URL(ACCOUNT_APP_WHOP_UPGRADE);
+  url.searchParams.set("plan", target);
   return url.toString();
 }
 
-/** Whop-rail checkout (Solo affiliate funnel). Retained for the Solo
- *  upgrade path; not currently wired from PLAN_CATALOG because Solo is
- *  affiliate-only today. Exposed for the affiliate-driven entry. */
+/** Starter-offer checkout used by affiliate links. */
 export function whopSoloCheckoutUrl(): string {
   return ACCOUNT_APP_WHOP_CHECKOUT;
 }
@@ -161,7 +136,7 @@ class MockBillingAdapter implements BillingAdapter {
   }
 }
 
-/* ─── Real adapter (Me-backed · Clerk subscription via backend) ───── */
+/* ─── Real adapter (Me-backed · Whop subscription via backend) ────── */
 
 class MeBackedBillingAdapter implements BillingAdapter {
   readonly isMock = false;
@@ -177,7 +152,7 @@ class MeBackedBillingAdapter implements BillingAdapter {
   }
   syncFromSource(next: BillingSnapshot): void { this.setSnapshot(next); }
   async startCheckout(planKey: PlanKey): Promise<CheckoutOutcome> {
-    // Real flow: redirect to account-app's checkout (Clerk-hosted).
+    // Real flow: redirect to account-app's Whop checkout.
     // The webhook back-channel updates /me; useMe re-fetches on focus
     // and the snapshot updates via this adapter's subscribe.
     this.setSnapshot({ ...this.snapshot, state: "checkout_started", lastCheckoutFailed: false });

@@ -27,13 +27,25 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { UpgradeCheckout } from "./UpgradeCheckout";
 import { PoweredByWhop } from "@/components/embed/PoweredByWhop";
+import { normalizeWhopPlanKey, WHOP_PLANS } from "@/lib/whopPlans";
 
 export const metadata = {
   title: "Upgrade Liquid Clips",
   description: "Unlock no-watermark exports, $5 RPM, and 50% MRR.",
 };
 
-type SearchParams = Promise<{ ref?: string; affiliate?: string }>;
+type SearchParams = Promise<{
+  plan?: string;
+  a?: string;
+  ref?: string;
+  affiliate?: string;
+}>;
+
+function safeAffiliateCode(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const code = value.trim().slice(0, 64);
+  return /^[A-Za-z0-9_-]+$/.test(code) ? code : null;
+}
 
 export default async function UpgradePage({
   searchParams,
@@ -45,23 +57,76 @@ export default async function UpgradePage({
   // hard-coded `redirect_url=/upgrade` and the `?ref=`/`?affiliate=`
   // querystring was lost on every unauthed visit — affiliate links sent
   // to a logged-out user attributed zero conversions.
-  const { ref, affiliate } = await searchParams;
-  const affiliateCode = ref ?? affiliate ?? null;
+  const { plan: requestedPlan, a, ref, affiliate } = await searchParams;
+  const planKey = normalizeWhopPlanKey(requestedPlan);
+  const selectedPlan = WHOP_PLANS[planKey];
+  const incomingAffiliateCode = safeAffiliateCode(a ?? ref ?? affiliate);
 
   const { userId } = await auth();
   if (!userId) {
-    const upgradeQuery = affiliateCode
-      ? `/upgrade?ref=${encodeURIComponent(affiliateCode)}`
-      : "/upgrade";
+    const params = new URLSearchParams({ plan: planKey });
+    if (incomingAffiliateCode) params.set("a", incomingAffiliateCode);
+    const upgradeQuery = `/upgrade?${params.toString()}`;
     redirect(`/sign-in?redirect_url=${encodeURIComponent(upgradeQuery)}`);
   }
   const user = await currentUser();
   const email = user?.primaryEmailAddress?.emailAddress ?? null;
+  // Existing users already have immutable first-touch attribution stored in
+  // Clerk unsafeMetadata by the signup flow. Prefer that locked value over a
+  // URL parameter so a later link can never steal an established referral.
+  const lockedAffiliateCode = safeAffiliateCode(
+    user?.unsafeMetadata?.affiliate_id,
+  );
+  let affiliateCode = lockedAffiliateCode ?? incomingAffiliateCode;
+  const backendUrl =
+    process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ??
+    "https://api.liquidclips.app";
+  const metadataStatus =
+    typeof user?.publicMetadata?.subscription_status === "string"
+      ? user.publicMetadata.subscription_status.toLowerCase()
+      : "";
+  const metadataWhopUser =
+    typeof user?.publicMetadata?.whop_user_id === "string"
+      ? user.publicMetadata.whop_user_id
+      : "";
+  let manageExistingMembership =
+    !!metadataWhopUser &&
+    (metadataStatus === "active" ||
+      metadataStatus === "trialing" ||
+      metadataStatus === "past_due");
+  try {
+    const response = await fetch(
+      `${backendUrl}/affiliate/me?clerk_user_id=${encodeURIComponent(userId)}`,
+      {
+        headers: {
+          "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "",
+        },
+        cache: "no-store",
+      },
+    );
+    if (response.ok) {
+      const payload = (await response.json()) as {
+        customer?: {
+          billing_provider?: string;
+          subscription_status?: string;
+          referrer_affiliate_id?: string | null;
+        };
+      };
+      affiliateCode =
+        safeAffiliateCode(payload.customer?.referrer_affiliate_id) ??
+        affiliateCode;
+      const status = payload.customer?.subscription_status?.toLowerCase();
+      manageExistingMembership =
+        payload.customer?.billing_provider === "whop" &&
+        (status === "active" || status === "trialing" || status === "past_due");
+    }
+  } catch {
+    // The checkout remains available when the account-state probe is down.
+    // Whop itself still prevents malformed payment attempts.
+  }
 
-  const planId = process.env.NEXT_PUBLIC_WHOP_CHECKOUT_PLAN_ID ?? "";
   const returnUrl =
-    process.env.NEXT_PUBLIC_WHOP_RETURN_URL ??
-    "https://liquidclips.app/checkout/complete";
+    `https://account.liquidclips.app/checkout/complete?plan=${planKey}`;
 
   return (
     <div className="min-h-screen bg-paper">
@@ -72,12 +137,11 @@ export default async function UpgradePage({
             upgrade
           </div>
           <h1 className="font-display text-[36px] font-semibold leading-tight tracking-[-0.025em] text-ink md:text-[42px]">
-            Unlock no-watermark exports, $5 RPM, and 50% MRR.
+            Upgrade to Liquid Clips {selectedPlan.name}.
           </h1>
           <p className="max-w-[640px] font-sans text-[15px] leading-relaxed text-text-secondary">
-            Liquid Clips Pro removes the watermark on every export, opens the
-            premium reward ladder ($5 RPM vs $1 free), and unlocks the affiliate
-            rail — 50% recurring on every paid user you refer.
+            {selectedPlan.summary} Whop handles checkout, receipts, plan changes,
+            and cancellation.
           </p>
         </header>
 
@@ -103,12 +167,32 @@ export default async function UpgradePage({
             </div>
             <PoweredByWhop />
           </div>
-          <UpgradeCheckout
-            planId={planId}
-            returnUrl={returnUrl}
-            email={email}
-            affiliateCode={affiliateCode}
-          />
+          {manageExistingMembership ? (
+            <div className="rounded-3xl border border-line bg-paper-elev/40 p-6">
+              <h2 className="font-display text-[20px] font-semibold text-ink">
+                Change your existing plan in Whop.
+              </h2>
+              <p className="mt-2 max-w-[620px] font-sans text-[14px] leading-relaxed text-text-secondary">
+                You already have a Liquid Clips membership. Whop&apos;s billing
+                portal changes plans without creating a duplicate subscription.
+                It also holds your receipts, payment method, and cancellation.
+              </p>
+              <a
+                href="https://whop.com/@me/settings/memberships"
+                className="mt-5 inline-flex rounded-full bg-fuchsia px-5 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-white"
+              >
+                Open Whop billing →
+              </a>
+            </div>
+          ) : (
+            <UpgradeCheckout
+              planId={selectedPlan.planId}
+              planKey={planKey}
+              returnUrl={returnUrl}
+              email={email}
+              affiliateCode={affiliateCode}
+            />
+          )}
         </section>
 
         <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line/40 pt-4 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">

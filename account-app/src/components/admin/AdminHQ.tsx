@@ -1184,7 +1184,7 @@ function BillingTab() {
   return (
     <Panel
       title="billing · read-only"
-      sub="No cancel / refund / edit in v0. Whop & Clerk/Stripe own the ledger."
+      sub="No cancel / refund / edit here. Whop owns current subscription checkout and the payment ledger."
       right={<LiveBadge state={src.state} />}
     >
       <SearchBar query={s.query} setQuery={s.setQuery} onSearch={s.search} loading={s.loading} />
@@ -1194,13 +1194,13 @@ function BillingTab() {
         <div className="mt-5 rounded-2xl border border-line bg-paper p-5">
           <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
             <div>
-              <KV label="provider" hint="users.billing_provider · 'whop' or 'stripe'. Determines which third-party ledger is the source of truth for this user."><Chip label={d.billing_provider} /></KV>
+              <KV label="provider" hint="Subscription provider only. Stripe Connect affiliate payouts are tracked separately and do not change this label."><Chip label={d.billing_provider} /></KV>
               <KV label="subscription status" hint="users.subscription_status · last value written by Clerk/Whop webhook. active/trialing/canceled/past_due/refunded."><Chip label={d.subscription_status} /></KV>
               <KV label="tier" hint="users.tier · effective tier after admin override + Whop sub. Determines feature gating across desktop + account-app."><Chip label={d.effective_tier} /></KV>
               <KV label="paid until" hint="users.paid_until · UTC expiry from the latest provider event. Null when user is free or never paid.">{d.paid_until ?? <NA />}</KV>
             </div>
             <div>
-              <KV label="founder" hint="users.founder (effective) · lifetime/founder unlock. Sticky across cancel/refund — drives founder badges + locked-tier access.">{d.effective_founder ? "yes" : "no"}</KV>
+              <KV label="founder" hint="users.founder (effective) · lifetime/founder unlock. A refund clears this entitlement; a normal recurring cancellation does not create one.">{d.effective_founder ? "yes" : "no"}</KV>
               <KV label="refunded" hint="Derived: subscription_status === 'refunded'. Set by provider webhook (Whop or Stripe).">{d.subscription_status === "refunded" ? "yes" : "no"}</KV>
               <KV label="canceled" hint="Derived: subscription_status === 'canceled'. User retains access until paid_until elapses unless revoked.">{d.subscription_status === "canceled" ? "yes" : "no"}</KV>
               <KV label="past due" hint="Derived: subscription_status === 'past_due'. Provider failed to charge — Whop/Stripe retries; tier holds until status flips to canceled.">{d.subscription_status === "past_due" ? "yes" : "no"}</KV>

@@ -60,6 +60,7 @@ def _activate_pending(db: Session, user: User, pending: PendingWhopMembership) -
     apply_membership_tier(
         db, user, tier=pending.tier, founder=pending.founder,
         whop_user_id=pending.whop_user_id, renewal_at=pending.renewal_period_end,
+        paid=pending.paid,
     )
     pending.consumed_at = datetime.now(timezone.utc)
     founder = bool(pending.founder)
