@@ -23,8 +23,7 @@ from __future__ import annotations
 
 import logging
 import os
-import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Any
 
 import httpx
@@ -104,6 +103,11 @@ class ClaimResponse(BaseModel):
     currency: str
     error: str | None
     is_live: bool
+
+
+class PayoutPortalResponse(BaseModel):
+    url: str
+    expires_at: str | None = None
 
 
 # ──────── Helpers ──────────────────────────────────────────────────────
@@ -208,6 +212,11 @@ def get_carrot(
             acct = whop_payments.retrieve_account(sub_merchant_id)
             w = acct.get("wallet") or {}
             caps = acct.get("capabilities") or {}
+            if whop_payments.is_live() and acct.get("status") == "connected":
+                onboarded = True
+                if user.whop_sub_merchant_status != "onboarded":
+                    user.whop_sub_merchant_status = "onboarded"
+                    db.commit()
             wallet_block = CarrotWalletBlock(
                 address=w.get("address"),
                 network=w.get("network"),
@@ -272,6 +281,12 @@ def onboard_carrot(
 ) -> OnboardResponse:
     """Create a Whop sub-merchant for the clipper if needed · return the
     onboarding URL (Whop hosts the KYC + bank/wallet linking flow)."""
+    if not whop_payments.is_live():
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Whop wallet onboarding is not live yet.",
+        )
+
     sub_merchant_id = getattr(user, "whop_sub_merchant_id", None)
 
     if not sub_merchant_id:
@@ -300,8 +315,8 @@ def onboard_carrot(
     try:
         link = whop_payments.create_onboarding_link(
             sub_merchant_id=sub_merchant_id,
-            return_url=f"{account_origin}/carrot/onboarded",
-            refresh_url=f"{account_origin}/carrot/refresh",
+            return_url=f"{account_origin}/dashboard?payout=complete",
+            refresh_url=f"{account_origin}/dashboard?payout=refresh",
         )
     except (httpx.HTTPError, RuntimeError) as e:
         raise HTTPException(
@@ -316,6 +331,40 @@ def onboard_carrot(
     )
 
 
+@router.post("/payouts-portal", response_model=PayoutPortalResponse)
+def open_payouts_portal(
+    user: Annotated[User, Depends(current_user)],
+) -> PayoutPortalResponse:
+    """Return a short-lived Whop-hosted payout portal for an onboarded user."""
+    if not whop_payments.is_live():
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Whop payouts are not live yet.",
+        )
+    sub_merchant_id = getattr(user, "whop_sub_merchant_id", None)
+    if not sub_merchant_id:
+        raise HTTPException(
+            status.HTTP_412_PRECONDITION_FAILED,
+            "Complete Whop wallet onboarding first.",
+        )
+    account_origin = os.environ.get("ACCOUNT_SITE_URL", "https://account.liquidclips.app")
+    try:
+        link = whop_payments.create_payouts_portal_link(
+            sub_merchant_id=sub_merchant_id,
+            return_url=f"{account_origin}/dashboard?payout=complete",
+            refresh_url=f"{account_origin}/dashboard?payout=refresh",
+        )
+    except (httpx.HTTPError, RuntimeError) as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            f"Couldn't open Whop payouts: {exc!s}",
+        ) from None
+    return PayoutPortalResponse(
+        url=link["url"],
+        expires_at=(link.get("raw") or {}).get("expires_at"),
+    )
+
+
 @router.post("/claim", response_model=ClaimResponse)
 def claim_carrot(
     user: Annotated[User, Depends(current_user)],
@@ -326,6 +375,12 @@ def claim_carrot(
       2. Onboarded sub-merchant
       3. Either 5K views OR 5 paid affiliates
     Then call Whop transfers.create with net = gross - 5% LC protocol fee."""
+
+    if not whop_payments.is_live():
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Whop payouts are not live yet.",
+        )
 
     if not _has_active_paid_sub(user):
         raise HTTPException(
@@ -349,6 +404,12 @@ def claim_carrot(
             f"{CARROT_AFFILIATE_THRESHOLD} paid affiliates.",
         )
 
+    if getattr(user, "carrot_last_claim_at", None) is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This sponsored reward has already been claimed.",
+        )
+
     net, fee = whop_payments.split_gross_to_net_and_fee(CARROT_AMOUNT_USD)
 
     origin = whop_payments._parent_company_id() or "fake_lc_parent"
@@ -359,18 +420,14 @@ def claim_carrot(
             destination_id=sub_merchant_id,
             amount_usd=net,
             currency=whop_payments.DEFAULT_PAYOUT_CURRENCY,
-            notes=(
-                f"Liquid Clips · $50 Sponsored Reward · gross ${CARROT_AMOUNT_USD:.2f} "
-                f"− {whop_payments.LC_PROTOCOL_FEE_PCT}% LC fee (${fee:.2f}) · net ${net:.2f}"
-            ),
-            idempotence_key=f"carrot-{user.id}-{int(time.time())}",
+            notes="Liquid Clips sponsored reward",
+            idempotence_key=f"carrot-{user.id}",
             metadata={
                 "reward_kind": "activation_bonus",
                 "internal_user_id": user.id,
                 "lc_protocol_fee_usd": fee,
                 "gross_usd": CARROT_AMOUNT_USD,
             },
-            platform_covers_fees=True,
         )
     except httpx.HTTPError as e:
         return ClaimResponse(
@@ -388,7 +445,7 @@ def claim_carrot(
     if hasattr(user, "carrot_total_paid_usd_cents"):
         user.carrot_total_paid_usd_cents = (user.carrot_total_paid_usd_cents or 0) + int(round(net * 100))
     if hasattr(user, "carrot_last_claim_at"):
-        user.carrot_last_claim_at = datetime.utcnow()
+        user.carrot_last_claim_at = datetime.now(timezone.utc)
     db.commit()
 
     return ClaimResponse(
