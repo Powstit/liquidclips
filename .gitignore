@@ -55,10 +55,11 @@ desktop/python-sidecar/bin/ffprobe
 # fetched in CI by .github/workflows/release.yml — never commit.
 python-sidecar/bin/
 python-sidecar/models/
-# liquid-clips-wordmark.png is a bundled Tauri resource (tauri.conf.json:62)
-# and MUST be tracked so CI builds include it. Do NOT re-add to gitignore.
-python-sidecar/assets/watermark/*.mov
-python-sidecar/assets/watermark/*.mp4
+# Watermark + wordmark assets under python-sidecar/assets/ are bundled Tauri
+# resources (tauri.conf.json bundle.resources). They MUST be tracked so CI
+# builds include them. Do NOT re-add wildcards over assets/ — broad globs
+# silently break the signed-release pipeline. Reference: ship 2.2.1 + 2.2.2
+# failures (29 Jun 2026) caused by gitignored bundle resources.
 
 # --- Test results / Playwright + Vitest artifacts ---------------------------
 test-results/
