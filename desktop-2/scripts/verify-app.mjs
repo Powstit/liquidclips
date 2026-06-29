@@ -43,8 +43,9 @@ function main() {
     if (!slug) continue;
     try {
       const v = JSON.parse(fs.readFileSync(path.join(VERDICT_DIR, f), "utf8"));
-      summary[slug.replace(/-/g, "_")] = v.result;
-      if (v.result !== "PASS") anyFail = true;
+      const result = v.result ?? (v.overall === "GREEN" ? "PASS" : v.overall === "RED" ? "FAIL" : "ERROR");
+      summary[slug.replace(/-/g, "_")] = result;
+      if (result !== "PASS") anyFail = true;
     } catch (e) {
       summary[slug.replace(/-/g, "_")] = "ERROR";
       anyFail = true;

@@ -173,8 +173,8 @@ export function ScheduleFromExportDrawer({
         kind: "success",
         title: "Assisted schedule ready",
         body: notificationReady
-          ? "Junior will notify you, copy the caption, reveal the video, and open the platform."
-          : "Reminder saved. Enable macOS notifications so Junior can alert you at posting time.",
+          ? "Liquid Clips will notify you, copy the caption, reveal the video, and open the platform."
+          : "Reminder saved. Enable macOS notifications so Liquid Clips can alert you at posting time.",
       });
       onScheduled?.(created.length);
       onClose();
@@ -414,7 +414,7 @@ export function ScheduleFromExportDrawer({
             This will create <strong>{targets.length}</strong> posting {targets.length === 1 ? "reminder" : "reminders"}
             {" "}across {new Set(targets.map((t) => t.platform)).size}
             {" "}{new Set(targets.map((t) => t.platform)).size === 1 ? "platform" : "platforms"}.
-            {" "}Junior prepares everything; you still press Post.
+            {" "}Liquid Clips prepares everything; you still press Post.
           </p>
         )}
 

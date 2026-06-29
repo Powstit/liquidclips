@@ -12,7 +12,7 @@
  * switch is owned by CockpitContext, not this module.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { bus, useEvent } from "../../bridge";
 import { useCockpit } from "./CockpitContext";
 import { sidecar } from "../sidecar-stub";
@@ -53,16 +53,13 @@ export function TrimModule() {
     setTrimError(p.human ?? p.error ?? "Trim failed");
   });
 
-  // After we land "done", reset the badge back to "idle" the next time the
-  // customer touches a slider, so the affordance reflects the live state.
-  useEffect(() => {
-    if (trimState !== "done") return;
-    const t = window.setTimeout(() => setTrimState("idle"), 2400);
-    return () => window.clearTimeout(t);
-  }, [trimState]);
-
   // Deterministic bar pattern per clip so the waveform doesn't reshuffle.
   const bars = useMemo(() => buildBars(focusedClip.idx), [focusedClip.idx]);
+
+  function updateTrim(next: Parameters<typeof setTrim>[0]) {
+    if (trimState === "done") setTrimState("idle");
+    setTrim(next);
+  }
 
   async function onApply() {
     if (trimState === "regenerating") return;
@@ -86,9 +83,11 @@ export function TrimModule() {
     setTrimError(null);
     try {
       await sidecar.regenerateClip(slug, focusedClip.idx, inS, outS);
-      // The "done" transition lands via the engine:complete listener above
-      // (mock fallback fires it ~1.2s after the call; real sidecar fires it
-      // when ffmpeg finishes). Keeps a single source of truth for "done".
+      // Real sidecar calls resolve only after the clip is re-cut; browser
+      // preview fallback also returns a project immediately and emits the
+      // event shortly after. Settle from the await so the user never gets a
+      // stuck busy/idle button if an event races a render.
+      setTrimState("done");
     } catch (e) {
       setTrimState("error");
       const msg = e instanceof Error ? e.message : String(e);
@@ -144,7 +143,7 @@ export function TrimModule() {
               max={Math.max(clipStart, outS - 1)}
               step={1}
               value={inS}
-              onChange={(e) => setTrim({ inS: Number(e.target.value) })}
+              onChange={(e) => updateTrim({ inS: Number(e.target.value) })}
               aria-label="Trim in"
             />
             <span className="lc-cd-slider-val" data-testid="trim-in-val">{fmtSec(inS)}</span>
@@ -159,7 +158,7 @@ export function TrimModule() {
               max={clipEnd}
               step={1}
               value={outS}
-              onChange={(e) => setTrim({ outS: Number(e.target.value) })}
+              onChange={(e) => updateTrim({ outS: Number(e.target.value) })}
               aria-label="Trim out"
             />
             <span className="lc-cd-slider-val" data-testid="trim-out-val">{fmtSec(outS)}</span>

@@ -30,7 +30,7 @@ export interface SchedulePromise {
 }
 
 /**
- * Assisted scheduling is available without a publishing provider. Junior
+ * Assisted scheduling is available without a publishing provider. Liquid Clips
  * stores the reminder locally, then prepares the browser/file/caption
  * handoff. Automatic posting remains a separate provider-owned feature.
  */
@@ -38,7 +38,7 @@ export function deriveSchedulePromise(): SchedulePromise {
   return {
     available: true,
     state: "ready",
-    copy: "Assisted schedule: Junior reminds you and prepares the platform handoff. You press Post.",
+    copy: "Assisted schedule: Liquid Clips reminds you and prepares the platform handoff. You press Post.",
     badge: "Assisted · ready",
   };
 }
