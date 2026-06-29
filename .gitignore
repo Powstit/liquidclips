@@ -55,7 +55,8 @@ desktop/python-sidecar/bin/ffprobe
 # fetched in CI by .github/workflows/release.yml — never commit.
 python-sidecar/bin/
 python-sidecar/models/
-python-sidecar/assets/liquid-clips-wordmark.png
+# liquid-clips-wordmark.png is a bundled Tauri resource (tauri.conf.json:62)
+# and MUST be tracked so CI builds include it. Do NOT re-add to gitignore.
 python-sidecar/assets/watermark/*.mov
 python-sidecar/assets/watermark/*.mp4
 
