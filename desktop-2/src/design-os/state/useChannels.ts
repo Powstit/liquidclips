@@ -95,6 +95,23 @@ export function useChannels(): ChannelsApi {
     return () => { if (w.__lcDebugReloadChannels === reload) delete w.__lcDebugReloadChannels; };
   }, [reload]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onSeed = (ev: Event) => {
+      const detail = (ev as CustomEvent<{
+        channels?: SidecarChannel[];
+        source?: "real-rpc" | "real-http" | "mock";
+      }>).detail;
+      if (!Array.isArray(detail?.channels)) return;
+      setChannels(detail.channels);
+      setSource(detail.source ?? "real-http");
+      setLoading(false);
+      setError(null);
+    };
+    window.addEventListener("lc:debug-channels-seeded", onSeed);
+    return () => window.removeEventListener("lc:debug-channels-seeded", onSeed);
+  }, []);
+
   /* ============================================================
      Derived views
      ============================================================ */

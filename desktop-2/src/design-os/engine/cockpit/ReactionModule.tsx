@@ -8,7 +8,7 @@
  * `CockpitContext` (BUG-031 Patch A).
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useCockpit, type ReactionLayoutKey, type ReactionAudioSource } from "./CockpitContext";
 import { sidecar } from "../sidecar-stub";
 import { bus, useEvent } from "../../bridge";
@@ -49,13 +49,6 @@ export function ReactionModule() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [bakeState, setBakeState] = useState<"idle" | "baking" | "done" | "error">("idle");
   const [bakeError, setBakeError] = useState<string | null>(null);
-
-  // Clear the "Baked" pill the next time the customer touches anything.
-  useEffect(() => {
-    if (bakeState !== "done") return;
-    const t = window.setTimeout(() => setBakeState("idle"), 2400);
-    return () => window.clearTimeout(t);
-  }, [bakeState]);
 
   // Bake completion is signalled by the existing engine bus. The
   // useEngineSession hook ALREADY refetches the project on `kind:"bake"`
@@ -109,6 +102,7 @@ export function ReactionModule() {
         ? await writeReactionToAppData(file, slug, focusedClip.idx)
         : URL.createObjectURL(file);
 
+      if (bakeState === "done") setBakeState("idle");
       setReaction({ sourcePath });
       // Promote layout off "solo" so the customer sees the overlay land
       // immediately. Defaults to PIP-BR which is the least intrusive.
@@ -180,14 +174,16 @@ export function ReactionModule() {
     setBakeState("baking");
     setBakeError(null);
     try {
-      await sidecar.startOverlayBake(slug, focusedClip.idx, {
+      const outcome = await sidecar.startOverlayBake(slug, focusedClip.idx, {
         type: layout,
         source_path: sourcePath,
         start_offset_s: brollOffsetS,
         audio_source: audioSource,
       });
-      // Completion flips bakeState→"done" via the useEvent listener above.
-      // If the sidecar is mocked, completion lands in ~1.4s (sidecar-stub.ts:336).
+      // Real sidecar returns a "started" ack while completion lands on the
+      // bus. Browser preview fallback marks itself completed so the user-lens
+      // harness gets a deterministic visible state without faking production.
+      if (outcome.completed) setBakeState("done");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setBakeState("error");
@@ -196,7 +192,13 @@ export function ReactionModule() {
   }
 
   function onClearReaction() {
+    if (bakeState === "done") setBakeState("idle");
     setReaction({ sourcePath: null });
+  }
+
+  function updateReaction(next: Parameters<typeof setReaction>[0]) {
+    if (bakeState === "done") setBakeState("idle");
+    setReaction(next);
   }
 
   const reactionFilename = sourcePath ? sourcePath.split("/").pop() : null;
@@ -221,7 +223,7 @@ export function ReactionModule() {
                 role="radio"
                 aria-checked={layout === opt.id}
                 className={`lc-cd-chip ${layout === opt.id ? "on" : ""}`}
-                onClick={() => setReaction({ layout: opt.id })}
+                onClick={() => updateReaction({ layout: opt.id })}
               >
                 <span className="lc-cd-react-glyph">{opt.glyph}</span>
                 {opt.label}
@@ -281,7 +283,7 @@ export function ReactionModule() {
                 role="radio"
                 aria-checked={audioSource === opt.id}
                 className={`lc-cd-chip ${audioSource === opt.id ? "on" : ""}`}
-                onClick={() => setReaction({ audioSource: opt.id })}
+                onClick={() => updateReaction({ audioSource: opt.id })}
               >
                 {opt.label}
               </button>
@@ -298,7 +300,7 @@ export function ReactionModule() {
               max={15}
               step={0.5}
               value={brollOffsetS}
-              onChange={(e) => setReaction({ brollOffsetS: Number(e.target.value) })}
+              onChange={(e) => updateReaction({ brollOffsetS: Number(e.target.value) })}
               style={{ width: 200 }}
               aria-label="Reaction start offset in seconds"
             />
@@ -317,7 +319,7 @@ export function ReactionModule() {
                 type="button"
                 aria-pressed={frameAtS === s}
                 className={`lc-cd-chip ${frameAtS === s ? "on" : ""}`}
-                onClick={() => setReaction({ frameAtS: s })}
+                onClick={() => updateReaction({ frameAtS: s })}
               >
                 Frame · {fmtSec(s)}
               </button>

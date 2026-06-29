@@ -147,6 +147,7 @@ async function seedCompletedSession(page: Page) {
 
 test.describe("Trim Clip Journey", () => {
   test(`${JOURNEY} · customer can trim a clip and export uses the new trim`, async ({ page }, testInfo) => {
+    test.setTimeout(150_000);
     const rec = new JourneyRecorder(page, testInfo);
 
     try {

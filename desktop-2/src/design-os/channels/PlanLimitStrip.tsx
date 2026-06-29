@@ -67,6 +67,7 @@ export function PlanLimitStrip({ showAttention = true }: PlanLimitStripProps) {
   const cap = tier.caps.totalChannels;
   const overCap = used > cap;
   const atCap = used >= cap && !overCap;
+  const showAccountPackCta = tier.tier === "clipper" && (atCap || overCap);
   const attention = channels.needsAttentionCount;
   const nextLabel = NEXT_TIER_LABEL[tier.tier];
 
@@ -90,6 +91,17 @@ export function PlanLimitStrip({ showAttention = true }: PlanLimitStripProps) {
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {showAccountPackCta && (
+            <button
+              type="button"
+              className="lc-pls-cta lc-pls-addon-cta"
+              data-testid="accountpack-cta"
+              onClick={() => void handleCheckout("accountpack")}
+              title="Add one more connected social account. Checkout opens the current Pro upgrade path until the Whop add-on plan is live."
+            >
+              Add account slot · +$6/mo
+            </button>
+          )}
           {nextLabel && (
             <button
               type="button"
