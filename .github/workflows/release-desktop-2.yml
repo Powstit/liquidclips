@@ -170,6 +170,44 @@ jobs:
           echo "--- Developer ID identities ---"
           security find-identity -v -p codesigning | grep -i "Developer ID" || echo "(no Developer ID match)"
 
+      # Ported from legacy release.yml (which shipped v0.7.55 successfully).
+      # The brew-fetched ffmpeg/ffprobe + tracked junior-face-detect helper
+      # binaries must be Developer-ID signed + hardened-runtime-enabled +
+      # secure-timestamped BEFORE the Tauri build copies them into the .app
+      # bundle. Without this, notarisation rejects every Mac upload with
+      # "The binary is not signed" + "The signature does not include a
+      # secure timestamp" + "The executable does not have the hardened
+      # runtime enabled." Reference: ship 2.2.4 (run 28406073070) failure.
+      - name: sign sidecar helper binaries
+        run: |
+          set -euo pipefail
+          IDENTITY='Developer ID Application: daniel diyepriye dokubo (KT68NGT4LX)'
+          codesign_with_retry() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if codesign "$@"; then
+                return 0
+              fi
+              echo "codesign failed on attempt $attempt; retrying after timestamp service backoff..." >&2
+              sleep $((attempt * 10))
+            done
+            codesign "$@"
+          }
+          for bin in \
+            python-sidecar/bin/ffmpeg \
+            python-sidecar/bin/ffprobe \
+            python-sidecar/bin/junior-face-detect
+          do
+            if [ ! -f "$bin" ]; then
+              echo "(skip) missing optional sidecar binary: $bin"
+              continue
+            fi
+            echo "Signing $bin"
+            codesign_with_retry --force --options runtime --timestamp --sign "$IDENTITY" "$bin"
+            codesign --verify --strict --verbose=2 "$bin"
+          done
+          echo "✓ sidecar binaries signed"
+
       - name: build signed macOS app
         working-directory: ./desktop-2
         env:
