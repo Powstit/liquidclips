@@ -201,7 +201,7 @@ export function ScheduleJobDrawer({
             <div className="lc-sjd-handoff-copy">
               <span className="lc-sjd-caption-eb">Assisted posting</span>
               <p className="lc-sjd-caption-body">
-                Junior opens {platformLabel(job.platform)}, copies your caption,
+                Liquid Clips opens {platformLabel(job.platform)}, copies your caption,
                 and reveals the video. You choose the file and press Post.
               </p>
             </div>

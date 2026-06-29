@@ -27,7 +27,7 @@ export function ScheduleEmptyState({ filterLabel, totalJobs }: ScheduleEmptyStat
       </h2>
       <p className="lc-se-body">
         {isAllEmpty
-          ? "Choose a rendered clip and set a time. Junior will notify you, copy the caption, reveal the video, and open the platform."
+          ? "Choose a rendered clip and set a time. Liquid Clips will notify you, copy the caption, reveal the video, and open the platform."
           : "Try a different filter, or schedule a fresh clip from Export."}
       </p>
     </GlassCard>

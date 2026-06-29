@@ -130,7 +130,7 @@ function ScheduleBody() {
             <span
               className="lc-runtime-tag is-live"
               title={sched.source === "assisted-local"
-                ? "Saved on this Mac. Junior prepares the browser handoff at posting time."
+                ? "Saved on this Mac. Liquid Clips prepares the browser handoff at posting time."
                 : `Source: ${sched.source} · provider queue reachable.`}
             >
               {sched.source === "assisted-local" ? "Assisted · this Mac" : "Automatic · provider"}

@@ -397,12 +397,12 @@ export const sidecar = {
   },
 
   /** Start an overlay bake job (returns immediately; events drive UI). */
-  async startOverlayBake(slug: string, idx: number, overlay: unknown): Promise<{ started: boolean }> {
+  async startOverlayBake(slug: string, idx: number, overlay: unknown): Promise<{ started: boolean; completed?: boolean }> {
     const real = await tryInvoke<{ started: boolean }>("start_overlay_bake", { slug, idx, overlay });
     if (real) return real;
     bus.emit("engine:progress", { stage: "bake", percent: 0.0, slug, idx });
     window.setTimeout(() => bus.emit("engine:complete", { kind: "bake", slug, idx }), 1400);
-    return { started: true };
+    return { started: true, completed: true };
   },
 
   /** Cancel an overlay bake job. */
@@ -1120,6 +1120,9 @@ if (typeof window !== "undefined") {
   window.__lcDebugSeedChannels = (chs, source = "real-http") => {
     channelState.channels = chs;
     channelState.forcedSource = source;
+    window.dispatchEvent(new CustomEvent("lc:debug-channels-seeded", {
+      detail: { channels: chs, source },
+    }));
   };
   // Expose channelState reference for debugging — confirms test seed took.
   window.__lcDebugChannelState = channelState;
@@ -1624,7 +1627,7 @@ export const schedule = {
         kind: "success",
         title: "Reminder set",
         body: created.length === 1
-          ? `Junior will prepare the ${created[0].accountLabel} handoff at posting time.`
+          ? `Liquid Clips will prepare the ${created[0].accountLabel} handoff at posting time.`
           : `${created.length} assisted posting reminders created.`,
       });
     }

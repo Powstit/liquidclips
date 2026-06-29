@@ -14,7 +14,7 @@
     "test:user-lens:reaction": "playwright test reaction-journey",
     "verify-app": "playwright test && node scripts/verify-app.mjs",
     "verify-app:report": "node scripts/verify-app.mjs",
-    "test:invariant": "tsc -b && bash scripts/brand-kit-drift-check.sh && bash scripts/iron-gates/agency-preview-paywall.sh && npm run verify-app"
+    "test:invariant": "tsc -b && bash scripts/assert-shell-contracts.sh && bash scripts/brand-kit-drift-check.sh && bash scripts/iron-gates/agency-preview-paywall.sh && npm run verify-app"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",

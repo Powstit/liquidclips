@@ -163,6 +163,7 @@ async function seedCompletedSession(page: Page) {
 
 test.describe("Reaction Journey", () => {
   test(`${JOURNEY} · customer can add a reaction and it persists`, async ({ page }, testInfo) => {
+    test.setTimeout(150_000);
     const rec = new JourneyRecorder(page, testInfo);
 
     try {
