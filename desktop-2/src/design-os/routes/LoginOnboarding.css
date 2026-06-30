@@ -250,3 +250,55 @@
   margin-top: 6px;
   text-align: center;
 }
+
+/* v2.2.11 · pop-up-blocker fallback paste card */
+.lc-login-manual {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lc-login-manual-label {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #ff66b8;
+}
+
+.lc-login-manual-help {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #b5afa8;
+  margin: 0 0 4px;
+}
+
+.lc-login-manual-input {
+  width: 100%;
+  background: rgba(5, 5, 7, 0.85);
+  border: 1px solid rgba(255, 26, 140, 0.22);
+  border-radius: 10px;
+  color: #f5efe7;
+  padding: 10px 12px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+  min-height: 60px;
+  max-height: 140px;
+}
+
+.lc-login-manual-input:focus {
+  outline: none;
+  border-color: rgba(255, 26, 140, 0.55);
+  box-shadow: 0 0 0 2px rgba(255, 26, 140, 0.18);
+}
+
+.lc-login-manual-error {
+  font-size: 11.5px;
+  color: #ff6f9c;
+  margin: 4px 0 0;
+}

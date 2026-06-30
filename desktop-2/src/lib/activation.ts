@@ -425,6 +425,110 @@ export async function handleActivationUrl(rawUrl: string): Promise<void> {
 }
 
 /** Synchronous read of the current state · for non-React consumers. */
+/** v2.2.11 · manual activation paste path.
+ *
+ *  Used when the OAuth fallback page's "Copy Activation Code" button
+ *  hands the user a raw JWT and they paste it into the desktop's
+ *  "Enter Manual Activation Code" input. Skips the challenge-match
+ *  check (the user visually confirmed by copy-paste from a page they
+ *  just authenticated against), runs the same setJwt → /sync + /me
+ *  enrichment chain as handleActivationUrl so the post-activation
+ *  surface lands identically.
+ *
+ *  Validates the input is shaped like a JWT (three dot-separated
+ *  base64-ish segments) before storing — rejects pastes that are
+ *  obviously not a token. */
+export async function activateWithToken(rawToken: string): Promise<void> {
+  const token = rawToken.trim();
+  // JWT shape · header.payload.signature · each segment is non-empty
+  // base64url. Don't crypto-verify here · the backend /sync call below
+  // is the authoritative check (signature, expiry, user-still-exists).
+  const segments = token.split(".");
+  if (
+    segments.length !== 3
+    || segments.some((s) => s.length === 0)
+    || !/^[A-Za-z0-9_-]+$/.test(token.replace(/\./g, ""))
+  ) {
+    emit({
+      status: "failed",
+      error: "That doesn't look like an activation code · paste the token from the Whop login page.",
+    });
+    return;
+  }
+
+  emit({ status: "activating", error: null });
+
+  try {
+    setJwt(token);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    emit({ status: "failed", error: `Couldn't store license · ${msg}` });
+    return;
+  }
+  // Clear any pending nonce so a stale challenge from an earlier
+  // browser-launch attempt doesn't trip the auto-handler.
+  writePendingChallenge(null);
+  if (timeoutHandle) {
+    clearTimeout(timeoutHandle);
+    timeoutHandle = null;
+  }
+  emit({
+    status: "activated",
+    error: null,
+    lastTokenSource: "whop",
+    degraded: false,
+  });
+
+  // Authoritative validation · backend rejects bad tokens immediately.
+  // Mirror the post-mint /sync + /me orchestration from
+  // handleActivationUrl so the manual path enriches the same way.
+  const [syncResp, meResp] = await Promise.all([
+    safeGet<SyncResponse>("/sync", token),
+    safeGet<MeResponse>("/me", token),
+  ]);
+  if (syncResp.kind === "auth-fail" || meResp.kind === "auth-fail") {
+    notifyAuthFailure(
+      "Backend rejected the pasted activation code · double-check you copied the whole token.",
+    );
+    return;
+  }
+
+  let degraded = false;
+  let nextTier = snapshot.tier;
+  let nextEmail = snapshot.email;
+  if (syncResp.kind === "ok") {
+    if (syncResp.data.new_license_jwt) {
+      try { setJwt(syncResp.data.new_license_jwt); } catch { degraded = true; }
+    }
+    if (typeof syncResp.data.tier === "string") nextTier = syncResp.data.tier;
+  } else {
+    degraded = true;
+  }
+  if (meResp.kind === "ok") {
+    if (typeof meResp.data.email === "string") nextEmail = meResp.data.email;
+    if (typeof meResp.data.effective_tier === "string") nextTier = meResp.data.effective_tier;
+  } else {
+    degraded = true;
+  }
+  emit({
+    status: "activated",
+    error: null,
+    lastTokenSource: "whop",
+    degraded,
+    tier: nextTier,
+    email: nextEmail,
+  });
+
+  // Same activation:complete bus signal the URL path fires · keeps
+  // Settings / Wallet / carrot rehydrate hooks in sync regardless of
+  // which door the user came in through.
+  try {
+    const { bus } = await import("../design-os/bridge");
+    bus.emit("activation:complete", { source: "whop" });
+  } catch { /* silent */ }
+}
+
+
 export function getActivationSnapshot(): ActivationSnapshot {
   return snapshot;
 }
