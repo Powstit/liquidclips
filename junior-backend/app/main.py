@@ -500,6 +500,25 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE announcements ADD COLUMN IF NOT EXISTS scope varchar NOT NULL DEFAULT 'global'",
         "ALTER TABLE announcements ADD COLUMN IF NOT EXISTS agency_id varchar",
         "CREATE INDEX IF NOT EXISTS ix_announcements_scope_agency ON announcements (scope, agency_id, is_active)",
+        # v2.2.10 native chat persistence (separate from Whop chat feeds
+        # routed via community_channels). user_id is intentionally NOT a
+        # FK so a system-bot row survives a real user being deleted.
+        """CREATE TABLE IF NOT EXISTS chat_messages (
+            id varchar PRIMARY KEY,
+            user_id varchar NOT NULL,
+            username varchar NOT NULL DEFAULT 'Liquid Clipper',
+            avatar_url varchar,
+            channel varchar NOT NULL DEFAULT 'global',
+            content text NOT NULL,
+            role varchar NOT NULL DEFAULT 'member',
+            pinned boolean NOT NULL DEFAULT false,
+            announcement_id varchar,
+            created_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_chat_messages_channel_created ON chat_messages (channel, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_chat_messages_user ON chat_messages (user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_chat_messages_pinned ON chat_messages (channel, pinned) WHERE pinned = true",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_role varchar NOT NULL DEFAULT 'member'",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -585,6 +604,11 @@ app.include_router(transcribe.router)
 # `anthropic` package is added to requirements.txt. Frontend falls back
 # to the static Kade speech bubble copy.
 app.include_router(troubleshoot.router)
+# v2.2.10 native community chat — separate from Whop chat feeds routed
+# through community_channels. Owns chat_messages persistence + Pexels/
+# Giphy proxies + the pin → Announcement bridge.
+from app.routes import chat as _chat_router  # noqa: E402
+app.include_router(_chat_router.router)
 app.include_router(telemetry.router)
 app.include_router(publish.router)
 app.include_router(social.router)

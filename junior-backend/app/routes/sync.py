@@ -194,6 +194,13 @@ def sync(
         db.commit()
         new_jwt = jwt_str
 
+    # v2.2.10 welcome-bot bootstrap. Fires once per user — checks for
+    # zero prior chat history and seeds a "welcome to the lounge" row
+    # from system-bot. Best-effort: swallows its own exceptions so a
+    # chat-table issue cannot 500 the critical /sync path.
+    from app.routes.chat import seed_welcome_bot_on_first_sync
+    seed_welcome_bot_on_first_sync(db, user)
+
     return SyncResponse(
         tier=effective_tier,
         founder=effective_founder,

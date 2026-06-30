@@ -1,0 +1,454 @@
+"""Native community chat — v2.2.10.
+
+Separate from Whop chat feeds routed via community_channels (those land
+through the existing `community.py` surface, unchanged). This module owns
+our own persistence: chat_messages table + role tagging + pin→announcement
+bridge + welcome-bot bootstrap.
+
+Channels (v1):
+  • "global"     — every authed user can read + write
+  • "agency-vip" — gated on whop_user_id presence (paid Whop members)
+
+Roles are derived at INSERT time so a later tier or admin change does
+NOT silently relabel history:
+  founder · user.founder_flag = True
+  staff   · is_admin_email(user.email)
+  mod     · user.chat_role = "mod"
+  bot     · reserved for system-bot rows
+  member  · default
+
+Pinning bridges into the v2.2.9 Announcement layer: a pinned chat
+message persists here AND writes a sibling Announcement row so the
+existing AnnouncementBanner stack renders it as a sticky tinted header
+at the top of the viewport — no separate UI surface needed.
+
+Media search (Pexels + Giphy) is a thin server-side proxy so the API
+keys never ship in the desktop binary. When the env keys are absent the
+proxy returns 503 with a setup_required marker and the picker UI shows
+a "Configure PEXELS_API_KEY / GIPHY_API_KEY to enable" hint — no fake
+data, no broken state.
+"""
+
+from __future__ import annotations
+
+import os
+import uuid
+from datetime import datetime, timezone
+from typing import Annotated, Literal
+
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
+from sqlalchemy import desc
+from sqlalchemy.orm import Session
+
+from app.db import get_db
+from app.deps import current_user
+from app.features import is_admin_email
+from app.models import Announcement, ChatMessage, User
+
+router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+# ---------------------------------------------------------------------
+# Constants — channel registry + role derivation + media proxy
+# ---------------------------------------------------------------------
+
+ALLOWED_CHANNELS = {"global", "agency-vip"}
+ChannelLit = Literal["global", "agency-vip"]
+
+SYSTEM_BOT_ID = "system-bot"
+SYSTEM_BOT_NAME = "Liquid Clips Bot"
+SYSTEM_BOT_AVATAR = "/brand/icons/system-bot.png"
+
+# Pin → Announcement bridge defaults. We use severity="info" by default
+# so a pinned chat message renders fuchsia (LC brand). Admins can pass
+# a higher severity at pin time to escalate to warning/critical.
+_PIN_DEFAULT_SEVERITY = "info"
+
+
+def _derive_role(user: User) -> str:
+    """Single source of truth for role badges. Order matters — staff
+    wins over mod so a JUNIOR_ADMIN_EMAILS user always shows [STAFF]
+    even if their chat_role was bumped to mod."""
+    if is_admin_email(user.email):
+        return "staff"
+    if user.founder_flag:
+        return "founder"
+    if user.chat_role == "mod":
+        return "mod"
+    return "member"
+
+
+def _can_access(user: User, channel: str) -> bool:
+    """Channel gating. global = every authed user. agency-vip requires
+    a linked whop_user_id (i.e. the user signed in via Whop and their
+    paid subscription is reflected on our side). Admins bypass."""
+    if channel == "global":
+        return True
+    if channel == "agency-vip":
+        if is_admin_email(user.email) or user.founder_flag:
+            return True
+        return bool(user.whop_user_id)
+    return False
+
+
+def _can_pin(user: User) -> bool:
+    """Pinning bridges into the Announcement banner layer, so we gate
+    it tightly: admin (staff badge), founder, or mod only."""
+    return (
+        is_admin_email(user.email)
+        or user.founder_flag
+        or user.chat_role == "mod"
+    )
+
+
+# ---------------------------------------------------------------------
+# Pydantic shapes
+# ---------------------------------------------------------------------
+
+
+class ChatMessageOut(BaseModel):
+    id: str
+    user_id: str
+    username: str
+    avatar_url: str | None
+    channel: str
+    content: str
+    role: str
+    pinned: bool
+    announcement_id: str | None
+    created_at: datetime
+
+
+class ChatHistoryOut(BaseModel):
+    channel: str
+    messages: list[ChatMessageOut]
+    # Echoed back so the panel can render a per-channel banner / disable
+    # the composer when the viewer is read-only (no write surface on
+    # locked-preview agency-vip for free users).
+    can_write: bool
+    viewer_role: str
+
+
+class PostMessagePayload(BaseModel):
+    channel: ChannelLit = "global"
+    content: str = Field(..., min_length=1, max_length=2000)
+    pinned: bool = False
+    pin_severity: Literal["info", "warning", "critical"] = "info"
+
+
+class PostMessageOut(BaseModel):
+    message: ChatMessageOut
+
+
+class MediaResult(BaseModel):
+    id: str
+    preview_url: str
+    full_url: str
+    title: str | None
+
+
+class MediaSearchOut(BaseModel):
+    provider: Literal["giphy", "pexels"]
+    results: list[MediaResult]
+
+
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
+
+
+def _serialise(row: ChatMessage) -> ChatMessageOut:
+    return ChatMessageOut(
+        id=row.id,
+        user_id=row.user_id,
+        username=row.username,
+        avatar_url=row.avatar_url,
+        channel=row.channel,
+        content=row.content,
+        role=row.role,
+        pinned=bool(row.pinned),
+        announcement_id=row.announcement_id,
+        created_at=row.created_at if row.created_at else datetime.now(timezone.utc),
+    )
+
+
+def _display_name(user: User) -> str:
+    """Username falls back through the snapshot chain: cached_display_handle
+    → email-prefix → "Clipper"."""
+    if user.cached_display_handle:
+        return user.cached_display_handle
+    if user.email and "@" in user.email:
+        return user.email.split("@", 1)[0]
+    return "Clipper"
+
+
+def _seed_welcome_bot_message(db: Session, user: User) -> None:
+    """Fire the welcome-bot row the first time a user lands a /sync.
+
+    Idempotent by ChatMessage count: only inserts when the user has zero
+    prior history rows. Called by the /sync route after license rotate
+    so the row is in place before the desktop's first /chat/messages
+    poll. Kept resilient — any exception is swallowed so a chat-table
+    issue cannot 500 the critical /sync path.
+    """
+    try:
+        existing = (
+            db.query(ChatMessage)
+            .filter(ChatMessage.user_id == user.id)
+            .limit(1)
+            .first()
+        )
+        if existing is not None:
+            return
+        # Resolve the tier label honestly. is_admin_email override is
+        # surfaced in the welcome ("welcome, staff") since this user
+        # WILL see the STAFF badge on their own posts.
+        tier_label = (
+            "Staff" if is_admin_email(user.email)
+            else "Founder" if user.founder_flag
+            else (user.tier or "free").capitalize()
+        )
+        welcome = ChatMessage(
+            id=uuid.uuid4().hex,
+            user_id=SYSTEM_BOT_ID,
+            username=SYSTEM_BOT_NAME,
+            avatar_url=SYSTEM_BOT_AVATAR,
+            channel="global",
+            content=(
+                f"Welcome to the lounge, {_display_name(user)}. "
+                f"You're locked in at {tier_label} tier — drop your first clip in #global "
+                "and meet the clipper crew."
+            ),
+            role="bot",
+            pinned=False,
+        )
+        db.add(welcome)
+        db.commit()
+    except Exception:  # noqa: BLE001 — best-effort
+        db.rollback()
+
+
+# Public re-export so sync.py can call into the welcome-bot trigger
+# without a circular import. Aliased so its purpose is obvious at the
+# call site.
+seed_welcome_bot_on_first_sync = _seed_welcome_bot_message
+
+
+# ---------------------------------------------------------------------
+# Routes — history + post + pin/unpin
+# ---------------------------------------------------------------------
+
+
+@router.get("/messages", response_model=ChatHistoryOut)
+def list_messages(
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    channel: ChannelLit = Query("global"),
+    limit: int = Query(50, ge=1, le=200),
+) -> ChatHistoryOut:
+    if channel not in ALLOWED_CHANNELS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"unknown channel: {channel}",
+        )
+    can_write = _can_access(user, channel)
+    rows = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.channel == channel)
+        .order_by(desc(ChatMessage.created_at))
+        .limit(limit)
+        .all()
+    )
+    # Reverse so the client renders oldest → newest naturally; the
+    # composer scrolls to the bottom on mount.
+    rows.reverse()
+    return ChatHistoryOut(
+        channel=channel,
+        messages=[_serialise(r) for r in rows],
+        can_write=can_write,
+        viewer_role=_derive_role(user),
+    )
+
+
+@router.post(
+    "/message",
+    status_code=status.HTTP_201_CREATED,
+    response_model=PostMessageOut,
+)
+def post_message(
+    payload: PostMessagePayload,
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> PostMessageOut:
+    if payload.channel not in ALLOWED_CHANNELS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"unknown channel: {payload.channel}",
+        )
+    if not _can_access(user, payload.channel):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"channel {payload.channel} is locked for your tier",
+        )
+
+    role = _derive_role(user)
+    row = ChatMessage(
+        id=uuid.uuid4().hex,
+        user_id=user.id,
+        username=_display_name(user),
+        avatar_url=None,
+        channel=payload.channel,
+        content=payload.content,
+        role=role,
+        pinned=False,
+    )
+    db.add(row)
+    db.flush()
+
+    # Pin handling · only admin / founder / mod may pin. Pinning writes
+    # a sibling Announcement row so the v2.2.9 banner stack picks it up.
+    if payload.pinned:
+        if not _can_pin(user):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "only staff / founder / mod may pin a message",
+            )
+        announcement = Announcement(
+            id=uuid.uuid4().hex,
+            title=f"#{payload.channel} pin",
+            body_markdown=payload.content[:600],
+            kind="other",
+            severity=payload.pin_severity,
+            scope="global" if payload.channel == "global" else "agency",
+            agency_id=user.id if payload.channel == "agency-vip" else None,
+            is_active=True,
+            pinned=True,
+        )
+        db.add(announcement)
+        row.pinned = True
+        row.announcement_id = announcement.id
+
+    db.commit()
+    db.refresh(row)
+    return PostMessageOut(message=_serialise(row))
+
+
+@router.delete(
+    "/message/{message_id}/pin",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def unpin_message(
+    message_id: str,
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    if not _can_pin(user):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "only staff / founder / mod may unpin",
+        )
+    row = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.id == message_id)
+        .one_or_none()
+    )
+    if row is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"message not found: {message_id}",
+        )
+    if row.announcement_id:
+        # Soft-deactivate the linked banner row · /sync filters on
+        # is_active so the banner disappears immediately on next poll.
+        ann = (
+            db.query(Announcement)
+            .filter(Announcement.id == row.announcement_id)
+            .one_or_none()
+        )
+        if ann is not None:
+            ann.is_active = False
+    row.pinned = False
+    row.announcement_id = None
+    db.commit()
+
+
+# ---------------------------------------------------------------------
+# Media search proxies — Pexels + Giphy
+# ---------------------------------------------------------------------
+
+
+@router.get("/media/giphy", response_model=MediaSearchOut)
+async def giphy_search(
+    _user: Annotated[User, Depends(current_user)],
+    q: str = Query(..., min_length=1, max_length=80),
+    limit: int = Query(12, ge=1, le=24),
+) -> MediaSearchOut:
+    key = os.getenv("GIPHY_API_KEY")
+    if not key:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "giphy_setup_required: set GIPHY_API_KEY in env",
+        )
+    async with httpx.AsyncClient(timeout=8.0) as cx:
+        r = await cx.get(
+            "https://api.giphy.com/v1/gifs/search",
+            params={"api_key": key, "q": q, "limit": limit, "rating": "pg-13"},
+        )
+        r.raise_for_status()
+        data = r.json()
+    results: list[MediaResult] = []
+    for item in data.get("data", []):
+        images = item.get("images") or {}
+        preview = images.get("fixed_height_small") or images.get("fixed_height") or {}
+        full = images.get("original") or {}
+        if not preview.get("url") or not full.get("url"):
+            continue
+        results.append(
+            MediaResult(
+                id=str(item.get("id") or uuid.uuid4().hex),
+                preview_url=preview["url"],
+                full_url=full["url"],
+                title=item.get("title"),
+            )
+        )
+    return MediaSearchOut(provider="giphy", results=results)
+
+
+@router.get("/media/pexels", response_model=MediaSearchOut)
+async def pexels_search(
+    _user: Annotated[User, Depends(current_user)],
+    q: str = Query(..., min_length=1, max_length=80),
+    limit: int = Query(12, ge=1, le=24),
+) -> MediaSearchOut:
+    key = os.getenv("PEXELS_API_KEY")
+    if not key:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "pexels_setup_required: set PEXELS_API_KEY in env",
+        )
+    async with httpx.AsyncClient(timeout=8.0) as cx:
+        r = await cx.get(
+            "https://api.pexels.com/v1/search",
+            params={"query": q, "per_page": limit},
+            headers={"Authorization": key},
+        )
+        r.raise_for_status()
+        data = r.json()
+    results: list[MediaResult] = []
+    for item in data.get("photos", []):
+        src = item.get("src") or {}
+        preview = src.get("medium") or src.get("small")
+        full = src.get("large2x") or src.get("large") or src.get("original")
+        if not preview or not full:
+            continue
+        results.append(
+            MediaResult(
+                id=str(item.get("id") or uuid.uuid4().hex),
+                preview_url=preview,
+                full_url=full,
+                title=item.get("alt"),
+            )
+        )
+    return MediaSearchOut(provider="pexels", results=results)
