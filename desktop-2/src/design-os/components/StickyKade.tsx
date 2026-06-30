@@ -20,6 +20,13 @@ import { KadeController } from "./KadeController";
 import { useEvent, type KadeState } from "../bridge";
 import "./StickyKade.css";
 
+/* 2026-06-30 · Kade mood overlay · DISTINCT from KadeState pose.
+ *   idle      · default · no wrapper effect
+ *   thinking  · sub-pulse glow · "Kade is processing"
+ *   alert     · fuchsia ring + pulse · paired with a speech bubble
+ *   collapsed · minimised affordance (mini mode + dim) · "Kade stepped aside" */
+type KadeMood = "idle" | "thinking" | "alert" | "collapsed";
+
 export type KadePlacement = "center" | "helper-right" | "bottom-right";
 
 export interface StickyKadeProps {
@@ -35,6 +42,10 @@ export function StickyKade({ defaultState, placement = "bottom-right" }: StickyK
   // visibly tracks the heartbeat even when the pose itself doesn't change
   // (e.g. mid-reframe across multiple clips).
   const [pulse, setPulse] = useState(false);
+  // 2026-06-30 · troubleshooting mood overlay · listens to kade:mood bus
+  // events emitted by AppShell's global error listener (engine:error +
+  // unhandledrejection). Resets to "idle" when nothing is in flight.
+  const [mood, setMood] = useState<KadeMood>("idle");
 
   // Reset on route change
   useEffect(() => {
@@ -53,6 +64,13 @@ export function StickyKade({ defaultState, placement = "bottom-right" }: StickyK
     setPulse(true);
     const t = window.setTimeout(() => setPulse(false), 600);
     return () => window.clearTimeout(t);
+  });
+
+  // 2026-06-30 · mood overlay channel · AppShell's global error listener
+  // emits "kade:mood" with mood="alert" on engine:error + unhandled
+  // rejections. The wrapper CSS class drives the keyframe animation.
+  useEvent("kade:mood", (p) => {
+    setMood(p.mood);
   });
 
   // IntersectionObserver: watch the route's [data-kade-anchor]. While it's
@@ -96,9 +114,16 @@ export function StickyKade({ defaultState, placement = "bottom-right" }: StickyK
 
   const mode = mini ? "is-mini" : `is-${placement}`;
   const pulseClass = pulse ? "is-pulsing" : "";
+  // 2026-06-30 · mood drives a wrapper CSS class · keyframes per state
+  // live in StickyKade.css under .lc-sticky-kade.lc-mood-{state}.
+  const moodClass = mood === "idle" ? "" : `lc-mood-${mood}`;
 
   return (
-    <div className={`lc-sticky-kade ${mode} ${pulseClass}`} aria-hidden="true">
+    <div
+      className={`lc-sticky-kade ${mode} ${pulseClass} ${moodClass}`}
+      data-kade-mood={mood}
+      aria-hidden="true"
+    >
       <div className="lc-sticky-kade-glow" />
       <div className="lc-sticky-kade-host">
         <KadeController state={state} />
