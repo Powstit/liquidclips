@@ -33,7 +33,7 @@
 
 import { useEffect, useState } from "react";
 import { motion as fm } from "framer-motion";
-import { useActivation } from "../../lib/activation";
+import { useActivation, beginActivation } from "../../lib/activation";
 import {
   hasJwt as readHasJwt,
   getJwt,
@@ -42,6 +42,12 @@ import {
   LICENSE_JWT_STORAGE_KEY,
 } from "../../lib/authStorage";
 import { openSmart } from "../../lib/openSmart";
+import {
+  getCarrot,
+  getPayoutsPortal,
+  onboardCarrot,
+  type CarrotSnapshot,
+} from "../../lib/carrot";
 import { bus } from "../bridge";
 import { useMe } from "../state/useMe";
 import { useTierCaps } from "../state/useTierCaps";
@@ -212,6 +218,118 @@ function SettingsBody() {
       });
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  /**
+   * Connect Whop · launches the backend OAuth bridge in the OS browser.
+   * beginActivation() mints + persists a fresh challenge nonce; the
+   * backend echoes it back through Whop's authorize → callback flow and
+   * eventually fires liquidclips://activate?token=…&challenge=…&source=whop
+   * which the deep-link subscriber (deepLinkBoot.ts) routes into the
+   * activation state machine. Strict OS-browser handoff — Whop blocks
+   * the in-app iframe via CSP frame-ancestors.
+   */
+  const [connectingWhop, setConnectingWhop] = useState(false);
+  const handleConnectWhop = async () => {
+    if (connectingWhop) return;
+    setConnectingWhop(true);
+    try {
+      const challenge = beginActivation();
+      const url = `${lcBackendUrl()}/auth/whop/start?challenge=${encodeURIComponent(challenge)}`;
+      await openSmart(url);
+      bus.emit("toast", {
+        kind: "info",
+        title: "Connecting Whop",
+        body: "Finish the sign-in in your browser. We'll wake the app when it's done.",
+      });
+    } catch (e) {
+      bus.emit("toast", {
+        kind: "warning",
+        title: "Couldn't start Whop sign-in",
+        body: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setConnectingWhop(false);
+    }
+  };
+
+  /* /me/carrot state · drives the Payouts & Security card below. Reads
+   * on mount; refreshes after any onboard/manage action so the section
+   * flips from "Set up payouts" to "Manage payouts" without a full page
+   * round-trip. Failure → null (panel renders an honest unavailable
+   * state, never fake numbers). */
+  const [carrot, setCarrot] = useState<CarrotSnapshot | null>(null);
+  const [carrotLoading, setCarrotLoading] = useState(true);
+  const [carrotBusy, setCarrotBusy] = useState(false);
+
+  const refreshCarrot = async () => {
+    setCarrotLoading(true);
+    try {
+      const snap = await getCarrot();
+      setCarrot(snap);
+    } finally {
+      setCarrotLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshCarrot();
+  }, []);
+
+  const handleSetupPayouts = async () => {
+    if (carrotBusy) return;
+    setCarrotBusy(true);
+    try {
+      const res = await onboardCarrot();
+      if (!("onboarding_url" in res)) {
+        bus.emit("toast", {
+          kind: "warning",
+          title: "Couldn't open Whop setup",
+          body: res.error,
+        });
+        return;
+      }
+      await openSmart(res.onboarding_url);
+      bus.emit("toast", {
+        kind: "info",
+        title: "Finish payout setup on Whop",
+        body: "Come back here once Whop confirms your account.",
+      });
+    } catch (e) {
+      bus.emit("toast", {
+        kind: "warning",
+        title: "Couldn't open Whop setup",
+        body: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setCarrotBusy(false);
+      void refreshCarrot();
+    }
+  };
+
+  const handleManagePayouts = async () => {
+    if (carrotBusy) return;
+    setCarrotBusy(true);
+    try {
+      const res = await getPayoutsPortal();
+      if (!("url" in res)) {
+        bus.emit("toast", {
+          kind: "warning",
+          title: "Couldn't open Whop payouts",
+          body: res.error,
+        });
+        return;
+      }
+      await openSmart(res.url);
+    } catch (e) {
+      bus.emit("toast", {
+        kind: "warning",
+        title: "Couldn't open Whop payouts",
+        body: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setCarrotBusy(false);
     }
   };
 
@@ -438,6 +556,19 @@ function SettingsBody() {
                   confirms the purchase.
                 </p>
                 <div className="lc-settings-actions">
+                  {/* Connect Whop · OAuth bridge. Mints a fresh activation
+                      challenge, opens api.liquidclips.app/auth/whop/start
+                      in the OS browser, and the deep-link subscriber wakes
+                      the app on liquidclips://activate completion. */}
+                  <button
+                    type="button"
+                    className="lc-settings-cta lc-settings-cta-primary"
+                    data-testid="settings-connect-whop"
+                    onClick={() => { void handleConnectWhop(); }}
+                    disabled={connectingWhop}
+                  >
+                    {connectingWhop ? "Opening Whop…" : "Connect Whop · sign in ↗"}
+                  </button>
                   <button
                     type="button"
                     className="lc-settings-cta lc-settings-cta-secondary"
@@ -870,6 +1001,66 @@ function SettingsBody() {
                 >
                   Clear local activation
                 </button>
+              </div>
+            </section>
+          </EngineErrorBoundary>
+
+          {/* Payouts & Security · GET /me/carrot drives the rendered state.
+              Not onboarded → Set up payouts (POST /me/carrot/onboard).
+              Onboarded → Manage payouts (POST /me/carrot/payouts-portal).
+              Backend flips behaviour via CARROT_WHOP_LIVE; UI mirrors it
+              without faking numbers. */}
+          <EngineErrorBoundary route="settings" component="PayoutsAndSecurity">
+            <section className="lc-settings-card" data-tab="diagnostics" data-testid="settings-payouts-card">
+              <span className="lc-settings-card-eb">Payouts &amp; security</span>
+              <div className="lc-settings-rows">
+                <SettingsRow
+                  label="Whop payout account"
+                  value={
+                    carrotLoading
+                      ? "Checking…"
+                      : carrot?.wallet?.onboarded
+                        ? "Connected · Whop manages the wallet"
+                        : "Not connected"
+                  }
+                  tone={carrot?.wallet?.onboarded ? "live" : "muted"}
+                />
+                {carrot?.economics && (
+                  <SettingsRow
+                    label="Liquid Clips fee"
+                    value={`${carrot.economics.lc_protocol_fee_pct}% · min withdraw $${carrot.economics.min_withdrawal_usd.toFixed(2)}`}
+                    tone="muted"
+                    mono
+                  />
+                )}
+                <p className="lc-settings-hint">
+                  Kade · we credit approved rewards to your Whop balance.
+                  Whop handles identity, KYC, and the actual transfer to
+                  your bank or crypto wallet.
+                </p>
+                <div className="lc-settings-actions">
+                  {!carrot?.wallet?.onboarded ? (
+                    <button
+                      type="button"
+                      className="lc-settings-cta lc-settings-cta-primary"
+                      data-testid="settings-carrot-onboard"
+                      onClick={() => { void handleSetupPayouts(); }}
+                      disabled={carrotBusy || carrotLoading}
+                    >
+                      {carrotBusy ? "Opening Whop…" : "Set up payouts on Whop ↗"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="lc-settings-cta lc-settings-cta-secondary"
+                      data-testid="settings-carrot-portal"
+                      onClick={() => { void handleManagePayouts(); }}
+                      disabled={carrotBusy}
+                    >
+                      {carrotBusy ? "Opening Whop…" : "Manage payouts on Whop ↗"}
+                    </button>
+                  )}
+                </div>
               </div>
             </section>
           </EngineErrorBoundary>
