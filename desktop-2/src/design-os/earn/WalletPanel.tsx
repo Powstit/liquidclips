@@ -301,6 +301,17 @@ export function WalletPanel() {
                   Manage payouts on Whop ↗
                 </button>
               )}
+              {/* Beta badge · auto-hides when Railway flips CARROT_WHOP_LIVE=true
+                  and the backend's withdraw.is_live becomes true. */}
+              {!withdraw.is_live && (
+                <span
+                  className="lc-payouts-beta-badge"
+                  data-testid="wallet-payouts-beta-badge"
+                  aria-label="Beta · payouts opening soon"
+                >
+                  Beta · payouts opening soon
+                </span>
+              )}
               <span className="lc-wallet-powered">Secure payouts powered by Whop</span>
             </div>
           </div>
