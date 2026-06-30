@@ -73,8 +73,14 @@ export const HUD = {
   searchKbd: "⌘F",
   newsLabel: "NEWS",
   streakUnit: "day",
-  defaultUserName: "Daniel",
-  defaultUserTier: "Solo · 1.4k clips",
+  // BUG-001 follow-up · dead but bundled. The historical "Daniel" /
+  // "Solo · 1.4k clips" pair was the original fake greeting that used to
+  // render before /me resolved (see TopHud.tsx FEATURE-002 note). No
+  // component imports them today, but the strings still ship in the JS
+  // bundle and could be re-leaked by any future grep. Generic fallbacks
+  // mirror the live TopHud + SplashLeaderboard defaults.
+  defaultUserName: "Guest",
+  defaultUserTier: "Free",
 } as const;
 
 /* ============================================================
