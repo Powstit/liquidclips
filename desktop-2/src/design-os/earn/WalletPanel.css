@@ -3,20 +3,26 @@
  * breakdown. All tokens come from src/brand/brandTheme.css. No Lucide
  * defaults · uses /brand/reward/* SVGs where icons appear. */
 
+/* 2026-06-30 · adaptive spacing via --space-* clamp scale + --depth-*
+ * shadow tokens. Wallet shell now reads as a lifted card on the brand
+ * world bg instead of a flat panel; padding adapts from ~16px on a
+ * 1040px-min window up to ~26px on 4K so the surface never feels
+ * cramped or stranded. */
 .lc-wallet {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--space-md);
   /* lc-glass already sets bg/border/radius/padding · keep this surface clean */
 }
 
 .lc-wallet-shell {
   width: 100%;
   min-width: 0;
-  padding: 20px;
+  padding: var(--space-lg);
   border: 1px solid var(--color-line);
   border-radius: var(--radius-card);
   background: rgba(8, 8, 13, .58);
+  box-shadow: var(--depth-card-soft);
   overflow: hidden;
 }
 
@@ -131,7 +137,7 @@
   align-items: flex-start;
   justify-content: center;
   min-width: 0;
-  padding: 24px;
+  padding: var(--space-lg) var(--space-xl);
 }
 
 .lc-wallet-balance-status {
@@ -206,28 +212,40 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px 14px;
-  margin-top: 18px;
+  gap: var(--space-sm) var(--space-md);
+  margin-top: var(--space-md);
 }
 
+/* Primary action · the "do the thing" CTA · gradient + glow + lift.
+ * Hover deepens the glow via accent-hover token so the same brand
+ * semantics apply across Wallet + Settings + future surfaces.
+ * Focus-visible adds a keyboard-nav outline. */
 .lc-wallet-primary-action {
   min-height: 38px;
   padding: 9px 15px;
   border: 0;
   border-radius: var(--radius-pill);
-  background: var(--color-fuchsia);
+  background: linear-gradient(180deg, #ff1a8c, var(--color-fuchsia-deep));
   color: white;
   font-family: var(--font-display);
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: var(--glow-sm);
-  transition: transform 160ms var(--ease-spring), box-shadow 160ms ease;
+  box-shadow: 0 8px 22px var(--accent-glow),
+              inset 0 1px 0 rgba(255, 255, 255, .12);
+  transition: transform 160ms var(--ease-spring),
+              box-shadow 160ms ease;
 }
 
 .lc-wallet-primary-action:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: var(--glow-md);
+  box-shadow: 0 12px 28px var(--accent-hover),
+              inset 0 1px 0 rgba(255, 255, 255, .16);
+}
+
+.lc-wallet-primary-action:focus-visible {
+  outline: 2px solid var(--accent-active);
+  outline-offset: 2px;
 }
 
 .lc-wallet-primary-action:disabled {
