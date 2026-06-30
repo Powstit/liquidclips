@@ -6,8 +6,12 @@ dist
 
 # Tauri
 src-tauri/target
-src-tauri/Cargo.lock
 src-tauri/gen
+# 2026-06-30 · src-tauri/Cargo.lock IS committed for binary apps so CI
+# resolves the same crate versions a local build sees. Previously ignored
+# (default Cargo Rust-lib template), which let GitHub Actions re-resolve
+# the dep tree and pick incompatible cookie/time combos · ship 2.2.6 CI
+# failure root cause. Keep it tracked.
 
 # Build artifacts
 *.tsbuildinfo
