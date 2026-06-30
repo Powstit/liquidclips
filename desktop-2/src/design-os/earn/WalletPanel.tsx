@@ -404,9 +404,9 @@ export function WalletPanel() {
               }
             >
               {!withdraw.payout_ready
-                ? "Set up on Whop"
+                ? "Set up payouts on Whop ↗"
                 : meetsMin
-                  ? `Credit ${fmtUsdCents(pipeline.approved_usd_cents)}`
+                  ? `Claim earnings · ${fmtUsdCents(pipeline.approved_usd_cents)}`
                   : `$${withdraw.min_withdrawal_usd.toFixed(2)} minimum`}
             </button>
           </div>

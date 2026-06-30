@@ -7,7 +7,12 @@ import { AffiliateCard, type AffiliateData, type AffiliateMeResponse, type Payme
 import { SignOutButton } from "@/components/SignOutButton";
 import { isAdmin as isAdminEmail } from "@/lib/admin-allowlist";
 
-const FALLBACK_AFFILIATE: AffiliateData = {
+/* Degraded-state defaults · used ONLY when the live /affiliate/me fetch
+ * fails (network/5xx). When the backend responds OK these are bypassed
+ * and the dashboard renders directly from AffiliateMeResponse. The
+ * `affiliate_live` analytics flag below distinguishes the two paths so
+ * we can spot real-world fallback usage in PostHog. */
+const AFFILIATE_DEGRADED_DEFAULT: AffiliateData = {
   connected: false,
   affiliate_id: null,
   affiliate_code: null,
@@ -24,7 +29,7 @@ const FALLBACK_AFFILIATE: AffiliateData = {
   payout_setup_url: "https://partner.liquidclips.app",
 };
 
-const FALLBACK_PAYMENTS: PaymentVisibility = {
+const PAYMENTS_DEGRADED_DEFAULT: PaymentVisibility = {
   app_subscription: {
     key: "app_subscription",
     label: "Liquid Clips subscription",
@@ -101,8 +106,16 @@ export default async function DashboardPage() {
   const remainingExports = c?.remaining_exports; // number | null (unlimited) | undefined (no backend)
   const billingProvider = c?.billing_provider ?? "whop";
   const canEarn = c?.can_earn ?? !!isAdmin;
-  const affiliateData = overview?.affiliate ?? FALLBACK_AFFILIATE;
-  const paymentVisibility = overview?.payments ?? FALLBACK_PAYMENTS;
+  /* Live-state verification · `affiliate_live` distinguishes a real
+   * backend payload from a degraded fallback. The fetch is the source
+   * of truth; degraded defaults only fire when the backend was
+   * unreachable above (try/catch swallows network failures into
+   * overview = null). Telemetry below tags every dashboard render with
+   * this flag so we can monitor fallback rates in PostHog. */
+  const affiliateLive = !!overview?.affiliate;
+  const paymentsLive = !!overview?.payments;
+  const affiliateData = overview?.affiliate ?? AFFILIATE_DEGRADED_DEFAULT;
+  const paymentVisibility = overview?.payments ?? PAYMENTS_DEGRADED_DEFAULT;
 
   const exportsBig =
     remainingExports === null ? "Unlimited"
@@ -119,7 +132,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-[1080px] px-6 py-12 sm:py-16">
-      <TrackOnMount event="dashboard_viewed" properties={{ tier, has_affiliate: !!affiliateId }} />
+      <TrackOnMount event="dashboard_viewed" properties={{ tier, has_affiliate: !!affiliateId, affiliate_live: affiliateLive, payments_live: paymentsLive }} />
       <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
         <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
         dashboard
