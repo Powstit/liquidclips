@@ -493,6 +493,13 @@ async def lifespan(_app: FastAPI):
             created_at timestamptz NOT NULL DEFAULT now()
         )""",
         "CREATE INDEX IF NOT EXISTS ix_runtime_manifests_channel_verdict ON runtime_manifests (channel, ship_lens_verdict, pub_date DESC)",
+        # v2.2.9 broadcast layer — extend the existing announcements table
+        # with severity + scope + agency_id so /sync can fan out global
+        # alerts AND agency-scoped messages without a parallel table.
+        "ALTER TABLE announcements ADD COLUMN IF NOT EXISTS severity varchar NOT NULL DEFAULT 'info'",
+        "ALTER TABLE announcements ADD COLUMN IF NOT EXISTS scope varchar NOT NULL DEFAULT 'global'",
+        "ALTER TABLE announcements ADD COLUMN IF NOT EXISTS agency_id varchar",
+        "CREATE INDEX IF NOT EXISTS ix_announcements_scope_agency ON announcements (scope, agency_id, is_active)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -594,6 +601,12 @@ app.include_router(onboarding.router)
 app.include_router(affiliate.router)
 app.include_router(tiktok_verify.router)
 app.include_router(admin.router)
+# v2.2.9 · /agency/* — JWT-gated agency self-service for announcement
+# issue + terminate. Lives in admin.py beside the existing global
+# /admin/announcements CRUD so the serializer + Pydantic models stay
+# co-located, but uses current_user (Bearer JWT) instead of the
+# internal-secret console gate.
+app.include_router(admin.agency_router)
 # HQ Agent 3 · /admin/mutations/* — 11 management-gap mutations.
 # Mounted alongside the existing read-only /admin router so the same
 # require_admin gate guards both. Sibling routers (recovery, ai-terminal)

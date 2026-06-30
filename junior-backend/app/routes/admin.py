@@ -2000,6 +2000,11 @@ class AnnouncementPayload(BaseModel):
     pinned: bool = False
     published_at: datetime | None = None
     is_active: bool = True
+    # v2.2.9 broadcast layer · global HQ defaults to global+info; HQ can
+    # override scope=agency + supply agency_id to target one agency only.
+    severity: str = Field("info", pattern=r"^(info|warning|critical)$")
+    scope: str = Field("global", pattern=r"^(global|agency)$")
+    agency_id: str | None = Field(None, min_length=1, max_length=120)
 
 
 class AnnouncementPatch(BaseModel):
@@ -2014,6 +2019,9 @@ class AnnouncementPatch(BaseModel):
     pinned: bool | None = None
     published_at: datetime | None = None
     is_active: bool | None = None
+    severity: str | None = Field(None, pattern=r"^(info|warning|critical)$")
+    scope: str | None = Field(None, pattern=r"^(global|agency)$")
+    agency_id: str | None = Field(None, min_length=1, max_length=120)
 
 
 def _admin_serialize_announcement(a: Announcement) -> dict[str, Any]:
@@ -2026,6 +2034,9 @@ def _admin_serialize_announcement(a: Announcement) -> dict[str, Any]:
         "cta_url": a.cta_url,
         "target_tier": a.target_tier,
         "pinned": bool(a.pinned),
+        "severity": a.severity,
+        "scope": a.scope,
+        "agency_id": a.agency_id,
         "published_at": a.published_at.isoformat() if a.published_at else None,
         "is_active": bool(a.is_active),
         "created_at": a.created_at.isoformat() if a.created_at else None,
@@ -2642,3 +2653,123 @@ def agent_reports(admin: AdminUser) -> dict[str, Any]:
             "wire a real ingest endpoint to populate this stream."
         ),
     }
+
+
+# ======================================================================
+# v2.2.9 · Agency-scoped Announcement controllers
+# ----------------------------------------------------------------------
+# /admin/* routes above use the (clerk_user_id + x-internal-secret)
+# console gate via `require_admin`. Agencies don't have the internal
+# secret — they call from the desktop with a Bearer JWT. This sub-router
+# uses `current_user` (JWT) + a tier check so an Agency-tier user can
+# broadcast / terminate announcements scoped to their own agency_id.
+# Mounted in main.py via app.include_router(admin.agency_router).
+# ======================================================================
+
+from app.deps import current_user as _agency_current_user  # noqa: E402
+
+
+def require_agency_user(
+    user: Annotated[User, Depends(_agency_current_user)],
+) -> User:
+    """Permit Agency-tier users (or admin / founder override) to manage
+    their own agency broadcasts. Tier aliases per features.py: 'agency'
+    is the v2 name; 'autopilot' is the legacy alias still on a few rows."""
+    if is_admin_email(user.email):
+        return user
+    if user.founder_flag:
+        return user
+    if user.tier in {"agency", "autopilot"}:
+        return user
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        "agency profile required",
+    )
+
+
+AgencyUser = Annotated[User, Depends(require_agency_user)]
+
+
+class AgencyAnnouncementPayload(BaseModel):
+    title: str = Field(..., min_length=2, max_length=200)
+    body_markdown: str | None = Field(None, max_length=8000)
+    severity: str = Field("info", pattern=r"^(info|warning|critical)$")
+    # Required on agency POSTs · admins may target any agency_id; non-admin
+    # agency callers may only post for their own user.id (enforced below).
+    agency_id: str = Field(..., min_length=1, max_length=120)
+    cta_text: str | None = Field(None, max_length=80)
+    cta_url: str | None = Field(None, max_length=600)
+    pinned: bool = False
+
+
+agency_router = APIRouter(prefix="/agency", tags=["agency"])
+
+
+@agency_router.post(
+    "/announcements",
+    status_code=status.HTTP_201_CREATED,
+)
+def create_agency_announcement(
+    payload: AgencyAnnouncementPayload,
+    user: AgencyUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    """Issue an agency-scoped broadcast. Non-admin agency callers can
+    only set agency_id == their own user.id; admin override permits any
+    target so HQ can post on an agency's behalf during incident response."""
+    if not is_admin_email(user.email) and payload.agency_id != user.id:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "agency_id must match caller user.id",
+        )
+    a = Announcement(
+        title=payload.title,
+        body_markdown=payload.body_markdown,
+        severity=payload.severity,
+        scope="agency",
+        agency_id=payload.agency_id,
+        cta_text=payload.cta_text,
+        cta_url=payload.cta_url,
+        pinned=payload.pinned,
+        is_active=True,
+    )
+    db.add(a)
+    db.commit()
+    db.refresh(a)
+    return {"announcement": _admin_serialize_announcement(a)}
+
+
+@agency_router.delete(
+    "/announcements/{announcement_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def terminate_agency_announcement(
+    announcement_id: str,
+    user: AgencyUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    """Soft-terminate (is_active=False) an agency-scoped broadcast. Hard
+    delete is reserved for /admin/announcements/{id}; agencies only flip
+    the active flag so HQ retains the audit trail."""
+    a = (
+        db.query(Announcement)
+        .filter(Announcement.id == announcement_id)
+        .one_or_none()
+    )
+    if not a:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"announcement not found: {announcement_id}",
+        )
+    if a.scope != "agency":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "global announcements terminate via /admin route",
+        )
+    if not is_admin_email(user.email) and a.agency_id != user.id:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "agency_id mismatch",
+        )
+    a.is_active = False
+    db.commit()

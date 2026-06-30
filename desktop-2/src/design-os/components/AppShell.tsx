@@ -17,6 +17,7 @@ import { ConsoleNav } from "./ConsoleNav";
 import { TopHud } from "./TopHud";
 import { StickyKade, type KadePlacement } from "./StickyKade";
 import { KadeSpeechBubble } from "./KadeSpeechBubble";
+import { AnnouncementBanner } from "./AnnouncementBanner";
 import { CursorGlow } from "../effects/CursorGlow";
 import { DropOverlay } from "../effects/DropOverlay";
 import { ToastHost } from "../effects/ToastHost";
@@ -109,6 +110,11 @@ export function DesignOSAppShell({
     <div className="lc-app" data-route={route} data-world={world}>
       <CursorGlow />
       <WorldLayer world={world} />
+
+      {/* v2.2.9 broadcast layer · fixed-position banner stack. Default-
+       *  hides when /sync.active_announcements is empty so the pinned
+       *  Workstation visual baseline stays at 0% pixel drift. */}
+      <AnnouncementBanner />
 
       <ConsoleNav activeRoute={routeForRegistry} />
 
