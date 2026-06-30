@@ -255,6 +255,15 @@ export type LCEvents = {
   "kade:speak": { title: string; body: string; severity?: "info" | "warn" | "error" };
   /** Explicit dismiss · clears any active speech bubble immediately. */
   "kade:dismiss": Record<string, never>;
+
+  /** 2026-06-30 · activation lifecycle signal.
+   *  Fires AFTER handleActivationUrl() validates the challenge, stores
+   *  the JWT, and lands the post-mint /sync + /me round-trip. Surfaces
+   *  that hydrate user-scoped state (Settings carrot panel, WalletPanel)
+   *  subscribe so their `useEffect(() => fetch(), [])` mounted-once
+   *  fetch doesn't strand the page on stale "Temporarily unavailable"
+   *  copy when the user activates while the route is already open. */
+  "activation:complete": { source: "clerk" | "whop" | "unknown" };
 };
 
 /* ============================================================

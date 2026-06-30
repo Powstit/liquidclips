@@ -33,7 +33,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { bus } from "../bridge";
+import { bus, useEvent } from "../bridge";
 import { claimCarrot, getPayoutsPortal, onboardCarrot } from "../../lib/carrot";
 import { openSmart } from "../../lib/openSmart";
 import {
@@ -109,6 +109,14 @@ export function WalletPanel() {
   useEffect(() => {
     void load("initial");
   }, [load]);
+
+  /* 2026-06-30 · activation:complete rehydration · refetches wallet
+   * summary the moment activation lands so the panel surfaces real
+   * pipeline numbers without a manual refresh. Pairs with the Settings
+   * carrot panel subscriber on the same event. */
+  useEvent("activation:complete", () => {
+    void load("refresh");
+  });
 
   const onRefresh = useCallback(() => {
     if (refreshing) return;
