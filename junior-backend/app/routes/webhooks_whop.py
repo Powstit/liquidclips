@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -990,6 +991,60 @@ def _handle_submission_verdict(db: Session, data: dict, *, verdict: str) -> None
         )
         if rc:
             rc.status = new_status
+
+    # v2.2.11 money-flow close-the-loop · on verdict=paid fire the
+    # branded receipt email AND drop a payout row into the in-app inbox
+    # so creators see "money landed" the moment they boot the desktop.
+    # Wrapped in try/except so a mailer or inbox failure cannot 500 the
+    # Whop webhook (which would trigger retries and double-fire side
+    # effects). external_dedup_key = "submission-paid-{whop_id}" makes
+    # the inbox row idempotent across the at-least-once retries Whop
+    # is known for.
+    if verdict == "paid":
+        try:
+            from app.mailer import send_bounty_paid
+            from app.routes.notifications import write_notification
+
+            # Author lookup · use the row's user_id which is canonical.
+            author = db.get(User, row.user_id) if row.user_id else None
+            payout_cents = int(getattr(row, "payout_usd_cents", 0) or 0)
+            payout_label = f"${payout_cents / 100:,.2f}" if payout_cents else "your earnings"
+            bounty_title = getattr(row, "campaign_title", None) or (
+                getattr(row.campaign, "title", None) if getattr(row, "campaign", None) else None
+            ) or "your reward campaign"
+            dedup_key = (
+                f"submission-paid-{row.whop_submission_id or row.id}"
+            )
+
+            if author and author.email:
+                send_bounty_paid(
+                    author.email,
+                    bounty_title=str(bounty_title)[:120],
+                    payout=payout_label,
+                )
+
+            if author:
+                write_notification(
+                    db,
+                    user_id=author.id,
+                    category="payout",
+                    title=f"Paid · {payout_label}",
+                    body=(
+                        f"Whop verified the view-RPM on {bounty_title!s} "
+                        f"and dropped {payout_label} into your wallet."
+                    )[:600],
+                    priority="high",
+                    action_kind="open_wallet",
+                    action_data={
+                        "submission_id": row.whop_submission_id or row.id,
+                        "payout_cents": payout_cents,
+                        "campaign_title": str(bounty_title)[:120],
+                    },
+                    external_dedup_key=dedup_key,
+                )
+        except Exception:  # noqa: BLE001 · side-effects must never 500 the webhook
+            log = logging.getLogger("junior.webhooks_whop")
+            log.exception("[submission_paid] side-effects failed for row=%s", row.id)
 
 
 def _handle_payment_refunded(db: Session, data: dict) -> None:
