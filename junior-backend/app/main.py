@@ -23,7 +23,7 @@ from app.cron import start_cron, stop_cron
 # block is a no-op until Daniel flips the env.
 from app.agents import start_agent_fleet, stop_agent_fleet
 from app.db import Base, engine
-from app.routes import admin, admin_mutations, admin_recovery, affiliate, agency_campaigns, analytics, auth_whop, bonus_ledger, campaign_asset_links, campaigns, carrot, channels, community, connections, desktop, doctrine, leaderboard, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, admin_mutations, admin_recovery, affiliate, agency_campaigns, analytics, auth_whop, bonus_ledger, campaign_asset_links, campaigns, carrot, channels, community, connections, desktop, doctrine, leaderboard, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -573,6 +573,11 @@ app.include_router(updates.router)
 app.include_router(runtime.router)
 app.include_router(notifications.router)
 app.include_router(transcribe.router)
+# 2026-06-30 · POST /me/troubleshoot · AI troubleshooting stub.
+# Returns 503 until ANTHROPIC_API_KEY is set on Railway and the python
+# `anthropic` package is added to requirements.txt. Frontend falls back
+# to the static Kade speech bubble copy.
+app.include_router(troubleshoot.router)
 app.include_router(telemetry.router)
 app.include_router(publish.router)
 app.include_router(social.router)

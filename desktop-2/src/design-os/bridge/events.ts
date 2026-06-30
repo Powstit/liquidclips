@@ -242,6 +242,19 @@ export type LCEvents = {
   /** An EmailDelivery sub-object transitioned. Surfaces "not_configured",
    *  "sending", "sent", or "failed" — never a fake "sent". */
   "inbox:email-state": { id: string; status: string };
+
+  /* 2026-06-30 · Kade troubleshooting overlay channel. Distinct from the
+   * existing KadeState pose enum (idle | cutting-clips | exporting ...).
+   * Mood drives the wrapper around StickyKade · pose drives the inner
+   * portrait. Pose stays route-driven; mood is event-driven so any
+   * surface that detects a system warning can pulse Kade without
+   * touching pose. */
+  "kade:mood": { mood: "idle" | "thinking" | "alert" | "collapsed" };
+  /** Speech-bubble payload paired with mood="alert". Auto-dismisses
+   *  after ~12s unless replaced by a fresh speak event. */
+  "kade:speak": { title: string; body: string; severity?: "info" | "warn" | "error" };
+  /** Explicit dismiss · clears any active speech bubble immediately. */
+  "kade:dismiss": Record<string, never>;
 };
 
 /* ============================================================
