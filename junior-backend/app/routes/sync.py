@@ -11,15 +11,39 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
 from app.jwt_signer import issue_license_jwt
-from app.models import License, User
+from app.models import (
+    Announcement,
+    License,
+    RewardBonusLedger,
+    SponsoredCampaign,
+    User,
+)
 from app.routes.usage import starter_export_remaining
 
 router = APIRouter(prefix="/sync", tags=["sync"])
+
+
+class AnnouncementOut(BaseModel):
+    """v2.2.9 broadcast layer · the shape the desktop renders into its
+    fixed-position banner stack. Subset of the admin serializer — body
+    fields the banner doesn't show are intentionally omitted to keep the
+    /sync payload tight."""
+
+    id: str
+    title: str
+    body_markdown: str | None
+    severity: str  # "info" | "warning" | "critical"
+    scope: str  # "global" | "agency"
+    agency_id: str | None
+    cta_text: str | None
+    cta_url: str | None
+    pinned: bool
 
 
 class SyncResponse(BaseModel):
@@ -44,6 +68,83 @@ class SyncResponse(BaseModel):
     # short-circuits gates to "agency" when this is true so a founder demo
     # doesn't get billed by their own paywall during a recording session.
     admin_override: bool = False
+    # v2.2.9 broadcast layer · active alerts the desktop paints into a
+    # fixed-position banner stack at the top of the viewport. Includes
+    # global HQ broadcasts AND any agency-scoped row whose agency_id
+    # matches the calling user (their own id when they're an agency, plus
+    # any agency that runs a campaign they have a ledger entry against).
+    # Defaults to [] so an unauthenticated /sync (or a mocked /sync in
+    # tests) never paints a banner — protects the visual baseline.
+    active_announcements: list[AnnouncementOut] = []
+
+
+def _agency_ids_for_user(db: Session, user: User) -> list[str]:
+    """Return the agency_ids whose broadcasts this user should see.
+
+    Always includes the user's own id (so an agency owner sees their own
+    rows). Additionally pulls every distinct SponsoredCampaign.created_by
+    that the user has a RewardBonusLedger entry against — that's how a
+    clipper inherits their agencies' alerts without a separate join table.
+    Capped implicitly by the ledger size; in practice every clipper has
+    submissions across a small set of agencies."""
+    ids: set[str] = {user.id}
+    rows = (
+        db.query(SponsoredCampaign.created_by)
+        .join(
+            RewardBonusLedger,
+            RewardBonusLedger.campaign_id == SponsoredCampaign.id,
+        )
+        .filter(RewardBonusLedger.liquid_clips_user_id == user.id)
+        .filter(SponsoredCampaign.created_by.isnot(None))
+        .distinct()
+        .all()
+    )
+    for (created_by,) in rows:
+        if created_by:
+            ids.add(created_by)
+    return list(ids)
+
+
+def _fetch_active_announcements(db: Session, user: User) -> list[AnnouncementOut]:
+    """Pull active broadcasts targeted at this user. Global rows go to
+    everyone; agency rows are filtered to the agency_ids the user is
+    associated with. Pinned rows surface first, newest after. Cap at 5
+    so the banner stack never blows past one viewport."""
+    agency_ids = _agency_ids_for_user(db, user)
+    q = (
+        db.query(Announcement)
+        .filter(Announcement.is_active.is_(True))
+        .filter(
+            or_(
+                Announcement.scope == "global",
+                and_(
+                    Announcement.scope == "agency",
+                    Announcement.agency_id.in_(agency_ids),
+                ),
+            )
+        )
+        .order_by(
+            Announcement.pinned.desc(),
+            Announcement.created_at.desc(),
+        )
+        .limit(5)
+    )
+    out: list[AnnouncementOut] = []
+    for a in q.all():
+        out.append(
+            AnnouncementOut(
+                id=a.id,
+                title=a.title,
+                body_markdown=a.body_markdown,
+                severity=a.severity or "info",
+                scope=a.scope or "global",
+                agency_id=a.agency_id,
+                cta_text=a.cta_text,
+                cta_url=a.cta_url,
+                pinned=bool(a.pinned),
+            )
+        )
+    return out
 
 
 @router.get("", response_model=SyncResponse)
@@ -103,4 +204,5 @@ def sync(
         new_license_jwt=new_jwt,
         remaining_exports=None if is_admin else starter_export_remaining(user),
         admin_override=is_admin,
+        active_announcements=_fetch_active_announcements(db, user),
     )

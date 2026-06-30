@@ -857,6 +857,16 @@ class Announcement(Base):
     pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # v2.2.9 broadcast layer · severity drives banner tint
+    # ("info" → fuchsia, "warning" → amber, "critical" → red). scope
+    # decides who sees the row in /sync.active_announcements: "global"
+    # → every authed user; "agency" → restricted to agency_id matches
+    # (the agency owner themselves + any clipper enrolled in their
+    # campaigns, resolved at /sync time). Defaults make every legacy row
+    # behave like a global info banner so existing data renders cleanly.
+    severity: Mapped[str] = mapped_column(String, nullable=False, default="info", index=True)
+    scope: Mapped[str] = mapped_column(String, nullable=False, default="global", index=True)
+    agency_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
