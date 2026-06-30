@@ -30,6 +30,16 @@ export interface ChatMessage {
   pinned: boolean;
   announcement_id: string | null;
   created_at: string;
+  /** v2.2.11 arcade · author's best-ever Space Invaders score at fetch
+   *  time. 0 = no record / no badge rendered. */
+  arcade_high_score: number;
+}
+
+export interface ArcadeLeaderboardEntry {
+  user_id: string;
+  username: string;
+  arcade_high_score: number;
+  role: ChatRole;
 }
 
 export interface ChatHistory {
@@ -144,6 +154,78 @@ export interface MediaSearchResult {
   /** Set when the backend returned 503 setup_required — the picker
    *  surfaces a "Configure {KEY} in env" hint instead of an empty grid. */
   setupRequired: boolean;
+}
+
+/** v2.2.11 arcade · ratchet the caller's best Space Invaders score on
+ *  the server. Returns the resolved value + whether this submission
+ *  moved the record up. Best-effort — silently no-ops without a JWT
+ *  so the existing local-only highScore.ts write still lands offline. */
+export async function submitArcadeScore(score: number): Promise<{
+  arcade_high_score: number;
+  updated: boolean;
+} | null> {
+  const jwt = getJwt();
+  if (!jwt) return null;
+  try {
+    const r = await fetch(`${lcBackendUrl()}/chat/game/score`, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        "content-type": "application/json",
+        ...authHeader(),
+      },
+      body: JSON.stringify({ score: Math.max(0, Math.floor(score)) }),
+    });
+    if (!r.ok) return null;
+    const data = (await r.json()) as {
+      arcade_high_score: number;
+      updated: boolean;
+    };
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/** v2.2.11 · share the caller's arcade score into #global-lounge as
+ *  a system-bot row. Backend clamps the cited score upward to the
+ *  persisted record so a sad replay can't over-shout. Returns true on
+ *  HTTP 2xx. */
+export async function shareArcadeScore(score: number): Promise<boolean> {
+  const jwt = getJwt();
+  if (!jwt) return false;
+  try {
+    const r = await fetch(`${lcBackendUrl()}/chat/game/share`, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        "content-type": "application/json",
+        ...authHeader(),
+      },
+      body: JSON.stringify({ score: Math.max(0, Math.floor(score)) }),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchArcadeLeaderboard(
+  limit = 10,
+): Promise<ArcadeLeaderboardEntry[]> {
+  const jwt = getJwt();
+  if (!jwt) return [];
+  try {
+    const r = await fetch(
+      `${lcBackendUrl()}/chat/game/leaderboard?limit=${limit}`,
+      { cache: "no-store", headers: authHeader() },
+    );
+    if (!r.ok) return [];
+    const data = (await r.json()) as { entries: ArcadeLeaderboardEntry[] };
+    return Array.isArray(data?.entries) ? data.entries : [];
+  } catch {
+    return [];
+  }
 }
 
 export async function searchMedia(

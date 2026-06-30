@@ -119,6 +119,33 @@ class ChatMessageOut(BaseModel):
     pinned: bool
     announcement_id: str | None
     created_at: datetime
+    # v2.2.11 arcade · author's best-ever Space Invaders score at fetch
+    # time. LEFT JOIN against User so a system-bot row (no User record)
+    # resolves to 0 and the chat panel suppresses the badge. Updated
+    # asynchronously by the desktop on each game-over so a fresh record
+    # appears next to the author's name on their next message.
+    arcade_high_score: int = 0
+
+
+class ArcadeScorePayload(BaseModel):
+    score: int = Field(..., ge=0, le=999_999_999)
+
+
+class ArcadeScoreOut(BaseModel):
+    user_id: str
+    arcade_high_score: int
+    updated: bool
+
+
+class LeaderboardEntry(BaseModel):
+    user_id: str
+    username: str
+    arcade_high_score: int
+    role: str
+
+
+class LeaderboardOut(BaseModel):
+    entries: list[LeaderboardEntry]
 
 
 class ChatHistoryOut(BaseModel):
@@ -159,7 +186,7 @@ class MediaSearchOut(BaseModel):
 # ---------------------------------------------------------------------
 
 
-def _serialise(row: ChatMessage) -> ChatMessageOut:
+def _serialise(row: ChatMessage, arcade_high_score: int = 0) -> ChatMessageOut:
     return ChatMessageOut(
         id=row.id,
         user_id=row.user_id,
@@ -171,6 +198,7 @@ def _serialise(row: ChatMessage) -> ChatMessageOut:
         pinned=bool(row.pinned),
         announcement_id=row.announcement_id,
         created_at=row.created_at if row.created_at else datetime.now(timezone.utc),
+        arcade_high_score=arcade_high_score,
     )
 
 
@@ -254,8 +282,12 @@ def list_messages(
             f"unknown channel: {channel}",
         )
     can_write = _can_access(user, channel)
-    rows = (
-        db.query(ChatMessage)
+    # LEFT JOIN User on user_id so each row carries the author's current
+    # arcade_high_score · system-bot rows have no User → score = 0 and
+    # the chat panel suppresses the badge for them.
+    pairs = (
+        db.query(ChatMessage, User.arcade_high_score)
+        .outerjoin(User, User.id == ChatMessage.user_id)
         .filter(ChatMessage.channel == channel)
         .order_by(desc(ChatMessage.created_at))
         .limit(limit)
@@ -263,10 +295,10 @@ def list_messages(
     )
     # Reverse so the client renders oldest → newest naturally; the
     # composer scrolls to the bottom on mount.
-    rows.reverse()
+    pairs.reverse()
     return ChatHistoryOut(
         channel=channel,
-        messages=[_serialise(r) for r in rows],
+        messages=[_serialise(row, int(score or 0)) for row, score in pairs],
         can_write=can_write,
         viewer_role=_derive_role(user),
     )
@@ -332,7 +364,7 @@ def post_message(
 
     db.commit()
     db.refresh(row)
-    return PostMessageOut(message=_serialise(row))
+    return PostMessageOut(message=_serialise(row, int(user.arcade_high_score or 0)))
 
 
 @router.delete(
@@ -452,3 +484,100 @@ async def pexels_search(
             )
         )
     return MediaSearchOut(provider="pexels", results=results)
+
+
+# ---------------------------------------------------------------------
+# Arcade leaderboard — v2.2.11
+# ---------------------------------------------------------------------
+
+
+@router.post("/game/score", response_model=ArcadeScoreOut)
+def submit_arcade_score(
+    payload: ArcadeScorePayload,
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> ArcadeScoreOut:
+    """Ratchet the caller's best-ever Space Invaders score. Never lowers
+    a record — a refresh or replay cannot erase progress. Returns the
+    resolved value + whether this submission moved it up so the desktop
+    can show a "new high score" toast without re-fetching."""
+    prior = int(user.arcade_high_score or 0)
+    updated = False
+    if payload.score > prior:
+        user.arcade_high_score = payload.score
+        db.commit()
+        updated = True
+    return ArcadeScoreOut(
+        user_id=user.id,
+        arcade_high_score=int(user.arcade_high_score or 0),
+        updated=updated,
+    )
+
+
+@router.post("/game/share", response_model=PostMessageOut)
+def share_arcade_score(
+    payload: ArcadeScorePayload,
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> PostMessageOut:
+    """Drop a system-bot announcement into #global-lounge celebrating
+    the caller's score. Validates the score against the user's stored
+    high to prevent a sad replay from over-shouting — we clamp upward
+    to the persisted record. The row is authored by user_id=system-bot
+    so the message paints with the [BOT] badge and a distinct avatar,
+    not the user's own row."""
+    server_best = int(user.arcade_high_score or 0)
+    # Clamp · the share text always cites the canonical server best,
+    # not a stale client-side claim.
+    cited = max(payload.score, server_best)
+    username = _display_name(user)
+    row = ChatMessage(
+        id=uuid.uuid4().hex,
+        user_id=SYSTEM_BOT_ID,
+        username=SYSTEM_BOT_NAME,
+        avatar_url=SYSTEM_BOT_AVATAR,
+        channel="global",
+        content=(
+            f"🤖 Arcade Bot: @{username} just locked down a high score of "
+            f"{cited:,} points in the Space Invaders arena! 🏆 Can you beat them?"
+        ),
+        role="bot",
+        pinned=False,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    # The system-bot row has no User join → arcade_high_score = 0 so
+    # the chat panel suppresses a trophy badge on the bot's own row.
+    return PostMessageOut(message=_serialise(row, 0))
+
+
+@router.get("/game/leaderboard", response_model=LeaderboardOut)
+def arcade_leaderboard(
+    user: Annotated[User, Depends(current_user)],  # noqa: ARG001 · gate only
+    db: Annotated[Session, Depends(get_db)],
+    limit: int = Query(10, ge=1, le=50),
+) -> LeaderboardOut:
+    """Top-N arcade scorers across the network. Anyone authed can read;
+    we don't surface the email — only the display handle the user
+    already exposes via affiliate / leaderboard. Zero-score rows are
+    skipped so the panel doesn't render a long list of "0 pts" entries
+    on day one."""
+    rows = (
+        db.query(User)
+        .filter(User.arcade_high_score > 0)
+        .order_by(desc(User.arcade_high_score), User.id)
+        .limit(limit)
+        .all()
+    )
+    entries: list[LeaderboardEntry] = []
+    for u in rows:
+        entries.append(
+            LeaderboardEntry(
+                user_id=u.id,
+                username=_display_name(u),
+                arcade_high_score=int(u.arcade_high_score or 0),
+                role=_derive_role(u),
+            )
+        )
+    return LeaderboardOut(entries=entries)

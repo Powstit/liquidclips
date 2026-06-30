@@ -1476,6 +1476,139 @@ def render_bounty_rejected(
     return subject, _shell(subject, body, ctx=ctx), text
 
 
+# ── v2.2.11 money-flow loops ─────────────────────────────────────────────
+# Two new transactional templates that close the loops Daniel called out
+# in the wallet/bounty audit:
+#   • send_bounty_paid     · Whop view-payout verified · USD landed
+#   • send_carrot_claimed  · $50 sponsored reward transfer succeeded
+# Brand: identical dark shell + fuchsia accent as the rest of the file
+# (PAPER #0F0F14, INK cream, FUCHSIA #FF1A8C, Fraunces headline).
+
+
+def send_bounty_paid(
+    email: str,
+    *,
+    bounty_title: str,
+    payout: str,
+    first_name: str | None = None,
+) -> None:
+    """Sent when a Whop submission flips status=paid. The celebratory
+    receipt — money is in their Whop balance, link to their wallet."""
+    ctx = MailContext.build()
+    subject, html, text = render_bounty_paid(
+        email=email, bounty_title=bounty_title, payout=payout,
+        first_name=first_name, ctx=ctx,
+    )
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="bounty_paid")
+
+
+def send_carrot_claimed(
+    email: str,
+    *,
+    net_usd: float,
+    transfer_id: str | None,
+    first_name: str | None = None,
+) -> None:
+    """Sent immediately after a successful claim_carrot transfer. Cites
+    the NET amount (post 5% LC protocol fee) so there's no expectation
+    drift between the email + the Whop balance."""
+    ctx = MailContext.build()
+    subject, html, text = render_carrot_claimed(
+        email=email, net_usd=net_usd, transfer_id=transfer_id,
+        first_name=first_name, ctx=ctx,
+    )
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="carrot_claimed")
+
+
+def render_bounty_paid(
+    *,
+    email: str,
+    bounty_title: str,
+    payout: str,
+    first_name: str | None,
+    ctx: MailContext,
+) -> tuple[str, str, str]:
+    subject = f"Paid · {payout} from {bounty_title[:40]}"
+    body = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">content reward paid</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
+  Money's in. {payout} for your clip.
+</h1>
+<p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  Whop verified the view-RPM on <strong style="color:{INK};">{bounty_title}</strong> and dropped <strong style="color:{FUCHSIA};">{payout}</strong> into your wallet. The Earn tab in Liquid Clips just flipped this submission to Paid · check your Whop balance for the live cleared total.
+</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  Stack another. Every approved clip you ship pulls down view-RPM on its own cycle — there's no cap on how many you can have running.
+</p>
+<p style="margin:0 0 16px;">{_btn("Open Wallet →", f"{ctx.download_url}")}</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
+  paid by whop · cleared on their next payout window
+</p>
+"""
+    text = (
+        f"Money's in. {payout} for your clip.\n\n{_greeting(first_name)}\n\n"
+        f"Whop verified the view-RPM on {bounty_title} and dropped {payout} "
+        "into your wallet. The Earn tab in Liquid Clips just flipped this "
+        "submission to Paid — check your Whop balance for the live cleared total.\n\n"
+        f"Open Wallet: {ctx.download_url}\n\n— Liquid Clips"
+    )
+    return subject, _shell(subject, body, ctx=ctx), text
+
+
+def render_carrot_claimed(
+    *,
+    email: str,
+    net_usd: float,
+    transfer_id: str | None,
+    first_name: str | None,
+    ctx: MailContext,
+) -> tuple[str, str, str]:
+    net_label = f"${net_usd:,.2f}"
+    transfer_ref = transfer_id if transfer_id else "pending"
+    subject = f"Sponsored reward claimed · {net_label}"
+    body = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">sponsored reward · claimed</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
+  Reward claimed · {net_label} on the way.
+</h1>
+<p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  You crossed the activation threshold and pulled down the sponsored reward. <strong style="color:{FUCHSIA};">{net_label}</strong> just left the protocol and is transferring to your Whop sub-merchant wallet now.
+</p>
+<table style="width:100%;border-collapse:collapse;background:{PAPER_WARM};border:1px solid {LINE};border-radius:8px;margin:0 0 22px;">
+  <tr>
+    <td style="padding:10px 14px;font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};text-transform:uppercase;">net amount</td>
+    <td style="padding:10px 14px;font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:13px;color:{INK};text-align:right;">{net_label}</td>
+  </tr>
+  <tr>
+    <td style="padding:10px 14px;font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};text-transform:uppercase;border-top:1px solid {LINE};">transfer id</td>
+    <td style="padding:10px 14px;font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:13px;color:{INK};text-align:right;border-top:1px solid {LINE};word-break:break-all;">{transfer_ref}</td>
+  </tr>
+</table>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  The 5% protocol fee was already deducted before transfer — the number above is yours to keep. Whop settles on their standard rail, usually 1–2 business days.
+</p>
+<p style="margin:0 0 16px;">{_btn("Open Wallet →", f"{ctx.download_url}")}</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
+  one-time activation reward · congrats on hitting the bar
+</p>
+"""
+    text = (
+        f"Reward claimed · {net_label} on the way.\n\n{_greeting(first_name)}\n\n"
+        f"You crossed the activation threshold and pulled down the sponsored "
+        f"reward. {net_label} just left the protocol and is transferring to "
+        f"your Whop sub-merchant wallet now.\n\n"
+        f"Net amount: {net_label}\n"
+        f"Transfer id: {transfer_ref}\n\n"
+        "The 5% protocol fee was already deducted before transfer — the number "
+        "above is yours to keep. Whop settles on their standard rail, usually "
+        "1–2 business days.\n\n"
+        f"Open Wallet: {ctx.download_url}\n\n— Liquid Clips"
+    )
+    return subject, _shell(subject, body, ctx=ctx), text
+
+
 # ── Minecraft Story Clip Challenge — sprint #14c ─────────────────────────
 #
 # The 6-template funnel for the first Liquid Clips wrapped campaign. Templates

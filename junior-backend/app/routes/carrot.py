@@ -448,9 +448,59 @@ def claim_carrot(
         user.carrot_last_claim_at = datetime.now(timezone.utc)
     db.commit()
 
+    transfer_id = xfer.get("id")
+
+    # v2.2.11 money-flow close-the-loop · branded receipt email + inbox
+    # row the moment the transfer leaves the protocol. Wrapped in
+    # try/except so a mailer/inbox failure cannot 500 the claim itself
+    # (the money already moved). external_dedup_key uses the Whop
+    # transfer id so the inbox row is idempotent if a retry ever
+    # re-runs this path.
+    try:
+        from app.mailer import send_carrot_claimed
+        from app.routes.notifications import write_notification
+
+        if user.email:
+            send_carrot_claimed(
+                user.email,
+                net_usd=float(net),
+                transfer_id=transfer_id,
+            )
+
+        write_notification(
+            db,
+            user_id=user.id,
+            category="wallet",
+            title=f"Sponsored reward claimed · ${net:,.2f}",
+            body=(
+                f"${net:,.2f} just left the protocol and is transferring to "
+                "your Whop sub-merchant wallet. The 5% protocol fee was "
+                "already deducted before transfer."
+            )[:600],
+            priority="high",
+            action_kind="open_wallet",
+            action_data={
+                "net_usd": float(net),
+                "fee_usd": float(fee),
+                "gross_usd": float(CARROT_AMOUNT_USD),
+                "transfer_id": transfer_id,
+                "currency": whop_payments.DEFAULT_PAYOUT_CURRENCY,
+            },
+            external_dedup_key=(
+                f"carrot-claim-{transfer_id}" if transfer_id
+                else f"carrot-claim-{user.id}"
+            ),
+        )
+    except Exception:  # noqa: BLE001 · never block a real money move
+        import logging as _logging
+        _logging.getLogger("junior.carrot").exception(
+            "[claim_carrot] side-effects failed for user=%s transfer=%s",
+            user.id, transfer_id,
+        )
+
     return ClaimResponse(
         state="paid",
-        transfer_id=xfer.get("id"),
+        transfer_id=transfer_id,
         gross_usd=CARROT_AMOUNT_USD,
         fee_usd=fee,
         net_usd=net,
