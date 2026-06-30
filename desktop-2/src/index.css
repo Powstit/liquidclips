@@ -28,6 +28,40 @@
    * `--lc-accent-blue` consumers continue to render correctly. */
   --lc-accent-blue:          var(--lc-accent-cyan);
   --lc-accent-blue-deep:     var(--lc-accent-cyan-deep);
+
+  /* 2026-06-30 · adaptive spacing scale. Each step is a clamp() so
+   * Settings + WalletPanel + future surfaces scale through small,
+   * medium, and large window widths without hard breakpoints. The
+   * floors keep buttons tap-friendly on the narrowest supported
+   * window (1040px); the ceilings cap cards at a designerly width on
+   * 4K monitors. Existing px paddings stay valid · these tokens are
+   * additive opt-ins for surfaces that want adaptive feel. */
+  --space-xs:                clamp(4px,  0.45vw, 6px);
+  --space-sm:                clamp(8px,  0.85vw, 12px);
+  --space-md:                clamp(12px, 1.3vw,  18px);
+  --space-lg:                clamp(18px, 1.9vw,  26px);
+  --space-xl:                clamp(24px, 2.6vw,  36px);
+  --space-2xl:               clamp(32px, 3.4vw,  48px);
+
+  /* 2026-06-30 · semantic accent states. Cosmetic surfaces (cards,
+   * pills, CTAs) consume these aliases so fuchsia means one specific
+   * thing — active / hover / selected — and isn't sprayed across the
+   * UI as ambient decoration. */
+  --accent-rest:             rgba(255, 26, 140, 0.20);
+  --accent-hover:            rgba(255, 26, 140, 0.40);
+  --accent-active:           rgba(255, 26, 140, 0.60);
+  --accent-glow:             rgba(255, 26, 140, 0.28);
+
+  /* 2026-06-30 · depth tokens for dark cinematic backdrops. Cards on
+   * the brand world background need both an inner-highlight line and
+   * a far-soft drop shadow to read as "lifted off the cinematic". */
+  --depth-card-soft:         0 8px 22px rgba(0, 0, 0, 0.42),
+                             inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --depth-card-deep:         0 18px 44px rgba(0, 0, 0, 0.58),
+                             inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --depth-card-accent:       0 18px 44px rgba(0, 0, 0, 0.55),
+                             0 0 0 1px rgba(255, 26, 140, 0.10) inset,
+                             0 60px 100px -50px rgba(255, 26, 140, 0.30);
 }
 
 body[data-app-mode="agency"] {
