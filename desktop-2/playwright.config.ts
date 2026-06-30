@@ -15,7 +15,11 @@ const BASE_URL = `http://localhost:${PORT}`;
 const USE_PRODUCTION_PREVIEW = process.env.PW_USE_PREVIEW === "1";
 
 export default defineConfig({
-  testDir: "./tests/e2e",
+  // 2026-06-30 · widened from ./tests/e2e so the new tests/visual/
+  // baseline suite is also discovered by the same `npx playwright test`
+  // invocation. testMatch (recursive .spec.ts) does the rest. The e2e +
+  // visual suites still share the same Vite dev server.
+  testDir: "./tests",
   testMatch: /.*\.spec\.ts$/,
   // 2026-06-23 monetisation pass · bumped from 60s to 90s after several
   // multi-route walks (brand-consistency, watermark-proof) crept past
