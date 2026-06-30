@@ -27,7 +27,7 @@
 
 import { useState } from "react";
 import { motion as fm } from "framer-motion";
-import { useActivation } from "../../lib/activation";
+import { useActivation, activateWithToken, handleActivationUrl } from "../../lib/activation";
 import { hasJwt, getAuthSource } from "../../lib/authStorage";
 import { openSmart } from "../../lib/openSmart";
 import { DesignOSAppShell } from "../components/AppShell";
@@ -297,6 +297,81 @@ function ActivationStateBlock(props: {
       >
         Start activation
       </button>
+      <ManualActivationCard />
+    </div>
+  );
+}
+
+/** v2.2.11 · pop-up-blocker fallback. When the browser swallows the
+ *  liquidclips:// deep-link (Safari + some Chrome configs), the Whop
+ *  callback page shows a "Copy Activation Code" button. The user
+ *  pastes that token here to complete activation manually. Accepts
+ *  either the raw JWT or the full `liquidclips://activate?…` URL — we
+ *  branch on the prefix so both forms work without educating the user. */
+function ManualActivationCard(): JSX.Element {
+  const [token, setToken] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
+
+  const onSubmit = async () => {
+    const value = token.trim();
+    if (!value || submitting) return;
+    setSubmitting(true);
+    setHint(null);
+    try {
+      if (value.startsWith("liquidclips://")) {
+        await handleActivationUrl(value);
+      } else {
+        await activateWithToken(value);
+      }
+      setToken("");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setHint(`Couldn't activate · ${msg}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="lc-login-manual"
+      data-testid="login-manual-activation"
+    >
+      <span className="lc-login-manual-label">Enter Manual Activation Code</span>
+      <p className="lc-login-manual-help">
+        Mac blocked the automatic handoff? Paste the activation code from the
+        Whop login page and we'll finish signing you in.
+      </p>
+      <textarea
+        className="lc-login-manual-input"
+        data-testid="login-manual-activation-input"
+        value={token}
+        onChange={(e) => setToken(e.target.value)}
+        placeholder="liquidclips://activate?token=… · or the raw token"
+        rows={3}
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
+        disabled={submitting}
+      />
+      <button
+        type="button"
+        className="lc-login-cta lc-login-cta-secondary"
+        data-testid="login-manual-activation-submit"
+        onClick={() => void onSubmit()}
+        disabled={submitting || token.trim().length === 0}
+      >
+        {submitting ? "Activating…" : "Activate with code"}
+      </button>
+      {hint ? (
+        <p
+          className="lc-login-manual-error"
+          data-testid="login-manual-activation-error"
+        >
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }
