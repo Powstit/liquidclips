@@ -5,13 +5,16 @@ import type { FakeCampaign } from "../../fixtures/fakeCampaigns";
 
 interface CampaignContextStripProps {
   campaign: FakeCampaign | undefined;
-  /** Defaults to @uncledaniel — the shared fallback stamp. */
+  /** Defaults to @yourhandle — generic, brand-agnostic fallback stamp. */
   fallbackStamp?: string;
 }
 
 export function CampaignContextStrip({
   campaign,
-  fallbackStamp = "@uncledaniel",
+  // BUG-004 sister sweep · was "@uncledaniel" (legacy demo handle that
+  // leaked into the editor whenever no campaign was active). Sister to
+  // the EditorSection.tsx fix already shipped in v2.2.5 commit b7cab2c.
+  fallbackStamp = "@yourhandle",
 }: CampaignContextStripProps) {
   const stamp = campaign?.watermarkHandle ?? fallbackStamp;
   const name = campaign?.name ?? "No active campaign";

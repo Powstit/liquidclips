@@ -1,5 +1,5 @@
-import { JuniorLoader } from "@/components/JuniorLoader";
+import { LiquidLoader } from "@/components/LiquidLoader";
 
 export default function Loading() {
-  return <JuniorLoader message="Spinning up your seat" />;
+  return <LiquidLoader message="Spinning up your seat" />;
 }
