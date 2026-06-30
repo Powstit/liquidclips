@@ -164,7 +164,10 @@ function CreateCampaignModal({ onClose, onCreate }: { onClose: () => void; onCre
         <p className="lc-hud-body" style={{ marginTop: 6 }}>This is a UI skeleton. No real campaign record is written.</p>
         <label className="lc-form-label" style={{ marginTop: 16 }}>
           Campaign name
-          <input className="lc-form-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Uncle Daniel Audience-Zero" />
+          {/* BUG-004 sister sweep · placeholder example was branded with the
+              legacy demo campaign name. Generic example so the field reads
+              honestly for any new customer. */}
+          <input className="lc-form-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Main Audience Campaign" />
         </label>
         <label className="lc-form-label" style={{ marginTop: 12 }}>
           Owner handle

@@ -15,6 +15,13 @@ const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "sw
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
 
 export const metadata: Metadata = {
+  // BUG-002 · pin the metadata host to the Liquid Clips brand domain so
+  // relative og:image / twitter:image paths resolve to
+  // https://account.liquidclips.app/brand/* on every render. Before this,
+  // requests hitting the legacy account.jnremployee.com satellite would
+  // serve social-preview URLs branded with the old Junior subdomain even
+  // though the cards themselves point at Liquid Clips copy + assets.
+  metadataBase: new URL("https://account.liquidclips.app"),
   title: "Liquid Clips — your account",
   description: "Manage your Liquid Clips subscription, download the app, view your usage.",
   applicationName: "Liquid Clips",

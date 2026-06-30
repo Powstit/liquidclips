@@ -10,7 +10,11 @@ import { useEffect, useState } from "react";
 // Each line types itself out at ~30ms/character, holds for ~600ms, fades.
 // Total ceiling ~1.4s so it never out-stays its welcome on a fast route.
 
-export function JuniorLoader({ message }: { message?: string }) {
+// BUG-002 · renamed from JuniorLoader. Brand alignment after the
+// Junior → Liquid Clips pivot (2026-05-28). The file was the last
+// component identity carrying the old brand name, visible in dev tools,
+// React component stacks, and route-transition splash markup.
+export function LiquidLoader({ message }: { message?: string }) {
   const line = message ?? "Reading your project";
   const [typed, setTyped] = useState("");
 
