@@ -20,10 +20,12 @@ type Tab = "leaderboard" | "myscore";
 export function SplashLeaderboard({
   score = 0,
   /** When the real user model lands, pass the resolved display name
-   *  through this prop. Today defaults to "Daniel" to mirror TopHud. */
-  userName = "Daniel",
-  /** Free-form tier label (Beta · Pro · Agency etc). Mirrors TopHud. */
-  userTier = "Beta",
+   *  through this prop. BUG-001 · was "Daniel"; switched to the generic
+   *  "Guest" fallback to mirror TopHud. */
+  userName = "Guest",
+  /** Free-form tier label (Free · Solo · Pro · Agency). BUG-001 · was
+   *  "Beta"; the product's entry tier is "Free". Mirrors TopHud. */
+  userTier = "Free",
 }: {
   score?: number;
   userName?: string;

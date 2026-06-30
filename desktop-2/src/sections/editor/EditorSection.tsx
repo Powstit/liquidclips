@@ -28,7 +28,9 @@ export function EditorSection() {
   const modeCampaignId = getModeState().activeCampaignId;
   const campaignId = paramCampaignId ?? modeCampaignId;
   const campaign = campaignId ? getCampaignById(campaignId) : undefined;
-  const stamp = campaign?.watermarkHandle ?? "@uncledaniel";
+  // BUG-004 · `@uncledaniel` was the legacy demo fallback. Generic
+  // "@yourhandle" placeholder until a real campaign or user handle is set.
+  const stamp = campaign?.watermarkHandle ?? "@yourhandle";
 
   const [clips, setClips] = useState<Clip[]>(() => {
     resetClipSequence();
@@ -236,7 +238,11 @@ export function EditorSection() {
             <div className="lc2-engine-campaign-avatar">LC</div>
             <div>
               <div className="lc2-engine-campaign-name">No active campaign</div>
-              <div className="lc2-engine-campaign-meta">stamp @uncledaniel · locked</div>
+              {/* BUG-004 · stamp falls back to the generic "@yourhandle"
+                  placeholder via `stamp` so this chip stays consistent
+                  with watermark export logic and never re-leaks the
+                  legacy "@uncledaniel" demo handle. */}
+              <div className="lc2-engine-campaign-meta">stamp {stamp} · locked</div>
             </div>
           </div>
         )}
