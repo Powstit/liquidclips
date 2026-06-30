@@ -258,8 +258,19 @@ def reconcile_user(db: Session, user: User, *, now: datetime | None = None) -> s
     if has_overrides and not user.whop_affiliate_id:
         return "unavailable"
     member_active = user.subscription_status == "active" and user.tier != "free"
-    qualifies = bool(user.affiliate_qualified_at) or (
-        eligible_referral_count(db, user, now=now) >= QUALIFY_PAID_REFERRALS
+    # v2.2.11 founder bypass · founders earn 50% recurring from the
+    # first referral, no 2-paid + 7-day wait. Gated on member_active
+    # below so a refunded founder still tears down their overrides via
+    # the _pause() path. The qualifier ladder remains:
+    #   1. already-stamped affiliate_qualified_at  → keep activated
+    #   2. founder_flag                            → bypass earned-by-volume
+    #   3. 2 paid referrals · 7 days held          → standard earned path
+    qualifies = (
+        bool(user.affiliate_qualified_at)
+        or bool(getattr(user, "founder_flag", False))
+        or (
+            eligible_referral_count(db, user, now=now) >= QUALIFY_PAID_REFERRALS
+        )
     )
 
     if not member_active:
