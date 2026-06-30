@@ -10,6 +10,7 @@ import {
 } from "./lib/authStorage";
 import { attachQA, qaGateEnabled } from "./lib/qa";
 import { mountDeepLinkSubscriber, type DeepLinkBootHandle } from "./lib/deepLinkBoot";
+import { HardUpdateGate } from "./components/update/HardUpdateGate";
 import { useActivation } from "./lib/activation";
 import { readSessionIdFromLaunch, clearFunnelSession } from "./lib/funnelSession";
 import { AssistedScheduleMonitor } from "./design-os/schedule/AssistedScheduleMonitor";
@@ -147,31 +148,41 @@ export function App() {
   }, []);
 
   return (
-    <Suspense fallback={<BootFallback />}>
-      {!splashAcked && (
-        <IntroSplash
-          ready={splashReady}
-          failed={false}
-          onContinue={() => setSplashAcked(true)}
-        />
-      )}
-      {splashAcked && (
-        <FunnelGate>
-          <AuthGate>
-            <>
-              <AppShell />
-              <AssistedScheduleMonitor />
-            </>
-          </AuthGate>
-        </FunnelGate>
-      )}
-      <InvadersOverlay />
-      {/* Browser overlay (Lane 1) — never globally mounted; each component
-          returns null unless the store says open. Kept eager · they're
-          guard-rendered to null and add ~2KB. */}
-      <BrowserScrim />
-      <BrowseOverlay />
-    </Suspense>
+    /* HardUpdateGate is the OUTERMOST wrapper · before the gate fires,
+     * children render normally so the IntroSplash and rest of the boot
+     * sequence proceed. If the Tauri updater reports a newer manifest,
+     * the gate mounts a full-viewport blocker on top with no bypass
+     * affordance · the only way forward is its primary CTA which
+     * download + installs + relaunches. Browser preview (Vite dev /
+     * Playwright) short-circuits to the children path so the e2e suite
+     * is unaffected. */
+    <HardUpdateGate>
+      <Suspense fallback={<BootFallback />}>
+        {!splashAcked && (
+          <IntroSplash
+            ready={splashReady}
+            failed={false}
+            onContinue={() => setSplashAcked(true)}
+          />
+        )}
+        {splashAcked && (
+          <FunnelGate>
+            <AuthGate>
+              <>
+                <AppShell />
+                <AssistedScheduleMonitor />
+              </>
+            </AuthGate>
+          </FunnelGate>
+        )}
+        <InvadersOverlay />
+        {/* Browser overlay (Lane 1) — never globally mounted; each component
+            returns null unless the store says open. Kept eager · they're
+            guard-rendered to null and add ~2KB. */}
+        <BrowserScrim />
+        <BrowseOverlay />
+      </Suspense>
+    </HardUpdateGate>
   );
 }
 
