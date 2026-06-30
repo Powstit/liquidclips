@@ -82,8 +82,27 @@ pub async fn open_browse_panel(
         .get_window("main")
         .ok_or_else(|| "main window not found".to_string())?;
 
+    // 2026-06-30 · pin the webview profile to a known directory inside
+    // the app's data store so cookies + localStorage survive overlay
+    // close + relaunch. Platform behaviour:
+    //   · Windows WebView2 · data_directory IS the cookie jar location ·
+    //     without this call WebView2 picks a temp-scoped folder that
+    //     gets wiped on app restart for some user profiles.
+    //   · macOS WKWebView · effectively a no-op · WKWebsiteDataStore.
+    //     default() is already persistent and tied to the app bundle ID
+    //     (app.liquidclips.desktop). The call is preserved for cross-
+    //     platform consistency + Windows correctness.
+    //   · Linux WebKitGTK · respected if the build links a recent enough
+    //     wry; harmless if not.
+    let profile_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("app_data_dir unavailable: {e}"))?
+        .join("webview_profile");
+
     let app_for_filter = app.clone();
     let builder = WebviewBuilder::new(PANEL_LABEL, WebviewUrl::External(parsed_url))
+        .data_directory(profile_dir)
         .on_navigation(move |nav_url| {
             if is_commerce_url(nav_url) {
                 let target = nav_url.to_string();
