@@ -21,6 +21,12 @@ export default defineConfig({
   // visual suites still share the same Vite dev server.
   testDir: "./tests",
   testMatch: /.*\.spec\.ts$/,
+  // 2026-06-30 · centralise toHaveScreenshot baselines under tests/visual/
+  // baselines/ regardless of which spec creates them, so the visual
+  // anchor folder Daniel asked for is the single discoverable source
+  // of truth. Only tests/visual/workstation.spec.ts uses toHaveScreenshot
+  // today; existing e2e suites take explicit page.screenshot() paths.
+  snapshotPathTemplate: "{testDir}/visual/baselines/{arg}{ext}",
   // 2026-06-23 monetisation pass · bumped from 60s to 90s after several
   // multi-route walks (brand-consistency, watermark-proof) crept past
   // the prior limit. The new AgencyPreviewBanner adds modest per-route

@@ -201,9 +201,11 @@ test.describe("Workstation · visual baseline", () => {
     await expect(page.locator(".lc-hud-user-tier")).toHaveText("Free");
     await expect(page.locator(".lc-hud-greet-name")).toHaveText("Guest");
 
-    // BUG-001 sister · SideNav user pill must also not leak "Daniel D."
-    await expect(page.locator(".lc-nav-user-name")).toHaveText("Guest");
-    await expect(page.locator(".lc-nav-user-tier")).toHaveText("Free");
+    // The Workstation route mounts under DesignOSAppShell, which uses
+    // ConsoleNav (.lc-nav-item) — NOT the legacy SideNav (.lc-nav-user-*).
+    // The legacy SideNav user pill is exercised by sections/ routes; this
+    // suite asserts the design-os shell only, so the TopHud assertions
+    // above are the single source of truth for the identity strings.
 
     // BUG-010 · the sticky Kade overlay must NOT be rendered when
     // hideStickyKade fires (DesignOSAppShell hides it on
