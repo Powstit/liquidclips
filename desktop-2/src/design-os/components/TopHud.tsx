@@ -38,18 +38,21 @@ export interface TopHudProps {
 
 export function TopHud({
   greetingEyebrow = "Good evening ✦",
-  greetingName = "Daniel",
+  // BUG-001 · "Daniel" leaked into every new-user TopHud because the
+  // /me hook hadn't resolved. Use a generic on-brand fallback so the
+  // chrome reads honestly until the real user is loaded.
+  greetingName = "Guest",
   // Beta-honest default — until an Inbox/Notifications surface ships in DOS,
   // we don't fake a NEWS count. The chip stays hidden when count is 0, and
   // re-appears the moment a real notifications hook starts pushing values.
   // Pairs with `Phase 6E-NewsChip-Hide` in TopHud.tsx render branch below.
   newsCount = 0,
   streakDays = 7,
-  userName = "Daniel",
-  // FEATURE-002 · the prior default "Solo · 1.4k clips" rendered a fake
-  // lifetime clip count whenever the /me hook hadn't resolved yet. Beta
-  // tier label, no number, until a real tier signal arrives from /me.
-  userTier = "Beta",
+  userName = "Guest",
+  // BUG-001 · was "Beta". The product's actual entry tier is "Free" —
+  // "Beta" implied invite-only access that doesn't exist. Real tier from
+  // /me overrides this whenever billing has resolved.
+  userTier = "Free",
 }: TopHudProps) {
   const [mode, setMode] = useState<AppMode>(() => readPersistedMode());
 

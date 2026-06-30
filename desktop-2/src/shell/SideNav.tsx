@@ -62,9 +62,14 @@ export function SideNav({ activeId }: SideNavProps) {
 
       <div className="lc-sidenav-divider" />
 
+      {/* BUG-001 · the user pill in the sidenav used to render the literal
+          "Daniel D." with "DD" initials regardless of who was signed in,
+          because the component never wired to a user context. Until the
+          real /me hook is plumbed through here, render an honest "Guest"
+          placeholder with brand initials so the chrome doesn't lie. */}
       <div className="lc-nav-user">
         <div className="lc-nav-user-avatar">
-          DD
+          GU
           <img
             className="lc-nav-user-crown"
             src={tier("free")}
@@ -74,7 +79,7 @@ export function SideNav({ activeId }: SideNavProps) {
           />
         </div>
         <div className="lc-nav-user-text">
-          <div className="lc-nav-user-name">Daniel D.</div>
+          <div className="lc-nav-user-name">Guest</div>
           <div className="lc-nav-user-tier">Free</div>
         </div>
       </div>
