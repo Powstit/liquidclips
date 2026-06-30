@@ -409,6 +409,19 @@ export async function handleActivationUrl(rawUrl: string): Promise<void> {
   }
 
   emit({ tier: nextTier, email: nextEmail, degraded });
+
+  /* 2026-06-30 · activation:complete · downstream surfaces that hydrate
+   * user-scoped state (Settings carrot panel, WalletPanel) subscribe so
+   * their mounted-once fetch refreshes when the user activates while the
+   * route is already open. Lazy dynamic import so the activation module
+   * stays free of cross-cuts to the design-os tree; the import cost is
+   * paid once per activation, not per render. */
+  try {
+    const { bus } = await import("../design-os/bridge");
+    bus.emit("activation:complete", { source: parsed.source });
+  } catch {
+    /* bus unavailable in browser preview / unit tests · silent OK. */
+  }
 }
 
 /** Synchronous read of the current state · for non-React consumers. */

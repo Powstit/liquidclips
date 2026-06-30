@@ -48,7 +48,7 @@ import {
   onboardCarrot,
   type CarrotSnapshot,
 } from "../../lib/carrot";
-import { bus } from "../bridge";
+import { bus, useEvent } from "../bridge";
 import { useMe } from "../state/useMe";
 import { useTierCaps } from "../state/useTierCaps";
 import { useBillingState } from "../../lib/billing/adapter";
@@ -276,6 +276,16 @@ function SettingsBody() {
   useEffect(() => {
     void refreshCarrot();
   }, []);
+
+  /* 2026-06-30 · activation:complete rehydration · if the user fires the
+   * Whop OAuth flow while the Settings tab is already open, the panel's
+   * useEffect[] above only ran once on mount and the carrot state sits
+   * at "Temporarily unavailable" forever. Refetch on every activation
+   * landing so the panel flips from guest → connected without a manual
+   * route round-trip. */
+  useEvent("activation:complete", () => {
+    void refreshCarrot();
+  });
 
   const handleSetupPayouts = async () => {
     if (carrotBusy) return;
