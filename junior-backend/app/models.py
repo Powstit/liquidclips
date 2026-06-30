@@ -123,6 +123,13 @@ class User(Base):
     # Read by the gate that mints licenses + by Earn/Publish gates.
     banned_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # v2.2.10 community chat · per-user role override. "member" is the
+    # default; admins can elevate a creator to "mod" via the HQ panel.
+    # FOUNDER + STAFF badges derive from founder_flag + is_admin_email
+    # at message-insert time and are NOT stored here — only the elevated
+    # MOD assignment persists on the User row.
+    chat_role: Mapped[str] = mapped_column(String, nullable=False, default="member")
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
@@ -1407,5 +1414,48 @@ class PromoCodeRedemption(Base):
         BigInteger, nullable=False, default=0
     )
     applied_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+
+
+class ChatMessage(Base):
+    """v2.2.10 native community chat. One row per message in our own
+    persistence (NOT Whop chat — that path is exposed via the legacy
+    community_channels surface and stays as-is). Roles are derived at
+    insert time so a tier or admin change does not silently relabel
+    history.
+
+    Channels (v1):
+      • "global"     — every authed user can read + write
+      • "agency-vip" — gated by whop_user_id presence (paid Whop members)
+
+    Pinning bridges into the existing Announcement layer (v2.2.9): a
+    pinned message persists here + writes a sibling Announcement row so
+    the AnnouncementBanner stack surfaces it as a sticky tinted header.
+    The two writes share the same id prefix so the pin can be undone in
+    one atomic step.
+    """
+
+    __tablename__ = "chat_messages"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    # Author. "system-bot" is the reserved id for welcome-bot messages
+    # and other server-emitted rows. Foreign-key is intentionally NOT
+    # declared so a system-bot row survives a user delete.
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    username: Mapped[str] = mapped_column(String, nullable=False, default="Liquid Clipper")
+    avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    # "global" | "agency-vip"
+    channel: Mapped[str] = mapped_column(String, nullable=False, default="global", index=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    # "founder" | "staff" | "mod" | "bot" | "member"
+    role: Mapped[str] = mapped_column(String, nullable=False, default="member")
+    # Pinned messages bridge into the active_announcements layer so the
+    # AnnouncementBanner stack renders them as sticky tinted headers.
+    pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    # Linked Announcement id when pinned == True. Lets unpin undo both
+    # rows in one atomic transaction.
+    announcement_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, index=True
     )

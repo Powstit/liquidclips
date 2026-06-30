@@ -18,6 +18,7 @@ import { TopHud } from "./TopHud";
 import { StickyKade, type KadePlacement } from "./StickyKade";
 import { KadeSpeechBubble } from "./KadeSpeechBubble";
 import { AnnouncementBanner } from "./AnnouncementBanner";
+import { ChatToggle } from "./ChatToggle";
 import { CursorGlow } from "../effects/CursorGlow";
 import { DropOverlay } from "../effects/DropOverlay";
 import { ToastHost } from "../effects/ToastHost";
@@ -134,6 +135,14 @@ export function DesignOSAppShell({
        *  that hide Kade entirely (Workstation post-complete · Login boot)
        *  the bubble never paints. */}
       {!hideStickyKade && <KadeSpeechBubble />}
+
+      {/* v2.2.10 native community chat · floating overlay. Mounted at
+       *  shell level so every route hosts it. The panel default-hides
+       *  behind a toggle so the pinned Workstation visual baseline
+       *  stays at 0% drift when closed. Same kade-hide gate so the
+       *  Login boot sequence and the Workstation post-complete view
+       *  don't paint a chat affordance. */}
+      {!hideStickyKade && <ChatToggle />}
 
       {/* Phase 6B infrastructure · render nothing until used.
        *  NOTE: <ModalPortal> is mounted higher up at SimulatorRouter so its

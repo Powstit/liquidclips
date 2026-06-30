@@ -624,6 +624,61 @@ def change_tier(
 
 
 # =====================================================================
+# 5b. POST /users/{user_id}/chat-role — v2.2.10 community moderation
+# =====================================================================
+
+
+class ChatRoleIn(BaseModel):
+    role: Literal["member", "mod"] = Field(...)
+    reason: str = Field(..., min_length=1, max_length=400)
+
+
+@router.post("/users/{user_id}/chat-role", response_model=MutationOk)
+def change_chat_role(
+    user_id: str,
+    body: ChatRoleIn,
+    admin: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    idempotence_key: Annotated[str | None, Header(alias="idempotence-key")] = None,
+) -> MutationOk:
+    """Elevate a creator to mod (or revert to member). Founder + staff
+    badges derive from founder_flag + is_admin_email and are NOT
+    settable here — those are auth-state, not moderation state."""
+    action = "user.chat-role"
+    _check_idempotence(db, action=action, idempotence_key=idempotence_key)
+
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found")
+
+    prior = user.chat_role
+    user.chat_role = body.role
+    db.commit()
+
+    row = _write_audit(
+        db,
+        actor_email=admin.email or "",
+        action=action,
+        target_type="user",
+        target_id=user.id,
+        payload={
+            "idempotence_key": idempotence_key,
+            "prior_role": prior,
+            "new_role": body.role,
+            "reason": body.reason,
+        },
+        result="ok",
+    )
+    return MutationOk(
+        action=action,
+        target_type="user",
+        target_id=user.id,
+        audit_id=row.id,
+        message=f"chat_role {prior} → {body.role}",
+    )
+
+
+# =====================================================================
 # 6. POST /users/{user_id}/refund — DELETED (P1-009)
 # =====================================================================
 #
