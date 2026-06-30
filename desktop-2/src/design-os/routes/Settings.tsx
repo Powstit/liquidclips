@@ -555,20 +555,25 @@ function SettingsBody() {
                   in your browser · your tier updates here as soon as Whop
                   confirms the purchase.
                 </p>
-                <div className="lc-settings-actions">
+                <div className="lc-settings-actions" data-whop-linked={me.snapshot?.whopUserId ? "1" : "0"}>
                   {/* Connect Whop · OAuth bridge. Mints a fresh activation
                       challenge, opens api.liquidclips.app/auth/whop/start
                       in the OS browser, and the deep-link subscriber wakes
-                      the app on liquidclips://activate completion. */}
-                  <button
-                    type="button"
-                    className="lc-settings-cta lc-settings-cta-primary"
-                    data-testid="settings-connect-whop"
-                    onClick={() => { void handleConnectWhop(); }}
-                    disabled={connectingWhop}
-                  >
-                    {connectingWhop ? "Opening Whop…" : "Connect Whop · sign in ↗"}
-                  </button>
+                      the app on liquidclips://activate completion.
+                      Gated on whopUserId absence · the moment /me resolves a
+                      Whop link this CTA disappears and the Manage-plan
+                      action below becomes the sole Whop affordance. */}
+                  {!me.snapshot?.whopUserId && (
+                    <button
+                      type="button"
+                      className="lc-settings-cta lc-settings-cta-primary"
+                      data-testid="settings-connect-whop"
+                      onClick={() => { void handleConnectWhop(); }}
+                      disabled={connectingWhop}
+                    >
+                      {connectingWhop ? "Opening Whop…" : "Connect Whop · sign in ↗"}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="lc-settings-cta lc-settings-cta-secondary"
@@ -1006,12 +1011,32 @@ function SettingsBody() {
           </EngineErrorBoundary>
 
           {/* Payouts & Security · GET /me/carrot drives the rendered state.
-              Not onboarded → Set up payouts (POST /me/carrot/onboard).
-              Onboarded → Manage payouts (POST /me/carrot/payouts-portal).
-              Backend flips behaviour via CARROT_WHOP_LIVE; UI mirrors it
-              without faking numbers. */}
+              State machine:
+                · carrotLoading → "Checking…" · spinner equivalent · no
+                  action buttons rendered until the snapshot resolves.
+                · carrot === null (backend unreachable / fetch errored) →
+                  "Temporarily unavailable" · honest about the failure ·
+                  action buttons HIDDEN so users don't fire RPCs against
+                  a dead backend and get confusing toasts.
+                · carrot exists, wallet not onboarded → "Not connected" +
+                  Set up payouts CTA → POST /me/carrot/onboard.
+                · carrot exists, wallet onboarded → "Connected · Whop
+                  manages the wallet" + Manage payouts CTA →
+                  POST /me/carrot/payouts-portal.
+              Beta badge gates on `!carrot.is_live` to auto-hide when
+              Railway flips CARROT_WHOP_LIVE=true. */}
           <EngineErrorBoundary route="settings" component="PayoutsAndSecurity">
-            <section className="lc-settings-card" data-tab="diagnostics" data-testid="settings-payouts-card">
+            <section
+              className="lc-settings-card"
+              data-tab="diagnostics"
+              data-testid="settings-payouts-card"
+              data-carrot-state={
+                carrotLoading ? "loading"
+                : !carrot ? "unavailable"
+                : carrot.wallet?.onboarded ? "onboarded"
+                : "not-onboarded"
+              }
+            >
               <span className="lc-settings-card-eb">Payouts &amp; security</span>
               <div className="lc-settings-rows">
                 <SettingsRow
@@ -1019,11 +1044,19 @@ function SettingsBody() {
                   value={
                     carrotLoading
                       ? "Checking…"
-                      : carrot?.wallet?.onboarded
-                        ? "Connected · Whop manages the wallet"
-                        : "Not connected"
+                      : !carrot
+                        ? "Temporarily unavailable"
+                        : carrot.wallet?.onboarded
+                          ? "Connected · Whop manages the wallet"
+                          : "Not connected"
                   }
-                  tone={carrot?.wallet?.onboarded ? "live" : "muted"}
+                  tone={
+                    !carrot
+                      ? "warn"
+                      : carrot.wallet?.onboarded
+                        ? "live"
+                        : "muted"
+                  }
                 />
                 {carrot?.economics && (
                   <SettingsRow
@@ -1034,12 +1067,17 @@ function SettingsBody() {
                   />
                 )}
                 <p className="lc-settings-hint">
-                  Kade · we credit approved rewards to your Whop balance.
-                  Whop handles identity, KYC, and the actual transfer to
-                  your bank or crypto wallet.
+                  {!carrot && !carrotLoading
+                    ? "Kade · we couldn't reach the payouts service right now. Your earnings are still tracked · we'll retry on next launch."
+                    : "Kade · we credit approved rewards to your Whop balance. Whop handles identity, KYC, and the actual transfer to your bank or crypto wallet."}
                 </p>
                 <div className="lc-settings-actions">
-                  {!carrot?.wallet?.onboarded ? (
+                  {/* Actions only render when we have a live carrot
+                      snapshot to act on. Null state above already tells
+                      the user the service is unavailable · firing
+                      onboard/portal RPCs here would just emit confusing
+                      toasts. */}
+                  {carrot && !carrot.wallet?.onboarded && (
                     <button
                       type="button"
                       className="lc-settings-cta lc-settings-cta-primary"
@@ -1049,7 +1087,8 @@ function SettingsBody() {
                     >
                       {carrotBusy ? "Opening Whop…" : "Set up payouts on Whop ↗"}
                     </button>
-                  ) : (
+                  )}
+                  {carrot?.wallet?.onboarded && (
                     <button
                       type="button"
                       className="lc-settings-cta lc-settings-cta-secondary"
