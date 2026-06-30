@@ -1,26 +1,31 @@
 /* The rail lives beside the inspector, so size it for its container rather
-   than the full viewport. Four columns keeps every stage name readable. */
+   than the full viewport.
+   BUG-008 · `repeat(4, minmax(130px, 1fr))` collapsed to 7 squashed columns
+   on narrow main-column widths because the explicit column count beat the
+   wrap. `auto-fit` lets tiles wrap to a new row instead of shrinking
+   per-character. The 140px floor + `min-width: 140px` on the tile (below)
+   guarantees stage names like "Preparing video" stay on a single line at
+   every viewport. */
 .lc-stage-rail {
   display: grid;
-  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 10px;
   width: 100%;
-}
-@media (max-width: 880px) {
-  .lc-stage-rail { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
 }
 
 /* BUG-029.4 · 2x tile padding for cockpit-readable scale.
    Bug 1 · `min-height` softened — was 196px hard floor that clipped wrapped
    text. Tile is now a flex column that grows to fit content; floor only
-   prevents collapse on the rare 1-word stage (e.g. "Cutting"). */
+   prevents collapse on the rare 1-word stage (e.g. "Cutting").
+   BUG-008 · `min-width: 140px` (was 0) prevents the per-character squash
+   demoed in v2.2.5; tiles will overflow or wrap before they shrink below
+   readable width. */
 .lc-stage-tile {
   padding: 14px 15px !important;
   display: flex; flex-direction: column; gap: 7px;
   min-height: 112px;
   position: relative;
-  /* Bug 1 · ensure descendant text can use the full width before wrap. */
-  min-width: 0;
+  min-width: 140px;
   overflow: visible;
 }
 

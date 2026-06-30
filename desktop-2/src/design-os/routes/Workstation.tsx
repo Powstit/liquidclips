@@ -199,6 +199,12 @@ function WorkstationBody() {
       route="workstation"
       defaultKade={session.kade}
       kadePlacement={spec.kadePlacement}
+      // BUG-010 · once clips are ready, the persistent helper-right Kade
+      // overlaps the inspector panel and competes with the user's actual
+      // content. Hide the sticky Kade on complete so the clip grid +
+      // inspector own the viewport. Kade is still present DURING the run
+      // (via KadeIgnition) and on the empty / running states.
+      hideStickyKade={session.phase === "complete"}
     >
       <fm.div
         className="sim-stage lc-ws-stage"
@@ -259,9 +265,19 @@ function WorkstationBody() {
                 <KadeIgnition />
               </EngineErrorBoundary>
 
-              <EngineErrorBoundary route="workstation" component="StageRail">
-                <StageRail />
-              </EngineErrorBoundary>
+              {/* BUG-007 · StageRail is a running-phase progress surface.
+                  When phase === "complete", the rail's seven "Complete"
+                  pills consume the full main-column height above
+                  ResultsGrid, hiding the user's actual clips below the
+                  fold. Dismiss the rail on complete; KadeIgnition already
+                  follows the same dismiss-on-clipsReady pattern. The
+                  heartbeat-done strip below carries the "Clips ready"
+                  message so no signal is lost. */}
+              {session.phase !== "complete" && (
+                <EngineErrorBoundary route="workstation" component="StageRail">
+                  <StageRail />
+                </EngineErrorBoundary>
+              )}
 
             {/* BUG-023 · live heartbeat strip — positioned ABOVE the grid so
                 it stays above the cockpit dock fold. */}
