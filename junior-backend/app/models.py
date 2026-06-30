@@ -130,6 +130,14 @@ class User(Base):
     # MOD assignment persists on the User row.
     chat_role: Mapped[str] = mapped_column(String, nullable=False, default="member")
 
+    # v2.2.11 arcade leaderboard · best-ever Space Invaders score. The
+    # desktop POSTs to /chat/game/score on each game-over; the route
+    # ratchets this value up (never down) so a refresh / replay cannot
+    # erase a record. ChatMessageOut surfaces this via a LEFT JOIN at
+    # history time so the chat row can paint a 🏆 [score] badge next to
+    # the role tag.
+    arcade_high_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
@@ -232,6 +240,12 @@ NOTIFICATION_CATEGORIES = (
     "founder",
     "junior_message",
     "pipeline_event",
+    # v2.2.11 money-flow channels · surface bounty verdicts + carrot
+    # claims + Whop view-payout receipts directly in the desktop inbox
+    # so creators see the verdict the instant they boot the app.
+    "wallet",
+    "bounty",
+    "payout",
 )
 
 

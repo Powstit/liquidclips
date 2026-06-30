@@ -28,9 +28,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import {
+  fetchArcadeLeaderboard,
   searchMedia,
   sendChatMessage,
   useChatChannel,
+  type ArcadeLeaderboardEntry,
   type ChatChannel,
   type ChatMessage,
   type ChatRole,
@@ -189,6 +191,15 @@ function MessageRow({ row }: MessageRowProps): JSX.Element {
               {badge}
             </span>
           ) : null}
+          {row.arcade_high_score > 0 ? (
+            <span
+              className="lc-chat-row-arcade"
+              data-testid="lc-chat-row-arcade"
+              title="Space Invaders best score"
+            >
+              🏆 {row.arcade_high_score.toLocaleString()}
+            </span>
+          ) : null}
           <span className="lc-chat-row-time">{timeLabel(row.created_at)}</span>
         </div>
         <div className="lc-chat-row-content">{row.content}</div>
@@ -224,6 +235,10 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
 
   const streamRef = useRef<HTMLDivElement | null>(null);
   const autoStickRef = useRef(true);
+  const [leaderboard, setLeaderboard] = useState<ArcadeLeaderboardEntry[] | null>(
+    null,
+  );
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
 
   const { history, reload } = useChatChannel(channel, { enabled: open });
 
@@ -265,9 +280,24 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
     [history.viewer_role],
   );
 
+  const openLeaderboard = async (): Promise<void> => {
+    setLeaderboardLoading(true);
+    const list = await fetchArcadeLeaderboard(10);
+    setLeaderboard(list);
+    setLeaderboardLoading(false);
+  };
+
   const send = async (): Promise<void> => {
     const content = composer.trim();
     if (!content || sending) return;
+    // v2.2.11 · inline slash command parser. "/leaderboard" never sends
+    // a real message — it just opens the overlay panel and clears the
+    // composer so the user can keep typing afterwards.
+    if (content.toLowerCase() === "/leaderboard") {
+      setComposer("");
+      void openLeaderboard();
+      return;
+    }
     setSending(true);
     const out = await sendChatMessage({
       channel,
@@ -364,6 +394,56 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
                 setShowMedia(false);
               }}
             />
+          ) : null}
+
+          {leaderboard !== null ? (
+            <div
+              className="lc-chat-leaderboard"
+              data-testid="lc-chat-leaderboard"
+              role="dialog"
+              aria-label="Arcade leaderboard"
+            >
+              <div className="lc-chat-leaderboard-header">
+                <span>🏆 Top 10 · Space Invaders</span>
+                <button
+                  type="button"
+                  className="lc-chat-panel-close"
+                  onClick={() => setLeaderboard(null)}
+                  aria-label="Close leaderboard"
+                >
+                  ×
+                </button>
+              </div>
+              {leaderboardLoading ? (
+                <div className="lc-chat-leaderboard-empty">Loading…</div>
+              ) : leaderboard.length === 0 ? (
+                <div className="lc-chat-leaderboard-empty">
+                  No scores yet · be the first to land a record.
+                </div>
+              ) : (
+                <ol className="lc-chat-leaderboard-list">
+                  {leaderboard.map((entry, i) => (
+                    <li key={entry.user_id} className="lc-chat-leaderboard-row">
+                      <span className="lc-chat-leaderboard-rank">#{i + 1}</span>
+                      <span className="lc-chat-leaderboard-name">
+                        {entry.username}
+                      </span>
+                      {BADGE_LABEL[entry.role] ? (
+                        <span
+                          className="lc-chat-row-badge"
+                          data-role={entry.role}
+                        >
+                          {BADGE_LABEL[entry.role]}
+                        </span>
+                      ) : null}
+                      <span className="lc-chat-leaderboard-score">
+                        {entry.arcade_high_score.toLocaleString()}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
           ) : null}
 
           <div className="lc-chat-composer">

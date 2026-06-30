@@ -519,6 +519,10 @@ async def lifespan(_app: FastAPI):
         "CREATE INDEX IF NOT EXISTS ix_chat_messages_user ON chat_messages (user_id)",
         "CREATE INDEX IF NOT EXISTS ix_chat_messages_pinned ON chat_messages (channel, pinned) WHERE pinned = true",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_role varchar NOT NULL DEFAULT 'member'",
+        # v2.2.11 arcade leaderboard — Space Invaders best-ever score.
+        # Indexed because /chat/game/leaderboard orders the top-10 desc.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS arcade_high_score integer NOT NULL DEFAULT 0",
+        "CREATE INDEX IF NOT EXISTS ix_users_arcade_high_score ON users (arcade_high_score DESC)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:

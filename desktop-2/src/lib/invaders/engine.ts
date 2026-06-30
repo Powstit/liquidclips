@@ -30,6 +30,17 @@ export type Input = {
   fire: boolean; // edge-triggered — true only on the frame the key first goes down
 };
 
+/** v2.2.11 · audio bridge. Engine stays DOM-free + testable; the
+ *  overlay binds these to the WebAudio synth module so SFX fire at
+ *  the exact frame the game-state changes. All events are best-effort
+ *  — engine never reads back, just emits. */
+export type EngineEvent =
+  | "fire"          // player launched a bullet
+  | "invader-kill"  // player bullet hit an invader
+  | "player-hit"    // invader bullet hit player (survived · still has lives)
+  | "player-death"  // invader bullet hit player AND zeroed lives
+  | "wave-up";      // last invader cleared, next wave spawning
+
 const PLAYER_W = 24;
 const PLAYER_H = 12;
 const PLAYER_SPEED = 220; // px/s
@@ -121,7 +132,12 @@ function stepCadenceMs(wave: number): number {
   return Math.max(STEP_FLOOR_MS, STEP_BASE_MS - (wave - 1) * 100);
 }
 
-export function step(state: GameState, dtMs: number, input: Input): GameState {
+export function step(
+  state: GameState,
+  dtMs: number,
+  input: Input,
+  emit?: (event: EngineEvent) => void,
+): GameState {
   if (state.status !== "playing") return state;
 
   const dtS = dtMs / 1000;
@@ -142,6 +158,7 @@ export function step(state: GameState, dtMs: number, input: Input): GameState {
         vy: PLAYER_BULLET_SPEED,
         from: "player",
       });
+      emit?.("fire");
     }
   }
 
@@ -225,6 +242,7 @@ export function step(state: GameState, dtMs: number, input: Input): GameState {
         i.alive = false;
         b.pos.y = -9999; // mark for removal
         state.score += 10 * (i.row + 1);
+        emit?.("invader-kill");
         break;
       }
     }
@@ -245,8 +263,10 @@ export function step(state: GameState, dtMs: number, input: Input): GameState {
       b.pos.y = -9999; // consume the bullet
       if (state.lives <= 0) {
         state.status = "game-over";
+        emit?.("player-death");
         return state;
       }
+      emit?.("player-hit");
       break; // one hit per frame is plenty (also avoids multi-bullet stacking)
     }
   }
@@ -272,6 +292,7 @@ export function step(state: GameState, dtMs: number, input: Input): GameState {
     state._dir = 1;
     state._invaderSpeed = INVADER_SPEED_BASE + (state.wave - 1) * 10;
     state._nextInvaderShotMs = INVADER_SHOT_INTERVAL_MS;
+    emit?.("wave-up");
   }
 
   return state;

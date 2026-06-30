@@ -397,6 +397,33 @@ def update_submission_status(
                 payout=payout_display,
                 first_name=_first_name(clipper),
             )
+            # v2.2.11 inbox mirror · so the verdict surfaces in the
+            # desktop the instant the user boots, not just in their
+            # email client. Dedup by submission row id + status so a
+            # mod re-approve doesn't double-write.
+            try:
+                from app.routes.notifications import write_notification
+                write_notification(
+                    db,
+                    user_id=clipper.id,
+                    category="bounty",
+                    title=f"Reward approved · est. {payout_display}",
+                    body=(
+                        f"Your reward clip for {row.campaign_id} passed Whop's "
+                        "review. Payouts flow on Whop's standard cycle — track "
+                        "it from the Earn tab."
+                    )[:600],
+                    priority="high",
+                    action_kind="open_earn",
+                    action_data={
+                        "submission_id": row.id,
+                        "campaign_id": row.campaign_id,
+                        "payout_cents": row.payout_usd_cents or 0,
+                    },
+                    external_dedup_key=f"bounty-approved-{row.id}",
+                )
+            except Exception:  # noqa: BLE001 · inbox must never block email path
+                pass
             # Admin alert when the payout crosses an attention bar — keeps
             # Daniel's inbox useful instead of one email per cleared clip.
             if row.payout_usd_cents >= _BIG_PAYOUT_CENTS:
@@ -423,6 +450,32 @@ def update_submission_status(
                 reason=row.rejection_reason or "Reviewer feedback wasn't recorded.",
                 first_name=_first_name(clipper),
             )
+            # v2.2.11 inbox mirror · the same surface that shows
+            # approvals must show rejections so creators see the
+            # reason without opening email.
+            try:
+                from app.routes.notifications import write_notification
+                write_notification(
+                    db,
+                    user_id=clipper.id,
+                    category="bounty",
+                    title=f"Reward declined · {row.campaign_id}",
+                    body=(
+                        f"Your submission for {row.campaign_id} was declined "
+                        f"by review. Reason: "
+                        f"{row.rejection_reason or 'reviewer feedback was not recorded.'}"
+                    )[:600],
+                    priority="high",
+                    action_kind="open_earn",
+                    action_data={
+                        "submission_id": row.id,
+                        "campaign_id": row.campaign_id,
+                        "rejection_reason": (row.rejection_reason or "")[:600],
+                    },
+                    external_dedup_key=f"bounty-rejected-{row.id}",
+                )
+            except Exception:  # noqa: BLE001 · inbox must never block email path
+                pass
 
     return _to_response(row)
 
