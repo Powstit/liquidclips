@@ -16,8 +16,9 @@
  */
 
 import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { KadeController } from "./KadeController";
-import { useEvent, type KadeState } from "../bridge";
+import { bus, useEvent, type KadeState } from "../bridge";
 import "./StickyKade.css";
 
 /* 2026-06-30 · Kade mood overlay · DISTINCT from KadeState pose.
@@ -116,18 +117,77 @@ export function StickyKade({ defaultState, placement = "bottom-right" }: StickyK
   const pulseClass = pulse ? "is-pulsing" : "";
   // 2026-06-30 · mood drives a wrapper CSS class · keyframes per state
   // live in StickyKade.css under .lc-sticky-kade.lc-mood-{state}.
-  const moodClass = mood === "idle" ? "" : `lc-mood-${mood}`;
+  // Collapsed mood is no longer a CSS class · it's a separate badge
+  // rendered below (CollapsedDock) so the main portrait can crossfade
+  // to zero scale cleanly via framer-motion.
+  const moodClass = mood === "idle" || mood === "collapsed" ? "" : `lc-mood-${mood}`;
+  const isCollapsed = mood === "collapsed";
+
+  const onMinimize = () => bus.emit("kade:mood", { mood: "collapsed" });
+  const onExpand = () => bus.emit("kade:mood", { mood: "idle" });
 
   return (
-    <div
-      className={`lc-sticky-kade ${mode} ${pulseClass} ${moodClass}`}
-      data-kade-mood={mood}
-      aria-hidden="true"
-    >
-      <div className="lc-sticky-kade-glow" />
-      <div className="lc-sticky-kade-host">
-        <KadeController state={state} />
-      </div>
-    </div>
+    <>
+      <AnimatePresence>
+        {!isCollapsed && (
+          <motion.div
+            key="lc-sticky-kade-host"
+            className={`lc-sticky-kade ${mode} ${pulseClass} ${moodClass}`}
+            data-kade-mood={mood}
+            initial={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.35, transition: { duration: 0.22, ease: [0.22, 0.9, 0.35, 1] } }}
+            transition={{ type: "spring", stiffness: 240, damping: 22, mass: 0.6 }}
+            aria-hidden="true"
+          >
+            <div className="lc-sticky-kade-glow" />
+            <div className="lc-sticky-kade-host">
+              <KadeController state={state} />
+              {/* Minimize affordance · click to send Kade to the dock badge.
+                  Only paints when NOT mini (mini already shrinks Kade for
+                  scroll-evict purposes; collapse is the user-driven version). */}
+              {!mini && (
+                <button
+                  type="button"
+                  className="lc-sticky-kade-minimize"
+                  onClick={onMinimize}
+                  aria-label="Minimise Kade"
+                  data-testid="kade-minimize"
+                >
+                  −
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Collapsed dock badge · bottom-left, near the sidebar.
+          Click to bring Kade back. AppShell's engine:error listener
+          calls bus.emit("kade:mood", { mood: "alert" }) which overrides
+          the collapsed state automatically · the AnimatePresence above
+          re-mounts the portrait and the speech bubble paints alongside. */}
+      <AnimatePresence>
+        {isCollapsed && (
+          <motion.button
+            key="lc-sticky-kade-dock"
+            type="button"
+            className="lc-sticky-kade-dock"
+            data-testid="kade-dock-badge"
+            initial={{ opacity: 0, scale: 0.6, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.6, y: 10, transition: { duration: 0.18 } }}
+            transition={{ type: "spring", stiffness: 260, damping: 24, mass: 0.5 }}
+            onClick={onExpand}
+            aria-label="Restore Kade"
+          >
+            <span className="lc-sticky-kade-dock-glyph" aria-hidden="true">
+              ✦
+            </span>
+            <span className="lc-sticky-kade-dock-label">Kade</span>
+          </motion.button>
+        )}
+      </AnimatePresence>
+    </>
   );
 }

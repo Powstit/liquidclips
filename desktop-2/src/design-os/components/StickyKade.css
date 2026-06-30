@@ -185,12 +185,116 @@
   50%      { box-shadow: 0 0 0 8px rgba(255, 26, 140, 0); }
 }
 
-/* collapsed · Kade stepped aside · scaled + dimmed · pose preserved */
-.lc-sticky-kade.lc-mood-collapsed {
-  transform: scale(0.7);
-  opacity: 0.6;
-  transition: transform 240ms ease, opacity 240ms ease;
-  pointer-events: none;
+/* collapsed mood · now driven by AnimatePresence in StickyKade.tsx ·
+ * the portrait unmounts and a dock badge mounts in its place. CSS
+ * fallback kept for components that still read the data-kade-mood
+ * attribute without the framer-motion wrapper · scaled + dimmed
+ * version of the legacy class-only behaviour. */
+
+/* Minimize button inside the host · small chevron in the top-right. */
+.lc-sticky-kade-minimize {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 26, 140, 0.42);
+  background: linear-gradient(180deg, rgba(22, 18, 30, 0.96), rgba(14, 11, 20, 0.94));
+  color: #ffd5e9;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 26, 140, 0.10) inset;
+  transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
+  opacity: 0;
+  pointer-events: auto;
+  /* Fades in only on hover/focus of the parent Kade host · doesn't
+   * clutter the brand portrait at rest. */
+}
+.lc-sticky-kade:hover .lc-sticky-kade-minimize,
+.lc-sticky-kade:focus-within .lc-sticky-kade-minimize {
+  opacity: 1;
+}
+.lc-sticky-kade-minimize:hover {
+  transform: scale(1.08);
+  background: linear-gradient(180deg, rgba(40, 18, 38, 0.98), rgba(28, 11, 26, 0.96));
+  box-shadow: 0 6px 18px rgba(255, 26, 140, 0.34), 0 0 0 1px rgba(255, 26, 140, 0.22) inset;
+}
+.lc-sticky-kade-minimize:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent-active);
+  outline-offset: 2px;
+}
+
+/* Collapsed dock badge · bottom-left, sits next to the sidebar.
+ * Click to bring Kade back. Compact, brand-tinted, easy to find. */
+.lc-sticky-kade-dock {
+  position: fixed;
+  left: clamp(18px, 1.6vw, 28px);
+  bottom: clamp(18px, 2vh, 32px);
+  z-index: 950;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 10px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 26, 140, 0.42);
+  background:
+    linear-gradient(180deg, rgba(22, 18, 30, 0.96), rgba(14, 11, 20, 0.94));
+  color: var(--color-ink);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 26, 140, 0.12) inset,
+    0 18px 36px -18px rgba(255, 26, 140, 0.35);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+.lc-sticky-kade-dock:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 26, 140, 0.22) inset,
+    0 24px 44px -18px rgba(255, 26, 140, 0.42);
+}
+.lc-sticky-kade-dock:focus-visible {
+  outline: 2px solid var(--accent-active);
+  outline-offset: 3px;
+}
+.lc-sticky-kade-dock-glyph {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ff1a8c, #d40d70);
+  color: #ffffff;
+  font-size: 13px;
+  line-height: 1;
+  box-shadow: 0 0 12px rgba(255, 26, 140, 0.55);
+  /* Gentle pulse so the badge advertises "click me" without nagging. */
+  animation: lc-sticky-kade-dock-pulse 2.6s ease-in-out infinite;
+}
+.lc-sticky-kade-dock-label {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 10.5px;
+  color: #ffd5e9;
+}
+@keyframes lc-sticky-kade-dock-pulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(255, 26, 140, 0.55); transform: scale(1); }
+  50%      { box-shadow: 0 0 18px rgba(255, 26, 140, 0.85); transform: scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lc-sticky-kade-dock-glyph { animation: none; }
+  .lc-sticky-kade-dock:hover { transform: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
