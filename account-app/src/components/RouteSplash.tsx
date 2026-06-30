@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { JuniorLoader } from "./JuniorLoader";
+import { LiquidLoader } from "./LiquidLoader";
 
-// Always-visible navigation splash. Shows the JuniorLoader as a full-bleed
+// Always-visible navigation splash. Shows the LiquidLoader as a full-bleed
 // overlay for ~700ms on every pathname change, so the brand voice is the
 // thing the user sees between pages — even when the route resolves instantly.
 //
@@ -58,7 +58,7 @@ export function RouteSplash() {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-paper/95 backdrop-blur-md">
-      <JuniorLoader message={messageFor(pending ?? pathname)} />
+      <LiquidLoader message={messageFor(pending ?? pathname)} />
     </div>
   );
 }
