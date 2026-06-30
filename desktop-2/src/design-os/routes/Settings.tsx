@@ -1060,6 +1060,20 @@ function SettingsBody() {
                       {carrotBusy ? "Opening Whop…" : "Manage payouts on Whop ↗"}
                     </button>
                   )}
+                  {/* Beta badge · gated on the backend's carrot.is_live flag
+                      so it auto-hides the moment Railway flips
+                      CARROT_WHOP_LIVE=true. Keeps the beta cohort eyes-open
+                      about the mock-onboarding state until the real Whop
+                      rail goes live. */}
+                  {carrot && !carrot.is_live && (
+                    <span
+                      className="lc-payouts-beta-badge"
+                      data-testid="settings-payouts-beta-badge"
+                      aria-label="Beta · payouts opening soon"
+                    >
+                      Beta · payouts opening soon
+                    </span>
+                  )}
                 </div>
               </div>
             </section>

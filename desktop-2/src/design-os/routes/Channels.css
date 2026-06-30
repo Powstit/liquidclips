@@ -22,6 +22,11 @@
 .lc-channels-stage {
   gap: 14px;
   padding: 0 clamp(16px, 2.5vw, 32px) 72px;
+  /* BUG-005 safety net · 2026-06-30 · explicit ink color so the
+   * route never inherits a rogue black-on-dark cascade if a parent
+   * resets `color`. Pre-beta posture · audited surfaces should never
+   * depend on inherited body text colour. */
+  color: var(--color-ink);
 }
 
 .lc-channels-stage .lc-route-head {
