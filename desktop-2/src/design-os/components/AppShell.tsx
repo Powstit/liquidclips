@@ -16,6 +16,7 @@ import { WorldLayer, type WorldKey } from "./WorldLayer";
 import { ConsoleNav } from "./ConsoleNav";
 import { TopHud } from "./TopHud";
 import { StickyKade, type KadePlacement } from "./StickyKade";
+import { KadeSpeechBubble } from "./KadeSpeechBubble";
 import { CursorGlow } from "../effects/CursorGlow";
 import { DropOverlay } from "../effects/DropOverlay";
 import { ToastHost } from "../effects/ToastHost";
@@ -56,6 +57,51 @@ export function DesignOSAppShell({
     bus.emit("route:enter", { route: routeForRegistry });
   }, [routeForRegistry]);
 
+  /* 2026-06-30 · global troubleshooting bridge.
+   * Listens to engine:error (already emitted by useEngineSession on
+   * sidecar bake failures) and the browser's unhandledrejection event
+   * (catches network failures from authedFetch / fetch wrappers that
+   * the route's own error boundary didn't swallow). On either signal:
+   *   - flip Kade to "alert" mood via kade:mood
+   *   - emit a kade:speak with a human title + body
+   * The KadeSpeechBubble mounts the bubble; StickyKade applies the
+   * mood overlay. Both auto-dismiss after their respective TTLs. */
+  useEvent("engine:error", (p) => {
+    bus.emit("kade:mood", { mood: "alert" });
+    bus.emit("kade:speak", {
+      title: "Engine hit a snag",
+      body: p.human ?? p.error ?? "Liquid Clips couldn't finish that run. We saved your progress · try again or open the Diagnostics tab in Settings.",
+      severity: "error",
+    });
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    /* unhandledrejection · catches uncaught Promise rejections from
+     * any background fetch chain. Synchronous throws are caught by
+     * EngineErrorBoundary inside each route. */
+    const onReject = (e: PromiseRejectionEvent) => {
+      const reason = e.reason;
+      const message =
+        reason instanceof Error
+          ? reason.message
+          : typeof reason === "string"
+            ? reason
+            : "An unexpected background error happened.";
+      /* Filter known-safe rejections so the bubble doesn't cry wolf
+       * on aborted fetches and dev HMR signals. */
+      if (/AbortError|user aborted/i.test(message)) return;
+      bus.emit("kade:mood", { mood: "alert" });
+      bus.emit("kade:speak", {
+        title: "Background hiccup",
+        body: message,
+        severity: "warn",
+      });
+    };
+    window.addEventListener("unhandledrejection", onReject);
+    return () => window.removeEventListener("unhandledrejection", onReject);
+  }, []);
+
   // NOTE: body[data-design-os="active"] is owned by DesignOSBoundary (the
   // single source of truth). See SimulatorRouter — it wraps the whole tree.
 
@@ -78,6 +124,10 @@ export function DesignOSAppShell({
       </section>
 
       {!hideStickyKade && <StickyKade defaultState={defaultKade} placement={kadePlacement} />}
+      {/* Speech bubble travels with Kade · same hide gate so on routes
+       *  that hide Kade entirely (Workstation post-complete · Login boot)
+       *  the bubble never paints. */}
+      {!hideStickyKade && <KadeSpeechBubble />}
 
       {/* Phase 6B infrastructure · render nothing until used.
        *  NOTE: <ModalPortal> is mounted higher up at SimulatorRouter so its
