@@ -9,12 +9,12 @@ import {
   type ValidateResponse,
 } from "@/lib/promo";
 
-// Affiliate starter offer = ONE offer: 100 free clips, then Pro $29.99/mo.
-// The first Whop plan carries a 30-day free trial, so "30 days free then $29.99"
-// is enforced by Whop. The 100-clip cap is an in-app soft limit (no auto-bill),
-// so the copy says the paid plan starts after 30 days; if 100 clips are used
-// first, Liquid Clips asks the user to continue on Solo. Pro/Agency are in-app
-// upgrades later — not shown here. Embed carries ?a=<affiliateId> + returns to /get.
+// v2.2.15 · Starter offer = ONE offer: 100 free clips OR 7 days, whichever
+// comes first, then Solo $29.99/mo auto-charged. Whop enforces the 7-day
+// timer natively; the 100-clip trigger is an in-app one-click approve that
+// ends the trial early via Whop's charge API. Card captured at signup, so
+// the "continue on Solo" moment is a single tap with no re-entry of any
+// details. Embed carries ?a=<affiliateId> + returns to /get.
 const SOLO_PLAN_ID = process.env.NEXT_PUBLIC_WHOP_SOLO_PLAN_ID ?? "plan_qe8AFXj9J3SWi";
 
 const STEPS = [
@@ -25,10 +25,10 @@ const STEPS = [
 ] as const;
 
 const FAQ = [
-  { q: "When am I billed?", a: "Your Pro plan starts after 30 days. If you use all 100 free exports before then, Liquid Clips will ask you to continue on Pro ($29.99/mo). Cancel anytime before the trial ends." },
+  { q: "When am I billed?", a: "Your Solo plan starts after 7 days or 100 clip exports — whichever comes first. Cancel anytime before the trial ends. If you approve early, we charge your card on file for $29.99/mo instantly." },
   { q: "Can I download the app after checkout?", a: "Yes. After checkout, create or sign in to your Liquid Clips account and download the desktop app." },
   { q: "Do I need a YouTube channel?", a: "No. You can clip local videos, client videos, podcasts, or Whop Content Rewards." },
-  { q: "Can I upgrade later?", a: "Yes. Pro and Agency are available as upgrades once you've started." },
+  { q: "Can I upgrade later?", a: "Yes. Pro and Agency are available as in-app upgrades once you're active on Solo." },
   { q: "Who handles payment?", a: "Whop handles secure checkout, receipts, subscription changes, and cancellation." },
 ] as const;
 
@@ -269,7 +269,7 @@ export default function CheckoutPage() {
             ))}
             <li className="flex gap-2.5 border-t border-line pt-2.5 text-text-secondary">
               <span className="mt-1 text-fuchsia">→</span>
-              <span><strong className="text-ink">Then $29.99/mo</strong> — your Pro plan starts after 30 days, or when you choose to continue after using your 100 free exports.</span>
+              <span><strong className="text-ink">Then $29.99/mo</strong> — your Solo plan starts after 7 days, or when you approve early after using your 100 free exports (whichever comes first).</span>
             </li>
           </ul>
           <a href="#start" onClick={() => track("checkout_cta_clicked", { source: "offer_card", has_affiliate: hasAffiliate })} className="mt-6 inline-flex rounded-full bg-ink px-6 py-3 text-sm font-semibold text-paper transition-colors hover:bg-fuchsia">
@@ -381,7 +381,7 @@ export default function CheckoutPage() {
                     {promoStatus.reason === "revoked" && "This code is no longer active."}
                     {promoStatus.reason === "expired" && "This code has expired."}
                     {promoStatus.reason === "exhausted" && "This code has reached its usage limit."}
-                    {promoStatus.reason === "plan_mismatch" && "This code doesn't apply to the Pro plan."}
+                    {promoStatus.reason === "plan_mismatch" && "This code doesn't apply to the Solo plan."}
                     {promoStatus.reason === "shape" && "Check the code and try again."}
                     {promoStatus.reason == null && "Couldn't validate right now. Try again in a moment."}
                   </span>

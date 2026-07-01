@@ -21,7 +21,7 @@ import { SITE_URL } from "@/lib/env";
 export const metadata: Metadata = {
   title: "Pricing — Liquid Clips",
   description:
-    "Free, Pro $29.99, Growth $99.99, Agency $500 per month. Local-first clipping for one creator or a whole team. Cancel anytime. USD billed monthly via Whop.",
+    "Free, Solo $29.99, Pro $99.99, Agency $500 per month. Local-first clipping for one creator or a whole team. Cancel anytime. USD billed monthly via Whop.",
   alternates: { canonical: "/pricing" },
   keywords: [
     "Liquid Clips pricing",
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     "agency clipping plan",
   ],
   openGraph: {
-    title: "Liquid Clips pricing — Free, Pro, Growth, Agency",
+    title: "Liquid Clips pricing — Free, Solo, Pro, Agency",
     description:
       "Free to start. Upgrade only when 100 starter clips runs out.",
     url: `${SITE_URL}/pricing`,
@@ -65,7 +65,7 @@ const PLANS: Plan[] = [
   },
   {
     id: "pro",
-    name: "Pro",
+    name: "Solo",
     priceUsd: 29.99,
     tagline: "Unlimited clips for one creator.",
     highlights: [
@@ -73,19 +73,19 @@ const PLANS: Plan[] = [
       "5 connected social accounts",
       "Local-only processing on your Mac",
     ],
-    cta: { label: "Start with Pro", href: `${accountUrl}/upgrade?plan=pro`, primary: true },
+    cta: { label: "Start with Solo", href: `${accountUrl}/upgrade?plan=pro`, primary: true },
   },
   {
     id: "growth",
-    name: "Growth",
+    name: "Pro",
     priceUsd: 99.99,
     tagline: "More accounts, more output, more clippers.",
     highlights: [
-      "Everything in Pro",
+      "Everything in Solo",
       "10 connected social accounts",
       "All platform connections wired",
     ],
-    cta: { label: "Start with Growth", href: `${accountUrl}/upgrade?plan=growth`, primary: true },
+    cta: { label: "Start with Pro", href: `${accountUrl}/upgrade?plan=growth`, primary: true },
     featured: true,
   },
   {
@@ -94,7 +94,7 @@ const PLANS: Plan[] = [
     priceUsd: 500,
     tagline: "Content-reward campaigns and team accounts.",
     highlights: [
-      "Everything in Growth",
+      "Everything in Pro",
       "25 connected social accounts",
       "Whop content-reward campaigns",
     ],
@@ -136,8 +136,8 @@ const faqs = [
     a: "Not yet. Monthly only until we have real cohort data to back a discount — no fake save-20% theatre. Annual ships once we can offer it honestly.",
   },
   {
-    q: "What changes between Pro, Growth, and Agency?",
-    a: "Account count and campaign access. Pro is one creator with 5 accounts. Growth is 10 accounts plus higher capacity. Agency is 25 accounts plus the ability to run your own content-reward campaigns through Whop.",
+    q: "What changes between Solo, Pro, and Agency?",
+    a: "Account count and campaign access. Solo is one creator with 5 accounts. Pro is 10 accounts plus higher capacity. Agency is 25 accounts plus the ability to run your own content-reward campaigns through Whop.",
   },
   {
     q: "Where do I see all the features?",
@@ -231,8 +231,8 @@ export default function PricingPage() {
                   <tr>
                     <th scope="col" className="pricing-compare-feature">Feature</th>
                     <th scope="col">Free</th>
-                    <th scope="col">Pro</th>
-                    <th scope="col" className="pricing-compare-feature-active">Growth</th>
+                    <th scope="col">Solo</th>
+                    <th scope="col" className="pricing-compare-feature-active">Pro</th>
                     <th scope="col">Agency</th>
                   </tr>
                 </thead>
