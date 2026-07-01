@@ -87,6 +87,14 @@ PLAN_TIER_BY_ID = {
 # "growth". Keep this set in sync with the live Whop "Founder Lifetime" plan.
 FOUNDER_PLAN_IDS = {"plan_OieNCPrvkw9U4"}  # "Liquid Clips Founder Lifetime" $500 one-time
 
+# v2.2.17 · one-time top-up plans that grant metered credit instead of
+# a tier upgrade. The webhook branches early when it sees these ids so
+# _require_known_tier isn't asked to resolve them (they don't map to a
+# subscription tier).
+BOOST_PACK_PLAN_IDS = {
+    "plan_xLS3gGsJ16455": 25,  # Thumbnail Boost Pack $9 · 25 batches
+}
+
 
 def _verify_signature(body: bytes, headers: dict[str, str]) -> None:
     if not settings.whop_webhook_secret:
@@ -672,6 +680,47 @@ def _handle_payment_failed(db: Session, data: dict) -> None:
 
 
 def _handle_payment_succeeded(db: Session, data: dict) -> None:
+    # v2.2.17 · Boost Pack top-ups fire the same payment_succeeded event
+    # as subscription payments. Detect the boost plan first, grant the
+    # metered credit, then short-circuit before we try to resolve a
+    # (nonexistent) subscription tier. The credit is additive so buying
+    # 3 packs = 75 batches, tracked separately from the monthly quota.
+    plan = data.get("plan") or {}
+    plan_id = (plan.get("id") or "").strip()
+    if plan_id in BOOST_PACK_PLAN_IDS:
+        grant = BOOST_PACK_PLAN_IDS[plan_id]
+        user = _find_user_for_event(db, data)
+        if user is None:
+            log = logging.getLogger("junior.webhooks_whop")
+            log.info(
+                "[boost_pack] no matching user for plan=%s · event=%s",
+                plan_id, data.get("id"),
+            )
+            return
+        user.thumbnail_batches_boost_credit = (
+            (user.thumbnail_batches_boost_credit or 0) + grant
+        )
+        db.commit()
+        # Best-effort inbox notification so the user sees the top-up
+        # instantly instead of guessing why the counter jumped.
+        try:
+            from app.routes.notifications import write_notification
+            write_notification(
+                db,
+                user_id=user.id,
+                category="billing",
+                title=f"Boost Pack applied · {grant} thumbnails",
+                body=(
+                    f"{grant} extra thumbnail batches just landed on your account. "
+                    "They stack on top of any monthly allowance and never expire."
+                ),
+                priority="medium",
+                external_dedup_key=f"boost-pack-{data.get('id')}",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        return
+
     user = _find_user_for_event(db, data)
     tier, founder = _require_known_tier(data)
     if not user:
