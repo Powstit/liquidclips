@@ -3,14 +3,18 @@ export type WhopPlanKey = "pro" | "growth" | "agency";
 export type WhopPlan = {
   key: WhopPlanKey;
   planId: string;
-  name: "Pro" | "Growth" | "Agency";
+  name: "Solo" | "Pro" | "Agency";
   priceMonthlyUsd: number;
   summary: string;
 };
 
-// Customer-facing billing is Whop-first. These defaults are the live plans
-// verified against Whop's Plans API on 2026-06-28. Environment overrides let
-// us rotate a plan without changing application code.
+// v2.2.15 · display names aligned to doctrine v2 (Solo/Pro/Agency).
+// URL keys ("pro", "growth", "agency") stay unchanged for backward
+// compatibility with existing marketing links + backend routing —
+// only the customer-facing labels moved:
+//   key="pro"    → name="Solo"   ($29.99  · was "Pro")
+//   key="growth" → name="Pro"    ($99.99  · was "Growth")
+//   key="agency" → name="Agency" ($500    · unchanged)
 export const WHOP_PLANS: Record<WhopPlanKey, WhopPlan> = {
   pro: {
     key: "pro",
@@ -18,7 +22,7 @@ export const WHOP_PLANS: Record<WhopPlanKey, WhopPlan> = {
       process.env.NEXT_PUBLIC_WHOP_PRO_PLAN_ID ??
       process.env.NEXT_PUBLIC_WHOP_SOLO_PLAN_ID ??
       "plan_qe8AFXj9J3SWi",
-    name: "Pro",
+    name: "Solo",
     priceMonthlyUsd: 29.99,
     summary: "Unlimited local clipping, clean exports, and 5 connected accounts.",
   },
@@ -27,7 +31,7 @@ export const WHOP_PLANS: Record<WhopPlanKey, WhopPlan> = {
     planId:
       process.env.NEXT_PUBLIC_WHOP_GROWTH_PLAN_ID ??
       "plan_dhssNse4FfPlI",
-    name: "Growth",
+    name: "Pro",
     priceMonthlyUsd: 99.99,
     summary: "More capacity, 10 connected accounts, and the hosted AI lane as it becomes available.",
   },
