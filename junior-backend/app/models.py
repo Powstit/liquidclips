@@ -160,6 +160,25 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # v2.2.17 · thumbnail batch quota tracking. Hosted-AI tiers (Pro,
+    # Agency) have a monthly cap so cost never runs away. Counter
+    # increments on successful batch. Reset happens on the first /sync
+    # of a new UTC month · check by comparing to
+    # thumbnail_batches_period_start.
+    #
+    # Boost packs (plan_xLS3gGsJ16455 · Thumbnail Boost Pack $9 · 25
+    # batches one-time) top up thumbnail_batches_boost_credit which is
+    # consumed AFTER the included monthly quota is exhausted.
+    thumbnail_batches_used_this_period: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    thumbnail_batches_period_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    thumbnail_batches_boost_credit: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 

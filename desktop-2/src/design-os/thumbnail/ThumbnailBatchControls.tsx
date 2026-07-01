@@ -19,6 +19,7 @@ import {
   type ThumbnailItem, type ThumbnailQuality,
   COST_USD,
 } from "./types";
+import { ThumbnailQuotaBadge } from "./ThumbnailQuotaBadge";
 import "./ThumbnailBatchControls.css";
 
 export interface ThumbnailBatchControlsProps {
@@ -209,6 +210,9 @@ export function ThumbnailBatchControls({
 
       {/* Footer · CTAs */}
       <footer className="lc-tbc-foot">
+        {/* v2.2.17 · quota badge · hides for BYO-key (Solo) tiers.
+         *  Click sends the user to the $9 boost pack checkout. */}
+        <ThumbnailQuotaBadge />
         {!running && !errored && (
           <button
             type="button"
