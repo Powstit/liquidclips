@@ -15,6 +15,7 @@ import { bus, useEvent, type AppMode } from "../bridge";
 import { getJwt, clearJwt } from "../../lib/authStorage";
 import { unreadCount } from "../../inbox";
 import { InboxSheet } from "../../shell/InboxSheet";
+import { TrialStatusPill } from "./TrialStatusPill";
 import "./TopHud.css";
 
 const MODE_STORAGE_KEY = "lc.mode";
@@ -186,6 +187,10 @@ export function TopHud({
           <span>{newsCount} NEWS</span>
         </div>
       )}
+
+      {/* v2.2.15 · trial countdown pill. Hides for paid users + non-trial
+       *  states · so the workstation baseline (Guest/Free) doesn't drift. */}
+      <TrialStatusPill />
 
       <div className="lc-pill lc-pill-streak">
         <img

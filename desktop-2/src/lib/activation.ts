@@ -201,6 +201,10 @@ interface SyncResponse {
   new_license_jwt?: string;
   remaining_exports?: number;
   admin_override?: boolean;
+  /** v2.2.15 · null when not on trial. Otherwise 7 - days-since-signup, floored at 0. */
+  trial_days_remaining?: number | null;
+  /** v2.2.15 · true after user clicks "Approve upgrade now" but before Whop webhook lands. */
+  trial_convert_pending?: boolean;
 }
 
 interface MeResponse {
