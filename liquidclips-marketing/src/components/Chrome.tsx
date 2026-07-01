@@ -73,7 +73,7 @@ export function Footer() {
             </div>
           </div>
           <div className="footer-bottom">
-            <span>© 2026 Liquid Clips · MADE BY A CLIPPER</span>
+            <span>© 2026 Liquidclips Ltd · MADE BY A CLIPPER</span>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
               TOP SCORE: 0,000,000
               <img
