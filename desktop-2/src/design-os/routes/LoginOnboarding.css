@@ -251,6 +251,48 @@
   text-align: center;
 }
 
+/* v2.2.13 · in-app auth panel chrome. The Tauri webview overlay is
+ *  positioned by Rust · this is the copy/help/close row that renders
+ *  under it in the LoginOnboarding pane. */
+.lc-login-inapp-chrome {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 26, 140, 0.28);
+  background: rgba(255, 26, 140, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lc-login-inapp-eyebrow {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #ff66b8;
+}
+
+.lc-login-inapp-help {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #b5afa8;
+  margin: 0;
+}
+
+.lc-login-inapp-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.lc-login-inapp-error {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: #ff6f9c;
+}
+
 /* v2.2.11 · pop-up-blocker fallback paste card */
 .lc-login-manual {
   margin-top: 22px;

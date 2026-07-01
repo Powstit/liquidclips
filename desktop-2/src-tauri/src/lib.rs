@@ -14,6 +14,7 @@
 // the app launches and the frontend continues to use the mock stub.
 
 mod sidecar;
+mod auth_panel;
 mod browse;
 mod runtime;
 
@@ -546,6 +547,10 @@ pub fn run() {
             browse::browse_back,
             browse::browse_forward,
             browse::browse_reload,
+            auth_panel::open_auth_panel,
+            auth_panel::update_auth_panel_bounds,
+            auth_panel::close_auth_panel,
+            auth_panel::is_auth_panel_open,
             runtime::runtime_info,
             runtime::runtime_check_now,
         ])
