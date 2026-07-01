@@ -491,7 +491,7 @@ export function InlineCreatePanel() {
                 data-script-state="coming-soon"
               >
                 <span className="lc-icp-script-eb" data-testid="script-coming-soon-eb">
-                  Script · coming after launch
+                  Script · Solo tier · coming after launch
                 </span>
                 <textarea
                   data-testid="script-textarea"
@@ -506,10 +506,10 @@ export function InlineCreatePanel() {
                   className="lc-icp-go"
                   disabled
                 >
-                  Generate from script
+                  Generate from script · unlocks on Solo
                 </button>
                 <span className="lc-icp-script-sub" data-testid="script-coming-soon-copy">
-                  Live in the next batch. Use a YouTube URL or upload a video to start clipping today.
+                  Script-driven clipping is a Solo+ feature. Live in the next batch · use a YouTube URL or upload a video to clip today.
                 </span>
               </div>
             )}
