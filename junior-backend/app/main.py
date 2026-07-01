@@ -529,6 +529,10 @@ async def lifespan(_app: FastAPI):
         # existing users get a handle without a forced re-onboard.
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS handle varchar(60)",
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_handle ON users (LOWER(handle)) WHERE handle IS NOT NULL",
+        # v2.2.15 · trial-convert-early click marker. Stamped when the
+        # user hits "Approve upgrade" in the one-click modal · cleared
+        # when the Whop membership_valid webhook lands with tier=solo.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_convert_approved_at timestamptz",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -637,6 +641,9 @@ app.include_router(troubleshoot.router)
 # lookup used by marketing /join/[handle] redirect.
 from app.routes import handle as _handle_router  # noqa: E402
 app.include_router(_handle_router.router)
+# v2.2.15 · one-click trial-to-paid convert · POST /me/trial/approve.
+from app.routes import trial_convert as _trial_convert_router  # noqa: E402
+app.include_router(_trial_convert_router.router)
 # v2.2.10 native community chat — separate from Whop chat feeds routed
 # through community_channels. Owns chat_messages persistence + Pexels/
 # Giphy proxies + the pin → Announcement bridge.

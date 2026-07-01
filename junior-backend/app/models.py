@@ -150,6 +150,16 @@ class User(Base):
     # layer since Postgres unique indexes are case-sensitive by default).
     handle: Mapped[str | None] = mapped_column(String(60), nullable=True, unique=True, index=True)
 
+    # v2.2.15 · trial-convert-early tracking. Stamped the moment the
+    # user clicks "Approve upgrade now" in the one-click modal. Lets
+    # /sync return trial_convert_pending=true so the UI shows
+    # "Confirming with Whop…" instead of the paywall between click and
+    # Whop's charge webhook landing. Cleared on membership_valid
+    # webhook fire (tier flips to paid, pending is naturally false).
+    trial_convert_approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
