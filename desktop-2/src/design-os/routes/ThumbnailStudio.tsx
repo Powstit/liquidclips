@@ -18,6 +18,7 @@ import { useEffect, useState } from "react";
 import { motion as fm } from "framer-motion";
 import { DesignOSAppShell } from "../components/AppShell";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
+import { PaywallGate } from "../../components/paywall/PaywallGate";
 import { presets } from "../motion";
 import {
   ThumbnailEmptyState,
@@ -317,11 +318,19 @@ function ThumbnailBody() {
             </EngineErrorBoundary>
 
             <div className="lc-thumb-bottom">
+              {/* v2.2.15 monetisation · Thumbnail generation is a
+               *  paid-tier commitment. Free users get to browse the
+               *  studio (identity upload, brand preset, prompt preview
+               *  all render normally) but the actual Generate CTA is
+               *  gated at Solo+. Clicking it while free opens the
+               *  upgrade flow via PaywallGate's inbox+bus emission. */}
               <EngineErrorBoundary route="thumbnail" component="ThumbnailBatchControls">
-                <ThumbnailBatchControls
-                  slug={FIXTURE_PROJECT.slug}
-                  title={activeTitle}
-                />
+                <PaywallGate requiredTier="pro" action="Generate covers" mode="inline">
+                  <ThumbnailBatchControls
+                    slug={FIXTURE_PROJECT.slug}
+                    title={activeTitle}
+                  />
+                </PaywallGate>
               </EngineErrorBoundary>
 
               <EngineErrorBoundary route="thumbnail" component="ThumbnailCostLedger">
