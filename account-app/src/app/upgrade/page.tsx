@@ -152,7 +152,7 @@ export default async function UpgradePage({
           />
           <UpgradeFeature
             title="$5 RPM premium ladder"
-            body="Free clippers earn $1 RPM through the Whop bounty. Pro clippers earn $5 RPM total — the +$4 bonus is tracked on the Earn page."
+            body="Free clippers earn $1 RPM through the Whop bounty. Paid clippers (Solo and up) earn $5 RPM total — the +$4 bonus is tracked on the Earn page."
           />
           <UpgradeFeature
             title="50% MRR for life"

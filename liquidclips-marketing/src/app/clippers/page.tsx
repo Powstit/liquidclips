@@ -96,7 +96,7 @@ const earningsRows = [
 const faqs = [
   {
     q: "Do I need a Whop subscription to use Liquid Clips?",
-    a: "You can use the desktop app to cut clips without Whop — Free, Pro, and Growth tiers all work on direct sign-in. But Whop is the layer that connects you to content-reward campaigns, so to earn from brand briefs you need a Whop account linked to the desktop app.",
+    a: "You can use the desktop app to cut clips without Whop — Free, Solo, and Pro tiers all work on direct sign-in. But Whop is the layer that connects you to content-reward campaigns, so to earn from brand briefs you need a Whop account linked to the desktop app.",
   },
   {
     q: "Which platforms do payouts go to?",
@@ -112,7 +112,7 @@ const faqs = [
   },
   {
     q: "What does it cost to start?",
-    a: "Free. The desktop download is free, the Whop account is free to create, and content-reward campaigns are paid by the brand — clippers never pay to submit. If you want unlimited exports per month or hosted AI scoring, the Pro and Growth tiers are on the pricing page.",
+    a: "Free. The desktop download is free, the Whop account is free to create, and content-reward campaigns are paid by the brand — clippers never pay to submit. If you want unlimited exports per month or hosted AI scoring, the Solo and Pro tiers are on the pricing page.",
   },
   {
     q: "Mac only?",
