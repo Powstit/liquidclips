@@ -25,8 +25,10 @@
  *   desktop · which deepLinkBoot.ts (P1-1D-b) catches at the app root.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion as fm } from "framer-motion";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useActivation, activateWithToken, handleActivationUrl } from "../../lib/activation";
 import { hasJwt, getAuthSource } from "../../lib/authStorage";
 import { openSmart } from "../../lib/openSmart";
@@ -51,6 +53,17 @@ function buildActivationUrl(challenge: string): string {
   const base = activationBaseUrl();
   const sep = base.includes("?") ? "&" : "?";
   return `${base}${sep}challenge=${encodeURIComponent(challenge)}`;
+}
+
+/** Backend base URL for the in-app auth panel. Mirrors the resolver in
+ *  activation.ts + wallet.ts so a beta env override lands consistently. */
+function backendUrlFor(): string {
+  try {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const v = (import.meta as any).env?.VITE_BACKEND_URL as string | undefined;
+    if (typeof v === "string" && v.length > 0) return v;
+  } catch { /* noop */ }
+  return "https://api.liquidclips.app";
 }
 
 function LoginOnboardingBody() {
@@ -86,6 +99,99 @@ function LoginOnboardingBody() {
     }
   };
 
+  // v2.2.13 · in-app auth overlay. Opens the Whop OAuth flow inside a
+  // native Tauri child webview so the user never leaves the app. When
+  // the backend redirects to liquidclips://activate?token=…, Rust's
+  // on_navigation hook (auth_panel.rs) catches the URL BEFORE it hits
+  // the OS protocol handler and emits `activation:token_intercept`.
+  // A useEffect below listens for that event and pipes the token into
+  // activateWithToken() · closes the panel · flips signed-in.
+  const [inAppOpen, setInAppOpen] = useState(false);
+  const [inAppFallback, setInAppFallback] = useState(false);
+  const [inAppError, setInAppError] = useState<string | null>(null);
+
+  const openInAppAuth = async (useFallbackUa = false) => {
+    setOpenError(null);
+    setInAppError(null);
+    // Mint the challenge once per attempt (retry generates a fresh one).
+    const challenge = activation.beginActivation();
+    // Backend Whop OAuth start endpoint · issues the authorize redirect
+    // to whop.com/api/v1/oauth/authorize with our client_id + the
+    // challenge threaded as the OAuth `state`. On success Whop calls
+    // /auth/whop/callback which mints the JWT and redirects to
+    // liquidclips://activate?token=<jwt>&challenge=<state>&source=whop.
+    const backend = backendUrlFor();
+    const url = `${backend}/auth/whop/start?challenge=${encodeURIComponent(challenge)}`;
+
+    // Bounds · center the auth panel over the viewport at 480×720. React
+    // measures via window sizes (Tauri passes logical coords). The
+    // panel is layered above the main app content · the "close" button
+    // in the fallback UI destroys it.
+    const w = Math.min(480, window.innerWidth - 40);
+    const h = Math.min(720, window.innerHeight - 80);
+    const x = Math.max(20, (window.innerWidth - w) / 2);
+    const y = Math.max(40, (window.innerHeight - h) / 2);
+
+    try {
+      await invoke("open_auth_panel", {
+        url,
+        x,
+        y,
+        width: w,
+        height: h,
+        fallbackUa: useFallbackUa,
+      });
+      setInAppOpen(true);
+      setInAppFallback(useFallbackUa);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setInAppError(`Couldn't open the in-app sign-in · ${msg}`);
+    }
+  };
+
+  const closeInAppAuth = async () => {
+    try {
+      await invoke("close_auth_panel");
+    } catch { /* silent · panel may already be closed */ }
+    setInAppOpen(false);
+    setInAppFallback(false);
+  };
+
+  // Retry with Safari-shaped UA when Whop's page refuses the default
+  // WKWebView identity. This keeps auth 100% in-app · no system browser
+  // handoff · matches Daniel's constraint.
+  const retryWithSafariUa = () => {
+    void openInAppAuth(true);
+  };
+
+  // Listen for the Rust-side token intercept. The event fires the moment
+  // the auth webview tries to navigate to liquidclips://activate?token=…
+  // — before the OS deep-link handler runs. We route the token through
+  // the same activateWithToken() path that the manual paste input uses,
+  // so post-mint /sync + /me orchestration is identical.
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    listen<{ token?: string; url?: string; source?: string }>(
+      "activation:token_intercept",
+      (evt) => {
+        const payload = evt.payload || {};
+        const token = payload.token || "";
+        const full = payload.url || "";
+        void closeInAppAuth();
+        if (full.startsWith("liquidclips://") || full.startsWith("junior://")) {
+          void handleActivationUrl(full);
+        } else if (token) {
+          void activateWithToken(token);
+        } else {
+          setInAppError("Sign-in returned no activation token · try again.");
+        }
+      },
+    )
+      .then((fn) => { unlisten = fn; })
+      .catch(() => { /* Tauri event bus unavailable in browser preview */ });
+    return () => { unlisten?.(); };
+  }, []);
+
   const handleContinue = () => {
     if (typeof window === "undefined") return;
     window.location.hash = "#/home";
@@ -94,6 +200,7 @@ function LoginOnboardingBody() {
   const handleRetry = () => {
     activation.clearActivation();
     setOpenError(null);
+    setInAppError(null);
   };
 
   return (
@@ -144,14 +251,55 @@ function LoginOnboardingBody() {
                 lastTokenSource={activation.lastTokenSource}
                 openError={openError}
                 onStart={handleStartActivation}
+                onInAppStart={() => void openInAppAuth(false)}
                 onContinue={handleContinue}
                 onRetry={handleRetry}
               />
             )}
 
+            {inAppOpen ? (
+              <div
+                className="lc-login-inapp-chrome"
+                data-testid="login-inapp-chrome"
+                role="status"
+                aria-live="polite"
+              >
+                <span className="lc-login-inapp-eyebrow">
+                  Signing you in…
+                </span>
+                <p className="lc-login-inapp-help">
+                  Complete sign-in in the panel above. The app catches your
+                  activation token automatically · no browser bounce.
+                </p>
+                <div className="lc-login-inapp-actions">
+                  {!inAppFallback ? (
+                    <button
+                      type="button"
+                      className="lc-login-cta lc-login-cta-quiet"
+                      onClick={retryWithSafariUa}
+                      data-testid="login-inapp-retry-ua"
+                    >
+                      Sign-in won't load? Retry
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="lc-login-cta lc-login-cta-quiet"
+                    onClick={() => void closeInAppAuth()}
+                    data-testid="login-inapp-close"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {inAppError ? (
+                  <p className="lc-login-inapp-error">{inAppError}</p>
+                ) : null}
+              </div>
+            ) : null}
+
             <p className="lc-login-foot">
-              Activation opens your default browser. The app waits up to 5 minutes
-              for the return.
+              Sign in stays inside the app · 100% integrated · no browser
+              switching · no popup blocker risk.
             </p>
           </div>
         </div>
@@ -182,10 +330,11 @@ function ActivationStateBlock(props: {
   lastTokenSource: ReturnType<typeof useActivation>["lastTokenSource"];
   openError: string | null;
   onStart: () => void;
+  onInAppStart?: () => void;
   onContinue: () => void;
   onRetry: () => void;
 }) {
-  const { status, error, tier, email, degraded, lastTokenSource, openError, onStart, onContinue, onRetry } = props;
+  const { status, error, tier, email, degraded, lastTokenSource, openError, onStart, onInAppStart, onContinue, onRetry } = props;
 
   if (status === "activated") {
     return (
@@ -281,21 +430,33 @@ function ActivationStateBlock(props: {
   }
 
   // status === "idle" · the default · no JWT, no flow started.
+  // v2.2.13 · primary path is in-app Whop OAuth (no browser bounce).
+  // "Use system browser instead" is kept for the rare case a user
+  // wants the classic Clerk/system-browser flow.
   return (
     <div className="lc-login-status is-idle" data-testid="login-state-idle" data-activation-status="idle">
       <ol className="lc-login-steps">
-        <li><strong>1 ·</strong> Click "Start activation"</li>
-        <li><strong>2 ·</strong> Sign in on the web</li>
-        <li><strong>3 ·</strong> Browser returns to this app</li>
-        <li><strong>4 ·</strong> You're in</li>
+        <li><strong>1 ·</strong> Click "Sign in with Whop"</li>
+        <li><strong>2 ·</strong> Sign in right here in the app</li>
+        <li><strong>3 ·</strong> You're in — no browser bounce</li>
       </ol>
+      {onInAppStart ? (
+        <button
+          type="button"
+          className="lc-login-cta lc-login-cta-primary"
+          data-testid="login-inapp-button"
+          onClick={onInAppStart}
+        >
+          Sign in with Whop
+        </button>
+      ) : null}
       <button
         type="button"
-        className="lc-login-cta lc-login-cta-primary"
+        className={`lc-login-cta ${onInAppStart ? "lc-login-cta-quiet" : "lc-login-cta-primary"}`}
         data-testid="login-start-button"
         onClick={onStart}
       >
-        Start activation
+        {onInAppStart ? "Use system browser instead" : "Start activation"}
       </button>
       <ManualActivationCard />
     </div>
