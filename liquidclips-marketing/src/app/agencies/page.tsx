@@ -239,7 +239,7 @@ export default function AgenciesPage() {
             <p className="section-copy" style={{ marginTop: 18, textAlign: "center", maxWidth: 640, marginLeft: "auto", marginRight: "auto" }}>
               25 connected social accounts, unlimited campaigns, the approval queue, the metrics
               readout, and every clipper feature in the Liquid Clips desktop app for your team.
-              Compare against Solo, Growth, and Free on the pricing page.
+              Compare against Pro, Growth, and Free on the pricing page.
             </p>
             <div className="hero-actions" style={{ justifyContent: "center", marginTop: 28 }}>
               <Link href="/pricing" className="button-primary">

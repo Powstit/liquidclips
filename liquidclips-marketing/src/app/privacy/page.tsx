@@ -111,6 +111,17 @@ export default function PrivacyPage() {
               We may update this policy as the product changes. The date above shows the latest
               version.
             </p>
+
+            <h2>Data controller</h2>
+            <p>
+              The data controller for this policy is <strong>Liquidclips Ltd</strong>, a company
+              registered in England &amp; Wales. Written correspondence and data-protection
+              requests can be sent to the address above or by email.
+            </p>
+
+            <p style={{ marginTop: 40, opacity: 0.6, fontSize: 12 }}>
+              © 2026 Liquidclips Ltd · all rights reserved
+            </p>
           </article>
         </div>
       </main>
