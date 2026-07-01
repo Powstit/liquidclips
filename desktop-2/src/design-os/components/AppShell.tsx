@@ -19,6 +19,7 @@ import { StickyKade, type KadePlacement } from "./StickyKade";
 import { KadeSpeechBubble } from "./KadeSpeechBubble";
 import { AnnouncementBanner } from "./AnnouncementBanner";
 import { ChatToggle } from "./ChatToggle";
+import { UpgradeApprovalModal } from "./UpgradeApprovalModal";
 import { CursorGlow } from "../effects/CursorGlow";
 import { DropOverlay } from "../effects/DropOverlay";
 import { ToastHost } from "../effects/ToastHost";
@@ -143,6 +144,12 @@ export function DesignOSAppShell({
        *  Login boot sequence and the Workstation post-complete view
        *  don't paint a chat affordance. */}
       {!hideStickyKade && <ChatToggle />}
+
+      {/* v2.2.15 · one-click trial-to-paid modal · listens for
+       *  trial:upgrade-request on the bus (fired by TrialStatusPill,
+       *  paywall 402s, Settings). Returns null when the viewer isn't
+       *  on a trial · zero visual baseline drift. */}
+      <UpgradeApprovalModal />
 
       {/* Phase 6B infrastructure · render nothing until used.
        *  NOTE: <ModalPortal> is mounted higher up at SimulatorRouter so its

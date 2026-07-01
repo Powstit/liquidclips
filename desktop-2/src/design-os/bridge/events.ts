@@ -264,6 +264,15 @@ export type LCEvents = {
    *  fetch doesn't strand the page on stale "Temporarily unavailable"
    *  copy when the user activates while the route is already open. */
   "activation:complete": { source: "clerk" | "whop" | "unknown" };
+  /** v2.2.15 · request the one-click upgrade modal to open. Fires from
+   *  the TopHud TrialStatusPill and from paywall 402 responses. The
+   *  UpgradeApprovalModal listens once at AppShell mount + opens on
+   *  every event. */
+  "trial:upgrade-request": { source: "hud-pill" | "clip-cap-402" | "settings" | "onboarding-card" };
+  /** v2.2.15 · fired by the modal when the user completes the flow
+   *  (approve, wait, or dismiss) so surfaces can refresh their trial
+   *  state without waiting for the 30s /sync poll. */
+  "trial:upgrade-resolved": { state: "approved" | "already_paid" | "unavailable" | "dismissed" };
 };
 
 /* ============================================================

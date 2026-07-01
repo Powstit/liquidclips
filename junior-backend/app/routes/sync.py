@@ -68,6 +68,18 @@ class SyncResponse(BaseModel):
     # short-circuits gates to "agency" when this is true so a founder demo
     # doesn't get billed by their own paywall during a recording session.
     admin_override: bool = False
+    # v2.2.15 · trial state block. Populated when the user is on an active
+    # Whop trial (subscription_status == "trialing"). trial_days_remaining
+    # derives from user.trial_started_at + 7d, floored at 0. Null when
+    # the user isn't on a trial (already paid, free, etc). The desktop's
+    # TrialStatusPill in the TopHud paints "X clips left · Y days left"
+    # from remaining_exports + trial_days_remaining together.
+    trial_days_remaining: int | None = None
+    # True once the user has clicked "Approve upgrade now" in the desktop
+    # one-click modal but the actual Whop charge hasn't landed via webhook
+    # yet. Lets the UI show "Confirming with Whop…" instead of flashing
+    # back to the paywall between click and webhook fire.
+    trial_convert_pending: bool = False
     # v2.2.9 broadcast layer · active alerts the desktop paints into a
     # fixed-position banner stack at the top of the viewport. Includes
     # global HQ broadcasts AND any agency-scoped row whose agency_id
@@ -201,6 +213,24 @@ def sync(
     from app.routes.chat import seed_welcome_bot_on_first_sync
     seed_welcome_bot_on_first_sync(db, user)
 
+    # v2.2.15 · trial countdown. 7-day timer starts at trial_started_at
+    # (stamped at signup or first membership_valid webhook). We floor at
+    # 0 rather than going negative so the UI can always render "0 days
+    # left" without special-casing. Null for anyone not in the trialing
+    # state — they see the pill hide entirely.
+    trial_days_remaining: int | None = None
+    if user.subscription_status in {"trial", "trialing"} and user.trial_started_at:
+        trial_start = user.trial_started_at
+        if trial_start.tzinfo is None:
+            trial_start = trial_start.replace(tzinfo=timezone.utc)
+        elapsed = (datetime.now(timezone.utc) - trial_start).days
+        trial_days_remaining = max(0, 7 - elapsed)
+
+    trial_convert_pending = bool(
+        getattr(user, "trial_convert_approved_at", None)
+        and user.subscription_status in {"trial", "trialing"}
+    )
+
     return SyncResponse(
         tier=effective_tier,
         founder=effective_founder,
@@ -212,4 +242,6 @@ def sync(
         remaining_exports=None if is_admin else starter_export_remaining(user),
         admin_override=is_admin,
         active_announcements=_fetch_active_announcements(db, user),
+        trial_days_remaining=None if is_admin else trial_days_remaining,
+        trial_convert_pending=trial_convert_pending,
     )
