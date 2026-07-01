@@ -104,11 +104,22 @@ export default function EulaPage() {
               Questions about this EULA: <a href={`mailto:${supportEmail}`}>{supportEmail}</a>.
             </p>
 
+            <h2>12. Licensor</h2>
+            <p>
+              The Software is licensed by <strong>Liquidclips Ltd</strong>, a company registered
+              in England &amp; Wales (the &quot;Licensor&quot;). All references to
+              &quot;Liquid Clips&quot; in this EULA refer to Liquidclips Ltd unless otherwise stated.
+            </p>
+
             <div className="note-box">
               <strong>Note:</strong> This document is a plain-English summary written for product
               use. It is not legal advice. Review with counsel before relying on it for compliance
               in any jurisdiction.
             </div>
+
+            <p style={{ marginTop: 40, opacity: 0.6, fontSize: 12 }}>
+              © 2026 Liquidclips Ltd · all rights reserved
+            </p>
           </div>
         </div>
       </main>

@@ -128,6 +128,17 @@ export default function TermsPage() {
               <a href={`mailto:${supportEmail}`}>{supportEmail}</a>. You can also review the{" "}
               <Link href="/privacy">Privacy Policy</Link>.
             </p>
+
+            <h2>16. About us</h2>
+            <p>
+              The Liquid Clips service is operated by <strong>Liquidclips Ltd</strong>, a
+              company registered in England &amp; Wales. Contact:{" "}
+              <a href={`mailto:${supportEmail}`}>{supportEmail}</a>.
+            </p>
+
+            <p style={{ marginTop: 40, opacity: 0.6, fontSize: 12 }}>
+              © 2026 Liquidclips Ltd · all rights reserved
+            </p>
           </article>
         </div>
       </main>
