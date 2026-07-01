@@ -22,7 +22,7 @@ from app.cron import start_cron, stop_cron
 # keys. start_agent_fleet() returns None when disabled, so the lifespan
 # block is a no-op until Daniel flips the env.
 from app.agents import start_agent_fleet, stop_agent_fleet
-from app.db import Base, engine
+from app.db import Base, SessionLocal, engine
 from app.routes import admin, admin_mutations, admin_recovery, affiliate, agency_campaigns, analytics, auth_whop, bonus_ledger, campaign_asset_links, campaigns, carrot, channels, community, connections, desktop, doctrine, leaderboard, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
@@ -523,6 +523,12 @@ async def lifespan(_app: FastAPI):
         # Indexed because /chat/game/leaderboard orders the top-10 desc.
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS arcade_high_score integer NOT NULL DEFAULT 0",
         "CREATE INDEX IF NOT EXISTS ix_users_arcade_high_score ON users (arcade_high_score DESC)",
+        # v2.2.14 unified handle — one field drives chat username, arcade
+        # leaderboard, affiliate share URL, and future public profile.
+        # Nullable during migration; backfilled below in the seed step so
+        # existing users get a handle without a forced re-onboard.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS handle varchar(60)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_handle ON users (LOWER(handle)) WHERE handle IS NOT NULL",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -553,6 +559,25 @@ async def lifespan(_app: FastAPI):
     except Exception as _e:  # noqa: BLE001
         _logging.getLogger("junior.seed").warning(
             "[seed] uncle_daniel_campaigns skipped: %s", _e
+        )
+
+    # v2.2.14 · one-shot handle backfill for existing users. Idempotent:
+    # only touches rows where handle IS NULL. Derives from the most
+    # meaningful source available (cached_display_handle → email prefix
+    # → clipper-<uid8>) and sanitises to Whop's affiliate-code shape so
+    # the same handle works as both the chat @name and the share-URL
+    # slug. Collisions get a trailing -N counter.
+    try:
+        from app.handle_backfill import backfill_missing_handles
+        with SessionLocal() as _db:
+            _count = backfill_missing_handles(_db)
+            if _count:
+                _logging.getLogger("junior.seed").info(
+                    "[seed] backfilled %d user.handle rows", _count
+                )
+    except Exception as _e:  # noqa: BLE001
+        _logging.getLogger("junior.seed").warning(
+            "[seed] handle backfill skipped: %s", _e
         )
 
     start_cron()
@@ -608,6 +633,10 @@ app.include_router(transcribe.router)
 # `anthropic` package is added to requirements.txt. Frontend falls back
 # to the static Kade speech bubble copy.
 app.include_router(troubleshoot.router)
+# v2.2.14 · unified user.handle CRUD + /link-resolve/{handle} public
+# lookup used by marketing /join/[handle] redirect.
+from app.routes import handle as _handle_router  # noqa: E402
+app.include_router(_handle_router.router)
 # v2.2.10 native community chat — separate from Whop chat feeds routed
 # through community_channels. Owns chat_messages persistence + Pexels/
 # Giphy proxies + the pin → Announcement bridge.

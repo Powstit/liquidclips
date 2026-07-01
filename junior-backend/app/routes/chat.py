@@ -203,8 +203,12 @@ def _serialise(row: ChatMessage, arcade_high_score: int = 0) -> ChatMessageOut:
 
 
 def _display_name(user: User) -> str:
-    """Username falls back through the snapshot chain: cached_display_handle
-    → email-prefix → "Clipper"."""
+    """v2.2.14 · unified handle-first display. Returns @handle when the
+    user has picked / been backfilled with a handle, so chat rows AND
+    arcade leaderboard entries paint the same identity. Falls back
+    through the legacy chain if a race left handle NULL somehow."""
+    if getattr(user, "handle", None):
+        return f"@{user.handle}"
     if user.cached_display_handle:
         return user.cached_display_handle
     if user.email and "@" in user.email:
