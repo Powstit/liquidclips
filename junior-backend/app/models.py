@@ -138,6 +138,18 @@ class User(Base):
     # the role tag.
     arcade_high_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
 
+    # v2.2.14 · unified identity handle. Drives EVERYTHING user-facing:
+    #   · chat username in #global-lounge (@handle prefix)
+    #   · arcade leaderboard entry
+    #   · welcome-bot greeting
+    #   · affiliate share URL (liquidclips.app/join/<handle>)
+    #   · community leaderboard row
+    #   · future public profile at liquidclips.app/@<handle>
+    # Backfilled from cached_display_handle → email prefix → clipper-<id>
+    # on first migration. Unique + case-insensitive (enforced by app
+    # layer since Postgres unique indexes are case-sensitive by default).
+    handle: Mapped[str | None] = mapped_column(String(60), nullable=True, unique=True, index=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 

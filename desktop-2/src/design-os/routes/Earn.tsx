@@ -54,6 +54,8 @@ import {
   type EarnFilterKey,
   EARN_FILTER_LABEL,
 } from "../earn";
+import { AffiliateWidget } from "../earn/AffiliateWidget";
+import "../earn/AffiliateWidget.css";
 import "./SimPage.css";
 import "./Earn.css";
 
@@ -180,6 +182,13 @@ function EarnBody() {
             </span>
           </div>
         )}
+
+        {/* v2.2.14 · unified handle + affiliate share URL card. Anchors
+         *  the Earn tab so the money-earning ritual starts with "who
+         *  am I / what's my link" before the numbers. */}
+        <EngineErrorBoundary route="earn" component="AffiliateWidget">
+          <AffiliateWidget />
+        </EngineErrorBoundary>
 
         {/* Put the user's numbers before promotional or operational modules. */}
         <EngineErrorBoundary route="earn" component="EarnSummaryStrip">
