@@ -533,6 +533,13 @@ async def lifespan(_app: FastAPI):
         # user hits "Approve upgrade" in the one-click modal · cleared
         # when the Whop membership_valid webhook lands with tier=solo.
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_convert_approved_at timestamptz",
+        # v2.2.17 · thumbnail batch quota + boost-pack credit. Pro/Agency
+        # get monthly caps (100 / 500) enforced server-side. Boost pack
+        # (plan_xLS3gGsJ16455 · $9 · 25 batches) tops up when they run
+        # out. Solo is BYO OpenAI · no cap needed there.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS thumbnail_batches_used_this_period integer NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS thumbnail_batches_period_start timestamptz",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS thumbnail_batches_boost_credit integer NOT NULL DEFAULT 0",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -644,6 +651,10 @@ app.include_router(_handle_router.router)
 # v2.2.15 · one-click trial-to-paid convert · POST /me/trial/approve.
 from app.routes import trial_convert as _trial_convert_router  # noqa: E402
 app.include_router(_trial_convert_router.router)
+# v2.2.17 · thumbnail batch quota + boost-pack top-up · GET /me/thumbnail-quota
+# + POST /me/thumbnail-quota/spend.
+from app.routes import thumbnail_quota as _thumb_quota_router  # noqa: E402
+app.include_router(_thumb_quota_router.router)
 # v2.2.10 native community chat — separate from Whop chat feeds routed
 # through community_channels. Owns chat_messages persistence + Pexels/
 # Giphy proxies + the pin → Announcement bridge.
