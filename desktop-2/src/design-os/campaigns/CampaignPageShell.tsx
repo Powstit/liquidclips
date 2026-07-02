@@ -28,7 +28,7 @@
 import { useState } from "react";
 import { Drawer, GlassCard } from "../components";
 import { bus } from "../bridge";
-import { openSmart } from "../../lib/openSmart";
+import { openInApp } from "../../lib/openInApp";
 import { useTierCaps } from "../state/useTierCaps";
 import { RoomDetailDrawer, LeaderboardSection } from "../community";
 import { CampaignAssetLinksList } from "../campaign-asset-links";
@@ -164,15 +164,11 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
    * (or system browser fallback) so the clipper submits inside Whop. */
   const whopRewardUrl = campaign.whopRewardUrl ?? campaign.whopUrl ?? null;
 
-  /* P0-2 fix · click must never be silent. Three-rung ladder:
+  /* P0-2 fix · click must never be silent. Two-rung ladder:
    *   1. bus.emit("browse:open") · default subscriber (auto-mounted
-   *      from bridge/browseOpenSubscriber) handles openSmart + window.open
-   *      + toast itself. Stays the primary path.
+   *      from bridge/browseOpenSubscriber) opens the in-app browser.
    *   2. If no subscriber is mounted (deep-link entry / unit test /
-   *      stripped module graph), call openSmart directly + toast.
-   *   3. If openSmart throws (browser preview · popup blocked · no
-   *      runtime), window.open · then a final honest "open in your
-   *      browser" toast carrying the URL the user can paste. */
+   *      stripped module graph), call openInApp directly. */
   const openWhopRewardWithFallback = async (kind: "submit" | "open") => {
     if (!whopRewardUrl) {
       bus.emit("toast", {
@@ -194,29 +190,20 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
     }
     const successTitle = kind === "submit" ? "Opening Whop reward" : "Opening on Whop";
     try {
-      await openSmart(whopRewardUrl);
+      await openInApp(whopRewardUrl);
       bus.emit("toast", {
         kind: "success",
         title: successTitle,
         body: "Submission + payout settle on Whop.",
       });
       return;
-    } catch { /* fall through */ }
-    try {
-      const w = window.open(whopRewardUrl, "_blank", "noopener,noreferrer");
-      if (!w) throw new Error("popup-blocked");
+    } catch (error) {
       bus.emit("toast", {
-        kind: "info",
-        title: successTitle,
-        body: "Whop reward opened in a new tab.",
+        kind: "error",
+        title: "Couldn't open Whop reward",
+        body: error instanceof Error ? error.message : whopRewardUrl,
       });
-      return;
-    } catch { /* fall through */ }
-    bus.emit("toast", {
-      kind: "warning",
-      title: "Open Whop reward in your browser",
-      body: whopRewardUrl,
-    });
+    }
   };
 
   const handleSubmissionCta = () => { void openWhopRewardWithFallback("submit"); };

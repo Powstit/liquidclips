@@ -16,6 +16,7 @@ import { bus, useEvent } from "../bridge";
 import { presets } from "../motion";
 import { ROUTE_HERO } from "../copy/copyMap";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
+import { openInApp } from "../../lib/openInApp";
 import "./SubmissionsReview.css";
 
 type SubmissionStatus = "pending" | "approved" | "rejected" | "paid";
@@ -238,7 +239,14 @@ function SubmissionRow({
         <span className="lc-sr-sub">
           {row.clipper} · {fmtAgo(row.submittedAt)} · {row.platform.toUpperCase()}
         </span>
-        <a className="lc-sr-link" href={row.postUrl} target="_blank" rel="noreferrer">
+        <a
+          className="lc-sr-link"
+          href={row.postUrl}
+          onClick={(event) => {
+            event.preventDefault();
+            void openInApp(row.postUrl, { intent: "read-only" });
+          }}
+        >
           {row.postUrl}
         </a>
       </div>

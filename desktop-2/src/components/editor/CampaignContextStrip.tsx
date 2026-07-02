@@ -2,6 +2,7 @@
 // Pure presentational. Honest empty state when no campaign is active.
 
 import type { FakeCampaign } from "../../fixtures/fakeCampaigns";
+import { openInApp } from "../../lib/openInApp";
 
 interface CampaignContextStripProps {
   campaign: FakeCampaign | undefined;
@@ -52,8 +53,10 @@ export function CampaignContextStrip({
           <a
             className="lc-ccs-rules"
             href={rulesUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+            onClick={(event) => {
+              event.preventDefault();
+              void openInApp(rulesUrl, { intent: "read-only" });
+            }}
           >
             Rules ↗
           </a>

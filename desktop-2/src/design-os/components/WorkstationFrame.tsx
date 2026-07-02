@@ -49,7 +49,7 @@ export interface WorkstationFrameProps {
 
 export function WorkstationFrame({
   projectName,
-  sourceLabel,
+  sourceLabel: _sourceLabel,
   clipCount,
   selectedCount,
   readyCount,
@@ -77,35 +77,31 @@ export function WorkstationFrame({
     <div className={`lc-ws-frame ${collapsed ? "is-collapsed" : ""}`}>
       <div className="lc-ws-frame-titlebar">
         <div className="lc-ws-frame-titlebar-left">
-          <div className="lc-ws-frame-dots" aria-hidden="true">
-            <span className="lc-ws-frame-dot lc-ws-frame-dot-a" />
-            <span className="lc-ws-frame-dot lc-ws-frame-dot-b" />
-            <span className="lc-ws-frame-dot lc-ws-frame-dot-c" />
-          </div>
-          <span className="lc-ws-frame-eyebrow">Workstation</span>
-          <span className="lc-ws-frame-sep" aria-hidden="true">·</span>
+          {/* v2.2.18 sprint · HUD dots + "Workstation" eyebrow + URL
+              source-label all deleted. Titlebar is now the project name
+              only. Removes ~120px of horizontal chrome + one whole line
+              of vertical noise. */}
           <span className="lc-ws-frame-project" title={projectName ?? undefined}>
             {projectName || "no session"}
           </span>
-          {sourceLabel && !collapsed && (
-            <>
-              <span className="lc-ws-frame-sep" aria-hidden="true">·</span>
-              <span className="lc-ws-frame-source" title={sourceLabel}>
-                {sourceLabel}
-              </span>
-            </>
-          )}
+          <span
+            className={`lc-ws-frame-live lc-ws-frame-live-${tone.key}`}
+            aria-label={`Session status: ${tone.label}${sessionStage ? `, ${sessionStage}` : ""}`}
+          >
+            <span className="lc-ws-frame-status-dot" aria-hidden="true" />
+            {tone.label}
+            {sessionStatus === "running" && sessionStage && (
+              <span className="lc-ws-frame-status-stage">· {sessionStage}</span>
+            )}
+          </span>
         </div>
         <div className="lc-ws-frame-titlebar-right">
-          <div className={`lc-pill lc-ws-frame-status lc-ws-frame-status-${tone.key}`}>
-            <span className="lc-ws-frame-status-dot" aria-hidden="true" />
-            <span>{tone.label}</span>
-            {sessionStatus === "running" && sessionStage && (
-              <span className="lc-ws-frame-status-stage">
-                · {sessionStage}
-              </span>
-            )}
-          </div>
+          <span
+            className={`lc-ws-frame-progress ${readyToneClass}`}
+            aria-label={`${readyCount} of ${clipCount} clips ready`}
+          >
+            {readyCount}/{Math.max(clipCount, 1)}
+          </span>
           <button
             type="button"
             className="lc-ws-frame-collapse"
@@ -121,29 +117,26 @@ export function WorkstationFrame({
 
       {!collapsed && (
         <>
-          <div className="lc-ws-frame-statusstrip">
-            <div className="lc-ws-frame-counts">
-              <span className="lc-ws-frame-count">
-                <span className="lc-ws-frame-count-label">Clips</span>
-                <span className="lc-ws-frame-count-num">{clipCount}</span>
-              </span>
-              <span className="lc-ws-frame-sep" aria-hidden="true">·</span>
-              <span className="lc-ws-frame-count">
-                <span className="lc-ws-frame-count-label">Selected</span>
-                <span className="lc-ws-frame-count-num">{selectedCount}</span>
-              </span>
-            </div>
-            <span className={`lc-pill lc-ws-frame-ready ${readyToneClass}`}>
-              <span className="lc-ws-frame-ready-glyph" aria-hidden="true" />
-              {clipCount === 0
-                ? "studio ready"
-                : allReady
-                  ? "ready to ship"
-                  : `${readyCount} of ${clipCount} ready`}
-            </span>
-          </div>
-
           <div className="lc-ws-frame-body">{children}</div>
+          {selectedCount > 0 && (
+            <button
+              type="button"
+              className="lc-ws-ship-fab"
+              data-testid="ws-ship-fab"
+              onClick={() => {
+                // Emits the same event ClipCard's per-clip submit does so
+                // the SubmitToWhopModal picks it up. Selection payload
+                // handling lives inside the modal (batch mode arrives in
+                // the next sprint).
+                window.dispatchEvent(
+                  new CustomEvent("lc:ship-selected", { detail: { count: selectedCount } }),
+                );
+              }}
+            >
+              <span className="lc-ws-ship-fab-glyph" aria-hidden="true">▲</span>
+              Ship {selectedCount} clip{selectedCount === 1 ? "" : "s"}
+            </button>
+          )}
         </>
       )}
     </div>

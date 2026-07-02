@@ -6,6 +6,7 @@
 // pretends to talk to a real backend.
 
 import { usePublishStore, PLATFORM_LABELS, type PlatformId } from "../../state/publishStore";
+import { openInApp } from "../../lib/openInApp";
 
 const STATUS_COPY: Record<string, string> = {
   pending: "Pending",
@@ -26,7 +27,7 @@ export function ScheduleQueue() {
   );
 
   const openAyrshare = () => {
-    window.open("https://app.ayrshare.com", "_blank", "noopener");
+    void openInApp("https://app.ayrshare.com", { intent: "read-only" });
   };
 
   return (

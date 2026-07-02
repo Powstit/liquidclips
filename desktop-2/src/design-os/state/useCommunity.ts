@@ -196,9 +196,8 @@ export function useCommunity(): CommunityApi {
       return;
     }
     /* Phase 6L-B · route through `browse:open`. The default subscriber
-     *  (`bridge/browseOpenSubscriber.ts`) tries Tauri shell, falls back
-     *  to window.open, fires a toast either way. A future in-app browser
-     *  overlay can subscribe before this default and intercept. */
+     * opens the globally mounted in-app browser store; its documented
+     * system fallback is reserved for an unavailable desktop webview. */
     bus.emit("browse:open", {
       url: room.whopUrl,
       source: "community",

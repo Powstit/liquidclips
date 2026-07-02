@@ -22,7 +22,7 @@
  *
  *   For STARTING a checkout: desktop-2 redirects to account-app
  *   (`https://account.liquidclips.app/upgrade?plan=<plan>`) via the
- *   existing `openSmart` helper. account-app hosts the Whop-backed
+ *   in-app browser handoff. account-app hosts the Whop-backed
  *   checkout UI. After completion, the webhook lands and /me updates
  *   on next poll.
  *
@@ -37,7 +37,7 @@
 import { hasJwt } from "../authStorage";
 import { useMe } from "../../design-os/state/useMe";
 import { useTierCaps } from "../../design-os/state/useTierCaps";
-import { openSmart } from "../openSmart";
+import { openInApp } from "../openInApp";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import type {
   BillingAdapter,
@@ -157,7 +157,14 @@ class MeBackedBillingAdapter implements BillingAdapter {
     // and the snapshot updates via this adapter's subscribe.
     this.setSnapshot({ ...this.snapshot, state: "checkout_started", lastCheckoutFailed: false });
     try {
-      await openSmart(checkoutUrl(planKey));
+      await openInApp(checkoutUrl(planKey), { intent: "read-only" });
+      /* The browser-preview shell can mount the Browse overlay, but it
+       * cannot create the native child webview that carries checkout.
+       * Treat that as an explicit checkout-open failure instead of
+       * reporting success merely because overlay state changed. */
+      if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
+        throw new Error("Checkout requires the packaged desktop browser.");
+      }
       return { ok: true, planKey };
     } catch (err) {
       this.setSnapshot({ ...this.snapshot, state: "checkout_failed", lastCheckoutFailed: true });

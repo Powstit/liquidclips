@@ -24,7 +24,8 @@ interface LayoutOption {
 
 const LAYOUTS: ReadonlyArray<LayoutOption> = [
   { id: "solo",   label: "Solo",       glyph: <LayoutGlyph kind="solo" /> },
-  { id: "split",  label: "Split",      glyph: <LayoutGlyph kind="split" /> },
+  { id: "side-by-side", label: "Side / side", glyph: <LayoutGlyph kind="side-by-side" /> },
+  { id: "top-bottom", label: "Top / bottom", glyph: <LayoutGlyph kind="top-bottom" /> },
   { id: "pip-tl", label: "PIP · top L", glyph: <LayoutGlyph kind="pip-tl" /> },
   { id: "pip-tr", label: "PIP · top R", glyph: <LayoutGlyph kind="pip-tr" /> },
   { id: "pip-bl", label: "PIP · bot L", glyph: <LayoutGlyph kind="pip-bl" /> },
@@ -39,7 +40,15 @@ const AUDIO_SOURCES: ReadonlyArray<{ id: ReactionAudioSource; label: string }> =
 
 export function ReactionModule() {
   const { focusedClip, settings, setReaction } = useCockpit();
-  const { layout, frameAtS, sourcePath, audioSource, brollOffsetS } = settings.reaction;
+  const {
+    layout,
+    frameAtS,
+    sourcePath,
+    audioSource,
+    brollOffsetS,
+    swapPanes,
+    syncPlayback,
+  } = settings.reaction;
 
   const session = useEngineSession();
   const slug = session.project?.slug ?? session.slug ?? undefined;
@@ -174,8 +183,14 @@ export function ReactionModule() {
     setBakeState("baking");
     setBakeError(null);
     try {
+      const overlayType =
+        layout === "side-by-side"
+          ? (swapPanes ? "split-right" : "split-left")
+          : layout === "top-bottom"
+            ? (swapPanes ? "split-bottom-top" : "split-top-bottom")
+            : layout;
       const outcome = await sidecar.startOverlayBake(slug, focusedClip.idx, {
-        type: layout,
+        type: overlayType,
         source_path: sourcePath,
         start_offset_s: brollOffsetS,
         audio_source: audioSource,
@@ -221,6 +236,7 @@ export function ReactionModule() {
                 key={opt.id}
                 type="button"
                 role="radio"
+                data-testid={`reaction-layout-${opt.id}`}
                 aria-checked={layout === opt.id}
                 className={`lc-cd-chip ${layout === opt.id ? "on" : ""}`}
                 onClick={() => updateReaction({ layout: opt.id })}
@@ -290,6 +306,31 @@ export function ReactionModule() {
             ))}
           </div>
         </div>
+
+        {(layout === "side-by-side" || layout === "top-bottom") && (
+          <div className="lc-cd-section" style={{ marginTop: 16 }}>
+            <span className="lc-cd-lbl">Pane controls</span>
+            <div className="lc-cd-row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="lc-cd-chip"
+                data-testid="reaction-swap-panes"
+                onClick={() => updateReaction({ swapPanes: !swapPanes })}
+              >
+                Swap A ↔ B
+              </button>
+              <button
+                type="button"
+                className={`lc-cd-chip ${syncPlayback ? "on" : ""}`}
+                aria-pressed={syncPlayback}
+                data-testid="reaction-sync-playback"
+                onClick={() => updateReaction({ syncPlayback: !syncPlayback })}
+              >
+                Sync playback
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="lc-cd-section" style={{ marginTop: 16 }}>
           <span className="lc-cd-lbl">Reaction start offset</span>
@@ -367,6 +408,18 @@ export function ReactionModule() {
           <span className="lc-cd-readout-key">Offset</span>
           <span className="lc-cd-readout-val">{brollOffsetS > 0 ? "+" : ""}{brollOffsetS.toFixed(1)}s</span>
         </div>
+        {(layout === "side-by-side" || layout === "top-bottom") && (
+          <>
+            <div className="lc-cd-readout-row">
+              <span className="lc-cd-readout-key">Order</span>
+              <span className="lc-cd-readout-val">{swapPanes ? "B · A" : "A · B"}</span>
+            </div>
+            <div className="lc-cd-readout-row">
+              <span className="lc-cd-readout-key">Playback</span>
+              <span className="lc-cd-readout-val">{syncPlayback ? "synced" : "independent"}</span>
+            </div>
+          </>
+        )}
         <div className="lc-cd-readout-row">
           <span className="lc-cd-readout-key">Hero frame</span>
           <span className="lc-cd-readout-val">{fmtSec(frameAtS)}</span>
@@ -397,7 +450,8 @@ function LayoutGlyph({ kind }: { kind: ReactionLayoutKey }) {
   return (
     <svg viewBox="0 0 24 16" width="22" height="14" fill="none" stroke={stroke} strokeWidth="1.4">
       <rect x="1" y="1" width="22" height="14" rx="1.6" />
-      {kind === "split" && <line x1="12" y1="1" x2="12" y2="15" stroke={inner} strokeWidth="1.4" />}
+      {kind === "side-by-side" && <line x1="12" y1="1" x2="12" y2="15" stroke={inner} strokeWidth="1.4" />}
+      {kind === "top-bottom" && <line x1="1" y1="8" x2="23" y2="8" stroke={inner} strokeWidth="1.4" />}
       {kind === "pip-tl" && <rect x="2.4" y="2.4" width="6.5" height="5" rx="1" fill={inner} stroke="none" />}
       {kind === "pip-tr" && <rect x="15.1" y="2.4" width="6.5" height="5" rx="1" fill={inner} stroke="none" />}
       {kind === "pip-bl" && <rect x="2.4" y="8.6" width="6.5" height="5" rx="1" fill={inner} stroke="none" />}

@@ -286,6 +286,31 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
     const auditList = controls.slice(0, 40);
 
     for (const c of auditList) {
+      /* Controls earlier in this walk can legitimately change later
+       * controls (for example, selecting an unavailable Community room
+       * disables Refresh). Re-read live state for stable test-id controls
+       * immediately before classification so the audit never clicks from a
+       * stale enabled/selected snapshot. */
+      if (c.testid) {
+        const live = page.locator(`[data-testid="${c.testid}"]`).first();
+        if (await live.count()) {
+          const state = await live.evaluate((el) => ({
+            disabled: (el as HTMLButtonElement).disabled === true,
+            ariaDisabled: el.getAttribute("aria-disabled") === "true",
+            title: el.getAttribute("title"),
+            selected:
+              el.getAttribute("aria-selected") === "true" ||
+              el.getAttribute("aria-checked") === "true" ||
+              el.getAttribute("aria-pressed") === "true" ||
+              el.getAttribute("data-active") === "true" ||
+              el.classList.contains("is-active"),
+          }));
+          c.disabled = state.disabled;
+          c.ariaDisabled = state.ariaDisabled;
+          c.title = state.title;
+          c.selected = state.selected;
+        }
+      }
       const label = c.testid || c.text || c.tag;
 
       /* a) honestly disabled · honest is required.
@@ -407,8 +432,8 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
       const beforeRoute = await page.evaluate(() => document.querySelector(".lc-app")?.getAttribute("data-route") ?? "");
       const beforeMode = await page.evaluate(() => document.body.getAttribute("data-app-mode") ?? "");
       const beforeAriaSelected = await page.evaluate(() => {
-        return [...document.querySelectorAll("[aria-selected],[aria-checked],[aria-expanded]")].map(
-          (el) => `${el.tagName}:${el.getAttribute("aria-selected") || el.getAttribute("aria-checked") || el.getAttribute("aria-expanded")}`,
+        return [...document.querySelectorAll("[aria-selected],[aria-checked],[aria-pressed],[aria-expanded],[aria-busy]")].map(
+          (el) => `${el.tagName}:${el.getAttribute("aria-selected") || el.getAttribute("aria-checked") || el.getAttribute("aria-pressed") || el.getAttribute("aria-expanded") || el.getAttribute("aria-busy")}`,
         ).join("|");
       });
       /* Gate 6 (2026-06-26) — also count visible overlays/drawers/menus
@@ -464,8 +489,8 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
           const w = window as unknown as { __lcAuditToastCount?: number; __lcAuditNavCount?: number };
           const route = document.querySelector(".lc-app")?.getAttribute("data-route") ?? "";
           const mode = document.body.getAttribute("data-app-mode") ?? "";
-          const aria = [...document.querySelectorAll("[aria-selected],[aria-checked],[aria-expanded]")].map(
-            (el) => `${el.tagName}:${el.getAttribute("aria-selected") || el.getAttribute("aria-checked") || el.getAttribute("aria-expanded")}`,
+          const aria = [...document.querySelectorAll("[aria-selected],[aria-checked],[aria-pressed],[aria-expanded],[aria-busy]")].map(
+            (el) => `${el.tagName}:${el.getAttribute("aria-selected") || el.getAttribute("aria-checked") || el.getAttribute("aria-pressed") || el.getAttribute("aria-expanded") || el.getAttribute("aria-busy")}`,
           ).join("|");
           const overlayCount = document.querySelectorAll(sel).length;
           const toastCount = w.__lcAuditToastCount ?? 0;
@@ -486,8 +511,8 @@ test("button audit · every interactive control across 11 surfaces", async ({ pa
       const afterRoute = await page.evaluate(() => document.querySelector(".lc-app")?.getAttribute("data-route") ?? "");
       const afterMode = await page.evaluate(() => document.body.getAttribute("data-app-mode") ?? "");
       const afterAriaSelected = await page.evaluate(() => {
-        return [...document.querySelectorAll("[aria-selected],[aria-checked],[aria-expanded]")].map(
-          (el) => `${el.tagName}:${el.getAttribute("aria-selected") || el.getAttribute("aria-checked") || el.getAttribute("aria-expanded")}`,
+        return [...document.querySelectorAll("[aria-selected],[aria-checked],[aria-pressed],[aria-expanded],[aria-busy]")].map(
+          (el) => `${el.tagName}:${el.getAttribute("aria-selected") || el.getAttribute("aria-checked") || el.getAttribute("aria-pressed") || el.getAttribute("aria-expanded") || el.getAttribute("aria-busy")}`,
         ).join("|");
       });
 

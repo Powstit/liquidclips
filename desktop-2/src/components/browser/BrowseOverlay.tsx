@@ -1,11 +1,12 @@
-// Cinematic browser overlay — 90vw × 88vh, fuchsia rim/glow chrome, iframe body,
-// honest CSP-blocked fallback footer. Portaled into document.body so it escapes
-// the .lc-page perspective:1200px containing block.
+// Cinematic browser overlay — 90vw × 88vh, fuchsia rim/glow chrome, native
+// child-webview body, and an honest system-browser fallback. Portaled into
+// document.body so it escapes the .lc-page perspective containing block.
 //
 // Triggers: Home reward hero, Earn, Community, Campaigns. NOT globally mounted.
 // Esc priority: closes the browser overlay first (handled here), then yields.
 //
-// No Tauri webview. No Rust. iframe only. Real APIs forbidden.
+// The production body is a Tauri child webview; browser preview shows the
+// unavailable state instead of pretending an empty slot loaded.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -155,7 +156,19 @@ export function BrowseOverlay(): JSX.Element | null {
     // emit user-visible toast so the user never sees a dark empty overlay
     // without explanation.
     void openBrowsePanel(currentUrl, measure())
-      .then(() => setLoadState("loaded"))
+      .then((outcome) => {
+        if (outcome.system_fallback) {
+          setLoadState("blocked");
+          close();
+          bus.emit("toast", {
+            kind: "info",
+            title: "Opened in system browser",
+            body: "Checkout uses the system browser to comply with desktop-store purchase rules.",
+          });
+          return;
+        }
+        setLoadState("loaded");
+      })
       .catch((err) => {
         setLoadState("blocked");
         bus.emit("toast", {
@@ -179,7 +192,7 @@ export function BrowseOverlay(): JSX.Element | null {
       window.removeEventListener("resize", onWindowResize);
       void closeBrowsePanel();
     };
-  }, [open, currentUrl, setLoadState]);
+  }, [open, currentUrl, setLoadState, close]);
 
   const handleGo = useCallback(
     (raw: string) => {

@@ -253,14 +253,69 @@ test.describe("Reaction Journey", () => {
       });
       expect(overlayLayoutOne).toBeTruthy();
 
-      // ── Step 8 · Apply reaction ──
+      // ── Step 8 · Verify both rigid 50/50 composers + pane swap ──
+      await rec.step("Verify split layouts and pane swap", async () => {
+        const stage = page.locator('[data-testid="preview-stage"]');
+        const main = page.locator(".lc-cps-main-video");
+        const overlay = page.locator('[data-testid="reaction-overlay"]');
+
+        await page.getByTestId("reaction-layout-top-bottom").click();
+        await expect(stage).toHaveAttribute("data-composite-layout", "top-bottom");
+        const vertical = await Promise.all([
+          stage.boundingBox(),
+          main.boundingBox(),
+          overlay.boundingBox(),
+        ]);
+        expect(vertical.every(Boolean), "vertical split boxes must render").toBe(true);
+        const [vStage, vMain, vOverlay] = vertical;
+        if (!vStage || !vMain || !vOverlay) throw new Error("vertical split geometry unavailable");
+        expect(Math.abs(vMain.width - vStage.width)).toBeLessThanOrEqual(2);
+        expect(Math.abs(vOverlay.width - vStage.width)).toBeLessThanOrEqual(2);
+        expect(Math.abs(vMain.height - vStage.height / 2)).toBeLessThanOrEqual(2);
+        expect(Math.abs(vOverlay.height - vStage.height / 2)).toBeLessThanOrEqual(2);
+        expect(Math.abs(vOverlay.y + vOverlay.height - vMain.y)).toBeLessThanOrEqual(3);
+
+        await page.getByTestId("reaction-layout-side-by-side").click();
+        await expect(stage).toHaveAttribute("data-composite-layout", "side-by-side");
+        const horizontal = await Promise.all([
+          stage.boundingBox(),
+          main.boundingBox(),
+          overlay.boundingBox(),
+        ]);
+        expect(horizontal.every(Boolean), "horizontal split boxes must render").toBe(true);
+        const [hStage, hMain, hOverlay] = horizontal;
+        if (!hStage || !hMain || !hOverlay) throw new Error("horizontal split geometry unavailable");
+        expect(Math.abs(hMain.height - hStage.height)).toBeLessThanOrEqual(2);
+        expect(Math.abs(hOverlay.height - hStage.height)).toBeLessThanOrEqual(2);
+        expect(Math.abs(hMain.width - hStage.width / 2)).toBeLessThanOrEqual(2);
+        expect(Math.abs(hOverlay.width - hStage.width / 2)).toBeLessThanOrEqual(2);
+        expect(Math.abs(hOverlay.x + hOverlay.width - hMain.x)).toBeLessThanOrEqual(3);
+
+        await page.getByTestId("reaction-swap-panes").click();
+        await expect(stage).toHaveAttribute("data-swap-panes", "1");
+        await expect.poll(async () => {
+          const swappedMain = await main.boundingBox();
+          const swappedOverlay = await overlay.boundingBox();
+          if (!swappedMain || !swappedOverlay) return false;
+          return swappedMain.x < swappedOverlay.x
+            && Math.abs(swappedMain.x + swappedMain.width - swappedOverlay.x) <= 3;
+        }, {
+          message: "swapped panes must settle into non-overlapping A · B order",
+          timeout: 3_000,
+          intervals: [50, 100, 250],
+        }).toBe(true);
+        rec.assert("split_layouts_are_rigid_50_50", true);
+        rec.assert("split_panes_swap", true);
+      });
+
+      // ── Step 9 · Apply reaction ──
       await rec.step("Click Apply reaction", async () => {
         const apply = page.locator('[data-testid="reaction-apply"]');
         await expect(apply, "Apply button must be enabled once sourcePath set").toBeEnabled();
         await apply.click();
       });
 
-      // ── Step 9 · Bake state transitions ──
+      // ── Step 10 · Bake state transitions ──
       await rec.step("Bake state transitions to baking then done", async () => {
         const apply = page.locator('[data-testid="reaction-apply"]');
         // Mock sidecar emits engine:complete{kind:"bake"} after 1.4s; in-flight
@@ -302,9 +357,10 @@ test.describe("Reaction Journey", () => {
         const layoutTwo = await overlay.getAttribute("data-reaction-layout");
         rec.assert("reaction_overlay_persisted", true);
         rec.assert("reaction_overlay_persisted_layout", layoutTwo);
-        // Layout must match what we observed in step 7 — persistence means
-        // the SAME layout key is restored from clipSettingsStore.
-        expect(layoutTwo).toBe(overlayLayoutOne);
+        // Step 8 deliberately changed the initial PIP default to the rigid
+        // side-by-side layout. Persistence means that final user choice,
+        // including the pane swap, is restored after a clip round-trip.
+        expect(layoutTwo).toBe("side-by-side");
       });
 
       // ── Step 13 · Done — emit verdict via reporter attachments ──

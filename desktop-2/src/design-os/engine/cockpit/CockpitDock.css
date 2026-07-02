@@ -2,8 +2,28 @@
    (HUD brackets · fuchsia accents · Geist Mono labels · Inter body). */
 
 .lc-cockpit-dock {
+  /* Checkpoint item 3 · container-query host for the dock head. The
+   * previous C6 code declared `container-type` on `.lc-cd-head` and
+   * queried the same element — the container element cannot style
+   * itself. The dock is the stable, always-present parent of the
+   * head, so it owns the container declaration. */
+  container-type: inline-size;
+  container-name: cdhead;
   position: fixed;
-  left: 0; right: 0; bottom: 0;
+  /* v2.2.18 · scoped-fix step 4 · dock now starts at the content
+   *  boundary (sidebar = .lc-rail = 244px wide) instead of left:0
+   *  spanning the whole screen. The 40dvh cap prevents dock expansion
+   *  from ever consuming more than 40% of the viewport height so the
+   *  clip grid + final clip card stay reachable. The inner .lc-cd-body
+   *  handles its own overflow-y so long modules scroll internally. */
+  /* v2.2.18 sprint · left value tracks the collapsible sidebar. When
+   *  [data-nav-collapsed="1"] is set on <html> the dock shifts to 60px
+   *  (see rule below); otherwise it stays at the 244px default. */
+  left: 244px;
+  right: 0;
+  bottom: 0;
+  max-height: 40dvh;
+  transition: left 220ms ease;
   z-index: 40;
   display: flex;
   flex-direction: column;
@@ -16,6 +36,17 @@
   border-top: 1px solid rgba(255, 26, 140, .22);
   box-shadow: 0 -16px 60px rgba(255, 26, 140, .08);
   pointer-events: auto;
+}
+
+/* v2.2.18 · scoped-fix step 4 · the expanded module body scrolls
+ *  independently so long forms can't push their own controls behind
+ *  the dock's bottom. */
+.lc-cockpit-dock .lc-cd-body {
+  overflow-y: auto;
+  min-height: 0;
+}
+html[data-nav-collapsed="1"] .lc-cockpit-dock {
+  left: 60px;
 }
 
 /* 2026-06-26 · C2 hardening · decorative text + non-interactive
@@ -41,7 +72,10 @@
   pointer-events: none;
 }
 
-/* Top strip: clip pill + state pills + back */
+/* Top strip: clip pill + state pills + back.
+ * Container declaration lives on .lc-cockpit-dock (the ancestor);
+ * see the block at the top of this file. `.lc-cd-head` is the
+ * descendant the query styles. */
 .lc-cd-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -49,6 +83,22 @@
   align-items: center;
   padding: 10px 18px;
   border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+@container cdhead (max-width: 900px) {
+  .lc-cd-head {
+    display: flex;
+    flex-wrap: wrap;
+    row-gap: 8px;
+    column-gap: 10px;
+    padding: 8px 14px;
+  }
+  .lc-cd-clip { flex: 1 1 auto; min-width: 0; }
+  .lc-cd-pills {
+    order: 3;
+    flex: 1 0 100%;
+    justify-content: flex-start;
+  }
+  .lc-cd-actions { flex-shrink: 0; }
 }
 
 /* Bug 2 · when the dock is collapsed, the panel below the head is unmounted

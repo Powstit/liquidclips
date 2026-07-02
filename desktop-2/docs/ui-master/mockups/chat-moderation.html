@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Liquid Clips · Chat moderation · Stage 7 mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: #101018; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.canvas { width: 1440px; height: 900px; border-radius: 14px; overflow: hidden; position: relative; background: radial-gradient(1600px 900px at 80% -20%, rgba(255, 26, 140, .18), transparent 60%), radial-gradient(1200px 900px at 10% 110%, rgba(0, 229, 255, .06), transparent 60%), linear-gradient(180deg, #0a0a12 0%, #06060b 100%); box-shadow: 0 40px 100px -30px rgba(0, 0, 0, .8), 0 0 0 1px rgba(255, 255, 255, .05); }
+.chrome { position: absolute; top: 0; left: 0; right: 0; height: 32px; display: flex; align-items: center; padding: 0 14px; background: rgba(6, 6, 12, .6); border-bottom: 1px solid var(--line); z-index: 10; }
+.chrome .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
+.chrome .r { background: #ff5f56; } .chrome .y { background: #ffbd2e; } .chrome .g { background: #27c93f; }
+.chrome .title { flex: 1; text-align: center; font-family: var(--font-mono); font-size: 11px; letter-spacing: .16em; color: var(--dim); text-transform: uppercase; }
+.body { position: absolute; top: 32px; left: 0; right: 0; bottom: 0; display: flex; }
+
+/* Sidebar */
+.rail { width: 244px; flex-shrink: 0; padding: 22px 14px 18px; border-right: 1px solid var(--line); background: linear-gradient(180deg, rgba(10, 10, 16, .62), rgba(10, 10, 16, .32) 60%, rgba(10, 10, 16, .62)); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); display: flex; flex-direction: column; }
+.brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+.brand-glyph { width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, var(--fuchsia), var(--cyan) 140%); box-shadow: 0 8px 20px -6px rgba(255, 26, 140, .5); }
+.brand-eb { font-family: var(--font-mono); font-size: 9px; letter-spacing: .3em; color: var(--dim); text-transform: uppercase; }
+.brand-wm { font-family: var(--font-display); font-weight: 600; font-size: 15px; letter-spacing: -.02em; color: var(--ink); }
+.brand-wm .slash { color: var(--fuchsia); margin: 0 1px; }
+.rail-label { font-family: var(--font-mono); font-size: 9px; letter-spacing: .18em; color: #504e4a; text-transform: uppercase; padding: 6px 4px; margin-top: 12px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; color: #c8c4be; cursor: pointer; font-family: var(--font-sans); font-size: 13px; font-weight: 500; }
+.nav-item img { width: 16px; height: 16px; opacity: .78; }
+.nav-item.is-active { background: linear-gradient(180deg, rgba(255, 26, 140, .22), rgba(255, 26, 140, .08)); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 26, 140, .35); }
+.nav-item.is-active img { opacity: 1; filter: drop-shadow(0 0 6px var(--fuchsia-b)); }
+.rail-foot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); }
+
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Route header */
+.hdr { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 22px; border-bottom: 1px solid var(--line-hot); background: rgba(11, 11, 16, .28); }
+.hdr-title { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--ink); }
+.hdr-sub { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em; color: var(--dim); }
+.hdr-spacer { flex: 1; }
+.hdr-admin-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 11px; border-radius: 9999px;
+  background: linear-gradient(135deg, rgba(255, 26, 140, .28), rgba(199, 0, 102, .18));
+  border: 1px solid rgba(255, 26, 140, .55);
+  color: var(--ink);
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; font-weight: 700;
+}
+.hdr-admin-badge::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--fuchsia); box-shadow: 0 0 6px var(--fuchsia);
+}
+
+/* Presence strip · slim */
+.presence { flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 10px 22px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, rgba(255, 26, 140, .06), rgba(11, 11, 16, .1)); }
+.presence-kade { width: 40px; height: 40px; border-radius: 10px; overflow: hidden; border: 1.5px solid rgba(255, 26, 140, .5); box-shadow: 0 6px 18px -6px rgba(255, 26, 140, .5); background: var(--bg); flex-shrink: 0; position: relative; }
+.presence-kade img { width: 100%; height: 100%; object-fit: cover; object-position: center 25%; }
+.presence-kade::after { content: ""; position: absolute; bottom: 2px; right: 2px; width: 9px; height: 9px; border-radius: 50%; background: var(--green); border: 2px solid var(--bg); box-shadow: 0 0 5px var(--green); }
+.presence-eb { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .18em; text-transform: uppercase; color: var(--fuchsia-b); }
+.presence-line { font-family: var(--font-display); font-size: 12.5px; font-weight: 500; color: var(--ink); }
+.presence-line strong { color: var(--fuchsia); }
+.presence-spacer { flex: 1; }
+.presence-stat { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 9999px; background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .08); font-family: var(--font-mono); font-size: 10px; color: var(--dim); }
+.presence-stat strong { color: var(--ink); font-weight: 600; }
+.presence-stat.mod {
+  background: rgba(255, 26, 140, .1);
+  border-color: rgba(255, 26, 140, .35);
+  color: var(--fuchsia-b);
+}
+.presence-stat.mod strong { color: var(--ink); }
+
+.stage { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px minmax(0, 1fr); position: relative; }
+
+/* Rooms */
+.rooms { border-right: 1px solid var(--line); padding: 14px 10px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; }
+.rooms-eb { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .22em; text-transform: uppercase; color: var(--dim); padding: 4px 8px 6px; }
+.room { display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; padding: 9px 10px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; align-items: center; }
+.room:hover { background: rgba(255, 255, 255, .03); }
+.room.is-active { background: linear-gradient(180deg, rgba(255, 26, 140, .18), rgba(255, 26, 140, .06)); border-color: rgba(255, 26, 140, .35); }
+.room-glyph { width: 36px; height: 36px; border-radius: 10px; background: rgba(255, 26, 140, .1); display: grid; place-items: center; font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--fuchsia-b); border: 1px solid rgba(255, 26, 140, .25); overflow: hidden; }
+.room-name { font-family: var(--font-display); font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.room-preview { font-family: var(--font-sans); font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.room-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.room-online { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-size: 9.5px; color: var(--green); }
+.room-online::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--green); box-shadow: 0 0 5px var(--green); }
+.room-unread { min-width: 20px; height: 18px; padding: 0 6px; border-radius: 9999px; background: var(--fuchsia); color: #fff; font-family: var(--font-mono); font-size: 9.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.room-flag {
+  display: inline-flex; align-items: center; gap: 3px;
+  min-width: 20px; padding: 0 6px; height: 16px;
+  border-radius: 9999px;
+  background: rgba(220, 38, 38, .18);
+  border: 1px solid rgba(220, 38, 38, .5);
+  color: #f87171;
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: .06em; font-weight: 700;
+}
+
+/* Chat panel */
+.chat { display: flex; flex-direction: column; min-height: 0; position: relative; }
+.chat-head { flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--line); background: rgba(11, 11, 16, .28); }
+.chat-name { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--ink); }
+.chat-sub { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; color: var(--dim); }
+.chat-head-spacer { flex: 1; }
+.chat-icon-btn { width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--dim); cursor: pointer; }
+.chat-icon-btn:hover { background: rgba(255, 26, 140, .1); color: var(--fuchsia-b); }
+.mod-queue-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px; border-radius: 9px;
+  background: rgba(220, 38, 38, .12); border: 1px solid rgba(220, 38, 38, .4);
+  color: #f87171;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700;
+  cursor: pointer;
+}
+.mod-queue-btn:hover { background: rgba(220, 38, 38, .2); }
+
+.stream { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 22px 12px; display: flex; flex-direction: column; gap: 12px; }
+
+.msg { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: start; }
+.msg-avatar { width: 34px; height: 34px; border-radius: 10px; overflow: hidden; background: var(--bg); border: 1px solid rgba(255, 255, 255, .08); }
+.msg-avatar img { width: 100%; height: 100%; object-fit: cover; object-position: center 22%; }
+.msg-avatar .initial { width: 100%; height: 100%; display: grid; place-items: center; color: var(--fuchsia-b); font-family: var(--font-mono); font-weight: 700; font-size: 13px; }
+.msg-body { min-width: 0; }
+.msg-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; }
+.msg-name { font-family: var(--font-display); font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.msg-time { font-family: var(--font-mono); font-size: 9.5px; color: var(--dim); }
+.msg-text { font-family: var(--font-sans); font-size: 13px; line-height: 1.45; color: #d8d3cc; word-break: break-word; }
+
+/* Muted user variant */
+.msg[data-muted="1"] .msg-avatar { opacity: .5; }
+.msg[data-muted="1"] .msg-name::after {
+  content: "MUTED · 24H";
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(251, 191, 36, .18);
+  border: 1px solid rgba(251, 191, 36, .5);
+  color: var(--gold);
+  font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .12em;
+  vertical-align: 2px;
+}
+.msg[data-muted="1"] .msg-text { color: var(--dim); }
+
+/* Kade bot */
+.msg.msg-bot .msg-avatar { border-color: var(--fuchsia); box-shadow: 0 0 12px -2px rgba(255, 26, 140, .5); }
+.msg.msg-bot .msg-name::after { content: "BOT"; margin-left: 8px; padding: 1px 6px; border-radius: 5px; background: linear-gradient(135deg, var(--fuchsia), var(--fuchsia-d)); color: #fff; font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .12em; vertical-align: 2px; }
+.msg.msg-bot .msg-body { padding: 10px 12px; border-radius: 10px; background: rgba(255, 26, 140, .06); border: 1px solid rgba(255, 26, 140, .28); }
+
+/* CONTEXT-MENU TARGET · highlight the row that owns the open menu */
+.msg.msg-target {
+  padding: 8px 10px; margin: -8px -10px;
+  border-radius: 10px;
+  background: rgba(255, 26, 140, .08);
+  outline: 1px dashed rgba(255, 26, 140, .55);
+}
+
+/* HIDDEN MESSAGE placeholder · visible to admin with restore action */
+.msg-hidden {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(220, 38, 38, .06);
+  border: 1px dashed rgba(220, 38, 38, .45);
+}
+.msg-hidden-avatar {
+  width: 34px; height: 34px; border-radius: 10px;
+  background: rgba(220, 38, 38, .12);
+  border: 1px solid rgba(220, 38, 38, .35);
+  display: grid; place-items: center;
+  color: #f87171; font-size: 18px;
+}
+.msg-hidden-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.msg-hidden-head {
+  display: flex; align-items: baseline; gap: 8px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em;
+  color: #f87171; text-transform: uppercase;
+}
+.msg-hidden-head .name { color: var(--dim); text-transform: none; letter-spacing: 0; font-family: var(--font-display); font-weight: 600; font-size: 12px; }
+.msg-hidden-note { font-family: var(--font-sans); font-size: 12px; color: var(--dim); }
+.msg-hidden-actions { display: flex; gap: 6px; margin-top: 2px; }
+.mh-btn {
+  all: unset; cursor: pointer;
+  padding: 4px 10px; border-radius: 7px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, .12);
+  color: var(--ink);
+  background: rgba(11, 11, 16, .4);
+}
+.mh-btn:hover { border-color: var(--fuchsia); color: var(--fuchsia-b); }
+.mh-btn.restore:hover { border-color: var(--green); color: var(--green); }
+
+/* CONTEXT MENU · floating */
+.ctx {
+  position: absolute;
+  top: 200px; left: 620px;
+  min-width: 220px;
+  background: rgba(11, 11, 16, .96);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+          backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid rgba(255, 26, 140, .35);
+  border-radius: 12px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 26, 140, .1);
+  padding: 6px;
+  z-index: 40;
+  animation: ctx-in 140ms cubic-bezier(.34, 1.56, .64, 1);
+}
+@keyframes ctx-in { from { opacity: 0; transform: translateY(-6px) scale(.96); } }
+.ctx-eb {
+  padding: 6px 10px 4px;
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--fuchsia-b);
+}
+.ctx-item {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  gap: 10px; align-items: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--ink);
+  font-family: var(--font-sans); font-size: 12.5px;
+}
+.ctx-item:hover { background: rgba(255, 26, 140, .1); }
+.ctx-item.danger:hover { background: rgba(220, 38, 38, .12); color: #f87171; }
+.ctx-item.destructive:hover { background: rgba(220, 38, 38, .18); color: #f87171; }
+.ctx-item .glyph {
+  width: 20px; height: 20px;
+  display: grid; place-items: center;
+  color: var(--dim); font-size: 13px;
+}
+.ctx-item.danger .glyph { color: #f87171; }
+.ctx-item .kbd {
+  font-family: var(--font-mono); font-size: 9.5px;
+  color: var(--dim);
+  padding: 1px 5px; border-radius: 4px;
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid rgba(255, 255, 255, .1);
+}
+.ctx-sep {
+  height: 1px; margin: 4px 8px;
+  background: rgba(255, 255, 255, .08);
+}
+.ctx-item.info-row {
+  cursor: default;
+  color: var(--dim);
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em;
+}
+.ctx-item.info-row:hover { background: transparent; }
+
+.composer { flex-shrink: 0; padding: 10px 18px 14px; border-top: 1px solid var(--line); background: rgba(11, 11, 16, .5); }
+.composer-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-radius: 12px; background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .08); }
+.composer-chip { padding: 5px 10px; border-radius: 8px; border: 1px solid rgba(255, 26, 140, .3); background: rgba(255, 26, 140, .08); color: var(--fuchsia-b); font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; cursor: pointer; }
+.composer-emoji { padding: 0; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; cursor: pointer; }
+.composer-emoji img { width: 22px; height: 22px; opacity: .8; }
+.composer-input { flex: 1; background: transparent; border: 0; outline: 0; color: var(--ink); font-family: var(--font-sans); font-size: 13.5px; padding: 6px 0; }
+.composer-input::placeholder { color: var(--dim); }
+.composer-send { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, var(--fuchsia), var(--fuchsia-d)); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; cursor: pointer; box-shadow: 0 6px 14px -4px rgba(255, 26, 140, .55); }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="chrome">
+    <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="title">Liquid Clips · Chat moderation · 1440 × 900</span>
+  </div>
+
+  <div class="body">
+    <aside class="rail">
+      <div class="brand">
+        <div class="brand-glyph"></div>
+        <div>
+          <div class="brand-eb">LIQUID · CLIPS</div>
+          <div class="brand-wm">liquid<span class="slash">/</span>clips</div>
+        </div>
+      </div>
+      <div class="rail-label">Console · Clipper</div>
+      <div class="nav-item"><img src="brand/icons/nav/home.svg" alt=""> Home</div>
+      <div class="nav-item"><img src="brand/icons/nav/create.svg" alt=""> Create</div>
+      <div class="nav-item"><img src="brand/icons/nav/engine.svg" alt=""> My Clips</div>
+      <div class="nav-item"><img src="brand/icons/nav/campaigns.svg" alt=""> Campaigns</div>
+      <div class="nav-item is-active"><img src="brand/icons/nav/community.svg" alt=""> Community</div>
+      <div class="nav-item"><img src="brand/icons/nav/earn.svg" alt=""> Earn</div>
+      <div class="nav-item"><img src="brand/icons/nav/channels.svg" alt=""> Channels</div>
+      <div class="nav-item"><img src="brand/icons/nav/schedule.svg" alt=""> Schedule</div>
+      <div class="rail-foot">
+        <div class="nav-item"><img src="brand/icons/nav/settings.svg" alt=""> Settings</div>
+        <div class="nav-item"><img src="brand/icons/nav/support.svg" alt=""> Support</div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <div class="hdr">
+        <span class="hdr-title">Community</span>
+        <span class="hdr-sub">· #global · moderation</span>
+        <span class="hdr-spacer"></span>
+        <span class="hdr-admin-badge">Admin · Daniel</span>
+      </div>
+
+      <div class="presence">
+        <div class="presence-kade"><img src="brand/kade/kade-community-mode.webp" alt=""></div>
+        <div>
+          <span class="presence-eb">You're online · admin</span>
+          <div class="presence-line">Moderating · <strong>#global</strong> · <strong>#clippers-lounge</strong></div>
+        </div>
+        <span class="presence-spacer"></span>
+        <span class="presence-stat"><strong>47</strong> · online</span>
+        <span class="presence-stat mod"><strong>3</strong> · hidden today</span>
+        <span class="presence-stat mod"><strong>1</strong> · muted</span>
+      </div>
+
+      <div class="stage">
+        <aside class="rooms">
+          <div class="rooms-eb">Rooms · 5</div>
+          <div class="room is-active">
+            <div class="room-glyph">#</div>
+            <div><div class="room-name">global</div><div class="room-preview">@rio · restored ✓</div></div>
+            <div class="room-right"><span class="room-online">47</span><span class="room-flag">3⚑</span></div>
+          </div>
+          <div class="room">
+            <div class="room-glyph">#</div>
+            <div><div class="room-name">clippers-lounge</div><div class="room-preview">@mari · audio bed at −9dB…</div></div>
+            <div class="room-right"><span class="room-online">12</span><span class="room-unread">3</span></div>
+          </div>
+          <div class="room">
+            <div class="room-glyph" style="background:rgba(0,229,255,.1);border-color:rgba(0,229,255,.35);color:var(--cyan);">◐</div>
+            <div><div class="room-name">campaign-drops</div><div class="room-preview">Kade · Wednesday drop</div></div>
+            <div class="room-right"><span class="room-online">18</span><span class="room-unread">7</span></div>
+          </div>
+          <div class="room">
+            <div class="room-glyph">#</div>
+            <div><div class="room-name">fan-boost</div><div class="room-preview">@rio · dropped boost</div></div>
+            <div class="room-right"><span class="room-online">8</span></div>
+          </div>
+          <div class="room" style="opacity:.6;">
+            <div class="room-glyph">🔒</div>
+            <div><div class="room-name">agency-vip</div><div class="room-preview">Unlock with Whop</div></div>
+            <div class="room-right"><span class="room-online">3</span></div>
+          </div>
+        </aside>
+
+        <section class="chat">
+          <header class="chat-head">
+            <span class="chat-name">#global</span>
+            <span class="chat-sub">· 47 online · 342 members · right-click a message to moderate</span>
+            <span class="chat-head-spacer"></span>
+            <button class="mod-queue-btn">⚑ Mod queue · 3</button>
+            <span class="chat-icon-btn" title="Pinned">📌</span>
+            <span class="chat-icon-btn" title="Members">👥</span>
+            <span class="chat-icon-btn" title="Settings">⚙</span>
+          </header>
+
+          <div class="stream">
+            <!-- Kade bot -->
+            <div class="msg msg-bot">
+              <div class="msg-avatar"><img src="brand/kade/kade-community-mode.webp" alt=""></div>
+              <div class="msg-body">
+                <div class="msg-head"><span class="msg-name">Kade</span><span class="msg-time">08:24</span></div>
+                <div class="msg-text">🎯 Campaign · <strong>Sponsored · $40 CPM</strong> · reaction layouts eligible. Grab a brief in <strong>#campaign-drops</strong>.</div>
+              </div>
+            </div>
+
+            <!-- Regular message -->
+            <div class="msg">
+              <div class="msg-avatar"><div class="initial" style="color:var(--cyan);">M</div></div>
+              <div class="msg-body">
+                <div class="msg-head"><span class="msg-name">@mari</span><span class="msg-time">08:26</span></div>
+                <div class="msg-text">side-by-side. reaction on the left, base clip on the right. muted the first 0.8s.</div>
+              </div>
+            </div>
+
+            <!-- CONTEXT MENU TARGET · right-clicked, highlighted -->
+            <div class="msg msg-target">
+              <div class="msg-avatar"><div class="initial" style="color:var(--gold);">R</div></div>
+              <div class="msg-body">
+                <div class="msg-head"><span class="msg-name">@rio</span><span class="msg-time">08:28</span></div>
+                <div class="msg-text">wait so did anyone actually run the drop at $40 CPM or is that hopium?</div>
+              </div>
+            </div>
+
+            <!-- HIDDEN placeholder · admin sees restore/detail -->
+            <div class="msg-hidden">
+              <div class="msg-hidden-avatar">✕</div>
+              <div class="msg-hidden-body">
+                <div class="msg-hidden-head">
+                  <span>Hidden by moderator</span>
+                  <span class="name">@spam-account · 08:30</span>
+                </div>
+                <div class="msg-hidden-note">
+                  Rule broken: <strong>promoting non-Whop links</strong> · hidden by @uncledaniel · 2m ago
+                </div>
+                <div class="msg-hidden-actions">
+                  <button class="mh-btn">View content</button>
+                  <button class="mh-btn restore">Restore</button>
+                  <button class="mh-btn">Ban user</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Muted user message · dimmed with warning tag -->
+            <div class="msg" data-muted="1">
+              <div class="msg-avatar"><div class="initial" style="color:var(--gold);">S</div></div>
+              <div class="msg-body">
+                <div class="msg-head"><span class="msg-name">@sami</span><span class="msg-time">08:33</span></div>
+                <div class="msg-text">still can't post links huh</div>
+              </div>
+            </div>
+
+            <!-- Normal recent -->
+            <div class="msg">
+              <div class="msg-avatar"><div class="initial">L</div></div>
+              <div class="msg-body">
+                <div class="msg-head"><span class="msg-name">@lucia</span><span class="msg-time">08:38</span></div>
+                <div class="msg-text">just ran it. reaction layout, $46 CPM after the platform fee. mid-week posted 10:22am.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Composer -->
+          <div class="composer">
+            <div class="composer-row">
+              <span class="composer-chip">GIF</span>
+              <span class="composer-emoji"><img src="brand/enemies/bug-mothbug.webp" alt=""></span>
+              <input class="composer-input" placeholder="Message #global as moderator">
+              <button class="composer-send">▲</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- CONTEXT MENU · open, anchored to @rio's row -->
+        <div class="ctx">
+          <div class="ctx-eb">Moderate · @rio's message</div>
+
+          <div class="ctx-item">
+            <span class="glyph">↳</span>
+            <span>Reply</span>
+            <span class="kbd">R</span>
+          </div>
+          <div class="ctx-item">
+            <span class="glyph">📌</span>
+            <span>Pin to channel</span>
+            <span class="kbd">P</span>
+          </div>
+          <div class="ctx-item">
+            <span class="glyph">📎</span>
+            <span>Copy link to message</span>
+            <span class="kbd">⌘L</span>
+          </div>
+
+          <div class="ctx-sep"></div>
+
+          <div class="ctx-item info-row">MODERATOR TOOLS</div>
+
+          <div class="ctx-item danger">
+            <span class="glyph">👁</span>
+            <span>Hide message</span>
+            <span class="kbd">H</span>
+          </div>
+          <div class="ctx-item danger">
+            <span class="glyph">⚠</span>
+            <span>Warn @rio</span>
+            <span class="kbd">W</span>
+          </div>
+          <div class="ctx-item danger">
+            <span class="glyph">🔇</span>
+            <span>Mute @rio · 24 h</span>
+            <span class="kbd">M</span>
+          </div>
+
+          <div class="ctx-sep"></div>
+
+          <div class="ctx-item destructive">
+            <span class="glyph">🚫</span>
+            <span>Ban from room</span>
+            <span class="kbd">⌘⌫</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

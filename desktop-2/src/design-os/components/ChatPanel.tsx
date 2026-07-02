@@ -30,7 +30,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   fetchArcadeLeaderboard,
   searchMedia,
-  sendChatMessage,
+  sendChatMessageDetailed,
   useChatChannel,
   type ArcadeLeaderboardEntry,
   type ChatChannel,
@@ -39,6 +39,7 @@ import {
   type MediaProvider,
   type MediaResult,
 } from "../../lib/chat";
+import { openInApp } from "../../lib/openInApp";
 
 import "./ChatPanel.css";
 
@@ -71,52 +72,78 @@ function timeLabel(iso: string): string {
   }
 }
 
-interface MediaTrayProps {
+export interface MediaTrayProps {
   onPick: (asset: MediaResult) => void;
+  onClose?: () => void;
 }
 
-function MediaTray({ onPick }: MediaTrayProps): JSX.Element {
+export function MediaTray({ onPick, onClose }: MediaTrayProps): JSX.Element {
   const [provider, setProvider] = useState<MediaProvider>("giphy");
   const [q, setQ] = useState("");
   const [results, setResults] = useState<MediaResult[]>([]);
   const [setupRequired, setSetupRequired] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
     if (q.trim().length < 2) {
       setResults([]);
       setSetupRequired(false);
+      setError(null);
+      setLoading(false);
       return;
     }
     let cancelled = false;
     setLoading(true);
+    setError(null);
+    setSetupRequired(false);
     const handle = window.setTimeout(async () => {
       const res = await searchMedia(provider, q.trim());
       if (cancelled) return;
       setResults(res.results);
       setSetupRequired(res.setupRequired);
+      setError(res.error);
       setLoading(false);
     }, 320);
     return () => {
       cancelled = true;
       window.clearTimeout(handle);
     };
-  }, [q, provider]);
+  }, [q, provider, retryNonce]);
 
   return (
-    <div className="lc-chat-panel-media" data-testid="lc-chat-media">
-      <div className="lc-chat-media-tabs">
-        {(["giphy", "pexels"] as const).map((p) => (
+    <div
+      className="lc-chat-panel-media"
+      data-testid="lc-chat-media"
+      role="region"
+      aria-label="GIF and photo search"
+    >
+      <div className="lc-chat-media-head">
+        <div className="lc-chat-media-tabs">
+          {(["giphy", "pexels"] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              className="lc-chat-media-tab"
+              data-active={provider === p}
+              aria-pressed={provider === p}
+              onClick={() => setProvider(p)}
+            >
+              {p === "giphy" ? "GIFs" : "Photos"}
+            </button>
+          ))}
+        </div>
+        {onClose ? (
           <button
-            key={p}
             type="button"
-            className="lc-chat-media-tab"
-            data-active={provider === p}
-            onClick={() => setProvider(p)}
+            className="lc-chat-media-close"
+            onClick={onClose}
+            aria-label="Close media search"
           >
-            {p === "giphy" ? "GIFs" : "Photos"}
+            ×
           </button>
-        ))}
+        ) : null}
       </div>
       <input
         className="lc-chat-media-input"
@@ -124,12 +151,21 @@ function MediaTray({ onPick }: MediaTrayProps): JSX.Element {
         placeholder={`Search ${provider}…`}
         value={q}
         onChange={(e) => setQ(e.target.value)}
+        aria-label={`Search ${provider === "giphy" ? "GIFs" : "photos"}`}
+        autoFocus
       />
       {setupRequired ? (
         <div className="lc-chat-media-setup">
           {provider === "giphy"
             ? "Set GIPHY_API_KEY on the backend to enable GIF search."
             : "Set PEXELS_API_KEY on the backend to enable photo search."}
+        </div>
+      ) : error ? (
+        <div className="lc-chat-media-setup is-error" role="alert">
+          <span>{error}</span>
+          <button type="button" onClick={() => setRetryNonce((value) => value + 1)}>
+            Retry
+          </button>
         </div>
       ) : loading ? (
         <div className="lc-chat-media-setup">Searching…</div>
@@ -149,9 +185,19 @@ function MediaTray({ onPick }: MediaTrayProps): JSX.Element {
               type="button"
               className="lc-chat-media-card"
               onClick={() => onPick(r)}
-              title={r.title ?? ""}
+              title={r.title ?? `Use ${provider === "giphy" ? "GIF" : "photo"}`}
+              aria-label={r.title
+                ? `Use ${r.title}`
+                : `Use ${provider === "giphy" ? "GIF" : "photo"}`}
             >
-              <img src={r.preview_url} alt={r.title ?? ""} loading="lazy" />
+              <img
+                src={r.preview_url}
+                alt=""
+                loading="lazy"
+                onError={(event) => {
+                  event.currentTarget.closest("button")?.setAttribute("data-image-error", "true");
+                }}
+              />
             </button>
           ))}
         </div>
@@ -160,12 +206,68 @@ function MediaTray({ onPick }: MediaTrayProps): JSX.Element {
   );
 }
 
-interface MessageRowProps {
+export interface MessageRowProps {
   row: ChatMessage;
+  viewerRole?: ChatRole;
 }
 
-function MessageRow({ row }: MessageRowProps): JSX.Element {
+const MEDIA_URL_RE = /https?:\/\/[^\s]+/i;
+
+function mediaUrlFromContent(content: string): string | null {
+  const match = content.match(MEDIA_URL_RE)?.[0];
+  if (!match) return null;
+  try {
+    const url = new URL(match);
+    const host = url.hostname.toLowerCase();
+    const mediaHost = host === "giphy.com"
+      || host.endsWith(".giphy.com")
+      || host === "pexels.com"
+      || host.endsWith(".pexels.com")
+      || /\.(gif|jpe?g|png|webp)$/i.test(url.pathname);
+    return mediaHost ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function MessageRow({ row, viewerRole = "member" }: MessageRowProps): JSX.Element {
   const badge = BADGE_LABEL[row.role];
+  const mediaUrl = mediaUrlFromContent(row.content);
+  const textContent = mediaUrl ? row.content.replace(mediaUrl, "").trim() : row.content;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const canModerate = viewerRole === "founder"
+    || viewerRole === "staff"
+    || viewerRole === "mod";
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (event: MouseEvent): void => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    const keydown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", keydown);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", keydown);
+    };
+  }, [menuOpen]);
+
+  const copyMessageLink = async (): Promise<void> => {
+    const link = `${window.location.origin}${window.location.pathname}?skipIntro=1#/community?message=${encodeURIComponent(row.id)}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopyState("copied");
+      window.setTimeout(() => setCopyState("idle"), 1600);
+    } catch {
+      setCopyState("failed");
+    }
+  };
+
   return (
     <motion.div
       layout
@@ -175,6 +277,11 @@ function MessageRow({ row }: MessageRowProps): JSX.Element {
       className="lc-chat-row"
       data-pinned={row.pinned}
       data-role={row.role}
+      data-moderation-available={canModerate ? "true" : "false"}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        setMenuOpen(true);
+      }}
     >
       <div className="lc-chat-row-avatar">
         {row.avatar_url ? (
@@ -200,9 +307,69 @@ function MessageRow({ row }: MessageRowProps): JSX.Element {
               🏆 {row.arcade_high_score.toLocaleString()}
             </span>
           ) : null}
+          {row.pinned ? <span className="lc-chat-row-pin">Pinned</span> : null}
           <span className="lc-chat-row-time">{timeLabel(row.created_at)}</span>
         </div>
-        <div className="lc-chat-row-content">{row.content}</div>
+        <div className="lc-chat-row-content">
+          {textContent ? <span>{textContent}</span> : null}
+          {mediaUrl ? (
+            <button
+              type="button"
+              className="lc-chat-row-media"
+              onClick={() => void openInApp(mediaUrl)}
+              aria-label="Open shared media"
+            >
+              <img
+                src={mediaUrl}
+                alt="Shared media"
+                loading="lazy"
+                onError={(event) => {
+                  event.currentTarget.parentElement?.setAttribute("data-image-error", "true");
+                }}
+              />
+              <span>Open shared media</span>
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div className="lc-chat-row-menu-wrap" ref={menuRef}>
+        <button
+          type="button"
+          className="lc-chat-row-menu-trigger"
+          aria-label={`Message actions for ${row.username}`}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((value) => !value)}
+        >
+          •••
+        </button>
+        {menuOpen ? (
+          <div
+            className="lc-chat-row-menu"
+            role="menu"
+            aria-label={`Actions for message from ${row.username}`}
+          >
+            <button type="button" role="menuitem" onClick={() => void copyMessageLink()}>
+              {copyState === "copied"
+                ? "Link copied"
+                : copyState === "failed"
+                  ? "Copy unavailable"
+                  : "Copy link to message"}
+            </button>
+            {canModerate ? (
+              <>
+                <span className="lc-chat-row-menu-label">Moderator tools</span>
+                <button type="button" role="menuitem" disabled>Hide message</button>
+                <button type="button" role="menuitem" disabled>Warn user</button>
+                <button type="button" role="menuitem" disabled>Mute for 24 hours</button>
+                <p>
+                  Server authorization, expiry, rollback, and audit contracts
+                  are required before these actions can be enabled.
+                </p>
+              </>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </motion.div>
   );
@@ -232,6 +399,7 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
   const [showEmoji, setShowEmoji] = useState(false);
   const [showMedia, setShowMedia] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const streamRef = useRef<HTMLDivElement | null>(null);
   const autoStickRef = useRef(true);
@@ -240,7 +408,27 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
   );
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
 
-  const { history, reload } = useChatChannel(channel, { enabled: open });
+  const { history, reload, isLoading, state, error } = useChatChannel(channel, {
+    enabled: open,
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      if (leaderboard !== null) {
+        setLeaderboard(null);
+      } else if (showMedia) {
+        setShowMedia(false);
+      } else if (showEmoji) {
+        setShowEmoji(false);
+      } else {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [leaderboard, onClose, open, showEmoji, showMedia]);
 
   useEffect(() => {
     try {
@@ -299,17 +487,20 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
       return;
     }
     setSending(true);
-    const out = await sendChatMessage({
+    setSendError(null);
+    const out = await sendChatMessageDetailed({
       channel,
       content,
       pinned: pinNext && canPin,
     });
     setSending(false);
-    if (out) {
+    if (out.message) {
       setComposer("");
       setPinNext(false);
       autoStickRef.current = true;
       await reload();
+    } else {
+      setSendError(out.error ?? "Message not sent.");
     }
   };
 
@@ -318,6 +509,7 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
       {open ? (
         <motion.aside
           key="lc-chat-panel"
+          id="lc-chat-panel"
           className="lc-chat-panel"
           data-testid="lc-chat-panel"
           initial={{ opacity: 0, y: 16, scale: 0.98 }}
@@ -359,7 +551,14 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
           </div>
 
           <div className="lc-chat-panel-stream" ref={streamRef}>
-            {history.messages.length === 0 ? (
+            {state === "loading" || isLoading && state === "idle" ? (
+              <div className="lc-chat-panel-empty" role="status">Loading real messages…</div>
+            ) : error ? (
+              <div className="lc-chat-panel-empty is-error" role="alert">
+                <span>{error}</span>
+                <button type="button" onClick={() => void reload()}>Retry</button>
+              </div>
+            ) : history.messages.length === 0 ? (
               <div className="lc-chat-panel-empty">
                 {history.can_write
                   ? "Be the first to drop a clip in here."
@@ -367,7 +566,7 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
               </div>
             ) : (
               history.messages.map((row) => (
-                <MessageRow key={row.id} row={row} />
+                <MessageRow key={row.id} row={row} viewerRole={history.viewer_role} />
               ))
             )}
           </div>
@@ -389,6 +588,7 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
 
           {showMedia ? (
             <MediaTray
+              onClose={() => setShowMedia(false)}
               onPick={(asset) => {
                 setComposer((prev) => `${prev}${prev ? " " : ""}${asset.full_url}`);
                 setShowMedia(false);
@@ -447,10 +647,17 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
           ) : null}
 
           <div className="lc-chat-composer">
+            {sendError ? (
+              <div className="lc-chat-send-error" role="alert">
+                <span>{sendError}</span>
+                <button type="button" onClick={() => void send()}>Retry</button>
+              </div>
+            ) : null}
             <button
               type="button"
               className="lc-chat-composer-toggle"
               data-active={showEmoji}
+              aria-pressed={showEmoji}
               onClick={() => {
                 setShowEmoji((p) => !p);
                 if (!showEmoji) setShowMedia(false);
@@ -463,6 +670,7 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
               type="button"
               className="lc-chat-composer-toggle"
               data-active={showMedia}
+              aria-pressed={showMedia}
               onClick={() => {
                 setShowMedia((p) => !p);
                 if (!showMedia) setShowEmoji(false);
@@ -476,6 +684,7 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
                 type="button"
                 className="lc-chat-composer-toggle"
                 data-active={pinNext}
+                aria-pressed={pinNext}
                 onClick={() => setPinNext((p) => !p)}
                 title="Pin this message to the banner stack"
                 aria-label="Pin"
@@ -485,7 +694,11 @@ export function ChatPanel({ open, onClose }: ChatPanelProps): JSX.Element | null
             ) : null}
             <textarea
               value={composer}
-              onChange={(e) => setComposer(e.target.value)}
+              aria-label={`Message #${channel}`}
+              onChange={(e) => {
+                setComposer(e.target.value);
+                if (sendError) setSendError(null);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();

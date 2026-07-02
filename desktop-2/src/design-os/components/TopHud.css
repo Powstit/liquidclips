@@ -138,6 +138,28 @@
   text-transform: uppercase;
 }
 
+@media (max-width: 1180px) {
+  .lc-hud {
+    grid-template-columns: minmax(100px, 1fr) auto auto auto;
+    gap: 8px;
+    padding-inline: 24px;
+  }
+  .lc-pill-search {
+    display: none;
+  }
+  .lc-pill {
+    font-size: 12px;
+    padding-inline: 13px;
+  }
+  .lc-hud-mode-opt {
+    font-size: 11px;
+    padding-inline: 11px;
+  }
+  .lc-pill-user {
+    padding-right: 13px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lc-hud-dot, .lc-slash { animation: none; }
 }

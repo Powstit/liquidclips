@@ -72,20 +72,17 @@ async function bootApp(page: Page): Promise<void> {
   );
 }
 
+async function openBrowseFromCustomerControl(page: Page): Promise<void> {
+  const browseTab = page.locator('[data-browse-rail-tab="root"]');
+  await expect(browseTab).toBeVisible({ timeout: 5_000 });
+  await browseTab.click();
+  await expect(page.locator(".lc-browse-overlay")).toBeVisible({ timeout: 10_000 });
+}
+
 test.describe("Gate 5 · Routing And Surface Registry", () => {
   test("LC-UI-P0-G5-001 · BrowseOverlay Campaigns quick link routes to Design-OS campaigns", async ({ page }) => {
     await bootApp(page);
-
-    /* Open the BrowseOverlay via the QA hook attached on vite-dev. */
-    await page.waitForFunction(
-      () => !!(window as unknown as { __lcQA?: unknown }).__lcQA,
-      { timeout: 5_000 },
-    );
-    await page.evaluate(() => {
-      const w = window as unknown as { __lcQA?: { openOverlay: (n: "browse") => void } };
-      w.__lcQA?.openOverlay?.("browse");
-    });
-    await page.waitForSelector(".lc-browse-overlay", { timeout: 10_000 });
+    await openBrowseFromCustomerControl(page);
 
     /* Click the Campaigns quick link. */
     const link = page.locator(".lc-browse-overlay button", { hasText: "Campaigns" }).first();
@@ -107,15 +104,7 @@ test.describe("Gate 5 · Routing And Surface Registry", () => {
 
   test("LC-UI-P0-G5-002 · BrowseOverlay Earn quick link emits nav:click (no silent no-op)", async ({ page }) => {
     await bootApp(page);
-    await page.waitForFunction(
-      () => !!(window as unknown as { __lcQA?: unknown }).__lcQA,
-      { timeout: 5_000 },
-    );
-    await page.evaluate(() => {
-      const w = window as unknown as { __lcQA?: { openOverlay: (n: "browse") => void } };
-      w.__lcQA?.openOverlay?.("browse");
-    });
-    await page.waitForSelector(".lc-browse-overlay", { timeout: 10_000 });
+    await openBrowseFromCustomerControl(page);
 
     const link = page.locator(".lc-browse-overlay button", { hasText: "Earn" }).first();
     await expect(link).toBeVisible({ timeout: 5_000 });
@@ -132,15 +121,7 @@ test.describe("Gate 5 · Routing And Surface Registry", () => {
 
   test("LC-UI-P0-G5-003 · BrowseOverlay Community quick link emits nav:click (no silent no-op)", async ({ page }) => {
     await bootApp(page);
-    await page.waitForFunction(
-      () => !!(window as unknown as { __lcQA?: unknown }).__lcQA,
-      { timeout: 5_000 },
-    );
-    await page.evaluate(() => {
-      const w = window as unknown as { __lcQA?: { openOverlay: (n: "browse") => void } };
-      w.__lcQA?.openOverlay?.("browse");
-    });
-    await page.waitForSelector(".lc-browse-overlay", { timeout: 10_000 });
+    await openBrowseFromCustomerControl(page);
 
     const link = page.locator(".lc-browse-overlay button", { hasText: "Community" }).first();
     await expect(link).toBeVisible({ timeout: 5_000 });
