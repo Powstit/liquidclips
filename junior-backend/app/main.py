@@ -519,6 +519,14 @@ async def lifespan(_app: FastAPI):
         "CREATE INDEX IF NOT EXISTS ix_chat_messages_user ON chat_messages (user_id)",
         "CREATE INDEX IF NOT EXISTS ix_chat_messages_pinned ON chat_messages (channel, pinned) WHERE pinned = true",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_role varchar NOT NULL DEFAULT 'member'",
+        # Stage 7 · chat-scoped timed mute + moderation state on chat_messages.
+        # All four are additive · Postgres/sqlite compatible · no backfill
+        # needed (NULL semantics == not moderated / not muted).
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_muted_until timestamptz",
+        "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS hidden_at timestamptz",
+        "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS hidden_by_user_id varchar",
+        "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS hide_reason text",
+        "CREATE INDEX IF NOT EXISTS ix_chat_messages_hidden_at ON chat_messages (hidden_at) WHERE hidden_at IS NOT NULL",
         # v2.2.11 arcade leaderboard — Space Invaders best-ever score.
         # Indexed because /chat/game/leaderboard orders the top-10 desc.
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS arcade_high_score integer NOT NULL DEFAULT 0",
@@ -666,6 +674,12 @@ app.include_router(_chat_router.router)
 # state and reuses admin_audit_log for every mutation.
 from app.routes import agency as _agency_router  # noqa: E402
 app.include_router(_agency_router.router)
+# Stage 7 · chat-message moderation (hide / warn / mute24h). Sits on the
+# same `/chat/*` prefix as `chat.py` but owns only the moderation
+# mutations; `chat.py` still owns history + post + pin. Both reuse
+# admin_audit_log with target_type="chat_moderation".
+from app.routes import moderation as _moderation_router  # noqa: E402
+app.include_router(_moderation_router.router)
 app.include_router(telemetry.router)
 app.include_router(publish.router)
 app.include_router(social.router)
