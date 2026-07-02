@@ -80,6 +80,22 @@ router = APIRouter(tags=["agency"])
 # Constants
 # ---------------------------------------------------------------------
 
+def _as_utc(dt: datetime | None) -> datetime | None:
+    """Normalize a datetime to UTC-aware.
+
+    Robustness: SQLite (dev + smoke) stores `DateTime(timezone=True)` as
+    naive strings and returns them naive on read, while Postgres returns
+    them tz-aware. Directly comparing naive vs aware raises
+    `TypeError`. This helper coerces both cases into UTC-aware so
+    comparisons work identically across drivers.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 # Basis-points ceiling — 10_000 bps = 100.00%.
 BPS_TOTAL = 10_000
 
@@ -371,7 +387,8 @@ def list_roster(
     )
     live_pending: list[AgencyInvite] = []
     for inv in pending_rows:
-        if inv.expires_at <= now:
+        exp = _as_utc(inv.expires_at)
+        if exp is not None and exp <= now:
             inv.status = "expired"
         else:
             live_pending.append(inv)
@@ -466,7 +483,8 @@ def accept_invite(
             status.HTTP_409_CONFLICT,
             f"invite is {invite.status}",
         )
-    if invite.expires_at <= now:
+    exp = _as_utc(invite.expires_at)
+    if exp is not None and exp <= now:
         invite.status = "expired"
         db.flush()
         db.commit()
@@ -941,10 +959,11 @@ def _derive_whop_status(target: User) -> tuple[str, str | None, datetime | None]
     now = utcnow()
     sub_status = getattr(target, "subscription_status", None)
     paid_until = getattr(target, "paid_until", None)
+    paid_until_utc = _as_utc(paid_until)
     is_active_sub = (
         sub_status in {"active", "trialing"}
-        and paid_until is not None
-        and paid_until >= now
+        and paid_until_utc is not None
+        and paid_until_utc >= now
     )
     return ("active" if is_active_sub else "disabled", sub_status, paid_until)
 
