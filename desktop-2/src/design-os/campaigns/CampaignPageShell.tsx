@@ -144,6 +144,13 @@ function Row({ label, value, sub }: { label: string; value: string; sub?: string
 export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShellProps) {
   const tier = useTierCaps();
   const [discussionOpen, setDiscussionOpen] = useState(false);
+  // Defense-in-depth · Stage 8 carve-out. Mirrors CampaignBanner —
+  // a broken banner_url returned by /campaigns (currently 3 slugs
+  // point at missing files on prod: uncle-daniel / viral-reaction /
+  // proof) falls back to the surrounding hero overlay chrome instead
+  // of rendering a broken-image icon. Zero visual change on the
+  // happy path.
+  const [heroMediaFailed, setHeroMediaFailed] = useState(false);
 
   if (!campaign) {
     return (
@@ -224,11 +231,12 @@ export function CampaignPageShell({ campaign, open, onClose }: CampaignPageShell
         <div className="lc-camp-shell">
           {/* 1 · Hero banner */}
           <section className={`lc-camp-shell-hero is-${campaign.placementQuality}`}>
-            {(campaign.bannerUrl || campaign.featuredThumbUrl) && (
+            {!heroMediaFailed && (campaign.bannerUrl || campaign.featuredThumbUrl) && (
               <img
                 src={campaign.featuredThumbUrl ?? campaign.bannerUrl ?? ""}
                 alt=""
                 className="lc-camp-shell-hero-art"
+                onError={() => setHeroMediaFailed(true)}
               />
             )}
             <div className="lc-camp-shell-hero-overlay">
