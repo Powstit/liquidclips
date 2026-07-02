@@ -206,6 +206,66 @@ export default function GetPage() {
   );
 }
 
+// Sprint F · Agency-tier variant of the "linked" success panel.
+// Renders when link.status === "linked" and the resolved tier is any of
+// the 3 agency ladder tiers (agency_solo · agency · agency_whitelabel)
+// plus the legacy autopilot alias. Copy pitches the operations surface
+// instead of the clipping engine — agency owners aren't primarily here
+// to cut clips, they're here to run a bounty.
+function AgencyLinkedPanel({ tier }: { tier: string }) {
+  const label = agencyLabel(tier);
+  return (
+    <div className="mt-12 rounded-3xl border border-fuchsia-soft bg-fuchsia-soft/30 p-7 sm:p-8">
+      <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-fuchsia" />
+        agency mode · unlocked
+      </div>
+      <h2 className="mt-2 font-display text-[clamp(24px,4vw,28px)] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">
+        Your {label} is live.
+      </h2>
+      <p className="mt-3 max-w-[520px] font-sans text-[15px] leading-relaxed text-text-secondary">
+        You bypass the affiliate qualification gate — every clipper you invite earns you
+        50% MRR from day one. Download the desktop app · open Settings → Agency to build
+        your roster, or open the Campaign Builder to draft your first bounty.
+      </p>
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <a
+          href="https://liquidclips.app/download"
+          onClick={() => track("desktop_download_clicked", { source: "get" })}
+          className="w-full rounded-full bg-ink px-6 py-3 text-center font-sans text-[15px] font-medium text-paper transition-all hover:bg-fuchsia hover:shadow-[0_10px_30px_rgba(255,26,140,0.3)] sm:w-auto"
+        >
+          Download for Mac →
+        </a>
+        <Link
+          href="/dashboard"
+          className="w-full rounded-full border border-line bg-paper px-6 py-3 text-center font-sans text-[15px] font-medium text-ink transition-colors hover:border-fuchsia sm:w-auto"
+        >
+          Open dashboard
+        </Link>
+      </div>
+      <div className="mt-6 rounded-2xl border border-line bg-paper p-5">
+        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-text-tertiary">
+          three moves to make it real
+        </div>
+        <ol className="mt-3 space-y-3 text-[14px] leading-[1.55] text-ink">
+          <li>
+            <strong>1.</strong> Open Settings → <strong>Roster</strong> · send your first
+            invite by email (14-day expiry · attribution auto-stamped).
+          </li>
+          <li>
+            <strong>2.</strong> Open <strong>Campaign Builder</strong> · draft a brief,
+            paste a Whop reward URL, publish when funding lands.
+          </li>
+          <li>
+            <strong>3.</strong> Optionally tune <strong>Payout Split</strong> (must sum
+            to 100%) and any per-agency <strong>Rules</strong>.
+          </li>
+        </ol>
+      </div>
+    </div>
+  );
+}
+
 function LoadingCard() {
   return (
     <div className="mt-12 rounded-3xl border border-line bg-paper-warm/50 p-7 sm:p-8">
@@ -250,8 +310,31 @@ function SignedOutPanel({ claimToken }: { claimToken: string | null }) {
   );
 }
 
+// Sprint F · agency-tier variant · reads the tier string the backend
+// stamps into link.tier and branches the copy for the 3 agency ladder
+// tiers. Non-agency tiers fall through to the existing clipper hero.
+const AGENCY_FAMILY_TIERS = new Set([
+  "agency",
+  "agency_solo",
+  "agency_whitelabel",
+  "autopilot",
+]);
+function isAgencyFamilyTier(tier: string | undefined | null): boolean {
+  if (!tier) return false;
+  return AGENCY_FAMILY_TIERS.has(tier.toLowerCase());
+}
+function agencyLabel(tier: string): string {
+  const t = tier.toLowerCase();
+  if (t === "agency_solo") return "Solo Agency";
+  if (t === "agency_whitelabel") return "Agency White-Label";
+  return "Agency";
+}
+
 function SignedInPanel({ link, clerkUserId, email }: { link: LinkState; clerkUserId: string; email: string }) {
   if (link.status === "linked") {
+    if (isAgencyFamilyTier(link.tier)) {
+      return <AgencyLinkedPanel tier={link.tier} />;
+    }
     return (
       <div className="mt-12 rounded-3xl border border-fuchsia-soft bg-fuchsia-soft/30 p-7 sm:p-8">
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia-deep">

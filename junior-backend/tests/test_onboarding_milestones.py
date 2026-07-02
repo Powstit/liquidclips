@@ -26,11 +26,21 @@ from app.onboarding_milestones import (
 
 
 @pytest.fixture
-def db_session():
-    """In-memory SQLite session — ephemeral, per-test isolated."""
+def db_session(monkeypatch):
+    """In-memory SQLite session — ephemeral, per-test isolated.
+
+    Sprint G.1 Integrity fix routes writes through an INDEPENDENT
+    `SessionLocal()` opened from `app.db`. We patch that factory here to
+    hand out sessions bound to the same in-memory engine as the fixture,
+    so the "fresh session" write lands in the test database instead of
+    the real one."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+
+    import app.db as _app_db
+    monkeypatch.setattr(_app_db, "SessionLocal", SessionLocal)
+
     session = SessionLocal()
     try:
         yield session
@@ -112,6 +122,32 @@ def test_snapshot_filters_legacy_or_unknown_keys(db_session):
     # Only canonical keys appear
     assert "legacy_orphan_key_from_v0.6" not in snap
     assert snap["signed_up_at"] == "2026-07-02T10:00:00Z"
+
+
+def test_milestone_survives_caller_rollback(db_session):
+    """Sprint G.1 Integrity guarantee: milestone stamps are written on
+    an independent session, so a caller-side `db.rollback()` cannot lose
+    them."""
+    u = _make_user(db_session)
+    ok = mark_milestone(db_session, u, "signed_up_at")
+    assert ok is True
+
+    # Simulate the caller aborting its transaction AFTER the milestone
+    # write. The stamp must still be in the database.
+    db_session.rollback()
+
+    # Re-open a fresh session against the same in-memory engine to
+    # verify the write actually persisted.
+    from app.db import SessionLocal
+    verify = SessionLocal()
+    try:
+        row = verify.get(User, u.id)
+        assert row is not None
+        assert row.onboarding_status.get("signed_up_at"), (
+            "milestone must survive caller rollback (Sprint G.1 Integrity)"
+        )
+    finally:
+        verify.close()
 
 
 def test_ordered_milestones_produce_ascending_timestamps(db_session):

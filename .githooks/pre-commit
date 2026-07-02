@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Pre-commit gate — runs every desktop guardrail in sequence. Any single
-# guard failing aborts the commit.
+# Pre-commit gate — runs every guardrail in sequence. Any single guard
+# failing aborts the commit.
 #
-#   1. check-humanError      — `String(e)` / `String(err)` regression guard.
-#   2. iron-gate-precommit   — refuses deletion of IRON GATE sentinels.
+#   1. check-humanError         — `String(e)` / `String(err)` regression guard.
+#   2. iron-gate-precommit      — refuses deletion of IRON GATE sentinels.
 #   3. assert-no-passive-keychain — auth-keychain invariant (IG-014).
-#   4. brand-kit-drift-check — token parity between index.css + demo HTML.
+#   4. brand-kit-drift-check    — token parity between index.css + demo HTML.
+#   5. lint-kade-decoupling     — Sprint G.5 · onboarding:milestone emitter-only rule.
 #
 # Hook lives at `.githooks/pre-commit`; `git config core.hooksPath .githooks`
 # points the repo at it.
@@ -16,6 +17,11 @@ HOOK_DIR="$( cd "$(/usr/bin/dirname "$0")" && /bin/pwd )"
 REPO_ROOT="$( cd "$HOOK_DIR/.." && /bin/pwd )"
 DESKTOP_ROOT="$REPO_ROOT/desktop"
 DESKTOP_SCRIPTS="$DESKTOP_ROOT/scripts"
+# Sprint G.5 · desktop-2 lint scripts. Separate from `desktop/` (legacy)
+# so a repo that only checks out desktop-2 still runs the Kade
+# decoupling gate.
+DESKTOP2_ROOT="$REPO_ROOT/desktop-2"
+DESKTOP2_SCRIPTS="$DESKTOP2_ROOT/scripts"
 
 run_guard() {
   local cwd=$1
@@ -39,3 +45,8 @@ run_guard "$REPO_ROOT"    "$DESKTOP_SCRIPTS/check-humanError.sh" "$@"
 run_guard "$REPO_ROOT"    "$DESKTOP_SCRIPTS/iron-gate-precommit.sh" "$@"
 run_guard "$DESKTOP_ROOT" "$DESKTOP_SCRIPTS/assert-no-passive-keychain.sh" "$@"
 run_guard "$DESKTOP_ROOT" "$DESKTOP_SCRIPTS/brand-kit-drift-check.sh" "$@"
+# Sprint G.5 · Kade decoupling — refuses commits that emit
+# `onboarding:milestone` outside `desktop-2/src/lib/onboardingEmitter.ts`.
+# Skipped silently on branches where the desktop-2/ directory is absent
+# (run_guard short-circuits on missing executables).
+run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-kade-decoupling.sh" "$@"

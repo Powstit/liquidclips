@@ -160,6 +160,28 @@ export function DesignOSAppShell({
   );
 }
 
+/** Sprint G.4 · Kade Reactive Onboarding · pose reaction map. Each
+ *  entry maps a `OnboardingMilestone` to a `KadeState` pose. Every pose
+ *  referenced here MUST exist in the KadeState union (line 15 of
+ *  events.ts) so `getKade()` can resolve it. Add a new milestone at
+ *  the bottom (never rename existing keys — the emitter fires by name
+ *  and a rename would silently drop a pose reaction). */
+const MILESTONE_TO_POSE = {
+  signed_up_at:                  "celebration",
+  first_launch_at:               "success",
+  first_clip_at:                 "celebration",
+  first_publish_at:              "publishing",
+  first_earn_view_at:            "earn-mode",
+  first_bounty_submit:           "reading-brief",
+  first_paid_referral:           "celebration",
+  agency_owner_first_campaign:   "campaign-mode",
+  agency_owner_first_invite:     "community-mode",
+  agency_member_accepted_at:     "campaign-mode",
+} as const satisfies Record<string, KadeState>;
+type MilestoneKey = keyof typeof MILESTONE_TO_POSE;
+
+const MILESTONE_HOLD_MS = 2400;
+
 /** Exposed so route components (e.g. proof panels) can drive a LOCAL Kade
  *  state, distinct from the StickyKade. Used rarely. */
 export function useKadeState(defaultKade: KadeState): {
@@ -176,6 +198,19 @@ export function useKadeState(defaultKade: KadeState): {
   useEvent("nav:hover", (p) => {
     setKade(p.kade);
     const t = window.setTimeout(() => setKade(defaultKade), 900);
+    return () => window.clearTimeout(t);
+  });
+
+  // Sprint G.4 · Kade Reactive Onboarding subscriber. When the emitter
+  // fires an `onboarding:milestone`, swap to the mapped pose for
+  // MILESTONE_HOLD_MS then fall back to the route's default. Silently
+  // ignores milestone keys that don't yet have a pose (fail-soft — the
+  // emitter's vocabulary can widen without touching this file).
+  useEvent("onboarding:milestone", (p) => {
+    const pose = MILESTONE_TO_POSE[p.milestone as MilestoneKey];
+    if (!pose) return;
+    setKade(pose);
+    const t = window.setTimeout(() => setKade(defaultKade), MILESTONE_HOLD_MS);
     return () => window.clearTimeout(t);
   });
 
