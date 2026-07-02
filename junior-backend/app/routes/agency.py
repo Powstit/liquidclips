@@ -60,7 +60,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
-from app.features import _resolve_tier, is_admin_email
+from app.features import _resolve_tier, is_admin_email, is_agency_tier
 from app.models import (
     AdminAuditLog,
     AgencyInvite,
@@ -117,15 +117,20 @@ ALLOWED_MEMBER_STATUSES = {"active", "disabled"}
 
 
 def _is_agency_owner(user: User, agency_id: str) -> bool:
-    """Owner check — id-match AND resolved tier is agency.
+    """Owner check — id-match AND resolved tier is in the agency family.
 
-    A user whose id equals `agency_id` but whose tier is NOT agency
-    (e.g. an Agency user who downgraded to Solo) is refused. Staff
+    A user whose id equals `agency_id` but whose tier is NOT any of the
+    three agency-family tiers (agency_solo, agency, agency_whitelabel)
+    is refused — e.g. an Agency user who downgraded to Solo/Pro. Staff
     override lives in the wrapping helper.
+
+    2026-07-02 · switched from `_resolve_tier(user.tier) == "agency"` to
+    `is_agency_tier` so the new $50 solo and $500 white-label tiers also
+    authorize owner surfaces.
     """
     if user.id != agency_id:
         return False
-    return _resolve_tier(user.tier) == "agency"
+    return is_agency_tier(user.tier)
 
 
 def _require_agency_owner_or_staff(
@@ -531,6 +536,24 @@ def accept_invite(
     invite.status = "accepted"
     invite.accepted_at = now
 
+    # 2026-07-02 · first-touch affiliate attribution to the agency owner.
+    # Deck slide 07 promises agency-tier owners "earn 50% MRR of every
+    # clipper who joins their campaign, from day one." That claim is only
+    # true if the joined clipper's `affiliate_id` is stamped to the owner
+    # so downstream renewal webhooks (webhooks_stripe / webhooks_whop)
+    # credit the owner. Owner identity is implied by
+    # `invite.agency_id` (agencies are User rows — see the class docstring
+    # for AgencyMember at models.py:1552-1562).
+    #
+    # HARD CONSTRAINT (junior-backend/CLAUDE.md line 118): never overwrite
+    # `users.affiliate_id`. First-touch is locked at signup. So we only
+    # stamp when the invited user has NO existing affiliate — an organic
+    # sign-up with no referral. Users who arrived via someone else's
+    # tracked link keep their original attribution.
+    if user.affiliate_id is None and invite.agency_id != user.id:
+        user.affiliate_id = invite.agency_id
+        db.add(user)
+
     _audit_agency(
         db,
         user,
@@ -541,6 +564,7 @@ def accept_invite(
             "agency_id": invite.agency_id,
             "invite_id": invite.id,
             "role": invite.role,
+            "affiliate_stamped": user.affiliate_id == invite.agency_id,
         },
     )
     db.commit()

@@ -53,6 +53,11 @@ _MAX_CHANNELS_BY_TIER = {
     "solo": 5,
     "pro": 5,
     "agency": 25,
+    # 2026-07-02 · 3-tier agency ladder. Solo scaled down to match its
+    # $50 price point; White-Label scaled up for its unlimited-roster
+    # promise. Middle `agency` unchanged (no regression for existing users).
+    "agency_solo": 10,
+    "agency_whitelabel": 50,
     # Legacy aliases — same caps as their v2 successor
     "channel": 5,
     "growth": 10,

@@ -1314,7 +1314,9 @@ def render_trial_ending_soon(
     ctx: MailContext,
 ) -> tuple[str, str, str]:
     pretty = {"solo": "Solo", "growth": "Growth", "autopilot": "Autopilot",
-              "pro": "Pro", "agency": "Agency"}.get(tier, tier.capitalize())
+              "pro": "Pro", "agency": "Agency",
+              "agency_solo": "Solo Agency", "agency_whitelabel": "Agency White-Label",
+              }.get(tier, tier.capitalize())
     day_word = "day" if days_left == 1 else "days"
     subject = f"Your Liquid Clips trial ends in {days_left} {day_word}."
     body = f"""
@@ -1780,6 +1782,8 @@ def render_paywall_hit(
         "solo": "Solo",
         "pro": "Pro",
         "agency": "Agency",
+        "agency_solo": "Solo Agency",           # 2026-07-02 · new ladder
+        "agency_whitelabel": "Agency White-Label",
         "growth": "Pro",       # legacy alias
         "channel": "Pro",      # legacy alias
         "autopilot": "Agency", # legacy alias
