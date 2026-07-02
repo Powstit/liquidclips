@@ -328,6 +328,16 @@ export const sidecar = {
    *  Batch B · real RPC at desktop/src/lib/sidecar.ts:791 — method
    *  name + payload shape preserved verbatim. Iron Gate IG-002. */
   async getProject(slug: string): Promise<{ project: ProjectMeta }> {
+    // Harness test seam · lets Playwright force the failure path so the
+    // C3 mid-run-hydration dedup toast can be exercised (no Tauri IPC
+    // available in Vite dev; getProject would otherwise silently return
+    // the fixture). Production code never sets this flag.
+    if (
+      typeof window !== "undefined" &&
+      (window as unknown as { __lcForceGetProjectError?: boolean }).__lcForceGetProjectError
+    ) {
+      throw new Error("harness · forced getProject failure");
+    }
     try {
       return await sidecarCall<{ project: ProjectMeta }>("get_project", { slug });
     } catch (e) {

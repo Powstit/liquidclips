@@ -1,8 +1,36 @@
+/* Checkpoint item 3 · container-aware layout, corrected.
+ *
+ * Previous C5 code declared `container-type` on `.lc-cps` AND queried
+ * it from the same element (@container cps { .lc-cps { ... } }) — the
+ * container element cannot be styled by its own container query, so
+ * the narrow-inspector one-column layout never applied.
+ *
+ * Fix: `.lc-cps-host` is a semantic-free wrapper (rendered by
+ * ClipPreviewShell.tsx) that owns the container declaration. `.lc-cps`
+ * is a descendant, so `@container cps (...) { .lc-cps { ... } }` now
+ * legitimately hits the target. The host is `display: contents` so it
+ * does NOT introduce a layout box between the inspector aside and the
+ * preview grid. Legacy viewport `@media` preserved as a fallback for
+ * browsers without container-query support. */
+.lc-cps-host {
+  /* container-type requires an element that establishes an independent
+   * formatting context. `display: contents` disqualifies it, so keep
+   * the host as a real block-level box. Zero visual footprint of its
+   * own — it just measures inline-size for the descendant .lc-cps. */
+  display: block;
+  min-width: 0;
+  container-type: inline-size;
+  container-name: cps;
+}
 .lc-cps {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(280px, 420px);
   gap: 18px;
   align-items: start;
+}
+@container cps (max-width: 480px) {
+  .lc-cps { grid-template-columns: 1fr; gap: 12px; }
+  .lc-cps-pane { padding: 12px 14px !important; }
 }
 @media (max-width: 1180px) {
   .lc-cps { grid-template-columns: 1fr; }
