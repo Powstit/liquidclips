@@ -125,6 +125,11 @@ class ChatMessageOut(BaseModel):
     # asynchronously by the desktop on each game-over so a fresh record
     # appears next to the author's name on their next message.
     arcade_high_score: int = 0
+    # Stage 7 · moderation. When `is_removed` is True, `content` has
+    # been server-side-scrubbed to "[removed by moderator]" — the
+    # original text never leaves the API. Default False so pre-Stage-7
+    # deserializers stay compatible.
+    is_removed: bool = False
 
 
 class ArcadeScorePayload(BaseModel):
@@ -193,19 +198,40 @@ class MediaSearchOut(BaseModel):
 # ---------------------------------------------------------------------
 
 
+MODERATED_CONTENT_STUB = "[removed by moderator]"
+
+
+def _as_utc(dt: datetime | None) -> datetime | None:
+    """Normalize a datetime to UTC-aware — SQLite/dev returns naive
+    while Postgres returns aware. Same helper shape as
+    `app/routes/agency.py::_as_utc` (Stage 5 robustness fix)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def _serialise(row: ChatMessage, arcade_high_score: int = 0) -> ChatMessageOut:
+    # Stage 7 · server-side content scrub. Original text is REPLACED
+    # (not merely hidden) when `hidden_at` is set — matches doc §690
+    # "not merely hidden with CSS". The scrub happens BEFORE the row
+    # leaves the API so a client with dev-tools open can't reveal the
+    # original content by inspecting the response.
+    is_removed = getattr(row, "hidden_at", None) is not None
     return ChatMessageOut(
         id=row.id,
         user_id=row.user_id,
         username=row.username,
         avatar_url=row.avatar_url,
         channel=row.channel,
-        content=row.content,
+        content=MODERATED_CONTENT_STUB if is_removed else row.content,
         role=row.role,
         pinned=bool(row.pinned),
         announcement_id=row.announcement_id,
         created_at=row.created_at if row.created_at else datetime.now(timezone.utc),
         arcade_high_score=arcade_high_score,
+        is_removed=is_removed,
     )
 
 
@@ -375,6 +401,25 @@ def post_message(
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             f"channel {payload.channel} is locked for your tier",
+        )
+
+    # Stage 7 · chat-scoped mute gate. `chat_muted_until` is set by the
+    # /chat/messages/{id}/mute24h moderation endpoint. Kept SEPARATE
+    # from `banned_until` so a chat mute doesn't leak into publish /
+    # earn / license gates. Staff bypass so a muted admin can still
+    # unmute themselves without a DB touch (unlikely but the tie-
+    # breaker is important during incident response).
+    muted_until = _as_utc(getattr(user, "chat_muted_until", None))
+    now = datetime.now(timezone.utc)
+    if muted_until is not None and muted_until > now and not is_admin_email(user.email):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail={
+                "reason": "chat_muted",
+                "muted_until": muted_until.isoformat(),
+                "message": "You are muted from Community chat. Try again after the mute expires.",
+            },
+            headers={"Retry-After": str(max(1, int((muted_until - now).total_seconds())))},
         )
 
     role = _derive_role(user)

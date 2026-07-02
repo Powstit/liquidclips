@@ -123,6 +123,14 @@ class User(Base):
     # Read by the gate that mints licenses + by Earn/Publish gates.
     banned_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Stage 7 · chat-scoped timed mute. Distinct from `banned_until`
+    # (global) so a chat mute doesn't leak into publish / earn / license
+    # gates. NULL = not muted. A future date = muted until that date;
+    # the /chat/message POST route rejects with 403 while this is > now.
+    chat_muted_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # v2.2.10 community chat · per-user role override. "member" is the
     # default; admins can elevate a creator to "mod" via the HQ panel.
     # FOUNDER + STAFF badges derive from founder_flag + is_admin_email
@@ -1514,6 +1522,15 @@ class ChatMessage(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, index=True
     )
+    # Stage 7 · moderation. Server-side content scrub — when hidden_at
+    # is set, `_serialise` in app/routes/chat.py replaces `content` with
+    # "[removed by moderator]" and flags `is_removed=true` BEFORE the row
+    # ever leaves the API, per doc §690 ("not merely hidden with CSS").
+    hidden_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    hidden_by_user_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    hide_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 # =====================================================================

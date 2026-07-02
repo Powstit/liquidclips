@@ -24,8 +24,15 @@
  * on its next /sync, so the sticky tinted header lives in the existing
  * banner stack — no new top-of-viewport surface to maintain.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import {
+  postHideMessage,
+  postMute24h,
+  postWarnMessage,
+  type ModerationResult,
+} from "../../lib/chatModeration";
+import { bus } from "../bridge";
 
 import {
   fetchArcadeLeaderboard,
@@ -268,6 +275,56 @@ export function MessageRow({ row, viewerRole = "member" }: MessageRowProps): JSX
     }
   };
 
+  // Stage 7 · context-menu wire under the F1 carve-out. `window.confirm`
+  // is the interim safety gate for destructive/high-impact actions per
+  // doc §693; a proper `<Confirm />` modal (with keyboard focus trap +
+  // brand chrome) lands in a follow-up sprint. Success + failure both
+  // emit `toast` on the bus so the moderator sees the outcome without
+  // any local state; the ChatPanel doesn't render moderation status
+  // inline. On non-`ready` state the menu closes so a follow-up right-
+  // click is required — matches the confirm/rollback intent of §695
+  // without introducing an optimistic-UI shim in this cycle.
+  const toast = useCallback(
+    (kind: "success" | "error" | "warning" | "info", title: string, body: string) => {
+      bus.emit("toast", { kind, title, body });
+    },
+    [],
+  );
+  const surfaceResult = useCallback(
+    <T,>(result: ModerationResult<T>, okTitle: string, okBody: string): boolean => {
+      if (result.state === "ready") {
+        toast("success", okTitle, okBody);
+        return true;
+      }
+      const errKind = result.state === "forbidden" ? "warning" : "error";
+      toast(
+        errKind,
+        result.state === "forbidden" ? "Not authorised" : "Moderation failed",
+        result.error ?? "The server did not accept the request.",
+      );
+      return false;
+    },
+    [toast],
+  );
+  const handleHide = useCallback(async () => {
+    if (!window.confirm(`Hide this message from ${row.username}?`)) return;
+    setMenuOpen(false);
+    const result = await postHideMessage(row.id);
+    surfaceResult(result, "Message hidden", "Content is now [removed by moderator].");
+  }, [row.id, row.username, surfaceResult]);
+  const handleWarn = useCallback(async () => {
+    if (!window.confirm(`Warn ${row.username} for this message? A record is added to the audit log.`)) return;
+    setMenuOpen(false);
+    const result = await postWarnMessage(row.id);
+    surfaceResult(result, "Warning delivered", `Audit row recorded against ${row.username}.`);
+  }, [row.id, row.username, surfaceResult]);
+  const handleMute = useCallback(async () => {
+    if (!window.confirm(`Mute ${row.username} from Community chat for 24 hours?`)) return;
+    setMenuOpen(false);
+    const result = await postMute24h(row.id);
+    surfaceResult(result, "User muted", `${row.username} cannot post for 24 hours.`);
+  }, [row.id, row.username, surfaceResult]);
+
   return (
     <motion.div
       layout
@@ -359,13 +416,30 @@ export function MessageRow({ row, viewerRole = "member" }: MessageRowProps): JSX
             {canModerate ? (
               <>
                 <span className="lc-chat-row-menu-label">Moderator tools</span>
-                <button type="button" role="menuitem" disabled>Hide message</button>
-                <button type="button" role="menuitem" disabled>Warn user</button>
-                <button type="button" role="menuitem" disabled>Mute for 24 hours</button>
-                <p>
-                  Server authorization, expiry, rollback, and audit contracts
-                  are required before these actions can be enabled.
-                </p>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void handleHide()}
+                  data-testid="chat-mod-hide"
+                >
+                  Hide message
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void handleWarn()}
+                  data-testid="chat-mod-warn"
+                >
+                  Warn user
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void handleMute()}
+                  data-testid="chat-mod-mute24h"
+                >
+                  Mute for 24 hours
+                </button>
               </>
             ) : null}
           </div>
