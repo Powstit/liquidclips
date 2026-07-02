@@ -613,6 +613,32 @@ def accept_invite(
     invite.status = "accepted"
     invite.accepted_at = now
 
+    # 2026-07-02 · Path A Fix 1 · Payout Visibility.
+    # Insert a 0-bps AgencyPayoutSplit placeholder so the owner sees the
+    # new member in the PayoutSplitPanel immediately. The backend's
+    # sum-to-100 invariant treats 0 as valid; the owner still has to
+    # rebalance explicitly before any campaign pot pays out to this
+    # member. Idempotent — skips when a row already exists (e.g., when
+    # reactivating a soft-deleted membership whose split row survived).
+    existing_split = (
+        db.query(AgencyPayoutSplit)
+        .filter(
+            AgencyPayoutSplit.agency_id == invite.agency_id,
+            AgencyPayoutSplit.member_user_id == user.id,
+        )
+        .first()
+    )
+    if existing_split is None:
+        db.add(
+            AgencyPayoutSplit(
+                agency_id=invite.agency_id,
+                member_user_id=user.id,
+                percent_bps=0,
+                updated_at=now,
+                updated_by_user_id=user.id,
+            )
+        )
+
     # 2026-07-02 · first-touch affiliate attribution to the agency owner.
     # Deck slide 07 promises agency-tier owners "earn 50% MRR of every
     # clipper who joins their campaign, from day one." That claim is only
