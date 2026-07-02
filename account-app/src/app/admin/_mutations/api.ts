@@ -61,6 +61,15 @@ export type TierChangePayload = {
   reason: string;
 };
 
+// Backend admin_mutations.py:630 · `ChatRoleIn.role: Literal["member", "mod"]`.
+// The endpoint's docstring is explicit: staff + founder badges derive from
+// `is_admin_email` + `founder_flag`; only the "member ↔ mod" transition is
+// mutable here.
+export type ChatRolePayload = {
+  role: "member" | "mod";
+  reason: string;
+};
+
 // P1-009: RefundPayload / RefundResult types and `refund()` API removed.
 // Whop owns sponsored-reward refunds, Stripe owns subscription refunds —
 // the log-only stub was misleading customers with a fake green check.
@@ -164,6 +173,12 @@ export const mutationsApi = {
       method: "POST",
       body,
       idempotenceKey: freshIdem(`tier-${userId}`),
+    }),
+  chatRole: (userId: string, body: ChatRolePayload) =>
+    call<ActionResult>(`users/${encodeURIComponent(userId)}/chat-role`, {
+      method: "POST",
+      body,
+      idempotenceKey: freshIdem(`chat-role-${userId}`),
     }),
   // P1-009: refund() removed — see RefundPayload comment above.
   agentsCount: () => call<AgentCountResponse>(`agents/count`),

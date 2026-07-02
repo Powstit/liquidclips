@@ -15,6 +15,8 @@
 // LIVE / PARTIAL / NO DATA / IDLE.
 
 import { useCallback, useEffect, useState } from "react";
+import { mutationsApi, type ChatRolePayload } from "../../app/admin/_mutations/api";
+import { AuditLogPanel } from "../../app/admin/_mutations/AuditLogPanel";
 
 import { useDataSource } from "./_lib/useDataSource";
 import { LiveBadge } from "./_lib/LiveBadge";
@@ -390,6 +392,19 @@ export function EmployeesTab() {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
+  // Mod-promotion form state.
+  const [modUserId, setModUserId] = useState("");
+  const [modRole, setModRole] = useState<ChatRolePayload["role"]>("mod");
+  const [modReason, setModReason] = useState("");
+  const [modSubmitting, setModSubmitting] = useState(false);
+  const [modResult, setModResult] = useState<{
+    kind: "ok" | "error";
+    message: string;
+  } | null>(null);
+  // Bumped after every successful mutation so the sibling AuditLogPanel
+  // re-fetches on the same page load (no full-tab reload required).
+  const [auditRefresh, setAuditRefresh] = useState(0);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -408,6 +423,40 @@ export function EmployeesTab() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Backend Pydantic constraints (admin_mutations.py:630-632):
+  //   role: Literal["member", "mod"]     ← select is bounded to those.
+  //   reason: str, min_length=1, max_length=400
+  // Local validator mirrors the backend so the submit button disables
+  // until the payload will actually pass server-side.
+  const trimmedReason = modReason.trim();
+  const modFormValid =
+    modUserId.trim().length > 0
+    && trimmedReason.length >= 1
+    && trimmedReason.length <= 400;
+
+  const submitModPromotion = useCallback(async () => {
+    if (!modFormValid || modSubmitting) return;
+    setModSubmitting(true);
+    setModResult(null);
+    try {
+      const result = await mutationsApi.chatRole(modUserId.trim(), {
+        role: modRole,
+        reason: trimmedReason,
+      });
+      setModResult({ kind: "ok", message: result.message });
+      setModUserId("");
+      setModReason("");
+      setAuditRefresh((n) => n + 1);
+    } catch (e) {
+      setModResult({
+        kind: "error",
+        message: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setModSubmitting(false);
+    }
+  }, [modFormValid, modSubmitting, modUserId, modRole, trimmedReason]);
 
   const rows = data?.rows ?? [];
   const filtered = rows.filter((e) => statusFilter === "all" || e.status === statusFilter);
@@ -429,6 +478,7 @@ export function EmployeesTab() {
   };
 
   return (
+    <div className="space-y-6">
     <Panel
       title="employees · admin allowlist (live)"
       hint="Live join of JUNIOR_ADMIN_EMAILS env var ↔ User table. Edits happen on Railway env vars, not in this UI."
@@ -511,6 +561,141 @@ export function EmployeesTab() {
         </>
       )}
     </Panel>
+
+    {/* ================================================================
+        Stage 5/7 · Mod promotion + honest staff-onboarding banner.
+        The `chat-role` endpoint's Pydantic `Literal["member","mod"]`
+        bounds this form to those two options — attempting `"staff"`
+        would 422. Staff onboarding today is env-var-only (Railway
+        `JUNIOR_ADMIN_EMAILS`), documented in the banner below and in
+        my Item 1 audit; a scoped follow-up backend cycle would ship
+        a `admin_allowlist` table + `is_admin_email` rewrite to make
+        it UI-manageable.
+        ================================================================ */}
+    <Panel
+      title="chat role · member ↔ mod"
+      hint="Promote a User to chat mod (or revert them) via admin_mutations.py:636 POST /admin/users/{id}/chat-role. Idempotency-key + audit row are handled by mutationsApi.chatRole for you."
+      sub="This is the only role transition the backend accepts today. Staff and founder are auth-state, not moderation state — see the banner at the bottom of this tab."
+    >
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+        <label className="flex flex-col gap-1 sm:col-span-2">
+          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+            user_id
+            <InfoIcon hint="Target User row id (uuid.hex from the users table). Look it up in the employees table above or via the Customers tab." />
+          </span>
+          <input
+            type="text"
+            value={modUserId}
+            onChange={(e) => setModUserId(e.target.value)}
+            placeholder="uuid.hex"
+            className="rounded-xl border border-line bg-paper px-3 py-2 font-mono text-[12px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
+            disabled={modSubmitting}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+            role
+            <InfoIcon hint="Bounded by the backend Pydantic Literal — member reverts a mod, mod promotes a member." />
+          </span>
+          <select
+            value={modRole}
+            onChange={(e) => setModRole(e.target.value as ChatRolePayload["role"])}
+            className="rounded-xl border border-line bg-paper px-3 py-2 font-mono text-[12px] text-ink focus:border-fuchsia focus:outline-none"
+            disabled={modSubmitting}
+          >
+            <option value="member">member (revert)</option>
+            <option value="mod">mod (promote)</option>
+          </select>
+        </label>
+        <div className="flex flex-col justify-end">
+          <button
+            type="button"
+            onClick={() => void submitModPromotion()}
+            disabled={!modFormValid || modSubmitting}
+            className="rounded-full border border-fuchsia bg-fuchsia/10 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia hover:bg-fuchsia/20 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {modSubmitting ? "submitting…" : "apply role change"}
+          </button>
+        </div>
+        <label className="flex flex-col gap-1 sm:col-span-4">
+          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+            reason
+            <InfoIcon hint="Backend requires 1..400 chars — surfaces on the audit row and in `admin/audit-log` for later review." />
+          </span>
+          <textarea
+            value={modReason}
+            onChange={(e) => setModReason(e.target.value)}
+            placeholder="Why this role change? Free-text · 1..400 chars · appears in the audit row."
+            maxLength={400}
+            rows={2}
+            className="rounded-xl border border-line bg-paper px-3 py-2 font-mono text-[12px] text-ink placeholder:text-text-tertiary focus:border-fuchsia focus:outline-none"
+            disabled={modSubmitting}
+          />
+          <span className="text-right font-mono text-[10px] text-text-tertiary">
+            {trimmedReason.length}/400
+          </span>
+        </label>
+      </div>
+      {modResult && (
+        <div
+          className={`mt-3 rounded-xl border px-3 py-2 font-mono text-[11px] ${
+            modResult.kind === "ok"
+              ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+              : "border-pink-300 bg-pink-50 text-pink-700"
+          }`}
+          role="status"
+        >
+          {modResult.message}
+        </div>
+      )}
+    </Panel>
+
+    {/* Honest capability banner · replaces the earlier disabled-stub
+        pattern the master doc §850 codified for placeholder panes. */}
+    <Panel
+      title="staff onboarding · env-var only (v0)"
+      hint="This is documented as a v0 gap, not a working form. Adding a staff member today = edit Railway JUNIOR_ADMIN_EMAILS env var + redeploy. is_admin_email() is a frozenset built at process import time (features.py:235), so a UI form would require a schema + endpoint + is_admin_email rewrite — a scoped backend cycle, not this tab."
+      sub="Once the admin_allowlist table lands, this pane will mount an add/remove form and this banner is replaced with the live control."
+    >
+      <div className="rounded-xl border border-line bg-paper/60 px-4 py-3 font-mono text-[11px] leading-relaxed text-text-secondary">
+        <span className="font-display text-[12px] font-semibold text-ink">
+          Onboarding a new staff member (v0 · env-var flow)
+        </span>
+        <ol className="mt-2 list-decimal space-y-1 pl-5">
+          <li>Add the email to <code className="rounded bg-paper px-1 py-0.5 text-ink">JUNIOR_ADMIN_EMAILS</code> on Railway (comma-separated).</li>
+          <li>Redeploy · <code className="rounded bg-paper px-1 py-0.5 text-ink">railway up --service junior-backend</code>.</li>
+          <li>Have them sign in via Clerk once. They inherit staff on their first request.</li>
+        </ol>
+        <p className="mt-2 text-text-tertiary">
+          Mod promotion above is separate — it writes <code className="rounded bg-paper px-1 py-0.5 text-ink">users.chat_role</code>
+          {" "}and does <em>not</em> grant HQ access.
+        </p>
+      </div>
+    </Panel>
+
+    {/* ================================================================
+        Recent role changes & moderation audit · reuses the shared
+        AuditLogPanel with a Stage 5/7 target_type filter so this
+        sub-window shows only the mutations relevant to this tab:
+        user-role changes (target_type="user") + chat moderation
+        actions I shipped in Stage 7 (target_type="chat_moderation").
+        Bumping `auditRefresh` after a successful mutation re-fetches.
+        ================================================================ */}
+    <section>
+      <div className="mb-2 flex items-baseline gap-3">
+        <h3 className="font-display text-[16px] font-semibold tracking-[-0.02em] text-ink">
+          Recent role changes & moderation audit
+        </h3>
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary">
+          target_type ∈ user · chat_moderation
+        </span>
+      </div>
+      <AuditLogPanel
+        refreshKey={auditRefresh}
+        filter={{ targetType: ["user", "chat_moderation"] }}
+      />
+    </section>
+    </div>
   );
 }
 

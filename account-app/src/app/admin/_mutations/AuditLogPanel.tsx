@@ -11,13 +11,29 @@ import { mutationsApi, type AuditRow } from "./api";
 
 const PAGE_SIZE = 50;
 
-export function AuditLogPanel({ refreshKey }: { refreshKey: number }) {
+export interface AuditLogPanelFilter {
+  /** Client-side allowlist on `target_type`. Backend `/admin/audit-log`
+   *  supports server-side filters for actor / action / target_id but not
+   *  target_type; we fetch the full page and reduce here. Empty / missing
+   *  = no filter (all rows shown, matches pre-Stage-7 behaviour). */
+  targetType?: string[];
+}
+
+export function AuditLogPanel({
+  refreshKey,
+  filter,
+}: {
+  refreshKey: number;
+  filter?: AuditLogPanelFilter;
+}) {
   const [rows, setRows] = useState<AuditRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filterActor, setFilterActor] = useState("");
   const [filterAction, setFilterAction] = useState("");
   const [filterTarget, setFilterTarget] = useState("");
+
+  const targetTypeAllow = filter?.targetType;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -30,13 +46,20 @@ export function AuditLogPanel({ refreshKey }: { refreshKey: number }) {
         action: filterAction.trim() || undefined,
         userId: filterTarget.trim() || undefined,
       });
-      setRows(res.rows);
+      // Stage 5/7 · optional client-side target_type reduce. When the
+      // parent passes `filter.targetType`, only rows whose target_type
+      // is in that allowlist are shown; existing callers pass no filter
+      // and see every row, unchanged.
+      const filteredRows = targetTypeAllow && targetTypeAllow.length > 0
+        ? res.rows.filter((r) => targetTypeAllow.includes(r.target_type))
+        : res.rows;
+      setRows(filteredRows);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, [filterActor, filterAction, filterTarget]);
+  }, [filterActor, filterAction, filterTarget, targetTypeAllow]);
 
   useEffect(() => {
     void load();
