@@ -38,7 +38,11 @@ export type RouteId =
   | "campaigns" | "clipper" | "earn" | "community" | "library"
   | "channels" | "schedule" | "settings" | "support"
   | "submissions"
-  | "analytics";
+  | "analytics"
+  // Sprint D · agency campaign builder (own route so it stays
+  // decoupled from Settings-mounted panels and the read-only
+  // clipper-facing Campaigns discovery route).
+  | "campaign-builder";
 
 /** UI-1 · Clipper / Agency mode pill in TopHud. Stored in localStorage
  *  and broadcast on change so workstation defaults can adapt in UI-2. */

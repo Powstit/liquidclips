@@ -1,0 +1,707 @@
+/**
+ * Agency Campaign Builder route · Sprint D (2026-07-02).
+ *
+ * The "meat" of the agency product — where an owner builds, connects,
+ * and publishes a Whop content-reward campaign. Wires to the four
+ * shipped agency-campaign endpoints via the sibling
+ * `desktop-2/src/lib/agencyCampaigns.ts` wrappers:
+ *
+ *   listMyCampaigns  · GET  /agency/campaigns
+ *   createCampaign   · POST /agency/campaigns              · create-draft
+ *   patchCampaign    · PATCH /agency/campaigns/{slug}      · edit
+ *   connectReward    · POST /agency/campaigns/{slug}/connect-reward
+ *   publishCampaign  · POST /agency/campaigns/{slug}/publish
+ *
+ * DECOUPLING (per Daniel's directive):
+ *   · Does NOT import from lib/agency.ts (roster/payout/rules) — that
+ *     file backs the Settings-mounted panels; this route is independent.
+ *   · Does NOT reach into design-os/routes/agency-panels/ — the two
+ *     surfaces are siblings. A future consolidation would MOVE files,
+ *     never cross-import between builder + panels.
+ *
+ * TIER GATE (server + client mirror):
+ *   · Server: agency_campaigns.py::_require_agency now calls
+ *     `is_agency_tier(user.tier)` → 403 for anyone whose resolved tier
+ *     is not in {agency, agency_solo, agency_whitelabel, autopilot}
+ *     (founder + admin still bypass).
+ *   · Client: this component checks `tier === "agency"` before rendering
+ *     the builder. Non-agency users see an upgrade wall pointing at
+ *     /pricing. The client Tier enum collapses all three backend
+ *     agency-family strings to "agency" via mapBackendTier — one truth,
+ *     mirrored client + server.
+ */
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type {
+  CampaignBlock,
+  CampaignCreatePayload,
+  CampaignPatchPayload,
+  CampaignStatus,
+  ConnectRewardPayload,
+  CampaignType,
+} from "../../lib/agencyCampaigns";
+import {
+  connectReward,
+  createCampaign,
+  listMyCampaigns,
+  patchCampaign,
+  publishCampaign,
+  slugify,
+} from "../../lib/agencyCampaigns";
+import { useTierCaps } from "../state/useTierCaps";
+
+type LoadState =
+  | { kind: "loading" }
+  | { kind: "ready"; campaigns: CampaignBlock[] }
+  | { kind: "forbidden"; message: string }
+  | { kind: "offline"; message: string }
+  | { kind: "error"; message: string };
+
+const CAMPAIGN_TYPES: readonly CampaignType[] = [
+  "clip",
+  "coordination",
+  "affiliate",
+  "submission",
+];
+
+export function AgencyCampaignsRoute(): JSX.Element {
+  const tier = useTierCaps();
+
+  // Tier gate — mirrors the backend is_agency_tier check. `tier.tier`
+  // resolves to "agency" for any of the 3 agency-family sub-tiers via
+  // mapBackendTier. adminOverride (founder / admin allowlist) also
+  // unlocks — matches the server's founder_flag + is_admin_email
+  // bypass in _require_agency.
+  const gated = tier.tier === "agency" || tier.adminOverride;
+  if (!gated) {
+    return <TierGateWall currentTier={tier.tier} />;
+  }
+
+  return <AgencyCampaignsBuilder />;
+}
+
+function TierGateWall({ currentTier }: { currentTier: string }): JSX.Element {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "60vh",
+        padding: "48px 24px",
+      }}
+    >
+      <div
+        className="lc-settings-card"
+        style={{
+          maxWidth: 560,
+          padding: 32,
+          textAlign: "center",
+        }}
+      >
+        <span className="lc-settings-card-eb" style={{ color: "var(--color-fuchsia, #FF1A8C)" }}>
+          agency tier required
+        </span>
+        <h2 style={{ margin: "16px 0 12px", fontSize: 24, fontWeight: 600 }}>
+          Upgrade to run your own campaigns.
+        </h2>
+        <p style={{ margin: 0, color: "var(--color-text-secondary, #B5AFA8)" }}>
+          The campaign builder ships with the agency ladder — Solo Agency at $50/mo,
+          Agency at $299/mo, or White-Label at $500/mo. Every tier bypasses the
+          affiliate qualification gate and earns 50% MRR on every clipper you invite.
+        </p>
+        <p
+          style={{
+            margin: "12px 0 0",
+            fontSize: 12,
+            color: "var(--color-text-tertiary, #7A7672)",
+          }}
+        >
+          Current tier: <code>{currentTier}</code>
+        </p>
+        <div style={{ marginTop: 24, display: "flex", justifyContent: "center", gap: 12 }}>
+          <a
+            href="https://liquidclips.app/pricing"
+            target="_blank"
+            rel="noreferrer"
+            className="lc-btn"
+            data-variant="primary"
+          >
+            See pricing →
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AgencyCampaignsBuilder(): JSX.Element {
+  const [state, setState] = useState<LoadState>({ kind: "loading" });
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  const reload = useCallback(async () => {
+    setState({ kind: "loading" });
+    const r = await listMyCampaigns();
+    if (r.data && r.state === "ready") {
+      setState({ kind: "ready", campaigns: r.data });
+      return;
+    }
+    if (r.state === "forbidden") {
+      setState({ kind: "forbidden", message: r.error ?? "Not authorised." });
+      return;
+    }
+    if (r.state === "offline") {
+      setState({ kind: "offline", message: r.error ?? "Offline." });
+      return;
+    }
+    setState({ kind: "error", message: r.error ?? "Campaigns failed to load." });
+  }, []);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const selected: CampaignBlock | null = useMemo(() => {
+    if (!selectedSlug || state.kind !== "ready") return null;
+    return state.campaigns.find((c) => c.slug === selectedSlug) ?? null;
+  }, [selectedSlug, state]);
+
+  const handleCreated = useCallback((block: CampaignBlock) => {
+    setSelectedSlug(block.slug);
+    setCreating(false);
+    void reload();
+  }, [reload]);
+
+  return (
+    <main
+      style={{
+        display: "grid",
+        gridTemplateColumns: "320px 1fr",
+        gap: 24,
+        padding: 24,
+        minHeight: "100vh",
+        background: "var(--color-paper, #0F0F14)",
+      }}
+    >
+      <aside>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 16,
+          }}
+        >
+          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Campaigns</h1>
+          <button
+            type="button"
+            className="lc-btn"
+            data-variant="primary"
+            onClick={() => {
+              setCreating(true);
+              setSelectedSlug(null);
+            }}
+          >
+            + New
+          </button>
+        </div>
+
+        {state.kind === "loading" && (
+          <p className="lc-settings-hint">Loading your campaigns…</p>
+        )}
+        {state.kind === "forbidden" && (
+          <p className="lc-settings-hint">{state.message}</p>
+        )}
+        {state.kind === "offline" && (
+          <>
+            <p className="lc-settings-hint">{state.message}</p>
+            <button type="button" className="lc-btn" onClick={() => void reload()}>Retry</button>
+          </>
+        )}
+        {state.kind === "error" && (
+          <>
+            <p className="lc-settings-hint">{state.message}</p>
+            <button type="button" className="lc-btn" onClick={() => void reload()}>Retry</button>
+          </>
+        )}
+        {state.kind === "ready" && (
+          <CampaignList
+            campaigns={state.campaigns}
+            selectedSlug={selectedSlug}
+            onSelect={(slug) => {
+              setSelectedSlug(slug);
+              setCreating(false);
+            }}
+          />
+        )}
+      </aside>
+
+      <section>
+        {creating ? (
+          <CreateCampaignForm onCancel={() => setCreating(false)} onCreated={handleCreated} />
+        ) : selected ? (
+          <CampaignEditor
+            campaign={selected}
+            onChanged={(updated) => {
+              // Update local list without a full round-trip; the reload
+              // still runs on explicit user-driven refreshes.
+              setState((prev) =>
+                prev.kind === "ready"
+                  ? {
+                      kind: "ready",
+                      campaigns: prev.campaigns.map((c) =>
+                        c.slug === updated.slug ? updated : c,
+                      ),
+                    }
+                  : prev,
+              );
+            }}
+          />
+        ) : (
+          <EmptyState onNew={() => setCreating(true)} />
+        )}
+      </section>
+    </main>
+  );
+}
+
+// ─── Sidebar list ─────────────────────────────────────────────────────
+
+function CampaignList({
+  campaigns,
+  selectedSlug,
+  onSelect,
+}: {
+  campaigns: CampaignBlock[];
+  selectedSlug: string | null;
+  onSelect: (slug: string) => void;
+}): JSX.Element {
+  if (campaigns.length === 0) {
+    return (
+      <p className="lc-settings-hint">
+        No campaigns yet. Click <strong>+ New</strong> to draft your first.
+      </p>
+    );
+  }
+  return (
+    <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+      {campaigns.map((c) => (
+        <li key={c.slug}>
+          <button
+            type="button"
+            onClick={() => onSelect(c.slug)}
+            style={{
+              width: "100%",
+              textAlign: "left",
+              padding: "10px 12px",
+              borderRadius: 8,
+              border: "1px solid var(--color-line, rgba(255,255,255,0.08))",
+              background: selectedSlug === c.slug ? "var(--color-fuchsia-soft, rgba(255,26,140,0.14))" : "transparent",
+              color: "inherit",
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{c.title}</div>
+            <div style={{ fontSize: 11, color: "var(--color-text-secondary, #B5AFA8)", marginTop: 4 }}>
+              {c.slug} · <StatusPill status={c.status} />
+            </div>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function StatusPill({ status }: { status: CampaignStatus }): JSX.Element {
+  const color =
+    status === "live"
+      ? "var(--color-ok, #4a9)"
+      : status === "closed"
+        ? "var(--color-text-tertiary, #7A7672)"
+        : status === "draft"
+          ? "var(--color-fuchsia, #FF1A8C)"
+          : "var(--color-warn, #d9b04a)";
+  return (
+    <span style={{ color, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>
+      {status}
+    </span>
+  );
+}
+
+function EmptyState({ onNew }: { onNew: () => void }): JSX.Element {
+  return (
+    <div className="lc-settings-card" style={{ padding: 32, textAlign: "center" }}>
+      <span className="lc-settings-card-eb">campaign builder</span>
+      <h2 style={{ margin: "16px 0 8px", fontSize: 22, fontWeight: 600 }}>Select or create a campaign.</h2>
+      <p style={{ margin: 0, color: "var(--color-text-secondary, #B5AFA8)" }}>
+        Draft a brief · connect a Whop content-reward · publish when the funding lands.
+      </p>
+      <div style={{ marginTop: 20 }}>
+        <button type="button" className="lc-btn" data-variant="primary" onClick={onNew}>
+          + New campaign
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Create form ──────────────────────────────────────────────────────
+
+function CreateCampaignForm({
+  onCancel,
+  onCreated,
+}: {
+  onCancel: () => void;
+  onCreated: (b: CampaignBlock) => void;
+}): JSX.Element {
+  const [title, setTitle] = useState("");
+  const [slug, setSlug] = useState("");
+  const [slugTouched, setSlugTouched] = useState(false);
+  const [type, setType] = useState<CampaignType>("clip");
+  const [description, setDescription] = useState("");
+  const [rewardUrl, setRewardUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Auto-derive slug from title unless the user edited it.
+  useEffect(() => {
+    if (!slugTouched) setSlug(slugify(title));
+  }, [title, slugTouched]);
+
+  const canSubmit = title.trim().length >= 2 && slug.length >= 2 && !busy;
+
+  const submit = useCallback(async () => {
+    if (!canSubmit) return;
+    setBusy(true);
+    setError(null);
+    const payload: CampaignCreatePayload = {
+      title: title.trim(),
+      slug,
+      campaign_type: type,
+      description: description.trim(),
+      whop_reward_url: rewardUrl.trim() || null,
+    };
+    const r = await createCampaign(payload);
+    setBusy(false);
+    if (r.data && r.state === "ready") {
+      onCreated(r.data);
+      return;
+    }
+    setError(r.error ?? "Create failed.");
+  }, [canSubmit, title, slug, type, description, rewardUrl, onCreated]);
+
+  return (
+    <div className="lc-settings-card" style={{ padding: 24 }}>
+      <span className="lc-settings-card-eb">draft a new campaign</span>
+      <h2 style={{ margin: "12px 0 20px", fontSize: 20, fontWeight: 600 }}>Create campaign</h2>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 12, opacity: 0.7 }}>Title</span>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Q3 launch clip bounty"
+            spellCheck={false}
+          />
+        </label>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 12, opacity: 0.7 }}>Slug (URL id)</span>
+          <input
+            type="text"
+            value={slug}
+            onChange={(e) => {
+              setSlug(slugify(e.target.value));
+              setSlugTouched(true);
+            }}
+            placeholder="q3-launch-clip-bounty"
+            spellCheck={false}
+          />
+        </label>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 12, opacity: 0.7 }}>Type</span>
+          <select value={type} onChange={(e) => setType(e.target.value as CampaignType)}>
+            {CAMPAIGN_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 12, opacity: 0.7 }}>Brief</span>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={4}
+            placeholder="What should the clipper highlight? What's the tone? What are the guardrails?"
+            spellCheck
+          />
+        </label>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 12, opacity: 0.7 }}>
+            Whop reward URL (optional · can connect after create)
+          </span>
+          <input
+            type="url"
+            value={rewardUrl}
+            onChange={(e) => setRewardUrl(e.target.value)}
+            placeholder="https://whop.com/…/rewards/…"
+            spellCheck={false}
+          />
+        </label>
+
+        {error && (
+          <p className="lc-settings-hint" style={{ color: "var(--color-alert, #d33)" }}>
+            {error}
+          </p>
+        )}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button type="button" className="lc-btn" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="lc-btn"
+            data-variant="primary"
+            onClick={submit}
+            disabled={!canSubmit}
+          >
+            {busy ? "Drafting…" : "Create draft"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Editor (patch + connect-reward + publish) ────────────────────────
+
+function CampaignEditor({
+  campaign,
+  onChanged,
+}: {
+  campaign: CampaignBlock;
+  onChanged: (b: CampaignBlock) => void;
+}): JSX.Element {
+  const [title, setTitle] = useState(campaign.title);
+  const [description, setDescription] = useState(campaign.description);
+  const [bannerUrl, setBannerUrl] = useState(campaign.banner_url ?? "");
+  const [rewardUrl, setRewardUrl] = useState(campaign.whop_reward_url ?? "");
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [connectBusy, setConnectBusy] = useState(false);
+  const [publishBusy, setPublishBusy] = useState(false);
+  const [notice, setNotice] = useState<{ kind: "ok" | "err"; message: string } | null>(null);
+
+  useEffect(() => {
+    setTitle(campaign.title);
+    setDescription(campaign.description);
+    setBannerUrl(campaign.banner_url ?? "");
+    setRewardUrl(campaign.whop_reward_url ?? "");
+    setNotice(null);
+  }, [campaign.slug, campaign.title, campaign.description, campaign.banner_url, campaign.whop_reward_url]);
+
+  const editsPending =
+    title !== campaign.title
+    || description !== campaign.description
+    || (bannerUrl || null) !== campaign.banner_url;
+
+  const locked = campaign.status === "live";
+
+  const doSave = useCallback(async () => {
+    if (!editsPending || locked) return;
+    setSaveBusy(true);
+    setNotice(null);
+    const payload: CampaignPatchPayload = {
+      title: title.trim(),
+      description: description.trim(),
+      banner_url: bannerUrl.trim() || null,
+    };
+    const r = await patchCampaign(campaign.slug, payload);
+    setSaveBusy(false);
+    if (r.data && r.state === "ready") {
+      onChanged(r.data);
+      setNotice({ kind: "ok", message: "Saved." });
+      return;
+    }
+    setNotice({ kind: "err", message: r.error ?? "Save failed." });
+  }, [editsPending, locked, title, description, bannerUrl, campaign.slug, onChanged]);
+
+  const doConnect = useCallback(async () => {
+    const trimmed = rewardUrl.trim();
+    if (!trimmed) {
+      setNotice({ kind: "err", message: "Paste a Whop content-reward URL first." });
+      return;
+    }
+    setConnectBusy(true);
+    setNotice(null);
+    const payload: ConnectRewardPayload = { whop_reward_url: trimmed };
+    const r = await connectReward(campaign.slug, payload);
+    setConnectBusy(false);
+    if (r.data && r.state === "ready") {
+      onChanged(r.data);
+      setNotice({
+        kind: "ok",
+        message:
+          r.data.whop_reward_state === "real"
+            ? "Connected · Whop enrichment loaded."
+            : "URL stored · Whop enrichment deferred (still safe to publish).",
+      });
+      return;
+    }
+    setNotice({ kind: "err", message: r.error ?? "Connect failed." });
+  }, [rewardUrl, campaign.slug, onChanged]);
+
+  const doPublish = useCallback(async () => {
+    setPublishBusy(true);
+    setNotice(null);
+    const r = await publishCampaign(campaign.slug);
+    setPublishBusy(false);
+    if (r.data && r.state === "ready") {
+      onChanged(r.data);
+      setNotice({ kind: "ok", message: "Campaign published — clippers can now submit." });
+      return;
+    }
+    setNotice({ kind: "err", message: r.error ?? "Publish failed." });
+  }, [campaign.slug, onChanged]);
+
+  return (
+    <div className="lc-settings-card" style={{ padding: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <span className="lc-settings-card-eb">campaign · {campaign.slug}</span>
+          <h2 style={{ margin: "8px 0 4px", fontSize: 20, fontWeight: 600 }}>{campaign.title}</h2>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>
+            <StatusPill status={campaign.status} />
+            {" · "}
+            reward: {campaign.whop_reward_state ?? "unlinked"}
+            {" · "}
+            enrichment: {campaign.whop_reward_snapshot_status}
+          </div>
+        </div>
+      </div>
+
+      {locked && (
+        <p className="lc-settings-hint" style={{ marginTop: 16, color: "var(--color-warn, #d9b04a)" }}>
+          Live campaigns are locked · edits require unpublish (not in v1).
+        </p>
+      )}
+
+      <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 12, opacity: 0.7 }}>Title</span>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            disabled={locked}
+          />
+        </label>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 12, opacity: 0.7 }}>Brief</span>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={5}
+            disabled={locked}
+          />
+        </label>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 12, opacity: 0.7 }}>Banner URL (optional)</span>
+          <input
+            type="url"
+            value={bannerUrl}
+            onChange={(e) => setBannerUrl(e.target.value)}
+            placeholder="https://…/banner.png"
+            spellCheck={false}
+            disabled={locked}
+          />
+        </label>
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            className="lc-btn"
+            data-variant="primary"
+            onClick={doSave}
+            disabled={!editsPending || saveBusy || locked}
+          >
+            {saveBusy ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+
+        <hr style={{ border: "none", borderTop: "1px solid var(--color-line, rgba(255,255,255,0.08))" }} />
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span className="lc-settings-card-eb">connect Whop reward</span>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: 12, opacity: 0.7 }}>
+              Whop content-reward URL (source of truth · enrichment is best-effort)
+            </span>
+            <input
+              type="url"
+              value={rewardUrl}
+              onChange={(e) => setRewardUrl(e.target.value)}
+              placeholder="https://whop.com/…/rewards/…"
+              spellCheck={false}
+            />
+          </label>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className="lc-btn"
+              onClick={doConnect}
+              disabled={connectBusy || !rewardUrl.trim()}
+            >
+              {connectBusy ? "Connecting…" : "Connect reward"}
+            </button>
+          </div>
+        </div>
+
+        <hr style={{ border: "none", borderTop: "1px solid var(--color-line, rgba(255,255,255,0.08))" }} />
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span className="lc-settings-card-eb">publish</span>
+          <p className="lc-settings-hint">
+            Publishing flips the campaign live so it surfaces in every clipper&rsquo;s
+            Earn tab. You can always close it later.
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className="lc-btn"
+              data-variant="primary"
+              onClick={doPublish}
+              disabled={publishBusy || campaign.status === "live" || campaign.status === "closed"}
+            >
+              {publishBusy ? "Publishing…" : campaign.status === "live" ? "Live" : "Publish campaign"}
+            </button>
+          </div>
+        </div>
+
+        {notice && (
+          <p
+            className="lc-settings-hint"
+            style={{
+              marginTop: 8,
+              color:
+                notice.kind === "ok"
+                  ? "var(--color-ok, #4a9)"
+                  : "var(--color-alert, #d33)",
+            }}
+          >
+            {notice.message}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
