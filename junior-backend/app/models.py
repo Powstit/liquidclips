@@ -138,6 +138,19 @@ class User(Base):
     # MOD assignment persists on the User row.
     chat_role: Mapped[str] = mapped_column(String, nullable=False, default="member")
 
+    # 2026-07-02 · Sprint G.1 · Kade Reactive Onboarding milestone stream.
+    # JSON dict keyed by milestone name (see app/onboarding_milestones.py)
+    # → ISO-8601 timestamp of first occurrence. Missing key = milestone
+    # not reached; the mark_milestone() helper is idempotent (only writes
+    # when the key is currently None). Read by /sync so the desktop
+    # emitter can diff local snapshot → fire onboarding:milestone bus
+    # events → Kade reacts with a pose. Never written directly by
+    # campaign or settings routes — everything flows through the helper
+    # to keep the discipline "Kade never fires its own state events."
+    onboarding_status: Mapped[dict] = mapped_column(
+        JSON, nullable=False, default=dict,
+    )
+
     # v2.2.11 arcade leaderboard · best-ever Space Invaders score. The
     # desktop POSTs to /chat/game/score on each game-over; the route
     # ratchets this value up (never down) so a refresh / replay cannot

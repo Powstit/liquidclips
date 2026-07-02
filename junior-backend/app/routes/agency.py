@@ -494,6 +494,18 @@ def issue_invite(
             "[agency-invite] mail send raised · invite_id=%s · email=%s",
             invite.id, email_lc, exc_info=True,
         )
+
+    # Sprint G.1 · milestone: agency owner sent their FIRST invite.
+    # Idempotent — subsequent invites don't re-fire.
+    try:
+        from app.onboarding_milestones import mark_milestone
+        if mark_milestone(db, user, "agency_owner_first_invite"):
+            db.commit()
+    except Exception:
+        log.warning(
+            "[onboarding] agency_owner_first_invite mark failed · user=%s",
+            user.id, exc_info=True,
+        )
     return _invite_row_to_out(invite)
 
 
@@ -618,6 +630,17 @@ def accept_invite(
     if user.affiliate_id is None and invite.agency_id != user.id:
         user.affiliate_id = invite.agency_id
         db.add(user)
+
+    # Sprint G.1 · stamp agency_member_accepted_at. Written on the
+    # invitee's User row (not the owner's). Idempotent per key.
+    try:
+        from app.onboarding_milestones import mark_milestone
+        mark_milestone(db, user, "agency_member_accepted_at")
+    except Exception:
+        log.warning(
+            "[onboarding] agency_member_accepted_at mark failed · user=%s",
+            user.id, exc_info=True,
+        )
 
     _audit_agency(
         db,
