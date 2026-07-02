@@ -240,6 +240,16 @@ def sync(
         and user.subscription_status in {"trial", "trialing"}
     )
 
+    # Path A Fix 3 · self-healing reconciliation pass. Backfills any
+    # milestones we can derive from other User fields so a lost
+    # mark_milestone write (DB blip during signup / first-launch) heals
+    # on the next /sync. Fire-and-forget · never breaks /sync itself.
+    try:
+        from app.onboarding_reconcile import reconcile_missing_milestones
+        reconcile_missing_milestones(db, user)
+    except Exception:
+        pass
+
     from app.onboarding_milestones import snapshot as onboarding_snapshot
     return SyncResponse(
         tier=effective_tier,
