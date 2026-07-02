@@ -231,19 +231,32 @@ export default function AgencyLandingPage() {
                 Cancel any time from Whop · card required at checkout · macOS Apple Silicon or Intel.
               </p>
             </div>
-            <div style={{ display: "flex", justifyContent: "center" }}>
+            <div className="agency-hero-visual">
               <Image
                 src="/brand/kade/kade-campaign-mode.webp"
                 alt="Kade the Liquid Clips operator in campaign-mode pose"
                 width={520}
                 height={520}
                 priority
-                style={{
-                  width: "min(460px, 90%)",
-                  height: "auto",
-                  filter: "drop-shadow(0 24px 60px rgba(255,26,140,0.35))",
-                }}
+                className="agency-hero-kade"
               />
+              {/* Jae5 · real Whop content-reward screenshot · floats under
+                  Kade with a continuous bob + fuchsia glow pulse. */}
+              <div className="agency-hero-phone">
+                <div className="agency-hero-phone-frame">
+                  <Image
+                    src="/agency/jae5-content-rewards.png"
+                    alt="Real Whop content-reward campaign — Jae5 · 1.46M views · $1,808 paid"
+                    width={360}
+                    height={780}
+                    className="agency-hero-phone-screen"
+                  />
+                </div>
+                <div className="agency-hero-phone-caption">
+                  <div className="agency-hero-phone-eb">RECEIPT · JAE5 CAMPAIGN</div>
+                  <div className="agency-hero-phone-title">1.46M views · $1,808 paid · 42 approved clippers.</div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -451,6 +464,101 @@ export default function AgencyLandingPage() {
 
         {/* Scoped styles · no new globals, all inline to this route */}
         <style>{`
+          /* ─── Hero visual · Kade + Jae5 phone mockup ─── */
+          .agency-hero-visual {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 36px;
+            position: relative;
+          }
+          .agency-hero-kade {
+            width: min(420px, 90%);
+            height: auto;
+            filter: drop-shadow(0 24px 60px rgba(255,26,140,0.35));
+            animation: kade-drift 6s ease-in-out infinite;
+            will-change: transform;
+          }
+          @keyframes kade-drift {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50%      { transform: translateY(-8px) rotate(-1.5deg); }
+          }
+
+          .agency-hero-phone {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            animation: phone-float 4.2s ease-in-out infinite;
+            animation-delay: 0.4s;
+            will-change: transform, filter;
+          }
+          @keyframes phone-float {
+            0%, 100% {
+              transform: translateY(0px) rotate(-2deg);
+              filter: drop-shadow(0 20px 40px rgba(255,26,140,0.28));
+            }
+            50% {
+              transform: translateY(-10px) rotate(2deg);
+              filter: drop-shadow(0 30px 60px rgba(255,26,140,0.55));
+            }
+          }
+          .agency-hero-phone-frame {
+            position: relative;
+            padding: 10px 10px 14px;
+            border-radius: 36px;
+            background: linear-gradient(180deg, #17171e 0%, #0a0a10 100%);
+            box-shadow:
+              inset 0 0 0 1px rgba(255,255,255,0.06),
+              0 0 0 2px rgba(255,26,140,0.35),
+              0 40px 80px -30px rgba(0,0,0,0.75);
+          }
+          .agency-hero-phone-frame::before {
+            /* Notch bar */
+            content: "";
+            position: absolute;
+            top: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 92px;
+            height: 22px;
+            background: #0a0a10;
+            border-radius: 12px;
+            z-index: 2;
+          }
+          .agency-hero-phone-screen {
+            display: block;
+            width: min(240px, 60vw);
+            height: auto;
+            border-radius: 26px;
+            position: relative;
+            z-index: 1;
+          }
+          .agency-hero-phone-caption {
+            text-align: center;
+            max-width: 280px;
+          }
+          .agency-hero-phone-eb {
+            font-family: var(--font-mono), monospace;
+            font-size: 10px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--fuchsia);
+            margin-bottom: 4px;
+          }
+          .agency-hero-phone-title {
+            font-family: var(--font-display), Georgia, serif;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            color: var(--ink);
+            line-height: 1.35;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .agency-hero-kade,
+            .agency-hero-phone { animation: none; }
+          }
+
           .agency-proof-row {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
