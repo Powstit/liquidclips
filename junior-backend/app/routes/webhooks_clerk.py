@@ -51,6 +51,11 @@ CLERK_SLUG_TO_TIER: dict[str, str] = {
     "growth": "growth",
     "agency": "agency",
     "autopilot": "autopilot",
+    # 2026-07-02 · 3-tier agency ladder. Clerk plan slugs will match the
+    # tier keys once Phase 2 creates the Stripe/Whop plans; mapping added
+    # up front so the webhook is idempotent when those slugs start arriving.
+    "agency_solo": "agency_solo",
+    "agency_whitelabel": "agency_whitelabel",
 }
 
 # Clerk plan ID for the $6/mo accountpack add-on (mirrors NEXT_PUBLIC_CLERK_ACCOUNT_PACK_PLAN_ID

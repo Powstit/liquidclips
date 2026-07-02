@@ -102,6 +102,42 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
         "white_label":              {"value": False, "built": False, "sprint": "v1.1"},
         "priority_support":         {"value": True,  "built": False, "sprint": "S6"},
     },
+    # ─── Agency ladder (2026-07-02) ─────────────────────────────────────
+    # The old single `agency` block splits into three price points:
+    #   agency_solo       $50/mo   · 1 campaign  · 5 sub-clippers · 10 socials
+    #   agency            $299/mo  · 5 campaigns · 25 sub-clippers · 25 socials
+    #   agency_whitelabel $500/mo  · unlimited   · unlimited        · 50 socials
+    #                                + watermark removal + sub-accounts + priority
+    # All three bypass the affiliate qualification gate and earn 50% MRR on
+    # invited clippers from day one (Whop custom-rate override applied at
+    # tier-grant time). Differentiator is CAMPAIGN CAPACITY, not commission
+    # rate — every tier gets the same 50%. Cheaper tiers hit a wall in the
+    # product (roster/campaign caps) which drives natural upgrades.
+    #
+    # `sub_accounts` + `white_label` land as `built: True` on the White-Label
+    # tier only. The middle `agency` tier keeps `built: False` for those two
+    # flags so the gate still fires an honest 503 for that surface until v1.1
+    # ships them for lower tiers.
+    "agency_solo": {
+        "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},
+        "clips_per_ip":             {"value": None,  "built": True,  "sprint": None},
+        "accounts_included":        {"value": 10,    "built": True,  "sprint": None},
+        "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
+        "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
+        "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
+        "watermark":                {"value": False, "built": True,  "sprint": None},
+        "byo_openai_key_required":  {"value": True,  "built": True,  "sprint": None},
+        "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
+        "hosted_llm":               {"value": True,  "built": False, "sprint": "S5"},
+        "platform_connections_max": {"value": None,  "built": True,  "sprint": None},
+        "publish_now":              {"value": True,  "built": True,  "sprint": None},
+        "publish_multi_platform":   {"value": True,  "built": True,  "sprint": None},
+        "schedule_one":             {"value": True,  "built": True,  "sprint": None},
+        "drip_scheduling":          {"value": True,  "built": True,  "sprint": None},
+        "sub_accounts":             {"value": False, "built": False, "sprint": "v1.1"},
+        "white_label":              {"value": False, "built": False, "sprint": "v1.1"},
+        "priority_support":         {"value": False, "built": False, "sprint": "S6"},
+    },
     "agency": {
         "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},
         "clips_per_ip":             {"value": None,  "built": True,  "sprint": None},
@@ -121,6 +157,26 @@ FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
         "sub_accounts":             {"value": True,  "built": False, "sprint": "v1.1"},  # gate exists, UI lands v1.1
         "white_label":              {"value": True,  "built": False, "sprint": "v1.1"},
         "priority_support":         {"value": True,  "built": False, "sprint": "S6"},
+    },
+    "agency_whitelabel": {
+        "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},
+        "clips_per_ip":             {"value": None,  "built": True,  "sprint": None},
+        "accounts_included":        {"value": 50,    "built": True,  "sprint": None},
+        "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
+        "broll_overlay":            {"value": True,  "built": True,  "sprint": None},
+        "hook_burnin":              {"value": True,  "built": True,  "sprint": None},
+        "watermark":                {"value": False, "built": True,  "sprint": None},
+        "byo_openai_key_required":  {"value": True,  "built": True,  "sprint": None},
+        "hosted_transcribe":        {"value": False, "built": False, "sprint": "S5"},
+        "hosted_llm":               {"value": True,  "built": False, "sprint": "S5"},
+        "platform_connections_max": {"value": None,  "built": True,  "sprint": None},
+        "publish_now":              {"value": True,  "built": True,  "sprint": None},
+        "publish_multi_platform":   {"value": True,  "built": True,  "sprint": None},
+        "schedule_one":             {"value": True,  "built": True,  "sprint": None},
+        "drip_scheduling":          {"value": True,  "built": True,  "sprint": None},
+        "sub_accounts":             {"value": True,  "built": True,  "sprint": None},
+        "white_label":              {"value": True,  "built": True,  "sprint": None},
+        "priority_support":         {"value": True,  "built": True,  "sprint": None},
     },
     # 2026-06-23 — Daniel's monetisation pass added a dedicated `growth`
     # entry so the $79 Clerk Growth plan no longer collapses into `pro`
@@ -171,6 +227,17 @@ def _resolve_tier(tier: str | None) -> str:
     if not tier:
         return "free"
     return _LEGACY_TIER_ALIASES.get(tier, tier)
+
+
+def is_agency_tier(tier: str | None) -> bool:
+    """True when the resolved tier belongs to the agency family
+    (agency_solo · agency · agency_whitelabel). Legacy `autopilot`
+    resolves to `agency` first, so it counts. Use this everywhere a
+    call site currently checks `_resolve_tier(tier) == "agency"` — the
+    new three-tier ladder means direct equality would fail for the
+    new solo + white-label rows."""
+    resolved = _resolve_tier(tier)
+    return resolved.startswith("agency")
 
 
 # --- Launch-hardening override (Codex 2k audit + P1 Ayrshare swap) ----------
@@ -278,7 +345,20 @@ TIER_LIMITS: dict[str, dict[str, int]] = {
         "clips_per_campaign":     100,
         "bulk_scheduling_rows":   75,
     },
+    "agency_solo": {
+        # $50/mo entry tier — one active campaign, small roster, still
+        # bypasses affiliate qualification gate.
+        "channels_per_platform": 3,
+        "monthly_posts":          500,
+        "campaigns_per_brand":    1,
+        "clips_per_campaign":     100,
+        "bulk_scheduling_rows":   50,
+    },
     "agency": {
+        # Middle tier caps unchanged from pre-split so any existing user
+        # on `tier=agency` keeps identical entitlements. Ladder positioning
+        # in copy still describes this as "5 active campaigns" — the hard
+        # server-side cap sits at 20 as a legacy safety ceiling.
         "channels_per_platform": 5,
         "monthly_posts":          2500,
         "campaigns_per_brand":    20,
@@ -287,15 +367,25 @@ TIER_LIMITS: dict[str, dict[str, int]] = {
         # so a request that would crash the DB still trips the cap honestly.
         "bulk_scheduling_rows":   1000,
     },
+    "agency_whitelabel": {
+        # $500/mo top tier — larger caps than mid + drip + white-label
+        # + sub-accounts (see FEATURES_BY_TIER["agency_whitelabel"]).
+        "channels_per_platform": 10,
+        "monthly_posts":          10000,
+        "campaigns_per_brand":    100,
+        "clips_per_campaign":     500,
+        "bulk_scheduling_rows":   2500,
+    },
 }
 
 
 def tier_limit(tier: str, key: str, founder: bool = False) -> int:
     """Return the server-side cap for `key` at this tier.
-    Founders + admin-promoted users resolve to `agency` per `_resolve_tier`
-    semantics (founder_flag is checked separately at JWT mint). Unknown
-    tiers fall through to `free`."""
-    effective = "agency" if founder else _resolve_tier(tier)
+    Founders + admin-promoted users resolve to `agency_whitelabel` (the
+    top tier in the 3-tier agency ladder) per `_resolve_tier` semantics
+    (founder_flag is checked separately at JWT mint). Unknown tiers fall
+    through to `free`."""
+    effective = "agency_whitelabel" if founder else _resolve_tier(tier)
     block = TIER_LIMITS.get(effective) or TIER_LIMITS["free"]
     return int(block.get(key) or TIER_LIMITS["free"].get(key, 0))
 
@@ -303,11 +393,11 @@ def tier_limit(tier: str, key: str, founder: bool = False) -> int:
 def tier_features(tier: str, founder: bool = False) -> dict[str, Any]:
     """Flatten the matrix for a given tier into {feature_name: value}.
 
-    Founders unlock the full Agency block regardless of which Whop product
-    they bought into. Legacy tier names ("growth", "autopilot", "channel")
-    alias to the v2 matrix via _LEGACY_TIER_ALIASES.
+    Founders unlock the full Agency White-Label block regardless of which
+    Whop / Stripe product they bought into. Legacy tier names ("growth",
+    "autopilot", "channel") alias to the v2 matrix via _LEGACY_TIER_ALIASES.
     """
-    effective = "agency" if founder else _resolve_tier(tier)
+    effective = "agency_whitelabel" if founder else _resolve_tier(tier)
     block = FEATURES_BY_TIER.get(effective) or FEATURES_BY_TIER["free"]
     return {k: v["value"] for k, v in block.items()}
 

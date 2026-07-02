@@ -171,10 +171,14 @@ def test_tier_limits_matrix_matches_useTierCaps():
 
 
 def test_tier_limit_helper_resolves_legacy_aliases_and_founders():
-    # Legacy alias autopilot → agency
+    # Legacy alias autopilot → agency (mid tier, unchanged for non-regression)
     assert tier_limit("autopilot", "monthly_posts") == TIER_LIMITS["agency"]["monthly_posts"]
-    # Founder flag promotes any tier to the agency block
-    assert tier_limit("free", "monthly_posts", founder=True) == TIER_LIMITS["agency"]["monthly_posts"]
+    # 2026-07-02 · Founder flag now promotes to `agency_whitelabel` (top of the
+    # 3-tier agency ladder). Previously mapped to `agency`; the founder gets
+    # the highest caps of the new ladder because they're the highest-margin
+    # customer archetype and the previous single agency block IS the new
+    # white-label block's semantic ancestor.
+    assert tier_limit("free", "monthly_posts", founder=True) == TIER_LIMITS["agency_whitelabel"]["monthly_posts"]
     # Unknown tier falls back to free
     assert tier_limit("bogus", "monthly_posts") == TIER_LIMITS["free"]["monthly_posts"]
 

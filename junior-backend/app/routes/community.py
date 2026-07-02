@@ -35,7 +35,8 @@ from app.models import CommunityChannel, User
 router = APIRouter()
 
 # Tiers that unlock paid + mission rooms. Free is the only "base" tier.
-_PREMIUM_TIERS = {"solo", "pro", "agency"}
+# 2026-07-02 · added agency_solo + agency_whitelabel for 3-tier agency ladder.
+_PREMIUM_TIERS = {"solo", "pro", "agency", "agency_solo", "agency_whitelabel"}
 
 
 def _is_premium(tier: str | None) -> bool:

@@ -1634,7 +1634,7 @@ def import_whop_submission_to_ledger(
         if payload.premium_bonus_rpm_cents is not None
         else (campaign.premium_bonus_cents if campaign else 0)
     )
-    is_premium = payload.membership_status_at_export in {"solo", "pro", "agency"}
+    is_premium = payload.membership_status_at_export in {"solo", "pro", "agency", "agency_solo", "agency_whitelabel"}
     base_payout, bonus_due, total = _compute_ledger_amounts(
         approved_views=payload.approved_views,
         base_rpm_cents=base_rpm,
@@ -1713,7 +1713,7 @@ def mark_bonus_paid(
 
     if payload.approved_views is not None and payload.approved_views != row.approved_views:
         # Recompute liability if views changed.
-        is_premium = row.membership_status_at_export in {"solo", "pro", "agency"}
+        is_premium = row.membership_status_at_export in {"solo", "pro", "agency", "agency_solo", "agency_whitelabel"}
         base_payout, bonus_due, total = _compute_ledger_amounts(
             approved_views=payload.approved_views,
             base_rpm_cents=row.base_rpm_cents,
@@ -2679,7 +2679,8 @@ def require_agency_user(
         return user
     if user.founder_flag:
         return user
-    if user.tier in {"agency", "autopilot"}:
+    # 2026-07-02 · added agency_solo + agency_whitelabel for 3-tier ladder.
+    if user.tier in {"agency", "autopilot", "agency_solo", "agency_whitelabel"}:
         return user
     raise HTTPException(
         status.HTTP_403_FORBIDDEN,

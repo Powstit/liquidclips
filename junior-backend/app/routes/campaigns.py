@@ -37,8 +37,9 @@ router = APIRouter()
 # v0.7.55 (Uncle Daniel funnel) — tiers that unlock the premium RPM ladder.
 # Free is the only "base" tier; everything else gets the premium total.
 # _resolve_tier already maps legacy aliases (channel/growth → pro,
-# autopilot → agency) so the comparison stays clean.
-_PREMIUM_TIERS = {"solo", "pro", "agency"}
+# autopilot → agency) so the comparison stays clean. 2026-07-02 · added
+# agency_solo + agency_whitelabel for the 3-tier agency ladder.
+_PREMIUM_TIERS = {"solo", "pro", "agency", "agency_solo", "agency_whitelabel"}
 
 
 def _is_premium(tier: str | None) -> bool:
@@ -100,7 +101,7 @@ class CampaignCreate(BaseModel):
     whop_url: str = Field(..., min_length=8, max_length=300)
     banner_url: str | None = Field(None, max_length=300)
     eligibility: list[str] = Field(default_factory=list)
-    visibility_tiers: list[str] = Field(default_factory=lambda: ["free", "solo", "pro", "agency"])
+    visibility_tiers: list[str] = Field(default_factory=lambda: ["free", "solo", "pro", "agency", "agency_solo", "agency_whitelabel"])
     min_lc_score: int = Field(75, ge=0, le=100)
     cta_text: str = Field("View Campaign Brief →", min_length=2, max_length=80)
     sort_order: int = Field(0)

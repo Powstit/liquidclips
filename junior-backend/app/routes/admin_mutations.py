@@ -80,7 +80,7 @@ router = APIRouter(prefix="/admin/mutations", tags=["admin", "mutations"])
 # growth|agency. Allow any of the live tier strings; legacy aliases
 # (channel/autopilot) are not accepted here — admins should use the
 # v2 names so the audit log stays clean.
-_VALID_TIERS = {"free", "solo", "pro", "growth", "agency"}
+_VALID_TIERS = {"free", "solo", "pro", "growth", "agency", "agency_solo", "agency_whitelabel"}
 
 # Field keys whose values must be redacted before persisting to the
 # audit_log row. Match is case-insensitive substring.
