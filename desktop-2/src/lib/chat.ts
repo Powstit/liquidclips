@@ -47,6 +47,13 @@ export interface ChatHistory {
   messages: ChatMessage[];
   can_write: boolean;
   viewer_role: ChatRole;
+  /** Stage 4 infinite-history cursor. `true` when the server holds at
+   *  least one message strictly older than `messages[0]`. The Community
+   *  top-sentinel IntersectionObserver gates `loadOlder()` on this so a
+   *  fully-loaded room does not keep firing empty before_id requests.
+   *  Optional so a legacy backend that has not shipped the Stage-4
+   *  widening (returns no `has_more`) reads as `false` and no crash. */
+  has_more?: boolean;
 }
 
 export type ChatConnectionState =
@@ -93,16 +100,26 @@ const EMPTY_HISTORY: ChatHistory = {
   messages: [],
   can_write: false,
   viewer_role: "member",
+  has_more: false,
 };
+
+export interface FetchHistoryOpts {
+  /** Stage 4 keyset cursor. When set, the backend returns messages
+   *  strictly older than this id and reports `has_more` for the
+   *  chunk BEFORE that. */
+  before_id?: string;
+}
 
 export async function fetchChatHistory(
   channel: ChatChannel,
+  opts: FetchHistoryOpts = {},
 ): Promise<ChatHistory> {
-  return (await fetchChatHistoryResult(channel)).history;
+  return (await fetchChatHistoryResult(channel, opts)).history;
 }
 
 export async function fetchChatHistoryResult(
   channel: ChatChannel,
+  opts: FetchHistoryOpts = {},
 ): Promise<ChatHistoryResult> {
   const jwt = getJwt();
   if (!jwt) {
@@ -113,8 +130,10 @@ export async function fetchChatHistoryResult(
     };
   }
   try {
+    const params = new URLSearchParams({ channel });
+    if (opts.before_id) params.set("before_id", opts.before_id);
     const r = await fetch(
-      `${lcBackendUrl()}/chat/messages?channel=${encodeURIComponent(channel)}`,
+      `${lcBackendUrl()}/chat/messages?${params.toString()}`,
       { cache: "no-store", headers: authHeader() },
     );
     if (r.status === 401 || r.status === 403) {
@@ -359,31 +378,111 @@ export function useChatChannel(
 ): {
   history: ChatHistory;
   reload: () => Promise<void>;
+  loadOlder: () => Promise<void>;
   isLoading: boolean;
+  isLoadingOlder: boolean;
+  hasMore: boolean;
   state: ChatConnectionState;
   error: string | null;
 } {
+  // Stage 4 · local `history` is the UNION of every fetched chunk
+  // (newest-N polls + older keyset chunks), deduped by message.id and
+  // sorted ASC by created_at. `reload()` merges newest-N into the
+  // union; `loadOlder()` prepends older-N via before_id. This preserves
+  // the reader's scroll position when the 10-second poll fires — an
+  // older-loaded chunk is not clobbered by the poll's newest-window.
   const [history, setHistory] = useState<ChatHistory>({
     ...EMPTY_HISTORY,
     channel,
   });
   const [isLoading, setLoading] = useState(false);
+  const [isLoadingOlder, setLoadingOlder] = useState(false);
   const [state, setState] = useState<ChatConnectionState>("idle");
   const [error, setError] = useState<string | null>(null);
   const cancelled = useRef(false);
+  // Mirror of `history.messages` for closure-free reads inside
+  // async callbacks so `loadOlder()` can compute a stable
+  // `before_id` even between renders.
+  const messagesRef = useRef<ChatMessage[]>([]);
+  messagesRef.current = history.messages;
+
+  const mergeMessages = useCallback(
+    (existing: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] => {
+      if (incoming.length === 0) return existing;
+      const seen = new Set(existing.map((m) => m.id));
+      const additions = incoming.filter((m) => !seen.has(m.id));
+      if (additions.length === 0) return existing;
+      const combined = existing.concat(additions);
+      // Sort ASC by created_at so the DOM renders oldest → newest
+      // regardless of which chunk arrived first.
+      combined.sort((a, b) => a.created_at.localeCompare(b.created_at));
+      return combined;
+    },
+    [],
+  );
 
   const reload = useCallback(async () => {
     if (!options.enabled) return;
     setLoading(true);
     setState((current) => current === "idle" ? "loading" : current);
     const result = await fetchChatHistoryResult(channel);
-    if (!cancelled.current) {
-      setHistory(result.history);
-      setState(result.state);
-      setError(result.error);
-      setLoading(false);
+    if (cancelled.current) return;
+    setState(result.state);
+    setError(result.error);
+    setLoading(false);
+    if (result.state !== "ready") {
+      // Transport failure: keep the local union intact so a transient
+      // 401 / 5xx during a poll cycle doesn't wipe already-loaded
+      // messages the user is currently reading.
+      return;
     }
-  }, [channel, options.enabled]);
+    setHistory((prev) => {
+      const merged = mergeMessages(prev.messages, result.history.messages);
+      return {
+        ...result.history,
+        messages: merged,
+        // `has_more` for the OLDEST-most edge is only meaningful for
+        // the initial page + subsequent older chunks. The newest-window
+        // poll does not shrink `has_more`; take the OR so the sentinel
+        // stays live until an older-chunk fetch explicitly reports
+        // `has_more: false`.
+        has_more: (prev.has_more ?? false) || (result.history.has_more ?? false),
+      };
+    });
+  }, [channel, options.enabled, mergeMessages]);
+
+  const loadOlder = useCallback(async () => {
+    if (!options.enabled) return;
+    if (isLoadingOlder) return;
+    const current = messagesRef.current;
+    if (current.length === 0) return;
+    const beforeId = current[0].id;
+    setLoadingOlder(true);
+    const result = await fetchChatHistoryResult(channel, {
+      before_id: beforeId,
+    });
+    if (cancelled.current) {
+      setLoadingOlder(false);
+      return;
+    }
+    setLoadingOlder(false);
+    if (result.state !== "ready") {
+      // Preserve the top sentinel visibility so the user can retry via
+      // scroll; surface the transient error so the UI can hint at it.
+      setError(result.error);
+      return;
+    }
+    setHistory((prev) => {
+      const merged = mergeMessages(prev.messages, result.history.messages);
+      return {
+        ...prev,
+        messages: merged,
+        // Only the OLDER-chunk response is authoritative for
+        // `has_more` — when it flips to `false` the sentinel disarms.
+        has_more: result.history.has_more ?? false,
+      };
+    });
+  }, [channel, options.enabled, isLoadingOlder, mergeMessages]);
 
   useEffect(() => {
     cancelled.current = false;
@@ -395,6 +494,8 @@ export function useChatChannel(
         cancelled.current = true;
       };
     }
+    // Channel switch resets the union — old messages from `#global`
+    // must not bleed into `#agency-vip` and vice versa.
     setHistory({ ...EMPTY_HISTORY, channel });
     setState("loading");
     setError(null);
@@ -412,5 +513,14 @@ export function useChatChannel(
     void reload();
   });
 
-  return { history, reload, isLoading, state, error };
+  return {
+    history,
+    reload,
+    loadOlder,
+    isLoading,
+    isLoadingOlder,
+    hasMore: history.has_more ?? false,
+    state,
+    error,
+  };
 }

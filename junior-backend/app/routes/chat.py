@@ -156,6 +156,13 @@ class ChatHistoryOut(BaseModel):
     # locked-preview agency-vip for free users).
     can_write: bool
     viewer_role: str
+    # Stage 4 infinite-history cursor · true when the server holds at
+    # least one message strictly older than `messages[0]` inside this
+    # channel. The client top-sentinel `IntersectionObserver` gates
+    # `loadOlder()` on this flag so a fully-loaded room does not keep
+    # firing empty before_id requests. Defaults to False so pre-Stage-4
+    # deserializers of this schema keep working.
+    has_more: bool = False
 
 
 class PostMessagePayload(BaseModel):
@@ -279,6 +286,15 @@ def list_messages(
     db: Annotated[Session, Depends(get_db)],
     channel: ChannelLit = Query("global"),
     limit: int = Query(50, ge=1, le=200),
+    before_id: str | None = Query(
+        None,
+        description=(
+            "Stage 4 keyset cursor. When set, returns messages strictly "
+            "older than the referenced message's created_at (oldest→newest "
+            "in the response). Missing or unknown ids return an empty "
+            "page + has_more=false instead of an error."
+        ),
+    ),
 ) -> ChatHistoryOut:
     if channel not in ALLOWED_CHANNELS:
         raise HTTPException(
@@ -286,17 +302,48 @@ def list_messages(
             f"unknown channel: {channel}",
         )
     can_write = _can_access(user, channel)
+
+    # Stage 4 keyset pagination. Resolve `before_id` → the referenced
+    # row's created_at, then filter strictly older messages. Fetch
+    # limit+1 rows so `has_more` can be computed without a second COUNT
+    # query. If the caller passed an id that does not exist in this
+    # channel, return an empty page + has_more=False; do not 404 (the
+    # client treats "no older history" and "unknown cursor" identically).
+    q = (
+        db.query(ChatMessage, User.arcade_high_score)
+        .outerjoin(User, User.id == ChatMessage.user_id)
+        .filter(ChatMessage.channel == channel)
+    )
+    if before_id is not None:
+        ref = (
+            db.query(ChatMessage.created_at)
+            .filter(
+                ChatMessage.id == before_id,
+                ChatMessage.channel == channel,
+            )
+            .first()
+        )
+        if ref is None:
+            return ChatHistoryOut(
+                channel=channel,
+                messages=[],
+                can_write=can_write,
+                viewer_role=_derive_role(user),
+                has_more=False,
+            )
+        q = q.filter(ChatMessage.created_at < ref[0])
+
     # LEFT JOIN User on user_id so each row carries the author's current
     # arcade_high_score · system-bot rows have no User → score = 0 and
     # the chat panel suppresses the badge for them.
     pairs = (
-        db.query(ChatMessage, User.arcade_high_score)
-        .outerjoin(User, User.id == ChatMessage.user_id)
-        .filter(ChatMessage.channel == channel)
-        .order_by(desc(ChatMessage.created_at))
-        .limit(limit)
+        q.order_by(desc(ChatMessage.created_at))
+        .limit(limit + 1)
         .all()
     )
+    has_more = len(pairs) > limit
+    if has_more:
+        pairs = pairs[:limit]
     # Reverse so the client renders oldest → newest naturally; the
     # composer scrolls to the bottom on mount.
     pairs.reverse()
@@ -305,6 +352,7 @@ def list_messages(
         messages=[_serialise(row, int(score or 0)) for row, score in pairs],
         can_write=can_write,
         viewer_role=_derive_role(user),
+        has_more=has_more,
     )
 
 
