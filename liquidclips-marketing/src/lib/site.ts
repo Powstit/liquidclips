@@ -14,10 +14,10 @@ export const supportEmail = SUPPORT_EMAIL;
 export const downloadUrl = `${SITE_URL}/download`;
 
 export const navLinks = [
-  { href: "/#how", label: "How it works" },
+  { href: "/whats-clipping", label: "What's clipping" },
+  { href: "/features", label: "Features" },
   { href: "/#pricing", label: "Pricing" },
   { href: "/agency", label: "Agencies" },
   { href: "/download", label: "Download" },
   { href: "/help", label: "Help" },
-  { href: "/privacy", label: "Privacy" },
 ];
