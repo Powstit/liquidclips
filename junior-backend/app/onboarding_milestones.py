@@ -72,6 +72,22 @@ def mark_milestone(
     absent (or None). Returns True when the write happened, False when
     the key was already stamped (no-op).
 
+    Rollback-survival guarantee (Sprint G.1 Integrity fix · 2026-07-02):
+
+    The milestone write commits to an INDEPENDENT session opened from
+    `SessionLocal()`. If the caller's transaction later rolls back, the
+    milestone stamp survives. This is a *stronger* guarantee than a
+    SQLAlchemy savepoint (`db.begin_nested()`) — savepoints commit and
+    roll back with their parent, so a caller-side `db.rollback()` would
+    still lose the milestone. Telemetry-critical writes need a separate
+    connection, not a savepoint. See:
+      https://docs.sqlalchemy.org/en/20/orm/session_transaction.html
+      #session-begin-nested
+
+    Locally, we also mirror the timestamp onto the caller's User row (via
+    `flag_modified`) so any subsequent read inside the caller's still-
+    open transaction sees the new milestone without a re-fetch.
+
     Never raises for a bad key — logs a warning and returns False. Never
     raises for a stalled write — the surrounding `try` catches, logs,
     and returns False so the caller's transaction is never derailed
@@ -81,23 +97,71 @@ def mark_milestone(
         log.warning("[onboarding] unknown milestone key: %s", key)
         return False
 
-    status = dict(user.onboarding_status or {})
-    existing = status.get(key)
-    if existing:
+    caller_status = dict(user.onboarding_status or {})
+    if caller_status.get(key):
         return False
 
     ts = (at or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-    status[key] = ts
+
+    # Independent session · this write commits regardless of the caller's
+    # transaction. Imported lazily to keep `app.db` off the module-import
+    # graph for test fixtures that stub SessionLocal.
     try:
-        user.onboarding_status = status
-        # JSON mutation on SQLAlchemy needs an explicit flag so the ORM
-        # tracks the change on assignment of a re-serialised dict.
-        flag_modified(user, "onboarding_status")
-        db.add(user)
+        from app.db import SessionLocal
     except Exception:
-        log.warning("[onboarding] mark_milestone write failed · user=%s · key=%s", user.id, key, exc_info=True)
+        log.warning("[onboarding] SessionLocal unavailable — skipping milestone write", exc_info=True)
         return False
-    return True
+
+    fresh = SessionLocal()
+    try:
+        target = fresh.get(User, user.id)
+        if target is None:
+            # User row hasn't reached the isolated session yet (e.g. still
+            # inside the caller's uncommitted create). Fall back to writing
+            # on the caller session — cheaper than a savepoint dance and
+            # keeps the JSON coherent within the caller's transaction.
+            caller_status[key] = ts
+            user.onboarding_status = caller_status
+            flag_modified(user, "onboarding_status")
+            db.add(user)
+            return True
+
+        target_status = dict(target.onboarding_status or {})
+        if target_status.get(key):
+            # Concurrency: another request stamped this key between our
+            # first-check and now. Mirror the persisted timestamp onto the
+            # caller's row so /sync sees the same value.
+            caller_status[key] = target_status[key]
+            user.onboarding_status = caller_status
+            flag_modified(user, "onboarding_status")
+            return False
+
+        target_status[key] = ts
+        target.onboarding_status = target_status
+        flag_modified(target, "onboarding_status")
+        # Savepoint scope keeps the ORM state coherent if commit fails.
+        with fresh.begin_nested():
+            fresh.add(target)
+        fresh.commit()
+
+        # Mirror onto the caller's user row so a subsequent /sync inside
+        # the same transaction reads the milestone without a re-fetch.
+        caller_status[key] = ts
+        user.onboarding_status = caller_status
+        flag_modified(user, "onboarding_status")
+        return True
+    except Exception:
+        try:
+            fresh.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        log.warning(
+            "[onboarding] mark_milestone write failed · user=%s · key=%s",
+            user.id, key, exc_info=True,
+        )
+        return False
+    finally:
+        fresh.close()
 
 
 def snapshot(user: User) -> dict[str, str | None]:

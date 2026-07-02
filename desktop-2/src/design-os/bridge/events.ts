@@ -276,7 +276,46 @@ export type LCEvents = {
    *  (approve, wait, or dismiss) so surfaces can refresh their trial
    *  state without waiting for the 30s /sync poll. */
   "trial:upgrade-resolved": { state: "approved" | "already_paid" | "unavailable" | "dismissed" };
+  /** Sprint G.3 · Kade Reactive Onboarding. Fired ONCE per
+   *  first-occurrence milestone per user. Emission is the sole
+   *  responsibility of `desktop-2/src/lib/onboardingEmitter.ts` — no
+   *  route / route helper / component is allowed to fire this event
+   *  directly. The pre-commit lint at `scripts/lint_kade_decoupling.sh`
+   *  enforces the discipline; KadeController subscribes and swaps its
+   *  pose per `MILESTONE_TO_POSE`. Keeps the "Kade never fires its own
+   *  state events" rule intact (line 8 of this file). */
+  "onboarding:milestone": { milestone: OnboardingMilestone; at: string };
 };
+
+/** Sprint G.3 · closed vocabulary — additive only. New keys land here
+ *  first + then in `MILESTONE_TO_POSE` + then in the backend
+ *  `app/onboarding_milestones.py::ALL_MILESTONE_KEYS`. The three must
+ *  stay in sync; the pre-commit lint checks the client + backend key
+ *  lists match at commit time. */
+export type OnboardingMilestone =
+  | "signed_up_at"
+  | "first_launch_at"
+  | "first_clip_at"
+  | "first_publish_at"
+  | "first_earn_view_at"
+  | "first_bounty_submit"
+  | "first_paid_referral"
+  | "agency_owner_first_campaign"
+  | "agency_owner_first_invite"
+  | "agency_member_accepted_at";
+
+export const ALL_ONBOARDING_MILESTONES: readonly OnboardingMilestone[] = [
+  "signed_up_at",
+  "first_launch_at",
+  "first_clip_at",
+  "first_publish_at",
+  "first_earn_view_at",
+  "first_bounty_submit",
+  "first_paid_referral",
+  "agency_owner_first_campaign",
+  "agency_owner_first_invite",
+  "agency_member_accepted_at",
+] as const;
 
 /* ============================================================
    Bus implementation · plain Map + Set, no deps
