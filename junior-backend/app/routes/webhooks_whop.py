@@ -75,11 +75,38 @@ PLAN_TIER_BY_TITLE = {
 # / Agency". When new plan IDs are minted under the Liquid Clips brand, add
 # them here — do NOT remove the legacy IDs, existing memberships still resolve
 # through them.
+#
+# 2026-07-02 · Phase 2 of the 3-tier agency ladder. The three new price
+# points are ENV-DRIVEN so Daniel can create the plans in the Whop
+# dashboard (or via scripts/create_whop_agency_plans.py) and paste the
+# resulting `plan_xxx` ids into Railway without a code deploy:
+#   · WHOP_PLAN_ID_AGENCY_SOLO       → agency_solo       ($50/mo)
+#   · WHOP_PLAN_ID_AGENCY            → agency            ($299/mo)
+#   · WHOP_PLAN_ID_AGENCY_WHITELABEL → agency_whitelabel ($500/mo)
+# Missing env vars mean the mapping is a no-op — existing hardcoded
+# rows keep working, so unwiring the env vars never breaks anyone.
 PLAN_TIER_BY_ID = {
     "plan_qe8AFXj9J3SWi": "solo",       # Liquid Clips Solo   ($29.99/mo)
     "plan_dhssNse4FfPlI": "growth",     # Liquid Clips Growth ($99.99/mo)
-    "plan_BvDBrtybhbxNg": "autopilot",  # Liquid Clips Agency ($500/mo)
+    "plan_BvDBrtybhbxNg": "autopilot",  # Liquid Clips Agency ($500/mo) · legacy · unchanged
 }
+
+
+def _load_agency_ladder_plan_map() -> dict[str, str]:
+    """Read the three new-tier env vars into a `{plan_id: tier}` fragment
+    that gets merged onto `PLAN_TIER_BY_ID` at request time. Called on
+    every event so a Railway env-var flip lands without a redeploy."""
+    import os
+    out: dict[str, str] = {}
+    for tier_key, env_name in (
+        ("agency_solo",       "WHOP_PLAN_ID_AGENCY_SOLO"),
+        ("agency",            "WHOP_PLAN_ID_AGENCY"),
+        ("agency_whitelabel", "WHOP_PLAN_ID_AGENCY_WHITELABEL"),
+    ):
+        plan_id = (os.environ.get(env_name) or "").strip()
+        if plan_id:
+            out[plan_id] = tier_key
+    return out
 
 # Founder is a $500 one-time unlock → Autopilot tier + founder_flag forever.
 # Match by plan id: the webhook can send title=null (like the renewal plans
@@ -120,11 +147,21 @@ def _tier_from_event(event_data: dict) -> tuple[str, bool] | None:
     """Returns (tier, is_founder). Founder always maps to 'autopilot' tier so
     the £500 one-time unlock gives lifetime Autopilot entitlements. Other
     unknown plans fail closed so an unrelated Whop product can never grant
-    paid Liquid Clips access."""
+    paid Liquid Clips access.
+
+    2026-07-02 · Env-driven agency-ladder plan IDs merged in first — Daniel
+    pastes them into Railway after dashboard/script plan creation and the
+    map lands without a code deploy."""
     plan = event_data.get("plan") or {}
     plan_id = (plan.get("id") or "").strip()
     if plan_id in FOUNDER_PLAN_IDS:
         return "autopilot", True
+    # Env-driven agency ladder wins over the hardcoded map so Daniel can
+    # remap $500 from legacy `autopilot` to `agency_whitelabel` (or any
+    # other reassignment) with a Railway env-var change alone.
+    env_map = _load_agency_ladder_plan_map()
+    if plan_id in env_map:
+        return env_map[plan_id], False
     if plan_id in PLAN_TIER_BY_ID:
         return PLAN_TIER_BY_ID[plan_id], False
     title = (plan.get("title") or "").strip().lower()
@@ -395,6 +432,37 @@ def apply_membership_tier(
         quota_videos_per_month=None,
     )
     db.add(License(user_id=user.id, jwt=jwt_str, tier_at_issue=tier, expires_at=expires_at))
+
+    # 2026-07-02 · Phase 2 · agency-tier 50% MRR commission override.
+    # Deck slide 07 promise: agency-tier owners "skip the gate and earn
+    # from day one." Whop's default affiliate rate follows the
+    # qualification gate (11K views OR 2 paid refs). We push a 50%
+    # override onto the owner's Whop user record whenever they land on
+    # an agency-family tier so referrals credit 50% recurring
+    # immediately.
+    #
+    # Best-effort: `set_affiliate_custom_commission` never raises. If
+    # the Whop API path isn't available on the account, it LOGS the
+    # override request so an admin can apply it via dashboard.
+    #
+    # We import lazily so the webhook module doesn't fail import when
+    # whop_payments is missing an env var in dev.
+    from app.features import is_agency_tier
+    if is_agency_tier(tier) and user.whop_user_id:
+        try:
+            from app.whop_payments import set_affiliate_custom_commission
+            set_affiliate_custom_commission(
+                whop_user_id=user.whop_user_id,
+                rate_bps=5000,
+            )
+        except Exception:
+            # Never let the commission override break the tier grant.
+            import logging
+            logging.getLogger(__name__).warning(
+                "[whop-agency] custom commission override failed · user_id=%s · tier=%s",
+                user.id, tier, exc_info=True,
+            )
+
     return jwt_str
 
 
