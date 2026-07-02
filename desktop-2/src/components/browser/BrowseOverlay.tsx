@@ -19,12 +19,22 @@ import {
   ExternalLink,
   Sparkles,
   ClipboardCopy,
+  Maximize2,
+  Minimize2,
+  Plus,
 } from "lucide-react";
 import { bus } from "../../design-os/bridge";
 import {
   useBrowseOverlay,
   WHOP_REWARDS_URL,
 } from "../../state/browseOverlay";
+import {
+  useUserShortcuts,
+  firstGraphemeUpper,
+  USER_SHORTCUT_MAX_TOTAL,
+  type UserShortcut,
+} from "../../state/userShortcuts";
+import { platformComposerUrl } from "../../design-os/schedule/assistedSchedule";
 import { setActiveCampaignId } from "../../shell/modeStore";
 import { openSmart } from "../../lib/openSmart";
 import {
@@ -80,6 +90,70 @@ function openInSystemBrowser(url: string): void {
   });
 }
 
+/* ==================================================================
+ * Stage 8+ · Sovereign Scheduling Station rail
+ *
+ * Port of docs/ui-master/mockups/browser_overlay_mockup.html — approved
+ * "it's green" before this port. Default platform icons (TikTok /
+ * YouTube / Instagram) live at the top; user-added shortcuts render
+ * below them from `useUserShortcuts`. A "+" button at the bottom
+ * prompts the user to add a new shortcut · hidden when the total
+ * reaches USER_SHORTCUT_MAX_TOTAL.
+ *
+ * The rail is rendered as an <aside> sibling to the existing overlay
+ * body inside a new `.lc-browse-with-rail` grid. The webview slot
+ * bounding rect stays inside `.lc-browse-body`; the ResizeObserver
+ * already picks up the new position on mount so the Rust child
+ * webview lands correctly to the right of the rail.
+ * ================================================================== */
+
+type SchedulerPlatform = "tiktok" | "youtube" | "instagram";
+
+interface RailPlatformSpec {
+  key: SchedulerPlatform;
+  label: string;
+  intentTone: string;
+  Glyph: () => JSX.Element;
+}
+
+// Inline SVG glyphs · stylised platform marks, not exact brand copies.
+// Follow-up sprint can swap these for src/components/PlatformBadge glyphs
+// if we ship a shared platform icon set.
+function TikTokGlyph(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
+         strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 4v10.5a3.5 3.5 0 1 1-3.5-3.5" />
+      <path d="M14 4c.6 2.3 2.4 3.7 4.5 4" />
+    </svg>
+  );
+}
+function YouTubeGlyph(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
+         strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="6.5" width="18" height="11" rx="3" />
+      <path d="M10.5 10 15 12l-4.5 2z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+function InstagramGlyph(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
+         strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="4" y="4" width="16" height="16" rx="4.5" />
+      <circle cx="12" cy="12" r="3.6" />
+      <circle cx="17" cy="7" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+const RAIL_PLATFORMS: readonly RailPlatformSpec[] = [
+  { key: "tiktok",    label: "TikTok",    intentTone: "fuchsia", Glyph: TikTokGlyph },
+  { key: "youtube",   label: "YouTube",   intentTone: "red",     Glyph: YouTubeGlyph },
+  { key: "instagram", label: "Instagram", intentTone: "amber",   Glyph: InstagramGlyph },
+];
+
 export function BrowseOverlay(): JSX.Element | null {
   const open = useBrowseOverlay((s) => s.open);
   const currentUrl = useBrowseOverlay((s) => s.currentUrl);
@@ -102,6 +176,14 @@ export function BrowseOverlay(): JSX.Element | null {
   const close = useBrowseOverlay((s) => s.close);
   const push = useBrowseOverlay((s) => s.push);
   const useInEngine = useBrowseOverlay((s) => s.useInEngine);
+
+  // Stage 8+ · Sovereign Scheduling Station rail state.
+  const userShortcuts = useUserShortcuts((s) => s.shortcuts);
+  const addUserShortcut = useUserShortcuts((s) => s.add);
+  const removeUserShortcut = useUserShortcuts((s) => s.remove);
+  const shortcutsTotal = useUserShortcuts((s) => s.total());
+  const shortcutsFull = useUserShortcuts((s) => s.isFull());
+  const [expanded, setExpanded] = useState(false);
 
   const [draft, setDraft] = useState(currentUrl ?? WHOP_REWARDS_URL);
   // 2026-06-25 · slotRef is an empty div the Rust webview is positioned over.
@@ -285,6 +367,63 @@ export function BrowseOverlay(): JSX.Element | null {
     [handleGo, close],
   );
 
+  const handleRailPlatform = useCallback(
+    (platform: SchedulerPlatform) => {
+      // Same navigate-in-overlay pattern as `handleQuickLink` for URL
+      // links · pushes into the store, the effect above then routes to
+      // the Rust child webview. Zero regression on the WebView slot —
+      // it stays inside `.lc-browse-body`; only the URL changes.
+      push(platformComposerUrl(platform));
+    },
+    [push],
+  );
+
+  const handleUserShortcut = useCallback(
+    (shortcut: UserShortcut) => { push(shortcut.url); },
+    [push],
+  );
+
+  const handleAddShortcut = useCallback(() => {
+    if (shortcutsFull) {
+      bus.emit("toast", {
+        kind: "info",
+        title: "Shortcut cap reached",
+        body: `You can pin up to ${USER_SHORTCUT_MAX_TOTAL} icons in the rail. Remove one to add another.`,
+      });
+      return;
+    }
+    // Native prompt matches the mockup UX approved before this port.
+    // Production polish (custom modal, focus trap) can land in a follow
+    // -up sprint; the validation contract stays identical.
+    const label = window.prompt("Shortcut name (e.g. LinkedIn, X, Threads, Bluesky):");
+    if (label == null) return;
+    const rawUrl = window.prompt(
+      `Composer URL for "${label.trim()}" · must start with https://`,
+      "https://",
+    );
+    if (rawUrl == null) return;
+    const result = addUserShortcut(label, rawUrl);
+    if (!result.ok) {
+      bus.emit("toast", {
+        kind: "error",
+        title: "Shortcut not added",
+        body: result.error,
+      });
+    }
+  }, [addUserShortcut, shortcutsFull]);
+
+  const handleRemoveShortcut = useCallback(
+    (id: string) => { removeUserShortcut(id); },
+    [removeUserShortcut],
+  );
+
+  const handleToggleExpand = useCallback(() => {
+    setExpanded((prev) => !prev);
+    // No manual `updateBrowsePanelBounds` here — the ResizeObserver on
+    // `slotRef` in the effect above fires when the CSS transition
+    // settles the new bounds, keeping the Rust child webview aligned.
+  }, []);
+
   if (!open) return null;
 
   const canBack = historyIdx > 0;
@@ -293,11 +432,100 @@ export function BrowseOverlay(): JSX.Element | null {
   const overlay = (
     <section
       className="lc-browse-overlay"
+      data-expanded={expanded ? "1" : "0"}
       role="dialog"
       aria-label="Browser overlay"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="lc-browse-chrome">
+      {/* Stage 8+ · rail-wrapped body. The existing chrome + body +
+          footer live inside `.lc-browse-main`; the rail is a sibling
+          `<aside>` to the left. Guard anchors stay outside so the shell
+          contract script still finds them. */}
+      <div className="lc-browse-with-rail">
+        <aside className="lc-browse-rail" aria-label="Scheduling station rail">
+          {/* Kade "Station Operator" slot · production asset lives at
+              /brand/kade/kade-avatar.png. Placeholder frame is preserved
+              via the parent chrome so a missing asset never surfaces a
+              broken-image icon in the walkthrough. */}
+          <div className="lc-browse-rail-operator" title="Kade · Station Operator">
+            <img
+              alt="Kade · Station Operator"
+              src="/brand/kade/kade-avatar.png"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = "none";
+              }}
+            />
+            <span className="lc-browse-rail-operator-glyph">K</span>
+          </div>
+          <div className="lc-browse-rail-operator-caption">operator</div>
+
+          <div className="lc-browse-rail-divider" role="separator" aria-hidden="true" />
+
+          {RAIL_PLATFORMS.map((spec) => (
+            <button
+              key={spec.key}
+              type="button"
+              className="lc-browse-rail-icon"
+              data-platform={spec.key}
+              data-tone={spec.intentTone}
+              onClick={() => handleRailPlatform(spec.key)}
+              aria-label={`Open ${spec.label} composer`}
+              title={spec.label}
+            >
+              <spec.Glyph />
+            </button>
+          ))}
+
+          {userShortcuts.map((sc) => (
+            <button
+              key={sc.id}
+              type="button"
+              className="lc-browse-rail-icon lc-browse-rail-icon-user"
+              data-user-id={sc.id}
+              onClick={() => handleUserShortcut(sc)}
+              aria-label={`Open ${sc.label}`}
+              title={sc.label}
+            >
+              <span className="lc-browse-rail-user-glyph">
+                {firstGraphemeUpper(sc.label)}
+              </span>
+              <button
+                type="button"
+                className="lc-browse-rail-user-remove"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRemoveShortcut(sc.id);
+                }}
+                aria-label={`Remove ${sc.label}`}
+                title={`Remove ${sc.label}`}
+              >
+                <X size={11} />
+              </button>
+            </button>
+          ))}
+
+          {!shortcutsFull && (
+            <button
+              type="button"
+              className="lc-browse-rail-add"
+              onClick={handleAddShortcut}
+              aria-label="Add shortcut"
+              title="Add shortcut"
+            >
+              <Plus size={20} />
+            </button>
+          )}
+
+          <div
+            className="lc-browse-rail-count"
+            data-full={shortcutsFull ? "1" : "0"}
+          >
+            {shortcutsTotal}/{USER_SHORTCUT_MAX_TOTAL}
+          </div>
+        </aside>
+
+        <div className="lc-browse-main">
+          <div className="lc-browse-chrome">
         <div className="lc-browse-chrome-row">
           <button
             type="button"
@@ -374,6 +602,17 @@ export function BrowseOverlay(): JSX.Element | null {
 
           <button
             type="button"
+            className="lc-browse-icon-btn lc-browse-expand-btn"
+            onClick={handleToggleExpand}
+            aria-label={expanded ? "Collapse overlay" : "Expand overlay"}
+            aria-pressed={expanded}
+            title={expanded ? "Collapse" : "Expand ×2"}
+          >
+            {expanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+          </button>
+
+          <button
+            type="button"
             className="lc-browse-icon-btn lc-browse-close"
             onClick={close}
             aria-label="Close browser overlay"
@@ -442,6 +681,9 @@ export function BrowseOverlay(): JSX.Element | null {
               <ArrowUpRight size={12} /> Use this link in Engine ↗
             </button>
           )}
+        </div>
+      </div>
+
         </div>
       </div>
 

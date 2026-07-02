@@ -4135,6 +4135,222 @@ input, textarea, code, pre { user-select: text; font: inherit; color: inherit; }
   .lc-browse-scrim, .lc-browse-overlay { animation: none !important; }
 }
 
+/* ==================================================================
+ * Stage 8+ · Sovereign Scheduling Station rail + expand toggle.
+ *
+ * Rail is a 76-px column at the left of the overlay body. The existing
+ * chrome + body + footer wrap into `.lc-browse-main`; the WebView slot
+ * rect measured by React still lives inside `.lc-browse-body`, so the
+ * Rust child webview positions correctly to the right of the rail
+ * without any Rust change (reuses `update_browse_panel_bounds`).
+ * ================================================================== */
+
+.lc-browse-overlay[data-expanded="1"] {
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+}
+
+.lc-browse-with-rail {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  overflow: hidden;
+}
+.lc-browse-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.lc-browse-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 8px;
+  /* Glass recipe validated in commit 40a3918 (bg-paper-elev/80 +
+     backdrop-blur-md + border-line/60) — same tokens the mockup used. */
+  background: color-mix(in srgb, var(--color-paper-warm) 82%, transparent);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  border-right: 1px solid rgba(255, 255, 255, 0.10);
+  overflow: hidden;
+}
+
+.lc-browse-rail-operator {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
+  border: 1.5px dashed rgba(255, 255, 255, 0.18);
+  background: color-mix(in srgb, var(--color-paper-elev) 60%, transparent);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  cursor: default;
+  transition: border-color 180ms ease;
+}
+.lc-browse-rail-operator:hover { border-color: var(--color-fuchsia-deep); }
+.lc-browse-rail-operator img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.lc-browse-rail-operator-glyph {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-ink-soft);
+  letter-spacing: -0.02em;
+  pointer-events: none;
+}
+.lc-browse-rail-operator-caption {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.16em;
+  color: var(--color-ink-soft);
+  text-transform: uppercase;
+  margin-top: -2px;
+}
+
+.lc-browse-rail-divider {
+  width: 40px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.10);
+  margin: 2px 0;
+}
+
+.lc-browse-rail-icon {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-paper) 75%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: var(--color-ink-soft);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  transition:
+    transform 140ms cubic-bezier(0.32, 0.72, 0.15, 1),
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 200ms ease;
+}
+.lc-browse-rail-icon:hover {
+  transform: translateX(2px);
+  background: color-mix(in srgb, var(--color-fuchsia-soft) 60%, var(--color-paper) 40%);
+  border-color: var(--color-fuchsia);
+  color: var(--color-ink);
+  box-shadow: 0 0 22px -4px var(--color-fuchsia-soft);
+}
+.lc-browse-rail-icon:active { transform: translateX(2px) scale(0.97); }
+.lc-browse-rail-icon:focus-visible {
+  outline: 2px solid var(--color-fuchsia);
+  outline-offset: 2px;
+}
+.lc-browse-rail-icon svg { width: 26px; height: 26px; display: block; }
+.lc-browse-rail-icon[data-tone="red"]:hover svg   { color: #FF3B3B; }
+.lc-browse-rail-icon[data-tone="amber"]:hover svg { color: #FFB05C; }
+
+.lc-browse-rail-user-glyph {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: currentColor;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+.lc-browse-rail-icon-user { color: var(--color-ink); }
+
+.lc-browse-rail-user-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--color-paper);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: var(--color-ink-soft);
+  display: none;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  z-index: 5;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+.lc-browse-rail-icon-user:hover .lc-browse-rail-user-remove { display: grid; }
+.lc-browse-rail-user-remove:hover {
+  background: color-mix(in srgb, var(--color-fuchsia-soft) 90%, transparent);
+  border-color: var(--color-fuchsia);
+  color: var(--color-fuchsia-deep);
+}
+
+.lc-browse-rail-add {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: transparent;
+  border: 1.5px dashed rgba(255, 255, 255, 0.18);
+  color: var(--color-ink-soft);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+}
+.lc-browse-rail-add:hover {
+  border-color: var(--color-fuchsia);
+  color: var(--color-fuchsia-deep);
+  background: color-mix(in srgb, var(--color-fuchsia-soft) 40%, transparent);
+}
+.lc-browse-rail-add:focus-visible {
+  outline: 2px solid var(--color-fuchsia);
+  outline-offset: 2px;
+}
+
+.lc-browse-rail-count {
+  margin-top: auto;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.16em;
+  color: var(--color-ink-soft);
+  text-transform: uppercase;
+  width: 40px;
+  text-align: center;
+}
+.lc-browse-rail-count[data-full="1"] { color: var(--color-fuchsia-deep); }
+
+.lc-browse-expand-btn { color: var(--color-ink-soft); }
+.lc-browse-expand-btn[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-fuchsia-soft) 55%, transparent);
+  border-color: var(--color-fuchsia);
+  color: var(--color-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-browse-rail-icon,
+  .lc-browse-rail-add,
+  .lc-browse-rail-operator { transition: none !important; }
+}
+
 
 
 /* ------------------------------------------------------------ */
