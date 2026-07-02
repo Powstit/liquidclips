@@ -695,7 +695,7 @@ class SponsoredCampaign(Base):
     banner_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
     eligibility: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
-    visibility_tiers: Mapped[list] = mapped_column(JSON, nullable=False, default=lambda: ["free","solo","pro","agency"])
+    visibility_tiers: Mapped[list] = mapped_column(JSON, nullable=False, default=lambda: ["free","solo","pro","agency","agency_solo","agency_whitelabel"])
 
     min_lc_score: Mapped[int] = mapped_column(Integer, nullable=False, default=75)
     cta_text: Mapped[str] = mapped_column(String, nullable=False, default="View Campaign Brief →")

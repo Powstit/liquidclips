@@ -19,7 +19,7 @@ from app.models import Announcement, Banner, User
 
 router = APIRouter()
 
-_PREMIUM_TIERS = {"solo", "pro", "agency"}
+_PREMIUM_TIERS = {"solo", "pro", "agency", "agency_solo", "agency_whitelabel"}
 
 
 def _is_premium_target(target_tier: str | None, viewer_tier: str | None) -> bool:

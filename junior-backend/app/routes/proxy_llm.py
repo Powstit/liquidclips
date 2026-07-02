@@ -30,6 +30,10 @@ _QUOTAS_BY_TIER = {
     "pro": 2_000_000,
     "agency": 8_000_000,
     "autopilot": 8_000_000,
+    # 2026-07-02 · 3-tier agency ladder. Same 8M quota across the family
+    # so the "you get hosted LLM at any agency tier" promise stays true.
+    "agency_solo": 8_000_000,
+    "agency_whitelabel": 8_000_000,
 }
 
 

@@ -48,6 +48,11 @@ _TIER_MONTHLY_QUOTA: dict[str, int | None] = {
     "growth":    100,     # Pro tier (v2 rename)
     "autopilot": 500,     # Agency legacy alias
     "agency":    500,
+    # 2026-07-02 · 3-tier agency ladder. Solo mirrors mid quota (the
+    # thumbnail is a low-cost per-unit generation — no need to nickel-
+    # and-dime the $50 tier); White-Label doubles as its signature.
+    "agency_solo":       500,
+    "agency_whitelabel": 1000,
 }
 
 BOOST_PACK_BATCH_COUNT = 25

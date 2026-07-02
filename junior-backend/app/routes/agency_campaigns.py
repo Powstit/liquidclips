@@ -446,7 +446,7 @@ async def create_campaign(
         whop_url=payload.whop_reward_url or extracted_id or "",
         whop_reward_url=payload.whop_reward_url,
         eligibility=[],
-        visibility_tiers=payload.visibility_tiers or ["free", "solo", "pro", "agency"],
+        visibility_tiers=payload.visibility_tiers or ["free", "solo", "pro", "agency", "agency_solo", "agency_whitelabel"],
         business_unit=payload.business_unit,
         required_tier=payload.required_tier,
         created_by=user.id,
