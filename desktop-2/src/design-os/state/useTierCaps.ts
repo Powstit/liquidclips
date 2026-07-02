@@ -256,7 +256,16 @@ export function canUseAgencyActions(ctx: { tier: Tier; source: TierSource }): bo
 function mapBackendTier(raw: string | null | undefined): Tier | null {
   if (typeof raw !== "string") return null;
   const t = raw.trim().toLowerCase();
-  if (t === "agency" || t === "autopilot") return "agency";
+  // 2026-07-02 · Sprint D · include the three new agency-family tiers.
+  // All three collapse to the "agency" client tier so the caps table
+  // (TIER_CAPS.agency) applies uniformly; per-sub-tier cap differences
+  // land in a later sprint when the client cares about the split.
+  if (
+    t === "agency"
+    || t === "autopilot"
+    || t === "agency_solo"
+    || t === "agency_whitelabel"
+  ) return "agency";
   if (t === "growth") return "growth";
   if (t === "pro" || t === "channel" || t === "solo") return "pro";
   if (t === "free" || t === "starter" || t === "clipper") return "clipper";

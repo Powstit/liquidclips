@@ -29,6 +29,7 @@ export const NAV_LABEL: Record<RouteId, string> = {
   thumbnail:  "Thumbs",
   export:     "Export",
   campaigns:  "Campaigns",
+  "campaign-builder": "Campaign Builder",
   clipper:    "Clipper",
   earn:       "Earn",
   community:  "Community",
@@ -51,6 +52,7 @@ export const NAV_KADE_BRIEF: Record<RouteId, string> = {
   thumbnail:  "Generate cover thumbnails with your identity locked.",
   export:     "Render the final clip and pick where it ships.",
   campaigns:  "Find paid clip missions.",
+  "campaign-builder": "Draft, connect, and publish your Whop reward campaigns.",
   clipper:    "Track your campaign journey.",
   earn:       "Track coins, payouts and rewards.",
   community:  "See squads, ranks and wins.",
@@ -143,6 +145,11 @@ export const ROUTE_HERO: Record<RouteId, RouteHero> = {
     eyebrow: "Mission pedestal room",
     h1: "Pick a mission, read the brief, join",
     sub: "Live campaigns ranked by fit-score. Stamps and rewards visible before you commit.",
+  },
+  "campaign-builder": {
+    eyebrow: "Agency · campaign builder",
+    h1: "Draft, connect, publish your reward campaign",
+    sub: "Write the brief · paste a Whop content-reward URL · publish when funding lands.",
   },
   clipper: {
     eyebrow: "Clipper journey",
@@ -268,6 +275,13 @@ export const ROUTE_STATES: Record<RouteId, RouteStates> = {
     success: { title: "You joined the squad",       body: "Stamp is on. Spots taken — start clipping." },
     warning: { title: "Rules require Stamped layout", body: "Switch your layout to Stamped before you submit." },
     error:   { title: "Brief failed to load",        body: "Tap to retry. If it persists, ping #support." },
+  },
+  "campaign-builder": {
+    empty:   { title: "No campaigns yet",           body: "Draft your first campaign — brief · reward URL · publish." },
+    loading: { title: "Loading your campaigns",     body: "Pulling drafts and live campaigns from the backend." },
+    success: { title: "Campaign live",              body: "Clippers can now submit. Approvals land in your review queue." },
+    warning: { title: "Enrichment deferred",        body: "Whop URL saved · snapshot fetch failed. Publish still safe." },
+    error:   { title: "Campaign action failed",     body: "Try again · if it persists, check your Whop reward URL." },
   },
   clipper: {
     empty:   { title: "Not in a campaign yet",      body: "Join one from the pedestal to start the journey." },

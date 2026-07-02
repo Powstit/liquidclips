@@ -265,13 +265,26 @@ def _to_block(row: SponsoredCampaign) -> CampaignBlock:
 
 
 def _require_agency(user: User) -> None:
-    """V1 agency gate · admin-email allowlist until the agency-role
-    primitive lands in a later phase."""
-    if not is_admin_email(user.email):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            "Agency endpoints require admin until the agency-role primitive lands.",
-        )
+    """Agency-tier gate for the campaign builder endpoints.
+
+    2026-07-02 · Sprint D · switched from the admin-email allowlist to
+    the shipped `is_agency_tier` helper so any of the three agency-family
+    tiers (agency_solo / agency / agency_whitelabel) plus the legacy
+    `autopilot` alias unlocks campaign create/edit/publish. Founder flag
+    and admin allowlist still bypass — a founder demo or staff test
+    should never 403 on the builder.
+    """
+    from app.features import is_agency_tier
+    if is_admin_email(user.email):
+        return
+    if user.founder_flag:
+        return
+    if is_agency_tier(user.tier):
+        return
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        "Agency-tier subscription required to reach the campaign builder.",
+    )
 
 
 def _resolve_or_404(db: Session, slug: str) -> SponsoredCampaign:
