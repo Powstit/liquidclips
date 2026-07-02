@@ -211,6 +211,29 @@ def send_first_paid_referral(email: str, *, first_name: str | None = None) -> No
     _async(_send, to=email, subject=subject, html=html, text=text, tag="first_paid_referral")
 
 
+def send_agency_invite(
+    email: str,
+    *,
+    token: str,
+    role: str = "member",
+    invited_by_email: str | None = None,
+) -> None:
+    """Sent from `POST /agency/{agency_id}/roster/invite` when the owner
+    adds a sub-clipper to their roster. Best-effort — the invite row is
+    already persisted; a failed send just means the owner has to
+    re-share the accept URL manually. Includes the 14-day expiry so the
+    invitee knows to act quickly."""
+    ctx = MailContext.build()
+    subject, html, text = render_agency_invite(
+        email=email,
+        token=token,
+        role=role,
+        invited_by_email=invited_by_email,
+        ctx=ctx,
+    )
+    _async(_send, to=email, subject=subject, html=html, text=text, tag="agency_invite")
+
+
 def send_whop_claim_link(email: str, *, claim_url: str, first_name: str | None = None) -> None:
     """Self-serve 'I paid on Whop with a different email' claim. Sent ONLY to the
     Whop purchase email the user entered, and only when a matching pending
@@ -1110,6 +1133,55 @@ def render_founder_welcome(*, email: str, first_name: str | None, ctx: MailConte
         "Slack invite within 24h. App is ready now.\n"
         f"Download: {ctx.download_url}\n\n"
         "Reply to this email any time.\n— Daniel"
+    )
+    return subject, _shell(subject, body, ctx=ctx), text
+
+
+def render_agency_invite(
+    *,
+    email: str,
+    token: str,
+    role: str,
+    invited_by_email: str | None,
+    ctx: MailContext,
+) -> tuple[str, str, str]:
+    """The agency owner's roster-invite mail. Landing URL points at
+    account.liquidclips.app/invites/<token> which auto-accepts when the
+    invitee is signed in and gates on Clerk sign-up otherwise.
+
+    Role is one of {"member", "mod"} — passed through to the accept
+    endpoint, but the copy just calls it "join the agency" so we don't
+    have to explain internal role names to a first-time invitee."""
+    accept_url = f"{ctx.account_url}/invites/{token}"
+    inviter_line = (
+        f"<strong style=\"color:{INK};\">{_escape_html(invited_by_email)}</strong> "
+        if invited_by_email else ""
+    )
+    subject = "You've been invited to a Liquid Clips agency."
+    body = f"""
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">agency invite · expires in 14 days</p>
+<h1 style="font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
+  You're invited to join an agency on Liquid Clips.
+</h1>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 20px;">
+  {inviter_line}added you to their Liquid Clips agency roster. When you accept, the invite links your Liquid Clips account to their workspace so you can submit clips to their campaigns and earn from approved posts.
+</p>
+<p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
+  Accepting takes a couple of seconds — sign in with the same email this invite was sent to, and the roster row is created automatically.
+</p>
+<p style="margin:0 0 20px;">{_btn("Accept invite →", accept_url)}</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:22px 0 0;">
+  the link expires 14 days from send. share it with nobody — one clipper per invite.
+</p>
+"""
+    text = (
+        "You've been invited to a Liquid Clips agency.\n\n"
+        + (f"{invited_by_email} added you to their roster.\n\n" if invited_by_email else "")
+        + "Accept the invite here (expires in 14 days):\n"
+        + f"{accept_url}\n\n"
+        "Sign in with the same email this invite was sent to; the roster row "
+        "is created automatically.\n\n"
+        "— Liquid Clips"
     )
     return subject, _shell(subject, body, ctx=ctx), text
 

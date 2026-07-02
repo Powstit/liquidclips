@@ -142,4 +142,9 @@ export type AnalyticsEvent =
   // Promo / discount-code funnel (2026-06-25)
   | "promo_code_captured"      // sign-up captured a ?promo=CODE URL param
   | "promo_code_prefilled"     // checkout pre-filled from URL or sessionStorage
-  | "promo_code_validated";    // checkout live-validation returned (valid + reason in props)
+  | "promo_code_validated"     // checkout live-validation returned (valid + reason in props)
+  // Agency invite acceptance (Sprint B · 2026-07-02)
+  | "agency_invite_viewed"          // /invites/[token] mounted, preview endpoint resolved
+  | "agency_invite_accept_started"  // POST /api/invites/{token}/accept fired
+  | "agency_invite_accept_succeeded"
+  | "agency_invite_accept_failed";
