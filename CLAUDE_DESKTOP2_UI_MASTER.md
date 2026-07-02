@@ -1,6 +1,6 @@
 # Liquid Clips Desktop 2 — UI/UX master implementation contract
 
-> **Status:** APPROVED VISUAL DIRECTION · IMPLEMENTATION IN PROGRESS · NOT RELEASED  
+> **Status:** UI IMPLEMENTATION READY FOR INTEGRATION · NOT RELEASED  
 > **Repository:** `/Users/dipdip/code/jnr`  
 > **Surface:** `/Users/dipdip/code/jnr/desktop-2`  
 > **Isolated execution worktree:** `/Users/dipdip/code/jnr-codex-ui`  
@@ -39,6 +39,42 @@ When Codex supplies the final UI handoff:
 3. Preserve the UI-master evidence and tests included by the commit.
 4. Rerun all release-master gates after integration. The Codex handoff is not
    permission to deploy by itself.
+
+### Ready-state handoff to Claude
+
+The UI handoff is ready:
+
+- Branch: `codex/ui-end2end`
+- Implementation commit:
+  `9bf37fd70a7f406684223683c53b80938f62fbd8`
+- Frozen production Playwright result: `78 passed / 0 failed / 0 skipped`
+  in `27.7m`, serial (`--workers=1`)
+- Build: green
+- Shell contracts: `119 passed / 0 failed`
+- Brand drift and Agency paywall iron gates: green
+- Rust `cargo check`: green with the previously classified unused
+  `ManifestEnvelope` field warning only
+
+Important integration constraint: the implementation commit includes the
+uncommitted Claude working-tree snapshot that was copied when the isolated
+worktree was created, plus Codex's UI work. Do not cherry-pick it blindly onto
+an uncommitted checkout and do not copy selected files.
+
+Claude must:
+
+1. Commit the current `/Users/dipdip/code/jnr` work on its own branch first.
+2. Inspect `git show --stat 9bf37fd` and then merge
+   `codex/ui-end2end`, resolving overlaps in favour of Claude's later
+   correctness fixes while preserving the UI contracts and tests.
+3. Verify that the merge includes every path under
+   `desktop-2/public/brand/icons/stages/`,
+   `desktop-2/public/brand/settings/`, and
+   `desktop-2/public/brand/invaders/invader-classic.png`.
+4. Preserve `CLAUDE_DESKTOP2_UI_MASTER.md`, its evidence, and the new E2E
+   suites.
+5. Rerun the release-master gates from the merged state. UI green does not
+   close packaged-native, real-account/Whop, physical-phone QR scan, or user
+   visual-approval gates.
 
 ## 0. Required reading and authority order
 
