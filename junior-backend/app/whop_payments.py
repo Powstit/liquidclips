@@ -260,6 +260,198 @@ def create_transfer(
         return {**r.json(), "live": True}
 
 
+# ──────── Plans (subscription products) ────────────────────────────────
+#
+# 2026-07-02 · Phase 2 of the 3-tier agency ladder. Plans hang off a
+# Whop "access pass" (product); one plan = one price point + interval.
+# Ladder: $50/mo · $299/mo · $500/mo — all under the existing Liquid
+# Clips access pass. We create these via the V5 REST endpoint, which
+# lives at `POST https://api.whop.com/v5/plans` and returns the created
+# plan's `plan_xxx` id. The V1 sub-merchant + transfer endpoints stay
+# on `/api/v1`; only plans use V5.
+#
+# Idempotence: `list_plans_for_access_pass` looks up by title FIRST so
+# re-running the create script never double-creates. If the Whop API
+# rejects plan creation via API for this account (some accounts require
+# dashboard-only creation), the helper raises `WhopPlansAPIUnavailable`
+# so the caller can fall back to reading the plan IDs from env vars
+# Daniel pasted after hand-creating in the dashboard.
+
+
+class WhopPlansAPIUnavailable(RuntimeError):
+    """Raised when the Whop API refuses plan-create/list access for this
+    account. Fall back to dashboard creation + env-var plan IDs."""
+
+
+_WHOP_V5_BASE = "https://api.whop.com/v5"
+
+
+def _v5_client() -> httpx.Client:
+    """Whop V5 REST client — used for plan create/list. The V1 endpoints
+    (sub-merchant / transfer / ledger) keep their own `_client()`."""
+    return httpx.Client(
+        base_url=_WHOP_V5_BASE,
+        timeout=httpx.Timeout(15.0, connect=5.0),
+        headers={
+            "Authorization": f"Bearer {_api_key()}",
+            "Content-Type": "application/json",
+            "User-Agent": "liquidclips-backend/whop-plans",
+        },
+    )
+
+
+def list_plans_for_access_pass(access_pass_id: str) -> list[dict[str, Any]]:
+    """Fetch every plan currently attached to the given access pass. Used
+    by the create script for idempotence (title-lookup before create).
+
+    Raises `WhopPlansAPIUnavailable` on 401/403/404 so the caller can
+    switch to dashboard-created plan IDs pasted into env vars."""
+    if not _api_key():
+        raise WhopPlansAPIUnavailable("WHOP_API_KEY missing · cannot list plans")
+    with _v5_client() as c:
+        r = c.get(f"/access_passes/{access_pass_id}/plans")
+        if r.status_code in (401, 403, 404):
+            raise WhopPlansAPIUnavailable(
+                f"Whop V5 plan listing not available (HTTP {r.status_code}) · "
+                f"fall back to dashboard + env-var plan IDs",
+            )
+        r.raise_for_status()
+        data = r.json()
+        return list(data.get("data") or data.get("plans") or data)
+
+
+def create_plan(
+    *,
+    access_pass_id: str,
+    title: str,
+    price_cents: int,
+    interval: str = "month",
+    currency: str = "usd",
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create a recurring subscription plan under the given access pass.
+
+    Returns {"id": "plan_xxx", "title": ..., "price_cents": ..., "raw": {...}}.
+
+    Idempotent — first checks list_plans_for_access_pass() for an existing
+    plan with the same title (case-insensitive) and returns it unchanged
+    if found. Only actually creates when no match exists.
+
+    Raises `WhopPlansAPIUnavailable` if the API refuses; the create script
+    catches this and prints an instruction pointing at the Whop dashboard.
+    """
+    if not _api_key():
+        raise WhopPlansAPIUnavailable("WHOP_API_KEY missing · cannot create plans")
+
+    existing = list_plans_for_access_pass(access_pass_id)
+    for plan in existing:
+        plan_title = (plan.get("title") or plan.get("name") or "").strip().lower()
+        if plan_title == title.strip().lower():
+            _log.info("[whop-plans] plan already exists · id=%s · title=%s", plan.get("id"), title)
+            return {
+                "id": plan.get("id"),
+                "title": plan.get("title") or plan.get("name"),
+                "price_cents": plan.get("amount_in_cents") or plan.get("initial_price"),
+                "raw": plan,
+                "created": False,
+            }
+
+    payload: dict[str, Any] = {
+        "access_pass_id": access_pass_id,
+        "title": title,
+        "initial_price": price_cents / 100.0,
+        "renewal_price": price_cents / 100.0,
+        "base_currency": currency,
+        "billing_period": 30 if interval == "month" else 365,
+        "internal_notes": "Liquid Clips agency-tier ladder (Phase 2)",
+    }
+    if metadata:
+        payload["metadata"] = metadata
+
+    with _v5_client() as c:
+        r = c.post("/plans", json=payload)
+        if r.status_code in (401, 403, 404, 405):
+            raise WhopPlansAPIUnavailable(
+                f"Whop V5 plan creation refused (HTTP {r.status_code}) · "
+                f"create plans in the dashboard and paste the IDs into "
+                f"WHOP_PLAN_ID_AGENCY_SOLO / _AGENCY / _AGENCY_WHITELABEL",
+            )
+        r.raise_for_status()
+        data = r.json()
+        _log.info("[whop-plans] created · id=%s · $%.2f/%s", data.get("id"), price_cents / 100, interval)
+        return {
+            "id": data.get("id"),
+            "title": data.get("title") or title,
+            "price_cents": price_cents,
+            "raw": data,
+            "created": True,
+        }
+
+
+# ──────── Custom affiliate commission (agency-tier 50% MRR override) ───
+#
+# Deck slide 07 promise: agency-tier owners "skip the gate and earn from
+# day one." Whop's default affiliate flow requires the qualification gate
+# (11K views OR 2 paid refs) before 50% unlocks. We bypass this at
+# tier-grant time by pushing a custom commission rate onto the owner's
+# Whop affiliate record.
+#
+# Best-effort: if Whop's V5 doesn't expose this endpoint on our account,
+# the helper LOGS and returns without raising, so the tier grant itself
+# still succeeds. Follow-up: manual per-affiliate rate override in the
+# Whop dashboard for the first agency-tier signups until we verify the
+# API path.
+
+
+def set_affiliate_custom_commission(
+    *,
+    whop_user_id: str,
+    rate_bps: int = 5000,
+) -> dict[str, Any]:
+    """Push a custom affiliate commission rate onto a Whop user record.
+
+    Args:
+        whop_user_id: The `user_xxx` id from the membership webhook data.
+        rate_bps: Basis points (5000 = 50%). Default 5000 per the deck
+                  slide 07 promise for agency-tier owners.
+
+    Returns {"ok": bool, "raw": {...} | None, "note": str}.
+    Never raises — a failed override is logged and returned as `ok:False`.
+    The caller can still grant the tier locally; the override can be
+    re-attempted from an admin surface later.
+    """
+    result: dict[str, Any] = {"ok": False, "raw": None, "note": ""}
+    if not _api_key():
+        result["note"] = "WHOP_API_KEY missing · skipping commission override"
+        _log.warning("[whop-affiliate] %s", result["note"])
+        return result
+
+    try:
+        with _v5_client() as c:
+            r = c.post(
+                f"/users/{whop_user_id}/affiliate/custom_commission",
+                json={"rate_bps": rate_bps},
+            )
+            if r.status_code in (401, 403, 404, 405):
+                result["note"] = (
+                    f"Whop custom commission API unavailable (HTTP {r.status_code}) · "
+                    f"set the rate manually in the Whop dashboard for user_id={whop_user_id}"
+                )
+                _log.warning("[whop-affiliate] %s", result["note"])
+                return result
+            r.raise_for_status()
+            result["ok"] = True
+            result["raw"] = r.json()
+            _log.info(
+                "[whop-affiliate] custom commission set · user=%s · rate=%d bps",
+                whop_user_id, rate_bps,
+            )
+    except Exception as exc:
+        result["note"] = f"whop custom commission call failed: {exc}"
+        _log.warning("[whop-affiliate] %s", result["note"])
+    return result
+
+
 # ──────── Account read (for sub-merchant wallet + capabilities) ────────
 
 
