@@ -131,6 +131,15 @@ def connect_desktop(
         from app.mailer import send_license_activated
         send_license_activated(user.email)
 
+        # Sprint G.1 · stamp first_launch_at milestone. Fire-and-forget
+        # so a telemetry write never blocks the license mint.
+        try:
+            from app.onboarding_milestones import mark_milestone
+            mark_milestone(db, user, "first_launch_at")
+            db.commit()
+        except Exception:
+            pass
+
         # PostHog: this is the desktop install / first-launch funnel point.
         # Only fires once per user (gated by is_first_activation).
         from app import analytics

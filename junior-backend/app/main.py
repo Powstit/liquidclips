@@ -141,6 +141,15 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS whop_commission_override_id varchar",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_qualified_at timestamptz",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_commission_override_ids jsonb NOT NULL DEFAULT '[]'::jsonb",
+        # 2026-07-02 · Sprint G.1 · Kade Reactive Onboarding milestone stream.
+        # JSON dict keyed by milestone name → ISO-8601 timestamp of first
+        # occurrence. Idempotent — the mark_milestone helper only writes when
+        # the key is currently None. Read by /sync so the desktop emitter
+        # can diff, fire the onboarding:milestone bus event, and let Kade
+        # react with a pose. NOT NULL default '{}' so every existing user
+        # row lands with an empty stream on the first read (no migration
+        # noise, no NULL-vs-empty ambiguity in the JSON diff).
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_status jsonb NOT NULL DEFAULT '{}'::jsonb",
         # Legacy tier rename — "channel" was the 0.4.x name for what is now "pro"
         # in the v2 matrix. Idempotent because rerun affects zero rows after first pass.
         "UPDATE users SET tier = 'pro' WHERE tier = 'channel'",

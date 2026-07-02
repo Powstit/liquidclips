@@ -56,6 +56,9 @@ import { useBillingState } from "../../lib/billing/adapter";
 import { DesignOSAppShell } from "../components/AppShell";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
+import { RosterPanel } from "./agency-panels/RosterPanel";
+import { PayoutSplitPanel } from "./agency-panels/PayoutSplitPanel";
+import { RulesPanel } from "./agency-panels/RulesPanel";
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { useChannels } from "../state/useChannels";
 import { useSchedule } from "../state/useSchedule";
@@ -664,36 +667,28 @@ function SettingsBody() {
             </p>
           </section>
 
-          {(["roster", "payout-split", "rules"] as const).map((agencyTab) => (
-            <section
-              key={agencyTab}
-              className="lc-settings-card lc-settings-capability is-agency"
-              data-tab={agencyTab}
-            >
-              <img
-                src={agencyTab === "roster"
-                  ? "/brand/settings/roster.svg"
-                  : "/brand/settings/advanced.svg"}
-                alt=""
-                aria-hidden="true"
-              />
-              <span className="lc-settings-card-eb">
-                {agencyTab === "roster"
-                  ? "Agency roster"
-                  : agencyTab === "payout-split"
-                    ? "Payout split"
-                    : "Agency rules"}
-              </span>
-              <strong>Server contract required.</strong>
-              <p className="lc-settings-hint">
-                {agencyTab === "roster"
-                  ? "Members, invites, private-room access, and payout status are not exposed by the current backend. Add-clipper controls stay hidden until permission enforcement exists."
-                  : agencyTab === "payout-split"
-                    ? "No gross payout or split preview is calculated without authoritative agency earnings and member rules."
-                    : "Workspace rules cannot be edited until role authorization, validation, and audit logging are available."}
-              </p>
-            </section>
-          ))}
+          {/* Sprint C · Live agency panels — replaces the previous
+              "Server contract required" placeholders. Agency ID equals
+              the signed-in owner's backend user id (agencies are User
+              rows per app/routes/agency.py). The panels only render
+              here because Settings.tsx already gates the whole section
+              on mode === "agency"; a Free/Solo user in agency mode sees
+              the AgencyPreviewBanner upgrade wall above these cards. */}
+          {me.snapshot?.userId ? (
+            <EngineErrorBoundary route="settings" component="AgencyRoster">
+              <RosterPanel agencyId={me.snapshot.userId} />
+            </EngineErrorBoundary>
+          ) : null}
+          {me.snapshot?.userId ? (
+            <EngineErrorBoundary route="settings" component="AgencyPayoutSplit">
+              <PayoutSplitPanel agencyId={me.snapshot.userId} />
+            </EngineErrorBoundary>
+          ) : null}
+          {me.snapshot?.userId ? (
+            <EngineErrorBoundary route="settings" component="AgencyRules">
+              <RulesPanel agencyId={me.snapshot.userId} />
+            </EngineErrorBoundary>
+          ) : null}
 
           {/* Section 1 · Account */}
           <EngineErrorBoundary route="settings" component="Account">
