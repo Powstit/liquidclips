@@ -197,6 +197,14 @@ def _handle_user_created(db: Session, data: dict, ip_address: str | None = None)
     db.add(user)
     db.flush()
 
+    # Sprint G.1 · stamp signed_up_at milestone. Fire-and-forget — a
+    # failed telemetry write never aborts user creation.
+    try:
+        from app.onboarding_milestones import mark_milestone
+        mark_milestone(db, user, "signed_up_at")
+    except Exception:
+        pass
+
     jwt_str, expires_at = issue_license_jwt(
         user_id=user.id,
         tier="free",

@@ -88,6 +88,15 @@ class SyncResponse(BaseModel):
     # Defaults to [] so an unauthenticated /sync (or a mocked /sync in
     # tests) never paints a banner — protects the visual baseline.
     active_announcements: list[AnnouncementOut] = []
+    # 2026-07-02 · Sprint G.1 · Kade Reactive Onboarding milestone stream.
+    # Full snapshot of the User.onboarding_status JSON — every canonical
+    # milestone key is present, with `null` for keys the user hasn't hit
+    # yet. The desktop's onboardingEmitter diffs this against localStorage
+    # and fires `onboarding:milestone` bus events for each null→timestamp
+    # transition, which Kade subscribes to for pose reactions. Defaults
+    # to {} so unauthenticated / test /sync responses never crash the
+    # emitter's diff path.
+    onboarding_status: dict[str, str | None] = {}
 
 
 def _agency_ids_for_user(db: Session, user: User) -> list[str]:
@@ -231,6 +240,7 @@ def sync(
         and user.subscription_status in {"trial", "trialing"}
     )
 
+    from app.onboarding_milestones import snapshot as onboarding_snapshot
     return SyncResponse(
         tier=effective_tier,
         founder=effective_founder,
@@ -244,4 +254,5 @@ def sync(
         active_announcements=_fetch_active_announcements(db, user),
         trial_days_remaining=None if is_admin else trial_days_remaining,
         trial_convert_pending=trial_convert_pending,
+        onboarding_status=onboarding_snapshot(user),
     )
