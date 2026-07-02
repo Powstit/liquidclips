@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   sendChatMessageDetailed,
   useChatChannel,
@@ -61,6 +61,14 @@ const ROOMS: readonly RoomSpec[] = [
 
 const QUICK_EMOJI = ["🔥", "👏", "💯", "🎬", "🎯", "🚀", "❤️", "😂"];
 
+/** Stage 4 · long-message clamp threshold. `.lc-chat-row-content > span`
+ *  is line-clamped to 3 lines via CSS; the Show more toggle only needs
+ *  to render when the content is realistically LONG enough to wrap
+ *  past 3 lines. 240 chars is a safe upper bound for typical Inter
+ *  16px / 1.4 line-height inside the ~600px stream — below it the
+ *  clamp never triggers so the toggle would be a lie. */
+const CLAMP_THRESHOLD_CHARS = 240;
+
 function displayName(email: string | null | undefined): string {
   if (!email) return "Clipper";
   const local = email.split("@")[0]?.trim();
@@ -80,15 +88,83 @@ export function CommunityChatHome(): JSX.Element {
   const [manualRefreshing, setManualRefreshing] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const streamRef = useRef<HTMLDivElement | null>(null);
+  // Stage 4 · top-sentinel target for the IntersectionObserver that
+  // pages older-history chunks. Lives as the FIRST child inside the
+  // scroll container so scrollTop → 0 always crosses it.
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // Stage 4 · per-message expand toggle for messages whose text would
+  // wrap past 3 lines under the -webkit-line-clamp:3 rule. Set-based
+  // (id → expanded) so the panel state is O(1) per row and survives
+  // channel switches inside the same session.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  const toggleExpanded = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   const activeRoom = ROOMS.find((room) => room.id === activeRoomId) ?? ROOMS[0];
   const agencyAllowed = tier.tier === "agency";
   const channel = activeRoom.channel ?? "global";
   const chatEnabled = !!activeRoom.channel
     && (activeRoom.channel !== "agency-vip" || agencyAllowed);
-  const { history, reload, isLoading, state, error } = useChatChannel(channel, {
-    enabled: chatEnabled,
-  });
+  const {
+    history,
+    reload,
+    loadOlder,
+    isLoading,
+    isLoadingOlder,
+    hasMore,
+    state,
+    error,
+  } = useChatChannel(channel, { enabled: chatEnabled });
+
+  // Stage 4 · top-sentinel infinite scroll. When the sentinel enters
+  // the scroll viewport (root = stream container) we fire loadOlder(),
+  // snapshotting scrollHeight/scrollTop BEFORE the fetch so the visual
+  // reader position is restored AFTER the prepend (spec §522
+  // "Prepending older messages preserves the reader's visual scroll
+  // position"). The observer is scoped to the current stream so a room
+  // change tears it down cleanly.
+  useEffect(() => {
+    const scroller = streamRef.current;
+    const sentinel = sentinelRef.current;
+    if (!scroller || !sentinel) return;
+    if (!chatEnabled) return;
+    if (!hasMore) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+        if (isLoading || isLoadingOlder) return;
+        const prevScrollHeight = scroller.scrollHeight;
+        const prevScrollTop = scroller.scrollTop;
+        void loadOlder().then(() => {
+          // Restore visual position on the next paint so the newly-
+          // prepended block does not appear to "shove" the current
+          // reader down the list.
+          requestAnimationFrame(() => {
+            const el = streamRef.current;
+            if (!el) return;
+            const delta = el.scrollHeight - prevScrollHeight;
+            if (delta > 0) el.scrollTop = prevScrollTop + delta;
+          });
+        });
+      },
+      {
+        root: scroller,
+        // 80px lead-in so slow scrollers still trigger the fetch
+        // before the empty header lands under the reader.
+        rootMargin: "80px 0px 0px 0px",
+        threshold: 0,
+      },
+    );
+    io.observe(sentinel);
+    return () => io.disconnect();
+  }, [chatEnabled, hasMore, isLoading, isLoadingOlder, loadOlder, channel]);
 
   const filteredRooms = useMemo(() => {
     const needle = roomSearch.trim().toLowerCase().replace(/^#/, "");
@@ -267,6 +343,27 @@ export function CommunityChatHome(): JSX.Element {
           </header>
 
           <div className="lc-community-message-stream" ref={streamRef} aria-live="polite">
+            {/* Stage 4 · top-sentinel target. Rendered ALWAYS as the
+                first child so scrollTop → 0 crosses it deterministically;
+                the IntersectionObserver is only ARMED when hasMore is
+                true (see useEffect). A tiny in-flight indicator sits
+                just below it while an older-history request is out. */}
+            <div
+              ref={sentinelRef}
+              className="lc-community-load-older-sentinel"
+              data-testid="community-load-older-sentinel"
+              data-has-more={hasMore ? "1" : "0"}
+              aria-hidden="true"
+            />
+            {isLoadingOlder && (
+              <div
+                className="lc-community-load-older-indicator"
+                data-testid="community-load-older-indicator"
+                role="status"
+              >
+                Loading older messages…
+              </div>
+            )}
             {roomCapabilityMessage ? (
               <div className="lc-community-capability" role="status">
                 <span>Room unavailable</span>
@@ -293,13 +390,44 @@ export function CommunityChatHome(): JSX.Element {
                   : "This room is read-only for your account."}
               </div>
             ) : (
-              history.messages.map((message) => (
-                <MessageRow
-                  key={message.id}
-                  row={message}
-                  viewerRole={history.viewer_role}
-                />
-              ))
+              history.messages.map((message) => {
+                // Stage 4 · long-message expand. `MessageRow` (locked
+                // under design-os/components) renders the content
+                // inside `.lc-chat-row-content > span`; the clamp CSS
+                // in `CommunityChatHome.css` targets that descendant
+                // scoped to `.lc-community-message[data-expanded="0"]`
+                // so the floating ChatPanel's message rows are
+                // untouched. The toggle is only rendered when the raw
+                // content exceeds the CLAMP_THRESHOLD_CHARS heuristic
+                // so short messages never get a spurious button.
+                const expanded = expandedIds.has(message.id);
+                const long = (message.content?.length ?? 0) > CLAMP_THRESHOLD_CHARS;
+                return (
+                  <div
+                    key={message.id}
+                    className="lc-community-message"
+                    data-testid={`community-message-${message.id}`}
+                    data-expanded={expanded ? "1" : "0"}
+                    data-long={long ? "1" : "0"}
+                  >
+                    <MessageRow
+                      row={message}
+                      viewerRole={history.viewer_role}
+                    />
+                    {long && (
+                      <button
+                        type="button"
+                        className="lc-community-message-toggle"
+                        data-testid={`community-message-toggle-${message.id}`}
+                        aria-expanded={expanded}
+                        onClick={() => toggleExpanded(message.id)}
+                      >
+                        {expanded ? "Show less" : "…more"}
+                      </button>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
 

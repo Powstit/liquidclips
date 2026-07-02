@@ -425,3 +425,101 @@
   }
   .lc-community-conversation { min-height: 520px; }
 }
+
+/* ================================================================
+ * Stage 4 · Infinite-history sentinel + line-clamp + expand toggle
+ *
+ * Everything below is SCOPED to `.lc-community-message-stream` and
+ * `.lc-community-message` so the floating `ChatPanel` component
+ * (locked, under `src/design-os/components/`) keeps its default
+ * unclamped message rows and its own sentinel-free scroll.
+ * ================================================================ */
+
+/* Top-sentinel target for the IntersectionObserver. 1px tall so the
+ * observer fires reliably when scrollTop → 0 crosses it, but it takes
+ * effectively zero visual space in the stream. */
+.lc-community-load-older-sentinel {
+  flex: 0 0 auto;
+  width: 100%;
+  height: 1px;
+  pointer-events: none;
+}
+
+/* Compact in-flight indicator for an older-chunk fetch. Slots below
+ * the sentinel and above the first message so it displaces the
+ * reader's view minimally. */
+.lc-community-load-older-indicator {
+  align-self: stretch;
+  padding: 8px 12px 6px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(200, 196, 190, 0.72);
+  text-align: center;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+  margin-bottom: 8px;
+}
+
+/* Row wrapper that hosts the locked-file MessageRow + the Show more /
+ * Show less toggle. Zero visual footprint of its own — it only exists
+ * so the line-clamp state carries via `data-expanded` down to the
+ * MessageRow's inner span. */
+.lc-community-message {
+  display: block;
+}
+
+/* 3-line clamp on the content span. Targets the MessageRow's inner
+ * `.lc-chat-row-content > span` (see ChatPanel.tsx:313-314) but is
+ * SCOPED to `.lc-community-message[data-expanded="0"]` so:
+ *   - short messages (data-long="0") are unaffected — their content
+ *     naturally fits in ≤3 lines and the clamp is a no-op;
+ *   - the floating ChatPanel's message rows (rendered outside the
+ *     `.lc-community-message` wrapper) are unaffected;
+ *   - expanded messages (data-expanded="1") drop back to `display:
+ *     block` and show the full content.
+ * Spec §530 · we do NOT fade older messages; recency is signaled by
+ * position + clamp only. */
+.lc-community-message[data-expanded="0"] .lc-chat-row-content > span {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.lc-community-message[data-expanded="1"] .lc-chat-row-content > span {
+  display: block;
+  overflow: visible;
+}
+
+/* Inline Show more / Show less toggle. Compact + keyboard-focusable
+ * (native <button> — Tab + Enter/Space handled by the browser).
+ * Rendered only when message.content.length > CLAMP_THRESHOLD_CHARS so
+ * we never lie to the reader about there being more to see. */
+.lc-community-message-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px 4px;
+  margin: 2px 0 0 52px;
+  border-radius: 999px;
+  background: rgba(255, 26, 140, 0.10);
+  border: 1px solid rgba(255, 26, 140, 0.32);
+  color: rgba(255, 179, 216, 0.92);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.lc-community-message-toggle:hover {
+  background: rgba(255, 26, 140, 0.18);
+  color: #ffd7ea;
+  border-color: rgba(255, 26, 140, 0.55);
+}
+.lc-community-message-toggle:focus-visible {
+  outline: 2px solid var(--fuchsia, #ff1a8c);
+  outline-offset: 2px;
+}
