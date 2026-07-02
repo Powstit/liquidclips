@@ -155,12 +155,14 @@ test.describe.configure({ mode: "serial" });
 test("boot baseline · 3 cold loads on localhost dev", async ({ browser }, testInfo) => {
   testInfo.setTimeout(300_000);
   const runs: RunMetrics[] = [];
+  const port = process.env.PW_PORT ?? "1420";
+  const targetUrl = `http://localhost:${port}/?skipIntro=1`;
 
   for (let i = 0; i < 3; i++) {
     /* Fresh context per run · no cache reuse. */
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await ctx.newPage();
-    const m = await captureOne(page, i + 1, "http://localhost:1420/?skipIntro=1");
+    const m = await captureOne(page, i + 1, targetUrl);
     runs.push(m);
     await page.close();
     await ctx.close();
@@ -175,7 +177,7 @@ test("boot baseline · 3 cold loads on localhost dev", async ({ browser }, testI
 
   const summary = {
     capturedAt: new Date().toISOString(),
-    url: "http://localhost:1420/?skipIntro=1",
+    url: targetUrl,
     runs,
     averages: {
       dom_content_loaded_ms: avg("dom_content_loaded_ms"),

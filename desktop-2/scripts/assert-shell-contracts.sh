@@ -119,6 +119,34 @@ has_text "src/components/browser/BrowseOverlay.tsx" "Use in Engine" "BrowseOverl
 has_text "src/components/browser/BrowseOverlay.tsx" "Open in system browser" "BrowseOverlay has system-browser fallback"
 has_text "src/components/browser/BrowseOverlay.tsx" "This site blocks embedded viewing." "BrowseOverlay handles frame-blocked sites"
 has_text "src/design-os/routes/CommandRoom.tsx" "WHOP_REWARDS_URL" "Home Find Rewards opens Whop rewards"
+has_file "src/lib/openInApp.ts" "universal in-app URL router"
+for callsite in \
+  src/lib/billing/adapter.ts \
+  src/shell/InboxSheet.tsx \
+  src/components/publish/SubmitToWhopModal.tsx \
+  src/components/publish/ScheduleQueue.tsx \
+  src/components/editor/CampaignContextStrip.tsx \
+  src/design-os/components/AnnouncementBanner.tsx \
+  src/design-os/routes/ClaimScreen.tsx \
+  src/design-os/routes/SubmissionsReview.tsx \
+  src/design-os/schedule/ScheduleJobDrawer.tsx; do
+  has_text "$callsite" "openInApp" "$callsite routes web URLs in-app"
+done
+if grep -RInE 'target=["'"'"']_blank["'"'"']' "$SRC" \
+  --include='*.ts' --include='*.tsx' >/tmp/lc-blank-targets.out; then
+  fail "no production HTTP links bypass BrowseOverlay with target=_blank"
+  sed 's/^/         /' /tmp/lc-blank-targets.out
+else
+  ok "no production HTTP links bypass BrowseOverlay with target=_blank"
+fi
+if grep -RIn 'window.open(' "$SRC" \
+  --include='*.ts' --include='*.tsx' \
+  | grep -v 'src/components/browser/BrowseOverlay.tsx' >/tmp/lc-window-open.out; then
+  fail "window.open is restricted to BrowseOverlay's documented system fallback"
+  sed 's/^/         /' /tmp/lc-window-open.out
+else
+  ok "window.open is restricted to BrowseOverlay's documented system fallback"
+fi
 
 echo "== Auth + keychain safety =="
 has_text "src/App.tsx" "hasJwtKeychainPresence" "cold boot checks keychain presence mirror first"
@@ -161,6 +189,18 @@ has_text "src-tauri/Cargo.toml" "tauri-plugin-updater" "Tauri updater plugin pre
 has_text "src-tauri/Cargo.toml" "tauri-plugin-deep-link" "Tauri deep-link plugin present"
 has_text "scripts/ship.sh" "desktop-2-v" "ship script tags desktop-2 releases"
 has_text "scripts/ship.sh" "updates.liquidclips.app" "ship script verifies public update proxy"
+
+echo "== Version alignment (Phase C1) =="
+# All three application-version dimensions must agree. Report the drift
+# without mutating any file.
+PKG_VER="$(sed -nE 's/.*"version":[[:space:]]*"([^"]+)".*/\1/p' "$PKG" | head -1)"
+TAU_VER="$(sed -nE 's/.*"version":[[:space:]]*"([^"]+)".*/\1/p' "$TAURI" | head -1)"
+CARGO_VER="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$ROOT/src-tauri/Cargo.toml" | head -1)"
+if [ -n "$PKG_VER" ] && [ "$PKG_VER" = "$TAU_VER" ] && [ "$PKG_VER" = "$CARGO_VER" ]; then
+  ok "package/tauri/cargo versions agree ($PKG_VER)"
+else
+  fail "version drift · package.json=$PKG_VER · tauri.conf.json=$TAU_VER · Cargo.toml=$CARGO_VER"
+fi
 
 echo "== Forbidden user-facing drift =="
 if grep -RInE "Junior|JNR Employee|junior/employee" "$SRC" \

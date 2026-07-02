@@ -10,7 +10,11 @@
  */
 import { defineConfig } from "@playwright/test";
 
-const PORT = 1420;
+// Worktree-safe: parallel local agents must not silently reuse another
+// checkout's Vite server on 1420. Set PW_PORT per worktree (for example
+// PW_PORT=1431) so screenshots and assertions always exercise the code
+// under test rather than whichever server happened to bind first.
+const PORT = Number(process.env.PW_PORT ?? 1420);
 const BASE_URL = `http://localhost:${PORT}`;
 const USE_PRODUCTION_PREVIEW = process.env.PW_USE_PREVIEW === "1";
 
@@ -58,7 +62,7 @@ export default defineConfig({
   webServer: {
     command: USE_PRODUCTION_PREVIEW
       ? `npm run preview -- --host 127.0.0.1 --port ${PORT}`
-      : "npm run dev",
+      : `VITE_DEV_PORT=${PORT} npm run dev -- --port ${PORT}`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,

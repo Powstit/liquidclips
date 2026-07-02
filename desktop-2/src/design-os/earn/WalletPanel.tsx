@@ -35,7 +35,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { bus, useEvent } from "../bridge";
 import { claimCarrot, getPayoutsPortal, onboardCarrot } from "../../lib/carrot";
-import { openSmart } from "../../lib/openSmart";
+import { openInApp } from "../../lib/openInApp";
 import {
   fmtUsdCents,
   fmtViews,
@@ -165,7 +165,7 @@ export function WalletPanel() {
         bus.emit("toast", { kind: "warning", title: "Couldn't open Whop setup", body: res.error });
         return;
       }
-      await openSmart(res.onboarding_url);
+      await openInApp(res.onboarding_url);
     } catch (err) {
       bus.emit("toast", {
         kind: "warning",
@@ -186,7 +186,7 @@ export function WalletPanel() {
         bus.emit("toast", { kind: "warning", title: "Couldn't open Whop payouts", body: res.error });
         return;
       }
-      await openSmart(res.url);
+      await openInApp(res.url);
     } catch (err) {
       bus.emit("toast", {
         kind: "warning",

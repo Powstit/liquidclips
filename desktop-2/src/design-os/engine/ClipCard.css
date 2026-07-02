@@ -14,7 +14,7 @@
 
 .lc-clip-preview {
   position: relative;
-  aspect-ratio: 9 / 16;
+  aspect-ratio: 4 / 5;
   width: 100%;
   /* Stage B-1 (locked 2026-06-26) · registry-driven Kade character
    * fallback. ClipCard.tsx sets `--lc-clip-fallback-url` per clip via
@@ -47,6 +47,60 @@
    for hover-triggered playback (no longer visibility-gating). */
 .lc-clip-video { opacity: 1; }
 
+/* v2.2.18 · hover play affordance.
+ * ::after paints a soft radial vignette so the ▶ mark reads on any
+ * poster. ::before is the disc + ▶ glyph itself (SVG data URL, crisp at
+ * any scale, no extra DOM). Both fade in on card hover / focus. Pointer
+ * events off so the card body still owns the click. */
+.lc-clip-preview::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 160ms ease;
+  background:
+    radial-gradient(120px 120px at 50% 50%, rgba(0, 0, 0, .40), transparent 70%);
+}
+.lc-clip-preview::before {
+  content: "";
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 56px; height: 56px;
+  transform: translate(-50%, -50%) scale(.85);
+  border-radius: 50%;
+  background:
+    rgba(11, 11, 16, .78)
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M9 6.5l9 5.5-9 5.5z' fill='%23ff66b8'/></svg>")
+    center/22px no-repeat;
+  border: 1.5px solid rgba(255, 26, 140, .65);
+  box-shadow:
+    0 0 24px rgba(255, 26, 140, .35),
+    inset 0 0 12px rgba(255, 26, 140, .18);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 160ms ease,
+    transform 220ms cubic-bezier(.34, 1.56, .64, 1);
+}
+.lc-clip-card:hover .lc-clip-preview::after,
+.lc-clip-card:focus-visible .lc-clip-preview::after {
+  opacity: 1;
+}
+.lc-clip-card:hover .lc-clip-preview::before,
+.lc-clip-card:focus-visible .lc-clip-preview::before {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lc-clip-preview::before,
+  .lc-clip-preview::after { transition: opacity 0ms; }
+  .lc-clip-card:hover .lc-clip-preview::before,
+  .lc-clip-card:focus-visible .lc-clip-preview::before {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
 /* Score chip top-right */
 .lc-clip-score {
   position: absolute; top: 10px; right: 10px;
@@ -65,7 +119,10 @@
 .lc-clip-score-amber  { color: #fbbf24; border: 1px solid rgba(245, 158, 11, .45); }
 .lc-clip-score-dim    { color: #c8c4be; border: 1px solid rgba(255, 255, 255, .15); }
 
-/* Platform badges bottom-left · UI-3 · now a button that opens the picker */
+/* v2.2.18 sprint · Platform badges + status pill move to hover-only.
+ * At rest the card shows: poster · score. Cognitive noise drops from
+ * 5 layered widgets → 2. Hover reveals platform picker + status pill +
+ * ▶ play mark. Keyboard focus also reveals them. */
 .lc-clip-platforms {
   position: absolute; left: 10px; bottom: 10px;
   display: flex; gap: 4px;
@@ -74,6 +131,13 @@
   padding: 0;
   cursor: pointer;
   border-radius: 9999px;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.lc-clip-card:hover .lc-clip-platforms,
+.lc-clip-card:focus-within .lc-clip-platforms,
+.lc-clip-card.is-selected .lc-clip-platforms {
+  opacity: 1;
 }
 .lc-clip-platforms:hover { filter: brightness(1.15); }
 .lc-clip-platforms:focus-visible {
@@ -216,6 +280,17 @@
   -webkit-backdrop-filter: blur(8px);
           backdrop-filter: blur(8px);
   border: 1px solid currentColor;
+  /* v2.2.18 sprint · hidden at rest; reveals on hover / focus / select
+   * so the poster gets clean centre stage on the reel. Score pill stays
+   * because it's the primary decision signal. */
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.lc-clip-card:hover .lc-clip-status,
+.lc-clip-card:focus-within .lc-clip-status,
+.lc-clip-card.is-selected .lc-clip-status,
+.lc-clip-card.is-focused .lc-clip-status {
+  opacity: 1;
 }
 .lc-clip-status-dim          { color: #c8c4be; background: rgba(8, 8, 14, .6); border-color: rgba(255, 255, 255, .22); }
 .lc-clip-status-fuchsia      { color: #ff66b8; background: rgba(40, 8, 30, .65); border-color: rgba(255, 26, 140, .55); }

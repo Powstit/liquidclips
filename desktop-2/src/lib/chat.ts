@@ -49,6 +49,20 @@ export interface ChatHistory {
   viewer_role: ChatRole;
 }
 
+export type ChatConnectionState =
+  | "idle"
+  | "loading"
+  | "ready"
+  | "forbidden"
+  | "offline"
+  | "error";
+
+export interface ChatHistoryResult {
+  history: ChatHistory;
+  state: Exclude<ChatConnectionState, "idle" | "loading">;
+  error: string | null;
+}
+
 export interface MediaResult {
   id: string;
   preview_url: string;
@@ -84,18 +98,52 @@ const EMPTY_HISTORY: ChatHistory = {
 export async function fetchChatHistory(
   channel: ChatChannel,
 ): Promise<ChatHistory> {
+  return (await fetchChatHistoryResult(channel)).history;
+}
+
+export async function fetchChatHistoryResult(
+  channel: ChatChannel,
+): Promise<ChatHistoryResult> {
   const jwt = getJwt();
-  if (!jwt) return { ...EMPTY_HISTORY, channel };
+  if (!jwt) {
+    return {
+      history: { ...EMPTY_HISTORY, channel },
+      state: "forbidden",
+      error: "Sign in to load Community chat.",
+    };
+  }
   try {
     const r = await fetch(
       `${lcBackendUrl()}/chat/messages?channel=${encodeURIComponent(channel)}`,
       { cache: "no-store", headers: authHeader() },
     );
-    if (!r.ok) return { ...EMPTY_HISTORY, channel };
+    if (r.status === 401 || r.status === 403) {
+      return {
+        history: { ...EMPTY_HISTORY, channel },
+        state: "forbidden",
+        error: channel === "agency-vip"
+          ? "Agency access is required for this room."
+          : "Your session cannot access Community chat.",
+      };
+    }
+    if (!r.ok) {
+      return {
+        history: { ...EMPTY_HISTORY, channel },
+        state: "error",
+        error: `Chat history returned ${r.status}.`,
+      };
+    }
     const data = (await r.json()) as ChatHistory;
-    return data ?? { ...EMPTY_HISTORY, channel };
+    const history = data && Array.isArray(data.messages)
+      ? data
+      : { ...EMPTY_HISTORY, channel };
+    return { history, state: "ready", error: null };
   } catch {
-    return { ...EMPTY_HISTORY, channel };
+    return {
+      history: { ...EMPTY_HISTORY, channel },
+      state: "offline",
+      error: "Community chat is offline. Check your connection and retry.",
+    };
   }
 }
 
@@ -109,8 +157,20 @@ export interface SendOpts {
 export async function sendChatMessage(
   opts: SendOpts,
 ): Promise<ChatMessage | null> {
+  return (await sendChatMessageDetailed(opts)).message;
+}
+
+export interface SendChatResult {
+  message: ChatMessage | null;
+  error: string | null;
+  status: number | null;
+}
+
+export async function sendChatMessageDetailed(
+  opts: SendOpts,
+): Promise<SendChatResult> {
   const jwt = getJwt();
-  if (!jwt) return null;
+  if (!jwt) return { message: null, error: "Sign in to send messages.", status: 401 };
   try {
     const r = await fetch(`${lcBackendUrl()}/chat/message`, {
       method: "POST",
@@ -126,11 +186,27 @@ export async function sendChatMessage(
         pin_severity: opts.pinSeverity ?? "info",
       }),
     });
-    if (!r.ok) return null;
+    if (!r.ok) {
+      return {
+        message: null,
+        error: r.status === 403
+          ? "This room is read-only for your account."
+          : `Message could not be sent (${r.status}).`,
+        status: r.status,
+      };
+    }
     const data = (await r.json()) as { message: ChatMessage };
-    return data?.message ?? null;
+    return {
+      message: data?.message ?? null,
+      error: data?.message ? null : "The server did not return the sent message.",
+      status: r.status,
+    };
   } catch {
-    return null;
+    return {
+      message: null,
+      error: "Message not sent. Community chat is offline.",
+      status: null,
+    };
   }
 }
 
@@ -154,6 +230,9 @@ export interface MediaSearchResult {
   /** Set when the backend returned 503 setup_required — the picker
    *  surfaces a "Configure {KEY} in env" hint instead of an empty grid. */
   setupRequired: boolean;
+  /** Human-readable transport/server failure. Empty-result searches are not
+   * errors and therefore leave this null. */
+  error: string | null;
 }
 
 /** v2.2.11 arcade · ratchet the caller's best Space Invaders score on
@@ -236,6 +315,7 @@ export async function searchMedia(
     provider,
     results: [],
     setupRequired: false,
+    error: null,
   };
   const jwt = getJwt();
   if (!jwt || q.trim().length === 0) return empty;
@@ -247,15 +327,24 @@ export async function searchMedia(
     if (r.status === 503) {
       return { ...empty, setupRequired: true };
     }
-    if (!r.ok) return empty;
+    if (!r.ok) {
+      return {
+        ...empty,
+        error: `Media search returned ${r.status}.`,
+      };
+    }
     const data = (await r.json()) as { provider: MediaProvider; results: MediaResult[] };
     return {
       provider,
       results: Array.isArray(data?.results) ? data.results : [],
       setupRequired: false,
+      error: null,
     };
   } catch {
-    return empty;
+    return {
+      ...empty,
+      error: "Media search is offline. Check your connection and retry.",
+    };
   }
 }
 
@@ -271,30 +360,44 @@ export function useChatChannel(
   history: ChatHistory;
   reload: () => Promise<void>;
   isLoading: boolean;
+  state: ChatConnectionState;
+  error: string | null;
 } {
   const [history, setHistory] = useState<ChatHistory>({
     ...EMPTY_HISTORY,
     channel,
   });
   const [isLoading, setLoading] = useState(false);
+  const [state, setState] = useState<ChatConnectionState>("idle");
+  const [error, setError] = useState<string | null>(null);
   const cancelled = useRef(false);
 
   const reload = useCallback(async () => {
     if (!options.enabled) return;
     setLoading(true);
-    const next = await fetchChatHistory(channel);
-    if (!cancelled.current) setHistory(next);
-    setLoading(false);
+    setState((current) => current === "idle" ? "loading" : current);
+    const result = await fetchChatHistoryResult(channel);
+    if (!cancelled.current) {
+      setHistory(result.history);
+      setState(result.state);
+      setError(result.error);
+      setLoading(false);
+    }
   }, [channel, options.enabled]);
 
   useEffect(() => {
     cancelled.current = false;
     if (!options.enabled) {
       setHistory({ ...EMPTY_HISTORY, channel });
+      setState("idle");
+      setError(null);
       return () => {
         cancelled.current = true;
       };
     }
+    setHistory({ ...EMPTY_HISTORY, channel });
+    setState("loading");
+    setError(null);
     void reload();
     const id = window.setInterval(() => {
       void reload();
@@ -309,5 +412,5 @@ export function useChatChannel(
     void reload();
   });
 
-  return { history, reload, isLoading };
+  return { history, reload, isLoading, state, error };
 }

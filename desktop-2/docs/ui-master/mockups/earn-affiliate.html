@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Liquid Clips · Earn · Stage 6 mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; font-family: "Inter", ui-sans-serif, system-ui, sans-serif; color: var(--ink); background: #101018; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.canvas { width: 1440px; height: 900px; border-radius: 14px; overflow: hidden; position: relative; background: radial-gradient(1600px 900px at 80% -20%, rgba(255, 26, 140, .18), transparent 60%), radial-gradient(1200px 900px at 10% 110%, rgba(74, 222, 128, .08), transparent 60%), linear-gradient(180deg, #0a0a12 0%, #06060b 100%); box-shadow: 0 40px 100px -30px rgba(0, 0, 0, .8), 0 0 0 1px rgba(255, 255, 255, .05); }
+.chrome { position: absolute; top: 0; left: 0; right: 0; height: 32px; display: flex; align-items: center; padding: 0 14px; background: rgba(6, 6, 12, .6); border-bottom: 1px solid var(--line); z-index: 10; }
+.chrome .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; } .chrome .r { background: #ff5f56; } .chrome .y { background: #ffbd2e; } .chrome .g { background: #27c93f; }
+.chrome .title { flex: 1; text-align: center; font-family: "Geist Mono", monospace; font-size: 11px; letter-spacing: .16em; color: #86837e; text-transform: uppercase; }
+.body { position: absolute; top: 32px; left: 0; right: 0; bottom: 0; display: flex; }
+
+.rail { width: 244px; flex-shrink: 0; padding: 22px 14px 18px; border-right: 1px solid var(--line); background: linear-gradient(180deg, rgba(10, 10, 16, .62), rgba(10, 10, 16, .32) 60%, rgba(10, 10, 16, .62)); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); display: flex; flex-direction: column; }
+.brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+.brand-glyph { width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, #ff1a8c, #7fd9e8 140%); box-shadow: 0 8px 20px -6px rgba(255, 26, 140, .5); }
+.brand-eb { font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .3em; color: #86837e; text-transform: uppercase; }
+.brand-wm { font-weight: 600; font-size: 15px; letter-spacing: -.02em; }
+.brand-wm .slash { color: var(--fuchsia); margin: 0 1px; }
+.rail-label { font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .18em; color: #504e4a; text-transform: uppercase; padding: 6px 4px; margin-top: 12px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; color: #c8c4be; cursor: pointer; font-size: 13px; font-weight: 500; }
+.nav-item img { width: 16px; height: 16px; opacity: .78; }
+.nav-item.is-active { background: linear-gradient(180deg, rgba(255, 26, 140, .22), rgba(255, 26, 140, .08)); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 26, 140, .35); }
+.nav-item.is-active img { opacity: 1; filter: drop-shadow(0 0 6px rgba(255, 102, 184, .5)); }
+.rail-foot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); }
+
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.hdr { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 22px; border-bottom: 1px solid var(--line-hot); background: rgba(11, 11, 16, .28); }
+.hdr-title { font-family: "Geist Mono", monospace; font-size: 13px; font-weight: 600; color: var(--ink); }
+.hdr-sub { font-family: "Geist Mono", monospace; font-size: 10.5px; letter-spacing: .1em; color: var(--dim); }
+.hdr-spacer { flex: 1; }
+.hdr-cta {
+  padding: 6px 12px; border-radius: 9px;
+  background: rgba(255, 26, 140, .1); border: 1px solid rgba(255, 26, 140, .35);
+  color: var(--fuchsia-b); font-family: "Geist Mono", monospace; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; cursor: pointer;
+}
+
+/* Money hero strip */
+.money {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  gap: 22px; align-items: center;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--line);
+  background: radial-gradient(500px 240px at 15% 30%, rgba(74, 222, 128, .12), transparent 60%), linear-gradient(180deg, rgba(255, 26, 140, .06), rgba(11, 11, 16, .1));
+}
+.money-kade {
+  width: 60px; height: 60px; border-radius: 14px; overflow: hidden;
+  border: 1.5px solid rgba(74, 222, 128, .45);
+  box-shadow: 0 8px 20px -8px rgba(74, 222, 128, .5);
+  background: #0a0a10;
+}
+.money-kade img { width: 100%; height: 100%; object-fit: cover; object-position: center 25%; }
+.money-copy .eb {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: var(--green);
+}
+.money-copy .num {
+  font-size: 34px; font-weight: 700; color: var(--ink);
+  letter-spacing: -.02em; margin-top: 2px;
+}
+.money-copy .num strong { color: var(--green); }
+.money-copy .sub { font-family: "Geist Mono", monospace; font-size: 10.5px; color: var(--dim); letter-spacing: .1em; margin-top: 2px; }
+
+.money-stat {
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgba(11, 11, 16, .4);
+  border: 1px solid var(--line);
+  text-align: right;
+}
+.money-stat .eb { font-family: "Geist Mono", monospace; font-size: 9.5px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); }
+.money-stat .val { font-size: 18px; font-weight: 700; color: var(--ink); margin-top: 3px; letter-spacing: -.01em; }
+.money-stat .val.fx { color: var(--fuchsia-b); }
+.money-stat .val.cy { color: var(--cyan); }
+.money-stat .delta { font-family: "Geist Mono", monospace; font-size: 9.5px; color: var(--green); margin-top: 1px; }
+
+.money-cta {
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, var(--green), #16a34a);
+  color: #0a0a10; font-family: "Geist Mono", monospace; font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase; font-weight: 700;
+  cursor: pointer; border: 0;
+  box-shadow: 0 10px 22px -6px rgba(74, 222, 128, .5);
+}
+
+/* Content pane · scrollable */
+.pane {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  padding: 20px 22px 28px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  align-content: start;
+}
+
+/* Card base */
+.card {
+  padding: 18px 20px;
+  border-radius: 14px;
+  background: rgba(11, 11, 16, .42);
+  border: 1px solid var(--line);
+}
+.card.wide { grid-column: 1 / -1; }
+.card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+.card-eb { font-family: "Geist Mono", monospace; font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: var(--fuchsia-b); }
+.card-eb.cy { color: var(--cyan); }
+.card-eb.gr { color: var(--green); }
+.card-link {
+  font-family: "Geist Mono", monospace;
+  font-size: 10.5px; color: var(--dim); cursor: pointer;
+}
+.card-link:hover { color: var(--fuchsia-b); }
+
+/* ── AFFILIATE SECTION · inline in Earn, uses same QR vocabulary */
+.affiliate {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 20px; align-items: center;
+}
+.qr-wrap { position: relative; aspect-ratio: 1; width: 100%; }
+.qr-bezel { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 0 16px rgba(255, 26, 140, .35)); pointer-events: none; z-index: 2; }
+.qr-code { position: absolute; inset: 16%; border-radius: 6px; background: #fff; padding: 8px; display: grid; place-items: center; }
+.qr-code svg { width: 100%; height: 100%; }
+.qr-invader {
+  position: absolute; top: 50%; left: 50%;
+  width: 36px; height: 36px;
+  transform: translate(-50%, -50%);
+  border-radius: 7px; padding: 4px;
+  background: rgba(255, 255, 255, .96);
+  border: 1.5px solid var(--fuchsia);
+  box-shadow: 0 3px 10px rgba(255, 26, 140, .3);
+  z-index: 3;
+  display: grid; place-items: center;
+}
+.qr-invader img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 0 3px rgba(255, 26, 140, .55)); }
+
+.aff-right { display: flex; flex-direction: column; gap: 8px; }
+.aff-title { font-size: 17px; font-weight: 700; color: var(--ink); letter-spacing: -.01em; }
+.aff-note { font-size: 12.5px; color: #c8c4be; line-height: 1.5; }
+.aff-code-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.aff-code {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(11, 11, 16, .5);
+  border: 1px solid rgba(255, 26, 140, .28);
+  font-family: "Geist Mono", monospace;
+  font-size: 12.5px; color: var(--fuchsia-b);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.aff-btn {
+  padding: 8px 12px; border-radius: 8px;
+  font-family: "Geist Mono", monospace; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;
+  cursor: pointer; border: 0;
+}
+.aff-btn.primary { background: linear-gradient(180deg, var(--fuchsia), var(--fuchsia-d)); color: #fff; }
+.aff-btn.quiet { background: rgba(255, 255, 255, .06); color: var(--ink); }
+
+.aff-mini {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px; margin-top: 4px;
+}
+.aff-mini-cell {
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid rgba(255, 255, 255, .06);
+}
+.aff-mini-cell .eb { font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.aff-mini-cell .val { font-family: "Geist Mono", monospace; font-size: 13px; font-weight: 700; color: var(--ink); margin-top: 2px; }
+.aff-mini-cell .val.fx { color: var(--fuchsia-b); }
+.aff-mini-cell .val.gr { color: var(--green); }
+
+/* ── Recent payouts ─────────────────────────────── */
+.pay-list { display: flex; flex-direction: column; gap: 6px; }
+.pay-row {
+  display: grid;
+  grid-template-columns: 32px 1fr auto auto;
+  gap: 12px; align-items: center;
+  padding: 9px 10px; border-radius: 9px;
+  background: rgba(255, 255, 255, .03);
+}
+.pay-avatar {
+  width: 32px; height: 32px; border-radius: 8px;
+  display: grid; place-items: center;
+  color: var(--green);
+  background: rgba(74, 222, 128, .1); border: 1px solid rgba(74, 222, 128, .3);
+}
+.pay-avatar.fx { color: var(--fuchsia-b); background: rgba(255, 26, 140, .1); border-color: rgba(255, 26, 140, .3); }
+.pay-avatar.cy { color: var(--cyan); background: rgba(127, 217, 232, .1); border-color: rgba(127, 217, 232, .3); }
+.pay-avatar img { width: 20px; height: 20px; }
+.pay-lbl { font-size: 12.5px; color: var(--ink); }
+.pay-sub { font-family: "Geist Mono", monospace; font-size: 10px; color: var(--dim); margin-top: 1px; }
+.pay-amt { font-family: "Geist Mono", monospace; font-size: 12.5px; font-weight: 700; color: var(--green); text-align: right; }
+.pay-amt.pending { color: var(--gold); }
+.pay-when { font-family: "Geist Mono", monospace; font-size: 10.5px; color: var(--dim); }
+
+/* ── Campaign earnings ─────────────────────────── */
+.camp-row {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  gap: 12px; align-items: center;
+  padding: 10px; border-radius: 10px;
+  background: rgba(255, 255, 255, .03);
+}
+.camp-avatar {
+  width: 36px; height: 36px; border-radius: 9px; overflow: hidden;
+  background: #0a0a10;
+}
+.camp-avatar img { width: 100%; height: 100%; object-fit: cover; object-position: center 25%; }
+.camp-name { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.camp-meta { font-family: "Geist Mono", monospace; font-size: 10px; color: var(--dim); margin-top: 1px; }
+.camp-bar {
+  width: 120px; height: 5px; border-radius: 3px;
+  background: rgba(255, 255, 255, .06); position: relative; overflow: hidden;
+  margin-top: 6px;
+}
+.camp-bar::before {
+  content: ""; position: absolute; inset: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--fuchsia), var(--fuchsia-b));
+}
+.camp-earn { font-family: "Geist Mono", monospace; font-size: 12.5px; font-weight: 700; color: var(--green); }
+
+/* Sponsored reward glimpse */
+.rew {
+  display: grid;
+  grid-template-columns: 60px 1fr auto;
+  gap: 12px; align-items: center;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(255, 26, 140, .06);
+  border: 1px solid rgba(255, 26, 140, .28);
+  margin-top: 8px;
+}
+.rew-glyph {
+  width: 60px; height: 60px; border-radius: 12px;
+  background: #0a0a10; overflow: hidden;
+}
+.rew-glyph img { width: 100%; height: 100%; object-fit: cover; }
+.rew-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+.rew-meta { font-family: "Geist Mono", monospace; font-size: 10.5px; color: var(--dim); margin-top: 2px; }
+.rew-cta {
+  padding: 8px 14px; border-radius: 9px;
+  background: linear-gradient(180deg, var(--fuchsia), var(--fuchsia-d)); color: #fff;
+  font-family: "Geist Mono", monospace; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; cursor: pointer;
+}
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="chrome">
+    <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="title">Liquid Clips · Earn · Affiliate polish · 1440 × 900</span>
+  </div>
+
+  <div class="body">
+    <aside class="rail">
+      <div class="brand">
+        <div class="brand-glyph"></div>
+        <div>
+          <div class="brand-eb">LIQUID · CLIPS</div>
+          <div class="brand-wm">liquid<span class="slash">/</span>clips</div>
+        </div>
+      </div>
+      <div class="rail-label">Console · Clipper</div>
+      <div class="nav-item"><img src="brand/icons/nav/home.svg" alt=""> Home</div>
+      <div class="nav-item"><img src="brand/icons/nav/create.svg" alt=""> Create</div>
+      <div class="nav-item"><img src="brand/icons/nav/engine.svg" alt=""> My Clips</div>
+      <div class="nav-item"><img src="brand/icons/nav/campaigns.svg" alt=""> Campaigns</div>
+      <div class="nav-item"><img src="brand/icons/nav/community.svg" alt=""> Community</div>
+      <div class="nav-item is-active"><img src="brand/icons/nav/earn.svg" alt=""> Earn</div>
+      <div class="nav-item"><img src="brand/icons/nav/channels.svg" alt=""> Channels</div>
+      <div class="nav-item"><img src="brand/icons/nav/schedule.svg" alt=""> Schedule</div>
+      <div class="rail-foot">
+        <div class="nav-item"><img src="brand/icons/nav/settings.svg" alt=""> Settings</div>
+        <div class="nav-item"><img src="brand/icons/nav/support.svg" alt=""> Support</div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <div class="hdr">
+        <span class="hdr-title">Earn</span>
+        <span class="hdr-sub">· wallet · campaigns · referrals</span>
+        <span class="hdr-spacer"></span>
+        <span class="hdr-cta">Withdraw</span>
+      </div>
+
+      <!-- Money hero -->
+      <div class="money">
+        <div class="money-kade"><img src="brand/kade/kade-earn-mode.webp" alt=""></div>
+        <div class="money-copy">
+          <div class="eb">Wallet balance</div>
+          <div class="num">$<strong>1,284</strong>.60</div>
+          <div class="sub">USDC · Sui rail · settled 08:14 today</div>
+        </div>
+        <div class="money-stat">
+          <div class="eb">Pending</div>
+          <div class="val">$248.00</div>
+          <div class="delta">▲ 3 payouts</div>
+        </div>
+        <div class="money-stat">
+          <div class="eb">This month</div>
+          <div class="val gr">$820.15</div>
+          <div class="delta">▲ 42% mo/mo</div>
+        </div>
+        <button class="money-cta">Withdraw</button>
+      </div>
+
+      <!-- Content pane -->
+      <div class="pane">
+        <!-- Affiliate card · SAME language as Settings, sized for a section not a page -->
+        <div class="card wide">
+          <div class="card-head">
+            <span class="card-eb">Affiliate · shared with your Settings</span>
+            <a class="card-link">Open in Settings ↗</a>
+          </div>
+          <div class="affiliate">
+            <div class="qr-wrap">
+              <img class="qr-bezel" src="brand/settings/qr-frame-bezel.png" alt="">
+              <div class="qr-code">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="24" height="24" fill="#fff"/>
+                  <path fill="#000" d="M0 0h7v7h-7z"/><rect x="1" y="1" width="5" height="5" fill="#fff"/><rect x="2" y="2" width="3" height="3" fill="#000"/>
+                  <path fill="#000" d="M17 0h7v7h-7z"/><rect x="18" y="1" width="5" height="5" fill="#fff"/><rect x="19" y="2" width="3" height="3" fill="#000"/>
+                  <path fill="#000" d="M0 17h7v7h-7z"/><rect x="1" y="18" width="5" height="5" fill="#fff"/><rect x="2" y="19" width="3" height="3" fill="#000"/>
+                  <path fill="#000" d="M8 0h1v1h-1zM10 0h1v1h-1zM12 0h2v1h-2zM15 0h1v1h-1zM8 2h2v1h-2zM11 2h1v1h-1zM13 2h1v1h-1zM15 2h1v1h-1zM9 4h1v1h-1zM11 4h2v1h-2zM14 4h2v1h-2zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM0 8h1v1h-1zM2 8h1v1h-1zM4 8h1v1h-1zM6 8h2v1h-2zM9 8h1v1h-1zM11 8h1v1h-1zM13 8h2v1h-2zM16 8h1v1h-1zM18 8h1v1h-1zM20 8h1v1h-1zM22 8h2v1h-2zM1 10h1v1h-1zM3 10h1v1h-1zM5 10h1v1h-1zM7 10h1v1h-1zM10 10h2v1h-2zM13 10h1v1h-1zM15 10h1v1h-1zM17 10h1v1h-1zM19 10h2v1h-2zM22 10h1v1h-1zM0 12h1v1h-1zM2 12h2v1h-2zM6 12h1v1h-1zM8 12h1v1h-1zM11 12h1v1h-1zM13 12h1v1h-1zM16 12h2v1h-2zM19 12h1v1h-1zM21 12h1v1h-1zM23 12h1v1h-1zM1 14h1v1h-1zM3 14h2v1h-2zM7 14h1v1h-1zM9 14h2v1h-2zM12 14h2v1h-2zM15 14h1v1h-1zM17 14h1v1h-1zM19 14h1v1h-1zM21 14h2v1h-2zM0 16h2v1h-2zM4 16h1v1h-1zM6 16h1v1h-1zM8 16h2v1h-2zM11 16h1v1h-1zM13 16h1v1h-1zM15 16h2v1h-2zM18 16h1v1h-1zM20 16h1v1h-1zM22 16h1v1h-1zM8 17h1v1h-1zM10 17h2v1h-2zM13 17h1v1h-1zM15 17h1v1h-1zM8 19h1v1h-1zM10 19h1v1h-1zM12 19h2v1h-2zM15 19h1v1h-1zM9 21h1v1h-1zM11 21h1v1h-1zM13 21h2v1h-2zM8 23h1v1h-1zM10 23h1v1h-1zM12 23h1v1h-1zM14 23h1v1h-1zM16 23h1v1h-1z"/>
+                </svg>
+              </div>
+              <div class="qr-invader"><img src="brand/invaders/invader-classic.png" alt=""></div>
+            </div>
+            <div class="aff-right">
+              <div class="aff-title">Refer a clipper. Earn $10 when they upgrade.</div>
+              <p class="aff-note">
+                Your handle is your affiliate tag. Share the link or the QR — 7-day trial for them, USDC paid to your Sui wallet within 72h of their first paid month.
+              </p>
+              <div class="aff-code-row">
+                <div class="aff-code">liquidclips.app/join/uncledaniel</div>
+                <button class="aff-btn primary">Copy</button>
+                <button class="aff-btn quiet">Download QR</button>
+              </div>
+              <div class="aff-mini">
+                <div class="aff-mini-cell">
+                  <div class="eb">Lifetime</div>
+                  <div class="val gr">$248</div>
+                </div>
+                <div class="aff-mini-cell">
+                  <div class="eb">This week</div>
+                  <div class="val fx">$30</div>
+                </div>
+                <div class="aff-mini-cell">
+                  <div class="eb">Referrals</div>
+                  <div class="val">18 · <span style="color:var(--dim);">4 pending</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent payouts -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-eb gr">Recent payouts · 5</span>
+            <a class="card-link">Full history ↗</a>
+          </div>
+          <div class="pay-list">
+            <div class="pay-row">
+              <span class="pay-avatar"><img src="brand/icons/metric/coins-earned.svg" alt=""></span>
+              <div>
+                <div class="pay-lbl">Campaign · Uncle Daniel drop</div>
+                <div class="pay-sub">Sponsored · Wed 26 Jun</div>
+              </div>
+              <span class="pay-amt">+$120.00</span>
+              <span class="pay-when">2h ago</span>
+            </div>
+            <div class="pay-row">
+              <span class="pay-avatar fx"><img src="brand/reward/stamp-payout.svg" alt=""></span>
+              <div>
+                <div class="pay-lbl">Affiliate · @rio joined Pro</div>
+                <div class="pay-sub">Referral bonus</div>
+              </div>
+              <span class="pay-amt">+$20.00</span>
+              <span class="pay-when">8h ago</span>
+            </div>
+            <div class="pay-row">
+              <span class="pay-avatar cy"><img src="brand/reward/stamp-approved.svg" alt=""></span>
+              <div>
+                <div class="pay-lbl">Fan boost · Tuesday</div>
+                <div class="pay-sub">Whop micropayment · $2 × 6</div>
+              </div>
+              <span class="pay-amt">+$12.00</span>
+              <span class="pay-when">yesterday</span>
+            </div>
+            <div class="pay-row">
+              <span class="pay-avatar"><img src="brand/icons/metric/coins-earned.svg" alt=""></span>
+              <div>
+                <div class="pay-lbl">Campaign · Fan boost pack</div>
+                <div class="pay-sub">Weekly settlement</div>
+              </div>
+              <span class="pay-amt pending">$96 · pending</span>
+              <span class="pay-when">Fri release</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Campaign earnings -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-eb cy">Active campaigns · 3</span>
+            <a class="card-link">All campaigns ↗</a>
+          </div>
+          <div class="pay-list">
+            <div class="camp-row">
+              <div class="camp-avatar"><img src="brand/kade/kade-campaign-mode.webp" alt=""></div>
+              <div>
+                <div class="camp-name">Wednesday drop · Uncle Daniel</div>
+                <div class="camp-meta">Sponsored · $40 CPM · ends Fri 28</div>
+                <div class="camp-bar" style="--pct:60%;"></div>
+              </div>
+              <span class="camp-earn">$240</span>
+            </div>
+            <div class="camp-row">
+              <div class="camp-avatar" style="background:linear-gradient(135deg,#7fd9e8,#14b8a6);"></div>
+              <div>
+                <div class="camp-name">Fan boost pack</div>
+                <div class="camp-meta">Whop · $2/boost · rolling</div>
+                <div class="camp-bar"></div>
+              </div>
+              <span class="camp-earn">$96</span>
+            </div>
+            <div class="camp-row">
+              <div class="camp-avatar" style="background:linear-gradient(135deg,#fbbf24,#f97316);"></div>
+              <div>
+                <div class="camp-name">Autopilot boost</div>
+                <div class="camp-meta">Sponsored · $25 CPM · 6d left</div>
+                <div class="camp-bar" style="width:88px;"></div>
+              </div>
+              <span class="camp-earn">$52</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sponsored reward glimpse -->
+        <div class="card wide">
+          <div class="card-head">
+            <span class="card-eb">Sponsored rail · 2 new briefs</span>
+            <a class="card-link">Open Campaigns ↗</a>
+          </div>
+          <div class="rew">
+            <div class="rew-glyph"><img src="brand/kade/kade-reading-brief.webp" alt=""></div>
+            <div>
+              <div class="rew-title">Ayrshare · $50 CPM · reaction layouts eligible</div>
+              <div class="rew-meta">3-day brief window · 12 clippers on it</div>
+            </div>
+            <button class="rew-cta">Accept brief</button>
+          </div>
+          <div class="rew">
+            <div class="rew-glyph"><img src="brand/reward/chest-reward.webp" alt=""></div>
+            <div>
+              <div class="rew-title">Weekly viral bounty · $500 top prize · $50 minimum</div>
+              <div class="rew-meta">Leaderboard opens Sunday · closes Sat</div>
+            </div>
+            <button class="rew-cta">Join</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

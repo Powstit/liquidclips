@@ -27,7 +27,7 @@ import { useActivationBonus } from "./useActivationBonus";
 import { useBillingState } from "../../lib/billing/adapter";
 import { RewardRules, SPONSORED_REWARD_RULES } from "./RewardRules";
 import { claimCarrot, getCarrot, onboardCarrot, type CarrotSnapshot } from "../../lib/carrot";
-import { openSmart } from "../../lib/openSmart";
+import { openInApp } from "../../lib/openInApp";
 import { bus } from "../bridge";
 import {
   SPONSORED_REWARD_AMOUNT_USD,
@@ -267,7 +267,7 @@ export function SponsoredRewardModule({
               });
               return;
             }
-            try { await openSmart(res.onboarding_url); } catch { /* noop */ }
+            try { await openInApp(res.onboarding_url); } catch { /* noop */ }
             bus.emit("toast", {
               kind: "info",
               title: "Whop wallet onboarding opened",

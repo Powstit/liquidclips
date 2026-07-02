@@ -42,6 +42,7 @@ import {
   LICENSE_JWT_STORAGE_KEY,
 } from "../../lib/authStorage";
 import { openSmart } from "../../lib/openSmart";
+import { openInApp } from "../../lib/openInApp";
 import {
   getCarrot,
   getPayoutsPortal,
@@ -59,10 +60,55 @@ import { useKadeFromSession } from "../state/useKadeFromSession";
 import { useChannels } from "../state/useChannels";
 import { useSchedule } from "../state/useSchedule";
 import { useCommunity } from "../state/useCommunity";
+import { useMode } from "../bridge/useMode";
+import { usePresencePreference } from "../../lib/presencePreference";
+import { AffiliateWidget } from "../earn/AffiliateWidget";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
 import { presets } from "../motion";
+import "../earn/AffiliateWidget.css";
 import "./SimPage.css";
 import "./Settings.css";
+
+type SettingsTab =
+  | "account"
+  | "payouts"
+  | "devices"
+  | "notifications"
+  | "support"
+  | "advanced"
+  | "streaks"
+  | "referrals"
+  | "whop-sync"
+  | "roster"
+  | "payout-split"
+  | "rules";
+
+interface SettingsTabSpec {
+  id: SettingsTab;
+  label: string;
+  icon?: string;
+}
+
+const COMMON_SETTINGS_TABS: readonly SettingsTabSpec[] = [
+  { id: "account", label: "Account" },
+  { id: "payouts", label: "Payouts" },
+  { id: "devices", label: "Devices", icon: "/brand/settings/devices.svg" },
+  { id: "notifications", label: "Notifications", icon: "/brand/settings/notifs.svg" },
+  { id: "support", label: "Support" },
+  { id: "advanced", label: "Advanced", icon: "/brand/settings/advanced.svg" },
+];
+
+const CLIPPER_SETTINGS_TABS: readonly SettingsTabSpec[] = [
+  { id: "streaks", label: "Streaks" },
+  { id: "referrals", label: "Referrals & QR" },
+];
+
+const AGENCY_SETTINGS_TABS: readonly SettingsTabSpec[] = [
+  { id: "whop-sync", label: "Whop Sync" },
+  { id: "roster", label: "Roster", icon: "/brand/settings/roster.svg" },
+  { id: "payout-split", label: "Payout split" },
+  { id: "rules", label: "Rules" },
+];
 
 /** Backend URL helper · mirrors sidecar-stub + activation.ts. Inlined
  *  to keep Settings self-contained. */
@@ -97,8 +143,15 @@ function SettingsBody() {
   // users don't have to hunt: Account (you + key + plan + actions) ·
   // Connections (channels + schedules) · Plan (tier + Whop explainer) ·
   // Diagnostics (storage + beta + support).
-  type SettingsTab = "account" | "connections" | "plan" | "diagnostics";
   const [tab, setTab] = useState<SettingsTab>("account");
+  const mode = useMode();
+  const { visibility, setVisibility } = usePresencePreference();
+  const modeTabs = mode === "agency" ? AGENCY_SETTINGS_TABS : CLIPPER_SETTINGS_TABS;
+  const availableTabs = [...COMMON_SETTINGS_TABS, ...modeTabs];
+
+  useEffect(() => {
+    if (!availableTabs.some((item) => item.id === tab)) setTab("account");
+  }, [mode, tab]);
 
   const activation = useActivation();
   const channels = useChannels();
@@ -147,7 +200,11 @@ function SettingsBody() {
       ? "Whop sign-in"
       : activation.lastTokenSource === "clerk"
         ? "Email / Clerk"
-        : hasLicense ? "Saved earlier" : "—";
+      : hasLicense ? "Saved earlier" : "—";
+  const identityName = emailLabel === "unknown"
+    ? "Clipper"
+    : emailLabel.split("@")[0]?.trim() || "Clipper";
+  const identityInitial = identityName.slice(0, 1).toUpperCase();
 
   /* ── handlers ─────────────────────────────────────────────────── */
 
@@ -237,7 +294,7 @@ function SettingsBody() {
     try {
       const challenge = beginActivation();
       const url = `${lcBackendUrl()}/auth/whop/start?challenge=${encodeURIComponent(challenge)}`;
-      await openSmart(url);
+      await openInApp(url);
       bus.emit("toast", {
         kind: "info",
         title: "Connecting Whop",
@@ -300,7 +357,7 @@ function SettingsBody() {
         });
         return;
       }
-      await openSmart(res.onboarding_url);
+      await openInApp(res.onboarding_url);
       bus.emit("toast", {
         kind: "info",
         title: "Finish payout setup on Whop",
@@ -331,7 +388,7 @@ function SettingsBody() {
         });
         return;
       }
-      await openSmart(res.url);
+      await openInApp(res.url);
     } catch (e) {
       bus.emit("toast", {
         kind: "warning",
@@ -345,7 +402,7 @@ function SettingsBody() {
 
   const handleOpenWhop = async () => {
     try {
-      await openSmart("https://whop.com/@me/settings/memberships");
+      await openInApp("https://whop.com/@me/settings/memberships");
     } catch (e) {
       bus.emit("toast", {
         kind: "warning",
@@ -437,7 +494,7 @@ function SettingsBody() {
 
   const handleOpenExternal = (url: string, label: string) => async () => {
     try {
-      await openSmart(url);
+      await openInApp(url);
     } catch (e) {
       bus.emit("toast", {
         kind: "warning",
@@ -479,7 +536,7 @@ function SettingsBody() {
           <div className="lc-settings-heading">
             <span className="lc-route-head-eb">Settings</span>
             <span className="lc-settings-heading-copy">
-              Manage your account, connections, plan, and app diagnostics.
+              {mode === "agency" ? "agency cockpit" : "clipper cockpit"}
             </span>
           </div>
           <div className="lc-route-head-pills">
@@ -491,14 +548,54 @@ function SettingsBody() {
           </div>
         </div>
 
-        {/* 2026-06-24 · tab nav · splits a long scroll into 4 honest groups. */}
-        <nav className="lc-settings-tabs" role="tablist" aria-label="Settings sections">
-          {([
-            ["account",     "Account"],
-            ["connections", "Connections"],
-            ["plan",        "Plan"],
-            ["diagnostics", "Diagnostics"],
-          ] as const).map(([id, label]) => (
+        <section className="lc-settings-identity" aria-label="Account identity">
+          <div className="lc-settings-avatar" aria-hidden="true">{identityInitial}</div>
+          <div className="lc-settings-identity-copy">
+            <strong>{identityName}</strong>
+            <span>
+              {emailLabel === "unknown" ? "@handle unavailable" : emailLabel}
+            </span>
+            <small>
+              {tierLabel} · {activationStateLabel}
+            </small>
+          </div>
+          <div className="lc-settings-identity-state">
+            <span className="lc-settings-identity-tier">{mode === "agency" ? "Agency" : tierLabel}</span>
+            <button
+              type="button"
+              className="lc-settings-presence"
+              data-online={visibility === "online" ? "true" : "false"}
+              aria-pressed={visibility === "online"}
+              onClick={() => setVisibility(visibility === "online" ? "invisible" : "online")}
+            >
+              <span aria-hidden="true" />
+              {visibility === "online" ? "Online" : "Invisible"}
+            </button>
+          </div>
+        </section>
+
+        <div className="lc-settings-cockpit">
+          <nav className="lc-settings-tabs" role="tablist" aria-label="Settings sections">
+            <span className="lc-settings-tab-group">Common</span>
+            {COMMON_SETTINGS_TABS.map(({ id, label, icon }) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab === id}
+                aria-controls="settings-active-pane"
+                className="lc-settings-tab"
+                data-active={tab === id ? "true" : undefined}
+                onClick={() => setTab(id)}
+              >
+                {icon ? <img src={icon} alt="" aria-hidden="true" /> : <span aria-hidden="true">◇</span>}
+                {label}
+              </button>
+            ))}
+            <span className="lc-settings-tab-group">
+              {mode === "agency" ? "Agency" : "Clipper"}
+            </span>
+            {modeTabs.map(({ id, label, icon }) => (
             <button
               key={id}
               type="button"
@@ -508,12 +605,96 @@ function SettingsBody() {
               data-active={tab === id ? "true" : undefined}
               onClick={() => setTab(id)}
             >
+              {icon ? <img src={icon} alt="" aria-hidden="true" /> : <span aria-hidden="true">◇</span>}
               {label}
             </button>
           ))}
-        </nav>
+          </nav>
 
-        <div className="lc-settings" data-active-tab={tab}>
+          <div
+            className="lc-settings"
+            id="settings-active-pane"
+            role="tabpanel"
+            data-active-tab={tab}
+            aria-label={availableTabs.find((item) => item.id === tab)?.label ?? "Settings"}
+          >
+          <section className="lc-settings-card lc-settings-capability" data-tab="notifications">
+            <img src="/brand/settings/notifs.svg" alt="" aria-hidden="true" />
+            <span className="lc-settings-card-eb">Notifications</span>
+            <strong>Notification preferences are not connected yet.</strong>
+            <p className="lc-settings-hint">
+              The inbox currently exposes product notices only. No preference
+              switches are shown until a server-backed notification contract exists.
+            </p>
+          </section>
+
+          <section className="lc-settings-card lc-settings-capability" data-tab="devices">
+            <img src="/brand/settings/devices.svg" alt="" aria-hidden="true" />
+            <span className="lc-settings-card-eb">Devices &amp; connections</span>
+            <strong>Session revocation is not available from the current backend.</strong>
+            <p className="lc-settings-hint">
+              Verified service connections remain listed below. No invented device
+              names, locations, or last-seen times are displayed.
+            </p>
+          </section>
+
+          <section className="lc-settings-card lc-settings-capability" data-tab="streaks">
+            <span className="lc-settings-card-eb">Streaks</span>
+            <strong>Streak history is awaiting a real account data source.</strong>
+            <p className="lc-settings-hint">
+              This pane will stay empty rather than presenting a hard-coded streak.
+            </p>
+          </section>
+
+          <div className="lc-settings-special" data-tab="referrals">
+            <AffiliateWidget />
+            <p className="lc-settings-policy">
+              Handle changes are validated by the server. Redirect and cooldown
+              policy will appear here when the backend returns those fields; the
+              desktop does not invent change limits or dates.
+            </p>
+          </div>
+
+          <section className="lc-settings-card lc-settings-capability is-agency" data-tab="whop-sync">
+            <span className="lc-settings-card-eb">Whop Sync</span>
+            <strong>Only verified connection state is shown.</strong>
+            <p className="lc-settings-hint">
+              Account, membership, and payout connections appear below. Seat sync
+              and role-gate totals require an agency workspace endpoint.
+            </p>
+          </section>
+
+          {(["roster", "payout-split", "rules"] as const).map((agencyTab) => (
+            <section
+              key={agencyTab}
+              className="lc-settings-card lc-settings-capability is-agency"
+              data-tab={agencyTab}
+            >
+              <img
+                src={agencyTab === "roster"
+                  ? "/brand/settings/roster.svg"
+                  : "/brand/settings/advanced.svg"}
+                alt=""
+                aria-hidden="true"
+              />
+              <span className="lc-settings-card-eb">
+                {agencyTab === "roster"
+                  ? "Agency roster"
+                  : agencyTab === "payout-split"
+                    ? "Payout split"
+                    : "Agency rules"}
+              </span>
+              <strong>Server contract required.</strong>
+              <p className="lc-settings-hint">
+                {agencyTab === "roster"
+                  ? "Members, invites, private-room access, and payout status are not exposed by the current backend. Add-clipper controls stay hidden until permission enforcement exists."
+                  : agencyTab === "payout-split"
+                    ? "No gross payout or split preview is calculated without authoritative agency earnings and member rules."
+                    : "Workspace rules cannot be edited until role authorization, validation, and audit logging are available."}
+              </p>
+            </section>
+          ))}
+
           {/* Section 1 · Account */}
           <EngineErrorBoundary route="settings" component="Account">
             <section className="lc-settings-card" data-tab="account">
@@ -829,7 +1010,7 @@ function SettingsBody() {
            *  all require /me on mount · P1-3-e scope · until then they
            *  read "Not checked yet". */}
           <EngineErrorBoundary route="settings" component="PlanAccess">
-            <section className="lc-settings-card" data-tab="plan">
+            <section className="lc-settings-card" data-tab="payouts">
               <span className="lc-settings-card-eb">Plan &amp; access</span>
               <div className="lc-settings-rows">
 
@@ -882,7 +1063,7 @@ function SettingsBody() {
                       className="lc-settings-cta lc-settings-cta-secondary"
                       data-testid="settings-open-hq"
                       data-open-url="https://account.liquidclips.app/admin"
-                      onClick={() => { void openSmart("https://account.liquidclips.app/admin"); }}
+                      onClick={() => { void openInApp("https://account.liquidclips.app/admin"); }}
                     >
                       Open Admin HQ ↗
                     </button>
@@ -960,7 +1141,7 @@ function SettingsBody() {
 
           {/* Section 5 · Whop role */}
           <EngineErrorBoundary route="settings" component="WhopRole">
-            <section className="lc-settings-card" data-tab="plan">
+            <section className="lc-settings-card" data-tab="payouts">
               <span className="lc-settings-card-eb">What Whop does · what Liquid Clips does</span>
               <div className="lc-settings-prose">
                 <p>
@@ -984,7 +1165,7 @@ function SettingsBody() {
 
           {/* Section 4 · Storage & security */}
           <EngineErrorBoundary route="settings" component="Storage">
-            <section className="lc-settings-card" data-tab="diagnostics">
+            <section className="lc-settings-card" data-tab="advanced">
               <span className="lc-settings-card-eb">Storage &amp; security</span>
               <div className="lc-settings-rows">
                 <SettingsRow
@@ -1038,7 +1219,7 @@ function SettingsBody() {
           <EngineErrorBoundary route="settings" component="PayoutsAndSecurity">
             <section
               className="lc-settings-card"
-              data-tab="diagnostics"
+              data-tab="payouts"
               data-testid="settings-payouts-card"
               data-carrot-state={
                 carrotLoading ? "loading"
@@ -1130,7 +1311,7 @@ function SettingsBody() {
 
           {/* Section 5 · Beta diagnostics */}
           <EngineErrorBoundary route="settings" component="Diagnostics">
-            <section className="lc-settings-card" data-tab="diagnostics">
+            <section className="lc-settings-card" data-tab="advanced">
               <span className="lc-settings-card-eb">Beta diagnostics</span>
               <div className="lc-settings-rows">
                 <SettingsRow label="Backend URL" value={backendUrl} mono />
@@ -1167,7 +1348,7 @@ function SettingsBody() {
            *  Lives BEFORE Actions so a stuck user finds it without
            *  having to scroll past the Refresh button first. */}
           <EngineErrorBoundary route="settings" component="Support">
-            <section className="lc-settings-card" data-tab="diagnostics">
+            <section className="lc-settings-card" data-tab="support">
               <span className="lc-settings-card-eb">Support &amp; help</span>
               <div className="lc-settings-rows">
                 <p className="lc-settings-hint">
@@ -1266,6 +1447,7 @@ function SettingsBody() {
               </p>
             </section>
           </EngineErrorBoundary>
+          </div>
         </div>
       </fm.div>
     </DesignOSAppShell>
@@ -1408,7 +1590,7 @@ function OpenAIKeyCard() {
   const disabled = busy || status === "checking" || status === "unavailable";
 
   return (
-    <section className="lc-settings-card" data-tab="account">
+    <section className="lc-settings-card" data-tab="advanced">
       <span className="lc-settings-card-eb">OpenAI key</span>
       <div className="lc-settings-rows">
         <SettingsRow label="Status" value={statusValue} tone={statusTone} />
