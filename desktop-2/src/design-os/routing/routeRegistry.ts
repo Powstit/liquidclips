@@ -42,6 +42,10 @@ export const ROUTE_REGISTRY: Record<RouteId, RouteSpec> = {
   thumbnail: { world: "cockpit-home", defaultKade: "reading-brief",       kadePlacement: "helper-right" },
   export:    { world: "cockpit-home", defaultKade: "exporting",           kadePlacement: "helper-right" },
   campaigns: { world: "cockpit-home", defaultKade: "reading-brief",       kadePlacement: "helper-right" },
+  // Sprint D · agency-mode surface. Uses the same cockpit-home world so
+  // the shell chrome is identical; Kade defaults to the "campaign-mode"
+  // pose to signal "you're inside the builder, not the discovery grid."
+  "campaign-builder": { world: "cockpit-home", defaultKade: "campaign-mode", kadePlacement: "helper-right" },
   clipper:   { world: "cockpit-home", defaultKade: "campaign-mode",       kadePlacement: "center" },
   earn:      { world: "cockpit-home", defaultKade: "earn-mode",           kadePlacement: "center" },
   community: { world: "cockpit-home", defaultKade: "community-mode",      kadePlacement: "center" },

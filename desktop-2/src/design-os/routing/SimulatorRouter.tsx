@@ -40,6 +40,12 @@ const CommunityRoute = lazy(() => import("../routes/Community").then((m) => ({ d
 const LibraryRoute = lazy(() => import("../routes/Library").then((m) => ({ default: m.LibraryRoute })));
 const ChannelsRoute = lazy(() => import("../routes/Channels").then((m) => ({ default: m.ChannelsRoute })));
 const CampaignsRoute = lazy(() => import("../routes/Campaigns").then((m) => ({ default: m.CampaignsRoute })));
+// Sprint D · agency campaign builder (write surface). Distinct from
+// CampaignsRoute (read-only clipper discovery). Own lazy chunk so a
+// clipper doesn't ship the builder code.
+const AgencyCampaignsRoute = lazy(() =>
+  import("../routes/AgencyCampaigns").then((m) => ({ default: m.AgencyCampaignsRoute })),
+);
 const ClipperJourneyRoute = lazy(() => import("../routes/ClipperJourney").then((m) => ({ default: m.ClipperJourneyRoute })));
 const AnalyticsRoute = lazy(() => import("../routes/Analytics").then((m) => ({ default: m.AnalyticsRoute })));
 const SettingsRoute = lazy(() => import("../routes/Settings").then((m) => ({ default: m.SettingsRoute })));
@@ -59,6 +65,7 @@ const SURFACE_FOR: Record<string, () => ReactElement> = {
   library:     () => <LibraryRoute />,
   channels:    () => <ChannelsRoute />,
   campaigns:   () => <CampaignsRoute />,
+  "campaign-builder": () => <AgencyCampaignsRoute />,
   clipper:     () => <ClipperJourneyRoute />,
   analytics:   () => <AnalyticsRoute />,
   settings:    () => <SettingsRoute />,
