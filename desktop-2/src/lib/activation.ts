@@ -205,6 +205,11 @@ interface SyncResponse {
   trial_days_remaining?: number | null;
   /** v2.2.15 · true after user clicks "Approve upgrade now" but before Whop webhook lands. */
   trial_convert_pending?: boolean;
+  /** Sprint G.1 · backend-shipped milestone stream. Consumed by
+   *  onboardingEmitter; every canonical key is present with null for
+   *  unstamped milestones. Default {} keeps the emitter's diff logic
+   *  safe when the field is absent (older backend / test mocks). */
+  onboarding_status?: Record<string, string | null>;
 }
 
 interface MeResponse {
@@ -398,6 +403,18 @@ export async function handleActivationUrl(rawUrl: string): Promise<void> {
       }
     }
     if (typeof data.tier === "string") nextTier = data.tier;
+    // Sprint G.2 · feed the onboarding milestone snapshot into the
+    // emitter. First observation runs a backfill (no events fire);
+    // subsequent observations fire `onboarding:milestone` for every
+    // null → timestamp transition. KadeController subscribes.
+    if (data.onboarding_status && typeof data.onboarding_status === "object") {
+      try {
+        const { consumeSyncSnapshot } = await import("./onboardingEmitter");
+        consumeSyncSnapshot(data.onboarding_status);
+      } catch {
+        /* emitter is fire-and-forget · never blocks activation */
+      }
+    }
   } else {
     // network OR server-error · JWT preserved · marked degraded only.
     degraded = true;

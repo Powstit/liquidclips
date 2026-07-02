@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { flowTrace } from "./lib/flowTrace";
 import { FLOW_IDS } from "./contracts/flowRegistry";
 import { BrowseOverlay, BrowserScrim } from "./components/browser";
+import { AgencyWelcomeOverlay } from "./overlays/AgencyWelcome";
 import {
   initAuthStorage,
   hasJwt,
@@ -181,6 +182,11 @@ export function App() {
             guard-rendered to null and add ~2KB. */}
         <BrowserScrim />
         <BrowseOverlay />
+        {/* Sprint E · Agency welcome first-run modal. Guard-rendered to
+            null when either (a) not agency-tier, (b) already seen, or
+            (c) VITE_AGENCY_WELCOME_DISABLED is set. Never blocks the
+            app — user can dismiss without a CTA. */}
+        {splashAcked && <AgencyWelcomeOverlay />}
       </Suspense>
     </HardUpdateGate>
   );
