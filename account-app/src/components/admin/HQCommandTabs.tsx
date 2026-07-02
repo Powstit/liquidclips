@@ -638,10 +638,10 @@ export function EmployeesTab() {
       </div>
       {modResult && (
         <div
-          className={`mt-3 rounded-xl border px-3 py-2 font-mono text-[11px] ${
+          className={`mt-3 rounded-xl border px-3 py-2 font-mono text-[11px] backdrop-blur-md ${
             modResult.kind === "ok"
-              ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-              : "border-pink-300 bg-pink-50 text-pink-700"
+              ? "border-emerald-400/50 bg-emerald-500/10 text-emerald-300"
+              : "border-pink-400/50 bg-pink-500/10 text-pink-300"
           }`}
           role="status"
         >
@@ -657,7 +657,7 @@ export function EmployeesTab() {
       hint="This is documented as a v0 gap, not a working form. Adding a staff member today = edit Railway JUNIOR_ADMIN_EMAILS env var + redeploy. is_admin_email() is a frozenset built at process import time (features.py:235), so a UI form would require a schema + endpoint + is_admin_email rewrite — a scoped backend cycle, not this tab."
       sub="Once the admin_allowlist table lands, this pane will mount an add/remove form and this banner is replaced with the live control."
     >
-      <div className="rounded-xl border border-line bg-paper/60 px-4 py-3 font-mono text-[11px] leading-relaxed text-text-secondary">
+      <div className="rounded-xl border border-line/60 bg-paper-elev/80 backdrop-blur-md px-4 py-3 font-mono text-[11px] leading-relaxed text-text-secondary">
         <span className="font-display text-[12px] font-semibold text-ink">
           Onboarding a new staff member (v0 · env-var flow)
         </span>
