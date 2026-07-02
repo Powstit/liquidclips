@@ -76,6 +76,13 @@ export function ClipPreviewShell({ clip, onGoEngine }: ClipPreviewShellProps) {
   if (!clip) return <ClipPreviewEmpty onGoEngine={onGoEngine} />;
 
   return (
+    /* Checkpoint item 3 · container queries must run on an ANCESTOR of
+       the element they style. Previously .lc-cps carried
+       `container-type` and was also the target of @container cps → the
+       element cannot query itself. .lc-cps-host is a semantic-free
+       wrapper that owns the container declaration so the query hits
+       .lc-cps as a descendant. */
+    <div className="lc-cps-host">
     <section className="lc-cps">
       {/* Left · video preview */}
       <GlassCard density="default" className="lc-cps-pane lc-cps-preview">
@@ -179,8 +186,22 @@ export function ClipPreviewShell({ clip, onGoEngine }: ClipPreviewShellProps) {
       <GlassCard density="default" className="lc-cps-pane lc-cps-meta">
         <header className="lc-cps-pane-head">
           <span className="lc-cps-pane-eb">Clip · #{clip.idx}</span>
-          <div className="lc-cps-score" aria-label={`Virality score ${clip.score ?? 0}`}>
-            <span className="lc-cps-score-num">{clip.score ?? 0}</span>
+          {/* Checkpoint item 5 · absent-value contract. Normalizer
+              guarantees `clip.score` is either a finite number or
+              undefined; render `—` explicitly instead of `0` so the
+              customer can distinguish "we didn't score this" from
+              "score = 0". Also fixes the ARIA label. */}
+          <div
+            className="lc-cps-score"
+            aria-label={
+              typeof clip.score === "number"
+                ? `Virality score ${clip.score}`
+                : "Virality score unavailable"
+            }
+          >
+            <span className="lc-cps-score-num">
+              {typeof clip.score === "number" ? clip.score : "—"}
+            </span>
             <span className="lc-cps-score-unit">LC</span>
           </div>
         </header>
@@ -251,6 +272,7 @@ export function ClipPreviewShell({ clip, onGoEngine }: ClipPreviewShellProps) {
         </div>
       </GlassCard>
     </section>
+    </div>
   );
 }
 
