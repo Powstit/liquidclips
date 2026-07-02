@@ -166,23 +166,38 @@
 }
 
 .lc-affiliate-widget-qr {
-  background: #0b0b10;
+  position: relative;
+  background: #f4f1ea url("/brand/settings/qr-frame-bezel.png") center / 100% 100% no-repeat;
   border: 1px solid rgba(255, 26, 140, 0.25);
   border-radius: 12px;
-  padding: 12px;
+  padding: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 164px;
-  height: 164px;
+  width: 186px;
+  height: 186px;
 }
 
 .lc-affiliate-widget-qr-placeholder {
   font-family: "Geist Mono", ui-monospace, monospace;
   font-size: 10px;
-  color: #7a7672;
+  color: #514b50;
   text-align: center;
   line-height: 1.4;
+}
+
+.lc-affiliate-widget-qr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.lc-affiliate-widget-policy {
+  margin: 14px 0 0;
+  color: #7a7672;
+  font-size: 10.5px;
+  line-height: 1.45;
 }
 
 .lc-affiliate-widget-stats {
@@ -209,4 +224,35 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #7a7672;
+}
+
+@media (max-width: 1200px) {
+  .lc-settings .lc-affiliate-widget-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lc-settings .lc-affiliate-widget-right {
+    align-items: flex-start;
+  }
+  .lc-settings .lc-affiliate-widget-qr-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  .lc-affiliate-widget {
+    padding: 16px;
+  }
+  .lc-affiliate-widget-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lc-affiliate-widget-right {
+    align-items: flex-start;
+  }
+  .lc-affiliate-widget-url-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .lc-affiliate-widget-stats {
+    grid-template-columns: 1fr;
+  }
 }

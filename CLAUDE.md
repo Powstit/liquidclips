@@ -6,15 +6,22 @@ own `CLAUDE.md`; this root file owns the cross-cutting rules.
 
 ## Read these first, in order
 
-1. **`DEPLOYMENT.md`** — single source of truth for shipping any
+1. **`CLAUDE_DESKTOP2_RELEASE_MASTER.md`** — temporary highest-priority,
+   step-by-step Desktop 2 repair and release-readiness handoff. If working on
+   Desktop 2, follow it in order, maintain its execution log, and do not deploy
+   until every gate passes and the user explicitly approves.
+2. **`CLAUDE_DESKTOP2_UI_MASTER.md`** — approved Desktop 2 visual direction,
+   responsive behaviour, implementation order, and evidence gates. It is
+   subordinate to the release master and does not authorize deployment.
+3. **`DEPLOYMENT.md`** — single source of truth for shipping any
    surface (account-app, marketing, backend, desktop). Replaces all
    prior memory about which surface auto-deploys vs which needs a
    manual CLI. **If memory disagrees with `DEPLOYMENT.md`, this file
    wins.**
-2. **`desktop/CLAUDE.md`** — desktop app (Tauri + Python sidecar)
+4. **`desktop/CLAUDE.md`** — desktop app (Tauri + Python sidecar)
    architecture, iron gates, build commands.
-3. **`account-app/CLAUDE.md`** — Next.js 16 account / embed app.
-4. **`junior-backend/CLAUDE.md`** — FastAPI backend on Railway.
+5. **`account-app/CLAUDE.md`** — Next.js 16 account / embed app.
+6. **`junior-backend/CLAUDE.md`** — FastAPI backend on Railway.
 
 ## Cross-cutting rules
 

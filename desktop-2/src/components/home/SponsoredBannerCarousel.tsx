@@ -4,9 +4,7 @@
 //
 // Offline-first: pulls from `loadSampleCampaigns()` so the surface renders
 // without a backend. No real `backend.campaignsList()` call. External CTAs
-// route through openSmart with a window.open fallback for browser preview.
-//
-// Browser overlay is NOT wired here — defer to Batch 5.
+// route through the globally mounted BrowseOverlay.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -17,7 +15,6 @@ import {
   WHOP_REWARDS_URL,
   type SponsoredCampaign,
 } from "../../fixtures/sampleCampaigns";
-import { openSmart } from "../../lib/openSmart";
 import { useBrowseOverlay } from "../../state/browseOverlay";
 
 const CAMPAIGNS_CACHE_KEY = "lc:home:sample-campaigns:v1";
@@ -83,20 +80,6 @@ function formatRpm(rpmCents: number | undefined): string {
 function isVideoUrl(url: string | null | undefined): boolean {
   return typeof url === "string" && /\.(mp4|webm|mov)(\?|#|$)/i.test(url);
 }
-
-/** Fallback external-open helper for the "Open in system browser" affordance.
- *  Tries openSmart (Tauri); falls back to window.open. */
-function openExternalSafe(url: string): void {
-  void openSmart(url).catch(() => {
-    try {
-      window.open(url, "_blank", "noopener,noreferrer");
-    } catch {
-      /* swallow — last-resort */
-    }
-  });
-}
-/* Mark helper as used in v1; primary path is now the BrowseOverlay handoff. */
-void openExternalSafe;
 
 type Props = {
   tier?: "free" | "solo" | "pro" | "agency" | null;

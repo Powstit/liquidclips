@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Liquid Clips · Community · Stage 3 mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<style>
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  color: var(--ink);
+  background: #101018;
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.canvas {
+  width: 1440px; height: 900px;
+  border-radius: 14px;
+  overflow: hidden;
+  position: relative;
+  background:
+    radial-gradient(1600px 900px at 80% -20%, rgba(255, 26, 140, .18), transparent 60%),
+    radial-gradient(1200px 900px at 10% 110%, rgba(127, 217, 232, .08), transparent 60%),
+    linear-gradient(180deg, #0a0a12 0%, #06060b 100%);
+  box-shadow:
+    0 40px 100px -30px rgba(0, 0, 0, .8),
+    0 0 0 1px rgba(255, 255, 255, .05);
+}
+
+/* Traffic lights */
+.chrome {
+  position: absolute; top: 0; left: 0; right: 0; height: 32px;
+  display: flex; align-items: center; padding: 0 14px;
+  background: rgba(6, 6, 12, .6);
+  border-bottom: 1px solid var(--line);
+  z-index: 10;
+}
+.chrome .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
+.chrome .r { background: #ff5f56; }
+.chrome .y { background: #ffbd2e; }
+.chrome .g { background: #27c93f; }
+.chrome .title {
+  flex: 1; text-align: center;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px; letter-spacing: .16em;
+  color: #86837e; text-transform: uppercase;
+}
+
+.body {
+  position: absolute; top: 32px; left: 0; right: 0; bottom: 0;
+  display: flex;
+}
+
+/* Sidebar (same 244px .lc-rail) */
+.rail {
+  width: 244px; flex-shrink: 0;
+  padding: 22px 14px 18px;
+  border-right: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(10, 10, 16, .62), rgba(10, 10, 16, .32) 60%, rgba(10, 10, 16, .62));
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  display: flex; flex-direction: column;
+}
+.brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+.brand-glyph {
+  width: 36px; height: 36px; border-radius: 8px;
+  background: linear-gradient(135deg, #ff1a8c, #7fd9e8 140%);
+  box-shadow: 0 8px 20px -6px rgba(255, 26, 140, .5);
+}
+.brand-eb { font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .3em; color: #86837e; text-transform: uppercase; }
+.brand-wm { font-weight: 600; font-size: 15px; letter-spacing: -.02em; }
+.brand-wm .slash { color: var(--fuchsia); margin: 0 1px; }
+.rail-label { font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .18em; color: #504e4a; text-transform: uppercase; padding: 6px 4px; margin-top: 12px; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: 10px;
+  color: #c8c4be; cursor: pointer;
+  font-size: 13px; font-weight: 500;
+}
+.nav-item img { width: 16px; height: 16px; opacity: .78; }
+.nav-item.is-active {
+  background: linear-gradient(180deg, rgba(255, 26, 140, .22), rgba(255, 26, 140, .08));
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 26, 140, .35);
+}
+.nav-item.is-active img { opacity: 1; filter: drop-shadow(0 0 6px rgba(255, 102, 184, .5)); }
+.rail-foot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); }
+
+/* Main */
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Compact route header (matches Workstation vocabulary) */
+.hdr {
+  height: 44px; flex-shrink: 0;
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--line-hot);
+  background: rgba(11, 11, 16, .28);
+}
+.hdr-title {
+  font-family: "Geist Mono", monospace;
+  font-size: 13px; font-weight: 600; color: var(--ink);
+}
+.hdr-sub {
+  font-family: "Geist Mono", monospace;
+  font-size: 10.5px; letter-spacing: .1em;
+  color: var(--dim);
+}
+.hdr-spacer { flex: 1; }
+.hdr-search {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .08);
+  font-family: "Geist Mono", monospace;
+  font-size: 10px; color: var(--dim);
+  cursor: text;
+}
+
+/* Presence strip · top of body */
+.presence {
+  flex-shrink: 0;
+  display: flex; align-items: center; gap: 16px;
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 26, 140, .06), rgba(11, 11, 16, .1));
+}
+.presence-kade {
+  width: 48px; height: 48px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1.5px solid rgba(255, 26, 140, .5);
+  box-shadow: 0 6px 18px -6px rgba(255, 26, 140, .5);
+  background: #0a0a10;
+  flex-shrink: 0;
+  position: relative;
+}
+.presence-kade img { width: 100%; height: 100%; object-fit: cover; object-position: center 25%; }
+.presence-kade::after {
+  content: "";
+  position: absolute; bottom: 3px; right: 3px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #4ade80;
+  border: 2px solid #0a0a10;
+  box-shadow: 0 0 6px #4ade80;
+}
+.presence-copy {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.presence-eb {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--fuchsia-b);
+}
+.presence-line {
+  font-size: 14px; font-weight: 600; color: var(--ink);
+}
+.presence-line strong { color: var(--fuchsia); }
+.presence-spacer { flex: 1; }
+.presence-toggle {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px 6px 8px;
+  border-radius: 9999px;
+  background: rgba(74, 222, 128, .12);
+  border: 1px solid rgba(74, 222, 128, .4);
+  color: #4ade80;
+  font-family: "Geist Mono", monospace;
+  font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+  cursor: pointer;
+}
+.presence-toggle .sw {
+  width: 26px; height: 14px; border-radius: 9999px;
+  background: rgba(74, 222, 128, .8);
+  position: relative;
+}
+.presence-toggle .sw::after {
+  content: "";
+  position: absolute; top: 2px; right: 2px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #fff;
+}
+.presence-stat {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .08);
+  font-family: "Geist Mono", monospace;
+  font-size: 10.5px; letter-spacing: .06em;
+  color: var(--dim);
+}
+.presence-stat strong { color: var(--ink); font-weight: 600; }
+
+/* Body layout · rooms | chat */
+.stage {
+  flex: 1; min-height: 0;
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 0;
+}
+
+/* ─── Rooms rail ─────────────────────────────────────────────────── */
+.rooms {
+  border-right: 1px solid var(--line);
+  padding: 16px 12px;
+  display: flex; flex-direction: column; gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.rooms-eb {
+  font-family: "Geist Mono", monospace;
+  font-size: 9.5px; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--dim);
+  padding: 4px 8px 8px;
+}
+.room {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  gap: 10px;
+  padding: 10px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 140ms ease, border-color 140ms ease;
+  align-items: center;
+}
+.room:hover { background: rgba(255, 255, 255, .03); }
+.room.is-active {
+  background: linear-gradient(180deg, rgba(255, 26, 140, .18), rgba(255, 26, 140, .06));
+  border-color: rgba(255, 26, 140, .35);
+}
+.room-glyph {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  background: rgba(255, 26, 140, .1);
+  display: grid; place-items: center;
+  font-family: "Geist Mono", monospace;
+  font-size: 13px; font-weight: 700;
+  color: var(--fuchsia-b);
+  border: 1px solid rgba(255, 26, 140, .25);
+}
+.room-glyph.kade { padding: 0; overflow: hidden; background: #0a0a10; }
+.room-glyph.kade img { width: 100%; height: 100%; object-fit: cover; object-position: center 25%; }
+.room-mid { min-width: 0; }
+.room-name {
+  font-size: 13.5px; font-weight: 600; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; align-items: center; gap: 6px;
+}
+.room-name .lock {
+  font-size: 10px; color: var(--dim);
+}
+.room-preview {
+  font-size: 11.5px; color: var(--dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-top: 2px;
+}
+.room-preview strong { color: #c8c4be; font-weight: 500; }
+.room-right {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+}
+.room-online {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: "Geist Mono", monospace;
+  font-size: 9.5px; letter-spacing: .05em;
+  color: #4ade80;
+}
+.room-online::before {
+  content: ""; width: 5px; height: 5px; border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 5px #4ade80;
+}
+.room-unread {
+  min-width: 20px; height: 18px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  background: var(--fuchsia);
+  color: #fff;
+  font-family: "Geist Mono", monospace;
+  font-size: 9.5px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.room.is-locked { opacity: .55; }
+
+/* ─── Chat panel ─────────────────────────────────────────────────── */
+.chat {
+  display: flex; flex-direction: column;
+  min-height: 0;
+}
+.chat-head {
+  flex-shrink: 0;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(11, 11, 16, .28);
+}
+.chat-name {
+  font-family: "Geist Mono", monospace;
+  font-size: 13px; font-weight: 600; color: var(--ink);
+}
+.chat-sub {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px; letter-spacing: .1em; color: var(--dim);
+}
+.chat-head-spacer { flex: 1; }
+.chat-icon-btn {
+  width: 30px; height: 30px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--dim);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.chat-icon-btn:hover { background: rgba(255, 26, 140, .1); color: var(--fuchsia-b); }
+
+/* Stream */
+.stream {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  padding: 18px 22px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.msg { display: grid; grid-template-columns: 36px 1fr; gap: 10px; align-items: start; }
+.msg-avatar {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0a0a10;
+  border: 1px solid rgba(255, 255, 255, .08);
+}
+.msg-avatar img { width: 100%; height: 100%; object-fit: cover; object-position: center 22%; }
+.msg-body { min-width: 0; }
+.msg-head {
+  display: flex; align-items: baseline; gap: 8px;
+  margin-bottom: 3px;
+}
+.msg-name {
+  font-size: 13px; font-weight: 600; color: var(--ink);
+}
+.msg-time {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px; color: var(--dim);
+}
+.msg-text {
+  font-size: 13.5px; line-height: 1.45; color: #d8d3cc;
+  word-break: break-word;
+}
+.msg-gif img {
+  margin-top: 6px;
+  max-width: 240px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  display: block;
+}
+
+/* Kade Bot bubble · fuchsia framed */
+.msg.msg-bot .msg-avatar {
+  border-color: var(--fuchsia);
+  box-shadow: 0 0 12px -2px rgba(255, 26, 140, .5);
+}
+.msg.msg-bot .msg-name::after {
+  content: "BOT";
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: linear-gradient(135deg, var(--fuchsia), var(--fuchsia-d));
+  color: #fff;
+  font-family: "Geist Mono", monospace;
+  font-size: 8.5px; letter-spacing: .12em;
+  vertical-align: 2px;
+}
+.msg.msg-bot .msg-body {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 26, 140, .06);
+  border: 1px solid rgba(255, 26, 140, .28);
+}
+
+/* Own message · right aligned */
+.msg.msg-own {
+  grid-template-columns: 1fr 36px;
+}
+.msg.msg-own .msg-avatar { grid-column: 2; }
+.msg.msg-own .msg-body { text-align: right; }
+.msg.msg-own .msg-body-bg {
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 12px 12px 4px 12px;
+  background: linear-gradient(180deg, rgba(255, 26, 140, .28), rgba(255, 26, 140, .14));
+  border: 1px solid rgba(255, 26, 140, .35);
+  text-align: left;
+}
+.msg.msg-own .msg-head { justify-content: flex-end; }
+
+/* Composer */
+.composer {
+  flex-shrink: 0;
+  padding: 12px 18px 16px;
+  border-top: 1px solid var(--line);
+  background: rgba(11, 11, 16, .5);
+}
+.composer-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .08);
+  transition: border-color 140ms ease;
+}
+.composer-row:focus-within { border-color: rgba(255, 26, 140, .5); }
+.composer-input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--ink);
+  font-family: "Inter", sans-serif;
+  font-size: 13.5px;
+  padding: 6px 0;
+}
+.composer-input::placeholder { color: var(--dim); }
+.composer-chip {
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 26, 140, .3);
+  background: rgba(255, 26, 140, .08);
+  color: var(--fuchsia-b);
+  font-family: "Geist Mono", monospace;
+  font-size: 10px; letter-spacing: .12em;
+  cursor: pointer;
+}
+.composer-chip:hover { background: rgba(255, 26, 140, .18); color: #ffb0d1; }
+.composer-emoji {
+  padding: 0;
+  width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.composer-emoji img { width: 22px; height: 22px; opacity: .8; }
+.composer-emoji:hover img { opacity: 1; }
+.composer-send {
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--fuchsia), var(--fuchsia-d));
+  color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 15px;
+  cursor: pointer;
+  box-shadow: 0 6px 14px -4px rgba(255, 26, 140, .55);
+}
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="chrome">
+    <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="title">Liquid Clips · Community · 1440 × 900</span>
+  </div>
+
+  <div class="body">
+    <!-- Sidebar -->
+    <aside class="rail">
+      <div class="brand">
+        <div class="brand-glyph"></div>
+        <div>
+          <div class="brand-eb">LIQUID · CLIPS</div>
+          <div class="brand-wm">liquid<span class="slash">/</span>clips</div>
+        </div>
+      </div>
+      <div class="rail-label">Console · Clipper</div>
+      <div class="nav-item"><img src="brand/icons/nav/home.svg" alt=""> Home</div>
+      <div class="nav-item"><img src="brand/icons/nav/create.svg" alt=""> Create</div>
+      <div class="nav-item"><img src="brand/icons/nav/engine.svg" alt=""> My Clips</div>
+      <div class="nav-item"><img src="brand/icons/nav/campaigns.svg" alt=""> Campaigns</div>
+      <div class="nav-item is-active"><img src="brand/icons/nav/community.svg" alt=""> Community</div>
+      <div class="nav-item"><img src="brand/icons/nav/earn.svg" alt=""> Earn</div>
+      <div class="nav-item"><img src="brand/icons/nav/channels.svg" alt=""> Channels</div>
+      <div class="nav-item"><img src="brand/icons/nav/schedule.svg" alt=""> Schedule</div>
+      <div class="rail-foot">
+        <div class="nav-item"><img src="brand/icons/nav/settings.svg" alt=""> Settings</div>
+        <div class="nav-item"><img src="brand/icons/nav/support.svg" alt=""> Support</div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main">
+      <!-- Route header -->
+      <div class="hdr">
+        <span class="hdr-title">Community</span>
+        <span class="hdr-sub">· clippers · agencies · brands</span>
+        <span class="hdr-spacer"></span>
+        <span class="hdr-search">⌕ Search rooms · @clippers · #tags</span>
+      </div>
+
+      <!-- Presence strip -->
+      <div class="presence">
+        <div class="presence-kade">
+          <img src="brand/kade/kade-community-mode.webp" alt="Kade · community mode">
+        </div>
+        <div class="presence-copy">
+          <span class="presence-eb">You're online</span>
+          <span class="presence-line">Daniel · <strong>47</strong> clippers active right now</span>
+        </div>
+        <span class="presence-spacer"></span>
+        <span class="presence-stat"><strong>128</strong> · this week</span>
+        <span class="presence-stat"><strong>4</strong> · rooms unread</span>
+        <button class="presence-toggle">
+          <span class="sw"></span>
+          Online
+        </button>
+      </div>
+
+      <!-- Rooms | Chat stage -->
+      <div class="stage">
+        <!-- Rooms rail -->
+        <aside class="rooms">
+          <div class="rooms-eb">Rooms · 5</div>
+
+          <div class="room is-active">
+            <div class="room-glyph">#</div>
+            <div class="room-mid">
+              <div class="room-name">global</div>
+              <div class="room-preview"><strong>@lucia</strong> · the hook @0:04 is 🔥</div>
+            </div>
+            <div class="room-right">
+              <span class="room-online">47</span>
+            </div>
+          </div>
+
+          <div class="room">
+            <div class="room-glyph">#</div>
+            <div class="room-mid">
+              <div class="room-name">clippers-lounge</div>
+              <div class="room-preview"><strong>@mari</strong> · anyone using the top-bottom split for reactions?</div>
+            </div>
+            <div class="room-right">
+              <span class="room-online">12</span>
+              <span class="room-unread">3</span>
+            </div>
+          </div>
+
+          <div class="room">
+            <div class="room-glyph kade">
+              <img src="brand/kade/kade-campaign-mode.webp" alt="">
+            </div>
+            <div class="room-mid">
+              <div class="room-name">campaign-drops</div>
+              <div class="room-preview"><strong>Kade</strong> · new campaign · Sponsored · $40 CPM</div>
+            </div>
+            <div class="room-right">
+              <span class="room-online">18</span>
+              <span class="room-unread">7</span>
+            </div>
+          </div>
+
+          <div class="room">
+            <div class="room-glyph">#</div>
+            <div class="room-mid">
+              <div class="room-name">fan-boost</div>
+              <div class="room-preview"><strong>@rio</strong> · dropped a boost pack, go go go</div>
+            </div>
+            <div class="room-right">
+              <span class="room-online">8</span>
+            </div>
+          </div>
+
+          <div class="room is-locked">
+            <div class="room-glyph">🔒</div>
+            <div class="room-mid">
+              <div class="room-name">
+                agency-vip
+                <span class="lock">· Agency tier</span>
+              </div>
+              <div class="room-preview">Unlock with a Whop agency plan</div>
+            </div>
+            <div class="room-right">
+              <span class="room-online">3</span>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Chat panel · #global active -->
+        <section class="chat">
+          <header class="chat-head">
+            <span class="chat-name">#global</span>
+            <span class="chat-sub">· 47 online · 342 members</span>
+            <span class="chat-head-spacer"></span>
+            <span class="chat-icon-btn" title="Pinned messages">📌</span>
+            <span class="chat-icon-btn" title="Members">👥</span>
+            <span class="chat-icon-btn" title="Settings">⚙</span>
+          </header>
+
+          <div class="stream">
+            <!-- Kade Bot pinned message -->
+            <div class="msg msg-bot">
+              <div class="msg-avatar"><img src="brand/kade/kade-community-mode.webp" alt="Kade"></div>
+              <div class="msg-body">
+                <div class="msg-head">
+                  <span class="msg-name">Kade</span>
+                  <span class="msg-time">pinned · 2h ago</span>
+                </div>
+                <div class="msg-text">
+                  Wednesday campaign drop is live 🎯 · $40 CPM · reaction layouts eligible. Head to <strong>#campaign-drops</strong> to grab a brief.
+                </div>
+              </div>
+            </div>
+
+            <!-- Regular messages -->
+            <div class="msg">
+              <div class="msg-avatar" style="background:#2e1420;">
+                <div style="width:100%;height:100%;display:grid;place-items:center;color:#ff66b8;font-family:Geist Mono,monospace;font-weight:700;font-size:14px;">L</div>
+              </div>
+              <div class="msg-body">
+                <div class="msg-head">
+                  <span class="msg-name">@lucia</span>
+                  <span class="msg-time">17m ago</span>
+                </div>
+                <div class="msg-text">the hook @0:04 is 🔥 — how did you get the audio to hit that hard on the mp4?</div>
+              </div>
+            </div>
+
+            <div class="msg">
+              <div class="msg-avatar" style="background:#142e2a;">
+                <div style="width:100%;height:100%;display:grid;place-items:center;color:#7fd9e8;font-family:Geist Mono,monospace;font-weight:700;font-size:14px;">M</div>
+              </div>
+              <div class="msg-body">
+                <div class="msg-head">
+                  <span class="msg-name">@mari</span>
+                  <span class="msg-time">14m ago</span>
+                </div>
+                <div class="msg-text">audio bed at −9dB, ducked under the caption line. i use the reaction layout for the second half</div>
+              </div>
+            </div>
+
+            <div class="msg">
+              <div class="msg-avatar" style="background:#2a1414;">
+                <div style="width:100%;height:100%;display:grid;place-items:center;color:#fbbf24;font-family:Geist Mono,monospace;font-weight:700;font-size:14px;">R</div>
+              </div>
+              <div class="msg-body">
+                <div class="msg-head">
+                  <span class="msg-name">@rio</span>
+                  <span class="msg-time">11m ago</span>
+                </div>
+                <div class="msg-text">screaming</div>
+                <div class="msg-gif">
+                  <img src="brand/kade/kade-celebration.webp" alt="celebration reaction">
+                </div>
+              </div>
+            </div>
+
+            <!-- Own message -->
+            <div class="msg msg-own">
+              <div class="msg-body">
+                <div class="msg-head">
+                  <span class="msg-name">You</span>
+                  <span class="msg-time">just now</span>
+                </div>
+                <span class="msg-body-bg">Let me try that on the next run. Ducking under the caption line is genius.</span>
+              </div>
+              <div class="msg-avatar" style="background:linear-gradient(135deg,#ff1a8c,#7fd9e8);">
+                <div style="width:100%;height:100%;display:grid;place-items:center;color:#fff;font-family:Geist Mono,monospace;font-weight:700;font-size:14px;">D</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Composer -->
+          <div class="composer">
+            <div class="composer-row">
+              <span class="composer-chip" title="Search GIF">GIF</span>
+              <span class="composer-emoji" title="Add emoji · bug">
+                <img src="brand/enemies/bug-mothbug.webp" alt="bug emoji">
+              </span>
+              <input class="composer-input" placeholder="Message #global" value="">
+              <button class="composer-send" title="Send">▲</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

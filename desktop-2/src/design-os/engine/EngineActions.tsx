@@ -12,7 +12,6 @@
  */
 
 import { useState } from "react";
-import { GlassCard } from "../components";
 import { bus } from "../bridge";
 import { abortActiveSidecarRun, sidecar } from "./sidecar-stub";
 import { useEngineSession } from "../state/useEngineSession";
@@ -50,7 +49,12 @@ export function EngineActions({ onGoCreate }: EngineActionsProps) {
   const onClear = () => {
     abortActiveSidecarRun();
     clearPersistedSession();
-    bus.emit("route:enter", { route: "engine" });
+    // Ship-lens P0-002 · pre-fix this emitted route "engine" but the
+    //   mounted route is "workstation" (the engine route was folded
+    //   into workstation in UI-1). Wrong payload = session reducer's
+    //   route:enter listener never fires reset, leaving the session
+    //   in a half-cleared state after Clear.
+    bus.emit("route:enter", { route: "workstation" });
   };
 
   const onRetry = async () => {
@@ -97,14 +101,20 @@ export function EngineActions({ onGoCreate }: EngineActionsProps) {
   if (!canCancel && !canRetry && !canClear && !canResume) return null;
 
   return (
-    <GlassCard
-      density="quiet"
+    <details
       className="lc-eng-actions"
       data-testid="engine-actions"
       data-phase={session.phase}
     >
-      <span className="lc-eng-actions-eb">Run controls</span>
-      <div className="lc-eng-actions-row">
+      <summary className="lc-eng-actions-summary">
+        <span className="lc-eng-actions-chevron" aria-hidden="true">›</span>
+        <span className="lc-eng-actions-eb">Run controls</span>
+        {session.phase === "running" && (
+          <span className="lc-eng-actions-state">Running · {session.stage ?? "working"}</span>
+        )}
+      </summary>
+      <div className="lc-eng-actions-panel">
+        <div className="lc-eng-actions-row">
         {canResume && (
           <button
             type="button"
@@ -147,12 +157,13 @@ export function EngineActions({ onGoCreate }: EngineActionsProps) {
             Clear session
           </button>
         )}
+        </div>
+        {persisted && (
+          <span className="lc-eng-actions-source" title={persisted.source}>
+            Last source: {persisted.source}
+          </span>
+        )}
       </div>
-      {persisted && (
-        <span className="lc-eng-actions-source" title={persisted.source}>
-          Last source: {persisted.source}
-        </span>
-      )}
-    </GlassCard>
+    </details>
   );
 }

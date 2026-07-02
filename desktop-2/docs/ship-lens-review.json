@@ -1,0 +1,173 @@
+{
+  "reviewed_at": "2026-07-01T00:00:00Z",
+  "commit_sha": "d8539fbe2751be82f8f67f0637c1f85d34d233c0",
+  "surface": "workstation",
+  "runtime_baseline": "runtime bundle 2.3.5 staged at ~/Library/Application Support/Liquid Clips/runtime/bundles/2.3.5, current.json points at 2.3.5. Working-tree changes to public/brand/icons/stages, package.json + tauri.conf.json version, and tauri.dev.conf.json are EXCLUDED from this ship candidate per Daniel's instruction.",
+  "files_reviewed": [
+    "desktop-2/src/design-os/routes/Workstation.tsx",
+    "desktop-2/src/design-os/routes/Workstation.css",
+    "desktop-2/src/design-os/components/WorkstationFrame.tsx",
+    "desktop-2/src/design-os/components/WorkstationFrame.css",
+    "desktop-2/src/design-os/engine/StageRail.tsx",
+    "desktop-2/src/design-os/engine/StageRail.css",
+    "desktop-2/src/design-os/engine/ResultsGrid.tsx",
+    "desktop-2/src/design-os/engine/ResultsGrid.css",
+    "desktop-2/src/design-os/engine/EngineActions.tsx",
+    "desktop-2/src/design-os/engine/EngineEmptyState.tsx",
+    "desktop-2/src/design-os/engine/EngineHealthPanel.tsx",
+    "desktop-2/src/design-os/engine/cockpit/CockpitDock.tsx",
+    "desktop-2/src/design-os/engine/cockpit/CockpitDock.css",
+    "desktop-2/src/design-os/engine/cockpit/CockpitContext.tsx",
+    "desktop-2/src/design-os/studio/ClipPreviewShell.tsx",
+    "desktop-2/src/design-os/studio/ClipPreviewShell.css",
+    "desktop-2/src/design-os/components/KadeIgnition.tsx",
+    "desktop-2/src/design-os/components/KadeIgnition.css",
+    "desktop-2/src/design-os/state/useEngineSession.ts",
+    "desktop-2/src/design-os/state/engineSessionPersistence.ts"
+  ],
+  "findings": [
+    {
+      "id": "P0-001",
+      "severity": "P0",
+      "phase": "STATE",
+      "file": "desktop-2/src/design-os/state/useEngineSession.ts:283-290",
+      "summary": "engine:complete{kind:'bake'} hydration path swallows sidecar.getProject failure with only console.warn. Session stays in 'running' (or wherever the reducer left it), the Workstation heartbeat keeps saying 'Generating clips…' or 'Clips ready' with 0/0, and the user has no path forward.",
+      "evidence": "void sidecar.getProject(p.slug).then(...).catch((err) => console.warn('[useEngineSession] hydrate_project failed:', err)); — no dispatch, no bus.emit('toast'), no error phase transition. Same failure mode at line 265-266 for the mid-run hydrate.",
+      "reproduce": "Kill the sidecar/runtime after bake_complete emits but before get_project resolves (e.g. rename ~/Library/Application Support/Liquid Clips/runtime/current.json). Watch: no error surface, session frozen.",
+      "suggested_fix": "In the catch, dispatch({ type: 'error', error: String(err), human: 'Could not load finished project. Try re-opening the run.', slug: p.slug }) AND bus.emit('toast', { kind: 'error', title: 'Load failed', body: … }). Mirror on the mid-run hydrate.",
+      "addressed": false
+    },
+    {
+      "id": "P0-002",
+      "severity": "P0",
+      "phase": "JOURNEY",
+      "file": "desktop-2/src/design-os/engine/EngineActions.tsx:50-54",
+      "summary": "Clear-session action emits bus.emit('route:enter', { route: 'engine' }) — but 'engine' is a legacy RouteId that is not the currently mounted route. In desktop-2 the user is on 'workstation'. The reset fires in the EngineSessionProvider (which listens to route:enter unconditionally), but the RouteId payload is wrong. If any other listener keys off route === 'engine' it will race into a stale route.",
+      "evidence": "EngineActions.tsx onClear: bus.emit('route:enter', { route: 'engine' }); the WorkstationRoute wraps EngineSessionProvider with resetOnRouteEnter=true (Workstation.tsx:402). useEngineSession.ts:307-309 dispatches reset on any route:enter regardless of route. Meanwhile the true active route is 'workstation'. Sending 'engine' is a lie in the event bus.",
+      "reproduce": "grep -rn 'route:enter.*engine' desktop-2/src/design-os — returns EngineActions.tsx:53 only. Then look for 'route === \"engine\"' consumers — Kade world / analytics may snap to the wrong world.",
+      "suggested_fix": "Change to bus.emit('route:enter', { route: 'workstation' }); or, cleaner, emit a dedicated bus.emit('engine:cleared') and have EngineSessionProvider listen for that instead of piggy-backing on route:enter for reset.",
+      "addressed": false
+    },
+    {
+      "id": "P1-003",
+      "severity": "P1",
+      "phase": "STATE",
+      "file": "desktop-2/src/design-os/routes/Workstation.tsx:70-78",
+      "summary": "focusedClipIdx auto-picks index 0 whenever session.project has ≥1 clip, but there is no branch for the state 'session.project exists AND clips.length === 0'. A run that returns zero candidates leaves focusedClipIdx at its previous (stale) value from a prior run; focusedClip resolves to session.project.clips[staleIdx] → undefined; CockpitDock silently disappears (per IG-LC2-017 gate); ResultsGrid renders zero tiles; user sees no explanation.",
+      "evidence": "Workstation.tsx:71 `const n = session.project?.clips.length ?? 0; if (n === 0) return;` — return-early leaves focusedClipIdx untouched. No 'no candidates' fallback in ResultsGrid.tsx (visible mapping only renders clips.filter(...)).",
+      "reproduce": "Simulate an engine run where LLM stage returns 0 candidates (mock sidecar with clips=[]). Observe: Workstation says 'Clips ready · 0 of 0 rendered' with no next-step affordance.",
+      "suggested_fix": "In Workstation.tsx:71 replace early-return with `if (n === 0) { if (focusedClipIdx !== null) { setFocusedClipIdx(null); selectClipForStudio(null); } return; }`. In ResultsGrid clip-tab body add: `{project && allClips.length === 0 && <EmptyProjectPanel onGoCreate={onDropAnother}/>}` explaining 'No candidates hit the score threshold — try a different source or lower Best Bits Only'.",
+      "addressed": false
+    },
+    {
+      "id": "P1-004",
+      "severity": "P1",
+      "phase": "DESIGN",
+      "file": "desktop-2/src/design-os/routes/Workstation.tsx:230-254",
+      "summary": "Three eyebrow-style header strips stack in ~140px vertical: (1) WorkstationFrame titlebar (dots + WORKSTATION eyebrow + project + source + status pill), (2) WorkstationFrame statusstrip (CLIPS · SELECTED · ready pill), (3) .lc-route-head (eyebrow + phase pill + Preview tag + EngineActions row). This is the exact 'accreted cockpit clutter' pattern panel-design-lens fires on: 3 headers competing for 1 attention slot.",
+      "evidence": "WorkstationFrame.tsx:78-120 renders titlebar; :124-144 renders statusstrip; Workstation.tsx:230-254 renders lc-route-head INSIDE the frame body. All three carry Geist Mono uppercase eyebrows and phase-status affordances. panel-design-lens budget: scan-units ≤ 7; here the top-of-route surface alone is 12+ scan units before any real content.",
+      "reproduce": "Load Workstation. Count Geist Mono uppercase eyebrow strips above StageRail. Expected: 1. Actual: 3.",
+      "suggested_fix": "Delete .lc-route-head from Workstation.tsx (drop lines 230-254). WorkstationFrame already carries WORKSTATION eyebrow + project + status pill. Move EngineActions (Cancel/Retry/Clear) into WorkstationFrame's titlebar-right region right before the collapse toggle. The Preview tag (runtime.mode === 'mock' && DEV) can move into EngineHealthPanel — it's diagnostic anyway.",
+      "addressed": false
+    },
+    {
+      "id": "P1-005",
+      "severity": "P1",
+      "phase": "STATE",
+      "file": "desktop-2/src/design-os/engine/cockpit/CockpitDock.tsx:65-69,153-166",
+      "summary": "CockpitDock renders on any session.project, including the fixture-fallback state where `providerClip = focusedClip ?? FIXTURE_PROJECT.clips[0]` in Workstation.tsx:193. IG-LC2-017 comment claims the dock is gated on focusedClip truthy at Workstation.tsx:389 — TRUE. But focusedClip.duration_s at CockpitDock.tsx:153 has no guard if a live clip lacks that field (schema variance). `Math.max(1, focusedClip.end - focusedClip.start)` fallback handles it — but `focusedClip.title` at :163 and `focusedClip.idx + 1` at :164 are used unguarded and if a truncated project.json payload arrives (schema drift) these render 'undefined' + 'NaN'.",
+      "evidence": "CockpitDock.tsx:163-166 reads focusedClip.title, focusedClip.idx, focusedClip.score without null-check. ProjectMeta.clips[n] is typed as Clip but sidecar payload is dynamic JSON that could drop fields on old-format projects (BUG-023 note earlier).",
+      "reproduce": "Feed a project.json where clips[0].title === undefined (delete key). Observe dock renders 'Focused clip · undefined' with '#NaN'.",
+      "suggested_fix": "In CockpitDock.tsx:153-166 add defensive: `const title = focusedClip.title ?? 'Untitled clip'; const num = Number.isFinite(focusedClip.idx) ? focusedClip.idx + 1 : '—'`. Cheaper: validate the sidecar payload in useEngineSession.ts hydrate_project reducer before dispatch (reject non-shape clips silently with warn + a toast).",
+      "addressed": false
+    },
+    {
+      "id": "P1-006",
+      "severity": "P1",
+      "phase": "DESIGN",
+      "file": "desktop-2/src/design-os/studio/ClipPreviewShell.tsx:78-176 + Workstation.tsx:336-361",
+      "summary": "ClipPreviewShell is a 2-column grid (`grid-template-columns: minmax(0, 1.4fr) minmax(280px, 420px)` at ClipPreviewShell.css:3) but it mounts inside .lc-ws-body-inspector which is a fixed 320px column (Workstation.css:91). The @media (max-width: 1180px) rule flips lc-cps to single column, but only when the OUTER viewport is < 1180px — the inspector column is always 320px regardless. Result: preview + metadata panes stack vertically inside 320px on every viewport, video is ~180px tall, score-breakdown bars sit in a tunnel.",
+      "evidence": "ClipPreviewShell.css:1-9 grid rules key off container width but Workstation.css doesn't set `container-type: inline-size` on lc-ws-body-inspector — so `@media (max-width: 1180px)` fires on viewport width, not container. Inspector is 320px, but @media rule triggers at 1600px viewport (with 216px sidenav + main + gap + 320px inspector). Preview + meta pane are TWO panes trying to fit 320px.",
+      "reproduce": "Focus a clip on a 1440px window. DevTools measure .lc-cps-preview width. Confirm ~296px — less than half the ClipPreviewShell.css minmax(280px, 420px) meta pane minimum.",
+      "suggested_fix": "Either (a) add `container-type: inline-size` to .lc-ws-body-inspector and change ClipPreviewShell.css:7 to `@container (max-width: 480px) { .lc-cps { grid-template-columns: 1fr; } }` OR (b) widen inspector to 420px on ≥1440px viewports (Workstation.css:91: `grid-template-columns: minmax(0, 1fr) minmax(320px, 420px)`). Prefer (a) — it makes ClipPreviewShell self-adaptive wherever it mounts.",
+      "addressed": false
+    },
+    {
+      "id": "P1-007",
+      "severity": "P1",
+      "phase": "DESIGN",
+      "file": "desktop-2/src/design-os/engine/cockpit/CockpitDock.css:45-52",
+      "summary": "CockpitDock head grid `minmax(0, 1fr) auto auto` puts clip pill first, then 6-pill StatePillNav, then Back-to-Home + collapse toggle. Six pills @ ~80px each = ~480px of the middle 'auto' cell; on a workstation that already burns 216px sidenav + 320px inspector, the .lc-cd-clip cell (1fr) shrinks below 100px and the clip title truncates to invisible.",
+      "evidence": "PILLS array in CockpitDock.tsx:44-51 has 6 entries. Each pill in StatePillNav (grep confirms) uses Geist Mono uppercase — that's the widest possible label rendering. With 480px+ of pill chrome + 32px chevron + ~110px Back-to-Home + 36px padding, the clip pill collapses at any window under ~1050px.",
+      "reproduce": "Focus a clip at 1280px viewport. Look at dock head-left cell. Confirm clip title truncated to ellipsis or invisible.",
+      "suggested_fix": "Two-tier head: Row 1 = .lc-cd-clip (full width, with title + meta) + collapse toggle + Back-to-Home. Row 2 = full-width StatePillNav below. Or collapse StatePillNav to icon-only ≤1200px (already inferable from CSS but not enforced).",
+      "addressed": false
+    },
+    {
+      "id": "P2-008",
+      "severity": "P2",
+      "phase": "KARPATHY",
+      "file": "desktop-2/src/design-os/routes/Workstation.tsx:110-128",
+      "summary": "BUG-032 P0 setTimeout(…, 0) resume-hydration deferral is load-bearing but has no test. The comment says 'harness caught this' but the harness is not referenced in the smoke script. If future refactor moves the useEvent listener attach earlier, the setTimeout becomes dead code that no one will notice.",
+      "evidence": "Workstation.tsx:124 `window.setTimeout(() => { bus.emit('engine:complete', { kind: 'bake', slug: resume.slug }); }, 0);` — the fix is documented as a causal-proof reason but no unit/integration test asserts the ordering.",
+      "reproduce": "Search tests: grep -rn 'setTimeout.*bake' desktop-2/tests → no hit.",
+      "suggested_fix": "Add a Playwright/Jest test that: reloads Workstation with a persisted resume.status='complete', asserts session.project hydrates within 200ms without user action. Or hoist the resume emission into useEngineSession itself so the ordering is enforced structurally.",
+      "addressed": false
+    },
+    {
+      "id": "P2-009",
+      "severity": "P2",
+      "phase": "GREP",
+      "file": "desktop-2/src/design-os/engine/StageRail.css:56-60 + siblings",
+      "summary": "The corrected StageRail label uses `overflow-wrap: normal; word-break: normal; hyphens: none` — a hard fix. Pattern-grep across desktop-2 finds other multi-word label surfaces that could hit the same per-character crush if their parent container width dips: EngineHealthPanel rows, ResultsGrid tab labels, ClipPreviewShell no-poster body copy, KadeIgnition eyebrow.",
+      "evidence": "grep -rn 'word-break: break-all\\|overflow-wrap: anywhere' desktop-2/src/design-os returns multiple hits in RoomDetailDrawer, RewardClipDrawer, Settings, ScheduleJobDrawer. StageRail's cure needs to be a template applied across cockpit surfaces.",
+      "reproduce": "grep -rn 'word-break: break-all\\|overflow-wrap: anywhere' src/design-os",
+      "suggested_fix": "Codify a house rule in desktop-2/src/design-os/tokens (or a new src/index.css utility class .lc-label-safe-wrap { overflow-wrap: normal; word-break: normal; hyphens: none; text-wrap: balance; }) and apply to every uppercase Geist Mono label sitting in a flex/grid cell.",
+      "addressed": false
+    },
+    {
+      "id": "P2-010",
+      "severity": "P2",
+      "phase": "KARPATHY",
+      "file": "desktop-2/src/design-os/engine/EngineActions.tsx:104-149",
+      "summary": "Four buttons (Resume · Cancel · Retry · Clear) rendered in one row with disjoint enable conditions but no primary-cta discipline. senior-engineer-skill fires: too many affordances, no subtraction pass. The user rarely needs Cancel + Retry + Clear + Resume simultaneously — the state machine already knows which one applies.",
+      "evidence": "EngineActions.tsx:31-40 computes canCancel, canRetry, canClear, canResume as independent booleans. But phase===running → only canCancel; phase===error → canRetry+canClear; phase===complete → canClear; phase===idle+persisted → canResume+canClear. So at most 2 buttons at a time, but the row visually always looks like it has 4 slots — even when only 1 renders.",
+      "reproduce": "In each phase (idle-fresh, idle-persisted, running, error, complete) count visible buttons.",
+      "suggested_fix": "Pick a single primary action per phase: running=Cancel, error=Retry, complete=Clear, idle+persisted=Resume. Move the always-hidden 'Clear session' to a small quiet '×' at end of row. Halves the pixel weight of the strip.",
+      "addressed": false
+    }
+  ],
+  "smoke_tests_run": [
+    {
+      "name": "staged-2.3.5-css-carries-fix",
+      "exit_code": 0,
+      "output": "/Users/dipdip/Library/Application Support/Liquid Clips/runtime/bundles/2.3.5/assets/ExportPanel-BETedD7r.css contains .lc-stage-rail{...grid-template-columns:repeat(auto-fit,minmax(140px,1fr))...} and .lc-stage-label{...overflow-wrap:normal;word-break:normal;hyphens:none;text-wrap:balance...}. StageRail 2.3.2 per-char-crush vector is not present."
+    },
+    {
+      "name": "runtime-current-pointer",
+      "exit_code": 0,
+      "output": "current.json → version 2.3.5, sha256 11a6c28c28b02b595795cec868eba8e8e747c31de84b8331e6ee43c0bc27f962. Backups of pre-2.3.3 / pre-2.3.4 present, staged_at 1782924823."
+    },
+    {
+      "name": "routeRegistry-workstation-mapped",
+      "exit_code": 0,
+      "output": "ROUTE_REGISTRY['workstation'] = { world: 'cockpit-home', defaultKade: 'cutting-clips', kadePlacement: 'helper-right' }. No missing key."
+    },
+    {
+      "name": "fixture-fallback-provider-only",
+      "exit_code": 0,
+      "output": "FIXTURE_PROJECT.clips[0] reaches ONLY the CockpitProvider identity stabiliser (Workstation.tsx:193). All UI paths (CockpitDock at :389, ClipPreviewShell at :349) gate on focusedClip truthy, so fixture data never surfaces to pixels."
+    },
+    {
+      "name": "IG-002-sidecar-contract-untouched",
+      "exit_code": 0,
+      "output": "No changes to sidecar-stub.ts or the tauri-adapter forwarding of engine:progress/complete/error in this ship candidate."
+    },
+    {
+      "name": "resume-hydration-path",
+      "exit_code": 0,
+      "output": "resume.status === 'complete' → setTimeout emit bake_complete → useEngineSession hydrate_project. Working. resume.status === 'running' / 'error' → NOT re-emitted — persisted status frozen forever until user Clears (P1 candidate but not raised because idle+persisted surfaces the Resume button)."
+    }
+  ],
+  "verdict": "BLOCK"
+}

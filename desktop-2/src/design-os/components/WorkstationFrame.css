@@ -52,18 +52,59 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  padding: 22px 30px;
+  gap: 20px;
+  /* v2.2.18 sprint · titlebar shrunk from 22/30 → 12/22 now that dots +
+   * eyebrow + URL are gone. Frees ~20px of vertical viewport for clips. */
+  min-height: 42px;
+  padding: 6px 14px 6px 18px;
   border-bottom: 1px solid rgba(255, 26, 140, 0.18);
-  /* Glass recipe — translucent so the cockpit world bleeds through the
-     titlebar same as the frame body. No more opaque dark slab. */
   background: rgba(11, 11, 16, 0.28);
+}
+
+/* v2.2.18 sprint · floating "Ship N clips" pill. Only mounts when the
+ * clipper has selected ≥1 clip (see WorkstationFrame.tsx). Sits above
+ * the CockpitDock's fold so it never gets covered. */
+.lc-ws-ship-fab {
+  all: unset;
+  cursor: pointer;
+  position: fixed;
+  right: 26px;
+  bottom: calc(var(--lc-dock-h, 20px) + 16px);
+  z-index: 45;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ff1a8c, #ff5fbb);
+  color: #fff;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  box-shadow: 0 14px 40px -12px rgba(255, 26, 140, .6);
+  transition: transform 140ms cubic-bezier(.34, 1.56, .64, 1), box-shadow 140ms ease;
+}
+.lc-ws-ship-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 48px -12px rgba(255, 26, 140, .75);
+}
+.lc-ws-ship-fab:focus-visible {
+  outline: 2px solid #ffd0e6;
+  outline-offset: 3px;
+}
+.lc-ws-ship-fab-glyph {
+  display: inline-flex;
+  transform: rotate(0deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lc-ws-ship-fab, .lc-ws-ship-fab:hover { transform: none; transition: none; }
 }
 
 .lc-ws-frame-titlebar-left {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 12px;
   min-width: 0;
   flex: 1 1 auto;
 }
@@ -103,10 +144,11 @@
 
 .lc-ws-frame-project {
   font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 20px;
+  font-size: 13px;
+  font-weight: 650;
   color: #f4f1ea;
   letter-spacing: 0.04em;
-  max-width: 420px;
+  max-width: min(520px, 55vw);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -123,31 +165,32 @@
   white-space: nowrap;
 }
 
-/* ---- Status pill (right side of title bar) -------------------------- */
-
-.lc-ws-frame-status {
-  flex: 0 0 auto;
+/* Compact status sits beside the project name instead of consuming a
+   second strip. */
+.lc-ws-frame-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 16px;
-  letter-spacing: 0.18em;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  padding: 12px 22px;
-  gap: 14px;
+  white-space: nowrap;
 }
 
 .lc-ws-frame-status-dot {
-  width: 13px; height: 13px; border-radius: 50%;
+  width: 6px; height: 6px; border-radius: 50%;
   background: currentColor;
-  box-shadow: 0 0 14px currentColor;
+  box-shadow: 0 0 8px currentColor;
 }
 
-.lc-ws-frame-status-idle     { color: var(--soft, #c8c4be); }
-.lc-ws-frame-status-running  {
+.lc-ws-frame-live-idle     { color: var(--soft, #c8c4be); }
+.lc-ws-frame-live-running  {
   color: #ffb84d;
   animation: lc-ws-frame-pulse 1.6s ease-in-out infinite;
 }
-.lc-ws-frame-status-complete { color: #ff1a8c; }
-.lc-ws-frame-status-error    { color: #ff5d5d; }
+.lc-ws-frame-live-complete { color: #ff66b8; }
+.lc-ws-frame-live-error    { color: #ff5d5d; }
 
 @keyframes lc-ws-frame-pulse {
   0%, 100% { opacity: 0.65; }
@@ -160,64 +203,17 @@
   opacity: 0.85;
 }
 
-/* ---- Status strip (counts + ready pill) ----------------------------- */
-
-/* BUG-029.4 · status strip scaled 2x. */
-.lc-ws-frame-statusstrip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 18px 30px;
-  border-bottom: 1px solid var(--line2, rgba(255, 255, 255, 0.06));
-  background: rgba(10, 10, 16, 0.32);
-}
-
-.lc-ws-frame-counts {
+.lc-ws-frame-progress {
   display: inline-flex;
   align-items: center;
-  gap: 20px;
-}
-
-.lc-ws-frame-count {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 12px;
   font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 18px;
-  color: var(--soft, #c8c4be);
-}
-
-.lc-ws-frame-count-label {
-  font-size: 14px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--dim, #86837e);
-}
-
-.lc-ws-frame-count-num {
-  font-size: 22px;
-  font-feature-settings: "tnum";
-  color: #f4f1ea;
-}
-
-/* ---- Ready-to-ship pill --------------------------------------------- */
-
-.lc-ws-frame-ready {
-  flex: 0 0 auto;
-  font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 16px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  padding: 12px 24px;
-  gap: 14px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
   transition: all 220ms cubic-bezier(.4, 0, .2, 1);
-}
-
-.lc-ws-frame-ready-glyph {
-  width: 12px; height: 12px; border-radius: 50%;
-  background: currentColor;
-  box-shadow: 0 0 14px currentColor;
 }
 
 .lc-ws-frame-pill-muted { color: var(--dim, #86837e); }
@@ -232,10 +228,19 @@
 /* ---- Body slot ------------------------------------------------------ */
 
 .lc-ws-frame-body {
-  padding: 22px;
+  padding: 8px 12px 12px;
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 8px;
+  /* v2.2.18 · scoped-fix step 1 · restore ONE real scroll owner. This
+   *  container was letting its intrinsic content push the frame taller
+   *  than the viewport, so scrollHeight === clientHeight further down
+   *  and no scroll could occur. Locking it to the frame's remaining
+   *  height (flex:1 1 auto + min-height:0) + overflow:hidden hands the
+   *  scroll ownership down to .lc-ws-body-main / -inspector below. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* BUG-029.2 + .7 · collapse/expand toggle. Collapsed frame shows only
@@ -244,7 +249,7 @@
 .lc-ws-frame-titlebar-right {
   display: inline-flex;
   align-items: center;
-  gap: 14px;
+  gap: 8px;
   flex: 0 0 auto;
 }
 .lc-ws-frame-collapse {
@@ -252,9 +257,11 @@
   border: 1px solid var(--line2, rgba(255, 255, 255, 0.12));
   color: #f4f1ea;
   font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 18px;
+  font-size: 12px;
   line-height: 1;
-  padding: 8px 14px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
   border-radius: 999px;
   cursor: pointer;
   transition: background 160ms ease, transform 160ms ease;
@@ -275,5 +282,4 @@
 }
 @media (max-width: 720px) {
   .lc-ws-frame-titlebar { flex-wrap: wrap; }
-  .lc-ws-frame-statusstrip { flex-wrap: wrap; }
 }

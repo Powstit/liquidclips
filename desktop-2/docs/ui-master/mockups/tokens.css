@@ -1,0 +1,70 @@
+/**
+ * Liquid Clips · canonical design tokens
+ * Mirrored 1:1 from desktop-2/src/brand/brandTheme.css so mockups
+ * render with the exact same fonts + colors + radii the app ships.
+ */
+:root {
+  /* ── Fuchsia scale (primary accent) */
+  --color-fuchsia:        #ff1a8c;
+  --color-fuchsia-bright: #ff3da5;
+  --color-fuchsia-deep:   #ff66b8;
+  --color-fuchsia-soft:   rgba(255, 26, 140, 0.16);
+  --color-fuchsia-glow:   #ff8fcb;
+
+  /* ── Cyan (decoration · brand-kit reserved) + Agency accent */
+  --color-cyan-cool:      #00e5ff;   /* pure brand cyan */
+  --lc-accent-cyan:       #14B8A6;   /* agency accent · teal-500 */
+  --lc-accent-cyan-deep:  #0F766E;   /* agency deep · teal-700 */
+
+  /* ── Neutral / paper stack */
+  --color-ink:            #f4f1ea;
+  --color-ink-soft:       #c8c4be;
+  --color-paper:          #0b0b10;
+  --color-paper-warm:     #15151c;
+  --color-paper-elev:     #1c1c25;
+  --color-line:           rgba(255, 255, 255, 0.07);
+  --color-line-strong:    rgba(255, 255, 255, 0.12);
+  --color-text-secondary: #c8c4be;
+  --color-text-tertiary:  #8a857e;
+
+  /* ── Semantic states */
+  --color-danger:        #dc2626;
+  --color-danger-bright: #f87171;
+  --color-warn:          #ff66b8;
+  --color-warn-soft:     rgba(255, 102, 184, 0.12);
+  --color-good:          #4ade80;
+  --color-gold:          #fbbf24;
+
+  /* ── Typography · Inter for text, Geist Mono for cockpit HUD copy */
+  --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans:    "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* ── Radii */
+  --radius-chip:    8px;
+  --radius-control: 12px;
+  --radius-card:    16px;
+  --radius-card-lg: 24px;
+  --radius-pill:    9999px;
+
+  /* ── Mockup convenience aliases (keeps existing selectors readable) */
+  --ink:        var(--color-ink);
+  --dim:        var(--color-text-tertiary);
+  --fuchsia:    var(--color-fuchsia);
+  --fuchsia-b:  var(--color-fuchsia-deep);
+  --fuchsia-d:  #c70066;        /* gradient counterpart · matches app CTA */
+  --cyan:       var(--color-cyan-cool);
+  --green:      var(--color-good);
+  --gold:       var(--color-gold);
+  --line:       var(--color-line);
+  --line-hot:   rgba(255, 26, 140, 0.28);
+  --bg:         var(--color-paper);
+  --panel:      rgba(11, 11, 16, 0.55);
+  --glass-blur: blur(22px) saturate(140%);
+}
+
+/* App-wide type reset · mockups inherit these instead of restating them. */
+html, body {
+  font-family: var(--font-sans);
+  color: var(--ink);
+}

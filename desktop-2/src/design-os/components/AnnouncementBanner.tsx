@@ -28,6 +28,7 @@ import {
   type ActiveAnnouncement,
   type AnnouncementSeverity,
 } from "../../lib/announcements";
+import { openInApp } from "../../lib/openInApp";
 
 interface SeverityTokens {
   /** Solid background tint · slightly translucent so the world layer
@@ -123,8 +124,10 @@ function BannerRow({ row }: { row: ActiveAnnouncement }): JSX.Element {
       {row.cta_text && row.cta_url ? (
         <a
           href={row.cta_url}
-          target="_blank"
-          rel="noopener noreferrer"
+          onClick={(event) => {
+            event.preventDefault();
+            void openInApp(row.cta_url as string, { intent: "read-only" });
+          }}
           style={{
             marginLeft: "auto",
             color: tokens.text,

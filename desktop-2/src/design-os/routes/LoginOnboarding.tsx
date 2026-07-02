@@ -31,7 +31,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useActivation, activateWithToken, handleActivationUrl } from "../../lib/activation";
 import { hasJwt, getAuthSource } from "../../lib/authStorage";
-import { openSmart } from "../../lib/openSmart";
+import { openInApp } from "../../lib/openInApp";
 import { DesignOSAppShell } from "../components/AppShell";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
 import { presets } from "../motion";
@@ -90,7 +90,7 @@ function LoginOnboardingBody() {
     const challenge = activation.beginActivation();
     const url = buildActivationUrl(challenge);
     try {
-      await openSmart(url);
+      await openInApp(url);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setOpenError(msg);

@@ -123,9 +123,9 @@ test.describe("First-Run Onboarding Journey", () => {
          * to happen BEFORE they click. */
         const idleBody = await page.locator('[data-testid="login-state-idle"]').innerText();
         rec.assert("login_idle_body", idleBody);
-        expect(idleBody).toMatch(/start activation/i);
-        expect(idleBody).toMatch(/sign in/i);
-        expect(idleBody).toMatch(/browser returns/i);
+        expect(idleBody).toMatch(/sign in with whop/i);
+        expect(idleBody).toMatch(/right here in the app/i);
+        expect(idleBody).toMatch(/no browser bounce/i);
       });
 
       await rec.step("Activate · begin() + handleUrl() with matching challenge · AuthGate flips to home", async () => {

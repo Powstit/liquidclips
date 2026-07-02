@@ -12,7 +12,7 @@
  *   - Use Phase 4A nav SVGs where shipped.
  */
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { bus, useMode, type AppMode, type KadeState, type RouteId } from "../bridge";
 import { NAV_KADE_BRIEF } from "../copy/copyMap";
 import "./ConsoleNav.css";
@@ -60,9 +60,46 @@ export interface ConsoleNavProps {
   activeRoute: RouteId;
 }
 
+// v2.2.18 sprint · collapsible sidebar. Persists across mounts so it
+//   survives a re-nav. `⌘\` (Cmd+backslash) also toggles it — mirrors
+//   VS Code muscle memory that clippers usually already have.
+const COLLAPSE_KEY = "lc.nav.collapsed.v1";
+
+function useNavCollapsed(): [boolean, () => void] {
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try { return window.localStorage.getItem(COLLAPSE_KEY) === "1"; }
+    catch { return false; }
+  });
+  const toggle = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try { window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0"); }
+      catch { /* private mode */ }
+      return next;
+    });
+  };
+  useEffect(() => {
+    document.documentElement.dataset.navCollapsed = collapsed ? "1" : "0";
+    return () => { delete document.documentElement.dataset.navCollapsed; };
+  }, [collapsed]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+        e.preventDefault();
+        toggle();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return [collapsed, toggle];
+}
+
 export function ConsoleNav({ activeRoute }: ConsoleNavProps) {
   const mode = useMode();
   const inMode = (item: NavItem) => !item.modes || item.modes.includes(mode);
+  const [collapsed, toggleCollapsed] = useNavCollapsed();
 
   // VAL.1 · sliding active pill. One element travels between rows instead of
   // each row painting its own background. Position computed against the
@@ -110,6 +147,7 @@ export function ConsoleNav({ activeRoute }: ConsoleNavProps) {
       className="lc-rail"
       ref={railRef}
       onMouseLeave={() => setHoveredRoute(null)}
+      data-collapsed={collapsed ? "1" : "0"}
     >
       {pill && (
         <span
@@ -125,11 +163,22 @@ export function ConsoleNav({ activeRoute }: ConsoleNavProps) {
           <span className="lc-brand-eb">liquid · clips</span>
           <span className="lc-brand-wm">liquid<span className="lc-slash">/</span>clips</span>
         </div>
+        <button
+          type="button"
+          className="lc-nav-collapse-btn"
+          aria-label={collapsed ? "Expand sidebar (⌘\\)" : "Collapse sidebar (⌘\\)"}
+          aria-expanded={!collapsed}
+          aria-controls="lc-console-navigation"
+          title={collapsed ? "Expand (⌘\\)" : "Collapse (⌘\\)"}
+          onClick={toggleCollapsed}
+        >
+          {collapsed ? "›" : "‹"}
+        </button>
       </div>
 
       <div className="lc-rail-section">
         <div className="lc-rail-label">Console · {mode === "agency" ? "Agency" : "Clipper"}</div>
-        <nav className="lc-nav">
+        <nav className="lc-nav" id="lc-console-navigation">
           {ITEMS.filter(inMode).map((item) => (
             <NavRow
               key={item.route}

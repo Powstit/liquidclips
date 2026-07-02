@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Liquid Clips · Settings · Clipper · Stage 5 mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<style>
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  color: var(--ink);
+  background: #101018;
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+}
+.canvas {
+  width: 1440px; height: 900px;
+  border-radius: 14px; overflow: hidden; position: relative;
+  background:
+    radial-gradient(1600px 900px at 80% -20%, rgba(255, 26, 140, .18), transparent 60%),
+    radial-gradient(1200px 900px at 10% 110%, rgba(127, 217, 232, .08), transparent 60%),
+    linear-gradient(180deg, #0a0a12 0%, #06060b 100%);
+  box-shadow: 0 40px 100px -30px rgba(0, 0, 0, .8), 0 0 0 1px rgba(255, 255, 255, .05);
+}
+.chrome { position: absolute; top: 0; left: 0; right: 0; height: 32px; display: flex; align-items: center; padding: 0 14px; background: rgba(6, 6, 12, .6); border-bottom: 1px solid var(--line); z-index: 10; }
+.chrome .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
+.chrome .r { background: #ff5f56; } .chrome .y { background: #ffbd2e; } .chrome .g { background: #27c93f; }
+.chrome .title { flex: 1; text-align: center; font-family: "Geist Mono", monospace; font-size: 11px; letter-spacing: .16em; color: #86837e; text-transform: uppercase; }
+
+.body { position: absolute; top: 32px; left: 0; right: 0; bottom: 0; display: flex; }
+
+/* Sidebar (same 244 rail) */
+.rail { width: 244px; flex-shrink: 0; padding: 22px 14px 18px; border-right: 1px solid var(--line); background: linear-gradient(180deg, rgba(10, 10, 16, .62), rgba(10, 10, 16, .32) 60%, rgba(10, 10, 16, .62)); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); display: flex; flex-direction: column; }
+.brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+.brand-glyph { width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, #ff1a8c, #7fd9e8 140%); box-shadow: 0 8px 20px -6px rgba(255, 26, 140, .5); }
+.brand-eb { font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .3em; color: #86837e; text-transform: uppercase; }
+.brand-wm { font-weight: 600; font-size: 15px; letter-spacing: -.02em; }
+.brand-wm .slash { color: var(--fuchsia); margin: 0 1px; }
+.rail-label { font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .18em; color: #504e4a; text-transform: uppercase; padding: 6px 4px; margin-top: 12px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; color: #c8c4be; cursor: pointer; font-size: 13px; font-weight: 500; }
+.nav-item img { width: 16px; height: 16px; opacity: .78; }
+.nav-item.is-active { background: linear-gradient(180deg, rgba(255, 26, 140, .22), rgba(255, 26, 140, .08)); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 26, 140, .35); }
+.nav-item.is-active img { opacity: 1; filter: drop-shadow(0 0 6px rgba(255, 102, 184, .5)); }
+.rail-foot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); }
+
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Route header */
+.hdr { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 22px; border-bottom: 1px solid var(--line-hot); background: rgba(11, 11, 16, .28); }
+.hdr-title { font-family: "Geist Mono", monospace; font-size: 13px; font-weight: 600; color: var(--ink); }
+.hdr-sub { font-family: "Geist Mono", monospace; font-size: 10.5px; letter-spacing: .1em; color: var(--dim); }
+.hdr-spacer { flex: 1; }
+.hdr-mode {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px; border-radius: 9999px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .08);
+}
+.hdr-mode-btn {
+  padding: 4px 12px; border-radius: 9999px;
+  font-family: "Geist Mono", monospace; font-size: 10.5px; letter-spacing: .12em;
+  color: var(--dim); text-transform: uppercase; cursor: pointer;
+}
+.hdr-mode-btn.is-on {
+  background: linear-gradient(135deg, var(--fuchsia), var(--fuchsia-d));
+  color: #fff; box-shadow: 0 0 0 1px rgba(255, 26, 140, .55);
+}
+
+/* Identity strip */
+.identity {
+  flex-shrink: 0;
+  display: flex; align-items: center; gap: 16px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 26, 140, .08), rgba(11, 11, 16, .1));
+}
+.id-avatar {
+  width: 56px; height: 56px; border-radius: 14px;
+  overflow: hidden; border: 1.5px solid rgba(255, 26, 140, .5);
+  box-shadow: 0 8px 20px -8px rgba(255, 26, 140, .5);
+  background: #0a0a10; position: relative; flex-shrink: 0;
+}
+.id-avatar img { width: 100%; height: 100%; object-fit: cover; object-position: center 25%; }
+.id-avatar::after {
+  content: ""; position: absolute; bottom: 3px; right: 3px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #4ade80; border: 2px solid #0a0a10;
+  box-shadow: 0 0 6px #4ade80;
+}
+.id-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.id-name-row { display: flex; align-items: baseline; gap: 10px; }
+.id-name { font-size: 20px; font-weight: 700; letter-spacing: -.01em; color: var(--ink); }
+.id-handle {
+  font-family: "Geist Mono", monospace;
+  font-size: 12px; color: var(--fuchsia-b);
+}
+.id-meta { font-family: "Geist Mono", monospace; font-size: 10.5px; color: var(--dim); letter-spacing: .06em; }
+.id-meta strong { color: var(--ink); font-weight: 600; }
+.id-spacer { flex: 1; }
+.id-tier {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px 6px 6px;
+  border-radius: 9999px;
+  background: rgba(255, 26, 140, .1);
+  border: 1px solid rgba(255, 26, 140, .35);
+}
+.id-tier-img { width: 26px; height: 26px; border-radius: 50%; overflow: hidden; background: #0a0a10; }
+.id-tier-img img { width: 100%; height: 100%; object-fit: cover; }
+.id-tier-name {
+  font-family: "Geist Mono", monospace; font-size: 11px;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--ink);
+}
+.id-toggle {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px 6px 8px;
+  border-radius: 9999px;
+  background: rgba(74, 222, 128, .12);
+  border: 1px solid rgba(74, 222, 128, .4);
+  color: #4ade80;
+  font-family: "Geist Mono", monospace;
+  font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+  cursor: pointer;
+}
+.id-toggle .sw { width: 26px; height: 14px; border-radius: 9999px; background: rgba(74, 222, 128, .8); position: relative; }
+.id-toggle .sw::after { content: ""; position: absolute; top: 2px; right: 2px; width: 10px; height: 10px; border-radius: 50%; background: #fff; }
+
+/* Cockpit body · tab rail + pane */
+.cockpit {
+  flex: 1; min-height: 0;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
+/* Tab rail */
+.tabs {
+  border-right: 1px solid var(--line);
+  padding: 16px 10px;
+  display: flex; flex-direction: column; gap: 3px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.tabs-eb {
+  font-family: "Geist Mono", monospace;
+  font-size: 9.5px; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--dim);
+  padding: 4px 10px 6px;
+  margin-top: 10px;
+}
+.tabs-eb:first-child { margin-top: 0; }
+.tab {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: #c8c4be;
+  font-size: 13px; font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 140ms ease;
+}
+.tab:hover { background: rgba(255, 255, 255, .03); color: var(--ink); }
+.tab img { width: 16px; height: 16px; opacity: .78; }
+.tab.is-active {
+  background: linear-gradient(180deg, rgba(255, 26, 140, .22), rgba(255, 26, 140, .08));
+  color: #fff;
+  border-color: rgba(255, 26, 140, .35);
+}
+.tab.is-active img { opacity: 1; filter: drop-shadow(0 0 6px rgba(255, 102, 184, .5)); }
+.tab .tab-badge {
+  margin-left: auto;
+  padding: 1px 6px; border-radius: 9999px;
+  background: rgba(255, 26, 140, .18);
+  color: var(--fuchsia-b);
+  font-family: "Geist Mono", monospace;
+  font-size: 9.5px; letter-spacing: .05em;
+}
+
+/* Content pane */
+.pane {
+  padding: 20px 24px;
+  overflow-y: auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  align-content: start;
+}
+.pane-hero {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 22px;
+  padding: 20px 22px;
+  border-radius: 16px;
+  background:
+    radial-gradient(400px 300px at 15% 20%, rgba(255, 26, 140, .18), transparent 60%),
+    linear-gradient(180deg, rgba(255, 26, 140, .1), rgba(11, 11, 16, .3));
+  border: 1px solid rgba(255, 26, 140, .3);
+}
+.qr-wrap {
+  position: relative;
+  aspect-ratio: 1;
+  width: 100%;
+}
+.qr-bezel {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 20px rgba(255, 26, 140, .4));
+  pointer-events: none;
+  z-index: 2;
+}
+.qr-code {
+  position: absolute; inset: 16%;
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+  display: grid; place-items: center;
+}
+.qr-code svg { width: 100%; height: 100%; }
+.qr-bug {
+  position: absolute; top: 50%; left: 50%;
+  /* v2.2.18 · classic invader glyph replaces the moth. Sized a touch
+   * bigger + no dark background so the pink pixels sit inside the QR
+   * white without a competing frame. QR generators tolerate a ~15%
+   * centre occlusion — we're at ~14% here. */
+  width: 52px; height: 52px;
+  transform: translate(-50%, -50%);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .96);
+  border: 2px solid var(--fuchsia);
+  box-shadow: 0 4px 14px rgba(255, 26, 140, .35);
+  z-index: 3;
+  padding: 6px;
+  display: grid; place-items: center;
+}
+.qr-bug img {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 4px rgba(255, 26, 140, .55));
+}
+.hero-copy {
+  display: flex; flex-direction: column; gap: 8px; min-width: 0;
+  justify-content: center;
+}
+.hero-eb {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--fuchsia-b);
+}
+.hero-title {
+  font-size: 26px; font-weight: 700; letter-spacing: -.015em;
+  color: var(--ink); line-height: 1.15;
+}
+.hero-note {
+  font-size: 13px; line-height: 1.5; color: #c8c4be;
+}
+.hero-code-row {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 8px;
+}
+.hero-code {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(11, 11, 16, .5);
+  border: 1px solid rgba(255, 26, 140, .28);
+  font-family: "Geist Mono", monospace;
+  font-size: 15px; letter-spacing: .05em;
+  color: var(--fuchsia-b);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hero-btn {
+  padding: 10px 14px; border-radius: 10px;
+  background: linear-gradient(180deg, var(--fuchsia), var(--fuchsia-d));
+  color: #fff;
+  font-family: "Geist Mono", monospace;
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 8px 18px -6px rgba(255, 26, 140, .55);
+  border: 0;
+}
+.hero-btn.is-secondary {
+  background: rgba(255, 255, 255, .06);
+  color: var(--ink);
+  box-shadow: none;
+}
+.hero-fineprint {
+  margin-top: 8px;
+  font-size: 11.5px; line-height: 1.5;
+  color: var(--dim);
+}
+.hero-fineprint strong { color: var(--ink); font-weight: 600; }
+.hero-fineprint .fp-eb {
+  display: inline-block;
+  font-family: "Geist Mono", monospace;
+  font-size: 9.5px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--fuchsia-b);
+  margin-right: 6px;
+}
+
+/* Cards */
+.card {
+  padding: 18px 20px;
+  border-radius: 14px;
+  background: rgba(11, 11, 16, .4);
+  border: 1px solid var(--line);
+}
+.card-eb {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--fuchsia-b);
+  margin-bottom: 12px;
+}
+.card-title {
+  font-size: 15px; font-weight: 600; color: var(--ink);
+  margin-bottom: 4px;
+}
+.card-sub { font-size: 12px; color: var(--dim); margin-bottom: 12px; }
+
+/* Streak stat row */
+.stat-row { display: flex; align-items: baseline; gap: 6px; }
+.stat-num { font-size: 42px; font-weight: 700; color: var(--ink); letter-spacing: -.02em; }
+.stat-num-fx { color: var(--fuchsia-b); }
+.stat-unit { font-family: "Geist Mono", monospace; font-size: 10.5px; letter-spacing: .12em; color: var(--dim); text-transform: uppercase; }
+.stat-delta {
+  margin-left: auto;
+  font-family: "Geist Mono", monospace;
+  font-size: 10.5px;
+  color: #4ade80;
+}
+
+/* Recent referrals list */
+.ref-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.ref-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 10px; align-items: center;
+  padding: 8px 10px; border-radius: 10px;
+  background: rgba(255, 255, 255, .03);
+}
+.ref-row-avatar {
+  width: 28px; height: 28px; border-radius: 7px;
+  display: grid; place-items: center;
+  color: var(--fuchsia-b);
+  font-family: "Geist Mono", monospace; font-weight: 700; font-size: 11px;
+  background: rgba(255, 26, 140, .1);
+  border: 1px solid rgba(255, 26, 140, .25);
+}
+.ref-row-name { font-size: 12.5px; font-weight: 500; color: var(--ink); }
+.ref-row-meta { font-family: "Geist Mono", monospace; font-size: 10px; color: var(--dim); }
+.ref-row-earn { font-family: "Geist Mono", monospace; font-size: 12px; font-weight: 700; color: #4ade80; }
+
+/* Progress ring */
+.tier-progress {
+  display: flex; align-items: center; gap: 14px;
+}
+.tier-progress-ring {
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  background: conic-gradient(var(--fuchsia) 0% 68%, rgba(255, 255, 255, .06) 68%);
+  display: grid; place-items: center;
+  position: relative;
+}
+.tier-progress-ring::before {
+  content: ""; position: absolute; inset: 6px;
+  border-radius: 50%; background: #0a0a10;
+}
+.tier-progress-ring-num {
+  position: relative; z-index: 2;
+  font-family: "Geist Mono", monospace;
+  font-size: 14px; font-weight: 700; color: var(--ink);
+}
+.tier-progress-copy .lbl {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--fuchsia-b);
+}
+.tier-progress-copy .val {
+  font-size: 15px; font-weight: 600; color: var(--ink);
+  margin-top: 2px;
+}
+.tier-progress-copy .note {
+  font-size: 11px; color: var(--dim); margin-top: 2px;
+}
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="chrome">
+    <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="title">Liquid Clips · Settings · Clipper · 1440 × 900</span>
+  </div>
+
+  <div class="body">
+    <aside class="rail">
+      <div class="brand">
+        <div class="brand-glyph"></div>
+        <div>
+          <div class="brand-eb">LIQUID · CLIPS</div>
+          <div class="brand-wm">liquid<span class="slash">/</span>clips</div>
+        </div>
+      </div>
+      <div class="rail-label">Console · Clipper</div>
+      <div class="nav-item"><img src="brand/icons/nav/home.svg" alt=""> Home</div>
+      <div class="nav-item"><img src="brand/icons/nav/create.svg" alt=""> Create</div>
+      <div class="nav-item"><img src="brand/icons/nav/engine.svg" alt=""> My Clips</div>
+      <div class="nav-item"><img src="brand/icons/nav/campaigns.svg" alt=""> Campaigns</div>
+      <div class="nav-item"><img src="brand/icons/nav/community.svg" alt=""> Community</div>
+      <div class="nav-item"><img src="brand/icons/nav/earn.svg" alt=""> Earn</div>
+      <div class="nav-item"><img src="brand/icons/nav/channels.svg" alt=""> Channels</div>
+      <div class="nav-item"><img src="brand/icons/nav/schedule.svg" alt=""> Schedule</div>
+      <div class="rail-foot">
+        <div class="nav-item is-active"><img src="brand/icons/nav/settings.svg" alt=""> Settings</div>
+        <div class="nav-item"><img src="brand/icons/nav/support.svg" alt=""> Support</div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <div class="hdr">
+        <span class="hdr-title">Settings</span>
+        <span class="hdr-sub">· cockpit</span>
+        <span class="hdr-spacer"></span>
+        <span class="hdr-mode">
+          <span class="hdr-mode-btn is-on">CLIPPER</span>
+          <span class="hdr-mode-btn">AGENCY</span>
+        </span>
+      </div>
+
+      <!-- Identity strip -->
+      <div class="identity">
+        <div class="id-avatar"><img src="brand/kade/kade-settings-mode.webp" alt=""></div>
+        <div class="id-copy">
+          <div class="id-name-row">
+            <span class="id-name">Daniel</span>
+            <span class="id-handle">@uncledaniel</span>
+          </div>
+          <div class="id-meta">
+            <strong>Solo tier</strong> · $29.99/mo · joined 6 Jun 2026
+          </div>
+        </div>
+        <span class="id-spacer"></span>
+        <span class="id-tier">
+          <span class="id-tier-img"><img src="brand/tiers/solo.png" alt=""></span>
+          <span class="id-tier-name">Solo</span>
+        </span>
+        <button class="id-toggle"><span class="sw"></span>Online</button>
+      </div>
+
+      <!-- Cockpit body -->
+      <div class="cockpit">
+        <!-- Tab rail -->
+        <nav class="tabs">
+          <div class="tabs-eb">Common</div>
+          <div class="tab"><img src="brand/nav-badges/settings.png" alt=""> Account</div>
+          <div class="tab"><img src="brand/nav-badges/payouts.png" alt=""> Payouts</div>
+          <div class="tab"><img src="brand/settings/devices.svg" alt=""> Devices <span class="tab-badge">2</span></div>
+          <div class="tab"><img src="brand/settings/notifs.svg" alt=""> Notifications</div>
+          <div class="tab"><img src="brand/icons/nav/support.svg" alt=""> Support</div>
+          <div class="tab"><img src="brand/settings/advanced.svg" alt=""> Advanced</div>
+
+          <div class="tabs-eb">Clipper</div>
+          <div class="tab"><img src="brand/icons/metric/streak-flame.svg" alt=""> Streaks</div>
+          <div class="tab is-active"><img src="brand/icons/metric/crown.svg" alt=""> Referrals &amp; QR</div>
+        </nav>
+
+        <!-- Content pane -->
+        <section class="pane">
+          <!-- Hero card · QR + copy -->
+          <div class="pane-hero">
+            <div class="qr-wrap">
+              <img class="qr-bezel" src="brand/settings/qr-frame-bezel.png" alt="">
+              <!-- Inline SVG QR mock — pattern mimics a real QR code -->
+              <div class="qr-code">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="24" height="24" fill="#fff"/>
+                  <!-- QR position markers · corners -->
+                  <path fill="#000" d="M0 0h7v7h-7z"/>
+                  <rect x="1" y="1" width="5" height="5" fill="#fff"/>
+                  <rect x="2" y="2" width="3" height="3" fill="#000"/>
+                  <path fill="#000" d="M17 0h7v7h-7z"/>
+                  <rect x="18" y="1" width="5" height="5" fill="#fff"/>
+                  <rect x="19" y="2" width="3" height="3" fill="#000"/>
+                  <path fill="#000" d="M0 17h7v7h-7z"/>
+                  <rect x="1" y="18" width="5" height="5" fill="#fff"/>
+                  <rect x="2" y="19" width="3" height="3" fill="#000"/>
+                  <!-- QR data cells · random-looking pattern -->
+                  <path fill="#000" d="M8 0h1v1h-1zM10 0h1v1h-1zM12 0h2v1h-2zM15 0h1v1h-1zM8 2h2v1h-2zM11 2h1v1h-1zM13 2h1v1h-1zM15 2h1v1h-1zM9 4h1v1h-1zM11 4h2v1h-2zM14 4h2v1h-2zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM0 8h1v1h-1zM2 8h1v1h-1zM4 8h1v1h-1zM6 8h2v1h-2zM9 8h1v1h-1zM11 8h1v1h-1zM13 8h2v1h-2zM16 8h1v1h-1zM18 8h1v1h-1zM20 8h1v1h-1zM22 8h2v1h-2zM1 10h1v1h-1zM3 10h1v1h-1zM5 10h1v1h-1zM7 10h1v1h-1zM10 10h2v1h-2zM13 10h1v1h-1zM15 10h1v1h-1zM17 10h1v1h-1zM19 10h2v1h-2zM22 10h1v1h-1zM0 12h1v1h-1zM2 12h2v1h-2zM6 12h1v1h-1zM8 12h1v1h-1zM11 12h1v1h-1zM13 12h1v1h-1zM16 12h2v1h-2zM19 12h1v1h-1zM21 12h1v1h-1zM23 12h1v1h-1zM1 14h1v1h-1zM3 14h2v1h-2zM7 14h1v1h-1zM9 14h2v1h-2zM12 14h2v1h-2zM15 14h1v1h-1zM17 14h1v1h-1zM19 14h1v1h-1zM21 14h2v1h-2zM0 16h2v1h-2zM4 16h1v1h-1zM6 16h1v1h-1zM8 16h2v1h-2zM11 16h1v1h-1zM13 16h1v1h-1zM15 16h2v1h-2zM18 16h1v1h-1zM20 16h1v1h-1zM22 16h1v1h-1zM8 17h1v1h-1zM10 17h2v1h-2zM13 17h1v1h-1zM15 17h1v1h-1zM8 19h1v1h-1zM10 19h1v1h-1zM12 19h2v1h-2zM15 19h1v1h-1zM9 21h1v1h-1zM11 21h1v1h-1zM13 21h2v1h-2zM8 23h1v1h-1zM10 23h1v1h-1zM12 23h1v1h-1zM14 23h1v1h-1zM16 23h1v1h-1z"/>
+                </svg>
+              </div>
+              <div class="qr-bug"><img src="brand/invaders/invader-classic.png" alt="Liquid Clips invader"></div>
+            </div>
+            <div class="hero-copy">
+              <span class="hero-eb">Your referral · Solo tier</span>
+              <div class="hero-title">Every clipper you refer earns you $10 for their first paid month.</div>
+              <p class="hero-note">
+                Share your QR or link. Referred clippers get a 7-day trial;
+                once they upgrade, your Sui wallet gets credited within
+                72 hours.
+              </p>
+              <div class="hero-code-row">
+                <div class="hero-code">liquidclips.app/join/uncledaniel</div>
+                <button class="hero-btn">Copy link</button>
+                <button class="hero-btn is-secondary">Download QR</button>
+                <button class="hero-btn is-secondary">Change handle</button>
+              </div>
+              <div class="hero-fineprint">
+                <span class="fp-eb">Handle policy</span>
+                Next change available <strong>Sept 29, 2026</strong> · 2 of 3 lifetime changes remaining · old handles 302-redirect for 90 days.
+              </div>
+            </div>
+          </div>
+
+          <!-- Card · Referral earnings -->
+          <div class="card">
+            <div class="card-eb">Earnings · lifetime</div>
+            <div class="stat-row">
+              <span class="stat-num stat-num-fx">$248</span>
+              <span class="stat-unit">USDC · Sui rail</span>
+              <span class="stat-delta">▲ $30 · this week</span>
+            </div>
+            <div class="tier-progress" style="margin-top:14px;">
+              <div class="tier-progress-ring">
+                <span class="tier-progress-ring-num">68%</span>
+              </div>
+              <div class="tier-progress-copy">
+                <div class="lbl">Next payout bonus</div>
+                <div class="val">$40 · after 8 more converts</div>
+                <div class="note">Payouts every Friday · min $25 threshold</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card · Recent joins -->
+          <div class="card">
+            <div class="card-eb">Recent joins · 5</div>
+            <div class="ref-list">
+              <div class="ref-row">
+                <span class="ref-row-avatar">L</span>
+                <div>
+                  <div class="ref-row-name">@lucia</div>
+                  <div class="ref-row-meta">joined 2h ago · trial · day 2</div>
+                </div>
+                <span class="ref-row-earn">pending</span>
+              </div>
+              <div class="ref-row">
+                <span class="ref-row-avatar">M</span>
+                <div>
+                  <div class="ref-row-name">@mari</div>
+                  <div class="ref-row-meta">joined 3d ago · Solo tier</div>
+                </div>
+                <span class="ref-row-earn">+$10</span>
+              </div>
+              <div class="ref-row">
+                <span class="ref-row-avatar">R</span>
+                <div>
+                  <div class="ref-row-name">@rio</div>
+                  <div class="ref-row-meta">joined 6d ago · Pro tier</div>
+                </div>
+                <span class="ref-row-earn">+$20</span>
+              </div>
+              <div class="ref-row">
+                <span class="ref-row-avatar">K</span>
+                <div>
+                  <div class="ref-row-name">@keke</div>
+                  <div class="ref-row-meta">joined 11d ago · churned</div>
+                </div>
+                <span class="ref-row-earn" style="color:var(--dim);">$0</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

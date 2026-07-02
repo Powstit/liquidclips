@@ -16,6 +16,48 @@
   box-shadow: inset -1px 0 0 rgba(255, 255, 255, .04);
   /* VAL.1 · anchor for the sliding active pill */
   position: relative;
+  /* v2.2.18 sprint · width becomes a driven CSS var so the collapse
+   *  toggle can animate cleanly + downstream layouts (Workstation body
+   *  padding, CockpitDock left) can read the live value if needed. */
+  transition: width 220ms ease;
+}
+.lc-rail[data-collapsed="1"] {
+  width: 60px;
+  padding: 22px 10px 18px;
+}
+/* Hide word-marks + labels + section eyebrow when collapsed. Icons + pill
+ * stay visible. Chevron toggle stays reachable. */
+.lc-rail[data-collapsed="1"] .lc-brand-text,
+.lc-rail[data-collapsed="1"] .lc-nav-label,
+.lc-rail[data-collapsed="1"] .lc-rail-label,
+.lc-rail[data-collapsed="1"] .lc-nav-badge {
+  display: none;
+}
+.lc-rail[data-collapsed="1"] .lc-nav-item {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+.lc-nav-collapse-btn {
+  all: unset;
+  cursor: pointer;
+  margin-left: auto;
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  color: #86837e;
+  font-size: 14px; line-height: 1;
+  transition: background 120ms ease, color 120ms ease;
+}
+.lc-nav-collapse-btn:hover { background: rgba(255, 26, 140, .12); color: #ff66b8; }
+.lc-nav-collapse-btn:focus-visible {
+  outline: 2px solid rgba(255, 26, 140, .55); outline-offset: 2px;
+}
+.lc-rail[data-collapsed="1"] .lc-brand-block {
+  justify-content: center;
+}
+.lc-rail[data-collapsed="1"] .lc-nav-collapse-btn {
+  margin-left: 0;
 }
 
 /* VAL.1 · single pill that translates between active rows. Inline `top` +

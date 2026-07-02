@@ -132,13 +132,13 @@ export function StickyKade({ defaultState, placement = "bottom-right" }: StickyK
         {!isCollapsed && (
           <motion.div
             key="lc-sticky-kade-host"
+            id="lc-sticky-kade-portrait"
             className={`lc-sticky-kade ${mode} ${pulseClass} ${moodClass}`}
             data-kade-mood={mood}
             initial={{ opacity: 0, scale: 0.92 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.35, transition: { duration: 0.22, ease: [0.22, 0.9, 0.35, 1] } }}
             transition={{ type: "spring", stiffness: 240, damping: 22, mass: 0.6 }}
-            aria-hidden="true"
           >
             <div className="lc-sticky-kade-glow" />
             <div className="lc-sticky-kade-host">
@@ -152,6 +152,8 @@ export function StickyKade({ defaultState, placement = "bottom-right" }: StickyK
                   className="lc-sticky-kade-minimize"
                   onClick={onMinimize}
                   aria-label="Minimise Kade"
+                  aria-expanded="true"
+                  aria-controls="lc-sticky-kade-portrait"
                   data-testid="kade-minimize"
                 >
                   −
@@ -180,6 +182,8 @@ export function StickyKade({ defaultState, placement = "bottom-right" }: StickyK
             transition={{ type: "spring", stiffness: 260, damping: 24, mass: 0.5 }}
             onClick={onExpand}
             aria-label="Restore Kade"
+            aria-expanded="false"
+            aria-controls="lc-sticky-kade-portrait"
           >
             <span className="lc-sticky-kade-dock-glyph" aria-hidden="true">
               ✦
