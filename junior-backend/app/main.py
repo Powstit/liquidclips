@@ -660,6 +660,12 @@ app.include_router(_thumb_quota_router.router)
 # Giphy proxies + the pin → Announcement bridge.
 from app.routes import chat as _chat_router  # noqa: E402
 app.include_router(_chat_router.router)
+# Stage 5 · agency roster / invite / payout-split / rules / whop-sync.
+# Distinct from `agency_campaigns` — that file owns Whop-reward-backed
+# campaigns; this one owns the agency's own membership + payout + config
+# state and reuses admin_audit_log for every mutation.
+from app.routes import agency as _agency_router  # noqa: E402
+app.include_router(_agency_router.router)
 app.include_router(telemetry.router)
 app.include_router(publish.router)
 app.include_router(social.router)

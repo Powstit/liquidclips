@@ -14,7 +14,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from sqlalchemy import JSON, BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import JSON, BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -1513,4 +1513,150 @@ class ChatMessage(Base):
     announcement_id: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+
+
+# =====================================================================
+# Stage 5 · Agency roster / invite / payout-split / rules
+# ---------------------------------------------------------------------
+# Owner identity is IMPLIED — an agency is the User row whose id matches
+# `agency_id` and whose effective tier resolves to "agency". This
+# matches app/routes/sync.py::_agency_ids_for_user which already treats
+# users.id as the agency identifier. No separate `agencies` table.
+#
+# Audit rows are written to `admin_audit_log` (see AdminAuditLog above)
+# with target_type ∈ {"agency_member","agency_invite",
+# "agency_payout_split","agency_rule","agency_whop_sync"}. No new audit
+# table. All owner+staff mutation endpoints call `_audit_agency()` in
+# app/routes/agency.py.
+# =====================================================================
+
+
+class AgencyMember(Base):
+    """User↔agency membership.
+
+    An agency owner is NOT stored here — owner status is `user.id ==
+    agency_id ∧ resolve_tier(user.tier) == "agency"`. Only invited /
+    accepted clippers (and mods) get rows.
+
+    Soft delete via `removed_at` so payout-split history stays queryable
+    for old rows; the roster + payout-split invariants filter on
+    `removed_at IS NULL`.
+    """
+
+    __tablename__ = "agency_members"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # Owner user's id. Not a hard FK so agency-owner soft-deletes don't
+    # cascade and lose payout history.
+    agency_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String, nullable=False, default="member")
+    # active | disabled — disabled by whop-sync when subscription lapses;
+    # payout splits stay intact until the owner explicitly removes.
+    status: Mapped[str] = mapped_column(String, nullable=False, default="active")
+    invited_by_user_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    invited_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    joined_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    removed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("agency_id", "user_id", name="uq_agency_member"),
+    )
+
+
+class AgencyInvite(Base):
+    """Pending invitation issued by an agency owner or staff.
+
+    An invite may precede the invitee's Liquid Clips account — the
+    accept endpoint materialises an AgencyMember row when the JWT-
+    authenticated user's email matches the invite's `email`. `token`
+    is the opaque bearer used in the accept URL / email.
+
+    Terminal states are `accepted | revoked | expired`; once terminal a
+    row is not re-usable and a new invite must be issued.
+    """
+
+    __tablename__ = "agency_invites"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # uuid.hex
+    agency_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    invited_by_user_id: Mapped[str] = mapped_column(String, nullable=False)
+    # Lowercased at write time by the route layer so lookups are cheap.
+    email: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    token: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    role: Mapped[str] = mapped_column(String, nullable=False, default="member")
+    # pending | accepted | revoked | expired
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+
+class AgencyPayoutSplit(Base):
+    """Per-member percent-share of the agency's payout pool.
+
+    Values are stored in BASIS POINTS (1% = 100 bps; 100% = 10_000) so
+    the sum-to-100% invariant is checked in integer arithmetic without
+    float rounding drift. One row per (agency, member). Sum of active-
+    membership splits per agency MUST equal 10_000 after every
+    mutation; the write endpoint enforces this with a Pydantic
+    validator plus a server-side member-existence check.
+    """
+
+    __tablename__ = "agency_payout_splits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    agency_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    member_user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    percent_bps: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    updated_by_user_id: Mapped[str] = mapped_column(String, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "agency_id", "member_user_id", name="uq_payout_split"
+        ),
+    )
+
+
+class AgencyRule(Base):
+    """Key/value config owned by an agency.
+
+    Editable only by the agency owner or staff (JUNIOR_ADMIN_EMAILS).
+    Every mutation writes an admin_audit_log row via `_audit_agency()`
+    so config drift is fully traceable. `value_json` is opaque to the
+    server — the schema is defined client-side per key.
+    """
+
+    __tablename__ = "agency_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    agency_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    key: Mapped[str] = mapped_column(String, nullable=False)
+    value_json: Mapped[str] = mapped_column(Text, nullable=False, default="null")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    updated_by_user_id: Mapped[str] = mapped_column(String, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("agency_id", "key", name="uq_agency_rule"),
     )
