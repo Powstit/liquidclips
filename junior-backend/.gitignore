@@ -10,4 +10,4 @@ junior-backend.db
 .DS_Store
 .idea/
 .vscode/
-.smoke_agency.db
+.smoke_*.db
