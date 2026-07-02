@@ -47,7 +47,7 @@ import {
   publishCampaign,
   slugify,
 } from "../../lib/agencyCampaigns";
-import { useTierCaps } from "../state/useTierCaps";
+import { canUseAgencyActions, useTierCaps } from "../state/useTierCaps";
 
 type LoadState =
   | { kind: "loading" }
@@ -135,6 +135,16 @@ function TierGateWall({ currentTier }: { currentTier: string }): JSX.Element {
 }
 
 function AgencyCampaignsBuilder(): JSX.Element {
+  // Path A Fix 2 · redundant client-side tier gate on every write action.
+  // `canUseAgencyActions` uses the STRICTER check — tier === "agency" AND
+  // tier.source is trusted (real-http or session-cache). A debug-override
+  // tier setting therefore CANNOT trigger a mutation via this builder,
+  // even though the outer TierGateWall would allow the route to mount.
+  // Also self-heals if the tier degrades mid-session — buttons disable
+  // immediately without a route unmount.
+  const tier = useTierCaps();
+  const writeAllowed = canUseAgencyActions({ tier: tier.tier, source: tier.source }) || tier.adminOverride;
+
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -238,10 +248,15 @@ function AgencyCampaignsBuilder(): JSX.Element {
 
       <section>
         {creating ? (
-          <CreateCampaignForm onCancel={() => setCreating(false)} onCreated={handleCreated} />
+          <CreateCampaignForm
+            writeAllowed={writeAllowed}
+            onCancel={() => setCreating(false)}
+            onCreated={handleCreated}
+          />
         ) : selected ? (
           <CampaignEditor
             campaign={selected}
+            writeAllowed={writeAllowed}
             onChanged={(updated) => {
               // Update local list without a full round-trip; the reload
               // still runs on explicit user-driven refreshes.
@@ -348,9 +363,11 @@ function EmptyState({ onNew }: { onNew: () => void }): JSX.Element {
 // ─── Create form ──────────────────────────────────────────────────────
 
 function CreateCampaignForm({
+  writeAllowed,
   onCancel,
   onCreated,
 }: {
+  writeAllowed: boolean;
   onCancel: () => void;
   onCreated: (b: CampaignBlock) => void;
 }): JSX.Element {
@@ -368,7 +385,7 @@ function CreateCampaignForm({
     if (!slugTouched) setSlug(slugify(title));
   }, [title, slugTouched]);
 
-  const canSubmit = title.trim().length >= 2 && slug.length >= 2 && !busy;
+  const canSubmit = writeAllowed && title.trim().length >= 2 && slug.length >= 2 && !busy;
 
   const submit = useCallback(async () => {
     if (!canSubmit) return;
@@ -485,9 +502,11 @@ function CreateCampaignForm({
 
 function CampaignEditor({
   campaign,
+  writeAllowed,
   onChanged,
 }: {
   campaign: CampaignBlock;
+  writeAllowed: boolean;
   onChanged: (b: CampaignBlock) => void;
 }): JSX.Element {
   const [title, setTitle] = useState(campaign.title);
@@ -515,7 +534,7 @@ function CampaignEditor({
   const locked = campaign.status === "live";
 
   const doSave = useCallback(async () => {
-    if (!editsPending || locked) return;
+    if (!writeAllowed || !editsPending || locked) return;
     setSaveBusy(true);
     setNotice(null);
     const payload: CampaignPatchPayload = {
@@ -531,9 +550,10 @@ function CampaignEditor({
       return;
     }
     setNotice({ kind: "err", message: r.error ?? "Save failed." });
-  }, [editsPending, locked, title, description, bannerUrl, campaign.slug, onChanged]);
+  }, [writeAllowed, editsPending, locked, title, description, bannerUrl, campaign.slug, onChanged]);
 
   const doConnect = useCallback(async () => {
+    if (!writeAllowed) return;
     const trimmed = rewardUrl.trim();
     if (!trimmed) {
       setNotice({ kind: "err", message: "Paste a Whop content-reward URL first." });
@@ -556,9 +576,10 @@ function CampaignEditor({
       return;
     }
     setNotice({ kind: "err", message: r.error ?? "Connect failed." });
-  }, [rewardUrl, campaign.slug, onChanged]);
+  }, [writeAllowed, rewardUrl, campaign.slug, onChanged]);
 
   const doPublish = useCallback(async () => {
+    if (!writeAllowed) return;
     setPublishBusy(true);
     setNotice(null);
     const r = await publishCampaign(campaign.slug);
@@ -569,7 +590,7 @@ function CampaignEditor({
       return;
     }
     setNotice({ kind: "err", message: r.error ?? "Publish failed." });
-  }, [campaign.slug, onChanged]);
+  }, [writeAllowed, campaign.slug, onChanged]);
 
   return (
     <div className="lc-settings-card" style={{ padding: 24 }}>
@@ -590,6 +611,13 @@ function CampaignEditor({
       {locked && (
         <p className="lc-settings-hint" style={{ marginTop: 16, color: "var(--color-warn, #d9b04a)" }}>
           Live campaigns are locked · edits require unpublish (not in v1).
+        </p>
+      )}
+
+      {!writeAllowed && (
+        <p className="lc-settings-hint" style={{ marginTop: 16, color: "var(--color-warn, #d9b04a)" }}>
+          Write actions disabled · agency-tier verification pending. If you just
+          upgraded, refresh to re-sync your license.
         </p>
       )}
 
@@ -632,7 +660,7 @@ function CampaignEditor({
             className="lc-btn"
             data-variant="primary"
             onClick={doSave}
-            disabled={!editsPending || saveBusy || locked}
+            disabled={!writeAllowed || !editsPending || saveBusy || locked}
           >
             {saveBusy ? "Saving…" : "Save changes"}
           </button>
@@ -659,7 +687,7 @@ function CampaignEditor({
               type="button"
               className="lc-btn"
               onClick={doConnect}
-              disabled={connectBusy || !rewardUrl.trim()}
+              disabled={!writeAllowed || connectBusy || !rewardUrl.trim()}
             >
               {connectBusy ? "Connecting…" : "Connect reward"}
             </button>
@@ -680,7 +708,7 @@ function CampaignEditor({
               className="lc-btn"
               data-variant="primary"
               onClick={doPublish}
-              disabled={publishBusy || campaign.status === "live" || campaign.status === "closed"}
+              disabled={!writeAllowed || publishBusy || campaign.status === "live" || campaign.status === "closed"}
             >
               {publishBusy ? "Publishing…" : campaign.status === "live" ? "Live" : "Publish campaign"}
             </button>

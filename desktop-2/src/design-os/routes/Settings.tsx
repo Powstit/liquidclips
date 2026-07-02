@@ -59,6 +59,7 @@ import { EngineSessionProvider, useEngineSession } from "../state/useEngineSessi
 import { RosterPanel } from "./agency-panels/RosterPanel";
 import { PayoutSplitPanel } from "./agency-panels/PayoutSplitPanel";
 import { RulesPanel } from "./agency-panels/RulesPanel";
+import { WhopSyncPanel } from "./agency-panels/WhopSyncPanel";
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { useChannels } from "../state/useChannels";
 import { useSchedule } from "../state/useSchedule";
@@ -658,14 +659,12 @@ function SettingsBody() {
             </p>
           </div>
 
-          <section className="lc-settings-card lc-settings-capability is-agency" data-tab="whop-sync">
-            <span className="lc-settings-card-eb">Whop Sync</span>
-            <strong>Only verified connection state is shown.</strong>
-            <p className="lc-settings-hint">
-              Account, membership, and payout connections appear below. Seat sync
-              and role-gate totals require an agency workspace endpoint.
-            </p>
-          </section>
+          {/* Path A follow-through · live Whop-sync panel (was placeholder). */}
+          {me.snapshot?.userId ? (
+            <EngineErrorBoundary route="settings" component="AgencyWhopSync">
+              <WhopSyncPanel agencyId={me.snapshot.userId} />
+            </EngineErrorBoundary>
+          ) : null}
 
           {/* Sprint C · Live agency panels — replaces the previous
               "Server contract required" placeholders. Agency ID equals
