@@ -252,6 +252,19 @@ class InviteAcceptOut(BaseModel):
     role: str
 
 
+class InvitePreviewOut(BaseModel):
+    """Public preview of an invite (no PII beyond the invitee's own
+    email, which the invitee already knows since the URL was mailed to
+    them). Rendered by the `account.liquidclips.app/invites/[token]`
+    page before the invitee signs in so the UI can show the correct
+    hero + expired/revoked states without leaking owner details."""
+    email: str
+    role: str
+    status: str
+    expires_at: datetime
+    expired: bool
+
+
 class MemberRoleChangeIn(BaseModel):
     role: Literal["member", "mod"]
 
@@ -463,7 +476,59 @@ def issue_invite(
         payload={"agency_id": agency_id, "email": email_lc, "role": payload.role},
     )
     db.commit()
+
+    # 2026-07-02 · Sprint B · send the roster-invite email so the invitee
+    # can self-serve accept via account.liquidclips.app/invites/<token>.
+    # Fire-and-forget on the mailer's thread so a Resend hiccup never
+    # rolls back the invite creation.
+    try:
+        from app.mailer import send_agency_invite
+        send_agency_invite(
+            email=email_lc,
+            token=invite.token,
+            role=payload.role,
+            invited_by_email=(user.email or None),
+        )
+    except Exception:
+        log.warning(
+            "[agency-invite] mail send raised · invite_id=%s · email=%s",
+            invite.id, email_lc, exc_info=True,
+        )
     return _invite_row_to_out(invite)
+
+
+@router.get(
+    "/agency/invites/{token}/preview", response_model=InvitePreviewOut
+)
+def preview_invite(
+    token: str,
+    db: Annotated[Session, Depends(get_db)],
+) -> InvitePreviewOut:
+    """Public preview of an invite by token — used by the
+    account-app `/invites/[token]` page to render the correct hero +
+    signed-in-vs-signed-out state before the user clicks accept.
+
+    Deliberately unauthenticated: the URL itself is the shared secret
+    (32-byte urlsafe token per `secrets.token_urlsafe(32)` at issue
+    time). Returns only the invitee's own email (which they already
+    know), role, status, and expiry — no owner details, no agency
+    identifier. A soft-expired invite returns `status='pending'`
+    plus `expired=True` so the UI shows a "this invite has expired,
+    ask your agency owner to re-invite" state instead of a 404.
+    """
+    invite = db.query(AgencyInvite).filter(AgencyInvite.token == token).first()
+    if invite is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "invite not found")
+    now = utcnow()
+    exp = _as_utc(invite.expires_at)
+    expired = bool(exp is not None and exp <= now)
+    return InvitePreviewOut(
+        email=invite.email,
+        role=invite.role,
+        status=invite.status,
+        expires_at=invite.expires_at,
+        expired=expired,
+    )
 
 
 @router.post(
