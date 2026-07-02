@@ -9,6 +9,7 @@
  * Renders nothing when no featured Campaign exists — no fake hero.
  */
 
+import { useState } from "react";
 import { GlassCard } from "../components";
 import {
   fmtUsdCents,
@@ -37,8 +38,20 @@ function deadlineLabel(c: Campaign): string | null {
 }
 
 export function CampaignBanner({ campaign, onOpen }: CampaignBannerProps) {
+  // Defense-in-depth · Stage 8 carve-out.
+  // Seeded banner_urls occasionally drift out of sync with what
+  // `junior-backend/app/static/campaigns/` actually serves (the recent
+  // audit found 3 slugs referencing missing PNGs — uncle-daniel /
+  // viral-reaction / proof — that 404 on prod today). Rather than
+  // fabricate substitute art (which would mislabel two campaigns) we
+  // fall back to the surrounding GlassCard chrome on image load
+  // failure. Mirrors the pattern already in place at
+  // SponsoredBannerCarousel.tsx:363-368. Zero visual change on the
+  // happy path — img renders exactly as before when the src is reachable.
+  const [mediaFailed, setMediaFailed] = useState(false);
   if (!campaign) return null;
   const deadline = deadlineLabel(campaign);
+  const onMediaError = () => setMediaFailed(true);
 
   return (
     <GlassCard density="default" className={`lc-camp-banner is-${campaign.placementQuality}`} hoverLift>
@@ -48,13 +61,23 @@ export function CampaignBanner({ campaign, onOpen }: CampaignBannerProps) {
         onClick={onOpen}
         aria-label={`Open featured campaign · ${campaign.title}`}
       >
-        {campaign.featuredThumbUrl ? (
+        {!mediaFailed && campaign.featuredThumbUrl ? (
           <div className="lc-camp-banner-art-wrap">
-            <img src={campaign.featuredThumbUrl} alt="" className="lc-camp-banner-art" />
+            <img
+              src={campaign.featuredThumbUrl}
+              alt=""
+              className="lc-camp-banner-art"
+              onError={onMediaError}
+            />
           </div>
-        ) : campaign.bannerUrl ? (
+        ) : !mediaFailed && campaign.bannerUrl ? (
           <div className="lc-camp-banner-art-wrap">
-            <img src={campaign.bannerUrl} alt="" className="lc-camp-banner-art" />
+            <img
+              src={campaign.bannerUrl}
+              alt=""
+              className="lc-camp-banner-art"
+              onError={onMediaError}
+            />
           </div>
         ) : null}
 
