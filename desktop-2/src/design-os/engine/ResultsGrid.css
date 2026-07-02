@@ -1,30 +1,35 @@
 .lc-results {
   display: flex; flex-direction: column;
-  gap: 18px;
-  margin-top: 24px;
+  /* v2.2.18 sprint · header slab is now tight — trim vertical gap so
+   * clip cards land closer to top of viewport. */
+  gap: 12px;
+  margin-top: 8px;
 }
 
-/* Header row */
+/* v2.2.18 sprint · header collapsed from a 3-row slab to a single
+ * row of small chips + toggle + generate-more button. */
 .lc-results-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
   flex-wrap: wrap;
+  padding: 4px 0;
 }
 
 .lc-results-tabs {
-  display: flex; gap: 4px;
-  padding: 4px;
-  border-radius: 12px;
+  display: inline-flex; gap: 4px;
+  padding: 2px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, .04);
   border: 1px solid rgba(255, 255, 255, .08);
 }
 .lc-results-tab {
-  padding: 8px 14px;
-  border-radius: 8px;
+  padding: 4px 10px;
+  border-radius: 7px;
   border: 0;
   background: transparent;
-  color: #c8c4be;
-  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
-  font-weight: 600; font-size: 12.5px; letter-spacing: -.005em;
+  color: #86837e;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-weight: 600; font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase;
   cursor: pointer;
   transition: all .18s cubic-bezier(.2, .7, .2, 1);
 }
@@ -67,14 +72,30 @@
   color: #ffb3d8;
 }
 
-/* Cards are sized from the workbench column, not the viewport. */
+/* v2.2.18 · Reels-sized cards. Clippers ARE the poster; the grid was
+ * previously ~190px wide which made 9:16 cards look like thumbnails. At
+ * 280px min the cards render like scroll-stopping Reels. Falls back to
+ * 220px on narrow, 2-up at phone widths. */
 .lc-results-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 22px;
+  row-gap: 140px;
+  align-items: start;
+  isolation: isolate;
+}
+@container (min-width: 1040px) {
+  .lc-results-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 1100px) {
+  .lc-results-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {
-  .lc-results-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+  .lc-results-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 14px;
+    row-gap: 72px;
+  }
 }
 
 /* Add-clip tile */
@@ -86,7 +107,7 @@
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 6px;
   width: 100%;
-  aspect-ratio: 9 / 16;
+  aspect-ratio: 4 / 5;
   background: linear-gradient(180deg, rgba(255, 26, 140, .06) 0%, rgba(255, 26, 140, 0) 100%);
   border: 2px dashed rgba(255, 26, 140, .35);
   border-radius: 14px;
@@ -197,7 +218,7 @@
 
 /* Skeleton "Rendering…" tile shown while clips finish encoding */
 .lc-clip-card-rendering {
-  aspect-ratio: 9 / 16;
+  aspect-ratio: 4 / 5;
   display: flex; align-items: center; justify-content: center;
   border: 1px dashed rgba(255, 102, 184, .35) !important;
   background: linear-gradient(180deg, rgba(255, 102, 184, .06), rgba(127, 217, 232, .04)) !important;

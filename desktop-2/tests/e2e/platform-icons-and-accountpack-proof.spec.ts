@@ -67,6 +67,7 @@ test.describe("Platform icons + accountpack proof", () => {
     await seedCompletedSession(page);
     await page.goto("/?skipIntro=1#/workstation", { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-testid="clip-card"]', { timeout: 20_000 });
+    await page.locator('[data-testid="clip-card"]').first().getByTestId("clip-shell").click();
 
     const picker = page.getByTestId("cps-platform-picker");
     await expect(picker).toBeVisible({ timeout: 10_000 });
@@ -82,6 +83,7 @@ test.describe("Platform icons + accountpack proof", () => {
     await seedCompletedSession(page);
     await page.goto("/?skipIntro=1#/workstation", { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-testid="clip-card"]', { timeout: 20_000 });
+    await page.locator('[data-testid="clip-card"]').first().getByTestId("clip-shell").click();
 
     const picker = page.getByTestId("cps-platform-picker");
     await expect(picker).toBeVisible({ timeout: 10_000 });

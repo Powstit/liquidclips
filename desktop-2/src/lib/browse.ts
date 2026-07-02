@@ -13,9 +13,9 @@
  *   3. On window resize OR slot resize → updateBrowsePanelBounds.
  *   4. On overlay close → closeBrowsePanel (destroys child webview).
  *
- * Browser-preview safety: every helper short-circuits to a resolved no-op
- * when `__TAURI_INTERNALS__` is absent (so vitest + storybook + the vite
- * preview don't crash on missing Tauri APIs).
+ * Browser-preview safety: control helpers short-circuit when Tauri is absent.
+ * Opening is different: it rejects so the UI renders its honest unavailable
+ * state instead of labelling an empty slot as loaded.
  */
 
 export interface BrowsePanelBounds {
@@ -35,13 +35,13 @@ function isTauriRuntime(): boolean {
 
 async function invokeOrNoop<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
   if (!isTauriRuntime()) return null;
-  try {
-    const mod = await import("@tauri-apps/api/core");
-    return (await mod.invoke<T>(cmd, args)) ?? null;
-  } catch (err) {
-    console.warn(`[browse] ${cmd} failed:`, err);
-    return null;
-  }
+  const mod = await import("@tauri-apps/api/core");
+  return (await mod.invoke<T>(cmd, args)) ?? null;
+}
+
+export interface BrowseOpenOutcome {
+  opened_in_app: boolean;
+  system_fallback: boolean;
 }
 
 /** Open (or re-navigate) the browse panel webview at the given bounds.
@@ -51,14 +51,19 @@ async function invokeOrNoop<T>(cmd: string, args?: Record<string, unknown>): Pro
 export async function openBrowsePanel(
   url: string,
   bounds: BrowsePanelBounds,
-): Promise<void> {
-  await invokeOrNoop<void>("open_browse_panel", {
+): Promise<BrowseOpenOutcome> {
+  if (!isTauriRuntime()) {
+    throw new Error("The in-app browser is available in the installed desktop app.");
+  }
+  const outcome = await invokeOrNoop<BrowseOpenOutcome>("open_browse_panel", {
     url,
     x: bounds.x,
     y: bounds.y,
     width: bounds.width,
     height: bounds.height,
   });
+  if (!outcome) throw new Error("The desktop browser did not return an open result.");
+  return outcome;
 }
 
 /** Resize / reposition the existing webview without re-navigating. */

@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Liquid Clips · Workstation · Split-Screen State (Stage 1 mockup)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<style>
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  color: var(--ink);
+  background: #101018;
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.canvas {
+  width: 1440px; height: 900px;
+  border-radius: 14px;
+  overflow: hidden;
+  position: relative;
+  background:
+    radial-gradient(1600px 900px at 50% -20%, rgba(255, 26, 140, .18), transparent 60%),
+    radial-gradient(1200px 900px at 10% 110%, rgba(127, 217, 232, .06), transparent 60%),
+    linear-gradient(180deg, #0a0a12 0%, #06060b 100%);
+  box-shadow:
+    0 40px 100px -30px rgba(0, 0, 0, .8),
+    0 0 0 1px rgba(255, 255, 255, .05);
+}
+
+.chrome {
+  position: absolute; top: 0; left: 0; right: 0; height: 32px;
+  display: flex; align-items: center; padding: 0 14px;
+  background: rgba(6, 6, 12, .6);
+  border-bottom: 1px solid var(--line);
+  z-index: 10;
+}
+.chrome .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
+.chrome .r { background: #ff5f56; }
+.chrome .y { background: #ffbd2e; }
+.chrome .g { background: #27c93f; }
+.chrome .title {
+  flex: 1; text-align: center;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px; letter-spacing: .16em; color: #86837e; text-transform: uppercase;
+}
+
+.body {
+  position: absolute; top: 32px; left: 0; right: 0; bottom: 0;
+  display: flex;
+}
+
+/* Sidebar */
+.rail {
+  width: 244px; flex-shrink: 0;
+  padding: 22px 14px 18px;
+  border-right: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(10, 10, 16, .62), rgba(10, 10, 16, .32) 60%, rgba(10, 10, 16, .62));
+  -webkit-backdrop-filter: var(--glass-blur);
+          backdrop-filter: var(--glass-blur);
+  display: flex; flex-direction: column;
+}
+.brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+.brand-glyph {
+  width: 36px; height: 36px; border-radius: 8px;
+  background: linear-gradient(135deg, #ff1a8c, #7fd9e8 140%);
+  box-shadow: 0 8px 20px -6px rgba(255, 26, 140, .5);
+}
+.brand-eb { font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .3em; color: #86837e; text-transform: uppercase; }
+.brand-wm { font-weight: 600; font-size: 15px; letter-spacing: -.02em; }
+.brand-wm .slash { color: var(--fuchsia); margin: 0 1px; }
+.rail-label { font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .18em; color: #504e4a; text-transform: uppercase; padding: 6px 4px; margin-top: 12px; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: 10px;
+  color: #c8c4be; cursor: pointer;
+  font-size: 13px; font-weight: 500;
+}
+.nav-item img { width: 16px; height: 16px; opacity: .78; }
+.nav-item.is-active {
+  background: linear-gradient(180deg, rgba(255, 26, 140, .22), rgba(255, 26, 140, .08));
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 26, 140, .35);
+}
+.nav-item.is-active img { opacity: 1; filter: drop-shadow(0 0 6px rgba(255, 102, 184, .5)); }
+.rail-foot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); }
+
+/* Main */
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+.hdr {
+  height: 32px; flex-shrink: 0;
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--line-hot);
+  background: rgba(11, 11, 16, .28);
+}
+.hdr-title {
+  font-family: "Geist Mono", monospace;
+  font-size: 12.5px; font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hdr-sep { color: #504e4a; font-family: "Geist Mono", monospace; font-size: 12px; }
+.hdr-live {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 8px;
+  font-family: "Geist Mono", monospace;
+  font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--fuchsia-b);
+  border: 1px solid rgba(255, 26, 140, .5);
+  border-radius: 9999px;
+  background: rgba(255, 26, 140, .1);
+}
+.hdr-live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--fuchsia); box-shadow: 0 0 6px var(--fuchsia); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .5; } }
+.hdr-spacer { flex: 1; }
+.hdr-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 10px;
+  font-family: "Geist Mono", monospace;
+  font-size: 11px; color: #fff;
+  background: linear-gradient(135deg, var(--fuchsia), var(--fuchsia-d));
+  border-radius: 9999px;
+  box-shadow: 0 6px 14px -4px rgba(255, 26, 140, .55);
+}
+.hdr-pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: #fff; }
+.hdr-chev {
+  all: unset; cursor: pointer;
+  width: 24px; height: 24px; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--dim); font-size: 11px;
+}
+
+/* chips */
+.chips {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 22px 8px;
+}
+.chips-l {
+  display: inline-flex; gap: 4px; padding: 2px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .08);
+}
+.chip {
+  padding: 4px 10px; border-radius: 7px;
+  font-family: "Geist Mono", monospace;
+  font-size: 10.5px; letter-spacing: .1em; color: #86837e;
+  text-transform: uppercase; cursor: pointer;
+}
+.chip.is-on {
+  color: #fff;
+  background: linear-gradient(135deg, var(--fuchsia), var(--fuchsia-d) 55%, var(--fuchsia-b));
+  box-shadow: 0 0 0 1px rgba(255, 26, 140, .55);
+}
+.chips-r { display: inline-flex; align-items: center; gap: 10px; }
+.chips-toggle { display: inline-flex; align-items: center; gap: 6px; font-family: "Geist Mono", monospace; font-size: 10px; letter-spacing: .14em; color: #86837e; text-transform: uppercase; }
+.chips-toggle input { width: 12px; height: 12px; accent-color: var(--fuchsia); }
+.gen-more {
+  all: unset; cursor: pointer;
+  padding: 6px 12px; border-radius: 9px;
+  font-family: "Inter", sans-serif;
+  font-weight: 600; font-size: 12px;
+  color: var(--fuchsia-b);
+  border: 1px solid rgba(255, 26, 140, .45);
+  background: rgba(255, 26, 140, .1);
+}
+
+/* Split layout: grid + fixed drawer */
+.stage {
+  flex: 1; min-height: 0;
+  position: relative;
+  display: flex;
+}
+.grid-col {
+  flex: 1; min-width: 0;
+  padding: 30px 22px 30px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 22px;
+  row-gap: 32px;
+  align-content: start;
+  isolation: isolate;
+}
+
+/* Card base */
+.card {
+  position: relative;
+  aspect-ratio: 9 / 16;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #08080c;
+  border: 1px solid rgba(255, 26, 140, .14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .06),
+    0 6px 18px -8px rgba(0, 0, 0, .55);
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+.card:hover { border-color: rgba(255, 26, 140, .5); }
+.card::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, transparent 55%, rgba(11, 11, 16, .65) 100%);
+  pointer-events: none;
+}
+.card-poster {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover;
+  object-position: center 22%;
+  filter: contrast(1.05) saturate(1.1);
+}
+
+/* RIGID split-screen compositions. Every half fills its half. No floating
+ * mini-images, no empty black bands. Base rule locks explicit width/height
+ * so the split-specific overrides get a solid 100%/50% container to
+ * shrink FROM. */
+.card-split { background: #08080c; }
+.card-split .poster-a,
+.card-split .poster-b {
+  position: absolute;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  object-position: center 30%;
+  filter: contrast(1.05) saturate(1.1);
+}
+
+/* HORIZONTAL split · A on top 50%, B on bottom 50%. Both filled fully. */
+.split-topbottom .poster-a {
+  top: 0; left: 0;
+  width: 100%; height: 50%;
+  border-bottom: 2px solid rgba(255, 26, 140, .8);
+  box-shadow: 0 6px 18px -6px rgba(255, 26, 140, .55);
+  z-index: 2;
+}
+.split-topbottom .poster-b {
+  top: 50%; left: 0;
+  width: 100%; height: 50%;
+  z-index: 1;
+}
+
+/* VERTICAL split · A on left 50%, B on right 50%. Both filled fully. */
+.split-sidebyside .poster-a {
+  top: 0; left: 0;
+  width: 50%; height: 100%;
+  border-right: 2px solid rgba(255, 26, 140, .8);
+  box-shadow: 4px 0 18px -6px rgba(255, 26, 140, .55);
+  z-index: 2;
+}
+.split-sidebyside .poster-b {
+  top: 0; left: 50%;
+  width: 50%; height: 100%;
+  z-index: 1;
+}
+
+/* FACECAM CORNER · main clip fills 100%, facecam sits as a real bottom-left
+ * portrait ~42% × 42% of the card with 2px fuchsia frame. Big enough to
+ * actually READ as a facecam, not a decorative dot. */
+.split-facecam .poster-b {
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 1;
+}
+.split-facecam .poster-a {
+  top: auto; right: auto;
+  left: 12px; bottom: 12px;
+  width: 42%; height: 30%;
+  object-position: center 20%;
+  border-radius: 10px;
+  border: 2px solid var(--fuchsia);
+  box-shadow:
+    0 10px 24px -6px rgba(0, 0, 0, .75),
+    0 0 0 3px rgba(11, 11, 16, .9);
+  z-index: 3;
+}
+
+/* Card badges */
+.card-score {
+  position: absolute; top: 10px; right: 10px;
+  z-index: 5;
+  padding: 4px 9px;
+  border-radius: 9999px;
+  font-family: "Geist Mono", monospace; font-weight: 700;
+  font-size: 12px; color: #fff;
+  background: linear-gradient(135deg, var(--fuchsia), var(--fuchsia-d));
+  box-shadow: 0 8px 18px -6px rgba(255, 26, 140, .6);
+}
+.card-score .u { font-size: 8.5px; letter-spacing: .1em; opacity: .8; }
+
+/* SPLIT badge · top-left of split-layout cards (bit like a "Ready", but different) */
+.card-splitbadge {
+  position: absolute; top: 10px; left: 10px;
+  z-index: 5;
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px 3px 4px;
+  border-radius: 9999px;
+  font-family: "Geist Mono", monospace;
+  font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--fuchsia-b);
+  background: rgba(11, 11, 16, .8);
+  border: 1px solid rgba(255, 26, 140, .55);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.card-splitbadge img { width: 14px; height: 14px; }
+
+/* Selected card — pink halo */
+.card.is-focused {
+  border-color: var(--fuchsia);
+  box-shadow:
+    0 0 0 2px rgba(255, 26, 140, .35),
+    0 22px 50px -18px rgba(255, 26, 140, .6);
+}
+
+/* Inspector drawer — RIGHT side */
+.drawer {
+  width: 380px; flex-shrink: 0;
+  border-left: 1px solid rgba(255, 26, 140, .28);
+  background: rgba(11, 11, 16, .72);
+  -webkit-backdrop-filter: var(--glass-blur);
+          backdrop-filter: var(--glass-blur);
+  padding: 14px 16px 18px;
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+  box-shadow: -22px 0 60px rgba(0, 0, 0, .55);
+}
+.drawer-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+.drawer-eb {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--fuchsia-b);
+}
+.drawer-close {
+  width: 26px; height: 26px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink); font-size: 20px; cursor: pointer;
+}
+.drawer-close:hover { background: rgba(255, 26, 140, .14); color: var(--fuchsia-b); }
+
+/* Video preview — matches ClipPreviewShell */
+.preview {
+  position: relative;
+  width: 100%; aspect-ratio: 9 / 16;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #06060a;
+  border: 1px solid rgba(255, 26, 140, .28);
+  box-shadow: 0 20px 60px -20px rgba(0, 0, 0, .8);
+}
+/* Preview posters now live inside .preview-pane wrappers; the pane
+ * wrapper handles positioning + border, the image just fills the pane.
+ * See the .preview-pane rules below. */
+/* Per-pane wrappers · each is an independently addressable slot with
+ * its own overlay controls. Pane A = top half, Pane B = bottom half. */
+.preview-pane {
+  position: absolute; left: 0; right: 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+.preview.split-topbottom .preview-pane-a {
+  top: 0; height: 50%;
+  border-bottom: 2.5px solid rgba(255, 26, 140, .8);
+  box-shadow: 0 8px 22px -8px rgba(255, 26, 140, .55);
+  z-index: 2;
+}
+.preview.split-topbottom .preview-pane-b { top: 50%; height: 50%; z-index: 1; }
+.preview-pane img.poster-a,
+.preview-pane img.poster-b {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  object-position: center 30%;
+  filter: contrast(1.05) saturate(1.1);
+}
+.preview-pane .pane-tag {
+  position: absolute; top: 6px; left: 8px;
+  z-index: 5;
+  font-family: "Geist Mono", monospace;
+  font-size: 9px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--fuchsia-b);
+  background: rgba(11, 11, 16, .78);
+  padding: 2px 7px; border-radius: 9999px;
+  border: 1px solid rgba(255, 26, 140, .5);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.preview-pane .pane-ctrl {
+  position: absolute; bottom: 6px; left: 8px; right: 8px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 6px;
+  border-radius: 9999px;
+  background: rgba(11, 11, 16, .82);
+  border: 1px solid rgba(255, 255, 255, .08);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.preview-pane:hover .pane-ctrl,
+.preview-pane:focus-within .pane-ctrl { opacity: 1; }
+.pane-btn {
+  all: unset; cursor: pointer;
+  width: 20px; height: 20px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--fuchsia); color: #fff;
+  font-size: 9px;
+  transition: transform 120ms ease, background 120ms ease;
+}
+.pane-btn:hover { transform: scale(1.08); }
+.pane-btn.pane-mute { background: rgba(255, 255, 255, .1); font-size: 11px; }
+.pane-btn.pane-mute.muted { color: #86837e; }
+.pane-btn.pane-swap { background: rgba(127, 217, 232, .15); color: var(--cyan); font-size: 11px; }
+.pane-btn.pane-swap:hover { background: rgba(127, 217, 232, .3); }
+.pane-time {
+  font-family: "Geist Mono", monospace;
+  font-size: 9.5px; color: #c8c4be;
+  min-width: 62px; text-align: center;
+}
+.pane-bar {
+  flex: 1; height: 3px; border-radius: 2px;
+  background: rgba(255, 255, 255, .1);
+  position: relative;
+}
+.pane-bar-fill {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--fuchsia), var(--fuchsia-b));
+  box-shadow: 0 0 6px rgba(255, 26, 140, .55);
+}
+
+/* Composition controls · below the preview. Sync playback / swap / add. */
+.split-ctrl {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  margin-top: 10px;
+}
+.split-ctrl-btn {
+  all: unset; cursor: pointer;
+  padding: 8px 10px;
+  border-radius: 9px;
+  font-family: "Geist Mono", monospace;
+  font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink);
+  background: rgba(11, 11, 16, .5);
+  border: 1px solid rgba(255, 255, 255, .1);
+  text-align: center;
+  transition: all 140ms ease;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+}
+.split-ctrl-btn:hover { background: rgba(255, 26, 140, .12); border-color: rgba(255, 26, 140, .45); color: #ffb0d1; }
+.split-ctrl-btn.is-primary {
+  background: linear-gradient(180deg, rgba(255, 26, 140, .3), rgba(255, 26, 140, .15));
+  border-color: rgba(255, 26, 140, .5); color: #fff;
+}
+.split-ctrl-btn.is-primary .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--fuchsia-b);
+  box-shadow: 0 0 6px var(--fuchsia-b);
+  display: inline-block;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+/* Cockpit sub-panel · Reaction module inline */
+.rmod {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(11, 11, 16, .5);
+  border: 1px solid rgba(255, 26, 140, .18);
+}
+.rmod-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.rmod-head-eb {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--fuchsia-b);
+}
+.rmod-head-sub {
+  font-family: "Geist Mono", monospace; font-size: 10px; color: #86837e;
+}
+
+/* Layout picker grid */
+.rmod-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.rmod-tile {
+  aspect-ratio: 1;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .07);
+  display: grid; place-items: center;
+  cursor: pointer; position: relative;
+  transition: all 140ms ease;
+}
+.rmod-tile img { width: 60%; height: 60%; }
+.rmod-tile:hover { background: rgba(255, 26, 140, .08); border-color: rgba(255, 26, 140, .3); }
+.rmod-tile.is-active {
+  background: linear-gradient(180deg, rgba(255, 26, 140, .3), rgba(255, 26, 140, .12));
+  border-color: var(--fuchsia);
+  box-shadow: 0 0 0 1px rgba(255, 26, 140, .55), 0 6px 18px -6px rgba(255, 26, 140, .5);
+}
+.rmod-tile.is-locked { opacity: .45; }
+.rmod-tile.is-locked::after {
+  content: "🔒";
+  position: absolute; bottom: 2px; right: 3px;
+  font-size: 8px;
+}
+.rmod-tile-label {
+  position: absolute; bottom: -18px; left: 0; right: 0;
+  text-align: center;
+  font-family: "Geist Mono", monospace; font-size: 8.5px;
+  color: #86837e; text-transform: uppercase; letter-spacing: .06em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rmod-note {
+  margin-top: 32px;
+  font-family: "Geist Mono", monospace;
+  font-size: 10px; color: #c8c4be; line-height: 1.5;
+}
+.rmod-note strong { color: var(--fuchsia-b); font-weight: 600; }
+
+/* Inspector CTA row */
+.cta-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+  margin-top: 12px;
+}
+.cta-btn {
+  padding: 9px 12px; border-radius: 10px;
+  font-family: "Geist Mono", monospace;
+  font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink);
+  border: 1px solid rgba(255, 255, 255, .12);
+  background: rgba(11, 11, 16, .35);
+  cursor: pointer;
+  text-align: center;
+}
+.cta-btn:hover { background: rgba(255, 26, 140, .12); border-color: rgba(255, 26, 140, .5); color: #ffb0d1; }
+.cta-btn.is-primary {
+  background: linear-gradient(180deg, rgba(255, 26, 140, .38), rgba(255, 26, 140, .22));
+  border-color: rgba(255, 26, 140, .55); color: #fff;
+}
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="chrome">
+    <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="title">Liquid Clips · 1440 × 900 · split-screen state</span>
+  </div>
+
+  <div class="body">
+    <!-- Sidebar -->
+    <aside class="rail">
+      <div class="brand">
+        <div class="brand-glyph"></div>
+        <div>
+          <div class="brand-eb">LIQUID · CLIPS</div>
+          <div class="brand-wm">liquid<span class="slash">/</span>clips</div>
+        </div>
+      </div>
+      <div class="rail-label">Console · Clipper</div>
+      <div class="nav-item"><img src="brand/icons/nav/home.svg" alt=""> Home</div>
+      <div class="nav-item"><img src="brand/icons/nav/create.svg" alt=""> Create</div>
+      <div class="nav-item is-active"><img src="brand/icons/nav/engine.svg" alt=""> My Clips</div>
+      <div class="nav-item"><img src="brand/icons/nav/campaigns.svg" alt=""> Campaigns</div>
+      <div class="nav-item"><img src="brand/icons/nav/community.svg" alt=""> Community</div>
+      <div class="nav-item"><img src="brand/icons/nav/earn.svg" alt=""> Earn</div>
+      <div class="nav-item"><img src="brand/icons/nav/channels.svg" alt=""> Channels</div>
+      <div class="nav-item"><img src="brand/icons/nav/schedule.svg" alt=""> Schedule</div>
+      <div class="rail-foot">
+        <div class="nav-item"><img src="brand/icons/nav/settings.svg" alt=""> Settings</div>
+        <div class="nav-item"><img src="brand/icons/nav/support.svg" alt=""> Support</div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main">
+      <div class="hdr">
+        <span class="hdr-title">Uncle Daniel — Wednesday drop</span>
+        <span class="hdr-sep">·</span>
+        <span class="hdr-live">LIVE</span>
+        <span class="hdr-spacer"></span>
+        <span class="hdr-pill">6/6</span>
+        <button class="hdr-chev">▾</button>
+      </div>
+
+      <div class="chips">
+        <div class="chips-l">
+          <span class="chip is-on">Clips · 6</span>
+          <span class="chip">YouTube</span>
+          <span class="chip">Files</span>
+        </div>
+        <div class="chips-r">
+          <label class="chips-toggle"><input type="checkbox"> Best bits only</label>
+          <button class="gen-more">Generate more</button>
+        </div>
+      </div>
+
+      <!-- Stage · grid on left, inspector drawer on right -->
+      <div class="stage">
+        <div class="grid-col">
+          <!-- 6 cards · 3 use split-screen compositions, one is focused (drawer open) -->
+
+          <!-- Card 1 · top/bottom split · FOCUSED (drawer shows this) -->
+          <div class="card card-split split-topbottom is-focused" data-idx="0">
+            <img class="poster-a" src="brand/kade/kade-shooter.webp" alt="">
+            <img class="poster-b" src="brand/kade/kade-cutting-clips.webp" alt="">
+            <span class="card-splitbadge">
+              <img src="brand/icons/action/split-screen/top-bottom.svg" alt="">
+              TOP/BOTTOM
+            </span>
+            <span class="card-score">96<span class="u">LC</span></span>
+          </div>
+
+          <!-- Card 2 · side-by-side -->
+          <div class="card card-split split-sidebyside" data-idx="1">
+            <img class="poster-a" src="brand/kade/kade-hover.webp" alt="">
+            <img class="poster-b" src="brand/kade/kade-celebration.webp" alt="">
+            <span class="card-splitbadge">
+              <img src="brand/icons/action/split-screen/side-by-side.svg" alt="">
+              SIDE/SIDE
+            </span>
+            <span class="card-score">88<span class="u">LC</span></span>
+          </div>
+
+          <!-- Card 3 · facecam corner -->
+          <div class="card card-split split-facecam" data-idx="2">
+            <img class="poster-b" src="brand/kade/kade-cutting-clips.webp" alt="">
+            <img class="poster-a" src="brand/kade/kade-shooter.webp" alt="">
+            <span class="card-splitbadge">
+              <img src="brand/icons/action/split-screen/facecam-corner.svg" alt="">
+              FACECAM
+            </span>
+            <span class="card-score">82<span class="u">LC</span></span>
+          </div>
+
+          <!-- Cards 4-6 · plain (no split) -->
+          <div class="card" data-idx="3">
+            <img class="card-poster" src="brand/kade/kade-generating-captions.webp" alt="">
+            <span class="card-score">75<span class="u">LC</span></span>
+          </div>
+          <div class="card" data-idx="4">
+            <img class="card-poster" src="brand/kade/kade-idle.webp" alt="">
+            <span class="card-score">61<span class="u">LC</span></span>
+          </div>
+          <div class="card" data-idx="5">
+            <img class="card-poster" src="brand/kade/kade-import-footage.webp" alt="">
+            <span class="card-score">58<span class="u">LC</span></span>
+          </div>
+        </div>
+
+        <!-- Inspector drawer — shows the focused clip's split composition + Reaction picker -->
+        <aside class="drawer">
+          <div class="drawer-head">
+            <span class="drawer-eb">Inspector · Clip #1</span>
+            <span class="drawer-close">×</span>
+          </div>
+
+          <!-- Preview: split composition with INDEPENDENT per-pane controls.
+               Each pane is an addressable slot (A / B) with its own play,
+               seek, mute, and swap-clip affordance. Sync toggle below
+               locks both to play together; independent mode plays them
+               separately (per Daniel: "control both separately"). -->
+          <div class="preview split-topbottom" data-sync="1">
+            <!-- Pane A -->
+            <div class="preview-pane preview-pane-a">
+              <img class="poster-a" src="brand/kade/kade-shooter.webp" alt="Pane A · reaction">
+              <span class="pane-tag">A · Reaction</span>
+              <div class="pane-ctrl">
+                <button class="pane-btn" title="Play">▶</button>
+                <span class="pane-time">0:04 / 0:12</span>
+                <span class="pane-bar"><span class="pane-bar-fill" style="width:33%"></span></span>
+                <button class="pane-btn pane-mute" title="Mute">🔊</button>
+                <button class="pane-btn pane-swap" title="Swap this pane's clip">⇋</button>
+              </div>
+            </div>
+            <!-- Pane B -->
+            <div class="preview-pane preview-pane-b">
+              <img class="poster-b" src="brand/kade/kade-cutting-clips.webp" alt="Pane B · base clip">
+              <span class="pane-tag">B · Base clip</span>
+              <div class="pane-ctrl">
+                <button class="pane-btn" title="Play">▶</button>
+                <span class="pane-time">0:12 / 0:28</span>
+                <span class="pane-bar"><span class="pane-bar-fill" style="width:43%"></span></span>
+                <button class="pane-btn pane-mute muted" title="Muted">🔇</button>
+                <button class="pane-btn pane-swap" title="Swap this pane's clip">⇋</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Composition controls · below preview -->
+          <div class="split-ctrl">
+            <button class="split-ctrl-btn is-primary">
+              <span class="dot"></span> Sync playback
+            </button>
+            <button class="split-ctrl-btn">
+              ⇅ Swap A ↔ B
+            </button>
+            <button class="split-ctrl-btn">
+              + Add clip
+            </button>
+          </div>
+
+          <!-- Reaction module — layout picker with active selection -->
+          <div class="rmod">
+            <div class="rmod-head">
+              <span class="rmod-head-eb">Reaction layout</span>
+              <span class="rmod-head-sub">Top / bottom · active</span>
+            </div>
+            <div class="rmod-grid">
+              <div class="rmod-tile">
+                <img src="brand/icons/action/split-screen/facecam-corner.svg" alt="">
+                <span class="rmod-tile-label">Facecam</span>
+              </div>
+              <div class="rmod-tile">
+                <img src="brand/icons/action/split-screen/side-by-side.svg" alt="">
+                <span class="rmod-tile-label">Side/side</span>
+              </div>
+              <div class="rmod-tile is-active">
+                <img src="brand/icons/action/split-screen/top-bottom.svg" alt="">
+                <span class="rmod-tile-label">Top/bot</span>
+              </div>
+              <div class="rmod-tile">
+                <img src="brand/icons/action/split-screen/reaction-under-clip.svg" alt="">
+                <span class="rmod-tile-label">Under</span>
+              </div>
+              <div class="rmod-tile is-locked">
+                <img src="brand/icons/action/split-screen/before-after.svg" alt="">
+                <span class="rmod-tile-label">Before/after</span>
+              </div>
+              <div class="rmod-tile is-locked">
+                <img src="brand/icons/action/split-screen/green-screen.svg" alt="">
+                <span class="rmod-tile-label">Green</span>
+              </div>
+              <div class="rmod-tile is-locked">
+                <img src="brand/icons/action/split-screen/podcast-commentary.svg" alt="">
+                <span class="rmod-tile-label">Podcast</span>
+              </div>
+              <div class="rmod-tile is-locked">
+                <img src="brand/icons/action/split-screen/quote-reaction.svg" alt="">
+                <span class="rmod-tile-label">Quote</span>
+              </div>
+            </div>
+            <p class="rmod-note">
+              <strong>Top / bottom</strong> · reaction rendered on top half,
+              clip on bottom. Fuchsia divider bakes into export. Locked
+              layouts unlock at <strong>Pro</strong> and <strong>Growth</strong>.
+            </p>
+          </div>
+
+          <div class="cta-row">
+            <button class="cta-btn is-primary">Edit clip</button>
+            <button class="cta-btn">Schedule</button>
+            <button class="cta-btn">Export</button>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

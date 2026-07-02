@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Liquid Clips · settings · Roster — three clipper portraits stacked. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FF1A8C" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" role="img" aria-hidden="true">
+  <!-- Back portrait -->
+  <circle cx="7" cy="9" r="2.4"/>
+  <path d="M2.5 17.5c.4-2.6 2.3-4.5 4.5-4.5s4.1 1.9 4.5 4.5"/>
+  <!-- Middle portrait -->
+  <circle cx="12" cy="7.5" r="2.7"/>
+  <path d="M6.5 18c.4-3 2.7-5.2 5.5-5.2s5.1 2.2 5.5 5.2"/>
+  <!-- Front portrait -->
+  <circle cx="17" cy="9" r="2.4"/>
+  <path d="M12.5 17.5c.4-2.6 2.3-4.5 4.5-4.5s4.1 1.9 4.5 4.5"/>
+</svg>

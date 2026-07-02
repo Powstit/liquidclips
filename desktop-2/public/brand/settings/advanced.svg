@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Liquid Clips · settings · Advanced — gear + power switch composite. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FF1A8C" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" role="img" aria-hidden="true">
+  <!-- Gear -->
+  <circle cx="9" cy="12" r="3"/>
+  <path d="M9 4v2M9 18v2M4 12H2M16 12h-2M5.4 8.4L4 7M14 17l-1.4-1.4M5.4 15.6L4 17M14 7l-1.4 1.4"/>
+  <!-- Power switch -->
+  <path d="M17.5 8v4"/>
+  <path d="M15 10.5a3 3 0 1 0 5 0"/>
+</svg>

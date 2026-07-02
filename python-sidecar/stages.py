@@ -2687,7 +2687,17 @@ def _read_openai_key() -> str | None:
 
 # --- Overlay (b-roll) — on-demand per clip ----------------------------------
 
-OVERLAY_TYPES = {"stack-bottom", "stack-top", "split-left", "split-right", "pip-br", "pip-bl", "pip-tr-circle"}
+OVERLAY_TYPES = {
+    "stack-bottom",
+    "stack-top",
+    "split-left",
+    "split-right",
+    "split-top-bottom",
+    "split-bottom-top",
+    "pip-br",
+    "pip-bl",
+    "pip-tr-circle",
+}
 
 
 def apply_overlay_to_clip(
@@ -2849,6 +2859,27 @@ def _build_overlay_filter(overlay_type: str, out_w: int, out_h: int) -> str:
     the b-roll. `setsar=1` normalises sample aspect so vstack doesn't fail on
     sources that report non-square pixels.
     """
+    if overlay_type in {"split-top-bottom", "split-bottom-top"}:
+        # Desktop 2 rigid two-source composer. Both panes occupy exactly
+        # half the export while preserving cover-crop behaviour. Legacy
+        # stack-top/stack-bottom remain 30/70 for old projects.
+        top_h = (out_h // 2) & ~1
+        bot_h = out_h - top_h
+        if overlay_type == "split-top-bottom":
+            filters = (
+                f"[1:v]scale={out_w}:{top_h}:force_original_aspect_ratio=increase,"
+                f"crop={out_w}:{top_h},setsar=1[top];"
+                f"[0:v]scale={out_w}:{bot_h}:force_original_aspect_ratio=increase,"
+                f"crop={out_w}:{bot_h},setsar=1[bot];"
+            )
+        else:
+            filters = (
+                f"[0:v]scale={out_w}:{top_h}:force_original_aspect_ratio=increase,"
+                f"crop={out_w}:{top_h},setsar=1[top];"
+                f"[1:v]scale={out_w}:{bot_h}:force_original_aspect_ratio=increase,"
+                f"crop={out_w}:{bot_h},setsar=1[bot];"
+            )
+        return filters + "[top][bot]vstack[v]"
     if overlay_type == "stack-bottom":
         # v0.7.46 — Daniel asked for a 30 / 70 split (reactor top, viral
         # source bottom) because the reaction format treats the b-roll as
