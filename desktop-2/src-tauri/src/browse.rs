@@ -24,8 +24,15 @@ use tauri::{
     webview::WebviewBuilder, AppHandle, LogicalPosition, LogicalSize, Manager, WebviewUrl,
 };
 use tauri_plugin_opener::OpenerExt;
+use serde::Serialize;
 
 pub const PANEL_LABEL: &str = "browse_panel";
+
+#[derive(Serialize)]
+pub struct BrowseOpenOutcome {
+    opened_in_app: bool,
+    system_fallback: bool,
+}
 
 const BLOCKED_PATH_FRAGMENTS: &[&str] = &[
     "/checkout",
@@ -55,15 +62,20 @@ pub async fn open_browse_panel(
     y: f64,
     width: f64,
     height: f64,
-) -> Result<(), String> {
+) -> Result<BrowseOpenOutcome, String> {
     let parsed_url: tauri::Url = url
         .parse()
         .map_err(|e| format!("invalid url: {e}"))?;
 
     // Commerce filter — open in system browser instead of in-app.
     if is_commerce_url(&parsed_url) {
-        let _ = app.opener().open_url(parsed_url.to_string(), None::<&str>);
-        return Ok(());
+        app.opener()
+            .open_url(parsed_url.to_string(), None::<&str>)
+            .map_err(|e| format!("system browser fallback failed: {e}"))?;
+        return Ok(BrowseOpenOutcome {
+            opened_in_app: false,
+            system_fallback: true,
+        });
     }
 
     // Re-navigate if already open.
@@ -74,7 +86,10 @@ pub async fn open_browse_panel(
         // Update position in case React layout changed since last open.
         let _ = existing.set_position(LogicalPosition::new(x.max(0.0), y.max(0.0)));
         let _ = existing.set_size(LogicalSize::new(width.max(120.0), height.max(120.0)));
-        return Ok(());
+        return Ok(BrowseOpenOutcome {
+            opened_in_app: true,
+            system_fallback: false,
+        });
     }
 
     // Spawn new child webview with commerce-redirect navigation filter.
@@ -121,7 +136,10 @@ pub async fn open_browse_panel(
         LogicalSize::new(width.max(120.0), height.max(120.0)),
     )
     .map_err(|e| format!("add_child failed: {e}"))?;
-    Ok(())
+    Ok(BrowseOpenOutcome {
+        opened_in_app: true,
+        system_fallback: false,
+    })
 }
 
 /// Resize / reposition the existing webview without re-navigating.

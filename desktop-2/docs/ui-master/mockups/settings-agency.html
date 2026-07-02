@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Liquid Clips · Settings · Agency · Stage 5 mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; font-family: "Inter", ui-sans-serif, system-ui, sans-serif; color: var(--ink); background: #101018; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.canvas { width: 1440px; height: 900px; border-radius: 14px; overflow: hidden; position: relative; background: radial-gradient(1600px 900px at 80% -20%, rgba(255, 26, 140, .18), transparent 60%), radial-gradient(1200px 900px at 10% 110%, rgba(127, 217, 232, .08), transparent 60%), linear-gradient(180deg, #0a0a12 0%, #06060b 100%); box-shadow: 0 40px 100px -30px rgba(0, 0, 0, .8), 0 0 0 1px rgba(255, 255, 255, .05); }
+.chrome { position: absolute; top: 0; left: 0; right: 0; height: 32px; display: flex; align-items: center; padding: 0 14px; background: rgba(6, 6, 12, .6); border-bottom: 1px solid var(--line); z-index: 10; }
+.chrome .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; } .chrome .r { background: #ff5f56; } .chrome .y { background: #ffbd2e; } .chrome .g { background: #27c93f; }
+.chrome .title { flex: 1; text-align: center; font-family: "Geist Mono", monospace; font-size: 11px; letter-spacing: .16em; color: #86837e; text-transform: uppercase; }
+.body { position: absolute; top: 32px; left: 0; right: 0; bottom: 0; display: flex; }
+
+/* Sidebar */
+.rail { width: 244px; flex-shrink: 0; padding: 22px 14px 18px; border-right: 1px solid var(--line); background: linear-gradient(180deg, rgba(10, 10, 16, .62), rgba(10, 10, 16, .32) 60%, rgba(10, 10, 16, .62)); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); display: flex; flex-direction: column; }
+.brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+.brand-glyph { width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, #7fd9e8, #ff1a8c 140%); box-shadow: 0 8px 20px -6px rgba(127, 217, 232, .5); }
+.brand-eb { font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .3em; color: #86837e; text-transform: uppercase; }
+.brand-wm { font-weight: 600; font-size: 15px; letter-spacing: -.02em; }
+.brand-wm .slash { color: var(--cyan); margin: 0 1px; }
+.rail-label { font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .18em; color: #504e4a; text-transform: uppercase; padding: 6px 4px; margin-top: 12px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; color: #c8c4be; cursor: pointer; font-size: 13px; font-weight: 500; }
+.nav-item img { width: 16px; height: 16px; opacity: .78; }
+.nav-item.is-active { background: linear-gradient(180deg, rgba(127, 217, 232, .22), rgba(127, 217, 232, .08)); color: #fff; box-shadow: inset 0 0 0 1px rgba(127, 217, 232, .35); }
+.nav-item.is-active img { opacity: 1; filter: drop-shadow(0 0 6px rgba(127, 217, 232, .5)); }
+.rail-foot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); }
+
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.hdr { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 22px; border-bottom: 1px solid rgba(127, 217, 232, .28); background: rgba(11, 11, 16, .28); }
+.hdr-title { font-family: "Geist Mono", monospace; font-size: 13px; font-weight: 600; color: var(--ink); }
+.hdr-sub { font-family: "Geist Mono", monospace; font-size: 10.5px; letter-spacing: .1em; color: var(--dim); }
+.hdr-spacer { flex: 1; }
+.hdr-mode { display: inline-flex; align-items: center; gap: 4px; padding: 3px; border-radius: 9999px; background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .08); }
+.hdr-mode-btn { padding: 4px 12px; border-radius: 9999px; font-family: "Geist Mono", monospace; font-size: 10.5px; letter-spacing: .12em; color: var(--dim); text-transform: uppercase; cursor: pointer; }
+.hdr-mode-btn.is-on { background: linear-gradient(135deg, var(--cyan), #14b8a6); color: #0a0a10; box-shadow: 0 0 0 1px rgba(127, 217, 232, .55); }
+
+/* Identity strip · cyan-tinted for agency mode */
+.identity { flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 14px 22px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, rgba(127, 217, 232, .1), rgba(11, 11, 16, .1)); }
+.id-avatar { width: 56px; height: 56px; border-radius: 14px; overflow: hidden; border: 1.5px solid rgba(127, 217, 232, .5); box-shadow: 0 8px 20px -8px rgba(127, 217, 232, .5); background: #0a0a10; position: relative; flex-shrink: 0; }
+.id-avatar img { width: 100%; height: 100%; object-fit: cover; object-position: center 25%; }
+.id-avatar::after { content: ""; position: absolute; bottom: 3px; right: 3px; width: 12px; height: 12px; border-radius: 50%; background: #4ade80; border: 2px solid #0a0a10; box-shadow: 0 0 6px #4ade80; }
+.id-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.id-name-row { display: flex; align-items: baseline; gap: 10px; }
+.id-name { font-size: 20px; font-weight: 700; letter-spacing: -.01em; color: var(--ink); }
+.id-handle { font-family: "Geist Mono", monospace; font-size: 12px; color: var(--cyan); }
+.id-meta { font-family: "Geist Mono", monospace; font-size: 10.5px; color: var(--dim); letter-spacing: .06em; }
+.id-meta strong { color: var(--ink); font-weight: 600; }
+.id-spacer { flex: 1; }
+.id-tier { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 9999px; background: rgba(127, 217, 232, .1); border: 1px solid rgba(127, 217, 232, .35); }
+.id-tier-img { width: 26px; height: 26px; border-radius: 50%; overflow: hidden; background: #0a0a10; }
+.id-tier-img img { width: 100%; height: 100%; object-fit: cover; }
+.id-tier-name { font-family: "Geist Mono", monospace; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink); }
+.id-toggle { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 9999px; background: rgba(74, 222, 128, .12); border: 1px solid rgba(74, 222, 128, .4); color: #4ade80; font-family: "Geist Mono", monospace; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; }
+.id-toggle .sw { width: 26px; height: 14px; border-radius: 9999px; background: rgba(74, 222, 128, .8); position: relative; }
+.id-toggle .sw::after { content: ""; position: absolute; top: 2px; right: 2px; width: 10px; height: 10px; border-radius: 50%; background: #fff; }
+
+.cockpit { flex: 1; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+
+/* Tab rail */
+.tabs { border-right: 1px solid var(--line); padding: 16px 10px; display: flex; flex-direction: column; gap: 3px; overflow-y: auto; min-height: 0; }
+.tabs-eb { font-family: "Geist Mono", monospace; font-size: 9.5px; letter-spacing: .22em; text-transform: uppercase; color: var(--dim); padding: 4px 10px 6px; margin-top: 10px; }
+.tabs-eb:first-child { margin-top: 0; }
+.tab { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #c8c4be; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; }
+.tab:hover { background: rgba(255, 255, 255, .03); color: var(--ink); }
+.tab img { width: 16px; height: 16px; opacity: .78; }
+.tab.is-active { background: linear-gradient(180deg, rgba(127, 217, 232, .22), rgba(127, 217, 232, .08)); color: #fff; border-color: rgba(127, 217, 232, .35); }
+.tab.is-active img { opacity: 1; filter: drop-shadow(0 0 6px rgba(127, 217, 232, .5)); }
+.tab .tab-badge { margin-left: auto; padding: 1px 6px; border-radius: 9999px; background: rgba(127, 217, 232, .18); color: var(--cyan); font-family: "Geist Mono", monospace; font-size: 9.5px; }
+
+/* Content pane */
+.pane { padding: 20px 24px; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 18px; }
+
+/* Roster hero */
+.roster-hero {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 18px; align-items: center;
+  padding: 18px 22px;
+  border-radius: 16px;
+  background: radial-gradient(500px 300px at 15% 20%, rgba(127, 217, 232, .16), transparent 60%), linear-gradient(180deg, rgba(127, 217, 232, .08), rgba(11, 11, 16, .3));
+  border: 1px solid rgba(127, 217, 232, .3);
+}
+.roster-hero-copy .eb { font-family: "Geist Mono", monospace; font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: var(--cyan); }
+.roster-hero-copy .title { font-size: 22px; font-weight: 700; letter-spacing: -.015em; color: var(--ink); margin-top: 4px; }
+.roster-hero-stat { text-align: right; }
+.roster-hero-stat .num { font-size: 26px; font-weight: 700; color: var(--ink); letter-spacing: -.02em; }
+.roster-hero-stat .num-cy { color: var(--cyan); }
+.roster-hero-stat .lbl { font-family: "Geist Mono", monospace; font-size: 9.5px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); margin-top: 2px; }
+.roster-hero-add {
+  padding: 12px 18px; border-radius: 12px;
+  background: linear-gradient(180deg, var(--cyan), #14b8a6);
+  color: #0a0a10; font-family: "Geist Mono", monospace; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700;
+  cursor: pointer; border: 0;
+  box-shadow: 0 10px 22px -6px rgba(127, 217, 232, .55);
+}
+
+/* Roster table */
+.roster {
+  border-radius: 14px;
+  background: rgba(11, 11, 16, .4);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.roster-thead {
+  display: grid;
+  grid-template-columns: 32px 1.4fr 1fr 1fr 100px 100px 32px;
+  gap: 12px; align-items: center;
+  padding: 12px 18px;
+  background: rgba(11, 11, 16, .5);
+  border-bottom: 1px solid var(--line);
+  font-family: "Geist Mono", monospace;
+  font-size: 9.5px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim);
+}
+.roster-row {
+  display: grid;
+  grid-template-columns: 32px 1.4fr 1fr 1fr 100px 100px 32px;
+  gap: 12px; align-items: center;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+  transition: background 140ms ease;
+}
+.roster-row:last-child { border-bottom: 0; }
+.roster-row:hover { background: rgba(127, 217, 232, .05); }
+.r-avatar { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--cyan); font-family: "Geist Mono", monospace; font-weight: 700; font-size: 12px; background: rgba(127, 217, 232, .1); border: 1px solid rgba(127, 217, 232, .25); }
+.r-name { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.r-handle { font-family: "Geist Mono", monospace; font-size: 10.5px; color: var(--dim); margin-top: 1px; }
+.r-cell { font-family: "Geist Mono", monospace; font-size: 11.5px; color: var(--ink); }
+.r-cell strong { color: var(--cyan); font-weight: 600; }
+.r-tier {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 8px; border-radius: 9999px;
+  font-family: "Geist Mono", monospace; font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  background: rgba(255, 26, 140, .1); border: 1px solid rgba(255, 26, 140, .3); color: var(--fuchsia-b);
+}
+.r-tier.pro { background: rgba(127, 217, 232, .1); border-color: rgba(127, 217, 232, .3); color: var(--cyan); }
+.r-tier.solo { background: rgba(74, 222, 128, .1); border-color: rgba(74, 222, 128, .3); color: #4ade80; }
+.r-split { font-family: "Geist Mono", monospace; font-size: 12px; font-weight: 700; color: var(--ink); text-align: right; }
+.r-split small { color: var(--dim); font-weight: 500; font-size: 9.5px; letter-spacing: .1em; }
+.r-earned { text-align: right; font-family: "Geist Mono", monospace; font-size: 12.5px; font-weight: 700; color: #4ade80; }
+.r-menu { color: var(--dim); text-align: center; cursor: pointer; }
+.r-menu:hover { color: var(--cyan); }
+
+/* Two-up secondary cards */
+.two-up { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.card {
+  padding: 18px 20px;
+  border-radius: 14px;
+  background: rgba(11, 11, 16, .4);
+  border: 1px solid var(--line);
+}
+.card-eb { font-family: "Geist Mono", monospace; font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: var(--cyan); margin-bottom: 12px; }
+.card-title { font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.card-sub { font-size: 12px; color: var(--dim); margin-bottom: 12px; }
+.card-list { display: flex; flex-direction: column; gap: 8px; }
+.card-list-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; border-radius: 9px;
+  background: rgba(255, 255, 255, .03);
+}
+.card-list-row .l { display: flex; align-items: center; gap: 10px; }
+.card-list-row .l img { width: 24px; height: 24px; border-radius: 6px; object-fit: cover; }
+.card-list-row .lbl { font-size: 12.5px; color: var(--ink); }
+.card-list-row .sub { font-family: "Geist Mono", monospace; font-size: 10px; color: var(--dim); margin-top: 1px; }
+.card-list-row .r { font-family: "Geist Mono", monospace; font-size: 11.5px; color: var(--cyan); font-weight: 600; }
+.card-stat-row { display: flex; align-items: baseline; gap: 8px; }
+.card-stat-num { font-size: 32px; font-weight: 700; color: var(--ink); letter-spacing: -.02em; }
+.card-stat-unit { font-family: "Geist Mono", monospace; font-size: 10px; letter-spacing: .12em; color: var(--dim); text-transform: uppercase; }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="chrome">
+    <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="title">Liquid Clips · Settings · Agency · 1440 × 900</span>
+  </div>
+
+  <div class="body">
+    <aside class="rail">
+      <div class="brand">
+        <div class="brand-glyph"></div>
+        <div>
+          <div class="brand-eb">LIQUID · CLIPS</div>
+          <div class="brand-wm">liquid<span class="slash">/</span>clips</div>
+        </div>
+      </div>
+      <div class="rail-label">Console · Agency</div>
+      <div class="nav-item"><img src="brand/icons/nav/home.svg" alt=""> Home</div>
+      <div class="nav-item"><img src="brand/icons/nav/create.svg" alt=""> Create</div>
+      <div class="nav-item"><img src="brand/icons/nav/campaigns.svg" alt=""> Campaigns</div>
+      <div class="nav-item"><img src="brand/icons/nav/library.svg" alt=""> Submissions</div>
+      <div class="nav-item"><img src="brand/icons/nav/community.svg" alt=""> Community</div>
+      <div class="nav-item"><img src="brand/icons/nav/earn.svg" alt=""> Earn</div>
+      <div class="nav-item"><img src="brand/icons/nav/channels.svg" alt=""> Channels</div>
+      <div class="nav-item"><img src="brand/icons/nav/schedule.svg" alt=""> Schedule</div>
+      <div class="rail-foot">
+        <div class="nav-item is-active"><img src="brand/icons/nav/settings.svg" alt=""> Settings</div>
+        <div class="nav-item"><img src="brand/icons/nav/support.svg" alt=""> Support</div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <div class="hdr">
+        <span class="hdr-title">Settings</span>
+        <span class="hdr-sub">· agency cockpit</span>
+        <span class="hdr-spacer"></span>
+        <span class="hdr-mode">
+          <span class="hdr-mode-btn">CLIPPER</span>
+          <span class="hdr-mode-btn is-on">AGENCY</span>
+        </span>
+      </div>
+
+      <div class="identity">
+        <div class="id-avatar"><img src="brand/kade/kade-campaign-mode.webp" alt=""></div>
+        <div class="id-copy">
+          <div class="id-name-row">
+            <span class="id-name">Daniel Diyepriye Beauty</span>
+            <span class="id-handle">@ddbeauty</span>
+          </div>
+          <div class="id-meta">
+            <strong>Agency tier</strong> · $99/mo · 12 clippers · workspace since 6 Jun 2026
+          </div>
+        </div>
+        <span class="id-spacer"></span>
+        <span class="id-tier">
+          <span class="id-tier-img"><img src="brand/tiers/growth.png" alt=""></span>
+          <span class="id-tier-name">Agency</span>
+        </span>
+        <button class="id-toggle"><span class="sw"></span>Online</button>
+      </div>
+
+      <div class="cockpit">
+        <nav class="tabs">
+          <div class="tabs-eb">Common</div>
+          <div class="tab"><img src="brand/nav-badges/settings.png" alt=""> Account</div>
+          <div class="tab"><img src="brand/nav-badges/payouts.png" alt=""> Payouts</div>
+          <div class="tab"><img src="brand/settings/devices.svg" alt=""> Devices</div>
+          <div class="tab"><img src="brand/settings/notifs.svg" alt=""> Notifications</div>
+          <div class="tab"><img src="brand/icons/nav/support.svg" alt=""> Support</div>
+          <div class="tab"><img src="brand/settings/advanced.svg" alt=""> Advanced</div>
+
+          <div class="tabs-eb">Agency</div>
+          <div class="tab"><img src="brand/reward/badge-verified-campaign.svg" alt=""> Whop Sync <span class="tab-badge">✓</span></div>
+          <div class="tab is-active"><img src="brand/settings/roster.svg" alt=""> Roster <span class="tab-badge">12</span></div>
+          <div class="tab"><img src="brand/icons/metric/coins-earned.svg" alt=""> Payout split</div>
+          <div class="tab"><img src="brand/reward/stamp-approved.svg" alt=""> Rules</div>
+        </nav>
+
+        <section class="pane">
+          <!-- Roster hero -->
+          <div class="roster-hero">
+            <div class="roster-hero-copy">
+              <div class="eb">Your clippers</div>
+              <div class="title">Roster · 12 active · 3 pending invite</div>
+            </div>
+            <div class="roster-hero-stat">
+              <div class="num num-cy">$3,240</div>
+              <div class="lbl">This month · payouts</div>
+            </div>
+            <div class="roster-hero-stat">
+              <div class="num">247</div>
+              <div class="lbl">Clips shipped · 30d</div>
+            </div>
+            <button class="roster-hero-add">+ Add clipper</button>
+          </div>
+
+          <!-- Roster table -->
+          <div class="roster">
+            <div class="roster-thead">
+              <span></span>
+              <span>Clipper</span>
+              <span>Tier</span>
+              <span>Clips · 30d</span>
+              <span style="text-align:right;">Split</span>
+              <span style="text-align:right;">Earned · 30d</span>
+              <span></span>
+            </div>
+
+            <div class="roster-row">
+              <span class="r-avatar">L</span>
+              <div>
+                <div class="r-name">Lucia Reyes</div>
+                <div class="r-handle">@lucia</div>
+              </div>
+              <span class="r-tier pro">Pro</span>
+              <span class="r-cell"><strong>42</strong> clips</span>
+              <span class="r-split">70%<small> agency</small></span>
+              <span class="r-earned">$620</span>
+              <span class="r-menu">⋯</span>
+            </div>
+
+            <div class="roster-row">
+              <span class="r-avatar" style="color:#fbbf24;background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.3);">M</span>
+              <div>
+                <div class="r-name">Mari Osei</div>
+                <div class="r-handle">@mari</div>
+              </div>
+              <span class="r-tier pro">Pro</span>
+              <span class="r-cell"><strong>38</strong> clips</span>
+              <span class="r-split">70%<small> agency</small></span>
+              <span class="r-earned">$540</span>
+              <span class="r-menu">⋯</span>
+            </div>
+
+            <div class="roster-row">
+              <span class="r-avatar" style="color:#fbbf24;background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.3);">R</span>
+              <div>
+                <div class="r-name">Rio Nakamura</div>
+                <div class="r-handle">@rio</div>
+              </div>
+              <span class="r-tier">Growth</span>
+              <span class="r-cell"><strong>31</strong> clips</span>
+              <span class="r-split">65%<small> agency</small></span>
+              <span class="r-earned">$418</span>
+              <span class="r-menu">⋯</span>
+            </div>
+
+            <div class="roster-row">
+              <span class="r-avatar" style="color:#4ade80;background:rgba(74,222,128,.1);border-color:rgba(74,222,128,.3);">K</span>
+              <div>
+                <div class="r-name">Keke Adebayo</div>
+                <div class="r-handle">@keke</div>
+              </div>
+              <span class="r-tier solo">Solo</span>
+              <span class="r-cell"><strong>22</strong> clips</span>
+              <span class="r-split">60%<small> agency</small></span>
+              <span class="r-earned">$264</span>
+              <span class="r-menu">⋯</span>
+            </div>
+
+            <div class="roster-row">
+              <span class="r-avatar" style="color:#4ade80;background:rgba(74,222,128,.1);border-color:rgba(74,222,128,.3);">S</span>
+              <div>
+                <div class="r-name">Sami Tran</div>
+                <div class="r-handle">@sami · new hire · 8 days</div>
+              </div>
+              <span class="r-tier solo">Solo</span>
+              <span class="r-cell"><strong>14</strong> clips</span>
+              <span class="r-split">60%<small> agency</small></span>
+              <span class="r-earned">$168</span>
+              <span class="r-menu">⋯</span>
+            </div>
+
+            <div class="roster-row" style="opacity:.65;">
+              <span class="r-avatar">J</span>
+              <div>
+                <div class="r-name">Jules Park</div>
+                <div class="r-handle">@jules · invite sent 2d ago</div>
+              </div>
+              <span class="r-tier" style="opacity:.5;">Pending</span>
+              <span class="r-cell" style="color:var(--dim);">—</span>
+              <span class="r-split" style="color:var(--dim);">—</span>
+              <span class="r-earned" style="color:var(--dim);">—</span>
+              <span class="r-menu">⋯</span>
+            </div>
+          </div>
+
+          <!-- Two-up: Whop sync + Payout split preview -->
+          <div class="two-up">
+            <div class="card">
+              <div class="card-eb">Whop sync · ✓ connected</div>
+              <div class="card-title">liquid-clips-agency</div>
+              <div class="card-sub">Membership rail · seat sync · role gate · last sync 2m ago</div>
+              <div class="card-list">
+                <div class="card-list-row">
+                  <div class="l">
+                    <img src="brand/reward/badge-verified-campaign.svg" alt="">
+                    <div>
+                      <div class="lbl">Agency plan seats</div>
+                      <div class="sub">12 of 20 active · 3 pending</div>
+                    </div>
+                  </div>
+                  <span class="r">15/20</span>
+                </div>
+                <div class="card-list-row">
+                  <div class="l">
+                    <img src="brand/icons/metric/coins-earned.svg" alt="">
+                    <div>
+                      <div class="lbl">Sui USDC payout rail</div>
+                      <div class="sub">wallet · 0xA1c…97 · verified</div>
+                    </div>
+                  </div>
+                  <span class="r">READY</span>
+                </div>
+                <div class="card-list-row">
+                  <div class="l">
+                    <img src="brand/reward/stamp-approved.svg" alt="">
+                    <div>
+                      <div class="lbl">Role gate · agency-vip</div>
+                      <div class="sub">15 members can access private rooms</div>
+                    </div>
+                  </div>
+                  <span class="r">SYNCED</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-eb">Payout split · preview</div>
+              <div class="card-stat-row">
+                <span class="card-stat-num">$3,240</span>
+                <span class="card-stat-unit">this month gross</span>
+              </div>
+              <div class="card-list" style="margin-top:12px;">
+                <div class="card-list-row">
+                  <div class="l">
+                    <div>
+                      <div class="lbl">Agency share (Ø 67%)</div>
+                      <div class="sub">To your Sui wallet, weekly</div>
+                    </div>
+                  </div>
+                  <span class="r">$2,171</span>
+                </div>
+                <div class="card-list-row">
+                  <div class="l">
+                    <div>
+                      <div class="lbl">Clipper share (Ø 33%)</div>
+                      <div class="sub">Split across 6 clippers per rules</div>
+                    </div>
+                  </div>
+                  <span class="r">$1,069</span>
+                </div>
+                <div class="card-list-row">
+                  <div class="l">
+                    <div>
+                      <div class="lbl">Platform fee · 5%</div>
+                      <div class="sub">Deducted from gross</div>
+                    </div>
+                  </div>
+                  <span class="r" style="color:var(--dim);">−$162</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -132,12 +132,20 @@ async function seedCompletedSession(page: Page) {
         runtimeMode: "mock", startedAt: now, updatedAt: now,
       }));
       window.localStorage.setItem("lc.dock.open", "1");
-      const stale: string[] = [];
-      for (let i = 0; i < window.localStorage.length; i++) {
-        const k = window.localStorage.key(i);
-        if (k && k.startsWith(`lc.clip.${slug}:`)) stale.push(k);
+      /* addInitScript runs on every same-page navigation. Clear old
+       * per-clip state only on this test's first document; step 11
+       * intentionally navigates back to Workstation to prove durability,
+       * and clearing here again would destroy the state under test. */
+      const seededKey = "lc.test.full-clipping.initialized";
+      if (window.sessionStorage.getItem(seededKey) !== "1") {
+        const stale: string[] = [];
+        for (let i = 0; i < window.localStorage.length; i++) {
+          const k = window.localStorage.key(i);
+          if (k && k.startsWith(`lc.clip.${slug}:`)) stale.push(k);
+        }
+        for (const k of stale) window.localStorage.removeItem(k);
+        window.sessionStorage.setItem(seededKey, "1");
       }
-      for (const k of stale) window.localStorage.removeItem(k);
     } catch {}
   }, FIXTURE_SLUG);
 }

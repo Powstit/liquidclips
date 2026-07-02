@@ -16,6 +16,7 @@ import { useState } from "react";
 import { usePublishStore } from "../../state/publishStore";
 import { getCampaignById } from "../../fixtures/fakeCampaigns";
 import { getModeState } from "../../shell/modeStore";
+import { openInApp } from "../../lib/openInApp";
 
 interface SubmitToWhopModalProps {
   open: boolean;
@@ -60,8 +61,8 @@ export function SubmitToWhopModal({
       postedLink: postedLink.trim(),
       note: note.trim(),
     });
-    window.open(whopSubmitUrl(campaignSlug, clipId), "_blank", "noopener");
-    onSubmitted("Opened on Whop. Track approval there.");
+    void openInApp(whopSubmitUrl(campaignSlug, clipId), { intent: "read-only" });
+    onSubmitted("Opened Whop in Browse. Track approval there.");
     setPostedLink("");
     setNote("");
     onClose();

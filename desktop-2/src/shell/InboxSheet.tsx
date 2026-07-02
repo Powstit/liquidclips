@@ -19,7 +19,7 @@ import {
   retryEmail,
 } from "../inbox";
 import type { InboxRecord } from "../inbox";
-import { openSmart } from "../lib/openSmart";
+import { openInApp } from "../lib/openInApp";
 import "./InboxSheet.css";
 
 interface InboxSheetProps {
@@ -116,9 +116,9 @@ export function InboxSheet({ open, onClose, onUnreadChange }: InboxSheetProps) {
       return;
     }
     try {
-      await openSmart(m.href);
+      await openInApp(m.href, { intent: "read-only" });
     } catch {
-      /* honest no-op · openSmart already handled the failure path */
+      /* The CTA stays read; the overlay/system fallback owns error feedback. */
     }
   };
 

@@ -31,13 +31,6 @@ import "./CockpitDock.css";
 
 const DOCK_OPEN_KEY = "lc.dock.open.v2";
 
-function readPersistedOpen(): boolean {
-  try {
-    const raw = window.localStorage.getItem(DOCK_OPEN_KEY);
-    return raw === "1";
-  } catch { return false; }
-}
-
 export type ModuleKey =
   | "reaction" | "caption" | "trim" | "style" | "schedule" | "publish";
 
@@ -62,20 +55,27 @@ const PILLS: ReadonlyArray<PillSpec<ModuleKey>> = [
  * Required ancestors:
  *   <CockpitProvider clip={focusedClip} slug={slug}> ... <CockpitDock /> ...
  */
-export function CockpitDock() {
+export function CockpitDock({
+  initialModule = "reaction",
+}: {
+  initialModule?: ModuleKey;
+}) {
   const modalHost = useModalPortal();
   if (!modalHost) return null;
-  return createPortal(<DockShell />, modalHost);
+  return createPortal(<DockShell initialModule={initialModule} />, modalHost);
 }
 
-function DockShell() {
-  const [active, setActive] = useState<ModuleKey>("reaction");
+function DockShell({ initialModule }: { initialModule: ModuleKey }) {
+  const [active, setActive] = useState<ModuleKey>(initialModule);
   // The workbench stays visible until the user chooses a tool. Opening a clip
   // action or a tab expands the dock and the preference then persists.
   // persists across reloads, and emits a CSS var on `<html>` so Workstation can
   // size its padding-bottom dynamically (Bug 3). The head strip stays visible
   // when collapsed so tabs + clip pill + Back-to-Home remain reachable.
-  const [open, setOpen] = useState<boolean>(() => readPersistedOpen());
+  // Mounting the dock is itself an explicit editor-open intent. Initialise it
+  // expanded instead of waiting for the same bus event that caused the mount:
+  // that event has already been dispatched by the time this component exists.
+  const [open, setOpen] = useState<boolean>(true);
   const [scheduleOutputPath, setScheduleOutputPath] = useState<string | undefined>();
   const { focusedClip } = useCockpit();
   const rootRef = useRef<HTMLElement | null>(null);
@@ -117,6 +117,17 @@ function DockShell() {
   // Persist open state.
   useEffect(() => {
     try { window.localStorage.setItem(DOCK_OPEN_KEY, open ? "1" : "0"); } catch { /* noop */ }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
   // Bug 3 · publish the live dock height as `--lc-dock-h` on the documentElement.

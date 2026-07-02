@@ -175,9 +175,8 @@ test.describe("Settings Avatar Journey", () => {
       await rec.step("Settings route renders · billing/subscription rows present", async () => {
         // The Design OS settings route shows "Plan & access" with billing
         // owner + subscription status rows. 2026-06-24 split Settings into
-        // 4 tabs · the card lives on the Plan tab · click it before the
-        // visibility assertion. Real users do the same.
-        await page.locator('[role="tab"]', { hasText: /^Plan$/ }).click();
+        // The compact cockpit keeps billing and subscription truth in Payouts.
+        await page.getByRole("tab", { name: "Payouts", exact: true }).click();
         const planCard = page.locator('text=/Plan & access/i').first();
         await expect(planCard).toBeVisible({ timeout: 8_000 });
         // The "Billing owner" row should read honest value (Whop / Clerk /

@@ -183,11 +183,9 @@ test.describe("System Migration Journey", () => {
       });
 
       await rec.step("Settings · admin HQ link visible · opens account.liquidclips.app/admin", async () => {
-        // 2026-06-24 split Settings into 4 tabs (Account / Connections /
-        // Plan / Diagnostics). HQ button lives in the Plan-tab card · click
-        // the Plan tab before asserting visibility. Real admin users do
-        // the same thing.
-        await page.locator('[role="tab"]', { hasText: /^Plan$/ }).click();
+        // The compact Settings cockpit keeps the admin-only action in Payouts,
+        // beside authoritative billing/subscription state.
+        await page.getByRole("tab", { name: "Payouts", exact: true }).click();
         const hqBtn = page.locator('[data-testid="settings-open-hq"]');
         await expect(hqBtn).toBeVisible({ timeout: 6_000 });
         const hqText = (await hqBtn.textContent())?.trim() ?? "";

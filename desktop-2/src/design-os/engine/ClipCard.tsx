@@ -80,8 +80,15 @@ export function ClipCard({
     if (p.clipIdx === clip.idx) setPlatforms(p.platforms);
   });
 
-  const score = clip.score ?? 0;
-  const tone = score >= 85 ? "fx" : score >= 70 ? "cy" : score >= 55 ? "amber" : "dim";
+  // Checkpoint item 5 · distinguish "no score" (render `—`, dim tone)
+  // from "score is 0" (real value). Normalizer guarantees clip.score is
+  // finite-or-undefined; undefined = absent.
+  const hasScore = typeof clip.score === "number";
+  const score = hasScore ? (clip.score as number) : 0;
+  const scoreDisplay: number | string = hasScore ? score : "—";
+  const tone = !hasScore
+    ? "dim"
+    : score >= 85 ? "fx" : score >= 70 ? "cy" : score >= 55 ? "amber" : "dim";
 
   const flip = (action: "edit" | "schedule" | "post" | "submit") => {
     const next = nextStatusFor(action, status);
@@ -163,7 +170,7 @@ export function ClipCard({
 
           {/* Virality score · top-right (existing) */}
           <div className={`lc-clip-score lc-clip-score-${tone}`}>
-            <span className="lc-clip-score-num">{score}</span>
+            <span className="lc-clip-score-num">{scoreDisplay}</span>
             <span className="lc-clip-score-unit">LC</span>
           </div>
 

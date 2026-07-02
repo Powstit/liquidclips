@@ -16,6 +16,7 @@ import {
   clearFunnelSession,
   type FunnelSession,
 } from "../../lib/funnelSession";
+import { openInApp } from "../../lib/openInApp";
 import "./ClaimScreen.css";
 
 type Props = {
@@ -66,7 +67,13 @@ export function ClaimScreen({ sessionId, onEnterWorkbench, onAbandon }: Props) {
               <>
                 We couldn&apos;t find session <strong>{sessionId}</strong>. Open the workbench
                 anyway, or paste a new URL on{" "}
-                <a href="https://liquidclips.app" target="_blank" rel="noreferrer">
+                <a
+                  href="https://liquidclips.app"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void openInApp("https://liquidclips.app", { intent: "read-only" });
+                  }}
+                >
                   liquidclips.app
                 </a>
                 .
