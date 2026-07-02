@@ -33,7 +33,7 @@ import { motion as fm } from "framer-motion";
 import { DesignOSAppShell } from "../components/AppShell";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
 import { bus } from "../bridge";
-import { openSmart } from "../../lib/openSmart";
+import { openInApp } from "../../lib/openInApp";
 import { presets } from "../motion";
 import { BakeErrorStrip } from "../engine/BakeErrorStrip";
 import { useTierCaps } from "../state/useTierCaps";
@@ -142,7 +142,7 @@ function EarnBody() {
             className="lc-earn-journey-link"
             data-testid="earn-open-affiliate"
             data-open-url="https://liquidclips.app/refer"
-            onClick={() => { void openSmart("https://liquidclips.app/refer"); }}
+            onClick={() => { void openInApp("https://liquidclips.app/refer"); }}
           >
             Open affiliate dashboard ↗
           </button>

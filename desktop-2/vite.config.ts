@@ -2,14 +2,16 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
+const DEV_PORT = Number(process.env.VITE_DEV_PORT ?? 1420);
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   clearScreen: false,
   server: {
-    port: 1420,
+    port: DEV_PORT,
     strictPort: true,
     host: false,
-    hmr: { port: 1421 },
+    hmr: { port: DEV_PORT + 1 },
   },
   envPrefix: ["VITE_", "TAURI_"],
   define: {

@@ -44,6 +44,15 @@
 
 import { bus } from "../bridge";
 import { FIXTURE_PROJECT, type ProjectMeta, type StageName, STAGE_ORDER } from "./types";
+
+declare global {
+  interface Window {
+    /** Playwright localhost-only project overrides keyed by slug. This keeps
+     * edge-state tests at the real getProject boundary instead of
+     * skipping when the default fixture cannot represent the state. */
+    __lcDebugProjects?: Record<string, ProjectMeta>;
+  }
+}
 // Batch B (2026-06-20) — real RPC entrypoint for the 4 ported methods.
 // v2.2 Batch 1 (2026-06-24) — expanded to 14+ methods covering the daily
 // editor + clip CRUD + generation surfaces. See header for the full list.
@@ -328,6 +337,14 @@ export const sidecar = {
    *  Batch B · real RPC at desktop/src/lib/sidecar.ts:791 — method
    *  name + payload shape preserved verbatim. Iron Gate IG-002. */
   async getProject(slug: string): Promise<{ project: ProjectMeta }> {
+    const isLocalBrowserHarness =
+      typeof window !== "undefined"
+      && (window.location.protocol === "http:" || window.location.protocol === "https:")
+      && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+    if (isLocalBrowserHarness) {
+      const debugProject = window.__lcDebugProjects?.[slug];
+      if (debugProject) return { project: structuredClone(debugProject) };
+    }
     try {
       return await sidecarCall<{ project: ProjectMeta }>("get_project", { slug });
     } catch (e) {
@@ -1868,6 +1885,18 @@ function backendUrl(): string {
 function shouldTryHttpBackend(): boolean {
   if (typeof window === "undefined") return false;
   if (window.__TAURI_INTERNALS__) return true;
+  /* Browser-journey seam: localhost may opt into the real HTTP adapter so
+   * Playwright can intercept and prove live response mapping. The guard is
+   * deliberately impossible on the packaged app or production website. */
+  try {
+    const host = window.location.hostname;
+    if (
+      (host === "localhost" || host === "127.0.0.1")
+      && window.localStorage.getItem("lc.dev.force-http.v1") === "1"
+    ) {
+      return true;
+    }
+  } catch { /* storage/location unavailable · continue to env gate */ }
   /* eslint-disable @typescript-eslint/no-explicit-any */
   try {
     const v = (import.meta as any).env?.VITE_BACKEND_URL as string | undefined;

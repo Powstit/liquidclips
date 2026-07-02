@@ -153,8 +153,7 @@ export type LCEvents = {
     art: string;
   };
   /** Phase 6L-B · imperative "open this URL" request. Default subscriber
-   *  routes through openSmart (Tauri shell) → window.open → toast. A future
-   *  in-app browser overlay subscribes to this event to intercept.
+   *  routes into the globally mounted in-app Browser overlay.
    *  `mirror` distinguishes the temporary Whop mirror from a future
    *  native Liquid Clips discussion target. */
   "browse:open": {

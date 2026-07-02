@@ -17,6 +17,7 @@ import {
   startAssistedHandoff,
   type AssistedScheduleRecord,
 } from "./assistedSchedule";
+import { openInApp } from "../../lib/openInApp";
 import "./ScheduleJobDrawer.css";
 
 export interface ScheduleJobDrawerProps {
@@ -159,7 +160,14 @@ export function ScheduleJobDrawer({
         {job.status === "posted" && job.postUrl && (
           <GlassCard density="quiet" className="lc-sjd-posted">
             <span className="lc-sjd-posted-eb">Live</span>
-            <a className="lc-sjd-posted-url" href={job.postUrl} target="_blank" rel="noopener noreferrer">
+            <a
+              className="lc-sjd-posted-url"
+              href={job.postUrl}
+              onClick={(event) => {
+                event.preventDefault();
+                void openInApp(job.postUrl as string, { intent: "read-only" });
+              }}
+            >
               {job.postUrl.replace(/^https?:\/\//, "")}
             </a>
           </GlassCard>

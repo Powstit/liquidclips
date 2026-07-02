@@ -15,7 +15,7 @@
  *   - No lucide, no motion/react, no tailwind utility classes.
  */
 
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState, type CSSProperties } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { GlassCard } from "../components";
 import { bus, useEvent } from "../bridge";
@@ -71,11 +71,43 @@ export function ClipPreviewShell({ clip, onGoEngine }: ClipPreviewShellProps) {
   // reaction overlay simply doesn't mount in that context. `cockpit`
   // was already resolved above for the watermark decision; reuse it.
   const reaction = cockpit?.settings.reaction;
+  const mainVideoRef = useRef<HTMLVideoElement | null>(null);
+  const reactionVideoRef = useRef<HTMLVideoElement | null>(null);
+  const splitLayout = !!reaction && isSplitLayout(reaction.layout);
+  useEffect(() => {
+    const main = mainVideoRef.current;
+    const secondary = reactionVideoRef.current;
+    if (!main || !secondary || !reaction?.syncPlayback || !splitLayout) return;
+    const align = () => {
+      const target = Math.max(0, main.currentTime + reaction.brollOffsetS);
+      if (Math.abs(secondary.currentTime - target) > 0.25) secondary.currentTime = target;
+    };
+    const play = () => {
+      align();
+      void secondary.play().catch(() => undefined);
+    };
+    const pause = () => secondary.pause();
+    main.addEventListener("play", play);
+    main.addEventListener("pause", pause);
+    main.addEventListener("seeking", align);
+    return () => {
+      main.removeEventListener("play", play);
+      main.removeEventListener("pause", pause);
+      main.removeEventListener("seeking", align);
+    };
+  }, [reaction?.syncPlayback, reaction?.brollOffsetS, splitLayout, clip?.idx]);
   // ───── END IRON GATE IG-LC2-018 (preview overlay read) ─────
 
   if (!clip) return <ClipPreviewEmpty onGoEngine={onGoEngine} />;
 
   return (
+    /* Checkpoint item 3 · container queries must run on an ANCESTOR of
+       the element they style. Previously .lc-cps carried
+       `container-type` and was also the target of @container cps → the
+       element cannot query itself. .lc-cps-host is a semantic-free
+       wrapper that owns the container declaration so the query hits
+       .lc-cps as a descendant. */
+    <div className="lc-cps-host">
     <section className="lc-cps">
       {/* Left · video preview */}
       <GlassCard density="default" className="lc-cps-pane lc-cps-preview">
@@ -99,6 +131,8 @@ export function ClipPreviewShell({ clip, onGoEngine }: ClipPreviewShellProps) {
 
         <div
           className={`lc-cps-stage lc-cps-stage-${ratio.replace(":", "-")}`}
+          data-composite-layout={reaction?.layout ?? "solo"}
+          data-swap-panes={reaction?.swapPanes ? "1" : "0"}
           data-testid="preview-stage"
           data-watermark-visible={String(showWatermark)}
           data-watermark-tier-source={tier.source}
@@ -115,8 +149,12 @@ export function ClipPreviewShell({ clip, onGoEngine }: ClipPreviewShellProps) {
             // clip.vertical_path. See BUG-028 AFTER FIX.
             <>
               <video
+                ref={mainVideoRef}
                 key={clip.vertical_path}
-                className="lc-cps-poster"
+                className="lc-cps-poster lc-cps-main-video"
+                style={reaction && isSplitLayout(reaction.layout)
+                  ? splitPaneStyle("main", reaction.layout, reaction.swapPanes)
+                  : undefined}
                 src={reactionOverlaySrc(clip.vertical_path)}
                 controls
                 autoPlay
@@ -145,11 +183,16 @@ export function ClipPreviewShell({ clip, onGoEngine }: ClipPreviewShellProps) {
                   customer sees the baked result directly in the main video. */}
               {reaction && reaction.sourcePath && reaction.layout !== "solo" && (
                 <video
+                  ref={reactionVideoRef}
                   key={reaction.sourcePath + reaction.layout}
                   className={`lc-cps-reaction lc-cps-reaction-${reaction.layout}`}
+                  style={isSplitLayout(reaction.layout)
+                    ? splitPaneStyle("reaction", reaction.layout, reaction.swapPanes)
+                    : undefined}
                   src={reactionOverlaySrc(reaction.sourcePath)}
                   data-testid="reaction-overlay"
                   data-reaction-layout={reaction.layout}
+                  controls={splitLayout}
                   autoPlay
                   loop
                   muted={reaction.audioSource !== "broll"}
@@ -179,8 +222,22 @@ export function ClipPreviewShell({ clip, onGoEngine }: ClipPreviewShellProps) {
       <GlassCard density="default" className="lc-cps-pane lc-cps-meta">
         <header className="lc-cps-pane-head">
           <span className="lc-cps-pane-eb">Clip · #{clip.idx}</span>
-          <div className="lc-cps-score" aria-label={`Virality score ${clip.score ?? 0}`}>
-            <span className="lc-cps-score-num">{clip.score ?? 0}</span>
+          {/* Checkpoint item 5 · absent-value contract. Normalizer
+              guarantees `clip.score` is either a finite number or
+              undefined; render `—` explicitly instead of `0` so the
+              customer can distinguish "we didn't score this" from
+              "score = 0". Also fixes the ARIA label. */}
+          <div
+            className="lc-cps-score"
+            aria-label={
+              typeof clip.score === "number"
+                ? `Virality score ${clip.score}`
+                : "Virality score unavailable"
+            }
+          >
+            <span className="lc-cps-score-num">
+              {typeof clip.score === "number" ? clip.score : "—"}
+            </span>
             <span className="lc-cps-score-unit">LC</span>
           </div>
         </header>
@@ -251,6 +308,7 @@ export function ClipPreviewShell({ clip, onGoEngine }: ClipPreviewShellProps) {
         </div>
       </GlassCard>
     </section>
+    </div>
   );
 }
 
@@ -296,6 +354,41 @@ function reactionOverlaySrc(sourcePath: string): string {
     return sourcePath;
   }
   return convertFileSrc(sourcePath);
+}
+
+function splitPaneStyle(
+  pane: "main" | "reaction",
+  layout: "side-by-side" | "top-bottom",
+  swapped: boolean,
+): CSSProperties {
+  const mainFirst = swapped;
+  const isFirst = pane === "main" ? mainFirst : !mainFirst;
+  if (layout === "side-by-side") {
+    return {
+      position: "absolute",
+      top: 0,
+      right: "auto",
+      bottom: "auto",
+      left: isFirst ? 0 : "50%",
+      width: "50%",
+      height: "100%",
+    };
+  }
+  return {
+    position: "absolute",
+    top: isFirst ? 0 : "50%",
+    right: "auto",
+    bottom: "auto",
+    left: 0,
+    width: "100%",
+    height: "50%",
+  };
+}
+
+function isSplitLayout(
+  layout: string,
+): layout is "side-by-side" | "top-bottom" {
+  return layout === "side-by-side" || layout === "top-bottom";
 }
 
 function formatTime(s: number): string {

@@ -81,26 +81,31 @@
   min-height: 0;
 }
 
-/* The two-column body. Inspector lives on the right; on narrow
-   widths it collapses to a row below the grid so the app still works
-   at small window sizes. */
+/* v2.2.18 · scoped-fix step 2 · the two-column body is now a HEIGHT-
+   CONSTRAINED grid: it takes the frame's remaining height and hands
+   scroll ownership to its two children. The 320px inspector column is
+   ONLY rendered when a clip has been selected AND the inspector state
+   is open (data-inspector="1" set from Workstation.tsx). No hidden
+   inspector column below the results at narrow widths → no phantom
+   3500px pane pushing content off-screen. */
 .lc-ws-body {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   padding: 12px 14px;
-  /* Bottom breathing room above the fixed CockpitDock. */
-  padding-bottom: calc(var(--lc-dock-h, 360px) + 16px);
   box-sizing: border-box;
+  overflow: hidden;
 }
-@media (max-width: 1100px) {
-  .lc-ws-body {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
+/* Desktop · when inspector is OPEN, split into main + 320px column. */
+@media (min-width: 1100px) {
+  .lc-ws-body[data-inspector="1"] {
+    grid-template-columns: minmax(0, 1fr) 320px;
   }
 }
+/* Compact viewport · inspector becomes a floating drawer, main stays
+   full-width. See .lc-ws-body-inspector overrides below. */
 
 .lc-ws-body-main,
 .lc-ws-body-inspector {
@@ -108,10 +113,38 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* Scroll ownership lives HERE — the frame + body above are height-
+   * constrained + overflow:hidden so this pane is the only real scroll
+   * container. Dock clearance is a padding on THIS pane so the last
+   * clip / action can be scrolled fully above the fixed dock. */
   overflow-y: auto;
-  /* Custom scroll chrome that doesn't fight the cockpit palette. */
+  padding-bottom: calc(var(--lc-dock-h, 360px) + 16px);
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 26, 140, .35) transparent;
+}
+.lc-ws-body-main {
+  container-type: inline-size;
+}
+/* Compact viewport · inspector becomes a right-side drawer overlay
+   instead of stacking below the grid. */
+@media (max-width: 1099px) {
+  .lc-ws-body-inspector {
+    position: fixed;
+    top: 72px;
+    right: 0;
+    bottom: calc(var(--lc-dock-h, 360px) + 8px);
+    width: min(360px, 92vw);
+    z-index: 55;
+    padding: 14px;
+    padding-bottom: 18px;
+    background: rgba(11, 11, 16, 0.72);
+    border-left: 1px solid rgba(255, 26, 140, .28);
+    border-top-left-radius: 18px;
+    border-bottom-left-radius: 18px;
+    box-shadow: -22px 0 60px rgba(0, 0, 0, .55);
+    -webkit-backdrop-filter: blur(22px) saturate(1.15);
+            backdrop-filter: blur(22px) saturate(1.15);
+  }
 }
 .lc-ws-body-main::-webkit-scrollbar,
 .lc-ws-body-inspector::-webkit-scrollbar {
@@ -131,6 +164,151 @@
   padding: 14px;
   -webkit-backdrop-filter: blur(12px) saturate(1.1);
           backdrop-filter: blur(12px) saturate(1.1);
+}
+
+/* v2.2.18 · inspector head + Edit/Schedule/Export CTA row. Ships with
+   the split of preview from editing (scoped fix step 3). */
+.lc-ws-inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+.lc-ws-inspector-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: #ff66b8;
+}
+.lc-ws-inspector-close {
+  all: unset;
+  cursor: pointer;
+  width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  color: #f4f1ea;
+  font-size: 20px; line-height: 1;
+  transition: background 120ms ease, color 120ms ease;
+}
+.lc-ws-inspector-close:hover {
+  background: rgba(255, 26, 140, .14);
+  color: #ff66b8;
+}
+.lc-ws-inspector-close:focus-visible {
+  outline: 2px solid rgba(255, 26, 140, .55);
+  outline-offset: 2px;
+}
+.lc-ws-inspector-cta {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+  margin-top: 8px;
+}
+.lc-ws-inspector-btn {
+  all: unset;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  background: rgba(11, 11, 16, .35);
+  color: #f4f1ea;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-align: center;
+  text-transform: uppercase;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.lc-ws-inspector-btn:hover {
+  background: rgba(255, 26, 140, .12);
+  border-color: rgba(255, 26, 140, .5);
+  color: #ffb0d1;
+}
+.lc-ws-inspector-btn.is-primary {
+  background: linear-gradient(180deg, rgba(255, 26, 140, .35), rgba(255, 26, 140, .18));
+  border-color: rgba(255, 26, 140, .55);
+  color: #fff;
+}
+.lc-ws-inspector-btn:focus-visible {
+  outline: 2px solid rgba(255, 26, 140, .55);
+  outline-offset: 2px;
+}
+
+/* Phase C2 · zero-candidate recovery panel · renders when a project
+ * hydrates with clips.length === 0 (bake produced nothing usable). */
+.lc-ws-zero {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 22px;
+  text-align: center;
+}
+.lc-ws-zero-eb {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: .22em; text-transform: uppercase;
+  color: #ff66b8;
+}
+.lc-ws-zero-title {
+  font-size: 20px; font-weight: 700; color: #f4f1ea;
+  letter-spacing: -.01em; max-width: 480px;
+}
+.lc-ws-zero-note {
+  margin: 0;
+  font-size: 13.5px; line-height: 1.5;
+  color: #c8c4be;
+  max-width: 480px;
+}
+.lc-ws-zero-cta {
+  display: flex; gap: 10px; margin-top: 4px;
+}
+.lc-ws-zero-btn {
+  all: unset;
+  cursor: pointer;
+  padding: 10px 16px; border-radius: 10px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: #f4f1ea;
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid rgba(255, 255, 255, .12);
+}
+.lc-ws-zero-btn:hover {
+  background: rgba(255, 26, 140, .12);
+  border-color: rgba(255, 26, 140, .5);
+  color: #ffb0d1;
+}
+.lc-ws-zero-btn.is-primary {
+  background: linear-gradient(180deg, rgba(255, 26, 140, .35), rgba(255, 26, 140, .18));
+  border-color: rgba(255, 26, 140, .55);
+  color: #fff;
+}
+.lc-ws-zero-btn:focus-visible {
+  outline: 2px solid rgba(255, 26, 140, .55);
+  outline-offset: 2px;
+}
+
+/* v2.2.18 · minimal actions toolbar replacing the deleted lc-route-head. */
+.lc-ws-actionstrip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0 2px;
+}
+
+/* v2.2.18 sprint · A11y-only utility. Keeps the phase-pill locator
+ * addressable for tests without eating any pixels. */
+.lc-visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0);
+  white-space: nowrap; border: 0;
 }
 
 .lc-ws-inspector-empty {

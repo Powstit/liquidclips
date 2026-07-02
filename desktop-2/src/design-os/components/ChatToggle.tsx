@@ -25,6 +25,8 @@ export function ChatToggle(): JSX.Element {
         data-open={open}
         onClick={() => setOpen((p) => !p)}
         aria-label={open ? "Close chat" : "Open chat"}
+        aria-expanded={open}
+        aria-controls="lc-chat-panel"
       >
         {open ? "×" : "💬"}
       </button>

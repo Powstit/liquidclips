@@ -8,7 +8,7 @@
  * the shell can catch.
  */
 import { useEffect, useState } from "react";
-import { openSmart } from "../../lib/openSmart";
+import { openInApp } from "../../lib/openInApp";
 import { fetchThumbnailQuota, type ThumbnailQuota } from "../../lib/thumbnailQuota";
 import "./ThumbnailQuotaBadge.css";
 
@@ -27,7 +27,7 @@ export function ThumbnailQuotaBadge(): JSX.Element | null {
     remaining <= 0 ? "critical" : remaining <= 10 ? "warning" : "info";
 
   const openBoost = () => {
-    void openSmart(quota.boost_pack_url);
+    void openInApp(quota.boost_pack_url);
   };
 
   return (

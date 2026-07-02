@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { DesignOSAppShell } from "../components/AppShell";
 import { EngineErrorBoundary } from "../components/EngineErrorBoundary";
-import { CockpitDock } from "../engine/cockpit/CockpitDock";
+import { CockpitDock, type ModuleKey } from "../engine/cockpit/CockpitDock";
 import { CockpitProvider } from "../engine/cockpit/CockpitContext";
 import { FIXTURE_PROJECT } from "../engine/types";
 import { SubmitToWhopModal } from "../components/SubmitToWhopModal";
@@ -30,19 +30,17 @@ import { EngineHealthPanel } from "../engine/EngineHealthPanel";
 import { ClipPreviewShell } from "../studio";
 import { attachEngineSfx } from "../sfx/engineSfx";
 import { KadeIgnition } from "../components/KadeIgnition";
-import { useRuntimeInfo } from "../engine/runtimeInfo";
 import { useEngineSessionPersistence, selectClipForStudio } from "../state/engineSessionPersistence";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
 import { ROUTE_HERO } from "../copy/copyMap";
-import { bus } from "../bridge";
+import { bus, useEvent } from "../bridge";
 import "./SimPage.css";
 import "./Workstation.css";
 
 function WorkstationBody() {
   const session = useEngineSession();
-  const runtime = useRuntimeInfo();
   const { resume } = useEngineSessionPersistence();
   useKadeFromSession("workstation");
 
@@ -50,6 +48,13 @@ function WorkstationBody() {
   const spec = ROUTE_REGISTRY["workstation"];
 
   const isEmpty = session.phase === "idle" && !resume;
+  // Phase C2 · project hydrated but the bake produced zero usable clips.
+  // Treated as an explicit "empty results" surface with a recovery action;
+  // never renders leftover focus / editor / inspector chrome from a prior
+  // project. Distinct from `isEmpty` (fresh idle) so the recovery copy can
+  // acknowledge the failed run.
+  const isZeroCandidates =
+    !!session.project && (session.project.clips?.length ?? 0) === 0;
 
   // Item 3 — lifted selection count for the WorkstationFrame title bar.
   // ResultsGrid owns the multi-select Set locally and pushes the size up
@@ -67,15 +72,46 @@ function WorkstationBody() {
   const [focusedClipIdx, setFocusedClipIdx] = useState<number | null>(
     typeof resume?.selectedClipIdx === "number" ? resume.selectedClipIdx : null,
   );
+  // v2.2.18 · scoped-fix step 3 · split "focused" from "opened for
+  //   preview / editing." Selecting a clip in the grid must NOT auto-
+  //   cover the workspace with the cockpit editor.
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorModule, setEditorModule] = useState<ModuleKey>("reaction");
+  useEvent("clip:open-edit", (payload) => {
+    setFocusedClipIdx(payload.clipIdx);
+    selectClipForStudio(payload.clipIdx);
+    setInspectorOpen(true);
+    setEditorModule("reaction");
+    setEditorOpen(true);
+  });
+  useEvent("clip:open-export", (payload) => {
+    setFocusedClipIdx(payload.clipIdx);
+    selectClipForStudio(payload.clipIdx);
+    setInspectorOpen(true);
+    setEditorModule("publish");
+    setEditorOpen(true);
+  });
   useEffect(() => {
-    const n = session.project?.clips.length ?? 0;
-    if (n === 0) return;
+    if (!session.project) return;
+    const n = session.project.clips.length;
+    // Phase C2 · zero-candidate recovery. A hydrated project that carries
+    // zero clips (bake produced nothing usable, or every clip failed to
+    // render) must NOT leave stale focus + inspector + editor state from
+    // a previous project. Clear all of them so the empty-results panel
+    // owns the surface with a retry action.
+    if (n === 0) {
+      if (focusedClipIdx !== null) setFocusedClipIdx(null);
+      if (inspectorOpen) setInspectorOpen(false);
+      if (editorOpen) setEditorOpen(false);
+      return;
+    }
     // Clamp out-of-range (e.g. a stale persisted idx after a fresh shorter run).
     if (focusedClipIdx == null || focusedClipIdx >= n) {
       setFocusedClipIdx(0);
       selectClipForStudio(0);
     }
-  }, [session.project, focusedClipIdx]);
+  }, [session.project, focusedClipIdx, inspectorOpen, editorOpen]);
   // ───── IRON GATE IG-LC2-016 — see docs/lc2/IRON_GATES_LC2.md ─────
   // focusedClip is resolved from LIVE session.project.clips. Never from
   // FIXTURE_PROJECT. CockpitDock + ClipPreviewShell read this same value
@@ -212,6 +248,18 @@ function WorkstationBody() {
         initial="initial"
         animate="animate"
       >
+      {/* Checkpoint item 2 · semantic route-title. The visible duplicate
+          header stays removed (the WorkstationFrame titlebar carries the
+          visible project name), but brand-consistency.spec.ts still
+          requires ONE h1 inside .lc-main OR a [data-route-title] node
+          per route. Visually-hidden h1 satisfies both without
+          reintroducing the crushed duplicate UI. */}
+      <h1
+        className="lc-visually-hidden"
+        data-route-title="Workstation"
+      >
+        Workstation
+      </h1>
       <WorkstationFrame
         projectName={chromeProjectName}
         sourceLabel={chromeSourceLabel}
@@ -221,46 +269,70 @@ function WorkstationBody() {
         sessionStatus={chromeSessionStatus}
         sessionStage={chromeSessionStage}
       >
-        {/* PHASE 2 · split workbench (locked 2026-06-25). Top row is the
-            compact route head + inline session controls. Body below is a
-            2-column grid: clip grid (left/main, scrolls internally) and
-            the selected-clip inspector (right, scrolls internally). The
-            whole route no longer scrolls — only the two columns + the
-            CockpitDock tab strip at the bottom move. */}
-        <div className="lc-route-head" data-kade-anchor data-route-title={hero.eyebrow}>
-          <span className="lc-route-head-eb">{hero.eyebrow}</span>
-          <div className="lc-route-head-pills">
-            <span className="lc-runtime-tag" data-testid="ws-phase-pill">
-              {session.phase === "running"
-                ? `Scanning · ${session.stage ?? ""}`
-                : session.phase === "complete"
-                  ? "Clips ready"
-                  : session.phase === "error"
-                    ? "Run hit a snag"
-                    : hero.h1}
-            </span>
-            {runtime.mode === "mock" && import.meta.env.DEV && (
-              <span className="lc-runtime-tag" title="Mock pipeline · real ingest lands when the sidecar runtime is installed.">
-                Preview
-              </span>
-            )}
-          </div>
-          {/* Session controls inline — EngineActions renders null when
-              nothing is actionable, so this stays empty + invisible on a
-              clean session and never becomes a slab. */}
-          <EngineErrorBoundary route="workstation" component="EngineActions">
-            <EngineActions onGoCreate={openCreatePanel} />
-          </EngineErrorBoundary>
-        </div>
+        {/* v2.2.18 sprint · action strip retired. The WorkstationFrame
+            status strip already carries the phase (via sessionStatus +
+            sessionStage props). Phase pill kept as a hidden marker for
+            visual/e2e locator stability; EngineActions render into the
+            titlebar-right slot via portal (see WorkstationFrame). */}
+        <span
+          className="lc-runtime-tag lc-visually-hidden"
+          data-testid="ws-phase-pill"
+        >
+          {session.phase === "running"
+            ? `Scanning · ${session.stage ?? ""}`
+            : session.phase === "complete"
+              ? "Clips ready"
+              : session.phase === "error"
+                ? "Run hit a snag"
+                : hero.h1}
+        </span>
+        <EngineErrorBoundary route="workstation" component="EngineActions">
+          <EngineActions onGoCreate={openCreatePanel} />
+        </EngineErrorBoundary>
 
         {isEmpty ? (
           <EngineEmptyState onGoCreate={openCreatePanel} />
+        ) : isZeroCandidates ? (
+          <div
+            className="lc-ws-zero"
+            role="status"
+            data-testid="ws-zero-candidates"
+          >
+            <div className="lc-ws-zero-eb">Run finished · zero clips</div>
+            <div className="lc-ws-zero-title">
+              The engine finished but produced no usable clips.
+            </div>
+            <p className="lc-ws-zero-note">
+              This can happen when the source is too short, silent, or when
+              every candidate failed to render. Try another source.
+            </p>
+            <div className="lc-ws-zero-cta">
+              {/* Checkpoint item 4 · honest label. The desktop-2 shell
+                  does not yet have a "re-run the same saved source"
+                  RPC path — the recovery here opens the create panel
+                  so the user drops a fresh source. Label reflects that.
+                  When the sidecar exposes a `sidecar.retryLastRun`
+                  contract, this button can flip to a genuine retry
+                  event; until then the copy tells the truth. */}
+              <button
+                type="button"
+                className="lc-ws-zero-btn is-primary"
+                data-testid="ws-zero-retry"
+                onClick={openCreatePanel}
+              >
+                Try another source
+              </button>
+            </div>
+          </div>
         ) : (
-          <div className="lc-ws-body" data-testid="ws-split-workbench">
+          <div
+            className="lc-ws-body"
+            data-testid="ws-split-workbench"
+            data-inspector={inspectorOpen && focusedClip ? "1" : "0"}
+          >
             <div className="lc-ws-body-main">
-              {/* BUG-029.6 · Kade ignition is a transient pre-scan float
-                  that self-clears once clipsReady > 0. Lives in the main
-                  column so the inspector stays uncluttered. */}
+              {/* Kade brought back per Daniel's ask — transient pre-scan
+                  float. Self-clears once clipsReady > 0. */}
               <EngineErrorBoundary route="workstation" component="KadeIgnition">
                 <KadeIgnition />
               </EngineErrorBoundary>
@@ -297,14 +369,10 @@ function WorkstationBody() {
                 </span>
               </div>
             )}
-            {session.phase === "complete" && (
-              <div className="lc-engine-heartbeat lc-engine-heartbeat-done" role="status">
-                <span className="lc-engine-heartbeat-eb">Clips ready</span>
-                <span className="lc-engine-heartbeat-meta">
-                  {chromeReadyCount} of {chromeClipCount} rendered{elapsedSecs > 0 ? ` in ${formatElapsed(elapsedSecs)}` : ""}
-                </span>
-              </div>
-            )}
+            {/* v2.2.18 sprint · post-complete heartbeat retired — the
+                WorkstationFrame status strip already reads "N/M clips
+                ready" so the horizontal strip below was pure duplication
+                (see problem #2). Kept only the RUNNING and ERROR strips. */}
             {session.phase === "error" && session.error && (
               <div className="lc-engine-heartbeat lc-engine-heartbeat-error" role="alert">
                 <span className="lc-engine-heartbeat-eb">
@@ -322,53 +390,92 @@ function WorkstationBody() {
                   pendingCount={Math.max(session.clipsReady, session.clipsTotal ?? 0)}
                   onSelectionChange={setSelectedCount}
                   onOpenClip={(c) => {
+                    // v2.2.18 scoped-fix step 3 · picking a clip opens
+                    //   the PREVIEW drawer, not the editor. Only the
+                    //   "Edit clip" button inside the drawer promotes
+                    //   focus to the cockpit editor.
                     setFocusedClipIdx(c.idx);
                     selectClipForStudio(c.idx);
+                    setInspectorOpen(true);
                     bus.emit("toast", {
                       kind: "info",
-                      title: "Selected",
-                      body: `Focused clip · ${c.title}`,
+                      title: "Preview",
+                      body: `Selected · ${c.title}`,
                     });
                   }}
                 />
               </EngineErrorBoundary>
             </div>
-            <aside
-              className="lc-ws-body-inspector"
-              data-testid="ws-inspector"
-              data-has-clip={focusedClip ? "1" : "0"}
-            >
-              {/* ───── IRON GATE IG-LC2-016 — see docs/lc2/IRON_GATES_LC2.md ─────
-                  Workstation IS the editor. ClipPreviewShell mounts here,
-                  fed by `focusedClip` resolved from session.project.clips
-                  (NOT FIXTURE_PROJECT). When session.project exists,
-                  fixture-sourced clips in the editor are forbidden. Phase 2
-                  moved the mount from the flat main flow into the inspector
-                  column — the gate's contract (mounts iff focusedClip,
-                  reads same focusedClip as CockpitDock) is preserved. */}
-              {focusedClip ? (
+            {inspectorOpen && focusedClip && (
+              <aside
+                className="lc-ws-body-inspector"
+                data-testid="ws-inspector"
+                data-has-clip="1"
+              >
+                <header className="lc-ws-inspector-head">
+                  <span className="lc-ws-inspector-eb">Inspector</span>
+                  <button
+                    type="button"
+                    className="lc-ws-inspector-close"
+                    aria-label="Close preview"
+                    onClick={() => {
+                      setInspectorOpen(false);
+                      setEditorOpen(false);
+                    }}
+                  >
+                    ×
+                  </button>
+                </header>
+                {/* IRON GATE IG-LC2-016 preserved · ClipPreviewShell
+                    mounts iff focusedClip truthy. */}
                 <EngineErrorBoundary route="workstation" component="ClipPreviewShell">
                   <ClipPreviewShell clip={focusedClip} />
                 </EngineErrorBoundary>
-              ) : (
-                <div className="lc-ws-inspector-empty">
-                  <span className="lc-ws-inspector-empty-eb">Pick a clip</span>
-                  <p className="lc-ws-inspector-empty-body">
-                    Select a clip from the grid to preview, edit, and publish.
-                  </p>
+                {/* v2.2.18 · Edit / Schedule / Export promote the
+                    selection to full editor. Selecting a clip alone
+                    NEVER opens the dock. */}
+                <div className="lc-ws-inspector-cta">
+                  <button
+                    type="button"
+                    className="lc-ws-inspector-btn is-primary"
+                    onClick={() => {
+                      setEditorModule("reaction");
+                      setEditorOpen(true);
+                    }}
+                  >
+                    Edit clip
+                  </button>
+                  <button
+                    type="button"
+                    className="lc-ws-inspector-btn"
+                    onClick={() => {
+                      setEditorModule("schedule");
+                      setEditorOpen(true);
+                    }}
+                    title="Open editor · Schedule tab"
+                  >
+                    Schedule
+                  </button>
+                  <button
+                    type="button"
+                    className="lc-ws-inspector-btn"
+                    onClick={() => {
+                      setEditorModule("publish");
+                      setEditorOpen(true);
+                    }}
+                    title="Open editor · Export tab"
+                  >
+                    Export
+                  </button>
                 </div>
-              )}
-              {/* ───── END IRON GATE IG-LC2-016 (mount site) ───── */}
-
-              {/* Diagnostics collapsed by default. Replaces the EngineHealthPanel
-                  slab that previously dominated the bottom of the route. */}
-              <details className="lc-ws-diagnostics">
-                <summary className="lc-ws-diagnostics-summary">Diagnostics</summary>
-                <EngineErrorBoundary route="workstation" component="EngineHealthPanel">
-                  <EngineHealthPanel />
-                </EngineErrorBoundary>
-              </details>
-            </aside>
+                <details className="lc-ws-diagnostics">
+                  <summary className="lc-ws-diagnostics-summary">Diagnostics</summary>
+                  <EngineErrorBoundary route="workstation" component="EngineHealthPanel">
+                    <EngineHealthPanel />
+                  </EngineErrorBoundary>
+                </details>
+              </aside>
+            )}
           </div>
         )}
       </WorkstationFrame>
@@ -386,7 +493,11 @@ function WorkstationBody() {
           violate `useCockpit()`'s require-provider contract. See
           BUG-028 AFTER FIX and BUG-032 P0 AFTER FIX (harness caught the
           missing gate). */}
-      {focusedClip && <CockpitDock />}
+      {/* v2.2.18 scoped-fix step 3 · dock mount requires BOTH a focused
+          clip AND an explicit editor-open intent from the user. Merely
+          selecting a clip no longer covers the workspace with the
+          cockpit. IG-LC2-017 unchanged (focusedClip still required). */}
+      {focusedClip && editorOpen && <CockpitDock initialModule={editorModule} />}
       {/* ───── END IRON GATE IG-LC2-017 (dock focusedClip prop) ───── */}
 
       {/* UI-3 · listens for `clip:open-submit` from ClipCards; portaled. */}

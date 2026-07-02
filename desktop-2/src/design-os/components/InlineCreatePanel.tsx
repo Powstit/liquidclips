@@ -453,13 +453,6 @@ export function InlineCreatePanel() {
             )}
 
             {tab === "upload" && (
-              // BUG-040 · Upload was FAKE: drop zone presentational only, no
-              // <input type="file">, "Pick file" button called startRun with
-              // the literal string "(picked-file.mp4)" — no real file IO.
-              // Replaced with an honest COMING SOON path. Customer is told
-              // exactly what to do today (use the URL tab). When real upload
-              // lands (a Tauri file picker + ingest_local RPC), this body
-              // flips back; nothing else needs to change.
               <div
                 className="lc-icp-body lc-icp-upload"
                 data-testid="upload-tab-block"
@@ -499,12 +492,14 @@ export function InlineCreatePanel() {
                   placeholder="Paste a script and we'll cut clips that match the moments you call out…"
                   rows={4}
                   disabled
+                  title="Script clipping is coming after launch"
                 />
                 <button
                   type="button"
                   data-testid="script-generate"
                   className="lc-icp-go"
                   disabled
+                  title="Script clipping is coming after launch"
                 >
                   Generate from script · unlocks on Solo
                 </button>
@@ -583,7 +578,6 @@ function TabButton({
       onClick={() => onPick(id)}
     >
       <span>{children}</span>
-      {id === "upload" && <span className="lc-icp-tab-status">Coming soon</span>}
     </button>
   );
 }

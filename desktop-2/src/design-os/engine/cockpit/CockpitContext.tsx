@@ -29,7 +29,7 @@ import type { Clip, Platform } from "../types";
 import * as clipSettingsStore from "./clipSettingsStore";
 
 export type ReactionLayoutKey =
-  | "solo" | "split" | "pip-tl" | "pip-tr" | "pip-bl" | "pip-br";
+  | "solo" | "side-by-side" | "top-bottom" | "pip-tl" | "pip-tr" | "pip-bl" | "pip-br";
 
 export type ReactionAudioSource = "main" | "broll" | "muted";
 
@@ -63,6 +63,8 @@ export interface CockpitSettings {
     sourcePath: string | null;
     audioSource: ReactionAudioSource;
     brollOffsetS: number;
+    swapPanes: boolean;
+    syncPlayback: boolean;
   };
   caption:  { text: string; style: CaptionStyleKey; position: CaptionPositionKey; letterSpacing: number };
   trim:     { inS: number; outS: number };
@@ -86,7 +88,15 @@ function defaultsFor(clip: Clip): CockpitSettings {
   };
   const target = (clip.platforms ?? []).map((p) => platformsAsAccountIds[p]).filter(Boolean);
   return {
-    reaction: { layout: "solo", frameAtS: clip.start, sourcePath: null, audioSource: "main", brollOffsetS: 0 },
+    reaction: {
+      layout: "solo",
+      frameAtS: clip.start,
+      sourcePath: null,
+      audioSource: "main",
+      brollOffsetS: 0,
+      swapPanes: false,
+      syncPlayback: true,
+    },
     caption:  {
       text: clip.title,
       style: ((clip.caption_style as CaptionStyleKey) ?? "fuchsia-pop"),
@@ -109,14 +119,41 @@ function seedFor(clip: Clip, slug: string | undefined): CockpitSettings {
   const base = defaultsFor(clip);
   const saved = clipSettingsStore.read(slug, clip.idx);
   if (!saved) return base;
+  const savedReaction = saved.reaction ?? {};
+  const reactionLayout = normalizeReactionLayout(
+    (savedReaction as { layout?: unknown }).layout,
+    base.reaction.layout,
+  );
   return {
-    reaction: { ...base.reaction, ...(saved.reaction ?? {}) },
+    reaction: { ...base.reaction, ...savedReaction, layout: reactionLayout },
     caption:  { ...base.caption,  ...(saved.caption  ?? {}) },
     trim:     { ...base.trim,     ...(saved.trim     ?? {}) },
     style:    { ...base.style,    ...(saved.style    ?? {}) },
     schedule: { ...base.schedule, ...(saved.schedule ?? {}) },
     publish:  { ...base.publish,  ...(saved.publish  ?? {}) },
   };
+}
+
+function normalizeReactionLayout(
+  value: unknown,
+  fallback: ReactionLayoutKey,
+): ReactionLayoutKey {
+  // v2.2 stored a generic "split" key. The renderer/export contract now
+  // distinguishes horizontal and vertical 50/50 layouts, so migrate the old
+  // value deterministically instead of letting it leak into the sidecar.
+  if (value === "split") return "side-by-side";
+  if (
+    value === "solo"
+    || value === "side-by-side"
+    || value === "top-bottom"
+    || value === "pip-tl"
+    || value === "pip-tr"
+    || value === "pip-bl"
+    || value === "pip-br"
+  ) {
+    return value;
+  }
+  return fallback;
 }
 
 interface CockpitContextValue {

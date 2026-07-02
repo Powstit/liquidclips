@@ -24,7 +24,9 @@ import { getJwt } from "../../lib/authStorage";
 const HANDLE_SHAPE = /^[a-z0-9._-]{3,30}$/;
 
 interface MeSnapshot {
-  user: { id: string; email: string | null; handle: string | null } | null;
+  user?: { id: string; email: string | null; handle: string | null } | null;
+  email?: string | null;
+  handle?: string | null;
 }
 
 interface AffiliateBlock {
@@ -114,6 +116,8 @@ export function AffiliateWidget(): JSX.Element {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "url" | "qr">("idle");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const qrRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -121,15 +125,22 @@ export function AffiliateWidget(): JSX.Element {
     void (async () => {
       const [me, aff] = await Promise.all([fetchMe(), fetchAffiliate()]);
       if (cancelled) return;
-      const h = me?.user?.handle ?? null;
+      const h = me?.user?.handle ?? me?.handle ?? null;
+      const resolvedUrl = aff?.referral_url
+        ?? (h ? `https://liquidclips.app/join/${h}` : "");
       setHandleState(h);
-      setShareUrl(h ? `https://liquidclips.app/join/${h}` : "");
+      setShareUrl(resolvedUrl);
       setAffiliate(aff);
+      setLoadError(!me && !aff);
+      setLoading(false);
     })();
     return () => { cancelled = true; };
   }, []);
 
   const canPersist = useMemo(() => HANDLE_SHAPE.test(draft.trim().toLowerCase()), [draft]);
+  const shapeHint = editing && draft.length > 0 && !canPersist
+    ? "Use 3-30 lowercase letters, numbers, dash, dot, or underscore."
+    : null;
 
   const onSubmit = async () => {
     const next = draft.trim().toLowerCase();
@@ -168,49 +179,78 @@ export function AffiliateWidget(): JSX.Element {
     } catch { /* noop */ }
   };
 
-  const copyQr = async () => {
-    if (!qrRef.current) return;
+  const qrPngBlob = async (): Promise<Blob> => {
+    if (!qrRef.current) throw new Error("QR unavailable");
     const svg = qrRef.current.querySelector("svg");
-    if (!svg) return;
+    if (!svg) throw new Error("QR unavailable");
     // Rasterise the SVG to a PNG blob so the clipboard receives an
     // image (native paste as image works in Slack, Discord, Notes).
+    const svgStr = new XMLSerializer().serializeToString(svg);
+    const svgBlob = new Blob([svgStr], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("qr img load"));
+      img.src = url;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = 360; canvas.height = 360;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no canvas ctx");
+    ctx.fillStyle = "#f4f1ea";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 20, 20, 320, 320);
+    URL.revokeObjectURL(url);
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("QR PNG unavailable")), "image/png");
+    });
+  };
+
+  const copyQr = async () => {
     try {
-      const svgStr = new XMLSerializer().serializeToString(svg);
-      const svgBlob = new Blob([svgStr], { type: "image/svg+xml" });
-      const url = URL.createObjectURL(svgBlob);
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error("qr img load"));
-        img.src = url;
-      });
-      const canvas = document.createElement("canvas");
-      canvas.width = 320; canvas.height = 320;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("no canvas ctx");
-      ctx.fillStyle = "#0b0b10";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 20, 20, 280, 280);
-      URL.revokeObjectURL(url);
-      canvas.toBlob(async (blob) => {
-        if (!blob) return;
-        try {
-          const item = new ClipboardItem({ "image/png": blob });
-          await navigator.clipboard.write([item]);
-          setCopyState("qr");
-          window.setTimeout(() => setCopyState("idle"), 1800);
-        } catch { /* older browsers · silent */ }
-      }, "image/png");
-    } catch { /* noop */ }
+      const blob = await qrPngBlob();
+      const item = new ClipboardItem({ "image/png": blob });
+      await navigator.clipboard.write([item]);
+      setCopyState("qr");
+      window.setTimeout(() => setCopyState("idle"), 1800);
+    } catch { /* older browsers · quiet fallback keeps Download available */ }
+  };
+
+  const downloadQr = async () => {
+    try {
+      const blob = await qrPngBlob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `liquid-clips-${handle ?? "affiliate"}-qr.png`;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setError("Couldn't prepare the QR download. Try again.");
+    }
   };
 
   return (
-    <section className="lc-affiliate-widget" data-testid="lc-affiliate-widget">
+    <section
+      className="lc-affiliate-widget"
+      data-testid="lc-affiliate-widget"
+      data-loading={loading ? "true" : "false"}
+      data-source-state={loadError ? "unavailable" : "ready"}
+      data-affiliate-handle={handle ?? ""}
+      data-referral-url={shareUrl}
+    >
       <div className="lc-affiliate-widget-head">
         <span className="lc-affiliate-widget-eyebrow">Your affiliate link</span>
         <span className="lc-affiliate-widget-status" data-connected={affiliate?.connected ?? false}>
-          {affiliate?.connected ? "50% recurring · active" : "Connect Whop to activate"}
+          {loading
+            ? "Loading affiliate profile…"
+            : loadError
+              ? "Affiliate data unavailable"
+              : affiliate?.connected
+                ? "Affiliate account active"
+                : "Connect Whop to activate"}
         </span>
       </div>
 
@@ -226,6 +266,7 @@ export function AffiliateWidget(): JSX.Element {
                 type="button"
                 className="lc-affiliate-widget-btn-quiet"
                 onClick={() => { setEditing(true); setDraft(handle ?? ""); setError(null); }}
+                aria-expanded={editing}
               >
                 Rename
               </button>
@@ -261,7 +302,11 @@ export function AffiliateWidget(): JSX.Element {
               </button>
             </div>
           )}
-          {error ? <p className="lc-affiliate-widget-error">{error}</p> : null}
+          {error || shapeHint ? (
+            <p className="lc-affiliate-widget-error" role="alert">
+              {error ?? shapeHint}
+            </p>
+          ) : null}
 
           <span className="lc-affiliate-widget-label" style={{ marginTop: 18 }}>
             Share URL
@@ -275,6 +320,7 @@ export function AffiliateWidget(): JSX.Element {
               className="lc-affiliate-widget-btn-primary"
               onClick={() => void copyUrl()}
               disabled={!shareUrl}
+              title={!shareUrl ? "Set a handle first to create a share URL" : "Copy share URL"}
             >
               {copyState === "url" ? "Copied ✓" : "Copy"}
             </button>
@@ -284,21 +330,52 @@ export function AffiliateWidget(): JSX.Element {
         <div className="lc-affiliate-widget-right">
           <div ref={qrRef} className="lc-affiliate-widget-qr">
             {shareUrl ? (
-              <QRCodeSVG value={shareUrl} size={140} bgColor="#0b0b10" fgColor="#f4f1ea" level="M" />
+              <QRCodeSVG
+                value={shareUrl}
+                size={150}
+                bgColor="#f4f1ea"
+                fgColor="#0b0b10"
+                level="H"
+                imageSettings={{
+                  src: "/brand/invaders/invader-classic.png",
+                  width: 26,
+                  height: 26,
+                  excavate: true,
+                }}
+              />
             ) : (
-              <div className="lc-affiliate-widget-qr-placeholder">Set a handle to generate QR</div>
+              <div className="lc-affiliate-widget-qr-placeholder">
+                {loading ? "Loading QR…" : "Set a handle to generate QR"}
+              </div>
             )}
           </div>
-          <button
-            type="button"
-            className="lc-affiliate-widget-btn-quiet"
-            onClick={() => void copyQr()}
-            disabled={!shareUrl}
-          >
-            {copyState === "qr" ? "Copied ✓" : "Copy QR"}
-          </button>
+          <div className="lc-affiliate-widget-qr-actions">
+            <button
+              type="button"
+              className="lc-affiliate-widget-btn-quiet"
+              onClick={() => void copyQr()}
+              disabled={!shareUrl}
+              title={!shareUrl ? "Set a handle first to create a QR code" : "Copy QR code"}
+            >
+              {copyState === "qr" ? "Copied ✓" : "Copy QR"}
+            </button>
+            <button
+              type="button"
+              className="lc-affiliate-widget-btn-quiet"
+              onClick={() => void downloadQr()}
+              disabled={!shareUrl}
+              title={!shareUrl ? "Set a handle first to create a QR code" : "Download QR code as PNG"}
+            >
+              Download QR
+            </button>
+          </div>
         </div>
       </div>
+
+      <p className="lc-affiliate-widget-policy">
+        New handles update this referral link immediately. Redirect and handle
+        cooldown policy is shown only when supplied by the account service.
+      </p>
 
       <div className="lc-affiliate-widget-stats">
         <div className="lc-affiliate-widget-stat">
