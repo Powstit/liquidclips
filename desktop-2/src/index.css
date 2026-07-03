@@ -4275,6 +4275,11 @@ input, textarea, code, pre { user-select: text; font: inherit; color: inherit; }
   letter-spacing: -0.01em;
   line-height: 1;
 }
+.lc-browse-rail-icon-user-wrap {
+  position: relative;
+  width: 52px;
+  height: 52px;
+}
 .lc-browse-rail-icon-user { color: var(--color-ink); }
 
 .lc-browse-rail-user-remove {
@@ -4294,7 +4299,10 @@ input, textarea, code, pre { user-select: text; font: inherit; color: inherit; }
   z-index: 5;
   transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
 }
-.lc-browse-rail-icon-user:hover .lc-browse-rail-user-remove { display: grid; }
+.lc-browse-rail-icon-user-wrap:hover .lc-browse-rail-user-remove,
+.lc-browse-rail-icon-user-wrap:focus-within .lc-browse-rail-user-remove {
+  display: grid;
+}
 .lc-browse-rail-user-remove:hover {
   background: color-mix(in srgb, var(--color-fuchsia-soft) 90%, transparent);
   border-color: var(--color-fuchsia);
@@ -4349,6 +4357,106 @@ input, textarea, code, pre { user-select: text; font: inherit; color: inherit; }
   .lc-browse-rail-icon,
   .lc-browse-rail-add,
   .lc-browse-rail-operator { transition: none !important; }
+}
+
+/* ------------------------------------------------------------ */
+/* Inline add-shortcut form — replaces the WebView slot when the */
+/* + button is clicked. WKWebView disables window.prompt so we   */
+/* render an in-app form; the effect closes the child WebView    */
+/* while this form is open so it's not visually occluded.        */
+/* ------------------------------------------------------------ */
+.lc-browse-add-form {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(
+      circle at 50% 30%,
+      color-mix(in srgb, var(--color-fuchsia) 12%, transparent),
+      transparent 60%
+    ),
+    color-mix(in srgb, var(--color-paper) 88%, transparent);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 2;
+}
+.lc-browse-add-form-card {
+  width: min(420px, 100%);
+  padding: 22px 22px 18px;
+  background: var(--color-paper-elev);
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  box-shadow:
+    0 20px 60px -20px rgba(0, 0, 0, 0.55),
+    0 0 0 1px color-mix(in srgb, var(--color-fuchsia) 22%, transparent),
+    0 0 40px -12px color-mix(in srgb, var(--color-fuchsia) 40%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.lc-browse-add-form-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lc-browse-add-form-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-ink);
+  letter-spacing: -0.01em;
+}
+.lc-browse-add-form-hint {
+  font-size: 12px;
+  color: var(--color-ink-soft);
+  line-height: 1.45;
+}
+.lc-browse-add-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.lc-browse-add-form-field > span {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  color: var(--color-ink-soft);
+  text-transform: uppercase;
+}
+.lc-browse-add-form-field > input {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-paper) 60%, transparent);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.lc-browse-add-form-field > input:focus {
+  border-color: var(--color-fuchsia);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-fuchsia) 22%, transparent);
+}
+.lc-browse-add-form-field > input::placeholder {
+  color: color-mix(in srgb, var(--color-ink-soft) 70%, transparent);
+}
+.lc-browse-add-form-error {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--color-ink);
+  background: color-mix(in srgb, #ff4d4d 18%, transparent);
+  border: 1px solid color-mix(in srgb, #ff4d4d 45%, transparent);
+  border-radius: 8px;
+}
+.lc-browse-add-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 

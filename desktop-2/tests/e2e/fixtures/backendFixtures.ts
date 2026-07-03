@@ -34,7 +34,7 @@ export function meFixture(overrides: MeFixtureOverrides = {}): Record<string, un
     raw_tier: tier,
     effective_tier: tier,
     admin_override: overrides.adminOverride ?? false,
-    billing_provider: "clerk",
+    billing_provider: tier === "free" ? null : "whop",
     subscription_status: tier === "free" ? "inactive" : "active",
     paid_until: tier === "free" ? null : "2099-01-01T00:00:00Z",
   };
@@ -48,7 +48,7 @@ export function syncFixture(overrides: MeFixtureOverrides = {}): Record<string, 
     tier,
     founder: false,
     subscription_status: tier === "free" ? "inactive" : "active",
-    billing_provider: "clerk",
+    billing_provider: tier === "free" ? null : "whop",
     features: {},
     remaining_exports: 999,
     admin_override: overrides.adminOverride ?? false,
@@ -90,6 +90,29 @@ export function walletSummaryFixture(): Record<string, unknown> {
   };
 }
 
+/* ─── Agency cockpit list responses ────────────────────────────────── */
+
+export function agencyRosterFixture(): Record<string, unknown> {
+  return {
+    members: [],
+    pending_invites: [],
+  };
+}
+
+export function agencyPayoutSplitsFixture(): Record<string, unknown> {
+  return {
+    splits: [],
+    total_bps: 0,
+    sums_to_100: false,
+  };
+}
+
+export function agencyRulesFixture(): Record<string, unknown> {
+  return {
+    rules: [],
+  };
+}
+
 /* ─── Installer · routes for every endpoint the live app calls. ─────── */
 
 export interface InstallBackendStubsOptions extends MeFixtureOverrides {
@@ -117,4 +140,7 @@ export async function installBackendStubs(page: Page, opts: InstallBackendStubsO
   await page.route(/api\.liquidclips\.app\/me(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(me) }));
   await page.route(/api\.liquidclips\.app\/sync(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sync) }));
   await page.route(/api\.liquidclips\.app\/me\/wallet\/summary(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wallet) }));
+  await page.route(/api\.liquidclips\.app\/agency\/[^/]+\/roster(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(agencyRosterFixture()) }));
+  await page.route(/api\.liquidclips\.app\/agency\/[^/]+\/payout-splits(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(agencyPayoutSplitsFixture()) }));
+  await page.route(/api\.liquidclips\.app\/agency\/[^/]+\/rules(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(agencyRulesFixture()) }));
 }

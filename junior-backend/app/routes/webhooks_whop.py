@@ -884,7 +884,11 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
         # state machine (Whop's live active_members_count is read for display
         # only — too racey to gate state on).
         _bump_referrer_counter(db, user, delta=+1)
-        _fire_affiliate_lifecycle_emails(db, buyer_affiliate_id=user.affiliate_id)
+        _fire_affiliate_lifecycle_emails(
+            db,
+            buyer_affiliate_id=user.affiliate_id,
+            paid_at=user.first_paid_at,
+        )
         # Partner Engine unlock — try to flip the referrer to Partner if
         # both conditions are now met (10 paid + verified TikTok). The
         # service is idempotent and safe when conditions aren't met yet.
@@ -939,7 +943,12 @@ def _find_referrer_by_affiliate_token(db: Session, token: str | None) -> User | 
     )
 
 
-def _fire_affiliate_lifecycle_emails(db: Session, *, buyer_affiliate_id: str) -> None:
+def _fire_affiliate_lifecycle_emails(
+    db: Session,
+    *,
+    buyer_affiliate_id: str,
+    paid_at: datetime | None,
+) -> None:
     """Send the deduped first-paid-referral message.
 
     Qualification is owned by the 7-day commission reconciler and fires only
@@ -951,6 +960,17 @@ def _fire_affiliate_lifecycle_emails(db: Session, *, buyer_affiliate_id: str) ->
         if not referrer or not referrer.email:
             # A legacy referrer may predate eager affiliate provisioning.
             return
+
+        # Whop's buyer payment timestamp is the only truthful source for
+        # this milestone. Never substitute the referrer's own first_paid_at.
+        if paid_at is not None:
+            from app.onboarding_milestones import mark_milestone
+            mark_milestone(
+                db,
+                referrer,
+                "first_paid_referral",
+                at=paid_at,
+            )
 
         from app.mailer import send_admin_affiliate_milestone, send_first_paid_referral
         from app.routes.notifications import write_notification

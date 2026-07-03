@@ -139,6 +139,39 @@ def test_affiliate_token_resolves_whop_username_and_legacy_id(db):
     assert webhooks_whop._find_referrer_by_affiliate_token(db, "clippername") == referrer
 
 
+def test_first_paid_referral_milestone_uses_buyers_whop_payment_time(
+    db,
+    monkeypatch,
+):
+    from app import onboarding_milestones
+
+    referrer = _user(db)
+    referrer.whop_affiliate_id = "aff_referrer"
+    db.commit()
+    paid_at = datetime(2026, 7, 2, 12, 30, tzinfo=timezone.utc)
+    captured: list[tuple[str, datetime | None]] = []
+
+    monkeypatch.setattr(
+        onboarding_milestones,
+        "mark_milestone",
+        lambda _db, _user, key, *, at=None: captured.append((key, at)) or True,
+    )
+    monkeypatch.setattr(mailer, "send_first_paid_referral", lambda *a, **k: None)
+    monkeypatch.setattr(
+        mailer,
+        "send_admin_affiliate_milestone",
+        lambda *a, **k: None,
+    )
+
+    webhooks_whop._fire_affiliate_lifecycle_emails(
+        db,
+        buyer_affiliate_id="aff_referrer",
+        paid_at=paid_at,
+    )
+
+    assert captured == [("first_paid_referral", paid_at)]
+
+
 def test_paid_purchase_before_signup_is_parked_as_paid(db):
     data = _event_data(None, "plan_BvDBrtybhbxNg")
 

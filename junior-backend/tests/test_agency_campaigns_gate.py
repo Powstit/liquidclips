@@ -34,7 +34,17 @@ class FakeUser:
         self.founder_flag = founder_flag
 
 
-NON_AGENCY_TIERS = ["free", "solo", "pro", "growth"]
+NON_AGENCY_TIERS = [
+    "free",
+    "solo",
+    "pro",
+    "growth",
+    "channel",
+    "agency_expired",
+    "agency_bogus",
+    "agency_trial_revoked",
+    "",
+]
 AGENCY_FAMILY_TIERS = ["agency", "agency_solo", "agency_whitelabel", "autopilot"]
 
 

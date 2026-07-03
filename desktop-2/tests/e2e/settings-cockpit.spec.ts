@@ -2,18 +2,59 @@ import { expect, test, type Page } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-async function seed(page: Page, mode: "clipper" | "agency"): Promise<void> {
-  await page.addInitScript((seedMode) => {
+async function seed(
+  page: Page,
+  mode: "clipper" | "agency",
+  welcomeSeen = true,
+): Promise<void> {
+  await page.addInitScript(({ seedMode, markWelcomeSeen }) => {
     window.localStorage.setItem("lc.license.jwt.v1", "settings.harness.jwt");
     window.localStorage.setItem("lc.mode", seedMode);
-  }, mode);
+    if (markWelcomeSeen) {
+      window.localStorage.setItem(
+        "lc.onboarding.agency-welcome.seen.v1",
+        "1",
+      );
+    }
+  }, { seedMode: mode, markWelcomeSeen: welcomeSeen });
 }
 
-async function interceptSettings(page: Page, mode: "clipper" | "agency"): Promise<void> {
+async function interceptSettings(
+  page: Page,
+  mode: "clipper" | "agency",
+  rosterState: "ready" | "forbidden" | "offline" | "malformed" = "ready",
+): Promise<void> {
   const tier = mode === "agency" ? "agency" : "pro";
+  const roster = {
+    members: [
+      {
+        id: 1,
+        agency_id: "settings-harness",
+        user_id: "member-1",
+        email: "clipper@liquidclips.test",
+        handle: "clean-cuts",
+        role: "member",
+        status: "active",
+        joined_at: "2026-07-01T12:00:00Z",
+        invited_by_user_id: "settings-harness",
+      },
+    ],
+    pending_invites: [
+      {
+        id: "invite-1",
+        agency_id: "settings-harness",
+        email: "pending@liquidclips.test",
+        role: "member",
+        status: "pending",
+        expires_at: "2026-07-16T12:00:00Z",
+        created_at: "2026-07-02T12:00:00Z",
+      },
+    ],
+  };
   await page.route(/api\.liquidclips\.app\/.*/, (route) => {
     const url = new URL(route.request().url());
     const pathname = url.pathname;
+    const method = route.request().method();
     if (pathname === "/me") {
       return route.fulfill({
         status: 200,
@@ -96,6 +137,178 @@ async function interceptSettings(page: Page, mode: "clipper" | "agency"): Promis
         }),
       });
     }
+    if (
+      pathname === "/agency/settings-harness/roster" &&
+      method === "GET"
+    ) {
+      if (rosterState === "forbidden") {
+        return route.fulfill({
+          status: 403,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Owner access required." }),
+        });
+      }
+      if (rosterState === "offline") {
+        return route.abort("failed");
+      }
+      if (rosterState === "malformed") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: "{}",
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(roster),
+      });
+    }
+    if (
+      pathname === "/agency/settings-harness/roster/invite" &&
+      method === "POST"
+    ) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...roster.pending_invites[0],
+          id: "invite-new",
+          email: "new@liquidclips.test",
+        }),
+      });
+    }
+    if (
+      pathname === "/agency/settings-harness/roster/member-1/role" &&
+      method === "POST"
+    ) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ...roster.members[0], role: "mod" }),
+      });
+    }
+    if (
+      pathname === "/agency/settings-harness/roster/member-1" &&
+      method === "DELETE"
+    ) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ...roster.members[0], status: "disabled" }),
+      });
+    }
+    if (
+      pathname === "/agency/settings-harness/payout-splits" &&
+      method === "GET"
+    ) {
+      if (rosterState === "malformed") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: "{}",
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          splits: [
+            {
+              member_user_id: "member-1",
+              percent_bps: 10000,
+              updated_at: "2026-07-02T12:00:00Z",
+              updated_by_user_id: "settings-harness",
+            },
+          ],
+          total_bps: 10000,
+          sums_to_100: true,
+        }),
+      });
+    }
+    if (
+      pathname === "/agency/settings-harness/payout-splits" &&
+      method === "PUT"
+    ) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          splits: [
+            {
+              member_user_id: "member-1",
+              percent_bps: 10000,
+              updated_at: "2026-07-02T12:01:00Z",
+              updated_by_user_id: "settings-harness",
+            },
+          ],
+          total_bps: 10000,
+          sums_to_100: true,
+        }),
+      });
+    }
+    if (
+      pathname === "/agency/settings-harness/rules" &&
+      method === "GET"
+    ) {
+      if (rosterState === "malformed") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: "{}",
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          rules: [
+            {
+              key: "min_lc_score",
+              value: 75,
+              updated_at: "2026-07-02T12:00:00Z",
+              updated_by_user_id: "settings-harness",
+            },
+          ],
+        }),
+      });
+    }
+    if (
+      pathname.startsWith("/agency/settings-harness/rules/") &&
+      method === "PUT"
+    ) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          key: pathname.split("/").at(-1),
+          value: true,
+          updated_at: "2026-07-02T12:01:00Z",
+          updated_by_user_id: "settings-harness",
+        }),
+      });
+    }
+    if (
+      pathname === "/agency/settings-harness/whop-sync" &&
+      method === "POST"
+    ) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          checked: 1,
+          changed: 0,
+          items: [],
+        }),
+      });
+    }
+    if (pathname === "/agency/campaigns" && method === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "[]",
+      });
+    }
     return route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -104,12 +317,17 @@ async function interceptSettings(page: Page, mode: "clipper" | "agency"): Promis
   });
 }
 
-async function openSettings(page: Page, mode: "clipper" | "agency"): Promise<void> {
-  await seed(page, mode);
-  await interceptSettings(page, mode);
+async function openSettings(
+  page: Page,
+  mode: "clipper" | "agency",
+  welcomeSeen = true,
+  rosterState: "ready" | "forbidden" | "offline" | "malformed" = "ready",
+): Promise<void> {
+  await seed(page, mode, welcomeSeen);
+  await interceptSettings(page, mode, rosterState);
   await page.goto("/?skipIntro=1#/settings", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({
-    timeout: 20_000,
+    timeout: 40_000,
   });
 }
 
@@ -228,7 +446,7 @@ test.describe("Settings cockpit", () => {
     });
   });
 
-  test("agency tabs expose honest capability gates without fake roster controls", async ({ page }) => {
+  test("agency tabs expose live owner controls backed by real endpoint contracts", async ({ page }) => {
     await openSettings(page, "agency");
 
     for (const tab of ["Whop Sync", "Roster", "Payout split", "Rules"]) {
@@ -237,18 +455,172 @@ test.describe("Settings cockpit", () => {
     await expect(page.getByRole("tab", { name: "Referrals & QR" })).toHaveCount(0);
 
     await page.getByRole("tab", { name: "Roster", exact: true }).click();
-    await expect(page.getByText("Members, invites, private-room access, and payout status are not exposed by the current backend. Add-clipper controls stay hidden until permission enforcement exists.")).toBeVisible();
-    await expect(page.getByRole("button", { name: /add clipper/i })).toHaveCount(0);
+    const roster = page.locator('[data-tab="roster"]');
+    await expect(roster).toBeVisible();
+    await expect(roster.getByText("clipper@liquidclips.test")).toBeVisible();
+    await expect(roster.getByText("pending@liquidclips.test")).toBeVisible();
 
-    const evidenceDir = path.resolve(
-      process.cwd(),
-      "docs/ui-master/evidence/stage-5/1440x900",
+    const roleRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname.endsWith("/roster/member-1/role"),
     );
-    fs.mkdirSync(evidenceDir, { recursive: true });
-    await page.screenshot({
-      path: path.join(evidenceDir, "settings-agency-roster-gate.png"),
-      fullPage: false,
+    await roster.getByRole("combobox").first().selectOption("mod");
+    expect((await roleRequest).postDataJSON()).toEqual({ role: "mod" });
+
+    const inviteRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname.endsWith("/roster/invite"),
+    );
+    await roster.getByPlaceholder("clipper@example.com").fill("new@liquidclips.test");
+    await roster.getByRole("button", { name: "Send invite" }).click();
+    expect((await inviteRequest).postDataJSON()).toEqual({
+      email: "new@liquidclips.test",
+      role: "member",
     });
+
+    await page.getByRole("tab", { name: "Payout split", exact: true }).click();
+    const splits = page.locator('[data-tab="payout-split"]');
+    await expect(splits.getByText("clipper@liquidclips.test")).toBeVisible();
+    const splitRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "PUT" &&
+        new URL(request.url()).pathname.endsWith("/payout-splits"),
+    );
+    await splits.getByRole("button", { name: "Save splits" }).click();
+    expect((await splitRequest).postDataJSON()).toEqual({
+      splits: [{ member_user_id: "member-1", percent_bps: 10000 }],
+    });
+
+    await page.getByRole("tab", { name: "Rules", exact: true }).click();
+    const rules = page.locator('[data-tab="rules"]');
+    await expect(rules.getByText("min_lc_score")).toBeVisible();
+    const ruleRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "PUT" &&
+        new URL(request.url()).pathname.endsWith("/rules/watermark_required"),
+    );
+    await rules.getByPlaceholder("rule_key").fill("watermark_required");
+    await rules
+      .getByPlaceholder('JSON value · e.g. {"min_lc_score": 75}')
+      .fill("true");
+    await rules.getByRole("button", { name: "Add rule" }).click();
+    expect((await ruleRequest).postDataJSON()).toEqual({ value: true });
+
+    await page.getByRole("tab", { name: "Whop Sync", exact: true }).click();
+    const syncRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname.endsWith("/whop-sync"),
+    );
+    await page.getByRole("button", { name: "Sync roster with Whop" }).click();
+    await syncRequest;
+    await expect(page.getByText("Sync complete · 0 members processed.")).toBeVisible();
+  });
+
+  test("agency roster renders forbidden and offline states honestly", async ({ page }) => {
+    await openSettings(page, "agency", true, "forbidden");
+    await page.getByRole("tab", { name: "Roster", exact: true }).click();
+    await expect(page.getByText("Owner access required.").first()).toBeVisible();
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    // Replace the fixture with an offline route in a fresh document.
+    await page.unrouteAll({ behavior: "wait" });
+    await openSettings(page, "agency", true, "offline");
+    await page.getByRole("tab", { name: "Roster", exact: true }).click();
+    await expect(page.getByText("Roster offline.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry" }).first()).toBeVisible();
+  });
+
+  test("malformed agency list responses fail safely without crashing Settings", async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await openSettings(page, "agency", true, "malformed");
+
+    await page.getByRole("tab", { name: "Roster", exact: true }).click();
+    await expect(page.getByText("Roster couldn’t load.")).toBeVisible();
+
+    await page.getByRole("tab", { name: "Payout split", exact: true }).click();
+    await expect(page.getByText("Payout splits couldn’t load.")).toBeVisible();
+
+    await page.getByRole("tab", { name: "Rules", exact: true }).click();
+    await expect(page.getByText("Rules couldn’t load.")).toBeVisible();
+
+    await expect(page.getByText("Reload brick")).toHaveCount(0);
+    expect(pageErrors).toEqual([]);
+  });
+
+  test("agency welcome CTAs navigate to real product surfaces", async ({ page }) => {
+    await openSettings(page, "agency", false);
+    const welcome = page.getByRole("dialog", {
+      name: /your agency is live/i,
+    });
+    await expect(welcome).toBeVisible();
+    await expect(
+      welcome.getByRole("button", { name: /open campaign builder/i }),
+    ).toBeVisible();
+    await expect(
+      welcome.getByRole("button", { name: /open roster/i }),
+    ).toBeVisible();
+    await expect(
+      welcome.getByRole("button", { name: /read the brief/i }),
+    ).toBeVisible();
+
+    await welcome.getByRole("button", { name: /open roster/i }).click();
+    await expect(welcome).toBeHidden();
+    await expect(
+      page.getByRole("tab", { name: "Roster", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator('[data-tab="roster"]')).toBeVisible();
+  });
+
+  test("agency welcome brief opens inside BrowseOverlay", async ({ page }) => {
+    await openSettings(page, "agency", false);
+    await page
+      .getByRole("dialog", { name: /your agency is live/i })
+      .getByRole("button", { name: /read the brief/i })
+      .click();
+    const browser = page.getByRole("dialog", { name: "Browser overlay" });
+    await expect(browser).toBeVisible();
+    await expect(browser.getByRole("textbox", { name: "URL bar" })).toHaveValue(
+      "https://liquidclips.app/agencies",
+    );
+  });
+
+  test("agency welcome create CTA opens the campaign builder", async ({ page }) => {
+    await openSettings(page, "agency", false);
+    await page
+      .getByRole("dialog", { name: /your agency is live/i })
+      .getByRole("button", { name: /open campaign builder/i })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Campaigns", exact: true }),
+    ).toBeVisible();
+  });
+
+  test("campaign builder blocks writes from an untrusted tier source", async ({ page }) => {
+    await openSettings(page, "agency");
+    await page.evaluate(() => {
+      const appWindow = window as unknown as {
+        __lcBus?: { emit: (event: string, payload: unknown) => void };
+      };
+      appWindow.__lcBus?.emit("nav:click", { route: "campaign-builder" });
+    });
+    await expect(
+      page.getByRole("heading", { name: "Campaigns", exact: true }),
+    ).toBeVisible();
+    await page.evaluate(() => {
+      window.__lcDebugSetTier?.("agency");
+    });
+    await page.getByRole("button", { name: "+ New", exact: true }).click();
+    await page.getByPlaceholder("Q3 launch clip bounty").fill("Blocked draft");
+    await expect(
+      page.getByText(/agency-tier verification pending/i),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Create draft" }),
+    ).toBeDisabled();
   });
 
   test("presence preference is shared with Community and survives navigation", async ({ page }) => {

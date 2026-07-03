@@ -148,6 +148,9 @@ function SettingsBody() {
   // Connections (channels + schedules) · Plan (tier + Whop explainer) ·
   // Diagnostics (storage + beta + support).
   const [tab, setTab] = useState<SettingsTab>("account");
+  useEvent("settings:open-tab", ({ tab: requestedTab }) => {
+    setTab(requestedTab);
+  });
   const mode = useMode();
   const { visibility, setVisibility } = usePresencePreference();
   const modeTabs = mode === "agency" ? AGENCY_SETTINGS_TABS : CLIPPER_SETTINGS_TABS;

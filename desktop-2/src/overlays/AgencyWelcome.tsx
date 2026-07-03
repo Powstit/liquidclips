@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { bus } from "../design-os/bridge";
 import { useTierCaps } from "../design-os/state/useTierCaps";
+import { openInApp } from "../lib/openInApp";
 
 const SEEN_KEY = "lc.onboarding.agency-welcome.seen.v1";
 
@@ -81,17 +82,11 @@ export function AgencyWelcomeOverlay(): JSX.Element | null {
     markSeen();
     setOpen(false);
     bus.emit("nav:click", { route: "settings" });
-    // Settings scrolls to the Roster panel via the anchor written into
-    // the panel's data-tab attribute (Sprint C).
+    // Wait for Settings to mount, then activate the actual Roster tab.
+    // Scrolling alone is insufficient because inactive panels are
+    // display:none under the Settings tab contract.
     window.setTimeout(() => {
-      try {
-        const anchor = document.querySelector('[data-tab="roster"]');
-        if (anchor && typeof (anchor as HTMLElement).scrollIntoView === "function") {
-          (anchor as HTMLElement).scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-      } catch {
-        /* noop */
-      }
+      bus.emit("settings:open-tab", { tab: "roster" });
     }, 120);
   }, []);
 
@@ -173,11 +168,9 @@ export function AgencyWelcomeOverlay(): JSX.Element | null {
             onClick={() => {
               markSeen();
               setOpen(false);
-              try {
-                window.open("https://liquidclips.app/agencies", "_blank", "noopener,noreferrer");
-              } catch {
-                /* noop */
-              }
+              void openInApp("https://liquidclips.app/agencies", {
+                intent: "read-only",
+              });
             }}
           />
         </div>

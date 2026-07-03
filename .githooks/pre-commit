@@ -7,6 +7,7 @@
 #   3. assert-no-passive-keychain — auth-keychain invariant (IG-014).
 #   4. brand-kit-drift-check    — token parity between index.css + demo HTML.
 #   5. lint-kade-decoupling     — Sprint G.5 · onboarding:milestone emitter-only rule.
+#   6. assert-shell-contracts    — in-app navigation, shell, auth, and brand contracts.
 #
 # Hook lives at `.githooks/pre-commit`; `git config core.hooksPath .githooks`
 # points the repo at it.
@@ -50,3 +51,6 @@ run_guard "$DESKTOP_ROOT" "$DESKTOP_SCRIPTS/brand-kit-drift-check.sh" "$@"
 # Skipped silently on branches where the desktop-2/ directory is absent
 # (run_guard short-circuits on missing executables).
 run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-kade-decoupling.sh" "$@"
+# Pre-push shell contract · catches direct target=_blank/window.open
+# bypasses and the wider desktop-2 launch invariants.
+run_guard "$DESKTOP2_ROOT" "$DESKTOP2_SCRIPTS/assert-shell-contracts.sh" "$@"
