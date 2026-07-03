@@ -452,3 +452,79 @@ def feature_sprint(tier: str, feature: str) -> str | None:
     block = FEATURES_BY_TIER.get(_resolve_tier(tier)) or {}
     f = block.get(feature)
     return f.get("sprint") if f else None
+
+
+# ---------------------------------------------------------------------------
+# 2026-07-03 · Step 2 batch 2b · authorization projection helpers.
+#
+# These map (tier, founder, platform_role) into the closed capability set
+# consumed by app.authz.evaluator. They live in features.py so the
+# projection stays adjacent to the FEATURES_BY_TIER + TIER_LIMITS matrices
+# that drive tier semantics; the authz package remains pure.
+#
+# CAPABILITY_SCHEMA_VERSION is stamped into every issued JWT + returned in
+# /me and /sync so the server can 409 a stale JWT after a policy change or
+# a downgrade. Bump when the capability set semantics change; JWT rotate
+# takes over from there.
+# ---------------------------------------------------------------------------
+
+CAPABILITY_SCHEMA_VERSION = 1
+
+
+def is_admin_platform_role(user: Any) -> bool:
+    """New authoritative admin check — reads the persisted platform_role
+    column instead of the runtime email allowlist. Legacy ``is_admin_email``
+    stays available for backfill + one compat release."""
+    role = getattr(user, "platform_role", None)
+    return role == "admin"
+
+
+def _plan_capability_names_for_tier(tier: str | None, founder: bool = False) -> frozenset[str]:
+    """Map a tier + founder flag to the plan-scoped capability enum values.
+
+    Returns capability *strings* (matches ``Capability.value``) so callers
+    that don't want a hard import of ``app.authz.capabilities`` avoid the
+    cycle. ``app.authz.projection.build_authorization_context`` converts to
+    the enum. Founder gets the agency-whitelabel bundle regardless of tier
+    (mirrors ``tier_features`` semantics)."""
+    effective = "agency_whitelabel" if founder else _resolve_tier(tier)
+    caps: set[str] = {"clipper.use"}
+    if effective in {"agency_solo", "agency", "agency_whitelabel"}:
+        caps.update({
+            "agency.workspace.read",
+            "agency.campaign.create",
+            "agency.campaign.update",
+            "agency.campaign.publish",
+            "agency.campaign.archive",
+            "agency.roster.read",
+            "agency.roster.manage",
+            "agency.rules.manage",
+            "agency.payouts.read",
+            "agency.payouts.manage",
+        })
+    return frozenset(caps)
+
+
+def _platform_capability_names_for_role(role: str | None) -> frozenset[str]:
+    """Map a platform_role string to the platform-scoped capability enum values.
+
+    ``staff`` grants read-only support access. ``admin`` grants HQ +
+    SUPPORT_READ; SUPPORT_WRITE is granted here too but the evaluator
+    additionally requires a second_approver_id at request time."""
+    if role == "admin":
+        return frozenset({
+            "hq.read",
+            "hq.mutate",
+            "support.tenant.read",
+            "support.tenant.write",
+        })
+    if role == "staff":
+        return frozenset({"support.tenant.read"})
+    return frozenset()
+
+
+def _tier_limits_for(tier: str | None) -> dict[str, int]:
+    """Return the TIER_LIMITS row for the resolved tier as a plain dict.
+    Falls back to the ``free`` row when tier is unrecognised."""
+    resolved = _resolve_tier(tier)
+    return dict(TIER_LIMITS.get(resolved) or TIER_LIMITS["free"])

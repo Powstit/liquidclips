@@ -98,6 +98,21 @@ class SyncResponse(BaseModel):
     # emitter's diff path.
     onboarding_status: dict[str, str | None] = {}
 
+    # 2026-07-03 · Step 2 batch 2b · additive server-owned authorization
+    # projection (same shape as /me). The desktop is expected to consume
+    # ``capabilities`` and ``platform_role`` in place of the legacy
+    # ``admin_override`` + client-side tier inference once batch 2F lands.
+    # ``capability_schema_version`` lets the client cheap-detect a stale
+    # JWT: the next request that finds a mismatch returns a rotated
+    # ``new_license_jwt`` here and a fresh capability set.
+    platform_role: str = "none"
+    capabilities: list[str] = []
+    limits: dict[str, int] = {}
+    tenant_contexts: list[dict[str, str]] = []
+    operating_mode: str = "self"
+    target_tenant_id: str | None = None
+    capability_schema_version: int = 1
+
 
 def _agency_ids_for_user(db: Session, user: User) -> list[str]:
     """Return the agency_ids whose broadcasts this user should see.
@@ -205,11 +220,21 @@ def sync(
     latest_exp = latest.expires_at if latest else None
     if latest_exp is not None and latest_exp.tzinfo is None:
         latest_exp = latest_exp.replace(tzinfo=timezone.utc)
+    # Step 2 batch 2b · additive JWT claims. platform_role reads from the
+    # persisted column; tenant_id_own is set only when the user is an
+    # agency owner (implicit-agency model → user.id IS the tenant id).
+    from app.features import CAPABILITY_SCHEMA_VERSION, is_agency_tier
+    _platform_role_for_jwt = getattr(user, "platform_role", "none") or "none"
+    _tenant_id_own_for_jwt = str(user.id) if is_agency_tier(user.tier) else None
+
     if not latest or latest_exp is None or latest_exp <= threshold:
         jwt_str, expires_at = issue_license_jwt(
             user_id=user.id,
             tier=effective_tier,
             founder=effective_founder,
+            platform_role=_platform_role_for_jwt,
+            capability_schema_version=CAPABILITY_SCHEMA_VERSION,
+            tenant_id_own=_tenant_id_own_for_jwt,
         )
         db.add(License(user_id=user.id, jwt=jwt_str, tier_at_issue=effective_tier, expires_at=expires_at))
         db.commit()
@@ -251,6 +276,14 @@ def sync(
         pass
 
     from app.onboarding_milestones import snapshot as onboarding_snapshot
+
+    # Step 2 batch 2b · project authorization from CURRENT DB state so a
+    # downgrade or platform_role change takes effect on this /sync call.
+    from app.authz import build_authorization_context, OperatingMode
+    authz_ctx = build_authorization_context(
+        user, db, operating_mode=OperatingMode.SELF
+    )
+
     return SyncResponse(
         tier=effective_tier,
         founder=effective_founder,
@@ -265,4 +298,14 @@ def sync(
         trial_days_remaining=None if is_admin else trial_days_remaining,
         trial_convert_pending=trial_convert_pending,
         onboarding_status=onboarding_snapshot(user),
+        platform_role=authz_ctx.platform_role.value,
+        capabilities=sorted(c.value for c in authz_ctx.capabilities),
+        limits=dict(authz_ctx.limits),
+        tenant_contexts=[
+            {"tenant_id": m.tenant_id, "role": m.role}
+            for m in authz_ctx.tenant_memberships
+        ],
+        operating_mode=authz_ctx.operating_mode.value,
+        target_tenant_id=authz_ctx.target_tenant_id,
+        capability_schema_version=authz_ctx.capability_schema_version,
     )

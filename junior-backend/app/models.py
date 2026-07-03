@@ -123,6 +123,27 @@ class User(Base):
     # Read by the gate that mints licenses + by Earn/Publish gates.
     banned_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # 2026-07-03 · Step 2 batch 2b · server-owned platform role. Replaces
+    # runtime email-allowlist inference with a persisted authority. Backfilled
+    # from ``ADMIN_EMAILS`` in ``main.py`` lifespan. ``none`` for ordinary
+    # users; ``staff`` grants SUPPORT_TENANT_READ only; ``admin`` grants HQ +
+    # SUPPORT capabilities. The evaluator NEVER reads email at request time in
+    # the new code path; the legacy ``is_admin_email`` helper remains only for
+    # backfill and one compat release. See ``app/authz/capabilities.py``
+    # (``PlatformRole``).
+    platform_role: Mapped[str] = mapped_column(
+        String, nullable=False, default="none", index=True
+    )
+    # 2026-07-03 · Step 2 batch 2b · capability schema version stamped into
+    # the license JWT at issuance. On every server mutation the wrapper
+    # compares this against ``settings.capability_schema_version``; a
+    # mismatch returns 409 ``stale_capabilities`` so the desktop refreshes
+    # /sync instantly instead of running on stale entitlements after a
+    # policy change or downgrade. See ``app/authz/projection.py``.
+    capability_schema_version_at_issue: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1
+    )
+
     # Stage 7 · chat-scoped timed mute. Distinct from `banned_until`
     # (global) so a chat mute doesn't leak into publish / earn / license
     # gates. NULL = not muted. A future date = muted until that date;
@@ -1204,6 +1225,18 @@ class AdminAuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, index=True
     )
+
+    # 2026-07-03 · Step 2 batch 2b · support-mode audit columns. Populated
+    # on every ``/admin/support/*`` call (batch 2D). NULL on legacy mutation
+    # rows written before Step 2. ``support_capability`` mirrors the enum
+    # value used at the gate (e.g. ``"support.tenant.read"``). The pair
+    # (``actor_email``, ``support_ticket_id``, ``created_at``) forms the
+    # forensic key when reviewing a support session in HQ.
+    support_ticket_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    support_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    support_capability: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    support_expiry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    support_approver_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
 
 
 class AgentPersona(Base):
