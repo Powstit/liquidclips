@@ -132,6 +132,8 @@ export function SplashGame({
           void submitArcadeScore(next.score);
         }
         // v0.7.67 — broadcast live state to parent HUD chrome.
+        // C.6 · wave propagates to SplashHud so it can render the named
+        // difficulty tier (RECRUIT → LEGENDARY) instead of a raw number.
         onStateChange?.({ score: next.score, lives: next.lives, wave: next.wave });
 
         // 2026-06-24 · level-up card on wave change.

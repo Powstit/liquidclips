@@ -302,6 +302,40 @@ function draw(
     drawPixelGrid(ctx, grid, drawX - gW / 2, inv.pos.y - gH / 2, INV_PX, invaderColor(inv.row));
   }
 
+  // C.2 · UFO / Mystery ship — golden saucer that flies horizontally near
+  // the top of the arena, worth a hefty score bonus based on shot count.
+  if (state.ufo && state.ufo.alive) {
+    const ufoW = 32;
+    const ufoH = 12;
+    const ufoX = state.ufo.pos.x - ufoW / 2;
+    const ufoY = state.ufo.pos.y - ufoH / 2;
+    // Body — golden pill
+    ctx.fillStyle = "#FFC629";
+    ctx.beginPath();
+    ctx.ellipse(state.ufo.pos.x, state.ufo.pos.y + 2, ufoW / 2, ufoH / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Dome — dark cyan
+    ctx.fillStyle = "#00E5FF";
+    ctx.beginPath();
+    ctx.ellipse(state.ufo.pos.x, state.ufo.pos.y - 1, ufoW / 4, ufoH / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Pulsating glow
+    const pulse = 0.55 + 0.25 * Math.sin(performance.now() / 180);
+    ctx.fillStyle = `rgba(255, 198, 41, ${pulse * 0.5})`;
+    ctx.beginPath();
+    ctx.ellipse(state.ufo.pos.x, state.ufo.pos.y, ufoW * 0.7, ufoH * 0.9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Undercarriage lights — 3 fuchsia dots
+    for (let i = -1; i <= 1; i++) {
+      ctx.fillStyle = "#FF1A8C";
+      ctx.beginPath();
+      ctx.arc(state.ufo.pos.x + i * 8, state.ufo.pos.y + ufoH / 2, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Silence unused var linter — kept for future collision debug overlay
+    void ufoX; void ufoY;
+  }
+
   // player — Liquid Clips fighter ship FACING UP (nose at top). Body painted
   // in warm paper at 3px/cell so the hero reads bigger than the invaders,
   // then a 3-wide cyan eye-stripe lit in the cockpit hollow on a second pass.

@@ -39,6 +39,43 @@
   margin-top: 4px;
 }
 
+/* C.6 · Named difficulty tier chip — RECRUIT/SOLDIER/…/LEGENDARY. */
+.splash-hud-tier {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  background: rgba(0, 229, 255, 0.05);
+}
+.splash-hud-tier[data-tier="R"] { border-color: rgba(163, 163, 171, 0.55); }
+.splash-hud-tier[data-tier="S"] { border-color: rgba(0, 229, 255, 0.55); }
+.splash-hud-tier[data-tier="V"] { border-color: rgba(255, 198, 41, 0.55); }
+.splash-hud-tier[data-tier="E"] { border-color: rgba(255, 100, 0, 0.6); }
+.splash-hud-tier[data-tier="C"] { border-color: rgba(255, 26, 140, 0.65); }
+.splash-hud-tier[data-tier="L"] {
+  border-color: #FF1A8C;
+  box-shadow: 0 0 12px rgba(255, 26, 140, 0.55);
+}
+.splash-hud-tier-label {
+  font-family: sans-serif;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #00E5FF;
+  font-weight: 700;
+}
+.splash-hud-tier-value {
+  font-family: "Press Start 2P", ui-monospace, monospace;
+  font-size: 12px;
+  color: #F4F1EA;
+  margin-top: 6px;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
+}
+
 .splash-hud-counter {
   display: flex;
   align-items: center;

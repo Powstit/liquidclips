@@ -12,15 +12,22 @@
 // /leaderboard/arcade instead of MOCK_COUNTERS. Fresh install / empty
 // DB shows 0 with no fabricated delta.
 import { useArcadeLeaderboard } from "../../lib/useArcadeLeaderboard";
+import { difficultyTierFor } from "../../lib/invaders/engine";
 import "./SplashHud.css";
 
 export function SplashHud({
   score = 0,
   lives = 3,
+  wave = 1,
 }: {
   score?: number;
   lives?: number;
+  /** C.6 · when passed, HUD surfaces the named difficulty tier
+   *  (RECRUIT/SOLDIER/VETERAN/ELITE/COMMANDER/LEGENDARY) instead of
+   *  a raw wave number so runs feel identity-shaped. */
+  wave?: number;
 }) {
+  const tier = difficultyTierFor(wave);
   const arcade = useArcadeLeaderboard(5);
   const clipperTotal = arcade.counters.clippers.total;
   const agencyTotal = arcade.counters.agencies.total;
@@ -45,6 +52,16 @@ export function SplashHud({
         />
         <ScoreChip score={score} />
         <Lives count={Math.max(0, Math.min(3, lives))} />
+        {/* C.6 · named difficulty tier chip · replaces raw "wave 12" with
+            "COMMANDER" for identity-shaped runs. */}
+        <div
+          className="splash-hud-tier"
+          data-testid="splash-hud-tier"
+          data-tier={tier.short}
+        >
+          <span className="splash-hud-tier-label">Rank</span>
+          <span className="splash-hud-tier-value">{tier.name}</span>
+        </div>
       </div>
 
       <div className="splash-hud-tip" data-testid="splash-hud-tip">
