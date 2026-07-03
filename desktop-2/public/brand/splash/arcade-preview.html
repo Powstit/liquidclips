@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Arcade panel preview · v5 · marquee bays in CSS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --navy: #0b0b10;
+    --fuchsia: #ff1a8c;
+    --cyan: #00e5ff;
+    --gold: #ffc629;
+    --ink: #f4f1ea;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #050508;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    font-family: "Press Start 2P", system-ui, monospace;
+    color: var(--ink);
+    overflow-x: hidden;
+  }
+
+  /* ============================================================
+     ARCADE PANEL
+     bg-v5.png is now pure environment art (no marquee panels)
+     Marquee bays are drawn in CSS below so their positions are
+     100% predictable and text stays inside them.
+     container-type: inline-size lets font sizes scale with panel
+     width (via `cqw`), not viewport width.
+     ============================================================ */
+  .arcade-panel {
+    position: relative;
+    width: min(90vw, calc(100vh * 1024 / 1536));
+    aspect-ratio: 1024 / 1536;
+    background-image: url("./gameplay-panel-bg-v5.png");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow:
+      0 0 0 1px rgba(255, 26, 140, 0.4),
+      0 30px 80px -20px rgba(255, 26, 140, 0.55),
+      0 0 120px rgba(0, 229, 255, 0.15);
+    isolation: isolate;
+    container-type: inline-size;
+
+    display: grid;
+    /* Rows exactly define bay dimensions — nothing can drift */
+    grid-template-rows:
+      6%    /* R1 · eyebrow ribbon */
+      15%   /* R2 · hero marquee */
+      53%   /* R3 · Kade stage */
+      7%    /* R4 · progress ribbon */
+      13%   /* R5 · invaders floor (baked into bg) */
+      6%;   /* R6 · footer */
+    grid-template-columns: 6% 1fr 6%;
+  }
+
+  .row { grid-column: 2; position: relative; z-index: 5; }
+  .row-eyebrow  { grid-row: 1; display: grid; place-items: center; }
+  .row-hero     { grid-row: 2; display: grid; place-items: center; overflow: hidden; }
+  .row-stage    { grid-row: 3; grid-column: 1 / -1; position: relative; z-index: 4; }
+  .row-progress { grid-row: 4; display: grid; align-items: center; }
+  .row-floor    { grid-row: 5; grid-column: 1 / -1; position: relative; z-index: 3; }
+  .row-footer   { grid-row: 6; display: grid; place-items: center; }
+
+  /* ============================================================
+     DEV GRID OVERLAY · G to toggle
+     ============================================================ */
+  .arcade-panel[data-grid="1"] > .row-eyebrow,
+  .arcade-panel[data-grid="1"] > .row-hero,
+  .arcade-panel[data-grid="1"] > .row-stage,
+  .arcade-panel[data-grid="1"] > .row-progress,
+  .arcade-panel[data-grid="1"] > .row-floor,
+  .arcade-panel[data-grid="1"] > .row-footer {
+    outline: 1px dashed rgba(0, 229, 255, 0.7);
+    outline-offset: -1px;
+  }
+  .arcade-panel[data-grid="1"] > .row-eyebrow  { background: rgba(0, 229, 255, 0.10); }
+  .arcade-panel[data-grid="1"] > .row-hero     { background: rgba(255, 26, 140, 0.10); }
+  .arcade-panel[data-grid="1"] > .row-stage    { background: rgba(255, 198, 41, 0.05); }
+  .arcade-panel[data-grid="1"] > .row-progress { background: rgba(0, 229, 255, 0.18); }
+  .arcade-panel[data-grid="1"] > .row-floor    { background: rgba(255, 26, 140, 0.05); }
+  .arcade-panel[data-grid="1"] > .row-footer   { background: rgba(0, 229, 255, 0.10); }
+
+  /* ============================================================
+     LAYER 0 · MOTION FIELD (spans whole panel)
+     ============================================================ */
+  .motion-field, .scan-sweep {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    grid-row: 1 / -1;
+    grid-column: 1 / -1;
+  }
+  .motion-field .spark {
+    position: absolute;
+    width: 2px; height: 2px;
+    background: var(--cyan);
+    border-radius: 50%;
+    box-shadow: 0 0 6px rgba(0, 229, 255, 0.9);
+    opacity: 0.7;
+    animation: spark-rise linear infinite;
+  }
+  .motion-field .spark.pink {
+    background: var(--fuchsia);
+    box-shadow: 0 0 6px rgba(255, 26, 140, 0.9);
+  }
+  @keyframes spark-rise {
+    0%   { transform: translateY(0)   scale(1);   opacity: 0; }
+    10%  { opacity: 0.8; }
+    90%  { opacity: 0.6; }
+    100% { transform: translateY(-800px) scale(0.4); opacity: 0; }
+  }
+  .scan-sweep {
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(0, 229, 255, 0.6) 30%, rgba(255, 26, 140, 0.7) 55%, rgba(0, 229, 255, 0.6) 80%, transparent);
+    box-shadow: 0 0 12px rgba(0, 229, 255, 0.6);
+    animation: scan 4s linear infinite;
+    opacity: 0.7;
+    z-index: 2;
+  }
+  @keyframes scan {
+    0%   { top: -2%; }
+    100% { top: 102%; }
+  }
+
+  /* ============================================================
+     ROW 1 · EYEBROW · CSS-drawn marquee ribbon
+     ============================================================ */
+  .marquee-eyebrow {
+    width: 92%;
+    height: 100%;
+    border: 1.5px solid var(--cyan);
+    border-radius: 4px;
+    box-shadow:
+      inset 0 0 12px rgba(0, 229, 255, 0.35),
+      0 0 12px rgba(0, 229, 255, 0.55);
+    background: rgba(11, 11, 16, 0.7);
+    display: grid;
+    place-items: center;
+  }
+  .eyebrow-text {
+    font-size: 2.2cqw;
+    letter-spacing: 0.4em;
+    color: var(--cyan);
+    text-shadow: 0 0 10px rgba(0, 229, 255, 0.95);
+    animation: eyebrow-flicker 3s ease-in-out infinite;
+  }
+  @keyframes eyebrow-flicker {
+    0%, 90%, 100% { opacity: 1; }
+    92%           { opacity: 0.3; }
+    94%           { opacity: 1; }
+  }
+
+  /* ============================================================
+     ROW 2 · HERO MARQUEE · CSS-drawn signage bay
+     Text sized in cqw so it scales with panel width, not viewport.
+     ============================================================ */
+  .marquee-hero {
+    width: 96%;
+    height: 100%;
+    border: 2px solid var(--cyan);
+    border-radius: 6px;
+    box-shadow:
+      inset 0 0 20px rgba(0, 229, 255, 0.35),
+      0 0 20px rgba(0, 229, 255, 0.55),
+      0 0 40px rgba(255, 26, 140, 0.35);
+    background: rgba(11, 11, 16, 0.75);
+    display: grid;
+    grid-template-rows: 1fr auto;
+    place-items: center;
+    gap: 1cqw;
+    padding: 1.5cqw;
+    box-sizing: border-box;
+  }
+  .prize {
+    white-space: nowrap;
+    /* cqw = 1% of container inline size — reliable for arcade cabinet */
+    font-size: 8.5cqw;
+    color: var(--fuchsia);
+    text-shadow:
+      0 0 12px rgba(255, 26, 140, 0.8),
+      2px 2px 0 #0b0b10,
+      4px 4px 0 var(--cyan);
+    letter-spacing: 0.02em;
+    line-height: 1;
+    animation: prize-shift 6s ease-in-out infinite;
+  }
+  @keyframes prize-shift {
+    0%, 100% { transform: translateX(0); }
+    50%      { transform: translateX(-2px); }
+  }
+  .prize-sub {
+    white-space: nowrap;
+    font-size: 2.4cqw;
+    letter-spacing: 0.22em;
+    color: var(--ink);
+    text-shadow: 0 0 6px rgba(255, 26, 140, 0.4);
+    line-height: 1;
+  }
+
+  /* ============================================================
+     ROW 3 · STAGE · KADE tall hero
+     ============================================================ */
+  .stage-kade-wrap {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    transform: translateX(-50%);
+    max-height: 100%;
+    aspect-ratio: 1024 / 900;
+    max-width: 92%;
+    display: grid;
+    place-items: end center;
+  }
+  .stage-halo {
+    position: absolute;
+    left: 50%;
+    top: 55%;
+    width: 88%;
+    height: 55%;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(ellipse at center, rgba(255, 26, 140, 0.55) 0%, rgba(255, 26, 140, 0.22) 40%, transparent 70%);
+    filter: blur(24px);
+    animation: halo-pulse 3.2s ease-in-out infinite;
+    z-index: 1;
+    pointer-events: none;
+  }
+  @keyframes halo-pulse {
+    0%, 100% { opacity: 0.7; transform: translate(-50%, -50%) scale(0.95); }
+    50%      { opacity: 1;   transform: translate(-50%, -50%) scale(1.05); }
+  }
+  .stage-kade {
+    position: relative;
+    height: 100%;
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+    z-index: 2;
+    filter:
+      drop-shadow(0 12px 40px rgba(255, 26, 140, 0.65))
+      drop-shadow(0 0 24px rgba(255, 26, 140, 0.45))
+      drop-shadow(0 0 10px rgba(0, 229, 255, 0.35));
+    animation: kade-bob 3.4s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes kade-bob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-8px); }
+  }
+  .stage-pedestal {
+    position: absolute;
+    left: 50%;
+    bottom: -2%;
+    width: 65%;
+    height: 12%;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse at center, rgba(255, 198, 41, 0.75) 0%, rgba(255, 198, 41, 0.3) 40%, transparent 65%);
+    filter: blur(6px);
+    animation: pedestal-flicker 2.2s ease-in-out infinite;
+    z-index: 1;
+    pointer-events: none;
+  }
+  @keyframes pedestal-flicker {
+    0%, 100% { opacity: 0.8; }
+    25%      { opacity: 1; }
+    50%      { opacity: 0.7; }
+    75%      { opacity: 0.95; }
+  }
+
+  /* ============================================================
+     ROW 4 · PROGRESS · CSS-drawn ribbon + LEADER chip + bars
+     ============================================================ */
+  .marquee-progress {
+    width: 96%;
+    height: 100%;
+    border: 1.5px solid var(--cyan);
+    border-radius: 4px;
+    box-shadow: inset 0 0 12px rgba(0, 229, 255, 0.35), 0 0 12px rgba(0, 229, 255, 0.55);
+    background: rgba(11, 11, 16, 0.75);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 0.4cqw;
+    padding: 0.8cqw 1.2cqw;
+    box-sizing: border-box;
+  }
+  .leader-chip {
+    text-align: center;
+    font-size: 1.7cqw;
+    letter-spacing: 0.3em;
+    color: var(--gold);
+    text-shadow: 0 0 10px rgba(255, 198, 41, 0.85);
+    line-height: 1;
+  }
+  .bars {
+    display: flex;
+    gap: 3px;
+    height: 100%;
+    min-height: 0;
+    align-self: center;
+  }
+  .cell {
+    flex: 1;
+    background: rgba(255, 26, 140, 0.08);
+    border: 1px solid rgba(0, 229, 255, 0.35);
+    position: relative;
+    overflow: hidden;
+  }
+  .cell::before {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    background: linear-gradient(90deg, var(--fuchsia), var(--cyan));
+    transform: scaleX(0);
+    transform-origin: left center;
+    animation: bar-fill 2.6s cubic-bezier(0.7, 0, 0.3, 1) infinite;
+    box-shadow: 0 0 10px rgba(255, 26, 140, 0.8);
+  }
+  .cell:nth-child(1)::before  { animation-delay: 0.00s; }
+  .cell:nth-child(2)::before  { animation-delay: 0.12s; }
+  .cell:nth-child(3)::before  { animation-delay: 0.24s; }
+  .cell:nth-child(4)::before  { animation-delay: 0.36s; }
+  .cell:nth-child(5)::before  { animation-delay: 0.48s; }
+  .cell:nth-child(6)::before  { animation-delay: 0.60s; }
+  .cell:nth-child(7)::before  { animation-delay: 0.72s; }
+  .cell:nth-child(8)::before  { animation-delay: 0.84s; }
+  .cell:nth-child(9)::before  { animation-delay: 0.96s; }
+  .cell:nth-child(10)::before { animation-delay: 1.08s; }
+  .cell:nth-child(11)::before { animation-delay: 1.20s; }
+  .cell:nth-child(12)::before { animation-delay: 1.32s; }
+  @keyframes bar-fill {
+    0%   { transform: scaleX(0); transform-origin: left center;  opacity: 0.4; }
+    45%  { transform: scaleX(1); transform-origin: left center;  opacity: 1; }
+    55%  { transform: scaleX(1); transform-origin: right center; opacity: 1; }
+    100% { transform: scaleX(0); transform-origin: right center; opacity: 0.4; }
+  }
+
+  /* ============================================================
+     ROW 6 · FOOTER · CSS-drawn ribbon
+     ============================================================ */
+  .marquee-footer {
+    width: 92%;
+    height: 100%;
+    border: 1.5px solid var(--cyan);
+    border-radius: 4px;
+    box-shadow: inset 0 0 12px rgba(0, 229, 255, 0.35), 0 0 12px rgba(0, 229, 255, 0.55);
+    background: rgba(11, 11, 16, 0.7);
+    display: grid;
+    place-items: center;
+  }
+  .footer-text {
+    white-space: nowrap;
+    font-size: 1.8cqw;
+    letter-spacing: 0.32em;
+    color: rgba(0, 229, 255, 0.85);
+    text-shadow: 0 0 6px rgba(0, 229, 255, 0.5);
+  }
+
+  /* CRT scanlines */
+  .arcade-panel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0) 0px,
+      rgba(0, 0, 0, 0) 2px,
+      rgba(255, 255, 255, 0.02) 3px,
+      rgba(0, 0, 0, 0.06) 4px
+    );
+    mix-blend-mode: overlay;
+    z-index: 10;
+  }
+
+  .hint {
+    position: fixed;
+    bottom: 12px;
+    left: 12px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+    font-family: monospace;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 1000;
+  }
+  .hint button {
+    background: rgba(255, 26, 140, 0.15);
+    border: 1px solid rgba(255, 26, 140, 0.5);
+    color: #ff1a8c;
+    padding: 6px 12px;
+    font-family: monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .hint button:hover { background: rgba(255, 26, 140, 0.25); }
+  .hint kbd {
+    background: rgba(0, 229, 255, 0.15);
+    border: 1px solid rgba(0, 229, 255, 0.5);
+    color: #00e5ff;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: monospace;
+  }
+</style>
+</head>
+<body>
+  <div id="panel" class="arcade-panel" aria-label="Liquid Clips arcade prize panel">
+    <!-- LAYER 0 · MOTION FIELD -->
+    <div class="motion-field" aria-hidden="true">
+      <span class="spark"      style="left: 8%;  bottom: -10%; animation-duration: 5s;"></span>
+      <span class="spark pink" style="left: 22%; bottom: -20%; animation-duration: 7s; animation-delay: 1s;"></span>
+      <span class="spark"      style="left: 38%; bottom: -5%;  animation-duration: 6s; animation-delay: 2s;"></span>
+      <span class="spark"      style="left: 55%; bottom: -30%; animation-duration: 8s; animation-delay: 0.5s;"></span>
+      <span class="spark pink" style="left: 68%; bottom: -15%; animation-duration: 5.5s; animation-delay: 3s;"></span>
+      <span class="spark"      style="left: 84%; bottom: -25%; animation-duration: 6.5s; animation-delay: 1.5s;"></span>
+      <span class="spark"      style="left: 92%; bottom: -8%;  animation-duration: 7.5s; animation-delay: 2.5s;"></span>
+      <span class="spark pink" style="left: 15%; bottom: -35%; animation-duration: 9s;"></span>
+      <span class="spark"      style="left: 45%; bottom: -12%; animation-duration: 5.5s; animation-delay: 3.5s;"></span>
+      <span class="spark"      style="left: 75%; bottom: -22%; animation-duration: 6s;   animation-delay: 4s;"></span>
+    </div>
+    <div class="scan-sweep" aria-hidden="true"></div>
+
+    <!-- ROW 1 · Eyebrow (CSS marquee) -->
+    <div class="row row-eyebrow">
+      <div class="marquee-eyebrow"><span class="eyebrow-text">HIGH SCORE</span></div>
+    </div>
+
+    <!-- ROW 2 · Hero marquee (CSS-drawn bay, guaranteed containment) -->
+    <div class="row row-hero">
+      <div class="marquee-hero">
+        <span class="prize">$1,000</span>
+        <span class="prize-sub">TOP SCORE WINS</span>
+      </div>
+    </div>
+
+    <!-- ROW 3 · Stage -->
+    <div class="row-stage">
+      <div class="stage-kade-wrap">
+        <div class="stage-halo" aria-hidden="true"></div>
+        <img class="stage-kade" src="./kade-shooter.webp" alt="Kade" draggable="false" />
+        <div class="stage-pedestal" aria-hidden="true"></div>
+      </div>
+    </div>
+
+    <!-- ROW 4 · Progress ribbon (CSS marquee + LEADER + bars) -->
+    <div class="row row-progress">
+      <div class="marquee-progress">
+        <div class="leader-chip">LEADER · DANIEL · 42,500</div>
+        <div class="bars">
+          <span class="cell"></span><span class="cell"></span><span class="cell"></span>
+          <span class="cell"></span><span class="cell"></span><span class="cell"></span>
+          <span class="cell"></span><span class="cell"></span><span class="cell"></span>
+          <span class="cell"></span><span class="cell"></span><span class="cell"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 5 · Floor (baked invaders in bg) -->
+    <div class="row-floor" aria-hidden="true"></div>
+
+    <!-- ROW 6 · Footer (CSS marquee) -->
+    <div class="row row-footer">
+      <div class="marquee-footer"><span class="footer-text">UNLOCKS AT 1K SUBS · DOUBLES PER 1K</span></div>
+    </div>
+  </div>
+
+  <div class="hint">
+    <button id="grid-toggle" type="button">TOGGLE GRID</button>
+    <span>or press <kbd>G</kbd></span>
+  </div>
+
+  <script>
+    const panel = document.getElementById("panel");
+    function toggleGrid() {
+      panel.dataset.grid = panel.dataset.grid === "1" ? "" : "1";
+    }
+    if (new URLSearchParams(location.search).get("grid") === "1") panel.dataset.grid = "1";
+    document.getElementById("grid-toggle").addEventListener("click", toggleGrid);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "g" || e.key === "G") toggleGrid();
+    });
+  </script>
+</body>
+</html>
