@@ -1,6 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { isAdmin } from "@/lib/admin-allowlist";
+// 2026-07-03 · Step 2 batch 2e · server-owned capability gate.
+// The admin proxy now reads platform_role + capabilities from the
+// backend projection (via /authz/whoami) instead of the local email
+// allowlist. The email allowlist stays wired as a fallback for one
+// compat release so a backend outage still allows the founders in.
+import {
+  fetchCapabilities,
+  hasCapability,
+  CAP,
+} from "@/lib/server-capabilities";
 
 // Server-side proxy for the Admin HQ client component. The browser calls
 // /api/admin/<backend-path>; this handler:
@@ -107,8 +117,26 @@ async function requireAdminId(): Promise<string | null> {
   const user = await currentUser();
   if (!user) return null;
   const email = (user.primaryEmailAddress?.emailAddress ?? "").trim().toLowerCase();
-  if (!isAdmin(email)) return null;
-  return userId;
+
+  // Batch 2E primary gate — server-authoritative capability check.
+  // `hq.read` is the required capability for every /api/admin/* proxy
+  // path (both READ and WRITE lists — write additionally requires
+  // hq.mutate but the backend enforces that at the mutation endpoint).
+  const snapshot = await fetchCapabilities(userId);
+  if (snapshot && hasCapability(snapshot, CAP.HQ_READ)) {
+    return userId;
+  }
+
+  // Legacy fallback for one compat release. Fires ONLY when the backend
+  // snapshot lookup failed (returned null) — never overrides a valid
+  // capability-based denial. Guards against a backend outage silently
+  // locking the founders out of the HQ. Delete once the whoami endpoint
+  // has been stable in prod for a full release cycle.
+  if (snapshot === null && isAdmin(email)) {
+    return userId;
+  }
+
+  return null;
 }
 
 async function handle(req: NextRequest, ctx: AdminRouteCtx): Promise<Response> {
