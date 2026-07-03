@@ -69,14 +69,34 @@ def issue_license_jwt(
     founder: bool = False,
     quota_videos_per_month: int | None = None,
     ttl_days: int | None = None,
+    platform_role: str = "none",
+    capability_schema_version: int | None = None,
+    tenant_id_own: str | None = None,
 ) -> tuple[str, datetime]:
     """Sign an Ed25519 license JWT and return (jwt_str, expires_at).
 
-    The JWT carries a `features` claim (flat dict from features.py) so the
-    desktop can gate UI offline. `quota_videos_per_month` is kept as a
-    top-level claim for backward compatibility but is also inside `features`.
+    The JWT carries a ``features`` claim (flat dict from features.py) so the
+    desktop can gate UI offline. ``quota_videos_per_month`` is kept as a
+    top-level claim for backward compatibility but is also inside ``features``.
+
+    2026-07-03 · Step 2 batch 2b · additive server-owned authorization
+    claims (non-breaking; existing decoders ignore unknown fields):
+
+    * ``platform_role`` — server-authoritative platform authority
+      (``none`` / ``staff`` / ``admin``). Sourced from ``User.platform_role``
+      by the caller; defaults to ``none`` for compat with legacy call sites.
+    * ``capability_schema_version`` — stamped so a downstream mutation can
+      detect a stale JWT and respond 409 to force a ``/sync`` refresh.
+      Defaults to :data:`app.features.CAPABILITY_SCHEMA_VERSION`.
+    * ``tenant_id_own`` — the caller's own tenant id (``user.id`` for an
+      agency owner, else ``None``). Lets an offline read know which tenant
+      the JWT bearer legitimately controls.
+
+    None of these grant authority — the evaluator recomputes capabilities
+    from the current DB row on every mutation. Their purpose is to
+    fingerprint the JWT so a server can spot staleness cheaply.
     """
-    from app.features import tier_features  # local import — avoids cycle with config
+    from app.features import tier_features, CAPABILITY_SCHEMA_VERSION  # local import — avoids cycle
 
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(days=ttl_days or settings.jwt_ttl_days)
@@ -84,6 +104,11 @@ def issue_license_jwt(
     # If the caller passed a custom quota, it wins (used by free-tier overrides).
     if quota_videos_per_month is not None:
         features["video_quota_monthly"] = quota_videos_per_month
+    schema_version = (
+        capability_schema_version
+        if capability_schema_version is not None
+        else CAPABILITY_SCHEMA_VERSION
+    )
     payload: dict = {
         "sub": user_id,
         "tier": tier,
@@ -93,6 +118,10 @@ def issue_license_jwt(
         "iat": int(now.timestamp()),
         "exp": int(expires_at.timestamp()),
         "iss": settings.jwt_issuer,
+        # Additive step-2 claims.
+        "platform_role": platform_role,
+        "capability_schema_version": schema_version,
+        "tenant_id_own": tenant_id_own,
     }
     token = jwt.encode(payload, _PRIV_PEM, algorithm="EdDSA")
     return token, expires_at
