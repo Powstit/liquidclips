@@ -739,6 +739,47 @@ async def lifespan(_app: FastAPI):
             created_at timestamptz NOT NULL DEFAULT now()
         )""",
         "CREATE INDEX IF NOT EXISTS ix_alert_rules_feature ON alert_rules (feature_id) WHERE feature_id IS NOT NULL",
+        # 2026-07-03 · Step 7.5 · agent substrate.
+        """CREATE TABLE IF NOT EXISTS agents (
+            id varchar PRIMARY KEY,
+            agent_id varchar(120) UNIQUE NOT NULL,
+            name varchar(200) NOT NULL,
+            provider varchar(40) NOT NULL,
+            role varchar(80) NOT NULL,
+            credential_id varchar(120) NOT NULL,
+            enabled boolean NOT NULL DEFAULT true,
+            max_concurrent integer NOT NULL DEFAULT 1,
+            daily_credit_cap_cents integer NOT NULL DEFAULT 1000,
+            circuit_breaker_state varchar(20) NOT NULL DEFAULT 'closed',
+            consecutive_failures integer NOT NULL DEFAULT 0,
+            parent_agent_id varchar(120),
+            owner varchar(120) NOT NULL,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_agents_provider ON agents (provider)",
+        "CREATE INDEX IF NOT EXISTS ix_agents_role ON agents (role)",
+        """CREATE TABLE IF NOT EXISTS agent_actions (
+            id varchar PRIMARY KEY,
+            agent_id varchar(120) NOT NULL,
+            action_type varchar(80) NOT NULL,
+            target_user_id varchar(120),
+            prompt_redacted text,
+            response_redacted text,
+            tools_called jsonb NOT NULL DEFAULT '[]'::jsonb,
+            cost_cents integer NOT NULL DEFAULT 0,
+            elapsed_ms integer NOT NULL DEFAULT 0,
+            success boolean NOT NULL DEFAULT true,
+            stable_error_code varchar(120),
+            decision_trace_id varchar(80) NOT NULL,
+            correlation_id varchar(80),
+            created_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_agent_actions_agent ON agent_actions (agent_id)",
+        "CREATE INDEX IF NOT EXISTS ix_agent_actions_action_type ON agent_actions (action_type)",
+        "CREATE INDEX IF NOT EXISTS ix_agent_actions_target_user ON agent_actions (target_user_id) WHERE target_user_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS ix_agent_actions_error ON agent_actions (stable_error_code) WHERE stable_error_code IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS ix_agent_actions_created_at ON agent_actions (created_at DESC)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
