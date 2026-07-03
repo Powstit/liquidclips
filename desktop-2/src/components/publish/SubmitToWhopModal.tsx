@@ -14,7 +14,9 @@
 
 import { useState } from "react";
 import { usePublishStore } from "../../state/publishStore";
-import { getCampaignById } from "../../fixtures/fakeCampaigns";
+// 2026-07-03 · Step 3 batch 3f · fixture campaign lookup severed. Campaign
+// name defaults to a "Campaign <id>" placeholder until Step 4 wires backend
+// `/campaigns/{id}` lookup.
 import { getModeState } from "../../shell/modeStore";
 import { openInApp } from "../../lib/openInApp";
 
@@ -41,9 +43,8 @@ export function SubmitToWhopModal({
   const recordSubmission = usePublishStore((s) => s.recordSubmission);
 
   const campaignId = defaultCampaignId ?? getModeState().activeCampaignId;
-  const campaign = campaignId ? getCampaignById(campaignId) : undefined;
-  const campaignName = campaign?.name ?? "No active campaign";
-  const campaignSlug = campaign?.id?.replace(/^cmp_/, "") ?? "rewards";
+  const campaignName = campaignId ? `Campaign ${campaignId}` : "No active campaign";
+  const campaignSlug = campaignId?.replace(/^cmp_/, "") ?? "rewards";
 
   const [postedLink, setPostedLink] = useState("");
   const [note, setNote] = useState("");
@@ -55,8 +56,8 @@ export function SubmitToWhopModal({
   const submit = () => {
     if (!valid) return;
     recordSubmission({
-      campaignId: campaign?.id ?? null,
-      campaignName: campaign?.name ?? null,
+      campaignId: campaignId ?? null,
+      campaignName: campaignId ? campaignName : null,
       clipId: clipId ?? null,
       postedLink: postedLink.trim(),
       note: note.trim(),

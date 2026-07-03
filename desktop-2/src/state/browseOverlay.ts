@@ -14,8 +14,10 @@
 // No Tauri webview. iframe only. No Rust. No real APIs.
 
 import { create } from "zustand";
-import { fakeCampaigns } from "../fixtures/fakeCampaigns";
-import { sampleCampaigns } from "../fixtures/sampleCampaigns";
+// 2026-07-03 · Step 3 batch 3f · fixture-driven URL match severed. Batch 4+
+// wires real backend `/campaigns/*` lookup by URL. Until then, all handoffs
+// carry the raw sourceUrl and let the Engine handle it — no fabricated
+// campaign match.
 
 export type BrowseIntent =
   | "browse-campaign"   // generic browse, may end in Use-in-Engine
@@ -25,7 +27,8 @@ export type BrowseIntent =
 export type LoadState = "idle" | "loading" | "loaded" | "blocked";
 
 export interface EngineHandoff {
-  /** Campaign id if URL matched a known fixture (fakeCampaigns or sampleCampaigns). */
+  /** Campaign id if URL matched a known campaign. Step 3 batch 3f · always
+   *  null until backend URL→campaign lookup is wired in Step 4. */
   campaignId: string | null;
   /** Raw URL handed off to Engine when no campaign match is found. */
   sourceUrl: string | null;
@@ -60,24 +63,12 @@ interface BrowseOverlayState {
 
 export const WHOP_REWARDS_URL = "https://whop.com/discover/content-rewards/";
 
-/** Try to match a URL to a campaign fixture id. */
-function matchCampaignId(url: string): string | null {
-  if (!url) return null;
-  // sampleCampaigns has whop_campaign_url like ".../c/demo"
-  const sample = sampleCampaigns.find(
-    (c) =>
-      (c.whop_campaign_url && url.startsWith(c.whop_campaign_url)) ||
-      (c.whop_url && url === c.whop_url),
-  );
-  if (sample) return sample.id;
-  // fakeCampaigns uses rewardPoolUrl / inviteUrl / communityUrl
-  const fake = fakeCampaigns.find(
-    (c) =>
-      url === c.rewardPoolUrl ||
-      url === c.inviteUrl ||
-      url === c.communityUrl,
-  );
-  return fake?.id ?? null;
+/** Try to match a URL to a campaign id. 2026-07-03 · Step 3 batch 3f · always
+ *  returns null pending Step 4 backend `/campaigns/lookup?url=` endpoint. Kept
+ *  as a seam so the Engine handoff shape doesn't change when live matching
+ *  lands. */
+function matchCampaignId(_url: string): string | null {
+  return null;
 }
 
 export const useBrowseOverlay = create<BrowseOverlayState>((set, get) => ({

@@ -16,9 +16,10 @@
 // Whop approval, payout, or platform analytics state.
 
 import { create } from "zustand";
-import { fakeChannels } from "../fixtures/fakeChannels";
-import { fakeSchedule, type FakeScheduledPost } from "../fixtures/fakeSchedule";
-import { fakeSubmissions, type FakeSubmission } from "../fixtures/fakeEarn";
+// 2026-07-03 · Step 3 batch 3f · fixture seeds severed. Store starts EMPTY;
+// real channels/schedule/submissions land from the onboarding state machine
+// (Step 4) + backend sync. Empty defaults render the honest empty state
+// instead of fabricating history for a brand new account.
 
 export type PlatformId =
   | "tiktok"
@@ -69,39 +70,15 @@ interface PublishState {
   recordSubmission: (payload: Omit<Submission, "id" | "openedAt">) => Submission;
 }
 
+// 2026-07-03 · Step 3 batch 3f · honest empty defaults. All three collections
+// start empty; the onboarding state machine (Step 4) populates them from real
+// user actions.
 const seedConnected = new Set<PlatformId>();
-for (const c of fakeChannels) {
-  if (c.status === "connected") {
-    seedConnected.add(c.platform as PlatformId);
-  }
-}
+const seedScheduled: ScheduledPost[] = [];
+const seedSubmissions: Submission[] = [];
 
-const seedScheduled: ScheduledPost[] = fakeSchedule.map((s: FakeScheduledPost) => ({
-  id: s.id,
-  clipId: s.clipId,
-  clipTitle: s.clipTitle,
-  campaignId: s.campaignId ?? null,
-  campaignName: s.campaignName ?? null,
-  channels: s.channels as PlatformId[],
-  caption: s.caption,
-  cadence: s.cadence,
-  scheduledFor: s.scheduledFor,
-  status: s.status,
-  createdAt: s.createdAt,
-}));
-
-const seedSubmissions: Submission[] = fakeSubmissions.map((s: FakeSubmission) => ({
-  id: s.id,
-  campaignId: s.campaignId,
-  campaignName: s.campaignName,
-  clipId: s.clipId,
-  postedLink: s.postedLink,
-  note: s.note,
-  openedAt: s.openedAt,
-}));
-
-let nextScheduledIdx = seedScheduled.length + 1;
-let nextSubmissionIdx = seedSubmissions.length + 1;
+let nextScheduledIdx = 1;
+let nextSubmissionIdx = 1;
 
 export const usePublishStore = create<PublishState>((set) => ({
   connectedChannels: seedConnected,
