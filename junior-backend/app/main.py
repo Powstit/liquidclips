@@ -23,7 +23,7 @@ from app.cron import start_cron, stop_cron
 # block is a no-op until Daniel flips the env.
 from app.agents import start_agent_fleet, stop_agent_fleet
 from app.db import Base, SessionLocal, engine
-from app.routes import admin, admin_mutations, admin_recovery, affiliate, agency_campaigns, analytics, auth_whop, bonus_ledger, campaign_asset_links, campaigns, carrot, channels, community, connections, desktop, doctrine, leaderboard, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, telemetry, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, admin_mutations, admin_recovery, affiliate, agency_campaigns, analytics, auth_whop, bonus_ledger, campaign_asset_links, campaigns, carrot, channels, community, connections, desktop, doctrine, leaderboard, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -938,7 +938,15 @@ app.include_router(_agency_router.router)
 # admin_audit_log with target_type="chat_moderation".
 from app.routes import moderation as _moderation_router  # noqa: E402
 app.include_router(_moderation_router.router)
-app.include_router(telemetry.router)
+# NOTE · legacy `telemetry.router` (routes/telemetry.py) is intentionally
+# NOT included. Its `POST /telemetry/desktop-error` handler shadowed the
+# Step-6 fingerprint-dedupe route in `routes/telemetry_ingest.py` (both
+# registered on the same path — Starlette picks the first match, which
+# was the legacy one). Result: desktop error reports silently dropped
+# `release`, `feature_id`, `stable_error_code`, and never wrote a
+# `DesktopErrorGroup` row. Removed 2026-07-03 to restore SO-GATE-6
+# guarantees. The module stays on disk for its sanitize helpers; the
+# new handler is a superset for both v0.7.x and v2.2.x desktop payloads.
 app.include_router(publish.router)
 app.include_router(social.router)
 app.include_router(connections.router)
@@ -992,8 +1000,8 @@ from app.routes import arcade_prize as _arcade_prize_router  # noqa: E402
 app.include_router(_arcade_prize_router.router)
 # 2026-07-03 · Step 6 · registry-driven observability.
 # /telemetry/event · generic Envelope ingestion
-# /telemetry/desktop-error · fingerprint dedupe (replaces the shorter
-#   route in telemetry.py while keeping backward compat)
+# /telemetry/desktop-error · fingerprint dedupe (sole owner — legacy
+#   telemetry.router NOT included; see note above `moderation.router`)
 # /admin/hq/features · feature + endpoint registry CRUD
 # /admin/hq/desktop-errors · grouped incident view
 from app.routes import telemetry_ingest as _telemetry_ingest_router  # noqa: E402
