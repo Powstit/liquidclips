@@ -47,8 +47,8 @@ push or deploy.
 |---|---|---|---|
 | 2 | Server-owned authorization capability matrix | RECEIPT ISSUED | `SO-GATE-2-0C04E1BD0537-F28B7948A1D60E5A7243` |
 | 3 | Remove production fixture fallbacks | RECEIPT ISSUED | `SO-GATE-3-3E665101B98B-B9E9C2642C24089E13C0` |
-| 4 | Clipper + Agency onboarding state machines | READY (Step 3 receipted) | `PENDING` |
-| 5 | Typed observability adapter + closed event registry | BLOCKED BY STEP 4 | `PENDING` |
+| 4 | Clipper + Agency onboarding state machines | RECEIPT ISSUED | `SO-GATE-4-C1404D65B994-C6AFED65FCB2B00C9FAB` |
+| 5 | Typed observability adapter + closed event registry | READY (Step 4 receipted) | `PENDING` |
 | 6 | Desktop error sender → backend telemetry → HQ | BLOCKED BY STEP 5 | `PENDING` |
 | 7 | PostHog + Sentry + Railway + stuck-user HQ view | BLOCKED BY STEP 6 | `PENDING` |
 | 8 | Four-identity authorization and journey proof | BLOCKED BY STEP 7 | `PENDING` |
