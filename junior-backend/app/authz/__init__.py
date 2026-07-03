@@ -39,6 +39,7 @@ from app.authz.context import (
     TenantMembership,
 )
 from app.authz.evaluator import evaluate
+from app.authz.gate import StaleCapabilities, gate
 from app.authz.projection import build_authorization_context
 
 __all__ = [
@@ -50,8 +51,10 @@ __all__ = [
     "OperatingMode",
     "PlatformRole",
     "Resource",
+    "StaleCapabilities",
     "SupportContext",
     "TenantMembership",
     "build_authorization_context",
     "evaluate",
+    "gate",
 ]
