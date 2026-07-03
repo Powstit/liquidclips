@@ -765,6 +765,13 @@ app.include_router(admin_mutations.router)
 # locked out by definition); /pin and /auth-code use their own admin gate via
 # Depends(_require_admin) inside the module.
 app.include_router(admin_recovery.router)
+# 2026-07-03 · Step 2 batch 2d · sanctioned cross-tenant support routes.
+# Replaces the admin bypass severed from customer /agency/* in batch 2c.
+# Every call carries an audited SupportContext (ticket, reason, expiry,
+# capability, optional second approver); writes require the second
+# approver. See app/routes/admin_support.py.
+from app.routes import admin_support as _admin_support_router  # noqa: E402
+app.include_router(_admin_support_router.router)
 app.include_router(campaigns.router)
 app.include_router(campaign_asset_links.router)
 app.include_router(agency_campaigns.router)
