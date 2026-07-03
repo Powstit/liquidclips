@@ -188,6 +188,10 @@ async function setTierViaDebugHook(page: Page, tier: "clipper" | "pro" | "agency
 
 test.describe("Watermark Proof", () => {
   test(`${JOURNEY} · preview promise matches export across Free / Paid / Unknown`, async ({ page }, testInfo) => {
+    // This is three complete export journeys plus per-step evidence
+    // capture. Production preview routinely needs more than the global
+    // 90-second single-journey budget under full-suite load.
+    testInfo.setTimeout(180_000);
     const rec = new JourneyRecorder(page, testInfo);
 
     try {

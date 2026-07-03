@@ -8,6 +8,10 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { isAdmin as isAdminEmail } from "@/lib/admin-allowlist";
+import {
+  isAgencyTier,
+  normalizeAccountTier,
+} from "@/lib/agency-tiers";
 import { CampaignList } from "./_components/CampaignList";
 
 export const metadata = {
@@ -42,10 +46,7 @@ async function resolveTier(userId: string): Promise<{
   } catch {
     /* fall through to email-based admin check */
   }
-  // Legacy alias normalisation (matches embed-auth.ts).
-  if (tier === "autopilot") tier = "agency";
-  else if (tier === "channel" || tier === "growth") tier = "pro";
-  return { tier, isAdmin: adminOverride };
+  return { tier: normalizeAccountTier(tier), isAdmin: adminOverride };
 }
 
 export default async function AgencyPage() {
@@ -59,7 +60,7 @@ export default async function AgencyPage() {
 
   const { tier, isAdmin } = await resolveTier(userId);
   const adminFromEmail = isAdminEmail(email);
-  const allowed = tier === "agency" || isAdmin || adminFromEmail;
+  const allowed = isAgencyTier(tier) || isAdmin || adminFromEmail;
 
   return (
     <div className="mx-auto max-w-[1240px] px-6 py-10">

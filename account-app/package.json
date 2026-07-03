@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:agency-contracts": "node --experimental-strip-types --test tests/agency-tiers.test.mjs tests/agency-license-cache.test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",

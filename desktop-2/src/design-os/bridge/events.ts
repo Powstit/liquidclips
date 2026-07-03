@@ -90,6 +90,10 @@ export type LCEvents = {
   "nav:hover": { route: RouteId; kade: KadeState };
   /** user clicked a nav item — route should swap */
   "nav:click": { route: RouteId };
+  /** Cross-route request to expose a specific agency Settings panel. */
+  "settings:open-tab": {
+    tab: "whop-sync" | "roster" | "payout-split" | "rules";
+  };
   /** allowance state changed (manually for demo, real in Phase 5+) */
   "allowance:update": { state: AllowanceState; used: number; total: number };
   /** user clicked the bug-fix demo button */

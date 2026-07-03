@@ -2,7 +2,7 @@
 
 Verifies:
   1. Missing signed_up_at is derived from trial_started_at
-  2. Missing first_paid_referral needs BOTH first_paid_at + referred_paid_subs > 0
+  2. Missing first_paid_referral uses the referred buyer's payment time
   3. Missing agency_member_accepted_at is derived from AgencyMember.joined_at
   4. Existing timestamps are NEVER overwritten (idempotent through mark_milestone)
   5. Reconcile pass returns [] when nothing needs healing
@@ -37,7 +37,17 @@ def db_session(monkeypatch):
         session.close()
 
 
-def _make_user(db, *, email="test@example.com", trial_started_at=None, first_paid_at=None, referred_paid_subs=0, affiliate_id=None):
+def _make_user(
+    db,
+    *,
+    email="test@example.com",
+    trial_started_at=None,
+    first_paid_at=None,
+    referred_paid_subs=0,
+    affiliate_id=None,
+    whop_affiliate_id=None,
+    whop_affiliate_code=None,
+):
     u = User(
         clerk_id=f"user_{email}",
         email=email,
@@ -46,6 +56,8 @@ def _make_user(db, *, email="test@example.com", trial_started_at=None, first_pai
         referred_paid_subs=referred_paid_subs,
         first_paid_at=first_paid_at,
         affiliate_id=affiliate_id,
+        whop_affiliate_id=whop_affiliate_id,
+        whop_affiliate_code=whop_affiliate_code,
     )
     db.add(u)
     db.commit()
@@ -62,23 +74,64 @@ def test_signed_up_at_derived_from_trial_started_at(db_session):
     assert u.onboarding_status["signed_up_at"].startswith("2026-05-01T12:00:00")
 
 
-def test_first_paid_referral_needs_both_first_paid_and_refs(db_session):
-    paid_at = datetime(2026, 6, 10, tzinfo=timezone.utc)
-    # first_paid_at set but 0 refs → NOT stamped
-    u = _make_user(db_session, first_paid_at=paid_at, referred_paid_subs=0)
-    stamped = reconcile_missing_milestones(db_session, u)
-    assert "first_paid_referral" not in stamped
+def test_first_paid_referral_uses_referred_buyers_payment_time(db_session):
+    owner_paid_at = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    referral_paid_at = datetime(2026, 6, 10, tzinfo=timezone.utc)
+    owner = _make_user(
+        db_session,
+        email="owner@example.com",
+        first_paid_at=owner_paid_at,
+        referred_paid_subs=1,
+        whop_affiliate_id="aff_owner",
+    )
+    _make_user(
+        db_session,
+        email="buyer@example.com",
+        first_paid_at=referral_paid_at,
+        affiliate_id="aff_owner",
+    )
 
-    # Refs > 0 but no first_paid_at → NOT stamped
-    u2 = _make_user(db_session, email="two@example.com", referred_paid_subs=3)
-    stamped2 = reconcile_missing_milestones(db_session, u2)
-    assert "first_paid_referral" not in stamped2
-
-    # Both present → stamped
-    u3 = _make_user(db_session, email="three@example.com", first_paid_at=paid_at, referred_paid_subs=1)
-    stamped3 = reconcile_missing_milestones(db_session, u3)
+    stamped = reconcile_missing_milestones(db_session, owner)
     db_session.commit()
-    assert "first_paid_referral" in stamped3
+    assert "first_paid_referral" in stamped
+    assert owner.onboarding_status["first_paid_referral"].startswith(
+        "2026-06-10T00:00:00"
+    )
+
+
+def test_referral_time_wins_when_owner_paid_after_referral(db_session):
+    owner = _make_user(
+        db_session,
+        email="owner-late@example.com",
+        first_paid_at=datetime(2026, 6, 20, tzinfo=timezone.utc),
+        referred_paid_subs=1,
+        whop_affiliate_code="owner-code",
+    )
+    _make_user(
+        db_session,
+        email="buyer-early@example.com",
+        first_paid_at=datetime(2026, 6, 5, tzinfo=timezone.utc),
+        affiliate_id="owner-code",
+    )
+
+    reconcile_missing_milestones(db_session, owner)
+    db_session.commit()
+    assert owner.onboarding_status["first_paid_referral"].startswith(
+        "2026-06-05T00:00:00"
+    )
+
+
+def test_paid_referral_counter_without_truthful_event_stays_unset(db_session):
+    owner = _make_user(
+        db_session,
+        email="legacy-owner@example.com",
+        first_paid_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+        referred_paid_subs=3,
+        whop_affiliate_id="aff_missing_buyer",
+    )
+    stamped = reconcile_missing_milestones(db_session, owner)
+    assert "first_paid_referral" not in stamped
+    assert not owner.onboarding_status.get("first_paid_referral")
 
 
 def test_agency_member_accepted_derived_from_joined_at(db_session):

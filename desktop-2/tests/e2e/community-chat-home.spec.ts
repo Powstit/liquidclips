@@ -281,8 +281,12 @@ test.describe("Community chat home", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await seedAuth(page);
     await interceptBase(page);
+    let releaseHistory!: () => void;
+    const historyGate = new Promise<void>((resolve) => {
+      releaseHistory = resolve;
+    });
     await page.route(/api\.liquidclips\.app\/chat\/messages/, async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 900));
+      await historyGate;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -309,7 +313,9 @@ test.describe("Community chat home", () => {
     await page.screenshot({
       path: path.join(evidenceDir, "loading-history.png"),
       fullPage: false,
+      timeout: 20_000,
     });
+    releaseHistory();
     await expect(page.getByText("Wednesday campaign drop is live. Check the campaign brief before clipping.")).toBeVisible();
   });
 
@@ -438,24 +444,85 @@ test.describe("Community chat home", () => {
     expect(clipboard).toContain("#/community?message=msg-lucia");
   });
 
-  test("staff right-click menu exposes only disabled, contract-honest moderator actions", async ({ page }) => {
+  test("staff moderator actions call live contracts and surface success, auth, and server failures", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await seedAuth(page);
     await interceptBase(page);
     await interceptChat(page, { viewerRole: "staff" });
+    await page.route(
+      /api\.liquidclips\.app\/chat\/messages\/msg-lucia\/(hide|warn|mute24h)$/,
+      (route) => {
+        const action = new URL(route.request().url()).pathname.split("/").at(-1);
+        if (action === "hide") {
+          return route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              id: "msg-lucia",
+              hidden: true,
+              hidden_at: "2026-07-02T12:00:00Z",
+              hidden_by_user_id: "community-harness",
+              hide_reason: null,
+            }),
+          });
+        }
+        if (action === "warn") {
+          return route.fulfill({
+            status: 403,
+            contentType: "application/json",
+            body: JSON.stringify({ detail: "Staff role is no longer active." }),
+          });
+        }
+        return route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Moderation service unavailable." }),
+        });
+      },
+    );
+    page.on("dialog", (dialog) => void dialog.accept());
     await page.goto("/?skipIntro=1#/community", { waitUntil: "domcontentloaded" });
     const row = page.locator(".lc-chat-row", {
       hasText: "The side-by-side reaction layout is landing cleanly.",
     });
     await expect(row).toHaveAttribute("data-moderation-available", "true");
+
     await row.click({ button: "right" });
     await expect(row.getByText("Moderator tools")).toBeVisible();
-    await expect(row.getByRole("menuitem", { name: "Hide message" })).toBeDisabled();
-    await expect(row.getByRole("menuitem", { name: "Warn user" })).toBeDisabled();
-    await expect(row.getByRole("menuitem", { name: "Mute for 24 hours" })).toBeDisabled();
-    await expect(
-      row.getByText("Server authorization, expiry, rollback, and audit contracts are required before these actions can be enabled."),
-    ).toBeVisible();
+    await expect(row.getByRole("menuitem", { name: "Hide message" })).toBeEnabled();
+    await expect(row.getByRole("menuitem", { name: "Warn user" })).toBeEnabled();
+    await expect(row.getByRole("menuitem", { name: "Mute for 24 hours" })).toBeEnabled();
+
+    const hideRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname.endsWith("/chat/messages/msg-lucia/hide"),
+    );
+    await row.getByRole("menuitem", { name: "Hide message" }).click();
+    expect((await hideRequest).postDataJSON()).toEqual({});
+    await expect(page.getByText("Message hidden")).toBeVisible();
+
+    await row.click({ button: "right" });
+    const warnRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname.endsWith("/chat/messages/msg-lucia/warn"),
+    );
+    await row.getByRole("menuitem", { name: "Warn user" }).click();
+    expect((await warnRequest).postDataJSON()).toEqual({});
+    await expect(page.getByText("Not authorised")).toBeVisible();
+    await expect(page.getByText("Staff role is no longer active.")).toBeVisible();
+
+    await row.click({ button: "right" });
+    const muteRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname.endsWith("/chat/messages/msg-lucia/mute24h"),
+    );
+    await row.getByRole("menuitem", { name: "Mute for 24 hours" }).click();
+    expect((await muteRequest).postDataJSON()).toEqual({});
+    await expect(page.getByText("Moderation failed")).toBeVisible();
+    await expect(page.getByText("Moderation service unavailable.")).toBeVisible();
 
     const evidenceDir = path.resolve(
       process.cwd(),
@@ -466,8 +533,5 @@ test.describe("Community chat home", () => {
       path: path.join(evidenceDir, "moderation-contract-gate.png"),
       fullPage: false,
     });
-
-    await page.keyboard.press("Escape");
-    await expect(row.getByRole("menu")).toHaveCount(0);
   });
 });

@@ -149,6 +149,7 @@ function authHeader(): Record<string, string> {
 async function agencyFetch<T>(
   path: string,
   init: RequestInit = {},
+  isValid?: (value: unknown) => value is T,
 ): Promise<FetchResult<T>> {
   const jwt = getJwt();
   if (!jwt) {
@@ -196,6 +197,14 @@ async function agencyFetch<T>(
         status: r.status,
       };
     }
+    if (isValid && !isValid(parsed)) {
+      return {
+        data: null,
+        state: "error",
+        error: `${path} returned an invalid response.`,
+        status: r.status,
+      };
+    }
     return { data: parsed as T, state: "ready", error: null, status: r.status };
   } catch {
     return {
@@ -205,6 +214,27 @@ async function agencyFetch<T>(
       status: null,
     };
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isRoster(value: unknown): value is Roster {
+  return isRecord(value)
+    && Array.isArray(value.members)
+    && Array.isArray(value.pending_invites);
+}
+
+function isPayoutSplitList(value: unknown): value is PayoutSplitList {
+  return isRecord(value)
+    && Array.isArray(value.splits)
+    && typeof value.total_bps === "number"
+    && typeof value.sums_to_100 === "boolean";
+}
+
+function isRulesList(value: unknown): value is RulesList {
+  return isRecord(value) && Array.isArray(value.rules);
 }
 
 /** FastAPI validation errors return `{detail: [{msg, ...}]}`; server
@@ -227,7 +257,11 @@ function extractDetail(parsed: unknown): string | null {
 // ---------------------------------------------------------------------
 
 export const fetchRoster = (agencyId: string): Promise<FetchResult<Roster>> =>
-  agencyFetch<Roster>(`/agency/${encodeURIComponent(agencyId)}/roster`);
+  agencyFetch<Roster>(
+    `/agency/${encodeURIComponent(agencyId)}/roster`,
+    {},
+    isRoster,
+  );
 
 export const postInvite = (
   agencyId: string,
@@ -279,6 +313,8 @@ export const fetchPayoutSplits = (
 ): Promise<FetchResult<PayoutSplitList>> =>
   agencyFetch<PayoutSplitList>(
     `/agency/${encodeURIComponent(agencyId)}/payout-splits`,
+    {},
+    isPayoutSplitList,
   );
 
 export const putPayoutSplits = (
@@ -293,7 +329,11 @@ export const putPayoutSplits = (
 export const fetchRules = (
   agencyId: string,
 ): Promise<FetchResult<RulesList>> =>
-  agencyFetch<RulesList>(`/agency/${encodeURIComponent(agencyId)}/rules`);
+  agencyFetch<RulesList>(
+    `/agency/${encodeURIComponent(agencyId)}/rules`,
+    {},
+    isRulesList,
+  );
 
 export const putRule = (
   agencyId: string,

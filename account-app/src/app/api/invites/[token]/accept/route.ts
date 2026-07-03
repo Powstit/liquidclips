@@ -17,15 +17,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { cookies } from "next/headers";
+import {
+  readBoundAgencyLicenseJwt,
+  storeBoundAgencyLicenseJwt,
+} from "@/lib/agency-license-cache";
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "http://localhost:8000";
-
-// Reuse the same cookie name the agency forwarder writes so both flows share
-// the minted JWT. Cookie is httpOnly + Strict; the invite page never reads it
-// client-side, only the API route does.
-const JWT_COOKIE_NAME = "lc_agency_jwt";
-const JWT_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 24; // 24 days
 
 async function mintLicenseJwt(
   clerkUserId: string,
@@ -33,8 +31,8 @@ async function mintLicenseJwt(
   firstName: string,
 ): Promise<string | null> {
   const jar = await cookies();
-  const cached = jar.get(JWT_COOKIE_NAME);
-  if (cached?.value) return cached.value;
+  const cached = readBoundAgencyLicenseJwt(jar, clerkUserId);
+  if (cached) return cached;
 
   const challenge = `invite-accept-${clerkUserId.replace(/[^A-Za-z0-9_-]/g, "")}`.slice(
     0,
@@ -59,15 +57,7 @@ async function mintLicenseJwt(
     if (!res.ok) return null;
     const j = (await res.json()) as { license_jwt?: string };
     if (!j.license_jwt) return null;
-    jar.set({
-      name: JWT_COOKIE_NAME,
-      value: j.license_jwt,
-      httpOnly: true,
-      secure: true,
-      sameSite: "strict",
-      path: "/",
-      maxAge: JWT_COOKIE_MAX_AGE_SECONDS,
-    });
+    storeBoundAgencyLicenseJwt(jar, clerkUserId, j.license_jwt);
     return j.license_jwt;
   } catch {
     return null;
