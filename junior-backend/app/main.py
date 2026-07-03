@@ -575,6 +575,40 @@ async def lifespan(_app: FastAPI):
         "CREATE INDEX IF NOT EXISTS ix_admin_audit_log_support_capability ON admin_audit_log (support_capability) WHERE support_capability IS NOT NULL",
         "ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS support_expiry_at timestamptz",
         "ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS support_approver_id varchar(120)",
+        # 2026-07-03 · D · arcade prize ledger. arcade_submissions carries
+        # month-scoped score history for the winner query + anti-cheat
+        # audit trail; winner_payouts is the idempotent dispatch record
+        # keyed by month (UNIQUE) so retries can never double-pay.
+        """CREATE TABLE IF NOT EXISTS arcade_submissions (
+            id varchar PRIMARY KEY,
+            user_id varchar NOT NULL,
+            score integer NOT NULL,
+            wave integer NOT NULL DEFAULT 1,
+            duration_ms integer NOT NULL DEFAULT 0,
+            shots_fired integer NOT NULL DEFAULT 0,
+            ip varchar,
+            created_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_arcade_submissions_user ON arcade_submissions (user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_arcade_submissions_score ON arcade_submissions (score DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_arcade_submissions_created_at ON arcade_submissions (created_at DESC)",
+        """CREATE TABLE IF NOT EXISTS winner_payouts (
+            id varchar PRIMARY KEY,
+            month varchar(7) UNIQUE NOT NULL,
+            user_id varchar NOT NULL,
+            score integer NOT NULL,
+            amount_cents integer NOT NULL,
+            paid_sub_count_snapshot integer NOT NULL DEFAULT 0,
+            whop_transfer_id varchar,
+            paid_at timestamptz,
+            state varchar(40) NOT NULL DEFAULT 'pending',
+            error_message text,
+            created_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_winner_payouts_month ON winner_payouts (month)",
+        "CREATE INDEX IF NOT EXISTS ix_winner_payouts_user ON winner_payouts (user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_winner_payouts_transfer ON winner_payouts (whop_transfer_id) WHERE whop_transfer_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS ix_winner_payouts_created_at ON winner_payouts (created_at DESC)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -779,6 +813,12 @@ app.include_router(_admin_support_router.router)
 # projection. See app/routes/authz_whoami.py.
 from app.routes import authz_whoami as _authz_whoami_router  # noqa: E402
 app.include_router(_authz_whoami_router.router)
+# 2026-07-03 · D · monthly $1,000 arcade prize wire. Public
+# /arcade/prize/current for the splash LEADER chip; admin-only
+# /arcade/prize/dispatch reuses whop_payments.create_transfer with
+# month-scoped idempotence.
+from app.routes import arcade_prize as _arcade_prize_router  # noqa: E402
+app.include_router(_arcade_prize_router.router)
 app.include_router(campaigns.router)
 app.include_router(campaign_asset_links.router)
 app.include_router(agency_campaigns.router)
