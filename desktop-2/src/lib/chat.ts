@@ -157,7 +157,18 @@ export async function fetchChatHistoryResult(
       ? data
       : { ...EMPTY_HISTORY, channel };
     return { history, state: "ready", error: null };
-  } catch {
+  } catch (err) {
+    // 2026-07-03 · previously silent · this is the EXACT catch that
+    // produces the "Community offline" UI. Log the real error to
+    // AppData/client-diagnostics.log via diagBuffer so we can read
+    // it from bash instead of relying on WKWebView DevTools.
+    void import("./diagBuffer").then((m) => {
+      m.logDiagError("chat.fetchChatHistoryResult", err, {
+        channel,
+        url: `${lcBackendUrl()}/chat/messages`,
+        has_jwt: !!getJwt(),
+      });
+    }).catch(() => { /* noop */ });
     return {
       history: { ...EMPTY_HISTORY, channel },
       state: "offline",
