@@ -144,3 +144,137 @@ def earnings_leaderboard(
         refreshed_at=_stale_label(refreshed_at),
         total_ranked=total_ranked,
     )
+
+
+# ---------------------------------------------------------------------------
+# 2026-07-03 · Step 3 batch 3e · /leaderboard/arcade
+#
+# Powers the desktop splash screen — replaces the MOCK_AGENCIES /
+# MOCK_CLIPPERS / MOCK_COUNTERS arrays fabricated in
+# `overlays/invaders/mockLeaderboard.ts`. The splash renders BEFORE the
+# desktop has a license JWT so this route is INTENTIONALLY
+# unauthenticated. It exposes only the display handle + arcade score —
+# no email, no clerk id, no billing state.
+#
+# `arcade_high_score` column + descending index landed at
+# `main.py:541-542`. New users default to 0; a row is only surfaced by
+# the query when the score > 0 so a fresh install renders an honest
+# empty state ("First to 1000 wins Founder tier") instead of a
+# fabricated leaderboard.
+#
+# Agencies vs Clippers split: derived from `is_agency_tier(user.tier)`
+# using the resolver in features.py. Same-tier tie is broken by
+# arcade_high_score DESC then handle ASC (deterministic).
+# ---------------------------------------------------------------------------
+
+from fastapi import Query
+from app.features import is_agency_tier
+
+
+class ArcadeRow(BaseModel):
+    """One public splash row — display-only fields."""
+
+    handle: str
+    score: int
+    # 1-10 · client uses this to pick from /brand/splash/avatars/
+    # avatar-XX-<name>.png so we don't have to fanout avatar strings
+    # here. Deterministic from user id so the same person keeps their
+    # avatar across reloads without a stored preference.
+    avatar_index: int
+
+
+class ArcadeCounters(BaseModel):
+    total: int
+    delta_today: int
+
+
+class ArcadeLeaderboardResponse(BaseModel):
+    clippers: list[ArcadeRow]
+    agencies: list[ArcadeRow]
+    counters: dict[str, ArcadeCounters]
+
+
+def _avatar_index(user_id: str) -> int:
+    """Stable 1-10 mapping from user id → avatar slot."""
+    # Cheap deterministic hash — hex user_ids are common; fall back to
+    # sum-of-codepoints for anything unusual. Modulo 10 gives 0-9;
+    # +1 for the 1-10 numbering used by /brand/splash/avatars/.
+    try:
+        n = int(user_id[-4:], 16)
+    except ValueError:
+        n = sum(ord(c) for c in user_id)
+    return (n % 10) + 1
+
+
+def _fallback_handle(user: User) -> str:
+    """Prefer the unified handle; fall back to email-derived shorthand
+    so a user who hasn't set a public handle yet still shows up as
+    something like ``daniel`` rather than the raw email address."""
+    handle = getattr(user, "handle", None)
+    if handle:
+        return str(handle)
+    email = getattr(user, "email", None)
+    if email:
+        return str(email).split("@", 1)[0]
+    return "player"
+
+
+@router.get("/arcade", response_model=ArcadeLeaderboardResponse)
+def arcade_leaderboard(
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=25)] = 5,
+) -> ArcadeLeaderboardResponse:
+    """Public arcade leaderboard for the splash screen.
+
+    No auth on purpose — splash renders pre-activation. The response
+    exposes only display fields; internal ids and PII stay server-side.
+    Returns empty arrays when nobody has scored yet — the honest empty
+    state the splash then renders.
+    """
+    rows = (
+        db.query(User)
+        .filter(User.arcade_high_score > 0)
+        .order_by(User.arcade_high_score.desc(), User.id.asc())
+        .limit(limit * 4)  # slack so we can split by tier without a second query
+        .all()
+    )
+
+    clippers: list[ArcadeRow] = []
+    agencies: list[ArcadeRow] = []
+    for u in rows:
+        entry = ArcadeRow(
+            handle=_fallback_handle(u),
+            score=int(u.arcade_high_score or 0),
+            avatar_index=_avatar_index(str(u.id)),
+        )
+        if is_agency_tier(getattr(u, "tier", None)):
+            if len(agencies) < limit:
+                agencies.append(entry)
+        else:
+            if len(clippers) < limit:
+                clippers.append(entry)
+        if len(clippers) >= limit and len(agencies) >= limit:
+            break
+
+    # Counters — total users with a score > 0, split by agency-vs-clipper.
+    # ``delta_today`` is 0 for now (no ``arcade_high_score_at`` timestamp
+    # column yet; adding one is a follow-up hardening pass to preserve the
+    # UI "+X today" strip. Returning zero is the honest state until we
+    # track the delta persistently — the client should render "+0 today"
+    # or hide the delta when it's 0).
+    all_rows = (
+        db.query(User)
+        .filter(User.arcade_high_score > 0)
+        .all()
+    )
+    total_agencies = sum(1 for u in all_rows if is_agency_tier(getattr(u, "tier", None)))
+    total_clippers = len(all_rows) - total_agencies
+
+    return ArcadeLeaderboardResponse(
+        clippers=clippers,
+        agencies=agencies,
+        counters={
+            "clippers": ArcadeCounters(total=total_clippers, delta_today=0),
+            "agencies": ArcadeCounters(total=total_agencies, delta_today=0),
+        },
+    )

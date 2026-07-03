@@ -12,7 +12,10 @@
 import { useState } from "react";
 import { hasJwt } from "../../lib/authStorage";
 import { Avatar } from "./Avatar";
-import { MOCK_AGENCIES, MOCK_CLIPPERS } from "./mockLeaderboard";
+// 2026-07-03 · Step 3 batch 3e · replaced MOCK_AGENCIES / MOCK_CLIPPERS
+// with a live fetch of `/leaderboard/arcade`. Empty response → honest
+// empty state rendered below.
+import { useArcadeLeaderboard, avatarPathFor } from "../../lib/useArcadeLeaderboard";
 import "./SplashLeaderboard.css";
 
 type Tab = "leaderboard" | "myscore";
@@ -33,6 +36,9 @@ export function SplashLeaderboard({
 }) {
   const [tab, setTab] = useState<Tab>("leaderboard");
   const loggedIn = hasJwt();
+  // Batch 3E · live rows. `snapshot.loading` while the fetch is in
+  // flight; empty arrays after failure or when the DB has no scorers.
+  const arcade = useArcadeLeaderboard(5);
 
   return (
     <aside
@@ -66,34 +72,42 @@ export function SplashLeaderboard({
       {tab === "leaderboard" ? (
         <div className="splash-lb-body">
           <Section
-            title="Top Clippers (by views)"
+            title="Top Clippers (arcade)"
             icon="trophy"
             tint="fuchsia"
-            rows={MOCK_CLIPPERS.map((c, i) => ({
+            rows={arcade.clippers.map((c, i) => ({
               rank: i + 1,
-              name: c.name,
-              detail: `${c.views} views`,
+              name: c.handle,
+              detail: `${c.score.toLocaleString()} score`,
               score: c.score.toLocaleString(),
               scoreTint: "fuchsia" as const,
-              avatarSrc: c.avatarSrc,
+              avatarSrc: avatarPathFor(c.avatarIndex),
             }))}
           />
           <Section
-            title="Top Agencies (by payouts)"
+            title="Top Agencies (arcade)"
             icon="building"
             tint="cyan"
-            rows={MOCK_AGENCIES.map((a, i) => ({
+            rows={arcade.agencies.map((a, i) => ({
               rank: i + 1,
-              name: a.name,
-              detail: `${a.paid} paid`,
+              name: a.handle,
+              detail: `${a.score.toLocaleString()} score`,
               score: a.score.toLocaleString(),
               scoreTint: "cyan" as const,
-              avatarSrc: a.avatarSrc,
+              avatarSrc: avatarPathFor(a.avatarIndex),
             }))}
           />
-          <p className="splash-lb-sim">
-            simulator data · not real views or payouts
-          </p>
+          {arcade.loading ? (
+            <p className="splash-lb-sim">loading leaderboard…</p>
+          ) : arcade.clippers.length === 0 && arcade.agencies.length === 0 ? (
+            <p className="splash-lb-sim">
+              first to 1,000 wins Founder tier · be the first to appear here
+            </p>
+          ) : (
+            <p className="splash-lb-sim">
+              live · updated on each launch
+            </p>
+          )}
         </div>
       ) : (
         <div className="splash-lb-body">
