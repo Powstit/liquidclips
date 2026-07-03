@@ -59,7 +59,7 @@ export function ClipPreviewShell({ clip, onGoEngine }: ClipPreviewShellProps) {
   const userChoiceWatermark = cockpit?.settings.publish.watermark ?? true;
   const effectiveWatermark = (() => {
     if (tier.loading) return true;
-    if (tier.source === "unknown" || tier.source === "fixture-fallback") return true;
+    if (tier.source === "unknown" || tier.source === "unavailable") return true;
     if (tier.caps.watermarkLocked) return true;
     return userChoiceWatermark;
   })();

@@ -68,7 +68,7 @@ function deriveWatermarkPromise(
       copy: "Watermark status unknown — sign in to verify your tier. Export will include the watermark.",
     };
   }
-  if (tierSource === "fixture-fallback") {
+  if (tierSource === "unavailable") {
     return {
       effective: true,
       state: "unknown",
