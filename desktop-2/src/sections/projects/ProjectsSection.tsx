@@ -1,6 +1,6 @@
 import { SECTION_IDS } from "../../shell/sectionIds";
 import { FLOW_IDS } from "../../contracts/flowRegistry";
-import { fakeProjects } from "../../fixtures/fakeProjects";
+import { fakeProjects } from "../../fixtures/fakeProjects.preview";
 
 export function ProjectsSection() {
   return (

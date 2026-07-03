@@ -4,8 +4,8 @@ import type {
   Clip,
   EditState,
   PlatformKey,
-} from "../../fixtures/fakeEditor";
-import { formatTime } from "../../fixtures/fakeEditor";
+} from "../../fixtures/fakeEditor.preview";
+import { formatTime } from "../../fixtures/fakeEditor.preview";
 import { EngineRightRail } from "./EngineRightRail";
 import { EngineTimeline } from "./EngineTimeline";
 

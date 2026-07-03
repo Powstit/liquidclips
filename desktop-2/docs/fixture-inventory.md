@@ -74,6 +74,38 @@ boundary via file naming (`.preview.ts`).
 - `components/paywall/PaywallGate.tsx`, `AgencyPreviewBanner.tsx` — the prior grep flagged them for the string "sample" but on read they don't import any fixtures. Confirmed clean.
 - `lib/wallet.ts`, `lib/announcements.ts`, `lib/healthCheck.ts`, `lib/qa.ts`, `lib/carrot.ts` — string "fake" appears only in comments or qa-only paths. Clean.
 
+## Batch 3B scanner finding (added by scanner, not 3A inventory)
+
+- `components/home/SponsoredBannerCarousel.tsx:17` imports from
+  `fixtures/sampleCampaigns` — same class-P remediation as
+  `state/browseOverlay.ts:18`. Batch 3F handles both together.
+
+## Batch 3C boundary (added by 3C)
+
+Class-D and class-S fixtures have been renamed with the `.preview`
+suffix and the production-fixture scanner (`scripts/production-fixture-scan.sh`)
+now refuses any import of a `.preview.` module from outside
+`src/sections/`. Rename map:
+
+| Before | After |
+|---|---|
+| `fixtures/fakeAccount.ts` | `fixtures/fakeAccount.preview.ts` |
+| `fixtures/fakeBrowse.ts` | `fixtures/fakeBrowse.preview.ts` |
+| `fixtures/fakeClips.ts` | `fixtures/fakeClips.preview.ts` |
+| `fixtures/fakeCommunity.ts` | `fixtures/fakeCommunity.preview.ts` |
+| `fixtures/fakeDiagnostics.ts` | `fixtures/fakeDiagnostics.preview.ts` |
+| `fixtures/fakeInbox.ts` | `fixtures/fakeInbox.preview.ts` |
+| `fixtures/fakeProjects.ts` | `fixtures/fakeProjects.preview.ts` |
+| `fixtures/fakeEditor.tsx` | `fixtures/fakeEditor.preview.tsx` |
+
+`src/sections/README.md` records the boundary in-tree so a future
+refactor sees the intent immediately.
+
+Class-P fixtures (`fakeCampaigns.ts`, `fakeChannelHandles.ts`,
+`fakeChannels.ts`, `fakeEarn.ts`, `fakeSchedule.ts`, `sampleCampaigns.ts`)
+were NOT renamed — they will be replaced by real backend fetches in
+Batches 3D/3E/3F, at which point the modules themselves are deleted.
+
 ## Batch 3B — production scanner
 
 Following the master doc's "add a scanner that fails when prohibited

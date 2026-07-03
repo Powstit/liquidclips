@@ -43,8 +43,10 @@ fi
 
 # Import-shaped patterns.
 # We match the FROM clause of an ES module import so a random string
-# `mockery` in a comment does not trigger a false positive.
-pattern='from[[:space:]]+["'"'"'][^"'"'"']*(fake|sample|mock|Mock|Sample|Fake|MOCK_|SAMPLE_|FAKE_)'
+# `mockery` in a comment does not trigger a false positive. The
+# `.preview.` extension is the Batch 3C convention for dev/design
+# fixtures whose only sanctioned home is src/sections/ (orphaned tree).
+pattern='from[[:space:]]+["'"'"'][^"'"'"']*(fake|sample|mock|Mock|Sample|Fake|MOCK_|SAMPLE_|FAKE_|\.preview)'
 
 matches=$(grep -rnE "$pattern" "$target" \
   --include="*.ts" --include="*.tsx" \
