@@ -237,7 +237,7 @@ def is_agency_tier(tier: str | None) -> bool:
     new three-tier ladder means direct equality would fail for the
     new solo + white-label rows."""
     resolved = _resolve_tier(tier)
-    return resolved.startswith("agency")
+    return resolved in {"agency_solo", "agency", "agency_whitelabel"}
 
 
 # --- Launch-hardening override (Codex 2k audit + P1 Ayrshare swap) ----------

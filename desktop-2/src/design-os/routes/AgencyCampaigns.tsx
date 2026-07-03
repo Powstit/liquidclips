@@ -47,6 +47,9 @@ import {
   publishCampaign,
   slugify,
 } from "../../lib/agencyCampaigns";
+import { openInApp } from "../../lib/openInApp";
+import { DesignOSAppShell } from "../components/AppShell";
+import { ROUTE_REGISTRY } from "../routing/routeRegistry";
 import { canUseAgencyActions, useTierCaps } from "../state/useTierCaps";
 
 type LoadState =
@@ -65,6 +68,7 @@ const CAMPAIGN_TYPES: readonly CampaignType[] = [
 
 export function AgencyCampaignsRoute(): JSX.Element {
   const tier = useTierCaps();
+  const spec = ROUTE_REGISTRY["campaign-builder"];
 
   // Tier gate — mirrors the backend is_agency_tier check. `tier.tier`
   // resolves to "agency" for any of the 3 agency-family sub-tiers via
@@ -72,11 +76,20 @@ export function AgencyCampaignsRoute(): JSX.Element {
   // unlocks — matches the server's founder_flag + is_admin_email
   // bypass in _require_agency.
   const gated = tier.tier === "agency" || tier.adminOverride;
-  if (!gated) {
-    return <TierGateWall currentTier={tier.tier} />;
-  }
-
-  return <AgencyCampaignsBuilder />;
+  return (
+    <DesignOSAppShell
+      world={spec.world}
+      route="campaign-builder"
+      defaultKade={spec.defaultKade}
+      kadePlacement={spec.kadePlacement}
+    >
+      {gated ? (
+        <AgencyCampaignsBuilder />
+      ) : (
+        <TierGateWall currentTier={tier.tier} />
+      )}
+    </DesignOSAppShell>
+  );
 }
 
 function TierGateWall({ currentTier }: { currentTier: string }): JSX.Element {
@@ -86,7 +99,7 @@ function TierGateWall({ currentTier }: { currentTier: string }): JSX.Element {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        minHeight: "60vh",
+        minHeight: "calc(100vh - 190px)",
         padding: "48px 24px",
       }}
     >
@@ -119,15 +132,18 @@ function TierGateWall({ currentTier }: { currentTier: string }): JSX.Element {
           Current tier: <code>{currentTier}</code>
         </p>
         <div style={{ marginTop: 24, display: "flex", justifyContent: "center", gap: 12 }}>
-          <a
-            href="https://liquidclips.app/pricing"
-            target="_blank"
-            rel="noreferrer"
+          <button
+            type="button"
+            onClick={() => {
+              void openInApp("https://liquidclips.app/pricing", {
+                intent: "read-only",
+              });
+            }}
             className="lc-btn"
             data-variant="primary"
           >
             See pricing →
-          </a>
+          </button>
         </div>
       </div>
     </div>
@@ -189,7 +205,7 @@ function AgencyCampaignsBuilder(): JSX.Element {
         gridTemplateColumns: "320px 1fr",
         gap: 24,
         padding: 24,
-        minHeight: "100vh",
+        minHeight: "calc(100vh - 190px)",
         background: "var(--color-paper, #0F0F14)",
       }}
     >
@@ -413,6 +429,12 @@ function CreateCampaignForm({
       <h2 style={{ margin: "12px 0 20px", fontSize: 20, fontWeight: 600 }}>Create campaign</h2>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {!writeAllowed && (
+          <p className="lc-settings-hint" role="status">
+            Write actions disabled · agency-tier verification pending. Refresh
+            your account before creating a campaign.
+          </p>
+        )}
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <span style={{ fontSize: 12, opacity: 0.7 }}>Title</span>
           <input

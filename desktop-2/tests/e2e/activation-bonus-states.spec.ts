@@ -106,6 +106,7 @@ test.describe("Activation Bonus States · $50 Sponsored Reward", () => {
     await page.screenshot({
       path: "/tmp/srm-01-earn-tracking-state.png",
       fullPage: false,
+      timeout: 20_000,
     });
   });
 
@@ -123,6 +124,7 @@ test.describe("Activation Bonus States · $50 Sponsored Reward", () => {
     await page.screenshot({
       path: "/tmp/srm-02-campaigns-card.png",
       fullPage: false,
+      timeout: 20_000,
     });
   });
 
@@ -140,6 +142,7 @@ test.describe("Activation Bonus States · $50 Sponsored Reward", () => {
     await page.screenshot({
       path: "/tmp/srm-03-home-strip.png",
       fullPage: false,
+      timeout: 20_000,
     });
   });
 
@@ -175,6 +178,7 @@ test.describe("Activation Bonus States · $50 Sponsored Reward", () => {
     await page.screenshot({
       path: "/tmp/srm-04-earn-approved-state.png",
       fullPage: false,
+      timeout: 20_000,
     });
   });
 
@@ -206,6 +210,7 @@ test.describe("Activation Bonus States · $50 Sponsored Reward", () => {
     await page.screenshot({
       path: "/tmp/srm-05-earn-rejected-state.png",
       fullPage: false,
+      timeout: 20_000,
     });
   });
 
@@ -237,6 +242,7 @@ test.describe("Activation Bonus States · $50 Sponsored Reward", () => {
     await page.screenshot({
       path: "/tmp/srm-06-earn-paid-state.png",
       fullPage: false,
+      timeout: 20_000,
     });
   });
 });

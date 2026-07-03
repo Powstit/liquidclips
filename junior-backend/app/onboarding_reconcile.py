@@ -84,17 +84,47 @@ def reconcile_missing_milestones(db: Session, user: User) -> list[str]:
             stamped.append("signed_up_at")
 
     # ─── first_paid_referral ────────────────────────────────────────
-    # `first_paid_at` marks the first successful paid invoice on the
-    # OWNER's own subscription. `referred_paid_subs` is the count of
-    # paid referrals THEY drove. When both exist and no milestone is
-    # stamped, we anchor on `first_paid_at` — it's a monotonic
-    # first-occurrence timestamp we already own.
+    # Derive only from a referred buyer's real Whop-backed first payment.
+    # The owner's own `first_paid_at` is unrelated and must never be used
+    # as a proxy. Attribution can contain the owner's internal id (agency
+    # invite path), Whop affiliate id, or Whop affiliate code.
     if not status.get("first_paid_referral"):
-        first_paid = _as_aware(getattr(user, "first_paid_at", None))
-        refs = getattr(user, "referred_paid_subs", 0) or 0
-        if first_paid is not None and refs > 0:
-            if _try_stamp(db, user, "first_paid_referral", first_paid):
+        try:
+            tokens = {
+                token
+                for token in (
+                    user.id,
+                    getattr(user, "whop_affiliate_id", None),
+                    getattr(user, "whop_affiliate_code", None),
+                )
+                if token
+            }
+            referred_buyer = (
+                db.query(User)
+                .filter(
+                    User.id != user.id,
+                    User.affiliate_id.in_(tokens),
+                    User.first_paid_at.isnot(None),
+                )
+                .order_by(User.first_paid_at.asc())
+                .first()
+            )
+            referral_paid_at = _as_aware(
+                referred_buyer.first_paid_at if referred_buyer else None
+            )
+            if _try_stamp(
+                db,
+                user,
+                "first_paid_referral",
+                referral_paid_at,
+            ):
                 stamped.append("first_paid_referral")
+        except Exception:
+            log.warning(
+                "[onboarding-reconcile] first_paid_referral derive failed · user=%s",
+                user.id,
+                exc_info=True,
+            )
 
     # ─── agency_member_accepted_at (invitee side) ────────────────────
     # If the User row carries an `affiliate_id` that points at another

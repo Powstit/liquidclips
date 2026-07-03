@@ -184,6 +184,16 @@ export function BrowseOverlay(): JSX.Element | null {
   const shortcutsTotal = useUserShortcuts((s) => s.total());
   const shortcutsFull = useUserShortcuts((s) => s.isFull());
   const [expanded, setExpanded] = useState(false);
+  // Inline add-shortcut form · Tauri's WKWebView disables `window.prompt`
+  // (returns null without displaying a dialog). Render an in-app form
+  // instead. While open, the effect below closes the child WebView so
+  // the form is not visually occluded by the native panel. Closing the
+  // form re-runs the effect and reopens the WebView at the same URL.
+  const [addFormOpen, setAddFormOpen] = useState(false);
+  const [addLabel, setAddLabel] = useState("");
+  const [addUrl, setAddUrl] = useState("https://");
+  const [addError, setAddError] = useState<string | null>(null);
+  const labelInputRef = useRef<HTMLInputElement | null>(null);
 
   const [draft, setDraft] = useState(currentUrl ?? WHOP_REWARDS_URL);
   // 2026-06-25 · slotRef is an empty div the Rust webview is positioned over.
@@ -197,20 +207,26 @@ export function BrowseOverlay(): JSX.Element | null {
   }, [currentUrl]);
 
   // Esc priority: BrowseOverlay wins first. Use a capture-phase listener so we
-  // close before any descendant Dialog/Sheet sees it.
+  // close before any descendant Dialog/Sheet sees it. When the inline
+  // add-shortcut form is open, Esc cancels the form instead of the overlay.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        close();
+        if (addFormOpen) {
+          setAddFormOpen(false);
+          setAddError(null);
+        } else {
+          close();
+        }
       }
     };
     document.addEventListener("keydown", onKey, { capture: true });
     return () =>
       document.removeEventListener("keydown", onKey, { capture: true });
-  }, [open, close]);
+  }, [open, close, addFormOpen]);
 
   // 2026-06-25 · webview lifecycle. The native Rust child webview sits
   // exactly over slotRef's rect. On open / URL change → spawn or navigate.
@@ -220,7 +236,12 @@ export function BrowseOverlay(): JSX.Element | null {
   // bypasses iframe CSP entirely so the only blocking path now is the
   // commerce-redirect filter, which is fast + handled in Rust.)
   useEffect(() => {
-    if (!open || !currentUrl) {
+    // Close the native child WebView while the inline add-shortcut form is
+    // open — a native WKWebView renders above ALL React DOM, so any form
+    // rendered inside `.lc-browse-body` would be invisible until the panel
+    // is closed. Re-runs of this effect (triggered by flipping addFormOpen)
+    // reopen at `currentUrl` cleanly.
+    if (!open || !currentUrl || addFormOpen) {
       void closeBrowsePanel();
       return;
     }
@@ -274,7 +295,15 @@ export function BrowseOverlay(): JSX.Element | null {
       window.removeEventListener("resize", onWindowResize);
       void closeBrowsePanel();
     };
-  }, [open, currentUrl, setLoadState, close]);
+  }, [open, currentUrl, setLoadState, close, addFormOpen]);
+
+  // Auto-focus label input when the add-shortcut form opens.
+  useEffect(() => {
+    if (!addFormOpen) return;
+    // rAF so the input mounts before focus attempts.
+    const raf = requestAnimationFrame(() => labelInputRef.current?.focus());
+    return () => cancelAnimationFrame(raf);
+  }, [addFormOpen]);
 
   const handleGo = useCallback(
     (raw: string) => {
@@ -392,25 +421,30 @@ export function BrowseOverlay(): JSX.Element | null {
       });
       return;
     }
-    // Native prompt matches the mockup UX approved before this port.
-    // Production polish (custom modal, focus trap) can land in a follow
-    // -up sprint; the validation contract stays identical.
-    const label = window.prompt("Shortcut name (e.g. LinkedIn, X, Threads, Bluesky):");
-    if (label == null) return;
-    const rawUrl = window.prompt(
-      `Composer URL for "${label.trim()}" · must start with https://`,
-      "https://",
-    );
-    if (rawUrl == null) return;
-    const result = addUserShortcut(label, rawUrl);
+    // Reset form state + open the inline modal. `window.prompt` is a no-op
+    // in Tauri's WKWebView (returns null without displaying a dialog), so
+    // an inline React form is the only reliable path without adding a new
+    // Rust dependency.
+    setAddLabel("");
+    setAddUrl("https://");
+    setAddError(null);
+    setAddFormOpen(true);
+  }, [shortcutsFull]);
+
+  const handleAddFormSubmit = useCallback(() => {
+    const result = addUserShortcut(addLabel, addUrl);
     if (!result.ok) {
-      bus.emit("toast", {
-        kind: "error",
-        title: "Shortcut not added",
-        body: result.error,
-      });
+      setAddError(result.error);
+      return;
     }
-  }, [addUserShortcut, shortcutsFull]);
+    setAddFormOpen(false);
+    setAddError(null);
+  }, [addUserShortcut, addLabel, addUrl]);
+
+  const handleAddFormCancel = useCallback(() => {
+    setAddFormOpen(false);
+    setAddError(null);
+  }, []);
 
   const handleRemoveShortcut = useCallback(
     (id: string) => { removeUserShortcut(id); },
@@ -477,18 +511,22 @@ export function BrowseOverlay(): JSX.Element | null {
           ))}
 
           {userShortcuts.map((sc) => (
-            <button
+            <div
               key={sc.id}
-              type="button"
-              className="lc-browse-rail-icon lc-browse-rail-icon-user"
+              className="lc-browse-rail-icon-user-wrap"
               data-user-id={sc.id}
-              onClick={() => handleUserShortcut(sc)}
-              aria-label={`Open ${sc.label}`}
-              title={sc.label}
             >
-              <span className="lc-browse-rail-user-glyph">
-                {firstGraphemeUpper(sc.label)}
-              </span>
+              <button
+                type="button"
+                className="lc-browse-rail-icon lc-browse-rail-icon-user"
+                onClick={() => handleUserShortcut(sc)}
+                aria-label={`Open ${sc.label}`}
+                title={sc.label}
+              >
+                <span className="lc-browse-rail-user-glyph">
+                  {firstGraphemeUpper(sc.label)}
+                </span>
+              </button>
               <button
                 type="button"
                 className="lc-browse-rail-user-remove"
@@ -501,7 +539,7 @@ export function BrowseOverlay(): JSX.Element | null {
               >
                 <X size={11} />
               </button>
-            </button>
+            </div>
           ))}
 
           {!shortcutsFull && (
@@ -649,11 +687,98 @@ export function BrowseOverlay(): JSX.Element | null {
       </div>
 
       <div className="lc-browse-body">
-        {/* 2026-06-25 · webview slot — the Rust child webview is positioned
-            over this rect. No iframe (Whop/X/YT/Discord block iframe via
-            X-Frame-Options: DENY). The slot stays empty in dev / vite
-            preview where Rust isn't available. */}
-        <div ref={slotRef} className="lc-browse-webview-slot" aria-hidden="true" />
+        {addFormOpen ? (
+          <div
+            className="lc-browse-add-form"
+            role="dialog"
+            aria-label="Add shortcut"
+            aria-modal="true"
+          >
+            <div className="lc-browse-add-form-card">
+              <div className="lc-browse-add-form-header">
+                <div className="lc-browse-add-form-title">Add a shortcut</div>
+                <div className="lc-browse-add-form-hint">
+                  Pin any composer URL — LinkedIn, X, Threads, Bluesky, etc.
+                </div>
+              </div>
+
+              <label className="lc-browse-add-form-field">
+                <span>Name</span>
+                <input
+                  ref={labelInputRef}
+                  type="text"
+                  value={addLabel}
+                  onChange={(e) => setAddLabel(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddFormSubmit();
+                    }
+                  }}
+                  placeholder="e.g. LinkedIn"
+                  spellCheck={false}
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  maxLength={32}
+                  aria-label="Shortcut name"
+                />
+              </label>
+
+              <label className="lc-browse-add-form-field">
+                <span>URL</span>
+                <input
+                  type="url"
+                  value={addUrl}
+                  onChange={(e) => setAddUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddFormSubmit();
+                    }
+                  }}
+                  placeholder="https://…"
+                  spellCheck={false}
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  aria-label="Shortcut URL"
+                />
+              </label>
+
+              {addError && (
+                <div className="lc-browse-add-form-error" role="alert">
+                  {addError}
+                </div>
+              )}
+
+              <div className="lc-browse-add-form-actions">
+                <button
+                  type="button"
+                  className="lc-btn"
+                  data-variant="ghost"
+                  data-size="sm"
+                  onClick={handleAddFormCancel}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="lc-btn"
+                  data-variant="primary"
+                  data-size="sm"
+                  onClick={handleAddFormSubmit}
+                >
+                  <Plus size={13} /> Add shortcut
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* 2026-06-25 · webview slot — the Rust child webview is positioned
+             over this rect. No iframe (Whop/X/YT/Discord block iframe via
+             X-Frame-Options: DENY). The slot stays empty in dev / vite
+             preview where Rust isn't available. */
+          <div ref={slotRef} className="lc-browse-webview-slot" aria-hidden="true" />
+        )}
       </div>
 
       <div className="lc-browse-footer">

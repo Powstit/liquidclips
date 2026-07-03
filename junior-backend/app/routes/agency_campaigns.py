@@ -20,10 +20,9 @@ Endpoints:
   POST   /agency/campaigns/{slug}/publish                   gate transition
   POST   /agency/campaigns/{slug}/refresh-reward            force sync
 
-Auth (v1): license JWT + admin email gate. The dedicated `agency_members`
-table lands in a later phase; until then admins-as-agents is the safe
-default that matches the existing /admin/* + agency-pattern endpoints
-shipped by Phase 6N-D v1.
+Auth: license JWT + agency tier. Every customer-facing read and mutation
+is scoped to SponsoredCampaign.created_by. Admin-email callers retain
+explicit cross-owner access for support operations.
 """
 
 from __future__ import annotations
@@ -204,6 +203,11 @@ class CampaignBlock(BaseModel):
     updated_at: datetime
 
 
+class ArchiveCampaignResponse(BaseModel):
+    slug: str
+    archived: bool
+
+
 # 2026-06-24 · agency submissions + analytics response models
 class AgencySubmissionRow(BaseModel):
     id: str
@@ -287,11 +291,19 @@ def _require_agency(user: User) -> None:
     )
 
 
-def _resolve_or_404(db: Session, slug: str) -> SponsoredCampaign:
+def _resolve_owned_or_404(
+    db: Session,
+    slug: str,
+    user: User,
+) -> SponsoredCampaign:
+    """Resolve a campaign without disclosing another tenant's slug."""
     row = db.execute(
         select(SponsoredCampaign).where(SponsoredCampaign.slug == slug)
     ).scalars().first()
-    if not row:
+    if not row or (
+        not is_admin_email(user.email)
+        and row.created_by != user.id
+    ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "campaign not found")
     return row
 
@@ -346,6 +358,52 @@ def _snapshot_status_for(source: str) -> SnapshotStatus:
 
 
 # ─── Endpoints ─────────────────────────────────────────────────────────────
+
+
+@router.get("/agency/campaigns", response_model=list[CampaignBlock])
+def list_owned_campaigns(
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[CampaignBlock]:
+    """List only campaigns manageable by the authenticated agency."""
+    _require_agency(user)
+    query = select(SponsoredCampaign)
+    if not is_admin_email(user.email):
+        query = query.where(SponsoredCampaign.created_by == user.id)
+    rows = db.execute(
+        query.order_by(
+            SponsoredCampaign.sort_order.asc(),
+            SponsoredCampaign.created_at.desc(),
+        )
+    ).scalars().all()
+    return [_to_block(row) for row in rows]
+
+
+@router.get("/agency/campaigns/{slug}", response_model=CampaignBlock)
+def get_owned_campaign(
+    slug: str,
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> CampaignBlock:
+    _require_agency(user)
+    return _to_block(_resolve_owned_or_404(db, slug, user))
+
+
+@router.post(
+    "/agency/campaigns/{slug}/archive",
+    response_model=ArchiveCampaignResponse,
+)
+def archive_owned_campaign(
+    slug: str,
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> ArchiveCampaignResponse:
+    """Permanently remove a campaign after an owner-scoped lookup."""
+    _require_agency(user)
+    row = _resolve_owned_or_404(db, slug, user)
+    db.delete(row)
+    db.commit()
+    return ArchiveCampaignResponse(slug=slug, archived=True)
 
 
 @router.post("/agency/whop/validate-reward", response_model=ValidateRewardResponse)
@@ -502,7 +560,7 @@ def patch_campaign(
     db: Annotated[Session, Depends(get_db)],
 ) -> CampaignBlock:
     _require_agency(user)
-    row = _resolve_or_404(db, slug)
+    row = _resolve_owned_or_404(db, slug, user)
     # Lock edits once live · enforce the source-of-truth rule.
     if row.status == "live":
         raise HTTPException(
@@ -532,7 +590,7 @@ async def connect_reward(
     db: Annotated[Session, Depends(get_db)],
 ) -> CampaignBlock:
     _require_agency(user)
-    row = _resolve_or_404(db, slug)
+    row = _resolve_owned_or_404(db, slug, user)
     if row.status == "live":
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -605,7 +663,7 @@ async def publish_campaign(
     hand mirroring the Whop reward · that IS the source for clippers.
     """
     _require_agency(user)
-    row = _resolve_or_404(db, slug)
+    row = _resolve_owned_or_404(db, slug, user)
 
     errors: list[str] = []
 
@@ -681,14 +739,7 @@ def list_campaign_submissions(
     empty · this closes the agency-side review loop.
     """
     _require_agency(user)
-    row = _resolve_or_404(db, slug)
-
-    # Ownership check · admin always passes, otherwise must be the campaign owner.
-    if not is_admin_email(user.email) and row.created_by != user.id:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            "You can only review submissions for campaigns you created.",
-        )
+    row = _resolve_owned_or_404(db, slug, user)
 
     q = (
         db.query(CampaignSubmission)
@@ -737,13 +788,7 @@ def campaign_analytics(
     Ownership gate same as submissions endpoint.
     """
     _require_agency(user)
-    row = _resolve_or_404(db, slug)
-
-    if not is_admin_email(user.email) and row.created_by != user.id:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            "You can only see analytics for campaigns you created.",
-        )
+    row = _resolve_owned_or_404(db, slug, user)
 
     # Status breakdown.
     status_rows = db.execute(
@@ -815,7 +860,7 @@ async def refresh_reward(
     """Force-refresh the bonus snapshot. URL-first patch · this is an
     enrichment-only call · it NEVER changes campaign status."""
     _require_agency(user)
-    row = _resolve_or_404(db, slug)
+    row = _resolve_owned_or_404(db, slug, user)
 
     # URL-only campaigns may not have an id · try one more extraction
     # from the stored URL before refusing.

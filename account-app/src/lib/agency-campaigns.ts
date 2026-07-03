@@ -270,15 +270,10 @@ export async function campaignAnalytics(
   );
 }
 
-// Archive isn't a dedicated endpoint — the public spec maps it to a
-// PATCH that sets status='closed'. We surface it as `archiveCampaign`
-// so the UI vocabulary stays consistent ("archive" verb).
-export async function archiveCampaign(slug: string): Promise<CampaignBlock> {
-  // Backend PATCH only accepts the documented CampaignPatch fields;
-  // status flips happen via /publish or admin /campaigns/{slug}. We
-  // reuse the admin-side close path via the proxy's allow-list which
-  // maps /agency/campaigns/{slug}/archive → admin DELETE under the hood.
-  return call<CampaignBlock>(
+export async function archiveCampaign(
+  slug: string,
+): Promise<{ slug: string; archived: boolean }> {
+  return call<{ slug: string; archived: boolean }>(
     `campaigns/${encodeURIComponent(slug)}/archive`,
     { method: "POST" },
   );

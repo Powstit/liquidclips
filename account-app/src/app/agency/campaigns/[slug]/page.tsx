@@ -5,6 +5,10 @@
 import { redirect } from "next/navigation";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { isAdmin as isAdminEmail } from "@/lib/admin-allowlist";
+import {
+  isAgencyTier,
+  normalizeAccountTier,
+} from "@/lib/agency-tiers";
 import { CampaignDetailClient } from "./CampaignDetailClient";
 
 const BACKEND_URL =
@@ -34,9 +38,7 @@ async function resolveTier(userId: string): Promise<{
   } catch {
     /* fall through */
   }
-  if (tier === "autopilot") tier = "agency";
-  else if (tier === "channel" || tier === "growth") tier = "pro";
-  return { tier, isAdmin: adminOverride };
+  return { tier: normalizeAccountTier(tier), isAdmin: adminOverride };
 }
 
 type PageProps = { params: Promise<{ slug: string }> };
@@ -58,7 +60,7 @@ export default async function CampaignDetailPage({ params }: PageProps) {
     .toLowerCase();
 
   const { tier, isAdmin } = await resolveTier(userId);
-  const allowed = tier === "agency" || isAdmin || isAdminEmail(email);
+  const allowed = isAgencyTier(tier) || isAdmin || isAdminEmail(email);
   if (!allowed) redirect("/agency");
 
   return <CampaignDetailClient slug={slug} />;

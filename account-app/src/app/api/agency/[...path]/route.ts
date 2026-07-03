@@ -2,6 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { cookies } from "next/headers";
 import { isAdmin as isAdminEmail } from "@/lib/admin-allowlist";
+import {
+  isAgencyTier,
+  normalizeAccountTier,
+} from "@/lib/agency-tiers";
+import {
+  readBoundAgencyLicenseJwt,
+  storeBoundAgencyLicenseJwt,
+} from "@/lib/agency-license-cache";
 
 // Server-side proxy for the Agency Campaigns UI (account-app/src/app/agency/*).
 //
@@ -18,13 +26,6 @@ import { isAdmin as isAdminEmail } from "@/lib/admin-allowlist";
 //      (backend JWT lives 30 days; refresh ahead of expiry).
 //   5. Forward the request to the backend with Authorization: Bearer.
 //
-// Two paths bypass the JWT mint and use the internal-secret + admin
-// allow-list path instead, because the backend doesn't expose an agency-
-// owned LIST or ARCHIVE endpoint today:
-//   • GET  /api/agency/list                            → GET /admin/campaigns
-//     filtered by created_by === verified user.id
-//   • POST /api/agency/campaigns/{slug}/archive        → DELETE /admin/campaigns/{slug}
-//
 // The internal secret + JWT never reach the browser. The browser sends
 // the user's Clerk cookie, which proves who they are; everything else
 // is server-only.
@@ -32,14 +33,13 @@ import { isAdmin as isAdminEmail } from "@/lib/admin-allowlist";
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_JUNIOR_BACKEND_URL ?? "https://api.jnremployee.com";
 
-const JWT_COOKIE_NAME = "lc_agency_jwt";
-const JWT_COOKIE_MAX_AGE_SECONDS = 24 * 24 * 60 * 60; // 24 days < 30-day JWT life
-
 // ── Path allow-list ──────────────────────────────────────────────────
 //
-// Every backend path the proxy can reach. GET = read, anything else = write.
-// Pseudo-paths (`list`, `campaigns/{slug}/archive`) are handled inline.
+// Every backend path the proxy can reach. All campaign operations use
+// owner-scoped /agency endpoints with the signed-in user's Bearer JWT.
 const BEARER_READ_PATHS = [
+  /^list$/, // browser alias → GET /agency/campaigns
+  /^campaigns\/[^/]+$/,
   /^campaigns\/[^/]+\/submissions$/,
   /^campaigns\/[^/]+\/analytics$/,
 ];
@@ -49,14 +49,8 @@ const BEARER_WRITE_PATHS = [
   /^campaigns\/[^/]+\/connect-reward$/,
   /^campaigns\/[^/]+\/publish$/,
   /^campaigns\/[^/]+\/refresh-reward$/,
+  /^campaigns\/[^/]+\/archive$/,
   /^whop\/validate-reward$/,
-];
-const INTERNAL_READ_PATHS = [
-  /^list$/, // pseudo: GET /admin/campaigns filtered by created_by
-  /^campaigns\/[^/]+$/, // pseudo: GET single via admin list lookup
-];
-const INTERNAL_WRITE_PATHS = [
-  /^campaigns\/[^/]+\/archive$/, // pseudo: DELETE /admin/campaigns/{slug}
 ];
 
 type AgencyRouteCtx = { params: Promise<{ path: string[] }> };
@@ -109,11 +103,9 @@ async function gateRequest(): Promise<Gate> {
   }
 
   const adminFromEmail = isAdminEmail(email);
-  // Legacy tier alias: 'autopilot' → 'agency' (matches embed-auth.ts).
-  const normalizedTier =
-    tier === "autopilot" ? "agency" : tier === "channel" || tier === "growth" ? "pro" : tier;
+  const normalizedTier = normalizeAccountTier(tier);
 
-  const allowed = normalizedTier === "agency" || adminOverride || adminFromEmail;
+  const allowed = isAgencyTier(normalizedTier) || adminOverride || adminFromEmail;
   if (!allowed) {
     return {
       ok: false,
@@ -146,8 +138,8 @@ async function ensureLicenseJwt(
   firstName: string,
 ): Promise<string | null> {
   const jar = await cookies();
-  const cached = jar.get(JWT_COOKIE_NAME);
-  if (cached?.value) return cached.value;
+  const cached = readBoundAgencyLicenseJwt(jar, clerkUserId);
+  if (cached) return cached;
 
   // Synthetic challenge — alphanum/_/- only, matches the backend regex.
   // Stable per Clerk user so audit logs read sensibly.
@@ -174,142 +166,10 @@ async function ensureLicenseJwt(
     if (!res.ok) return null;
     const j = (await res.json()) as { license_jwt?: string };
     if (!j.license_jwt) return null;
-    jar.set({
-      name: JWT_COOKIE_NAME,
-      value: j.license_jwt,
-      httpOnly: true,
-      secure: true,
-      sameSite: "strict",
-      path: "/", // covers both /agency and /api/agency
-      maxAge: JWT_COOKIE_MAX_AGE_SECONDS,
-    });
+    storeBoundAgencyLicenseJwt(jar, clerkUserId, j.license_jwt);
     return j.license_jwt;
   } catch {
     return null;
-  }
-}
-
-// ── Pseudo-path handlers ─────────────────────────────────────────────
-//
-// These two paths aren't on the backend agency surface — they bridge to
-// the admin endpoints with internal secret so the agency UI can list +
-// archive without depending on a backend extension.
-
-type CampaignBlock = {
-  id: string;
-  slug: string;
-  name?: string;
-  title?: string;
-  description: string;
-  campaign_type: string;
-  status: string;
-  whop_reward_id: string | null;
-  whop_reward_url: string | null;
-  whop_reward_state: string | null;
-  whop_reward_snapshot_status: string | null;
-  whop_reward_snapshot: Record<string, unknown> | null;
-  whop_reward_snapshot_business_goal: string | null;
-  whop_reward_snapshot_bounty_type: string | null;
-  whop_reward_synced_at: string | null;
-  whop_reward_last_error: string | null;
-  banner_url: string | null;
-  business_unit: string | null;
-  required_tier: string | null;
-  visibility_tiers: string[] | null;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-// The /admin/campaigns response uses .name; /agency/campaigns returns
-// .title. We normalise to .title for the agency client.
-function normalizeBlock(row: CampaignBlock): CampaignBlock {
-  return {
-    ...row,
-    title: row.title ?? row.name ?? "",
-    visibility_tiers: row.visibility_tiers ?? [],
-    whop_reward_snapshot_status: row.whop_reward_snapshot_status ?? "not_attempted",
-  };
-}
-
-async function handleList(clerkUserId: string): Promise<Response> {
-  const url = `${BACKEND_URL}/admin/campaigns?clerk_user_id=${encodeURIComponent(clerkUserId)}`;
-  try {
-    const res = await fetch(url, {
-      headers: { "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "" },
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      return new NextResponse(text || `${res.status}`, { status: res.status });
-    }
-    const j = (await res.json()) as { campaigns: CampaignBlock[] };
-    // Backend resolves clerk_user_id → User and that User's .id is the
-    // FK on sponsored_campaigns.created_by. Fetch it via /affiliate/me?
-    // We don't actually have the internal user.id — but /admin/campaigns
-    // returns every row anyway. Filter client-side by comparing
-    // created_by against the per-user mapping. To avoid an extra call,
-    // we pass `clerk_user_id` and the BACKEND will scope to admin
-    // visibility (admin sees everything). We then filter created_by ===
-    // <internal user id>. Without that mapping, we filter by exposing
-    // every row to admins, and by created_by-matches-anything-the-user-
-    // created for genuine agency users.
-    //
-    // Pragmatic v1: surface every campaign the admin/agency caller can
-    // edit. Admins see all; non-admin agency callers don't have any
-    // rows today (created_by is empty for the legacy seed rows). Once
-    // genuine agency users land rows, those rows will carry their
-    // user.id and the next iteration of this proxy will scope properly.
-    const campaigns = (j.campaigns ?? []).map(normalizeBlock);
-    return NextResponse.json({ campaigns });
-  } catch {
-    return NextResponse.json({ error: "backend_unreachable" }, { status: 502 });
-  }
-}
-
-async function handleGetSingle(
-  slug: string,
-  clerkUserId: string,
-): Promise<Response> {
-  const url = `${BACKEND_URL}/admin/campaigns?clerk_user_id=${encodeURIComponent(clerkUserId)}`;
-  try {
-    const res = await fetch(url, {
-      headers: { "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "" },
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      return new NextResponse(text || `${res.status}`, { status: res.status });
-    }
-    const j = (await res.json()) as { campaigns: CampaignBlock[] };
-    const row = (j.campaigns ?? []).find((c) => c.slug === slug);
-    if (!row) {
-      return NextResponse.json({ error: "campaign not found" }, { status: 404 });
-    }
-    return NextResponse.json(normalizeBlock(row));
-  } catch {
-    return NextResponse.json({ error: "backend_unreachable" }, { status: 502 });
-  }
-}
-
-async function handleArchive(
-  slug: string,
-  clerkUserId: string,
-): Promise<Response> {
-  const url = `${BACKEND_URL}/admin/campaigns/${encodeURIComponent(slug)}?clerk_user_id=${encodeURIComponent(clerkUserId)}`;
-  try {
-    const res = await fetch(url, {
-      method: "DELETE",
-      headers: { "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "" },
-      cache: "no-store",
-    });
-    if (res.status === 204) {
-      return NextResponse.json({ slug, archived: true });
-    }
-    const text = await res.text();
-    return new NextResponse(text || `${res.status}`, { status: res.status });
-  } catch {
-    return NextResponse.json({ error: "backend_unreachable" }, { status: 502 });
   }
 }
 
@@ -356,13 +216,11 @@ async function handleBearer(
 function classify(
   path: string,
   method: string,
-): "internal-read" | "internal-write" | "bearer-read" | "bearer-write" | null {
+): "bearer-read" | "bearer-write" | null {
   if (method === "GET") {
-    if (INTERNAL_READ_PATHS.some((re) => re.test(path))) return "internal-read";
     if (BEARER_READ_PATHS.some((re) => re.test(path))) return "bearer-read";
     return null;
   }
-  if (INTERNAL_WRITE_PATHS.some((re) => re.test(path))) return "internal-write";
   if (BEARER_WRITE_PATHS.some((re) => re.test(path))) return "bearer-write";
   return null;
 }
@@ -383,24 +241,9 @@ async function handle(req: NextRequest, ctx: AgencyRouteCtx): Promise<Response> 
     return NextResponse.json({ error: "path not allowed" }, { status: 400 });
   }
 
-  // Pseudo-path: /list (GET) — internal-secret admin list
-  if (cls === "internal-read" && path === "list") {
-    return handleList(gate.clerkUserId!);
-  }
-
-  // Pseudo-path: /campaigns/{slug} (GET) — internal-secret admin lookup
-  if (cls === "internal-read" && /^campaigns\/[^/]+$/.test(path)) {
-    const slug = path.split("/")[1];
-    return handleGetSingle(slug, gate.clerkUserId!);
-  }
-
-  // Pseudo-path: /campaigns/{slug}/archive (POST) — admin DELETE
-  if (cls === "internal-write" && /^campaigns\/[^/]+\/archive$/.test(path)) {
-    const slug = path.split("/")[1];
-    return handleArchive(slug, gate.clerkUserId!);
-  }
-
-  // Real backend agency endpoint — needs Bearer.
+  // Every campaign operation reaches an owner-scoped backend endpoint
+  // with the signed-in user's Bearer JWT. `/list` remains a stable
+  // browser alias for GET /agency/campaigns.
   const user = await currentUser();
   const firstName = (user?.firstName ?? "").trim();
   const jwt = await ensureLicenseJwt(gate.clerkUserId!, gate.email!, firstName);
@@ -410,7 +253,7 @@ async function handle(req: NextRequest, ctx: AgencyRouteCtx): Promise<Response> 
       { status: 502 },
     );
   }
-  return handleBearer(req, path, jwt);
+  return handleBearer(req, path === "list" ? "campaigns" : path, jwt);
 }
 
 export async function GET(req: NextRequest, ctx: AgencyRouteCtx): Promise<Response> {

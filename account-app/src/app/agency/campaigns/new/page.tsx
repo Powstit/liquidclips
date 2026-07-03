@@ -4,6 +4,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { isAdmin as isAdminEmail } from "@/lib/admin-allowlist";
+import {
+  isAgencyTier,
+  normalizeAccountTier,
+} from "@/lib/agency-tiers";
 import { CampaignForm } from "../../_components/CampaignForm";
 
 export const metadata = {
@@ -37,9 +41,7 @@ async function resolveTier(userId: string): Promise<{
   } catch {
     /* fall through */
   }
-  if (tier === "autopilot") tier = "agency";
-  else if (tier === "channel" || tier === "growth") tier = "pro";
-  return { tier, isAdmin: adminOverride };
+  return { tier: normalizeAccountTier(tier), isAdmin: adminOverride };
 }
 
 export default async function NewCampaignPage() {
@@ -52,7 +54,7 @@ export default async function NewCampaignPage() {
     .toLowerCase();
 
   const { tier, isAdmin } = await resolveTier(userId);
-  const allowed = tier === "agency" || isAdmin || isAdminEmail(email);
+  const allowed = isAgencyTier(tier) || isAdmin || isAdminEmail(email);
   if (!allowed) redirect("/agency");
 
   return (
