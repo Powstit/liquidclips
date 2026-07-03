@@ -141,9 +141,15 @@ def _require_agency_owner_or_staff(
     Kept as a plain function (not a FastAPI dep) because we need the
     `agency_id` path parameter at call-time, and dep-factories with
     path params add ceremony without benefit.
+
+    2026-07-03 · Step 2 batch 2c · THE SEVER. The prior
+    ``if is_admin_email(user.email): return`` bypass has been REMOVED.
+    Customer ``/agency/{id}/*`` routes are now strictly ownership-scoped;
+    admin cross-tenant access must go through the audited
+    ``/admin/support/*`` routes introduced in batch 2D. This matches
+    SELF_ONBOARDING_RELEASE_MASTER.md §Step 2 — "Customer /agency/*
+    routes must not contain an unconditional admin ownership bypass."
     """
-    if is_admin_email(user.email):
-        return
     if not _is_agency_owner(user, agency_id):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,

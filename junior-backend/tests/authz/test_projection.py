@@ -96,7 +96,12 @@ def test_projection_agency_owner_gets_full_agency_bundle(session):
     assert Capability.HQ_READ not in ctx.capabilities
 
 
-def test_projection_platform_admin_gets_hq_and_support_read(session):
+def test_projection_platform_admin_gets_hq_support_and_own_plan(session):
+    """Step 2 batch 2c contract per SELF_ONBOARDING_RELEASE_MASTER.md:
+    'Admin self/demo mode gets full product entitlement against the
+    admin's own records only.' Platform admin's OWN tenant capabilities
+    include the full agency-whitelabel bundle so they can exercise every
+    product feature on their own data without opting into DEMO mode."""
     admin = _make_user(session, tier="solo", platform_role="admin")
     ctx = build_authorization_context(admin, session)
 
@@ -106,11 +111,14 @@ def test_projection_platform_admin_gets_hq_and_support_read(session):
         Capability.HQ_MUTATE,
         Capability.SUPPORT_TENANT_READ,
         Capability.SUPPORT_TENANT_WRITE,
+        # Plan caps promoted so admin's OWN tenant works after deps.py
+        # in-memory tier elevation is removed in a later batch. Cross-
+        # tenant is still denied by the evaluator's membership check.
+        Capability.AGENCY_CAMPAIGN_CREATE,
+        Capability.AGENCY_ROSTER_MANAGE,
+        Capability.AGENCY_PAYOUTS_MANAGE,
     }:
         assert granted in ctx.capabilities
-    # Admin on solo tier does NOT get agency plan caps just for being admin —
-    # plan-scoped grants require DEMO mode explicitly.
-    assert Capability.AGENCY_CAMPAIGN_CREATE not in ctx.capabilities
 
 
 def test_projection_admin_in_demo_mode_gets_plan_override(session):
