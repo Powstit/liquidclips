@@ -34,7 +34,7 @@ function CommunityBody() {
         initial="initial"
         animate="animate"
       >
-        <h1 className="lc-visually-hidden" data-route-title="Community">
+        <h1 className="lc-visually-hidden" data-route-title="Community" data-kade-anchor>
           Community
         </h1>
         <EngineErrorBoundary route="community" component="CommunityChatHome">
