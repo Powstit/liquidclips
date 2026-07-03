@@ -362,3 +362,33 @@ def test_non_admin_cannot_read_features(client_and_session):
     session.commit()
     r = client.get("/admin/hq/features?clerk_user_id=clerk_ordinary")
     assert r.status_code == 403
+
+
+# --------------------------------------------------------------------------
+# Regression guard · POST /telemetry/desktop-error must have ONE owner in
+# app.main:app. Prior to 2026-07-03 the legacy routes/telemetry.py and the
+# Step-6 routes/telemetry_ingest.py both mounted the same path; Starlette
+# picked the legacy handler and silently dropped release/feature_id/
+# stable_error_code from every desktop error report — killing SO-GATE-6
+# guarantees in production. This test locks the single-owner invariant.
+# --------------------------------------------------------------------------
+
+
+def test_desktop_error_route_has_single_handler_in_main_app():
+    import os
+    os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+    from app.main import app  # noqa: PLC0415 — deferred import for env setup
+
+    handlers = [
+        r for r in app.routes if getattr(r, "path", "") == "/telemetry/desktop-error"
+    ]
+    assert len(handlers) == 1, (
+        f"Expected exactly ONE handler for /telemetry/desktop-error, found "
+        f"{len(handlers)}: "
+        + ", ".join(f"{h.endpoint.__module__}.{h.endpoint.__name__}" for h in handlers)
+    )
+    owner = handlers[0].endpoint
+    assert owner.__module__ == "app.routes.telemetry_ingest", (
+        f"Step-6 fingerprint dedupe handler must own /telemetry/desktop-error; "
+        f"found {owner.__module__}.{owner.__name__} instead."
+    )
