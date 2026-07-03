@@ -16,6 +16,7 @@ import {
   RevenueTab,
 } from "./HQCommandTabs";
 import { SurfacesTab } from "./SurfacesTab";
+import { SystemMapTab } from "./SystemMapTab";
 import { PromoCodesTab } from "./PromoCodesTab";
 import { useDataSource } from "./_lib/useDataSource";
 import { LiveBadge } from "./_lib/LiveBadge";
@@ -143,6 +144,7 @@ type TimelineEvent = { at: string | null; kind: string; label: string; source: s
 type Timeline = { user_id: string; email_masked: string; events: TimelineEvent[]; unavailable: string[]; note: string };
 
 const TABS = [
+  "System Map",
   "Surfaces",
   "Overview",
   "Revenue",
@@ -319,7 +321,7 @@ export function AdminHQ({
   agentKeyConfig: AgentKeyConfig;
   serviceConfig: ServiceConfig;
 }) {
-  const [tab, setTab] = useState<Tab>("Overview");
+  const [tab, setTab] = useState<Tab>("System Map");
 
   return (
     <div className="lc-hq-shell mx-auto max-w-[1200px] px-5 pb-8 sm:pb-12">
@@ -344,6 +346,7 @@ export function AdminHQ({
       </nav>
 
       <div className="mt-7">
+        {tab === "System Map" && <SystemMapTab />}
         {tab === "Surfaces" && <SurfacesTab />}
         {tab === "Overview" && <OverviewTab initial={initialOverview} />}
         {tab === "Revenue" && <RevenueTab />}
