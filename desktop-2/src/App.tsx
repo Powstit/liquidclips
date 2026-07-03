@@ -79,6 +79,15 @@ export function App() {
       status: "ok",
       metadata: { version: __APP_VERSION__ ?? "0.8.0-shell" },
     });
+    // 2026-07-03 · Step 5-7 · telemetry bootstrap — installs the closed
+    // envelope adapter + registers all four sinks (backend · desktop-error
+    // · PostHog · Sentry). Import is lazy so a bootstrap failure never
+    // blocks first paint.
+    void import("./lib/telemetry/bootstrap")
+      .then((m) => m.bootstrapTelemetry())
+      .catch(() => {
+        /* telemetry never blocks the app */
+      });
   }, []);
 
   // 2026-07-03 · Global client-error capture to AppData/client-diagnostics.log.
