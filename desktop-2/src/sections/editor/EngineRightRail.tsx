@@ -6,8 +6,8 @@ import type {
   PlatformKey,
   ReactionCorner,
   ReactionSource,
-} from "../../fixtures/fakeEditor";
-import { PLATFORMS, PLATFORM_KEYS } from "../../fixtures/fakeEditor";
+} from "../../fixtures/fakeEditor.preview";
+import { PLATFORMS, PLATFORM_KEYS } from "../../fixtures/fakeEditor.preview";
 
 type RailTab =
   | "captions"

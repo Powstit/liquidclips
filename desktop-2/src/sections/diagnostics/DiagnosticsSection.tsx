@@ -8,7 +8,7 @@ import {
   fakeBackendStatus,
   fakeSidecarStatus,
   fakePassiveKeychainStatus,
-} from "../../fixtures/fakeDiagnostics";
+} from "../../fixtures/fakeDiagnostics.preview";
 import { useHashRoute } from "../../shell/routes";
 
 const VERSION_PLACEHOLDER = "0.8.0-shell";

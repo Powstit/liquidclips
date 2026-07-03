@@ -14,13 +14,13 @@ import { EngineTimeline } from "./EngineTimeline";
 import { CampaignContextStrip } from "../../components/editor/CampaignContextStrip";
 import { PublishModal } from "../../components/publish/PublishModal";
 import { SubmitToWhopModal } from "../../components/publish/SubmitToWhopModal";
-import type { Clip, EditState, PlatformKey } from "../../fixtures/fakeEditor";
+import type { Clip, EditState, PlatformKey } from "../../fixtures/fakeEditor.preview";
 import {
   createEditState,
   generateClips,
   regenerateClip,
   resetClipSequence,
-} from "../../fixtures/fakeEditor";
+} from "../../fixtures/fakeEditor.preview";
 
 export function EditorSection() {
   const params = getCurrentParams();

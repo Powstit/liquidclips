@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import type { Clip, EditState } from "../../fixtures/fakeEditor";
-import { formatTime } from "../../fixtures/fakeEditor";
+import type { Clip, EditState } from "../../fixtures/fakeEditor.preview";
+import { formatTime } from "../../fixtures/fakeEditor.preview";
 
 interface EngineTimelineProps {
   clip: Clip;
