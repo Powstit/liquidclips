@@ -140,7 +140,17 @@ def build_authorization_context(
 
     platform_role = _resolve_platform_role(user)
 
-    plan_cap_names = _plan_capability_names_for_tier(tier, founder=founder)
+    # Step 2 batch 2c · admin platform_role grants agency-whitelabel plan
+    # caps on OWN tenant, mirroring founder-like promotion. Preserves the
+    # "admin self mode gets full product entitlement against admin's own
+    # records only" invariant from SELF_ONBOARDING_RELEASE_MASTER.md §Step 2
+    # AFTER deps.py's in-memory tier elevation is removed in a later batch.
+    # Cross-tenant is still denied by the evaluator's membership check —
+    # this only expands what admin can do inside their OWN tenant.
+    effective_founder_for_plan = founder or (platform_role is PlatformRole.ADMIN)
+    plan_cap_names = _plan_capability_names_for_tier(
+        tier, founder=effective_founder_for_plan
+    )
     platform_cap_names = _platform_capability_names_for_role(platform_role.value)
     # DEMO mode grants the plan_override capability so an admin can exercise
     # every plan feature on OWN data; the evaluator refuses to apply it to
