@@ -257,6 +257,7 @@ function WorkstationBody() {
       <h1
         className="lc-visually-hidden"
         data-route-title="Workstation"
+        data-kade-anchor
       >
         Workstation
       </h1>
