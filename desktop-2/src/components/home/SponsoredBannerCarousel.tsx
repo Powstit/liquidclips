@@ -10,12 +10,32 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Lock, Sparkles } from "../icons/BrandGlyphs";
 import { LazyVideo } from "./LazyVideo";
-import {
-  loadSampleCampaigns,
-  WHOP_REWARDS_URL,
-  type SponsoredCampaign,
-} from "../../fixtures/sampleCampaigns";
+// 2026-07-03 · Step 3 batch 3f · fixture campaigns severed. `loadSampleCampaigns`
+// returns [] here until Step 4 wires backend `/campaigns/sponsored`. The carousel
+// falls back to a single Whop-rewards hero card in the empty state.
 import { useBrowseOverlay } from "../../state/browseOverlay";
+
+export const WHOP_REWARDS_URL = "https://whop.com/discover/content-rewards/";
+
+export interface SponsoredCampaign {
+  id: string;
+  name?: string;
+  brand?: string;
+  subtitle?: string;
+  banner_url?: string | null;
+  status?: string;
+  whop_campaign_url?: string | null;
+  whop_url?: string | null;
+  rpm_cents?: number;
+  your_rpm_cents?: number;
+  duration_label?: string;
+  cta_text?: string;
+  visibility_tiers?: string[];
+}
+
+function loadSampleCampaigns(): Promise<SponsoredCampaign[]> {
+  return Promise.resolve([]);
+}
 
 const CAMPAIGNS_CACHE_KEY = "lc:home:sample-campaigns:v1";
 const CAMPAIGNS_TTL_MS = 15 * 60 * 1000;

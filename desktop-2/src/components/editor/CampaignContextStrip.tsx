@@ -1,11 +1,22 @@
 // Lane 2 — Editor right-rail context strip.
 // Pure presentational. Honest empty state when no campaign is active.
+//
+// 2026-07-03 · Step 3 batch 3f · replaced imported `FakeCampaign` type
+// with a local minimal shape. Backend campaign row (Step 4) will provide
+// the same fields; keeping the shape here means the consumer contract
+// is stable across the sever.
 
-import type { FakeCampaign } from "../../fixtures/fakeCampaigns";
 import { openInApp } from "../../lib/openInApp";
 
+export interface CampaignContext {
+  name?: string;
+  watermarkHandle?: string;
+  rewardPoolUrl?: string | null;
+  inviteUrl?: string | null;
+}
+
 interface CampaignContextStripProps {
-  campaign: FakeCampaign | undefined;
+  campaign: CampaignContext | undefined;
   /** Defaults to @yourhandle — generic, brand-agnostic fallback stamp. */
   fallbackStamp?: string;
 }
