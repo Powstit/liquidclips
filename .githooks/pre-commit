@@ -8,6 +8,7 @@
 #   4. brand-kit-drift-check    — token parity between index.css + demo HTML.
 #   5. lint-kade-decoupling     — Sprint G.5 · onboarding:milestone emitter-only rule.
 #   6. assert-shell-contracts    — in-app navigation, shell, auth, and brand contracts.
+#   7. assert-kade-anchor         — [data-kade-anchor] presence on every primary route so StickyKade's mini-mode transition works.
 #
 # Hook lives at `.githooks/pre-commit`; `git config core.hooksPath .githooks`
 # points the repo at it.
@@ -54,3 +55,9 @@ run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/lint-kade-decoupling.sh" "$@"
 # Pre-push shell contract · catches direct target=_blank/window.open
 # bypasses and the wider desktop-2 launch invariants.
 run_guard "$DESKTOP2_ROOT" "$DESKTOP2_SCRIPTS/assert-shell-contracts.sh" "$@"
+# Kade anchor coverage · asserts every primary route surface declares
+# [data-kade-anchor] so StickyKade's IntersectionObserver flips to
+# top-right mini mode on scroll. Locked after 2026-07-03 regression
+# where Home, Workstation, Community, and Campaign Builder all
+# silently lacked the anchor.
+run_guard "$REPO_ROOT"    "$DESKTOP2_SCRIPTS/assert-kade-anchor.sh" "$@"
