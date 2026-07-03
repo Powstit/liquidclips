@@ -50,9 +50,9 @@ push or deploy.
 | 4 | Clipper + Agency onboarding state machines | RECEIPT ISSUED | `SO-GATE-4-C1404D65B994-C6AFED65FCB2B00C9FAB` |
 | 5 | Typed observability adapter + closed event registry | RECEIPT ISSUED | `SO-GATE-5-E88DC1EAA4E8-78C2FD4A04015B3C97D7` |
 | 6 | Desktop error sender → backend telemetry → HQ | RECEIPT ISSUED | `SO-GATE-6-165E22F57067-7B0CC6A0B250A84CE16C` |
-| 7 | PostHog + Sentry + Railway + stuck-user HQ view | READY (Step 6 receipted) | `PENDING` |
-| 7.5 | Agent substrate (Agent registry · AgentAction audit · provider abstraction · kill switches · credit caps · closed-registry capabilities) | BLOCKED BY STEP 7 | `PENDING` |
-| 8 | Four-identity authorization and journey proof | BLOCKED BY STEP 7 | `PENDING` |
+| 7 | PostHog + Sentry + Railway + stuck-user HQ view | RECEIPT ISSUED | `SO-GATE-7-80EB6B11ED6D-69E10F65A8A5CC6B42FB` |
+| 7.5 | Agent substrate (Agent registry · AgentAction audit · provider abstraction · kill switches · credit caps · closed-registry capabilities) | READY (Step 7 receipted) | `PENDING` |
+| 8 | Four-identity authorization and journey proof | BLOCKED BY STEP 7.5 | `PENDING` |
 | 9 | Clean-install, zero-fixture Cohort 0 proof | BLOCKED BY STEP 8 | `PENDING` |
 
 ## Step 2 — Server-owned authorization capability matrix
