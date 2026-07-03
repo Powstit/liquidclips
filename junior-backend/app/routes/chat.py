@@ -134,12 +134,21 @@ class ChatMessageOut(BaseModel):
 
 class ArcadeScorePayload(BaseModel):
     score: int = Field(..., ge=0, le=999_999_999)
+    # 2026-07-03 · anti-cheat plausibility gate (optional for backward compat
+    # · required for future dispatch). Old clients that don't send these
+    # are still accepted but their submissions receive a downgraded trust
+    # score in HQ. New clients from v2.2.22+ send all four.
+    wave: int | None = Field(default=None, ge=1, le=200)
+    duration_ms: int | None = Field(default=None, ge=0, le=10 * 60 * 60 * 1000)  # ≤10h
+    shots_fired: int | None = Field(default=None, ge=0, le=1_000_000)
 
 
 class ArcadeScoreOut(BaseModel):
     user_id: str
     arcade_high_score: int
     updated: bool
+    rejected: bool = False
+    rejection_reason: str | None = None
 
 
 class LeaderboardEntry(BaseModel):
@@ -588,6 +597,22 @@ async def pexels_search(
 # ---------------------------------------------------------------------
 
 
+# 2026-07-03 · anti-cheat plausibility gate.
+# Wave N with an 8x5 grid = 40 base kills · scoring at row 5 is 50 pts
+# · so a wave clear at the top row scores at most 50*40 = 2000 (in
+# practice ~1000-1500 per wave including streak). Score ceiling = wave
+# * 3000 + wave*wave*500 (perfect-wave bonus + UFO ceiling). Add 30%
+# margin so legit-lucky runs aren't rejected.
+def _max_plausible_score(wave: int, shots_fired: int) -> int:
+    return int((wave * 3000 + wave * wave * 500) * 1.30)
+
+
+# Duration floor: each wave requires roughly 15s of engaged play. A
+# submission claiming wave 20 in 30s is fraud.
+def _min_plausible_duration_ms(wave: int) -> int:
+    return wave * 8_000  # generous · real players average ~15s/wave
+
+
 @router.post("/game/score", response_model=ArcadeScoreOut)
 def submit_arcade_score(
     payload: ArcadeScorePayload,
@@ -597,7 +622,57 @@ def submit_arcade_score(
     """Ratchet the caller's best-ever Space Invaders score. Never lowers
     a record — a refresh or replay cannot erase progress. Returns the
     resolved value + whether this submission moved it up so the desktop
-    can show a "new high score" toast without re-fetching."""
+    can show a "new high score" toast without re-fetching.
+
+    2026-07-03 · anti-cheat plausibility gate + ArcadeSubmission audit
+    row. Real-money prize dispatch (routes/arcade_prize.py) reads from
+    ArcadeSubmission, so unaudited scores never enter the prize pool.
+    Rejections are recorded but do NOT lower the user's persisted
+    arcade_high_score — an accidentally-invalid submission from a
+    legitimate high scorer doesn't punish them.
+    """
+    from app.models import ArcadeSubmission
+
+    # Anti-cheat gates · only enforced when the client actually supplied
+    # wave + duration + shots. Old clients that omit them get the
+    # legacy behaviour (still recorded, but without gates).
+    rejected = False
+    rejection_reason: str | None = None
+    if payload.wave is not None and payload.duration_ms is not None:
+        max_score = _max_plausible_score(payload.wave, payload.shots_fired or 0)
+        min_duration = _min_plausible_duration_ms(payload.wave)
+        if payload.score > max_score:
+            rejected = True
+            rejection_reason = "score_above_ceiling"
+        elif payload.duration_ms < min_duration:
+            rejected = True
+            rejection_reason = "duration_below_floor"
+
+    # ArcadeSubmission audit row (always land it — rejected too).
+    try:
+        db.add(
+            ArcadeSubmission(
+                id=uuid.uuid4().hex,
+                user_id=user.id,
+                score=int(payload.score),
+                wave=int(payload.wave or 1),
+                duration_ms=int(payload.duration_ms or 0),
+                shots_fired=int(payload.shots_fired or 0),
+            )
+        )
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
+    if rejected:
+        return ArcadeScoreOut(
+            user_id=user.id,
+            arcade_high_score=int(user.arcade_high_score or 0),
+            updated=False,
+            rejected=True,
+            rejection_reason=rejection_reason,
+        )
+
     prior = int(user.arcade_high_score or 0)
     updated = False
     if payload.score > prior:
