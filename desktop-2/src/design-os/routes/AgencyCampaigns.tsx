@@ -218,7 +218,13 @@ function AgencyCampaignsBuilder(): JSX.Element {
             marginBottom: 16,
           }}
         >
-          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Campaigns</h1>
+          <h1
+            style={{ margin: 0, fontSize: 18, fontWeight: 600 }}
+            data-route-title="Campaign Builder"
+            data-kade-anchor
+          >
+            Campaigns
+          </h1>
           <button
             type="button"
             className="lc-btn"

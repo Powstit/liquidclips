@@ -75,6 +75,7 @@ function HomeContent() {
     <fm.div
       className="lc-home-stage"
       data-route-title="Home"
+      data-kade-anchor
       variants={presets.routeEnter}
       initial="initial"
       animate="animate"
