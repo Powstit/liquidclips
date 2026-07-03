@@ -1239,6 +1239,58 @@ class AdminAuditLog(Base):
     support_approver_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
 
 
+class ArcadeSubmission(Base):
+    """2026-07-03 · D · one row per accepted /chat/game/score submit.
+
+    Enables both the anti-cheat plausibility audit trail (wave, duration,
+    shots fired at score-time) and the monthly winner selection query.
+    Without this table the arcade prize can't be defensibly paid — the
+    ``users.arcade_high_score`` column carries no month-scoped ordering
+    signal.
+    """
+
+    __tablename__ = "arcade_submissions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    score: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    wave: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    shots_fired: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    ip: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+
+
+class WinnerPayout(Base):
+    """2026-07-03 · D · monthly arcade prize dispatch ledger.
+
+    ONE row per month. The ``month`` UNIQUE constraint is the double-pay
+    guard — retrying dispatch is idempotent because the second call
+    hits the existing row and short-circuits. ``paid_at`` fills only
+    after the Whop transfer returns a completed status; a row can
+    exist with paid_at=NULL when the winner still needs to onboard
+    their Whop sub-merchant.
+    """
+
+    __tablename__ = "winner_payouts"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    month: Mapped[str] = mapped_column(String(7), unique=True, nullable=False, index=True)  # "2026-07"
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    paid_sub_count_snapshot: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    whop_transfer_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    state: Mapped[str] = mapped_column(String(40), nullable=False, default="pending")  # pending | pending_winner_onboarding | paid | error
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+
+
 class AgentPersona(Base):
     """One row per admin-controllable agent persona.
 
