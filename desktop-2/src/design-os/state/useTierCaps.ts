@@ -187,8 +187,19 @@ export interface TierContext {
    *  "checking…" pill instead of acting on the fallback. */
   loading: boolean;
   /** True when /me reported the user has admin allowlist · the
-   *  effective tier is already elevated server-side. */
+   *  effective tier is already elevated server-side.
+   *  2026-07-03 · Step 2 batch 2f · DEPRECATED for new gates. Prefer
+   *  `capabilities` + `hasCapability(caps, CAP.X)` from
+   *  `lib/authz/capabilities.ts`. This field remains for one compat
+   *  release so unmigrated gates keep working. */
   adminOverride: boolean;
+  /** 2026-07-03 · Step 2 batch 2f · server-authoritative capability
+   *  list from the /me projection. Closed-registry strings (see
+   *  `lib/authz/capabilities.ts` CAP). New UI gates read this via
+   *  `hasCapability(capabilities, CAP.X)` instead of tier equality. */
+  capabilities: string[];
+  /** 2026-07-03 · Step 2 batch 2f · server-authoritative platform role. */
+  platformRole: "none" | "staff" | "admin" | null;
   /** True when the user has hit the cap for a given limit. */
   isAtCap: (limit: keyof TierCaps) => boolean;
   /** Suggest the next tier that unlocks a feature, or null if already max. */
@@ -320,6 +331,13 @@ export function useTierCaps(): TierContext {
   const usage = DEFAULT_USAGE;
   const caps = TIER_CAPS[tier];
   const loading = me.loading;
+  // Step 2 batch 2f · pass the server-authoritative capability list
+  // + platform role through to consumers so new gates can bypass tier
+  // inference entirely. Defaults preserve current behaviour when /me
+  // hasn't returned (empty caps list → hasCapability() returns false →
+  // gates stay closed unless the legacy adminOverride path opens them).
+  const capabilities = me.snapshot?.capabilities ?? [];
+  const platformRole = me.snapshot?.platformRole ?? null;
 
   return useMemo<TierContext>(() => {
     const isAtCap = (limit: keyof TierCaps): boolean => {
@@ -351,9 +369,11 @@ export function useTierCaps(): TierContext {
       source,
       loading,
       adminOverride,
+      capabilities,
+      platformRole,
       isAtCap,
       nextTierFor,
       _setTier: setDebugOverride,
     };
-  }, [tier, caps, usage, source, loading, adminOverride]);
+  }, [tier, caps, usage, source, loading, adminOverride, capabilities, platformRole]);
 }
