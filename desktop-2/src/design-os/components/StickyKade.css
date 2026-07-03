@@ -42,11 +42,17 @@
   height: clamp(160px, 18vw, 240px);
 }
 
-/* Home keeps Kade in the chrome, above the command grid. The previous
-   helper position sat directly over the Whop CTA and obscured the first
-   command. Kade remains prominent without becoming an input blocker. */
+/* Home · dock Kade in the bottom-right corner of the cockpit hero, clear
+   of the "Reward Scout" banner (top of content), the 4-tile grid (middle),
+   the sponsored + earn strips (below tiles), and the chat toggle (~24px
+   from bottom edge). Above-fold at 820px window height. On scroll the
+   IntersectionObserver flips him to .is-mini (top-right 96px). */
 .lc-app[data-route="home"] .lc-sticky-kade.is-helper-right {
-  display: none;
+  right: clamp(28px, 3vw, 48px);
+  bottom: clamp(110px, 14vh, 160px);
+  top: auto;
+  width: clamp(140px, 14vw, 200px);
+  height: clamp(140px, 14vw, 200px);
 }
 
 /* Dense tools already carry Kade in the top HUD and clip artwork. A second
