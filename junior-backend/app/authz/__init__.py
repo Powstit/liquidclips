@@ -39,6 +39,7 @@ from app.authz.context import (
     TenantMembership,
 )
 from app.authz.evaluator import evaluate
+from app.authz.projection import build_authorization_context
 
 __all__ = [
     "Action",
@@ -51,5 +52,6 @@ __all__ = [
     "Resource",
     "SupportContext",
     "TenantMembership",
+    "build_authorization_context",
     "evaluate",
 ]

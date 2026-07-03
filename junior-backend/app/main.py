@@ -557,6 +557,24 @@ async def lifespan(_app: FastAPI):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS thumbnail_batches_used_this_period integer NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS thumbnail_batches_period_start timestamptz",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS thumbnail_batches_boost_credit integer NOT NULL DEFAULT 0",
+        # 2026-07-03 · Step 2 batch 2b · server-owned platform authority +
+        # capability schema version stamp. Backfill runs one time to lift
+        # existing admin emails into platform_role='admin' — subsequent
+        # boots are a no-op because the WHERE only matches platform_role='none'.
+        # Legacy `is_admin_email()` still fires for one compat release; the
+        # new evaluator reads user.platform_role instead.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS platform_role varchar NOT NULL DEFAULT 'none'",
+        "CREATE INDEX IF NOT EXISTS ix_users_platform_role ON users (platform_role) WHERE platform_role != 'none'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS capability_schema_version_at_issue integer NOT NULL DEFAULT 1",
+        # AdminAuditLog · support-mode columns. NULL on legacy rows.
+        # ix on ticket + capability so HQ can filter forensically.
+        "ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS support_ticket_id varchar(120)",
+        "CREATE INDEX IF NOT EXISTS ix_admin_audit_log_support_ticket ON admin_audit_log (support_ticket_id) WHERE support_ticket_id IS NOT NULL",
+        "ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS support_reason text",
+        "ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS support_capability varchar(80)",
+        "CREATE INDEX IF NOT EXISTS ix_admin_audit_log_support_capability ON admin_audit_log (support_capability) WHERE support_capability IS NOT NULL",
+        "ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS support_expiry_at timestamptz",
+        "ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS support_approver_id varchar(120)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -567,6 +585,32 @@ async def lifespan(_app: FastAPI):
                 _logging.getLogger("junior.schema").warning(
                     "[schema] idempotent ALTER skipped: %s (%s)", _stmt, _e
                 )
+
+    # 2026-07-03 · Step 2 batch 2b · one-time backfill: lift ADMIN_EMAILS
+    # into the persisted platform_role column. Env-driven allowlist means we
+    # can't hardcode the WHERE list — we hand it to Postgres as a bound
+    # parameter. Idempotent by the ``platform_role = 'none'`` guard: emails
+    # already elevated (or an admin later demoted through HQ) are never
+    # overwritten by a subsequent boot. Runs on every startup so newly
+    # added ADMIN_EMAILS get lifted without a manual step.
+    try:
+        from app.features import ADMIN_EMAILS  # local import — avoid cycle at module load
+        if ADMIN_EMAILS and engine.dialect.name in {"postgresql", "sqlite"}:
+            with engine.begin() as _conn:
+                _conn.execute(
+                    _text(
+                        "UPDATE users SET platform_role = 'admin' "
+                        "WHERE platform_role = 'none' "
+                        "AND LOWER(email) IN :emails"
+                    ).bindparams(
+                        __import__("sqlalchemy").bindparam("emails", expanding=True)
+                    ),
+                    {"emails": tuple(sorted(ADMIN_EMAILS))},
+                )
+    except Exception as _e:  # noqa: BLE001
+        _logging.getLogger("junior.schema").warning(
+            "[schema] platform_role backfill skipped: %s", _e
+        )
 
     # v0.7.55 — idempotent first-run seeds. Both seed scripts use
     # `upsert` semantics keyed by slug, so they're safe to call on every

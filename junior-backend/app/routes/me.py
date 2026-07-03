@@ -60,6 +60,27 @@ class MeResponse(BaseModel):
     # backend's own App API Key is configured.
     whop_backend_key_configured: bool
 
+    # 2026-07-03 · Step 2 batch 2b · additive server-owned authorization
+    # projection. Legacy fields above (raw_tier, effective_tier,
+    # admin_override) remain until batch 2C consumers migrate; the client
+    # is expected to prefer these new fields in the same release. Empty
+    # defaults keep any decoder that ignores unknown keys unbroken.
+    #
+    # ``platform_role`` — none | staff | admin, server-authoritative.
+    # ``capabilities`` — flat closed-registry strings (matches Capability enum).
+    # ``limits`` — server-side quotas per tier (accounts, campaigns, etc).
+    # ``tenant_contexts`` — every tenant the caller belongs to with their role.
+    # ``operating_mode`` — self | demo | support; /me always reports self.
+    # ``target_tenant_id`` — only populated in a support-mode response.
+    # ``capability_schema_version`` — bump forces client refresh via /sync 409.
+    platform_role: str = "none"
+    capabilities: list[str] = []
+    limits: dict[str, int] = {}
+    tenant_contexts: list[dict[str, str]] = []
+    operating_mode: str = "self"
+    target_tenant_id: str | None = None
+    capability_schema_version: int = 1
+
 
 @router.get("", response_model=MeResponse)
 def me(
@@ -79,6 +100,17 @@ def me(
 
     effective_tier = "autopilot" if is_admin else raw_tier
     effective_founder = True if is_admin else raw_founder
+
+    # Step 2 batch 2b · project the caller into an AuthorizationContext
+    # from CURRENT DB state. /me always reports the caller's SELF mode —
+    # DEMO / SUPPORT are surfaced by dedicated admin routes (batch 2D). The
+    # projection uses the raw (non-elevated) user row so ``platform_role``
+    # is the persisted authority; the legacy fields above still echo the
+    # in-memory admin elevation for a compat window.
+    from app.authz import build_authorization_context, OperatingMode
+    authz_ctx = build_authorization_context(
+        raw or user, db, operating_mode=OperatingMode.SELF
+    )
 
     return MeResponse(
         backend_user_id=str(user.id),
@@ -102,6 +134,16 @@ def me(
         extra_accounts_purchased=(raw.extra_accounts_purchased if raw else 0),
         clips_created=(raw.clips_created if raw else (user.clips_created or 0)),
         whop_backend_key_configured=bool(get_settings().whop_api_key),
+        platform_role=authz_ctx.platform_role.value,
+        capabilities=sorted(c.value for c in authz_ctx.capabilities),
+        limits=dict(authz_ctx.limits),
+        tenant_contexts=[
+            {"tenant_id": m.tenant_id, "role": m.role}
+            for m in authz_ctx.tenant_memberships
+        ],
+        operating_mode=authz_ctx.operating_mode.value,
+        target_tenant_id=authz_ctx.target_tenant_id,
+        capability_schema_version=authz_ctx.capability_schema_version,
     )
 
 
