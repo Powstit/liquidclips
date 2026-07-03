@@ -609,6 +609,24 @@ async def lifespan(_app: FastAPI):
         "CREATE INDEX IF NOT EXISTS ix_winner_payouts_user ON winner_payouts (user_id)",
         "CREATE INDEX IF NOT EXISTS ix_winner_payouts_transfer ON winner_payouts (whop_transfer_id) WHERE whop_transfer_id IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS ix_winner_payouts_created_at ON winner_payouts (created_at DESC)",
+        # 2026-07-03 · Step 4 · milestone transition audit trail. Complements
+        # the User.onboarding_status JSON snapshot with a per-transition
+        # history keyed by idempotency_key (unique).
+        """CREATE TABLE IF NOT EXISTS milestone_transitions (
+            id varchar PRIMARY KEY,
+            user_id varchar NOT NULL,
+            journey varchar(20) NOT NULL,
+            prev_state varchar(60),
+            next_state varchar(60) NOT NULL,
+            source_surface varchar(80) NOT NULL,
+            schema_version integer NOT NULL DEFAULT 1,
+            idempotency_key varchar(160) UNIQUE NOT NULL,
+            created_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_milestone_transitions_user ON milestone_transitions (user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_milestone_transitions_journey ON milestone_transitions (journey)",
+        "CREATE INDEX IF NOT EXISTS ix_milestone_transitions_next_state ON milestone_transitions (next_state)",
+        "CREATE INDEX IF NOT EXISTS ix_milestone_transitions_created_at ON milestone_transitions (created_at DESC)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:

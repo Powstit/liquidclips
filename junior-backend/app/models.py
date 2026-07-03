@@ -1263,6 +1263,38 @@ class ArcadeSubmission(Base):
     )
 
 
+class MilestoneTransition(Base):
+    """2026-07-03 · Step 4 · onboarding state-transition audit row.
+
+    Complements the existing ``User.onboarding_status`` JSON snapshot
+    with a per-transition history — needed by the master doc's Step 4
+    contract ("Every transition records actor, journey, previous state,
+    next state, timestamp, source surface, schema version, and
+    idempotency key.").
+
+    The JSON snapshot on User is the fast-read source for /sync; this
+    table is the audit trail for HQ + stuck-user diagnostics + resume
+    logic. Both live in the same DB so they can't drift.
+
+    ``idempotency_key`` unique constraint stops accidental double-writes
+    from the same source surface. A retry with the same key is a no-op.
+    """
+
+    __tablename__ = "milestone_transitions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    journey: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # "clipper" | "agency"
+    prev_state: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    next_state: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
+    source_surface: Mapped[str] = mapped_column(String(80), nullable=False)  # "desktop.publish", "agency.roster.invite", ...
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    idempotency_key: Mapped[str] = mapped_column(String(160), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+
+
 class WinnerPayout(Base):
     """2026-07-03 · D · monthly arcade prize dispatch ledger.
 
