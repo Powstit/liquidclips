@@ -417,7 +417,7 @@ export function IntroSplash({
                 style={{ width: "40%" }}
               />
             </div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-paper">
+            <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-white">
               {TICKS[i]}
             </p>
           </div>
