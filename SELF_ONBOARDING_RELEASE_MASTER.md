@@ -49,8 +49,9 @@ push or deploy.
 | 3 | Remove production fixture fallbacks | RECEIPT ISSUED | `SO-GATE-3-3E665101B98B-B9E9C2642C24089E13C0` |
 | 4 | Clipper + Agency onboarding state machines | RECEIPT ISSUED | `SO-GATE-4-C1404D65B994-C6AFED65FCB2B00C9FAB` |
 | 5 | Typed observability adapter + closed event registry | RECEIPT ISSUED | `SO-GATE-5-E88DC1EAA4E8-78C2FD4A04015B3C97D7` |
-| 6 | Desktop error sender → backend telemetry → HQ | READY (Step 5 receipted) | `PENDING` |
-| 7 | PostHog + Sentry + Railway + stuck-user HQ view | BLOCKED BY STEP 6 | `PENDING` |
+| 6 | Desktop error sender → backend telemetry → HQ | RECEIPT ISSUED | `SO-GATE-6-165E22F57067-7B0CC6A0B250A84CE16C` |
+| 7 | PostHog + Sentry + Railway + stuck-user HQ view | READY (Step 6 receipted) | `PENDING` |
+| 7.5 | Agent substrate (Agent registry · AgentAction audit · provider abstraction · kill switches · credit caps · closed-registry capabilities) | BLOCKED BY STEP 7 | `PENDING` |
 | 8 | Four-identity authorization and journey proof | BLOCKED BY STEP 7 | `PENDING` |
 | 9 | Clean-install, zero-fixture Cohort 0 proof | BLOCKED BY STEP 8 | `PENDING` |
 
