@@ -16,6 +16,7 @@ import { SplashGame } from "./invaders/SplashGame";
 import { SplashGrid } from "./invaders/SplashGrid";
 import { SplashHud } from "./invaders/SplashHud";
 import { SplashLeaderboard } from "./invaders/SplashLeaderboard";
+import { ArcadePanel } from "./invaders/ArcadePanel";
 import { hasSeenIntro, markIntroSeen } from "../lib/intro";
 
 // Shown while the sidecar is booting (ping + secretsStatus + whisper warmup).
@@ -400,6 +401,7 @@ export function IntroSplash({
             <Logo size="lg" showVersion={false} />
           </div>
           <SplashHud score={splashState.score} lives={splashState.lives} />
+          <ArcadePanel liveScore={splashState.score} />
           <SplashLeaderboard score={splashState.score} />
           <SplashGame ready={ready} onContinue={onContinue} onStateChange={setSplashState} />
         </>
