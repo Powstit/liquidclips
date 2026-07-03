@@ -52,8 +52,8 @@ push or deploy.
 | 6 | Desktop error sender → backend telemetry → HQ | RECEIPT ISSUED | `SO-GATE-6-165E22F57067-7B0CC6A0B250A84CE16C` |
 | 7 | PostHog + Sentry + Railway + stuck-user HQ view | RECEIPT ISSUED | `SO-GATE-7-80EB6B11ED6D-69E10F65A8A5CC6B42FB` |
 | 7.5 | Agent substrate (Agent registry · AgentAction audit · provider abstraction · kill switches · credit caps · closed-registry capabilities) | SHIPPED · informal (substrate for Step 8) | commit `dd7f39c → e0ab1b6` · 16/16 named assertions verified |
-| 8 | Four-identity authorization and journey proof | READY (Step 7.5 substrate landed) | `PENDING` |
-| 9 | Clean-install, zero-fixture Cohort 0 proof | BLOCKED BY STEP 8 | `PENDING` |
+| 8 | Four-identity authorization and journey proof | RECEIPT ISSUED | `SO-GATE-8-30C8BF34D78F-97D2E943435187DDA28C` |
+| 9 | Clean-install, zero-fixture Cohort 0 proof | READY (Step 8 receipted) · **awaits Daniel installed-desktop-local walkthrough** | `PENDING` |
 
 ## Step 2 — Server-owned authorization capability matrix
 
