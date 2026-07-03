@@ -1,7 +1,7 @@
-import type { Clip, PlatformKey } from "../../fixtures/fakeEditor";
+import type { Clip, PlatformKey } from "../../fixtures/fakeEditor.preview";
 
-import { PLATFORMS, PLATFORM_KEYS, formatTime, posterGradient } from "../../fixtures/fakeEditor";
-import { fakeAccount } from "../../fixtures/fakeAccount";
+import { PLATFORMS, PLATFORM_KEYS, formatTime, posterGradient } from "../../fixtures/fakeEditor.preview";
+import { fakeAccount } from "../../fixtures/fakeAccount.preview";
 import { bus } from "../../design-os/bridge";
 
 interface EngineClipGridProps {

@@ -37,8 +37,8 @@ import { SponsoredBannerCarousel } from "../../components/home/SponsoredBannerCa
 import { DropZone } from "../../components/cockpit/DropZone";
 import { usePlanStore } from "../../state/plan";
 import { useBrowseOverlay, WHOP_REWARDS_URL } from "../../state/browseOverlay";
-import { fakeClips } from "../../fixtures/fakeClips";
-import { fakeProjects } from "../../fixtures/fakeProjects";
+import { fakeClips } from "../../fixtures/fakeClips.preview";
+import { fakeProjects } from "../../fixtures/fakeProjects.preview";
 import { fakeMissions } from "../../fixtures/fakeEarn";
 import { fakeCampaigns } from "../../fixtures/fakeCampaigns";
 import { LiquidInvaderLoader } from "../../overlays/LiquidInvaderLoader";
