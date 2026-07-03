@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getHighScore, setHighScore } from "../../lib/invaders/highScore";
 import { initGame, reset, step, type GameState, type Input } from "../../lib/invaders/engine";
+import { submitArcadeScore } from "../../lib/chat";
 import { InvadersCanvas } from "./InvadersCanvas";
 import { BossWave } from "./BossWave";
 
@@ -122,6 +123,13 @@ export function SplashGame({
             setHighScoreState(next.score);
             void setHighScore(next.score);
           }
+          // C · gameplay upgrade #1 · splash surface ratchets score to
+          // server too. Previously only InvadersOverlay called this, so
+          // splash plays never entered the leaderboard — which meant the
+          // $1,000 prize copy on ArcadePanel was fed a leaderboard nobody
+          // was actually competing on. submitArcadeScore is best-effort
+          // and JWT-gated; silently no-ops for anon splash sessions.
+          void submitArcadeScore(next.score);
         }
         // v0.7.67 — broadcast live state to parent HUD chrome.
         onStateChange?.({ score: next.score, lives: next.lives, wave: next.wave });
