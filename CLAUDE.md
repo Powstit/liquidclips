@@ -6,24 +6,57 @@ own `CLAUDE.md`; this root file owns the cross-cutting rules.
 
 ## Read these first, in order
 
-1. **`CLAUDE_DESKTOP2_RELEASE_MASTER.md`** — temporary highest-priority,
-   step-by-step Desktop 2 repair and release-readiness handoff. If working on
-   Desktop 2, follow it in order, maintain its execution log, and do not deploy
-   until every gate passes and the user explicitly approves.
-2. **`CLAUDE_DESKTOP2_UI_MASTER.md`** — approved Desktop 2 visual direction,
+1. **`SELF_ONBOARDING_RELEASE_MASTER.md`** — current highest-priority
+   self-onboarding release gate. Execute Steps 2–9 in order, generate the
+   required proof receipt for each step, and do not push, deploy, tag, or resume
+   marketing until Cohort 0 is explicitly approved by Daniel.
+2. **`CLAUDE_DESKTOP2_RELEASE_MASTER.md`** — temporary Desktop 2 repair and
+   release-readiness handoff. It is subordinate to the self-onboarding gate
+   while that gate is active.
+3. **`CLAUDE_DESKTOP2_UI_MASTER.md`** — approved Desktop 2 visual direction,
    responsive behaviour, implementation order, and evidence gates. It is
    subordinate to the release master and does not authorize deployment.
-3. **`DEPLOYMENT.md`** — single source of truth for shipping any
+4. **`DEPLOYMENT.md`** — single source of truth for shipping any
    surface (account-app, marketing, backend, desktop). Replaces all
    prior memory about which surface auto-deploys vs which needs a
    manual CLI. **If memory disagrees with `DEPLOYMENT.md`, this file
    wins.**
-4. **`desktop/CLAUDE.md`** — desktop app (Tauri + Python sidecar)
+5. **`desktop/CLAUDE.md`** — desktop app (Tauri + Python sidecar)
    architecture, iron gates, build commands.
-5. **`account-app/CLAUDE.md`** — Next.js 16 account / embed app.
-6. **`junior-backend/CLAUDE.md`** — FastAPI backend on Railway.
+6. **`account-app/CLAUDE.md`** — Next.js 16 account / embed app.
+7. **`junior-backend/CLAUDE.md`** — FastAPI backend on Railway.
 
 ## Cross-cutting rules
+
+### Truthful completion gate — mandatory
+
+Read and apply `~/.claude/skills/completion-discipline/SKILL.md` before every
+status report and before using completion language such as **done, fixed,
+complete, green, shipped, deployed, live, installed, verified, resolved,** or
+**ready**.
+
+Completion claims must name and prove the exact artifact and environment:
+
+* Source code proves **on disk**, not built or visible.
+* A successful build proves **built**, not installed or visually correct.
+* Vite/dev proof does not prove the installed Tauri app.
+* HTTP 200 proves reachability, not the changed feature.
+* Anonymous 401 proves authentication, not cross-tenant isolation.
+* Push, backend deploy, Vercel deploy, and desktop release are separate states.
+
+After any mutation, report a table with: item, state, direct proof, regression
+proof, and remaining gap. If direct or regression proof is missing, downgrade
+the state and say exactly what remains. Never make Daniel type “prove”; evidence
+collection and honest retraction are the agent's responsibility.
+
+For UI changes, verify the requested element in the exact artifact Daniel is
+viewing and inspect mount conditions plus CSS visibility rules. For security
+claims, test the identities required by the claim (for tenant isolation,
+authenticated A-versus-B). For deployment claims, record local SHA, remote SHA,
+deployment ID, clean status, and a release-specific live behavior.
+
+No claim of “fully live” is permitted while a required packaged/native smoke,
+surface deployment, or requested journey remains unverified.
 
 ### Deployment topology (canonical — see `DEPLOYMENT.md` for detail)
 
