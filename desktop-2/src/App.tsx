@@ -81,6 +81,42 @@ export function App() {
     });
   }, []);
 
+  // 2026-07-03 · Global client-error capture to AppData/client-diagnostics.log.
+  // Surfaces the actual reason silent catches fire so we can diagnose
+  // without opening WKWebView DevTools. See lib/diagBuffer.ts. Also logs
+  // an "app.boot" line so we know the writer path is functioning.
+  useEffect(() => {
+    void import("./lib/diagBuffer").then((m) => {
+      m.logDiag("app.boot", {
+        version: __APP_VERSION__ ?? "0.8.0-shell",
+        ua: typeof navigator !== "undefined" ? navigator.userAgent : "unknown",
+        online: typeof navigator !== "undefined" ? navigator.onLine : true,
+      });
+      const onErr = (e: ErrorEvent) => {
+        m.logDiag("window.error", {
+          message: e.message,
+          filename: e.filename,
+          line: e.lineno,
+          col: e.colno,
+        });
+      };
+      const onRej = (e: PromiseRejectionEvent) => {
+        m.logDiagError("window.unhandledrejection", e.reason);
+      };
+      window.addEventListener("error", onErr);
+      window.addEventListener("unhandledrejection", onRej);
+      // Best-effort cleanup at unmount (StrictMode double-mount safe).
+      (window as unknown as { __lcDiagBoot?: () => void }).__lcDiagBoot = () => {
+        window.removeEventListener("error", onErr);
+        window.removeEventListener("unhandledrejection", onRej);
+      };
+    }).catch(() => { /* diag never breaks the app */ });
+    return () => {
+      const fn = (window as unknown as { __lcDiagBoot?: () => void }).__lcDiagBoot;
+      if (typeof fn === "function") fn();
+    };
+  }, []);
+
   // Simulate sidecar readiness after the brand-moment hold.
   useEffect(() => {
     const t = window.setTimeout(() => setSplashReady(true), 6_000);
