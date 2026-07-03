@@ -12,8 +12,9 @@ import {
   type PlatformId,
   type ScheduleCadence,
 } from "../../state/publishStore";
-import { fakeChannelHandles } from "../../fixtures/fakeChannelHandles";
-import { getCampaignById } from "../../fixtures/fakeCampaigns";
+// 2026-07-03 · Step 3 batch 3f · fixture imports severed. Real handles land
+// from the connected `social_channels` table (Step 4 onboarding). Campaign
+// name comes from mode state's cached string, not a fixture lookup.
 import { getModeState } from "../../shell/modeStore";
 
 interface PublishModalProps {
@@ -50,8 +51,7 @@ export function PublishModal({
   const schedulePost = usePublishStore((s) => s.schedulePost);
 
   const campaignId = getModeState().activeCampaignId;
-  const campaign = campaignId ? getCampaignById(campaignId) : undefined;
-  const campaignName = campaign?.name ?? "No active campaign";
+  const campaignName = campaignId ? `Campaign ${campaignId}` : "No active campaign";
 
   const [picked, setPicked] = useState<Set<PlatformId>>(() => {
     const seed = new Set<PlatformId>();
@@ -68,10 +68,12 @@ export function PublishModal({
   const overLimit = charCount > CAPTION_LIMIT;
 
   const channelLines = useMemo(() => {
+    // 2026-07-03 · Step 3 batch 3f · handle strings default to "—" until Step 4
+    // wires the real social_channels row for each platform.
     return ALL_PLATFORMS.map((p) => ({
       id: p,
       label: PLATFORM_LABELS[p],
-      handle: fakeChannelHandles[p],
+      handle: "—",
       connected: connectedChannels.has(p),
       selected: picked.has(p),
     }));
@@ -102,8 +104,8 @@ export function PublishModal({
     schedulePost({
       clipId,
       clipTitle,
-      campaignId: campaign?.id ?? null,
-      campaignName: campaign?.name ?? null,
+      campaignId: campaignId ?? null,
+      campaignName: campaignId ? campaignName : null,
       channels,
       caption,
       cadence,
