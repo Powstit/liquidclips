@@ -1394,6 +1394,56 @@ class DesktopErrorGroup(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")  # open|acknowledged|resolved|muted
 
 
+class DeploymentEvent(Base):
+    """2026-07-03 · Step 7 · Railway deployment webhook audit row.
+
+    Every Railway deploy fires POST /webhooks/railway with an HMAC-signed
+    payload. Verified events land here so the HQ view can correlate
+    error spikes with deploys (i.e. "release 2.2.22 deployed at 10:03
+    and error group X spiked at 10:05 · rollback"). ``release_sha`` +
+    ``service`` are the natural join keys against
+    ``telemetry_events.release`` + ``desktop_error_groups.release``.
+    """
+
+    __tablename__ = "deployment_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    deployment_id: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
+    service: Mapped[str] = mapped_column(String(80), nullable=False, index=True)  # junior-backend | desktop | account-app
+    environment: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    release_sha: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)  # started | succeeded | failed | rolled_back
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    raw_payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    signature_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+
+
+class AlertRule(Base):
+    """2026-07-03 · Step 7 · self-tuning alert configuration.
+
+    HQ writes rules via the admin route; the alert engine (cron)
+    reads this table and fires notifications with dedup + cooldown.
+    Adding a new alert = INSERT ONE row. Owner is a free-text handle;
+    when the alert fires we notify that owner via the existing
+    notifications router.
+    """
+
+    __tablename__ = "alert_rules"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    feature_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    condition_kind: Mapped[str] = mapped_column(String(40), nullable=False)  # error_rate | error_count | stuck_users | deployment_failed
+    threshold: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False)
+    window_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=15)
+    cooldown_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+    owner: Mapped[str] = mapped_column(String(120), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    last_fired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+
+
 class MilestoneTransition(Base):
     """2026-07-03 · Step 4 · onboarding state-transition audit row.
 

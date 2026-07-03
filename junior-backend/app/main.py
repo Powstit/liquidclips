@@ -708,6 +708,37 @@ async def lifespan(_app: FastAPI):
         "CREATE INDEX IF NOT EXISTS ix_desktop_error_groups_feature ON desktop_error_groups (feature_id) WHERE feature_id IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS ix_desktop_error_groups_last_seen ON desktop_error_groups (last_seen_at DESC)",
         "CREATE INDEX IF NOT EXISTS ix_desktop_error_groups_status ON desktop_error_groups (status)",
+        # 2026-07-03 · Step 7 · Railway deployment ingestion + alert rules
+        """CREATE TABLE IF NOT EXISTS deployment_events (
+            id varchar PRIMARY KEY,
+            deployment_id varchar(120) UNIQUE NOT NULL,
+            service varchar(80) NOT NULL,
+            environment varchar(20) NOT NULL,
+            release_sha varchar(80) NOT NULL,
+            event_type varchar(40) NOT NULL,
+            occurred_at timestamptz NOT NULL,
+            raw_payload_json text,
+            signature_verified boolean NOT NULL DEFAULT false,
+            created_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_deployment_events_service ON deployment_events (service)",
+        "CREATE INDEX IF NOT EXISTS ix_deployment_events_release_sha ON deployment_events (release_sha)",
+        "CREATE INDEX IF NOT EXISTS ix_deployment_events_environment ON deployment_events (environment)",
+        "CREATE INDEX IF NOT EXISTS ix_deployment_events_occurred_at ON deployment_events (occurred_at DESC)",
+        """CREATE TABLE IF NOT EXISTS alert_rules (
+            id varchar PRIMARY KEY,
+            name varchar(200) NOT NULL,
+            feature_id varchar(120),
+            condition_kind varchar(40) NOT NULL,
+            threshold numeric(10,4) NOT NULL,
+            window_minutes integer NOT NULL DEFAULT 15,
+            cooldown_minutes integer NOT NULL DEFAULT 60,
+            owner varchar(120) NOT NULL,
+            enabled boolean NOT NULL DEFAULT true,
+            last_fired_at timestamptz,
+            created_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_alert_rules_feature ON alert_rules (feature_id) WHERE feature_id IS NOT NULL",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -929,6 +960,11 @@ from app.routes import hq_features as _hq_features_router  # noqa: E402
 app.include_router(_telemetry_ingest_router.router)
 app.include_router(_hq_features_router.router)
 app.include_router(_hq_features_router.error_group_router)
+# 2026-07-03 · Step 7 · Railway signed webhook + HQ funnel/stuck-user
+from app.routes import webhooks_railway as _webhooks_railway_router  # noqa: E402
+from app.routes import hq_journeys as _hq_journeys_router  # noqa: E402
+app.include_router(_webhooks_railway_router.router)
+app.include_router(_hq_journeys_router.router)
 app.include_router(campaigns.router)
 app.include_router(campaign_asset_links.router)
 app.include_router(agency_campaigns.router)
