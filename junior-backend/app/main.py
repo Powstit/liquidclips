@@ -772,6 +772,13 @@ app.include_router(admin_recovery.router)
 # approver. See app/routes/admin_support.py.
 from app.routes import admin_support as _admin_support_router  # noqa: E402
 app.include_router(_admin_support_router.router)
+# 2026-07-03 · Step 2 batch 2e · server-authoritative capability whoami
+# for the account-app proxy layer. Uses x-internal-secret + clerk_user_id
+# (same pattern as /admin/*) so the Next.js gates can drop the legacy
+# email allowlist inference and read capabilities from the persisted
+# projection. See app/routes/authz_whoami.py.
+from app.routes import authz_whoami as _authz_whoami_router  # noqa: E402
+app.include_router(_authz_whoami_router.router)
 app.include_router(campaigns.router)
 app.include_router(campaign_asset_links.router)
 app.include_router(agency_campaigns.router)
