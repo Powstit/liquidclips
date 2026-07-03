@@ -1394,6 +1394,77 @@ class DesktopErrorGroup(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")  # open|acknowledged|resolved|muted
 
 
+class Agent(Base):
+    """2026-07-03 · Step 7.5 · agent registry.
+
+    ONE row per AI agent instance (10 Codex agents = 10 rows). Adding
+    capacity = INSERT one row through HQ · zero code deploy. The
+    ``provider`` field picks a concrete AgentProvider class at
+    dispatch time · ``credential_id`` points at the credential store
+    (never a raw key) · ``role`` selects which capability bundle the
+    agent runs with (reused from Step 2 closed capability registry).
+
+    Kill switches:
+      * global ``LC_AGENTS_ENABLED`` env var (checked at dispatch)
+      * per-agent ``enabled`` flag (checked at dispatch)
+      * per-role capability revoke via Step 2's PlatformRole/Capability
+        machinery (checked inside every action's authz gate)
+
+    Budget: ``daily_credit_cap_cents`` bounds spend per agent per UTC
+    day · ``circuit_breaker_state`` auto-flips to ``open`` after N
+    consecutive failures on that agent so a broken agent can't burn
+    the fleet's budget.
+    """
+
+    __tablename__ = "agents"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    agent_id: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False, index=True)  # anthropic | codex | openai | mock
+    role: Mapped[str] = mapped_column(String(80), nullable=False, index=True)  # bug_fixer | user_replier | monitor | ...
+    credential_id: Mapped[str] = mapped_column(String(120), nullable=False)  # NEVER a raw key
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    max_concurrent: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    daily_credit_cap_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=1000)  # $10/day default
+    circuit_breaker_state: Mapped[str] = mapped_column(String(20), nullable=False, default="closed")  # closed | open | half_open
+    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    parent_agent_id: Mapped[str | None] = mapped_column(String(120), nullable=True)  # delegation graph
+    owner: Mapped[str] = mapped_column(String(120), nullable=False)  # who to page when it breaks
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class AgentAction(Base):
+    """2026-07-03 · Step 7.5 · per-action audit row.
+
+    Every dispatch — allowed or denied — writes a row here so HQ can
+    review reasoning. Mirrors SupportContext audit discipline from
+    Step 2: same "trust but verify" pattern extended to AI actors.
+
+    ``prompt_redacted`` + ``response_redacted`` run through the Step 5
+    sanitizer before writing so no email/JWT/token from tool payloads
+    can leak into the audit table.
+    """
+
+    __tablename__ = "agent_actions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    agent_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    action_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)  # bug_fix | user_reply | monitor_probe | ...
+    target_user_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    prompt_redacted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response_redacted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tools_called: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    cost_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    elapsed_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    stable_error_code: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    decision_trace_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+
+
 class DeploymentEvent(Base):
     """2026-07-03 · Step 7 · Railway deployment webhook audit row.
 
