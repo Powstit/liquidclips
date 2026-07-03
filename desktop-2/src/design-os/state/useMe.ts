@@ -39,6 +39,16 @@ export interface MeSnapshot {
   billingProvider: "whop" | "clerk" | null;
   subscriptionStatus: string | null;
   paidUntil: string | null;         // ISO-8601
+  // 2026-07-03 · Step 2 batch 2f · server-owned authorization projection.
+  // Preferred over `adminOverride` + `effectiveTier` client inference for
+  // any new UI gate. See `src/lib/authz/capabilities.ts` + hasCapability().
+  // adminOverride remains populated for one compat release.
+  platformRole: "none" | "staff" | "admin" | null;
+  capabilities: string[];            // closed-registry strings from CAP
+  tenantContexts: Array<{ tenantId: string; role: string }>;
+  operatingMode: "self" | "demo" | "support" | null;
+  targetTenantId: string | null;
+  capabilitySchemaVersion: number | null;
 }
 
 export type MeSource =
@@ -97,6 +107,13 @@ interface MeBackendResponse {
   billing_provider?: "whop" | "clerk";
   subscription_status?: string;
   paid_until?: string | null;
+  // 2026-07-03 · Step 2 batch 2b/2f additions.
+  platform_role?: "none" | "staff" | "admin";
+  capabilities?: string[];
+  tenant_contexts?: Array<{ tenant_id: string; role: string }>;
+  operating_mode?: "self" | "demo" | "support";
+  target_tenant_id?: string | null;
+  capability_schema_version?: number;
 }
 
 function adaptMe(b: MeBackendResponse): MeSnapshot {
@@ -112,6 +129,17 @@ function adaptMe(b: MeBackendResponse): MeSnapshot {
     billingProvider:    b.billing_provider === "whop" || b.billing_provider === "clerk" ? b.billing_provider : null,
     subscriptionStatus: typeof b.subscription_status === "string" ? b.subscription_status : null,
     paidUntil:          typeof b.paid_until === "string" ? b.paid_until : null,
+    platformRole:       b.platform_role === "none" || b.platform_role === "staff" || b.platform_role === "admin" ? b.platform_role : null,
+    capabilities:       Array.isArray(b.capabilities) ? b.capabilities.filter((c): c is string => typeof c === "string") : [],
+    tenantContexts:     Array.isArray(b.tenant_contexts)
+                          ? b.tenant_contexts
+                              .filter((t): t is { tenant_id: string; role: string } =>
+                                !!t && typeof t.tenant_id === "string" && typeof t.role === "string")
+                              .map((t) => ({ tenantId: t.tenant_id, role: t.role }))
+                          : [],
+    operatingMode:      b.operating_mode === "self" || b.operating_mode === "demo" || b.operating_mode === "support" ? b.operating_mode : null,
+    targetTenantId:     typeof b.target_tenant_id === "string" ? b.target_tenant_id : null,
+    capabilitySchemaVersion: typeof b.capability_schema_version === "number" ? b.capability_schema_version : null,
   };
 }
 

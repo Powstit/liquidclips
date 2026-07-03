@@ -51,6 +51,9 @@ import { openInApp } from "../../lib/openInApp";
 import { DesignOSAppShell } from "../components/AppShell";
 import { ROUTE_REGISTRY } from "../routing/routeRegistry";
 import { canUseAgencyActions, useTierCaps } from "../state/useTierCaps";
+// 2026-07-03 · Step 2 batch 2f · server-owned capability primitives.
+// Preferred over `tier.adminOverride` for new gates.
+import { CAP, hasCapability } from "../../lib/authz/capabilities";
 
 type LoadState =
   | { kind: "loading" }
@@ -70,12 +73,15 @@ export function AgencyCampaignsRoute(): JSX.Element {
   const tier = useTierCaps();
   const spec = ROUTE_REGISTRY["campaign-builder"];
 
-  // Tier gate — mirrors the backend is_agency_tier check. `tier.tier`
-  // resolves to "agency" for any of the 3 agency-family sub-tiers via
-  // mapBackendTier. adminOverride (founder / admin allowlist) also
-  // unlocks — matches the server's founder_flag + is_admin_email
-  // bypass in _require_agency.
-  const gated = tier.tier === "agency" || tier.adminOverride;
+  // 2026-07-03 · Step 2 batch 2f · server-owned capability gate.
+  // Primary check: server-authoritative agency.workspace.read capability
+  // (read by /me + /sync via the projection). Falls back to legacy
+  // tier === "agency" || adminOverride during the compat window so an
+  // unloaded /me snapshot doesn't lock the founders out.
+  const gated =
+    hasCapability(tier.capabilities, CAP.AGENCY_WORKSPACE_READ)
+    || tier.tier === "agency"
+    || tier.adminOverride;
   return (
     <DesignOSAppShell
       world={spec.world}
@@ -159,7 +165,13 @@ function AgencyCampaignsBuilder(): JSX.Element {
   // Also self-heals if the tier degrades mid-session — buttons disable
   // immediately without a route unmount.
   const tier = useTierCaps();
-  const writeAllowed = canUseAgencyActions({ tier: tier.tier, source: tier.source }) || tier.adminOverride;
+  // Step 2 batch 2f · prefer the server-issued write capability.
+  // Falls back to the legacy canUseAgencyActions + adminOverride pair
+  // during the compat window.
+  const writeAllowed =
+    hasCapability(tier.capabilities, CAP.AGENCY_CAMPAIGN_CREATE)
+    || canUseAgencyActions({ tier: tier.tier, source: tier.source })
+    || tier.adminOverride;
 
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
