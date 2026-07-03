@@ -3,11 +3,15 @@
 //   · Center tooltip pill — "Hit bugs. Earn points. Level up …"
 //   · Bottom-left LEVEL UP card with 8-pip pixel-invader progress bar
 //
-// Mock data sourced from ./mockLeaderboard (modest, believable values).
-// All copy is simulator-honest — no claim of real view/payout tracking.
+// Counters come from the live /leaderboard/arcade endpoint (Batch 3E).
+// A fresh install with an empty DB renders zeros — honest empty state,
+// no fabricated growth numbers.
 // v0.7.67 — SCORE chip + LIVES decrement now driven by live engine state.
 
-import { MOCK_COUNTERS } from "./mockLeaderboard";
+// 2026-07-03 · Step 3 batch 3e · counters now come from
+// /leaderboard/arcade instead of MOCK_COUNTERS. Fresh install / empty
+// DB shows 0 with no fabricated delta.
+import { useArcadeLeaderboard } from "../../lib/useArcadeLeaderboard";
 import "./SplashHud.css";
 
 export function SplashHud({
@@ -17,20 +21,25 @@ export function SplashHud({
   score?: number;
   lives?: number;
 }) {
+  const arcade = useArcadeLeaderboard(5);
+  const clipperTotal = arcade.counters.clippers.total;
+  const agencyTotal = arcade.counters.agencies.total;
+  const clipperDelta = arcade.counters.clippers.deltaToday;
+  const agencyDelta = arcade.counters.agencies.deltaToday;
   return (
     <>
       <div className="splash-hud-top" data-testid="splash-hud-counters">
         <Counter
           label="Clippers"
-          value={MOCK_COUNTERS.clippers.value.toLocaleString()}
-          delta={`+${MOCK_COUNTERS.clippers.deltaToday} today`}
+          value={clipperTotal.toLocaleString()}
+          delta={clipperDelta > 0 ? `+${clipperDelta} today` : "live"}
           icon="clipper"
           tint="fuchsia"
         />
         <Counter
           label="Agencies / Brands"
-          value={MOCK_COUNTERS.agencies.value.toLocaleString()}
-          delta={`+${MOCK_COUNTERS.agencies.deltaToday} today`}
+          value={agencyTotal.toLocaleString()}
+          delta={agencyDelta > 0 ? `+${agencyDelta} today` : "live"}
           icon="agency"
           tint="cyan"
         />
