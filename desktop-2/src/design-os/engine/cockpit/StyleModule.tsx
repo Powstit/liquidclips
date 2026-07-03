@@ -59,7 +59,7 @@ export function StyleModule() {
   const effectiveWatermark =
     tier.loading
     || tier.source === "unknown"
-    || tier.source === "fixture-fallback"
+    || tier.source === "unavailable"
     || tier.caps.watermarkLocked
     || settings.publish.watermark;
 

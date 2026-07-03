@@ -165,13 +165,22 @@ export type CurrentUsage = {
  *
  *  - `real-http`          · `/me` returned a recognized tier this session
  *  - `session-cache`      · prior real fetch · /me currently degraded · trusted
- *  - `fixture-fallback`   · no usable /me snapshot · using SIMULATOR_DEFAULT_TIER
+ *  - `fixture-fallback`   · DEPRECATED (Batch 3D of Step 3) · retained on the
+ *                           type union for one compat release so downstream
+ *                           consumers that switch on it still typecheck,
+ *                           but the resolver no longer produces it.
+ *  - `unavailable`        · Batch 3D of Step 3 · no usable snapshot AND no
+ *                           QA hatch · tier falls to the most restrictive
+ *                           row (`clipper`) so gates fail closed. Consumers
+ *                           should render "checking your account…" copy
+ *                           and refuse to unlock paid surfaces.
  *  - `unknown`            · no JWT · activation hasn't happened
  *  - `debug-override`     · `window.__lcDebugSetTier` fired (puppeteer-only) */
 export type TierSource =
   | "real-http"
   | "session-cache"
   | "fixture-fallback"
+  | "unavailable"
   | "unknown"
   | "debug-override";
 
@@ -208,16 +217,38 @@ export interface TierContext {
   _setTier: (t: Tier) => void;
 }
 
-const DEFAULT_USAGE: CurrentUsage = {
-  connectedChannels: 4,
-  connectedPerPlatform: { tiktok: 2, instagram: 1, youtube: 1 },
-  scheduledThisMonth: 42,
-  accountsTargetedForActiveClip: 3,
+/** 2026-07-03 · Step 3 batch 3d · honest empty-state defaults.
+ *  Before: fabricated `connectedChannels: 4, scheduledThisMonth: 42`
+ *  which silently told a brand-new account "you already have 4
+ *  channels connected". After: zeros so a fresh install renders a
+ *  legitimate empty state. Real usage rides in from /me when the
+ *  hook has a live snapshot; this constant is the pre-snapshot floor. */
+const EMPTY_USAGE: CurrentUsage = {
+  connectedChannels: 0,
+  connectedPerPlatform: { tiktok: 0, instagram: 0, youtube: 0 },
+  scheduledThisMonth: 0,
+  accountsTargetedForActiveClip: 0,
 };
 
-/** Phase 6H · in-memory tier defaulting to "pro". A future billing module
- *  will replace this default with a server-pushed tier. */
-const SIMULATOR_DEFAULT_TIER: Tier = "pro";
+/** 2026-07-03 · Step 3 batch 3d · QA hatch replacing the old
+ *  Phase-6H `SIMULATOR_DEFAULT_TIER = "pro"` production fallback.
+ *  Only fires when the Vite build carries `VITE_LC_QA=true` (playwright
+ *  screenshots, QA runs) so a real production build cannot silently
+ *  grant Pro caps on a missing /me. In production the resolver returns
+ *  the `unavailable` source + the most restrictive tier (`clipper`),
+ *  which fails every paid gate closed. */
+function qaHatchTier(): Tier | null {
+  try {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const env = (import.meta as any).env ?? {};
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+    const qaFlag = env.VITE_LC_QA === true || env.VITE_LC_QA === "true";
+    if (qaFlag) return "pro";
+  } catch {
+    /* import.meta.env not available (jest node env) — no QA hatch */
+  }
+  return null;
+}
 
 /* Module-level subscriber list · dev-only window hook can push a tier
  *  switch into every mounted useTierCaps instance. Lets puppeteer
@@ -309,26 +340,44 @@ export function useTierCaps(): TierContext {
           adminOverride: snap.adminOverride === true,
         };
       }
-      // Snapshot present but tier unrecognized · fall through to fixture.
-      return { tier: SIMULATOR_DEFAULT_TIER, source: "fixture-fallback", adminOverride: false };
+      // Snapshot present but tier unrecognized · fail closed to
+      // `unavailable` + `clipper` (most restrictive) so a corrupt
+      // backend response can't accidentally unlock paid surfaces.
+      // 2026-07-03 · Step 3 batch 3d · replaces the old
+      // SIMULATOR_DEFAULT_TIER = "pro" silent grant.
+      const hatch = qaHatchTier();
+      if (hatch) return { tier: hatch, source: "debug-override", adminOverride: false };
+      return { tier: "clipper", source: "unavailable", adminOverride: false };
     }
     /* No usable snapshot ·
      *   - me.source === "unknown" AND no snapshot → no JWT or never fetched
      *   - me.source === "session-cache" AND no snapshot → impossible by design
-     *   - any source AND degraded with no prior snapshot → use fixture
+     *   - any source AND degraded with no prior snapshot → unavailable
      * Distinguish "no JWT" (label `"unknown"` so route gating can pick it up)
-     * from "JWT but /me hasn't returned yet" (label `"fixture-fallback"`
-     * so consumers can render quietly). */
-    if (me.source === "unknown" && !snap) {
-      return { tier: SIMULATOR_DEFAULT_TIER, source: "unknown", adminOverride: false };
+     * from "JWT but /me hasn't returned yet" (label `"unavailable"` so gates
+     * fail closed instead of silently granting Pro).
+     * 2026-07-03 · Step 3 batch 3d · both branches drop from "pro"
+     * silent grant to "clipper" + honest source label. QA runs
+     * (VITE_LC_QA=true) still see "pro" via the qaHatchTier() escape. */
+    const hatch = qaHatchTier();
+    if (hatch) {
+      return { tier: hatch, source: "debug-override", adminOverride: false };
     }
-    return { tier: SIMULATOR_DEFAULT_TIER, source: "fixture-fallback", adminOverride: false };
+    if (me.source === "unknown" && !snap) {
+      return { tier: "clipper", source: "unknown", adminOverride: false };
+    }
+    return { tier: "clipper", source: "unavailable", adminOverride: false };
   }, [debugOverride, me.source, me.snapshot]);
 
   const tier = resolved.tier;
   const source = resolved.source;
   const adminOverride = resolved.adminOverride;
-  const usage = DEFAULT_USAGE;
+  // 2026-07-03 · Step 3 batch 3d · usage falls back to empty (all zeros)
+  // when there's no live snapshot so a fresh install renders an honest
+  // empty state instead of fabricating "4 channels, 42 posts". Real
+  // usage comes in from /me / /sync once activation lands (batches 4-6
+  // wire the transport).
+  const usage = EMPTY_USAGE;
   const caps = TIER_CAPS[tier];
   const loading = me.loading;
   // Step 2 batch 2f · pass the server-authoritative capability list

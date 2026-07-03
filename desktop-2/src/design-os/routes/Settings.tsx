@@ -1026,7 +1026,7 @@ function SettingsBody() {
                   value={
                     tier.source === "real-http"        ? "Verified just now" :
                     tier.source === "session-cache"    ? "Verified previously" :
-                    tier.source === "fixture-fallback" ? (tier.loading ? "Checking account…" : "Could not verify") :
+                    tier.source === "unavailable" ? (tier.loading ? "Checking account…" : "Could not verify") :
                     tier.source === "unknown"          ? "Sign in to verify" :
                                                          "Test override"
                   }
