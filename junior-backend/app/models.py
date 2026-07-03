@@ -1263,6 +1263,137 @@ class ArcadeSubmission(Base):
     )
 
 
+class Feature(Base):
+    """2026-07-03 · Step 6 · registry-driven observability.
+
+    ONE row per user-facing feature. HQ auto-generates the feature's
+    detail page (endpoints · errors · stuck users · health) from this
+    row + its Endpoint children. Adding a feature = INSERT one row +
+    N endpoints. No per-feature code in HQ.
+
+    ``owner`` is a free-text handle (email, GH username) — the human
+    to nudge when the feature's error rate spikes. ``canary`` gates
+    whether the feature ships to Cohort 0 only (Daniel's own account)
+    or the wider fleet. ``baseline_error_rate`` self-tunes: alerts
+    fire when observed_rate > baseline + 3σ. Bumping the number is
+    an HQ mutation, not a code change.
+    """
+
+    __tablename__ = "features"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    feature_id: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    journey: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)  # "clipper" | "agency" | "operations" | None
+    owner: Mapped[str] = mapped_column(String(120), nullable=False)  # handle / email
+    canary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    baseline_error_rate: Mapped[float] = mapped_column(Numeric(6, 4), nullable=False, default=0)
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class Endpoint(Base):
+    """2026-07-03 · Step 6 · HTTP-layer registry.
+
+    N rows per Feature. HQ health checks + generic tester read this
+    table to know which endpoints to exercise for each feature — no
+    per-feature test code. ``health_check_body`` is a small JSON
+    template hit against staging/prod at cron cadence.
+
+    Adding a new endpoint = INSERT one row. HQ starts monitoring on
+    the next cron tick — no deploy.
+    """
+
+    __tablename__ = "feature_endpoints"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    feature_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    method: Mapped[str] = mapped_column(String(10), nullable=False)  # GET/POST/…
+    path_pattern: Mapped[str] = mapped_column(String(400), nullable=False)  # /me · /agency/{id}/roster
+    expected_status: Mapped[int] = mapped_column(Integer, nullable=False, default=200)
+    expected_error_codes: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    health_check_body: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+
+
+class TelemetryEvent(Base):
+    """2026-07-03 · Step 6 · raw Envelope ingestion.
+
+    Every emit() from the Step 5 adapter POSTs an Envelope here.
+    Server RE-sanitizes on ingest (belt-and-suspenders — the client
+    already sanitized in redact.ts, but a compromised client shouldn't
+    be able to bypass the server contract).
+
+    Partitioning-ready: (release, feature_id, created_at) is the
+    natural query key for HQ's grouped views. When we scale past
+    1M users this table can be partitioned by created_at without a
+    schema rewrite because the fields don't reference each other.
+    """
+
+    __tablename__ = "telemetry_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    event: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    feature_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    journey_id: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    surface: Mapped[str] = mapped_column(String(200), nullable=False)
+    route: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    release: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    build: Mapped[str] = mapped_column(String(80), nullable=False)
+    environment: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # dev/prod/qa
+    operating_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="self")
+    entitlement_class: Mapped[str] = mapped_column(String(20), nullable=False, default="clipper")
+    onboarding_state: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    actor_kind: Mapped[str] = mapped_column(String(20), nullable=False, default="anon")  # internal|anon
+    actor_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    correlation_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    session_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    attempt_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    failure: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stable_error_code: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    emitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    stored_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+
+
+class DesktopErrorGroup(Base):
+    """2026-07-03 · Step 6 · Fingerprint-grouped desktop error dedupe.
+
+    ``fingerprint`` = sha256(release + feature_id + stable_error_code +
+    stack fingerprint). When the SAME failure recurs, the existing
+    row's counters bump instead of a new row per occurrence. HQ
+    displays groups, not raw events — one group = one actionable
+    incident.
+
+    Individual occurrences still land in DesktopErrorEvent for the
+    per-user trail; DesktopErrorGroup is the aggregate the HQ view
+    reads.
+    """
+
+    __tablename__ = "desktop_error_groups"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    fingerprint: Mapped[str] = mapped_column(String(80), unique=True, nullable=False, index=True)
+    release: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    feature_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    stable_error_code: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    route: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    environment: Mapped[str] = mapped_column(String(20), nullable=False, default="dev")
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    affected_user_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    latest_sanitized_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")  # open|acknowledged|resolved|muted
+
+
 class MilestoneTransition(Base):
     """2026-07-03 · Step 4 · onboarding state-transition audit row.
 

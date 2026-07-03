@@ -627,6 +627,87 @@ async def lifespan(_app: FastAPI):
         "CREATE INDEX IF NOT EXISTS ix_milestone_transitions_journey ON milestone_transitions (journey)",
         "CREATE INDEX IF NOT EXISTS ix_milestone_transitions_next_state ON milestone_transitions (next_state)",
         "CREATE INDEX IF NOT EXISTS ix_milestone_transitions_created_at ON milestone_transitions (created_at DESC)",
+        # 2026-07-03 · Step 6 · registry-driven observability substrate.
+        # Feature + Endpoint registry, generic TelemetryEvent ingestion,
+        # DesktopErrorGroup fingerprint dedupe. Everything HQ reads is
+        # generic — new features = new rows, not new code.
+        """CREATE TABLE IF NOT EXISTS features (
+            id varchar PRIMARY KEY,
+            feature_id varchar(120) UNIQUE NOT NULL,
+            name varchar(200) NOT NULL,
+            journey varchar(20),
+            owner varchar(120) NOT NULL,
+            canary boolean NOT NULL DEFAULT true,
+            enabled boolean NOT NULL DEFAULT true,
+            baseline_error_rate numeric(6,4) NOT NULL DEFAULT 0,
+            schema_version integer NOT NULL DEFAULT 1,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_features_journey ON features (journey)",
+        """CREATE TABLE IF NOT EXISTS feature_endpoints (
+            id varchar PRIMARY KEY,
+            feature_id varchar(120) NOT NULL,
+            method varchar(10) NOT NULL,
+            path_pattern varchar(400) NOT NULL,
+            expected_status integer NOT NULL DEFAULT 200,
+            expected_error_codes jsonb NOT NULL DEFAULT '[]'::jsonb,
+            health_check_body jsonb,
+            enabled boolean NOT NULL DEFAULT true,
+            created_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_feature_endpoints_feature ON feature_endpoints (feature_id)",
+        """CREATE TABLE IF NOT EXISTS telemetry_events (
+            id varchar PRIMARY KEY,
+            event varchar(80) NOT NULL,
+            schema_version integer NOT NULL DEFAULT 1,
+            feature_id varchar(120) NOT NULL,
+            journey_id varchar(20),
+            surface varchar(200) NOT NULL,
+            route varchar(200) NOT NULL DEFAULT '',
+            release varchar(80) NOT NULL,
+            build varchar(80) NOT NULL,
+            environment varchar(20) NOT NULL,
+            operating_mode varchar(20) NOT NULL DEFAULT 'self',
+            entitlement_class varchar(20) NOT NULL DEFAULT 'clipper',
+            onboarding_state varchar(60),
+            actor_kind varchar(20) NOT NULL DEFAULT 'anon',
+            actor_id varchar(120) NOT NULL,
+            correlation_id varchar(80) NOT NULL,
+            session_id varchar(80) NOT NULL,
+            attempt_id varchar(80) NOT NULL,
+            success boolean NOT NULL DEFAULT true,
+            failure text,
+            duration_ms integer,
+            stable_error_code varchar(120),
+            payload_json text NOT NULL DEFAULT '{}',
+            metadata_json text,
+            emitted_at timestamptz NOT NULL,
+            stored_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_telemetry_events_feature_release ON telemetry_events (feature_id, release)",
+        "CREATE INDEX IF NOT EXISTS ix_telemetry_events_event ON telemetry_events (event)",
+        "CREATE INDEX IF NOT EXISTS ix_telemetry_events_error_code ON telemetry_events (stable_error_code) WHERE stable_error_code IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS ix_telemetry_events_stored_at ON telemetry_events (stored_at DESC)",
+        """CREATE TABLE IF NOT EXISTS desktop_error_groups (
+            id varchar PRIMARY KEY,
+            fingerprint varchar(80) UNIQUE NOT NULL,
+            release varchar(80) NOT NULL,
+            feature_id varchar(120),
+            stable_error_code varchar(120),
+            route varchar(200),
+            environment varchar(20) NOT NULL DEFAULT 'dev',
+            count integer NOT NULL DEFAULT 0,
+            affected_user_count integer NOT NULL DEFAULT 0,
+            latest_sanitized_message text,
+            first_seen_at timestamptz NOT NULL DEFAULT now(),
+            last_seen_at timestamptz NOT NULL DEFAULT now(),
+            status varchar(20) NOT NULL DEFAULT 'open'
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_desktop_error_groups_release ON desktop_error_groups (release)",
+        "CREATE INDEX IF NOT EXISTS ix_desktop_error_groups_feature ON desktop_error_groups (feature_id) WHERE feature_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS ix_desktop_error_groups_last_seen ON desktop_error_groups (last_seen_at DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_desktop_error_groups_status ON desktop_error_groups (status)",
     ]
     if engine.dialect.name == "postgresql":
         for _stmt in _COLUMN_MIGRATIONS:
@@ -837,6 +918,17 @@ app.include_router(_authz_whoami_router.router)
 # month-scoped idempotence.
 from app.routes import arcade_prize as _arcade_prize_router  # noqa: E402
 app.include_router(_arcade_prize_router.router)
+# 2026-07-03 · Step 6 · registry-driven observability.
+# /telemetry/event · generic Envelope ingestion
+# /telemetry/desktop-error · fingerprint dedupe (replaces the shorter
+#   route in telemetry.py while keeping backward compat)
+# /admin/hq/features · feature + endpoint registry CRUD
+# /admin/hq/desktop-errors · grouped incident view
+from app.routes import telemetry_ingest as _telemetry_ingest_router  # noqa: E402
+from app.routes import hq_features as _hq_features_router  # noqa: E402
+app.include_router(_telemetry_ingest_router.router)
+app.include_router(_hq_features_router.router)
+app.include_router(_hq_features_router.error_group_router)
 app.include_router(campaigns.router)
 app.include_router(campaign_asset_links.router)
 app.include_router(agency_campaigns.router)
