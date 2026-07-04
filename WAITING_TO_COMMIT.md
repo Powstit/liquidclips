@@ -112,3 +112,18 @@
 - Group boundary: YES — awaiting signoff security-hardening
 - Tests: junior-backend 272 passed · desktop-2 vitest 39 passed / 5 files · desktop-2 cargo test 5 passed · account-app tsc clean · marketing tsc clean
 - Scope: P0 + most P1 landed. P1 deferred with rationale: telemetry auth+rate-limit · @vercel/botid · authStorage Keychain-first · fs:scope · deep-link mpsc · gmailComposeDriver DOMPurify
+
+## Nav mounting · Phase 8 2026-07-04
+- Branch: feature/nav-mounting-2026-07-04
+- Commits: a4c9e69 · fdad483 · 48899e6 · 0a007c3 · aa81548 · 27a4e2f
+- Proof folder: 08_receipts/nav-mounting-2026-07-04/
+- Verify: PASSED at 2026-07-04T21:03:00Z (31 of 31 assertions)
+- Group: NavMounting
+- Group boundary: YES — awaiting signoff nav-mounting
+- Tests: junior-backend 272 preserved · desktop-2 vitest 70 passed / 11 files (+31 across 6 mounts) · desktop-2 cargo test 5 preserved · account-app tsc clean · marketing tsc clean
+- Mounts: #1 LoginActivation boot gate · #2 SyncMailMoneyDrop → #/outreach · #3 WalletDetail in AccountSection · #4 CatalogCarousel in CampaignsSection · #5 CancellationIntercept modal from Cancel button · #6 EmbedPreviewCard nested in campaign builder
+- Reachability greps (all ≥1): LoginActivation=5 · SyncMailMoneyDrop=9 · WalletDetail=19 · CatalogCarousel=18 · CancellationIntercept=8 · EmbedPreviewCard=14
+- Phase-7 sweeps preserved (all =0): dangerouslySetInnerHTML in routes · if secret: fail-open · lc-default-salt live · real creator emails · CSS local grad literals
+- IRON GATE IG-NNN sentinels: 25 (unchanged from Phase 7 baseline)
+- Iron-gate scripts: lint-kade-decoupling.sh + assert-kade-anchor.sh green. brand-kit-drift-check.sh exit 1 pre-existing on legacy desktop/ v0.7.x — git diff shows Phase 8 touched zero desktop/ files.
+- TODO(phase-9) markers: 1 (Mount #5 Whop cancel-subscription RPC wire)
