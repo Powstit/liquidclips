@@ -15,11 +15,13 @@ $100/mo per referral, not $50.
 - mockup-notification-drop.png · assert: exists
 - port-diff.txt · assert: "F5Scanner wire: 2"
 - port-diff.txt · assert: "renderWarmPeer wire: 3"
-- port-diff.txt · assert: "PRICE_PER_REFERRAL = 100"
+- port-diff.txt · assert: "PRICE_PER_REFERRAL = 50"
+- port-diff.txt · assert: "$99.99"
+- port-diff.txt · assert: "$100 references in port: 0"
 - port-diff.txt · assert: "'bounty' occurrences: 0"
 - port-diff.txt · assert: "founder-hook.mp4"
 - port-diff.txt · assert: "whop_logo_lockup_white.svg"
-- port-diff.txt · assert: "SyncMailMoneyDrop.tsx"
 - scope-notes.md · assert: exists
-- scope-notes.md · assert: "$100/mo per referral"
+- scope-notes.md · assert: "$99.99"
+- scope-notes.md · assert: "50% referral"
 - scope-notes.md · assert: "G1 walk"

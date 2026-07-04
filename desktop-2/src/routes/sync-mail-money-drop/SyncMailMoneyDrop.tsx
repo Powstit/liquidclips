@@ -45,16 +45,21 @@ interface StateConfig {
   appWallet?: string;
 }
 
-const PRICE_PER_REFERRAL = 100;   // $100/mo per Daniel 2026-07-04
-const PACKAGE_PRICE = 100;        // founder pkg price
+// Founder-cohort pricing locked 2026-07-04:
+//   $99.99/mo grants Agency tier · first 1000 users only
+//   Whop plan: agency_founder alias · 50% affiliate cut ≈ $50/mo
+// Two subs break even ($100 covers the $99.99/mo cost).
+const PRICE_PER_REFERRAL = 50;    // 50% cut of $99.99 rounded to clean $50
+const PACKAGE_PRICE_LABEL = '$99.99';
+const BREAK_EVEN_SUBS = 2;
 
 const PER_STATE: Record<ModalState, StateConfig> = {
   'hook': {
     scene: 'modal',
-    h1: `<span class="smmd-strike">$500/mo</span> → <span class="smmd-money">$${PACKAGE_PRICE}/mo</span>`,
-    sub: `Every clipper you skill-share with pays $${PACKAGE_PRICE} · you get <b class="smmd-life">$${PRICE_PER_REFERRAL}/mo</b> — every month, <b class="smmd-life">for LIFE</b>. <b>One skill share</b> = your $${PACKAGE_PRICE} is free. Link any email · we handle everything.`,
+    h1: `<span class="smmd-strike">$500/mo</span> → <span class="smmd-money">${PACKAGE_PRICE_LABEL}/mo</span>`,
+    sub: `Every clipper you skill-share with pays ${PACKAGE_PRICE_LABEL} · you get <b class="smmd-life">$${PRICE_PER_REFERRAL}/mo</b> — every month, <b class="smmd-life">for LIFE</b>. <b>Two skill shares</b> = your ${PACKAGE_PRICE_LABEL} is free. Link any email · we handle everything.`,
     connectLabel: 'Link my email',
-    coachScript: `"Hey guys — <b>Daniel, founder</b>. You just took the highest package. $500 a month. I'm giving it to you for $${PACKAGE_PRICE}. Every clipper you share this with? <b>$${PRICE_PER_REFERRAL} of their sub — every month, for LIFE.</b> Not when we hit series A. For LIFE."`,
+    coachScript: `"Hey guys — <b>Daniel, founder</b>. You just took the highest package. $500 a month. I'm giving it to you for ${PACKAGE_PRICE_LABEL}. Every clipper you share this with? <b>$${PRICE_PER_REFERRAL} of their sub — every month, for LIFE.</b> Not when we hit series A. For LIFE."`,
   },
   'connecting-gmail': {
     scene: 'modal',
@@ -66,9 +71,9 @@ const PER_STATE: Record<ModalState, StateConfig> = {
   'roster-populating': {
     scene: 'modal',
     h1: `We found <span class="smmd-money">real clippers</span> in your inbox`,
-    sub: `Real people you already email · real 25k+ sub channels. Each one = <b class="smmd-life">$${PRICE_PER_REFERRAL}/mo, for LIFE</b>. <b>One skill share = your $${PACKAGE_PRICE} is free.</b>`,
+    sub: `Real people you already email · real 25k+ sub channels. Each one = <b class="smmd-life">$${PRICE_PER_REFERRAL}/mo, for LIFE</b>. <b>Two skill shares = your ${PACKAGE_PRICE_LABEL} is free.</b>`,
     connectLabel: 'Link my email',
-    coachScript: `"That's your list. <b>$${PRICE_PER_REFERRAL} for every one that subs — every month, for LIFE.</b> One skill share = your $${PACKAGE_PRICE} is paid back. Send it."`,
+    coachScript: `"That's your list. <b>$${PRICE_PER_REFERRAL} for every one that subs — every month, for LIFE.</b> Two skill shares = your ${PACKAGE_PRICE_LABEL} is paid back. Send it."`,
   },
   'approve-send': {
     scene: 'modal',
@@ -237,7 +242,7 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
               {i + 1} · {s.replace(/-/g, ' ')}
             </button>
           ))}
-          <span className="smmd-scrubber-note">$500 pkg · ${PACKAGE_PRICE}/mo · ${PRICE_PER_REFERRAL}/mo per ref</span>
+          <span className="smmd-scrubber-note">$500 pkg · {PACKAGE_PRICE_LABEL}/mo · first 1000 · ${PRICE_PER_REFERRAL}/mo per ref</span>
         </div>
       )}
 
@@ -251,7 +256,7 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
               <img src="/brand/whop/whop_logo_lockup_white.svg" alt="Whop" />
             </div>
             <div className="smmd-backdrop-label">
-              Post-payment · <b>${PACKAGE_PRICE}/mo cleared · agency tier live</b>
+              Post-payment · <b>{PACKAGE_PRICE_LABEL}/mo cleared · agency tier live</b>
             </div>
 
             <div className="smmd-modal">
@@ -260,7 +265,7 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                 <div className="smmd-hook-eyebrow">
                   <span>Step 1 of 1 · takes 30 seconds</span>
                   <span className="smmd-hook-eyebrow-pill">
-                    <span className="smmd-strike">$500/mo</span> · you paid ${PACKAGE_PRICE}
+                    <span className="smmd-strike">$500/mo</span> · you paid {PACKAGE_PRICE_LABEL}
                   </span>
                 </div>
                 <h1 className="smmd-hook-h1" dangerouslySetInnerHTML={{ __html: cfg.h1 }} />
@@ -286,7 +291,7 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                       <span className="smmd-provider-chip"><b>Work</b></span>
                     </div>
                     <button className="smmd-skip-link" type="button">
-                      Skip · give up <b>$2,000/mo potential</b>
+                      Skip · give up <b>${(PRICE_PER_REFERRAL * 20).toLocaleString()}/mo potential</b>
                     </button>
                   </>
                 )}
@@ -383,7 +388,7 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                   </div>
                   <div className="smmd-wallet-stat">
                     <div className="smmd-wallet-stat-label">Break-even</div>
-                    <div className="smmd-wallet-stat-value">1 sub</div>
+                    <div className="smmd-wallet-stat-value">{BREAK_EVEN_SUBS} subs</div>
                   </div>
                 </div>
 
@@ -481,6 +486,16 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                   <div className="smmd-notif-body">
                     <b>+${PRICE_PER_REFERRAL}/mo</b> — <span className="smmd-money">${PRICE_PER_REFERRAL} in your Whop wallet, right now</span>. Every month, for LIFE. Withdraw whenever.
                   </div>
+                  <div style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 10,
+                    color: 'var(--color-text-tertiary)',
+                    letterSpacing: '0.12em',
+                    textTransform: 'uppercase',
+                    marginBottom: 10,
+                  }}>
+                    1 of {BREAK_EVEN_SUBS} to break even
+                  </div>
                   <div className="smmd-notif-actions">
                     <button type="button">Dismiss</button>
                     <button type="button" className="is-primary">See wallet</button>
@@ -540,13 +555,15 @@ function initialsOf(name: string): string {
   return (parts[0]?.[0] ?? '?').toUpperCase() + (parts[1]?.[0]?.toUpperCase() ?? '');
 }
 
+// Ticker amounts use the $50 per-referral base · multiplied by number
+// of active clipper referrals each user has landed.
 const TICKER_LIVE: Array<{ handle: string; amount: string; avatar: string }> = [
-  { handle: 'Daniel · founder', amount: '$500/mo',                 avatar: '/brand/kade/kade-earn-mode.webp' },
-  { handle: '@marcus.beats',    amount: `$${PRICE_PER_REFERRAL * 3}/mo`, avatar: '/brand/kade/kade-success.webp' },
-  { handle: '@nailsbylila',     amount: `$${PRICE_PER_REFERRAL * 4}/mo`, avatar: '/brand/kade/kade-celebration.webp' },
-  { handle: '@zayn.clips',      amount: `$${PRICE_PER_REFERRAL * 6}/mo`, avatar: '/brand/kade/kade-tier-climber.webp' },
-  { handle: '@kayce.hair',      amount: `$${PRICE_PER_REFERRAL * 9}/mo`, avatar: '/brand/kade/kade-tier-growth.webp' },
-  { handle: '@jayxvibes',       amount: `$${PRICE_PER_REFERRAL * 11}/mo`, avatar: '/brand/kade/kade-publishing.webp' },
+  { handle: 'Daniel · founder', amount: `$${(PRICE_PER_REFERRAL * 10).toLocaleString()}/mo`, avatar: '/brand/kade/kade-earn-mode.webp' },
+  { handle: '@marcus.beats',    amount: `$${(PRICE_PER_REFERRAL * 3).toLocaleString()}/mo`,  avatar: '/brand/kade/kade-success.webp' },
+  { handle: '@nailsbylila',     amount: `$${(PRICE_PER_REFERRAL * 4).toLocaleString()}/mo`,  avatar: '/brand/kade/kade-celebration.webp' },
+  { handle: '@zayn.clips',      amount: `$${(PRICE_PER_REFERRAL * 6).toLocaleString()}/mo`,  avatar: '/brand/kade/kade-tier-climber.webp' },
+  { handle: '@kayce.hair',      amount: `$${(PRICE_PER_REFERRAL * 9).toLocaleString()}/mo`,  avatar: '/brand/kade/kade-tier-growth.webp' },
+  { handle: '@jayxvibes',       amount: `$${(PRICE_PER_REFERRAL * 11).toLocaleString()}/mo`, avatar: '/brand/kade/kade-publishing.webp' },
 ];
 
 const DEMO_ROSTER: Array<{ email: string; displayName: string; sourceLabel: string }> = [

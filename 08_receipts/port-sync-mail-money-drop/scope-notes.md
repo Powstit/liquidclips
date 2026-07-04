@@ -28,14 +28,28 @@
   harness (screens the approved mockup at all 6 states for
   side-by-side comparison).
 
-## Pricing lock (Daniel 2026-07-04)
+## Pricing lock (Daniel 2026-07-04 · v2 correction)
 
-- $100/mo per referral (was $50 in the mockup — port supersedes).
-- Break-even = 1 sub (was 2 in the mockup).
-- Skip-link "give up $2,000/mo potential" (was $2,500 in the
-  mockup · derived from 20 × $100).
-- Ticker amounts scale off the same $100 base
-  (`$300/mo`, `$400/mo`, `$600/mo`, `$900/mo`, `$1,100/mo`).
+- Package price = **$99.99/mo** (was `$100` in port v1 · Daniel
+  corrected before the G1 walk).
+- **50% referral math** = $50/mo per referral (50% of $99.99
+  rounded to a clean $50). Port v1 had `PRICE_PER_REFERRAL = 100`
+  which was a 100% cut — Daniel loses money on every referral.
+  Fixed.
+- Break-even = **2 subs** (2 × $50 = $100 covers the $99.99/mo).
+- Skip-link now shows "give up $1,000/mo potential"
+  (20 × $50 rather than the old 20 × $100).
+- Ticker amounts recompute off the $50 base:
+  `$500/mo` (founder · 10 refs), `$150/mo`, `$200/mo`,
+  `$300/mo`, `$450/mo`, `$550/mo`.
+- Mockup source at
+  `~/Desktop/liquidclips-marketing-hq-v2/05_html-mockups/approved/sync-mail-money-drop.html`
+  updated in lockstep so HQ's D2 re-capture pulls the correct
+  numbers.
+- Founder-cohort context: $99.99/mo grants Agency tier · first
+  1000 users only · Whop plan `agency_founder` alias · quantity
+  cap 1000 · after cap the offer closes but founders keep the
+  grandfathered rate forever.
 
 ## Voice check
 
