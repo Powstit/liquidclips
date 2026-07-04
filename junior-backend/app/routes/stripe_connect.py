@@ -27,12 +27,13 @@ from __future__ import annotations
 from typing import Annotated
 
 import stripe
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
+from app.deps import require_internal_secret
 from app.models import User
 
 router = APIRouter(prefix="/me/affiliate/stripe-connect", tags=["affiliate", "stripe_connect"])
@@ -59,12 +60,10 @@ class ConnectStatusResponse(BaseModel):
 
 # --- auth + helpers ------------------------------------------------------
 
-def _require_internal(secret_header: str | None) -> None:
-    secret = get_settings().internal_api_secret
-    if not secret:
-        return  # not configured (local dev) → allow
-    if secret_header != secret:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "bad internal secret")
+# Internal-secret gate is now fail-closed via `deps.require_internal_secret`
+# (missing env → 500, missing/mismatched header → 401). The old
+# `if not secret: return` fallback silently accepted local-dev configs and
+# would keep accepting them if a prod deploy ever forgot the Railway env.
 
 
 def _get_user_or_404(db: Session, clerk_user_id: str) -> User:
@@ -118,9 +117,8 @@ def create_or_refresh_onboarding(
     body: OnboardingRequest,
     db: Annotated[Session, Depends(get_db)],
     clerk_user_id: Annotated[str, Query(min_length=1)],
-    x_internal_secret: Annotated[str | None, Header()] = None,
+    _internal: Annotated[bool, Depends(require_internal_secret)] = True,
 ) -> OnboardingResponse:
-    _require_internal(x_internal_secret)
     _require_stripe_configured()
 
     user = _get_user_or_404(db, clerk_user_id)
@@ -199,9 +197,8 @@ def create_or_refresh_onboarding(
 def get_status(
     db: Annotated[Session, Depends(get_db)],
     clerk_user_id: Annotated[str, Query(min_length=1)],
-    x_internal_secret: Annotated[str | None, Header()] = None,
+    _internal: Annotated[bool, Depends(require_internal_secret)] = True,
 ) -> ConnectStatusResponse:
-    _require_internal(x_internal_secret)
     user = _get_user_or_404(db, clerk_user_id)
     # NULL-safe — old rows pre-migration may have NULL for the stripe_connect_*
     # columns even though the model says NOT NULL DEFAULT 'none'. Coerce

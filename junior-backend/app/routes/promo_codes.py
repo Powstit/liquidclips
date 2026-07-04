@@ -26,13 +26,13 @@ from datetime import datetime, timezone
 from threading import Lock
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.db import get_db
+from app.deps import require_internal_secret
 from app.models import PromoCode, PromoCodeRedemption, User
 from app.promo_engine import (
     StripeNotConfigured,
@@ -206,20 +206,18 @@ def validate_code(
 # ── /promo/apply (admin-internal) ───────────────────────────────────────
 
 
-def _require_internal(secret_header: str | None) -> None:
-    """Same shape as /me/affiliate/_require_internal. The apply endpoint is
-    called server-to-server from the account-app at checkout-complete time,
-    never directly from the browser."""
-    secret = get_settings().internal_api_secret
-    if secret and secret_header != secret:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "bad internal secret")
+# The apply endpoint is called server-to-server from the account-app at
+# checkout-complete time, never from the browser. The `x-internal-secret`
+# gate is enforced via `deps.require_internal_secret` — fail-closed
+# (missing env → 500, missing/mismatched header → 401), replacing the
+# earlier `if secret and header != secret` fail-open pattern.
 
 
 @router.post("/apply", response_model=ApplyResponse)
 def apply_code(
     body: ApplyRequest,
     db: Annotated[Session, Depends(get_db)],
-    x_internal_secret: Annotated[str | None, Header()] = None,
+    _internal: Annotated[bool, Depends(require_internal_secret)] = True,
 ) -> ApplyResponse:
     """Idempotently apply a promo code to a user's Stripe customer.
 
@@ -227,7 +225,6 @@ def apply_code(
     at /validate-time but got revoked / exhausted in the interim returns a
     structured `reason` instead of charging the user the wrong amount.
     """
-    _require_internal(x_internal_secret)
 
     code = normalize_code(body.code)
     if not code:

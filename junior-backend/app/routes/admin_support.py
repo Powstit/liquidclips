@@ -51,9 +51,8 @@ from app.authz import (
     SupportContext,
     gate,
 )
-from app.config import get_settings
 from app.db import get_db
-from app.deps import current_user
+from app.deps import current_user, require_internal_secret
 from app.jwt_signer import verify_license_jwt
 from app.models import User
 
@@ -77,18 +76,11 @@ def _support_max_ttl_seconds() -> int:
 # ---------------------------------------------------------------------
 
 
-def _require_internal_secret(
-    x_internal_secret: Annotated[str | None, Header()] = None,
-) -> None:
-    """Reject requests missing the server-shared internal secret.
-
-    Preserves the defence-in-depth model of the existing /admin/* router:
-    even a stolen admin JWT alone cannot hit /admin/support/* without
-    also possessing this secret. Empty settings-side value = dev bypass
-    (mirrors ``routes/admin.py``)."""
-    secret = get_settings().internal_api_secret
-    if secret and x_internal_secret != secret:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "bad internal secret")
+# Fail-closed internal-secret gate is imported from `deps.require_internal_secret`
+# (missing env → 500, missing/mismatched header → 401). Prior local wrapper
+# was fail-open when the env var was unset — /admin/support/* is now
+# guaranteed to reject unauth writes even under Railway env drift.
+_require_internal_secret = require_internal_secret
 
 
 # ---------------------------------------------------------------------

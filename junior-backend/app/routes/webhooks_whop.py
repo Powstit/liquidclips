@@ -272,8 +272,18 @@ BOOST_PACK_PLAN_IDS = {
 
 
 def _verify_signature(body: bytes, headers: dict[str, str]) -> None:
+    # Env-gated fail-closed: production refuses when the secret is unset
+    # (defense-in-depth on top of main.lifespan boot guard). Non-production
+    # keeps the accept-without-verify dev bypass so local iteration and
+    # existing tests that monkeypatch ``webhooks_whop.settings`` directly
+    # continue to work. Prior behaviour was fail-open in every environment.
     if not settings.whop_webhook_secret:
-        return  # dev mode — skip
+        if settings.env == "production":
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "server misconfigured · WHOP_WEBHOOK_SECRET unset",
+            )
+        return  # dev / test bypass
     required = ("webhook-id", "webhook-timestamp", "webhook-signature")
     if any(not headers.get(name) for name in required):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "missing webhook signature headers")

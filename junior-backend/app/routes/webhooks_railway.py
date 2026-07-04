@@ -38,12 +38,22 @@ def _railway_secret() -> str:
 
 
 def _verify_signature(body: bytes, provided: str | None) -> tuple[bool, bool]:
-    """Return ``(verified, mode_is_dev)``. Dev mode accepts anything so
-    Daniel can wire the Railway integration incrementally without a
-    hard 401 lockout · production requires an exact match."""
+    """Return ``(verified, is_dev_bypass)``.
+
+    Env-gated fail-closed: production rejects (returns False) when the
+    secret is unset. Non-production returns ``(True, True)`` so Daniel can
+    wire the Railway integration incrementally without a hard 401 lockout
+    (matches the prior contract exercised by ``test_step7_correlation``
+    which deletes RAILWAY_WEBHOOK_SECRET on purpose). Boot guard in
+    main.lifespan is the primary production hardening; this is
+    defense-in-depth for staging + preview."""
+    from app.config import get_settings as _get_settings
+
     secret = _railway_secret()
     if not secret:
-        return (True, True)
+        if _get_settings().env == "production":
+            return (False, False)
+        return (True, True)  # dev bypass
     if not provided:
         return (False, False)
     expected = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()

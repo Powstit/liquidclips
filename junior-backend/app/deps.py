@@ -8,6 +8,7 @@ import jwt
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db import get_db
 from app.jwt_signer import verify_license_jwt
 from app.models import User
@@ -46,3 +47,46 @@ def current_user(
         db.expunge(user)  # detach so SQLAlchemy never flushes the in-memory change
 
     return user
+
+
+def require_internal_secret(
+    x_internal_secret: Annotated[str | None, Header(alias="x-internal-secret")] = None,
+) -> bool:
+    """Gate server-to-server routes on the shared `x-internal-secret` header.
+
+    Env-gated fail-closed replacement for the ``if settings.internal_api_secret
+    and header != secret`` pattern that used to be inlined in every admin
+    route. That pattern silently accepted requests when the secret env var
+    was unset — production could ship misconfigured and expose HQ / runtime
+    / stripe-connect / arcade-prize / promo-code endpoints to the internet.
+
+    Behaviour:
+      * production + missing env var → 500 (server misconfigured; the boot
+        guard in ``main.lifespan`` refuses to start in this state, so this
+        handler check is defense-in-depth for staging + preview envs that
+        share ``env=production``)
+      * non-production + missing env var → allow (dev/CI bypass, matches
+        prior test contract; several tests exercise this path deliberately
+        with ``monkeypatch.delenv("INTERNAL_API_SECRET")``)
+      * secret set + missing / mismatched header → 401
+      * secret set + match → returns True (constant-time compare via
+        ``secrets.compare_digest`` blocks timing side-channels)
+
+    Used as ``Depends(require_internal_secret)`` on each of the 14 admin
+    routes.
+    """
+    import secrets as _secrets
+
+    settings = get_settings()
+    if not settings.internal_api_secret:
+        if settings.env == "production":
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "server misconfigured · INTERNAL_API_SECRET unset",
+            )
+        return True  # non-production dev/CI bypass
+    if not x_internal_secret or not _secrets.compare_digest(
+        x_internal_secret, settings.internal_api_secret
+    ):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid internal secret")
+    return True
