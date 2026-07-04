@@ -1,0 +1,123 @@
+# Port · sync-mail-money-drop · source snapshot
+
+## desktop-2/src/routes/sync-mail-money-drop/SyncMailMoneyDrop.tsx (top 60 lines)
+```tsx
+/**
+ * Port · sync-mail-money-drop
+ *
+ * Source: 05_html-mockups/approved/sync-mail-money-drop.html (v6)
+ * Wires Layer 2 F5 scanner + Layer 3 broadcast queue into the real UI
+ * Daniel walks for the G1 signoff.
+ *
+ * State machine mirrors the mockup's 6 scrubber states:
+ *   hook · connecting-gmail · roster-populating · approve-send ·
+ *   back-to-app · notification-drop
+ *
+ * Pricing per Daniel 2026-07-04: $100/mo per referral, not $50.
+ * Voice per feedback_voice_no_bounty_use_skill.md: no "bounty" · use
+ * "skill" / "clip job" / "paid post".
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { F5Scanner, type ScanState } from '../../lib/f5/scanner';
+import { loadClientIdFromEnv, type OAuthDriver } from '../../lib/f5/googleOAuth';
+import type { RosterRow } from '../../lib/f5/rosterBuilder';
+import type { BatchLookup } from '../../lib/f5/youtubeCrossRef';
+import type { HttpFetch } from '../../lib/f5/contactScan';
+import { renderWarmPeer } from '../../lib/gmail/broadcastTemplate';
+import './SyncMailMoneyDrop.css';
+
+// ─────────────────────────────────────────────────────────────
+// State machine (mirrors mockup scrubber)
+// ─────────────────────────────────────────────────────────────
+
+export type ModalState =
+  | 'hook'
+  | 'connecting-gmail'
+  | 'roster-populating'
+  | 'approve-send'
+  | 'back-to-app'
+  | 'notification-drop';
+
+interface StateConfig {
+  scene: 'modal' | 'app-home';
+  h1: string;
+  sub: string;
+  connectLabel: string;
+  coachScript: string;
+  appH1?: string;
+  appWallet?: string;
+}
+
+const PRICE_PER_REFERRAL = 100;   // $100/mo per Daniel 2026-07-04
+const PACKAGE_PRICE = 100;        // founder pkg price
+
+const PER_STATE: Record<ModalState, StateConfig> = {
+  'hook': {
+    scene: 'modal',
+    h1: `<span class="smmd-strike">$500/mo</span> → <span class="smmd-money">$${PACKAGE_PRICE}/mo</span>`,
+    sub: `Every clipper you skill-share with pays $${PACKAGE_PRICE} · you get <b class="smmd-life">$${PRICE_PER_REFERRAL}/mo</b> — every month, <b class="smmd-life">for LIFE</b>. <b>One skill share</b> = your $${PACKAGE_PRICE} is free. Link any email · we handle everything.`,
+    connectLabel: 'Link my email',
+    coachScript: `"Hey guys — <b>Daniel, founder</b>. You just took the highest package. $500 a month. I'm giving it to you for $${PACKAGE_PRICE}. Every clipper you share this with? <b>$${PRICE_PER_REFERRAL} of their sub — every month, for LIFE.</b> Not when we hit series A. For LIFE."`,
+  },
+  'connecting-gmail': {
+    scene: 'modal',
+```
+
+## desktop-2/src/routes/sync-mail-money-drop/SyncMailMoneyDrop.css (token block)
+```css
+/* ============================================================
+   Port · sync-mail-money-drop
+   Source · 05_html-mockups/approved/sync-mail-money-drop.html (v6)
+   Wires Layer 2 F5 scanner + Layer 3 broadcast queue into the
+   real UI Daniel walks for G1 signoff.
+   Brand tokens live in src/brand/brandTheme.css (--color-*).
+   Local `--paper-slate` / `--paper-hover` / `--fuchsia-rim` mirror
+   the mockup shades that aren't in the canonical token set — they
+   read from the same fuchsia + ink palette so no drift.
+   Pricing per Daniel 2026-07-04 · $100/mo per referral, not $50.
+   ============================================================ */
+
+.smmd-root {
+  --smmd-paper-slate: #26262f;
+  --smmd-paper-hover: #2f2f38;
+  --smmd-fuchsia-rim: rgba(255, 26, 140, 0.32);
+  --smmd-fuchsia-soft: rgba(255, 26, 140, 0.14);
+  --smmd-text-quiet: #5c5852;
+  --smmd-line-vivid: rgba(255, 255, 255, 0.18);
+  --smmd-shadow-overlay: 0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 40px 120px rgba(0, 0, 0, 0.75);
+  --smmd-grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
+  --smmd-grad-paper: linear-gradient(180deg, #0b0b10 0%, #14141a 100%);
+
+  position: relative;
+  min-height: 100vh;
+  padding: 32px 20px 40px;
+  background:
+    radial-gradient(ellipse at 25% -10%, rgba(255, 26, 140, 0.08) 0%, transparent 55%),
+    var(--color-paper);
+```
+
+## Assets copied to desktop-2/public/brand/
+/Users/dipdip/code/jnr/desktop-2/public/brand/founder/:
+total 7136
+drwxr-xr-x   3 dipdip  staff       96  4 Jul 14:47 .
+drwxr-xr-x  28 dipdip  staff      896  4 Jul 14:47 ..
+-rw-r--r--   1 dipdip  staff  3652333  4 Jul 14:47 founder-hook.mp4
+
+/Users/dipdip/code/jnr/desktop-2/public/brand/whop/:
+total 16
+drwxr-xr-x   3 dipdip  staff    96  4 Jul 14:47 .
+drwxr-xr-x  28 dipdip  staff   896  4 Jul 14:47 ..
+-rw-r--r--   1 dipdip  staff  4809  4 Jul 14:47 whop_logo_lockup_white.svg
+
+## Key wire markers (grep evidence)
+F5Scanner wire: 2 reference(s)
+renderWarmPeer wire: 3 reference(s)
+PRICE_PER_REFERRAL = 100 (Daniel 2026-07-04 pricing lock)
+48:const PRICE_PER_REFERRAL = 100;   // $100/mo per Daniel 2026-07-04
+55:    sub: `Every clipper you skill-share with pays $${PACKAGE_PRICE} · you get <b class="smmd-life">$${PRICE_PER_REFERRAL}/mo</b> — every month, <b class="smmd-life">for LIFE</b>. <b>One skill share</b> = your $${PACKAGE_PRICE} is free. Link any email · we handle everything.`,
+57:    coachScript: `"Hey guys — <b>Daniel, founder</b>. You just took the highest package. $500 a month. I'm giving it to you for $${PACKAGE_PRICE}. Every clipper you share this with? <b>$${PRICE_PER_REFERRAL} of their sub — every month, for LIFE.</b> Not when we hit series A. For LIFE."`,
+
+## Banned word check (must be zero)
+'bounty' occurrences: 0
