@@ -16,15 +16,38 @@
   --la-grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
   --la-grad-paper: linear-gradient(180deg, #0b0b10 0%, #14141a 100%);
 
+  /* Fill the Tauri app window (1280x820 default · min 1040x680). Vertical
+     centering + edge-safe padding so the card feels app-native, not
+     lost-in-web-page. Scrubber pins to the top and lives above the card. */
   position: relative;
+  width: 100vw;
   min-height: 100vh;
-  padding: 88px 24px 60px;
+  padding: 84px 40px 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background:
     radial-gradient(ellipse at 20% -10%, rgba(255, 26, 140, 0.10) 0%, transparent 55%),
     radial-gradient(ellipse at 100% 100%, rgba(0, 229, 255, 0.05) 0%, transparent 45%),
     var(--color-paper);
   color: var(--color-ink);
   font-family: var(--font-display);
+  box-sizing: border-box;
+}
+.la-root::before {
+  /* Ambient CRT scanline overlay across the whole window · echoes the
+     card's own scanline layer at a fainter level. */
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px, transparent 2px,
+    rgba(255, 255, 255, 0.010) 3px, transparent 4px
+  );
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .la-scrubber {
@@ -68,9 +91,13 @@
 .la-scrubber-note { margin-left: auto; color: var(--color-text-tertiary); font-size: 10px; }
 
 .la-stage {
-  width: 520px;
+  /* App-native card width. 640px reads as centred without shrinking on
+     the 1040px min-window; scales down to 100% on narrow / mobile
+     preview. */
+  width: 640px;
   max-width: 100%;
-  margin: 0 auto;
+  position: relative;
+  z-index: 2;
 }
 
 .la-card {
@@ -78,7 +105,7 @@
   background: var(--la-grad-paper);
   border: 1px solid var(--color-line-strong);
   border-radius: var(--radius-card);
-  padding: 32px 34px 28px;
+  padding: 40px 42px 34px;
   box-shadow: var(--shadow-e3);
   overflow: hidden;
 }
@@ -192,22 +219,23 @@
   z-index: 5;
 }
 .la-boot-h1 {
-  font-size: 26px;
+  font-size: 30px;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   color: var(--color-ink);
   line-height: 1.15;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   position: relative;
   z-index: 5;
 }
 .la-boot-sub {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--color-ink-soft);
   line-height: 1.55;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
   position: relative;
   z-index: 5;
+  max-width: 500px;
 }
 
 .la-state-body { position: relative; z-index: 5; }
@@ -501,9 +529,9 @@
 
 .la-kade {
   position: absolute;
-  right: -12px;
-  bottom: -4px;
-  width: 120px;
+  right: -16px;
+  bottom: -8px;
+  width: 148px;
   z-index: 2;
   pointer-events: none;
   filter: drop-shadow(0 8px 24px rgba(255, 26, 140, 0.28));
@@ -516,7 +544,16 @@
 .la-card[data-state="already_activated"] .la-kade { transform: translateY(-4px) scale(1.03); }
 .la-card[data-state="failed"] .la-kade { transform: translateY(6px) scale(0.96); filter: drop-shadow(0 6px 18px rgba(220, 38, 38, 0.32)); }
 
-@media (max-width: 560px) {
+/* Min-window guard (1040x680) · card still fits with 40px margins. */
+@media (max-height: 720px) {
+  .la-root { padding: 76px 32px 32px; align-items: flex-start; }
+  .la-card { padding: 32px 34px 28px; }
+  .la-boot-h1 { font-size: 26px; }
+}
+@media (max-width: 720px) {
+  .la-root { padding: 76px 20px 32px; }
+  .la-card { padding: 28px 22px 24px; }
   .la-cta-row { grid-template-columns: 1fr; }
-  .la-kade { width: 84px; }
+  .la-kade { width: 96px; right: -8px; }
+  .la-boot-h1 { font-size: 24px; }
 }
