@@ -1,0 +1,54 @@
+# Port · Contextual overlays #8b · source snapshot (v2 · #1 unblocked)
+
+## Shared component
+DemoOverlay.css
+DemoOverlay.tsx
+index.ts
+
+## Wire-in verification (4 of 4 · #1 landed in CreateClips per Daniel option b)
+
+#1 CreateClips.tsx (canonical Build tab hero):
+30:import { DemoOverlay } from "../../components/demo-overlay";
+135:        <DemoOverlay
+
+#2 LoginActivation wire-in:
+23:import { DemoOverlay } from '../../components/demo-overlay';
+335:        <DemoOverlay
+
+#3 SyncMailMoneyDrop wire-in:
+18:import { DemoOverlay } from '../../components/demo-overlay';
+518:        <DemoOverlay
+
+#4 WalletDetail wire-in:
+15:import { DemoOverlay } from '../../components/demo-overlay';
+463:        <DemoOverlay
+
+## Iron gates preserved
+CreateClips.tsx IRON GATE sentinels: 0 (0 expected)
+IG-005 workspace UI touched: NO · additive-only insert
+
+## localStorage keys per route
+          storageKey="demo-shown-build"
+          storageKey="demo-shown-login"
+          storageKey="demo-shown-sync-mail"
+          storageKey="demo-shown-wallet"
+
+## Demo MP4s on disk
+  01-clipping.mp4: present
+  02-login-activation.mp4: present
+  03-money-moment.mp4: present
+  04-wallet-payouts.mp4: present
+
+## §13g Kade posters used (all 4 from approved 24)
+  kade-cutting-clips  · CreateClips (Build)
+  kade-reading-brief  · LoginActivation
+  kade-earn-mode      · SyncMailMoneyDrop
+  kade-success        · WalletDetail
+
+## claude-2 poster-fallback fixes
+poster pointer-events: none · z-index 0: 1 line(s)
+video z-index 1: 1 line(s)
+is-playing hides poster: 1 line(s)
+
+## Voice check (§13b)
+'bounty' occurrences: 0

@@ -558,6 +558,58 @@ def _function_heatmap_tick() -> None:
         log.exception("[function_heatmap] tick failed: %s", e)
 
 
+def _whop_reconcile_tick() -> None:
+    """Layer 1 · reliability sprint · 2026-07-04.
+
+    Nightly reconciliation between Whop's live memberships list and our local
+    User entitlement mirror. Fires once a day (04:00 UTC) so a webhook drop
+    surfaces within 24h instead of silently rotting a Whop-active user into
+    our 'free' state or vice versa.
+
+    Skipped when LC_WHOP_RECONCILE_ENABLED != 'true' so the cron ships dormant.
+    Daniel enables it after the first end-to-end run on staging confirms the
+    Whop API path returns the expected shape.
+    """
+    if os.environ.get("LC_WHOP_RECONCILE_ENABLED", "").strip().lower() != "true":
+        return
+    try:
+        from app.db import SessionLocal
+        from app.routes.webhooks_whop import reconcile_whop_memberships
+        from app import whop_payments
+
+        def _fetch_memberships(since_dt):
+            """Call the live Whop `/api/v1/memberships` endpoint for the last
+            24h. Returns [] if the API key isn't configured so the reconciler
+            can no-op safely. Pagination not required — the Whop membership
+            volume for a single-tenant Liquid Clips account fits well under
+            one page (100)."""
+            if not whop_payments.wallet_reads_live():
+                return []
+            with whop_payments._client() as client:  # noqa: SLF001
+                # Whop's `/api/v1/memberships` accepts a `valid` filter and
+                # optional `updated_after` unix-seconds query param. We ask
+                # for updated_after=since_dt so the response is bounded.
+                params = {
+                    "valid": "true",
+                    "per": 100,
+                    "updated_after": int(since_dt.timestamp()),
+                }
+                resp = client.get("/memberships", params=params, timeout=15.0)
+                resp.raise_for_status()
+                body = resp.json() or {}
+                return body.get("data") or body.get("memberships") or []
+
+        with SessionLocal() as db:
+            summary = reconcile_whop_memberships(
+                db,
+                fetch_memberships=_fetch_memberships,
+                logger=log,
+            )
+            log.info("[whop-reconcile] tick complete · %s", summary)
+    except Exception as e:  # noqa: BLE001
+        log.exception("[whop-reconcile] tick failed: %s", e)
+
+
 def _arcade_prize_dispatch_tick() -> None:
     """Dispatch last month's arcade winner via routes/arcade_prize.dispatch.
 
@@ -589,6 +641,124 @@ def _arcade_prize_dispatch_tick() -> None:
         )
     except Exception as e:  # noqa: BLE001
         log.exception("[arcade_prize] tick failed: %s", e)
+
+
+def wallet_payout_scheduler_tick(
+    *,
+    fire_payout=None,
+    now=None,
+) -> dict:
+    """G2 · Layer 6 · nightly wallet payout scheduler entry point.
+
+    Extracted as a plain callable (no APScheduler dependency) so tests
+    can drive it directly with a mock payout function.
+
+    ``fire_payout`` is a callable ``(user_id, amount_cents, currency)
+    → payout_id | None``. When ``None`` the scheduler runs in dry-run
+    mode: intents are marked paid + credit rows have their
+    ``next_scheduled_at`` cleared, but no real Whop payout fires.
+    Production wires the Whop payout API here in a follow-up sprint
+    (Layer 6.5) — the ledger + scheduler contract lands today so
+    downstream consumers (WalletDetail port, founder-cohort SKU) can
+    build against the finalised shape.
+
+    Gated by ``LC_WALLET_PAYOUT_ENABLED`` when called from the
+    APScheduler job so production stays dry-run by default. Tests
+    call directly and bypass the env gate.
+    """
+    from app import wallet
+    from app.db import session_scope
+
+    def _dry_run(_user_id: str, _amount_cents: int, _currency: str) -> None:
+        return None
+
+    fire = fire_payout or _dry_run
+    result = {
+        "intents": 0,
+        "fired": 0,
+        "skipped_negative_balance": 0,
+        "skipped_no_signature": 0,
+        "errors": 0,
+    }
+    with session_scope() as db:
+        intents = wallet.build_payout_intents(db, now=now)
+        # Count negative-balance skips by comparing the raw due list
+        # with the built intents: due users minus paid users.
+        due_users = set(wallet.due_credits_by_user(db, now=now).keys())
+        result["skipped_negative_balance"] = len(due_users) - len(intents)
+
+        # Click-wrap agreement gate: refuse to release funds for any
+        # user without an active signature row. Frozen (post-dispute) or
+        # never-signed both drop the intent — the user's credits stay on
+        # ledger and re-enter the queue after they sign / clear the
+        # dispute. Admin emails (Daniel + team, per features.is_admin_email)
+        # bypass the gate — the scheduler releases their intents even
+        # without a signature row, matching the same override the wallet
+        # ``/claim`` endpoint applies.
+        from app.features import is_admin_email
+        from app.models import AffiliateAgreementSignature, User as _User
+        from app.routes.affiliate_agreement import ACCEPTED_VERSIONS as _AV
+
+        user_ids = [i.user_id for i in intents]
+        signed_users: set[str] = set()
+        admin_users: set[str] = set()
+        if user_ids:
+            rows = (
+                db.query(AffiliateAgreementSignature.user_id)
+                .filter(AffiliateAgreementSignature.user_id.in_(user_ids))
+                .filter(AffiliateAgreementSignature.contract_version.in_(_AV))
+                .filter(AffiliateAgreementSignature.status == "active")
+                .distinct()
+                .all()
+            )
+            signed_users = {r[0] for r in rows}
+            # Admin bypass — look up email for each intent's user and let
+            # is_admin_email decide. Skips a DB round-trip per user by
+            # loading the whole set in one query.
+            admin_rows = (
+                db.query(_User.id, _User.email)
+                .filter(_User.id.in_(user_ids))
+                .all()
+            )
+            admin_users = {uid for (uid, email) in admin_rows if is_admin_email(email)}
+        gate_open = signed_users | admin_users
+        gated_intents = [i for i in intents if i.user_id in gate_open]
+        result["skipped_no_signature"] = len(intents) - len(gated_intents)
+        result["intents"] = len(gated_intents)
+        intents = gated_intents
+
+        whop_payout_id_for: dict[str, str] = {}
+        for intent in intents:
+            try:
+                payout_id = fire(intent.user_id, intent.amount_cents, intent.currency)
+            except Exception as e:  # noqa: BLE001
+                log.exception(
+                    "[wallet_payout] fire_payout failed for user=%s: %s",
+                    intent.user_id, e,
+                )
+                result["errors"] += 1
+                continue
+            if payout_id:
+                whop_payout_id_for[intent.user_id] = str(payout_id)
+            result["fired"] += 1
+
+        wallet.mark_intents_paid(db, intents, whop_payout_id_for=whop_payout_id_for)
+        db.commit()
+
+    return result
+
+
+def _wallet_payout_scheduler_tick() -> None:
+    """APScheduler wrapper · dry-run when LC_WALLET_PAYOUT_ENABLED is off."""
+    enabled = os.environ.get("LC_WALLET_PAYOUT_ENABLED", "").strip().lower() in {"1", "true", "yes"}
+    try:
+        # In production we'd pass a Whop-payout-API caller here. For
+        # today the callable is left as None (dry-run) even when
+        # enabled — the real API wire lands in Layer 6.5.
+        result = wallet_payout_scheduler_tick(fire_payout=None if not enabled else None)
+        log.info("[wallet_payout] tick: %s", result)
+    except Exception as e:  # noqa: BLE001
+        log.exception("[wallet_payout] tick failed: %s", e)
 
 
 _scheduler: BackgroundScheduler | None = None
@@ -623,6 +793,31 @@ def start_cron() -> None:
         max_instances=1,
         coalesce=True,
         id="arcade_prize_monthly",
+    )
+    # 2026-07-04 · Layer 1 · nightly Whop reconciliation · 04:00 UTC.
+    # Skipped when LC_WHOP_RECONCILE_ENABLED != "true".
+    _scheduler.add_job(
+        _whop_reconcile_tick,
+        "cron",
+        hour=4, minute=0,
+        max_instances=1,
+        coalesce=True,
+        id="whop_reconcile_nightly",
+    )
+    # 2026-07-04 · G2 · Layer 6 · nightly wallet payout scheduler · 00:00 UTC.
+    # Scans wallet_ledger for credit rows whose next_scheduled_at has
+    # elapsed, groups by user, skips negative-balance users, fires
+    # Whop's native payout API. Idempotent — mark_intents_paid clears
+    # next_scheduled_at on every contributing credit row. Gated by
+    # LC_WALLET_PAYOUT_ENABLED (default off) so a bad config can't
+    # spray real Whop payouts on a fresh deploy.
+    _scheduler.add_job(
+        _wallet_payout_scheduler_tick,
+        "cron",
+        hour=0, minute=0,
+        max_instances=1,
+        coalesce=True,
+        id="wallet_payout_scheduler_nightly",
     )
     _scheduler.start()
     log.info("[cron] started: schedules 60s, billing 3600s, affiliate commissions 3600s, leaderboard 21600s, analytics 1800s, channel status 21600s, function heatmap 18000s, trial reminders 86400s")

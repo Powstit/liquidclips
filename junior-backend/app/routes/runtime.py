@@ -30,11 +30,14 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy import text as _text
 
 from app.db import engine
+from app.deps import require_internal_secret
 
 router = APIRouter(prefix="/runtime", tags=["runtime"])
 
@@ -141,14 +144,18 @@ def download_bundle(version: str):
 
 # ─── POST /runtime/upload ───────────────────────────────────────────────
 @router.post("/upload")
-async def upload_bundle(request: Request):
+async def upload_bundle(
+    request: Request,
+    _internal: Annotated[bool, Depends(require_internal_secret)] = True,
+):
     """Push a new bundle tarball. Inserts a runtime_manifests row with
     ship_lens_verdict = 'PENDING'. The bundle is on disk and addressable
     via /runtime/download/<v> but the manifest endpoint will NOT serve it
     until a /runtime/promote call flips the verdict to PASS.
 
-    Mirrors /updates/upload — same INTERNAL_API_SECRET gate, same raw-body
-    streaming pattern (bundles are 30-200MB).
+    Mirrors /updates/upload — same INTERNAL_API_SECRET gate (fail-closed
+    via `deps.require_internal_secret`), same raw-body streaming pattern
+    (bundles are 30-200MB).
 
     Headers:
       x-internal-secret    shared server secret
@@ -159,15 +166,6 @@ async def upload_bundle(request: Request):
       x-runtime-notes      (optional) release notes for the manifest
     Body: the raw bundle tarball bytes.
     """
-    from app.config import get_settings
-
-    settings = get_settings()
-    if (
-        settings.internal_api_secret
-        and request.headers.get("x-internal-secret") != settings.internal_api_secret
-    ):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "bad internal secret")
-
     version = request.headers.get("x-runtime-version")
     channel = request.headers.get("x-runtime-channel", "stable")
     signature = request.headers.get("x-runtime-signature")
@@ -252,10 +250,14 @@ async def upload_bundle(request: Request):
 
 # ─── POST /runtime/promote ──────────────────────────────────────────────
 @router.post("/promote")
-async def promote_bundle(request: Request):
+async def promote_bundle(
+    request: Request,
+    _internal: Annotated[bool, Depends(require_internal_secret)] = True,
+):
     """Flip a staged bundle's ship_lens_verdict so /runtime/manifest.json
     starts serving it. Caller (runtime-ship.sh) calls this AFTER the
-    ship-lens-reviewer subagent returns verdict PASS.
+    ship-lens-reviewer subagent returns verdict PASS. Fail-closed
+    internal-secret gate via `deps.require_internal_secret`.
 
     Headers:
       x-internal-secret      shared server secret
@@ -265,15 +267,6 @@ async def promote_bundle(request: Request):
       x-ship-lens-review-url URL to the verdict JSON file (optional but
                              recommended for auditability)
     """
-    from app.config import get_settings
-
-    settings = get_settings()
-    if (
-        settings.internal_api_secret
-        and request.headers.get("x-internal-secret") != settings.internal_api_secret
-    ):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "bad internal secret")
-
     version = request.headers.get("x-runtime-version")
     verdict = request.headers.get("x-ship-lens-verdict", "").upper()
     review_url = request.headers.get("x-ship-lens-review-url")

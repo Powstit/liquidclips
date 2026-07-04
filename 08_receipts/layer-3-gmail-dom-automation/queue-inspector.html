@@ -1,0 +1,436 @@
+<!doctype html><html><head><meta charset="utf-8" />
+<title>Layer 3 · queue inspector · 50 sends complete</title>
+<style>
+  :root { --fuchsia:#ff1a8c; --paper:#0b0b10; --paper-warm:#15151c; --paper-elev:#1c1c25; --ink:#f4f1ea; --ink-soft:#c8c4be; --line:rgba(255,255,255,.12); --ok:#ff66b8; }
+  html, body { background: var(--paper); color: var(--ink); font-family: 'Inter', system-ui, sans-serif; margin:0; padding:24px; }
+  h1 { font-size:20px; margin:0 0 6px 0; letter-spacing:-.01em; }
+  .sub { font-family: 'Geist Mono', ui-monospace, monospace; font-size:11px; color:var(--ink-soft); letter-spacing:.14em; text-transform:uppercase; margin-bottom:20px; }
+  .cards { display:grid; grid-template-columns: repeat(6, 1fr); gap:10px; margin-bottom:22px; }
+  .card { background: var(--paper-warm); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .card .label { font-family: 'Geist Mono', ui-monospace, monospace; font-size:9.5px; color:var(--ink-soft); letter-spacing:.18em; text-transform:uppercase; margin-bottom:6px; }
+  .card .value { font-family: 'Geist Mono', ui-monospace, monospace; font-size:24px; font-weight:700; color:var(--fuchsia); letter-spacing:-.01em; }
+  .card.done .value { color: var(--ok); }
+  .rows { border:1px solid var(--line); border-radius:12px; overflow:hidden; background: var(--paper-elev); }
+  .row { display:grid; grid-template-columns: 60px 1fr auto auto 90px; gap:12px; align-items:center; padding:9px 14px; border-bottom:1px solid var(--line); font-family: 'Geist Mono', ui-monospace, monospace; font-size:11px; }
+  .row:last-child { border-bottom: none; }
+  .row .status { color: var(--ok); letter-spacing:.14em; text-transform:uppercase; }
+  .row .fallback { color: var(--ink-soft); letter-spacing:.12em; text-transform:uppercase; }
+  .row .fallback.secondary { color: var(--fuchsia); }
+  .row .id { color: var(--ink-soft); }
+  .row .target { color: var(--ink); }
+  .row .sentAt { color: var(--ink-soft); text-align:right; }
+</style></head><body>
+<h1>Broadcast queue · 50 sends complete</h1>
+<div class="sub">Layer 3 · Gmail DOM automation · synthetic run · 2026-07-04T12:08:04.670Z</div>
+<div class="cards">
+  <div class="card"><div class="label">Total</div><div class="value">50</div></div>
+  <div class="card done"><div class="label">Done</div><div class="value">50</div></div>
+  <div class="card"><div class="label">Queued</div><div class="value">0</div></div>
+  <div class="card"><div class="label">Sending</div><div class="value">0</div></div>
+  <div class="card"><div class="label">Failed</div><div class="value">0</div></div>
+  <div class="card"><div class="label">Paused</div><div class="value">no</div></div>
+</div>
+<div class="rows">
+  
+    <div class="row">
+      <div class="id">q_01</div>
+      <div class="target">warm-peer-1@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:01:08</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_02</div>
+      <div class="target">warm-peer-2@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:01:16</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_03</div>
+      <div class="target">warm-peer-3@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:01:25</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_04</div>
+      <div class="target">warm-peer-4@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:01:33</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_05</div>
+      <div class="target">warm-peer-5@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:01:42</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_06</div>
+      <div class="target">warm-peer-6@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:01:50</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_07</div>
+      <div class="target">warm-peer-7@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback secondary">selector 2/3</div>
+      <div class="sentAt">12:01:59</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_08</div>
+      <div class="target">warm-peer-8@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:02:07</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_09</div>
+      <div class="target">warm-peer-9@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:02:16</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_10</div>
+      <div class="target">warm-peer-10@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:02:24</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_11</div>
+      <div class="target">warm-peer-11@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:02:33</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_12</div>
+      <div class="target">warm-peer-12@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:02:41</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_13</div>
+      <div class="target">warm-peer-13@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:02:50</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_14</div>
+      <div class="target">warm-peer-14@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback secondary">selector 2/3</div>
+      <div class="sentAt">12:02:58</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_15</div>
+      <div class="target">warm-peer-15@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:03:07</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_16</div>
+      <div class="target">warm-peer-16@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:03:15</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_17</div>
+      <div class="target">warm-peer-17@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:03:24</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_18</div>
+      <div class="target">warm-peer-18@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:03:32</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_19</div>
+      <div class="target">warm-peer-19@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:03:41</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_20</div>
+      <div class="target">warm-peer-20@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:03:49</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_21</div>
+      <div class="target">warm-peer-21@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback secondary">selector 2/3</div>
+      <div class="sentAt">12:03:58</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_22</div>
+      <div class="target">warm-peer-22@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:04:06</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_23</div>
+      <div class="target">warm-peer-23@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:04:15</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_24</div>
+      <div class="target">warm-peer-24@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:04:23</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_25</div>
+      <div class="target">warm-peer-25@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:04:32</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_26</div>
+      <div class="target">warm-peer-26@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:04:40</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_27</div>
+      <div class="target">warm-peer-27@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:04:49</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_28</div>
+      <div class="target">warm-peer-28@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback secondary">selector 2/3</div>
+      <div class="sentAt">12:04:57</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_29</div>
+      <div class="target">warm-peer-29@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:05:06</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_30</div>
+      <div class="target">warm-peer-30@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:05:14</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_31</div>
+      <div class="target">warm-peer-31@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:05:23</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_32</div>
+      <div class="target">warm-peer-32@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:05:31</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_33</div>
+      <div class="target">warm-peer-33@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:05:40</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_34</div>
+      <div class="target">warm-peer-34@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:05:48</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_35</div>
+      <div class="target">warm-peer-35@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback secondary">selector 2/3</div>
+      <div class="sentAt">12:05:57</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_36</div>
+      <div class="target">warm-peer-36@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:06:05</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_37</div>
+      <div class="target">warm-peer-37@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:06:14</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_38</div>
+      <div class="target">warm-peer-38@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:06:22</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_39</div>
+      <div class="target">warm-peer-39@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:06:31</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_40</div>
+      <div class="target">warm-peer-40@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:06:39</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_41</div>
+      <div class="target">warm-peer-41@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:06:48</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_42</div>
+      <div class="target">warm-peer-42@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback secondary">selector 2/3</div>
+      <div class="sentAt">12:06:56</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_43</div>
+      <div class="target">warm-peer-43@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:07:05</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_44</div>
+      <div class="target">warm-peer-44@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:07:13</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_45</div>
+      <div class="target">warm-peer-45@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:07:22</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_46</div>
+      <div class="target">warm-peer-46@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:07:30</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_47</div>
+      <div class="target">warm-peer-47@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:07:39</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_48</div>
+      <div class="target">warm-peer-48@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:07:47</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_49</div>
+      <div class="target">warm-peer-49@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback secondary">selector 2/3</div>
+      <div class="sentAt">12:07:56</div>
+    </div>
+  
+    <div class="row">
+      <div class="id">q_50</div>
+      <div class="target">warm-peer-50@example.com</div>
+      <div class="status">done</div>
+      <div class="fallback ">selector 1/3</div>
+      <div class="sentAt">12:08:04</div>
+    </div>
+  
+</div>
+</body></html>

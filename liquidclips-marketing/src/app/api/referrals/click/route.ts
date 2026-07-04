@@ -26,10 +26,20 @@ type Body = {
   landedPath?: string | null;
 };
 
-const SALT = process.env.LC_REF_HASH_SALT ?? "lc-default-salt";
+// P1 fix 2026-07-04 · fail-CLOSED if LC_REF_HASH_SALT env is missing.
+// Previous default "lc-default-salt" leaked in the codebase = attacker could
+// de-anonymize IP↔visitor mapping if prod ever forgot to set the env var.
+// Refuse to write hashes rather than write reversible ones.
+const SALT = process.env.LC_REF_HASH_SALT;
+if (!SALT && process.env.NODE_ENV === "production") {
+  console.error(
+    "[referrals/click] LC_REF_HASH_SALT env var MUST be set in production. " +
+    "Referral clicks will be logged with null hashes until this is fixed."
+  );
+}
 
 function hash(value: string | null | undefined): string | null {
-  if (!value) return null;
+  if (!value || !SALT) return null;
   return createHash("sha256").update(SALT + ":" + value).digest("hex").slice(0, 32);
 }
 

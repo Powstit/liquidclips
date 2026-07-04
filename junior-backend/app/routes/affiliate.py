@@ -21,12 +21,13 @@ from typing import Annotated, Any
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
+from app.deps import require_internal_secret
 from app.features import is_admin_email
 from app.models import User
 from app.routes.usage import starter_export_remaining
@@ -102,12 +103,11 @@ class AffiliateMeResponse(BaseModel):
     payments: PaymentVisibility
 
 
-def _require_internal(secret_header: str | None) -> None:
-    secret = get_settings().internal_api_secret
-    if not secret:
-        return  # not configured (local dev) → allow
-    if secret_header != secret:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "bad internal secret")
+# Internal-secret gate is now fail-closed via `deps.require_internal_secret`
+# (missing env → 500, missing/mismatched header → 401). Previously the
+# `if not secret: return` fallback silently accepted any request when the
+# Railway env var was unset — a config drift on prod would have exposed
+# customer + affiliate detail.
 
 
 def _fetch_whop_affiliate(email: str) -> dict[str, Any] | None:
@@ -306,10 +306,8 @@ def build_affiliate_me_response(user: User, db: Session | None = None) -> Affili
 def affiliate_me(
     db: Annotated[Session, Depends(get_db)],
     clerk_user_id: Annotated[str, Query(min_length=1)],
-    x_internal_secret: Annotated[str | None, Header()] = None,
+    _internal: Annotated[bool, Depends(require_internal_secret)] = True,
 ) -> AffiliateMeResponse:
-    _require_internal(x_internal_secret)
-
     user = db.query(User).filter_by(clerk_id=clerk_user_id).one_or_none()
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found")

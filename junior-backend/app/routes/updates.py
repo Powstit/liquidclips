@@ -15,8 +15,12 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, JSONResponse, Response
+
+from app.deps import require_internal_secret
 
 router = APIRouter(prefix="/updates", tags=["updates"])
 
@@ -94,14 +98,18 @@ def download_artifact(target: str):
 
 
 @router.post("/upload")
-async def upload_release(request: Request):
+async def upload_release(
+    request: Request,
+    _internal: Annotated[bool, Depends(require_internal_secret)] = True,
+):
     """Release pusher (run from the build machine by scripts/release.sh).
 
     The signed artifact + its metadata are pushed here so the backend serves
     updates from a STABLE location (a persistent Railway volume at
     JUNIOR_RELEASES_DIR) instead of an ephemeral build-machine path. Raw-body
     upload (no python-multipart dependency); metadata travels in x-release-*
-    headers. Gated by the existing INTERNAL_API_SECRET — sign locally, push here.
+    headers. Gated fail-closed via `deps.require_internal_secret` (missing
+    env → 500, missing/mismatched header → 401).
 
     Headers:
       x-internal-secret   shared server secret
@@ -112,12 +120,6 @@ async def upload_release(request: Request):
       x-release-notes     (optional) release notes
     Body: the raw signed artifact bytes.
     """
-    from app.config import get_settings
-
-    settings = get_settings()
-    if settings.internal_api_secret and request.headers.get("x-internal-secret") != settings.internal_api_secret:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "bad internal secret")
-
     target = request.headers.get("x-release-target")
     version = request.headers.get("x-release-version")
     signature = request.headers.get("x-release-signature")

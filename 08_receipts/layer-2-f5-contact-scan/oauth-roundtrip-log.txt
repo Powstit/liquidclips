@@ -1,0 +1,20 @@
+# F5 · Layer 2 · mock OAuth roundtrip log
+# captured 2026-07-04T12:24:44.092Z
+
+## Case A · user denied consent
+[2026-07-04T12:24:44.092Z] driver_called · clientId=test-client · scopes=[contacts.readonly, gmail.readonly]
+[2026-07-04T12:24:44.092Z] user_action_at_google=DENY
+[2026-07-04T12:24:44.092Z] driver_returned · ok=false · error=DENIED · note="user clicked Deny"
+[2026-07-04T12:24:44.092Z] scanner_state=denied · errorMessage="user clicked Deny"
+
+## Case B · client_id missing (MISCONFIGURED)
+[2026-07-04T12:24:44.092Z] runOAuth · clientId=undefined · returned ok=false error=MISCONFIGURED
+[2026-07-04T12:24:44.092Z] scanner_state=misconfigured · errorMessage="GOOGLE_OAUTH_CLIENT_ID env var missing"
+
+## Case C · happy path
+[2026-07-04T12:24:44.092Z] driver_called · clientId=test-client · scopes=[contacts.readonly, gmail.readonly]
+[2026-07-04T12:24:44.092Z] user_action_at_google=ALLOW
+[2026-07-04T12:24:44.092Z] driver_returned · ok=true · access=access-token-abc · refresh=refresh-token-xyz · expiresIn=3600s
+[2026-07-04T12:24:44.092Z] scanner_state=scanning · access_token=[REDACTED]
+[2026-07-04T12:24:44.092Z] scanner_state=crossref · contacts=4 · domains=3
+[2026-07-04T12:24:44.092Z] scanner_state=ready · matches=0 · rosterSize=4

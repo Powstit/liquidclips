@@ -1,0 +1,24 @@
+# F5 · scanner state machine
+# Recorded by vitest run · scanner.test.ts describe("state machine")
+
+Happy path:
+    [ idle ] --run()--> [ oauth ] --tokens--> [ scanning ] --contacts--> [ crossref ] --matches--> [ ready ]
+
+Denied path:
+    [ idle ] --run()--> [ oauth ] --DENIED--> [ denied ]
+
+Misconfigured path:
+    [ idle ] --run()--> [ oauth ] --MISCONFIGURED--> [ misconfigured ]
+
+Rate-limit path:
+    [ idle ] --run()--> [ oauth ] --tokens--> [ scanning ] --429×4--> [ error ]
+
+Network error:
+    [ idle ] --run()--> [ oauth ] --tokens--> [ scanning ] --catch--> [ error ]
+
+Branches proven in vitest 26/26:
+    - happy path            · states = idle → oauth → scanning → crossref → ready
+    - denied                · states = idle → oauth → denied
+    - misconfigured         · states = idle → oauth → misconfigured
+    - rate-limit exhaust    · states = idle → oauth → scanning → error
+    - transient 500 recovery · states = idle → oauth → scanning → crossref → ready

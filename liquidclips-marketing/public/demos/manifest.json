@@ -1,0 +1,63 @@
+{
+  "demos": [
+    {
+      "slug": "01-clipping",
+      "filename": "01-clipping.mp4",
+      "url": "/demos/01-clipping.mp4",
+      "duration_s": 21.2,
+      "size_bytes": 510605,
+      "pricing_baseline": "usd_99_99"
+    },
+    {
+      "slug": "02-login-activation",
+      "filename": "02-login-activation.mp4",
+      "url": "/demos/02-login-activation.mp4",
+      "duration_s": 36.1,
+      "size_bytes": 906587,
+      "pricing_baseline": "usd_99_99"
+    },
+    {
+      "slug": "03-money-moment",
+      "filename": "03-money-moment.mp4",
+      "url": "/demos/03-money-moment.mp4",
+      "duration_s": 24.6,
+      "size_bytes": 1152608,
+      "pricing_baseline": "usd_99_99"
+    },
+    {
+      "slug": "04-wallet-payouts",
+      "filename": "04-wallet-payouts.mp4",
+      "url": "/demos/04-wallet-payouts.mp4",
+      "duration_s": 26.5,
+      "size_bytes": 361810,
+      "pricing_baseline": "usd_99_99"
+    },
+    {
+      "slug": "05-cancellation-save",
+      "filename": "05-cancellation-save.mp4",
+      "url": "/demos/05-cancellation-save.mp4",
+      "duration_s": 12.3,
+      "size_bytes": 359377,
+      "pricing_baseline": "usd_99_99"
+    },
+    {
+      "slug": "06-in-app-browser",
+      "filename": "06-in-app-browser.mp4",
+      "url": "/demos/06-in-app-browser.mp4",
+      "duration_s": 28.4,
+      "size_bytes": 692033,
+      "pricing_baseline": "usd_99_99"
+    },
+    {
+      "slug": "07-cold-email-preview",
+      "filename": "07-cold-email-preview.mp4",
+      "url": "/demos/07-cold-email-preview.mp4",
+      "duration_s": 28.3,
+      "size_bytes": 474766,
+      "pricing_baseline": "usd_99_99"
+    }
+  ],
+  "generated_at": "2026-07-04T22:13:46.050Z",
+  "source_repo": "desktop-2/public/demos",
+  "pricing_baseline_default": "usd_99_99"
+}

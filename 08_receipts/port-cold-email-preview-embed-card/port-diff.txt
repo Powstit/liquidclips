@@ -1,0 +1,39 @@
+# Port · cold-email-preview-embed-card · source snapshot
+
+## 7 states (D2 v1.1 slug map)
+  loading
+  populated
+  empty_catalog
+  critical_countdown
+  already_settled
+  expired
+  offline
+
+## §13a Currency lock · GBP → USD
+'£' rendered occurrences: 0
+'$99.99' occurrences: 10
+
+## §13g Kade poses per state
+'kade-earn-mode'
+'kade-error'
+'kade-generating-captions'
+'kade-hover'
+'kade-idle'
+'kade-success'
+'kade-warning'
+
+## Assets on disk
+  kade-generating-captions.webp: present
+  kade-earn-mode.webp: present
+  kade-idle.webp: present
+  kade-warning.webp: present
+  kade-success.webp: present
+  kade-hover.webp: present
+  kade-error.webp: present
+
+## §5 HUD vocabulary
+epc-hud-tr/br brackets: 4
+epc-scanlines overlay: 1
+
+## Voice check (§13b)
+'bounty' occurrences: 0

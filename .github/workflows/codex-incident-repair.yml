@@ -1,0 +1,273 @@
+name: Codex incident repair
+
+on:
+  workflow_dispatch:
+    inputs:
+      incident_json:
+        description: Sanitized incident JSON; values are always treated as untrusted data
+        required: true
+        type: string
+      allow_patch:
+        description: Permit a low-risk patch inside the declared surface
+        required: true
+        default: false
+        type: boolean
+      open_draft_pr:
+        description: Open a draft PR after independent regression verification
+        required: true
+        default: false
+        type: boolean
+  repository_dispatch:
+    types: [railway_incident]
+
+concurrency:
+  group: codex-incident-${{ github.event.client_payload.incident_id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      incident_id: ${{ steps.prepare.outputs.incident_id }}
+      surface: ${{ steps.prepare.outputs.surface }}
+      target_sha: ${{ steps.prepare.outputs.target_sha }}
+      allow_patch: ${{ steps.prepare.outputs.allow_patch }}
+      open_draft_pr: ${{ steps.prepare.outputs.open_draft_pr }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Normalize and redact incident
+        id: prepare
+        run: |
+          python3 .github/codex/scripts/prepare_incident.py \
+            --event "$GITHUB_EVENT_PATH" \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --default-sha "$GITHUB_SHA" \
+            --output incident-context.json \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Store normalized context
+        uses: actions/upload-artifact@v4
+        with:
+          name: incident-context
+          path: incident-context.json
+          if-no-files-found: error
+          retention-days: 14
+
+  generate_fix:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      has_patch: ${{ steps.patch.outputs.has_patch }}
+      patch_safe: ${{ steps.patch.outputs.patch_safe }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.target_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: incident-context
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        if: needs.prepare.outputs.surface == 'desktop' || needs.prepare.outputs.surface == 'account'
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            desktop-2/package-lock.json
+            account-app/package-lock.json
+
+      - name: Install backend test dependencies
+        if: needs.prepare.outputs.surface == 'backend'
+        run: python -m pip install --disable-pip-version-check -r junior-backend/requirements.txt
+
+      - name: Install desktop dependencies
+        if: needs.prepare.outputs.surface == 'desktop'
+        working-directory: desktop-2
+        run: npm ci --ignore-scripts
+
+      - name: Install account dependencies
+        if: needs.prepare.outputs.surface == 'account'
+        working-directory: account-app
+        run: npm ci --ignore-scripts
+
+      - name: Run Codex in bounded repair mode
+        id: codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/prompts/incident-repair.md
+          sandbox: ${{ needs.prepare.outputs.allow_patch == 'true' && 'workspace-write' || 'read-only' }}
+          safety-strategy: drop-sudo
+          codex-args: '["--ephemeral","--output-schema",".github/codex/schemas/repair-result.schema.json"]'
+          output-file: codex-result.json
+
+      - name: Validate diff and create patch artifact
+        id: patch
+        env:
+          SURFACE: ${{ needs.prepare.outputs.surface }}
+          ALLOW_PATCH: ${{ needs.prepare.outputs.allow_patch }}
+        run: |
+          set -euo pipefail
+          git add -N .
+          has_patch=false
+          patch_safe=false
+          if ! git diff --quiet HEAD; then
+            has_patch=true
+          fi
+          if [ "$has_patch" = true ] && [ "$ALLOW_PATCH" = true ]; then
+            if python3 .github/codex/scripts/validate_patch.py \
+              --surface "$SURFACE" \
+              --report patch-validation.json
+            then
+              patch_safe=true
+              git diff --binary HEAD > codex.patch
+            fi
+          else
+            python3 - "$SURFACE" "$has_patch" <<'PY'
+          import json, sys
+          with open("patch-validation.json", "w", encoding="utf-8") as f:
+              json.dump({
+                  "safe": False,
+                  "surface": sys.argv[1],
+                  "files": [],
+                  "changed_lines": 0,
+                  "reasons": ["no patch" if sys.argv[2] == "false" else "patching was not authorized"],
+              }, f, indent=2, sort_keys=True)
+              f.write("\n")
+          PY
+          fi
+          echo "has_patch=$has_patch" >> "$GITHUB_OUTPUT"
+          echo "patch_safe=$patch_safe" >> "$GITHUB_OUTPUT"
+
+      - name: Store Codex evidence and safe patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-incident-${{ needs.prepare.outputs.incident_id }}
+          path: |
+            incident-context.json
+            codex-result.json
+            patch-validation.json
+            codex.patch
+          if-no-files-found: error
+          retention-days: 14
+
+  verify_patch:
+    needs: [prepare, generate_fix]
+    if: needs.generate_fix.outputs.has_patch == 'true' && needs.generate_fix.outputs.patch_safe == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: codex-incident-${{ needs.prepare.outputs.incident_id }}
+
+      - name: Apply candidate patch
+        env:
+          TARGET_SHA: ${{ needs.prepare.outputs.target_sha }}
+        run: |
+          git merge-base --is-ancestor "$TARGET_SHA" HEAD
+          git apply --3way --index codex.patch
+
+      - uses: actions/setup-python@v5
+        if: needs.prepare.outputs.surface == 'backend'
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        if: needs.prepare.outputs.surface == 'desktop' || needs.prepare.outputs.surface == 'account'
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            desktop-2/package-lock.json
+            account-app/package-lock.json
+
+      - name: Verify backend patch
+        if: needs.prepare.outputs.surface == 'backend'
+        run: |
+          python -m pip install --disable-pip-version-check -r junior-backend/requirements.txt
+          cd junior-backend
+          pytest -q
+
+      - name: Verify desktop patch
+        if: needs.prepare.outputs.surface == 'desktop'
+        working-directory: desktop-2
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+          npm run guard
+
+      - name: Verify account patch
+        if: needs.prepare.outputs.surface == 'account'
+        working-directory: account-app
+        run: |
+          npm ci --ignore-scripts
+          npm run lint
+          npm run build
+          npm run test:agency-contracts
+
+  open_draft_pr:
+    needs: [prepare, generate_fix, verify_patch]
+    if: needs.prepare.outputs.open_draft_pr == 'true' && needs.generate_fix.outputs.patch_safe == 'true' && needs.verify_patch.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: codex-incident-${{ needs.prepare.outputs.incident_id }}
+
+      - name: Apply patch and open draft PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INCIDENT_ID: ${{ needs.prepare.outputs.incident_id }}
+          TARGET_SHA: ${{ needs.prepare.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$TARGET_SHA" HEAD
+          git apply --3way --index codex.patch
+          branch="codex/incident-${INCIDENT_ID}-${GITHUB_RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -m "fix: Codex incident ${INCIDENT_ID}"
+          git push origin "$branch"
+          {
+            echo "Automated low-risk repair candidate for incident \`$INCIDENT_ID\`."
+            echo
+            echo "The patch passed the declared surface regression job."
+            echo "It remains a draft and requires human review before merge."
+          } > pr-body.md
+          gh pr create \
+            --draft \
+            --base main \
+            --head "$branch" \
+            --title "Incident repair: ${INCIDENT_ID}" \
+            --body-file pr-body.md

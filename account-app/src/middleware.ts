@@ -46,11 +46,20 @@ export default clerkMiddleware(async (_auth, req: NextRequest) => {
 
   const res = NextResponse.next();
   if (pathname.startsWith("/embed")) {
-    // Embed surfaces — frame-presentable for the Tauri webview. Don't
-    // set frame-ancestors at all so the SSR layout's CSP wins. (Setting
-    // `frame-ancestors *` would override any tighter policy a future
-    // page might want; setting nothing preserves the option.)
-    res.headers.delete("content-security-policy");
+    // 2026-07-04 hardening · explicit frame-ancestors instead of
+    // deleting the header. The prior "just delete both" strategy
+    // relied on the layout CSP + no attacker-side reissue, which
+    // is fine in Tauri today but leaks a clickjacking window to
+    // any browser that visits an /embed/* URL directly (attacker
+    // frames it inside evil.com and reads jwt via postMessage).
+    // Setting frame-ancestors to the Tauri origins keeps the
+    // desktop working while browsers refuse to iframe the page.
+    res.headers.set(
+      "content-security-policy",
+      "frame-ancestors 'self' tauri://localhost https://tauri.localhost http://tauri.localhost;",
+    );
+    // CSP frame-ancestors supersedes X-Frame-Options where honoured,
+    // and we need to drop the DENY so Tauri actually gets to render.
     res.headers.delete("x-frame-options");
   } else {
     // Everything else — explicit frame deny. Prevents marketing pages,

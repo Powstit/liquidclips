@@ -4,6 +4,10 @@ import { FLOW_IDS } from "../../contracts/flowRegistry";
 import { navigateTo } from "../../shell/routes";
 import { bus } from "../../design-os/bridge";
 import { useBrowseOverlay } from "../../state/browseOverlay";
+// Phase 8 · Mount #4 · catalog block hoisted to Section B port.
+import { CatalogCarousel } from "../../routes/catalog/CatalogCarousel";
+// Phase 8 · Mount #6 · cold-email recipient preview.
+import { EmbedPreviewCard } from "../../routes/campaign-builder/EmbedPreviewCard";
 
 import { fakeCampaigns, type FakeCampaign } from "../../fixtures/fakeCampaigns";
 
@@ -123,24 +127,34 @@ export function CampaignsSection() {
         </div>
       )}
 
-      <h2 className="lc-hud-title lc-mt-24">All campaigns</h2>
-      <div className="lc-grid lc-grid-3 lc-mt-16">
-        {campaigns.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            className="lc-hud-card"
-            style={{ textAlign: "left", width: "100%", borderColor: selectedId === c.id ? "var(--color-fuchsia)" : undefined }}
-            onClick={() => setSelectedId(c.id)}
-          >
-            <div className="lc-row" style={{ justifyContent: "space-between" }}>
-              <span className="lc-hud-eyebrow">{c.id}</span>
-              <span className="lc-pill" data-tone={c.status === "active" ? "ok" : "warn"}><span className="lc-pill-dot" /> {c.status}</span>
-            </div>
-            <h3 className="lc-hud-title">{c.name}</h3>
-            <p className="lc-hud-body">{c.clipperCount} clippers · {c.outputClipIds.length} clips · stamp locked</p>
-          </button>
-        ))}
+      {/* Phase 8 · Mount #4 (2026-07-04) · CatalogCarousel replaces the
+          legacy lc-hud-card grid. Section B ported the full 6-state
+          carousel (empty · loading · partial · ready · error · focused)
+          with its own scrubber. `selectedId` state above the carousel is
+          still consumed by the "active campaign" header block, so
+          `setSelectedId` stays reachable via the wrapping campaign
+          detail card — the grid card selection UI is retired.
+          `onClipClick` intentionally NOT wired: CatalogCarousel's
+          Tile shape is not FakeCampaign, and Layer 4 (F7) will pass
+          real tiles once /yt/batch-lookup lands. */}
+      <CatalogCarousel />
+
+      {/* Phase 8 · Mount #6 (2026-07-04) · EmbedPreviewCard nested
+          below the catalog as the campaign builder's cold-email
+          recipient preview. Shows what a target clipper sees when the
+          sender's outreach email lands + the "Claim my 10 clips" CTA
+          renders on liquidclips.app/preview/<token>. Section B's port
+          defaults `initialState` to `populated` (the money-ready
+          case). `showScrubber` is dev-only. `onCta` intentionally
+          NOT wired: the CTA click routes to
+          `handleActivationUrl`/funnel-session already at the
+          preview page — the sender-side preview is decorative until
+          the campaign builder gains a real preview-video-id field
+          (out of Phase 8 scope). */}
+      <div className="campaign-preview-slot">
+        <EmbedPreviewCard
+          showScrubber={import.meta.env.DEV}
+        />
       </div>
 
       {createOpen && (

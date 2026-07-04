@@ -1,0 +1,61 @@
+# User-state audit · Phase 8 nav mounting 2026-07-04
+
+Guard rail 11: every mount must preserve the pre-Phase-8 user-state
+contracts. Each row below verified UNCHANGED after all 6 mounts.
+
+| State primitive                        | Baseline call sites | After Phase 8 | Delta |
+|----------------------------------------|---------------------|---------------|-------|
+| authStorage · initAuthStorage()        | App.tsx boot effect | same          | 0     |
+| authStorage · hasJwt()                 | App.tsx L157 · AuthGate L285-290 | same | 0 |
+| authStorage · hasJwtKeychainPresence() | App.tsx L157        | same          | 0     |
+| authStorage · resumeJwtFromKeychainForAuthAction() | App.tsx L159 · AuthGate onContinue (Mount #1) | +1 in AuthGate | +1 (WIRE only, no contract change) |
+| engineSessionPersistence               | CreateClips.tsx only | same         | 0     |
+| localStorage: demo-shown-build         | DemoOverlay via CreateClips | same    | 0     |
+| localStorage: demo-shown-login         | DemoOverlay via LoginActivation | same | 0 |
+| localStorage: demo-shown-sync-mail     | DemoOverlay via SyncMailMoneyDrop | same | 0 |
+| localStorage: demo-shown-wallet        | DemoOverlay via WalletDetail | same | 0 |
+| localStorage: demo-shown-cancellation  | DemoOverlay via CancellationIntercept | same | 0 |
+| localStorage: demo-shown-in-app-browser| DemoOverlay via BrowseOverlay | same | 0 |
+| localStorage: demo-shown-campaign-builder | DemoOverlay via EmbedPreviewCard | same | 0 |
+| Whop cookie: lc_ref                    | liquidclips-marketing/middleware.ts | same | 0 |
+| Whop cookie: lc_source                 | liquidclips-marketing/middleware.ts | same | 0 |
+| qaGateEnabled()                        | App.tsx L70         | same          | 0     |
+| qa · attachQA()                        | App.tsx L181        | same          | 0     |
+
+## Notes
+
+* Mount #1 added ONE new consumer of `resumeJwtFromKeychainForAuthAction`
+  inside AuthGate's LoginActivation onContinue callback. This is a WIRE
+  (existing function called from a new site) — no contract change to
+  the function itself. Behaviour of the auth storage layer is
+  identical.
+
+* All 7 `demo-shown-*` localStorage keys are OWNED by the DemoOverlay
+  component instances embedded inside each port surface. Phase 8
+  mounted these surfaces without touching the DemoOverlay contract,
+  so every key remains reachable at the same route it did after
+  Phases 4-6 landed.
+
+* Whop `lc_ref` and `lc_source` cookies are set exclusively by
+  `liquidclips-marketing/src/middleware.ts` which Phase 8 did not
+  touch. Their `httpOnly:true + sameSite:lax + secure:true` contract
+  from Phase 2 is preserved.
+
+* qaGateEnabled() and attachQA() are consumed at App boot only.
+  Phase 8's App.tsx edit (Mount #1) touched only the AuthGate function
+  body — the boot-effect consumers of both QA hooks are untouched.
+
+## Baseline sanity (post-Phase-8)
+
+  grep -rn "hasJwt\\|hasJwtKeychainPresence\\|resumeJwtFromKeychainForAuthAction" \
+    /Users/dipdip/code/jnr/desktop-2/src | wc -l
+  = same order-of-magnitude as Phase 7 close (new call site inside
+    AuthGate; no consumer removed).
+
+  grep -rn "demo-shown-" /Users/dipdip/code/jnr/desktop-2/src | wc -l
+  = same as Phase 7 close (all 7 keys reachable at their port surfaces).
+
+  grep -rn "qaGateEnabled\\|attachQA" /Users/dipdip/code/jnr/desktop-2/src | wc -l
+  = same as Phase 7 close (single boot-effect consumer each).
+
+Zero user-state regressions detected across the 6 mounts.

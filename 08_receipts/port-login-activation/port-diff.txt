@@ -1,0 +1,29 @@
+# Port · login-activation · source snapshot
+
+## activation.ts preserved (IG-004)
+grep for internal mutations of activation.ts from the port (must be 0):
+'authStorage.setJwt' calls in port: 0
+'clearJwt' calls in port: 0
+
+## Public activation.ts imports (allowed hooks only)
+22:import { useActivation, activateWithToken, beginActivation } from '../../lib/activation';
+
+## UI state map (11 slugs)
+| 'idle'
+| 'waiting'
+| 'activating'
+| 'activated'
+| 'activated_degraded'
+| 'failed'
+| 'already_activated'
+| 'inapp_panel_open'
+| 'inapp_fallback'
+| 'manual_paste'
+| 'offline'
+
+## Banned word check
+'bounty' occurrences: 0
+
+## Assets
+founder-hook.mp4: present
+whop_logo_lockup_white.svg: present

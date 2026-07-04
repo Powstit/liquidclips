@@ -21,17 +21,166 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from svix.webhooks import Webhook, WebhookVerificationError
 
 from app.config import get_settings
 from app.db import get_db
 from app.jwt_signer import issue_license_jwt
-from app.models import License, PendingWhopMembership, User, WebhookEvent
+from app.models import License, PendingWhopMembership, User, WebhookDeadLetter, WebhookEvent
 from app.routes.notifications import write_notification
 
 router = APIRouter(prefix="/webhooks/whop", tags=["webhooks"])
 settings = get_settings()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Layer 1 · reliability sprint · 2026-07-04
+#
+# Observability + dead-letter primitives. Sentry breadcrumbs attach to the
+# current scope so a subsequent captured exception carries the last N webhook
+# entry/exit events — invaluable when a handler dies mid-transaction. When
+# Sentry isn't initialised (dev, tests without DSN) the calls no-op.
+#
+# The dead-letter table is a diagnostic + replay artefact. Whop's own
+# at-least-once retry cadence is still the primary recovery path; the
+# dead-letter row lets an operator replay AHEAD of Whop's schedule and gives
+# the reconciliation cron something to compare drift against.
+# ─────────────────────────────────────────────────────────────────────
+
+
+def _add_breadcrumb(*, category: str, message: str, data: dict | None = None) -> None:
+    """Best-effort Sentry breadcrumb. No-op when sentry_sdk is missing / not
+    initialised. Never raises. Called at entry + exit of every _handle_*
+    function so a subsequent captured exception carries the sequence."""
+    try:
+        import sentry_sdk
+        sentry_sdk.add_breadcrumb(
+            category=category,
+            message=message,
+            level="info",
+            data=data or {},
+        )
+    except Exception:  # noqa: BLE001 — breadcrumbs must never break the handler
+        pass
+
+
+def _is_duplicate_event(db: Session, external_id: str) -> bool:
+    """The outer-guard idempotency check, extracted so every mutating branch
+    can be reasoned about explicitly. Returns True when a WebhookEvent row
+    already exists for this external_id, meaning the payload has already been
+    processed (or is being re-tried by Whop after a network hiccup)."""
+    return (
+        db.query(WebhookEvent).filter_by(external_id=external_id).one_or_none()
+        is not None
+    )
+
+
+def _record_dead_letter(
+    db: Session,
+    *,
+    event_id: str,
+    event_type: str,
+    payload_json: str,
+    error: str,
+) -> str:
+    """Insert a dead-letter row in a fresh, isolated session so the outer
+    handler's rollback doesn't take it with the failed transaction.
+
+    Returns the inserted row id. Best-effort — a dead-letter write failure
+    must never mask the underlying handler exception (which the caller
+    re-raises so Whop retries).
+    """
+    from app.db import SessionLocal
+    try:
+        with SessionLocal() as fresh:
+            row = WebhookDeadLetter(
+                event_id=event_id or "unknown",
+                event_type=event_type or "unknown",
+                payload_json=payload_json,
+                error=(error or "")[:2000],
+                retry_count=0,
+            )
+            fresh.add(row)
+            fresh.commit()
+            return row.id
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def retry_dead_letter(db: Session, dead_letter_id: str) -> tuple[bool, str]:
+    """Replay a dead-letter row through the appropriate _handle_* branch.
+
+    Returns (success, note). Idempotency is still preserved by the outer
+    WebhookEvent guard — a successful replay stamps resolved_at + increments
+    retry_count so the row disappears from the "pending replay" query.
+
+    NOT auto-scheduled — an operator or the future reconciliation cron
+    triggers this explicitly. Live-fires against the DB session passed in;
+    keeps sentry breadcrumbs attached to the replay operation.
+    """
+    row = db.get(WebhookDeadLetter, dead_letter_id)
+    if row is None:
+        return False, f"dead_letter_id_not_found:{dead_letter_id}"
+    if row.resolved_at is not None:
+        return True, "already_resolved"
+
+    _add_breadcrumb(
+        category="webhook.whop.retry",
+        message=f"replaying dead-letter {row.id}",
+        data={"event_type": row.event_type, "event_id": row.event_id, "attempt": row.retry_count + 1},
+    )
+
+    try:
+        payload = json.loads(row.payload_json)
+    except Exception as exc:  # noqa: BLE001
+        row.error = f"payload_parse_failed:{exc}"[:2000]
+        row.retry_count = (row.retry_count or 0) + 1
+        row.last_attempted_at = datetime.now(timezone.utc)
+        db.commit()
+        return False, "payload_parse_failed"
+
+    data = payload.get("data") or {}
+    event_type = row.event_type
+
+    try:
+        if event_type in ("membership_went_valid", "membership.went_valid", "membership_activated", "membership.activated"):
+            _handle_membership_valid(db, data)
+        elif event_type in ("membership_went_invalid", "membership.went_invalid", "membership_deactivated", "membership.deactivated"):
+            _handle_membership_invalid(db, data)
+        elif event_type in ("membership_canceled", "membership.canceled"):
+            _handle_membership_canceled(db, data)
+        elif event_type == "membership.cancel_at_period_end_changed":
+            _handle_membership_cancel_setting_changed(db, data)
+        elif event_type in ("payment_succeeded", "payment.succeeded"):
+            _handle_payment_succeeded(db, data)
+        elif event_type in ("payment_failed", "payment.failed"):
+            _handle_payment_failed(db, data)
+        elif event_type in ("payment_refunded", "payment.refunded", "refund_created", "refund.created", "dispute_created", "dispute.created"):
+            _handle_payment_refunded(db, data)
+        else:
+            row.error = f"unsupported_event_type:{event_type}"[:2000]
+            row.retry_count = (row.retry_count or 0) + 1
+            row.last_attempted_at = datetime.now(timezone.utc)
+            db.commit()
+            return False, "unsupported_event_type"
+
+        row.resolved_at = datetime.now(timezone.utc)
+        row.retry_count = (row.retry_count or 0) + 1
+        row.last_attempted_at = datetime.now(timezone.utc)
+        db.commit()
+        return True, "retry_succeeded"
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        # Re-fetch after rollback so we can persist the retry attempt.
+        row = db.get(WebhookDeadLetter, dead_letter_id)
+        if row is not None:
+            row.error = f"retry_failed:{exc}"[:2000]
+            row.retry_count = (row.retry_count or 0) + 1
+            row.last_attempted_at = datetime.now(timezone.utc)
+            db.commit()
+        return False, f"retry_failed:{exc}"
 
 
 # Map Whop plan IDs → our internal tiers.
@@ -108,11 +257,19 @@ def _load_agency_ladder_plan_map() -> dict[str, str]:
             out[plan_id] = tier_key
     return out
 
-# Founder is a $500 one-time unlock → Autopilot tier + founder_flag forever.
-# Match by plan id: the webhook can send title=null (like the renewal plans
-# above do), so a title-only check would let a Founder buy fall through to
-# "growth". Keep this set in sync with the live Whop "Founder Lifetime" plan.
-FOUNDER_PLAN_IDS = {"plan_OieNCPrvkw9U4"}  # "Liquid Clips Founder Lifetime" $500 one-time
+# Founder unlocks → Autopilot tier + founder_flag while the subscription is
+# active. Match by plan id: the webhook can send title=null (like the renewal
+# plans above do), so a title-only check would let a Founder buy fall through
+# to "growth". Keep this set in sync with the live Whop founder plans.
+#
+# One-time lifetime founder retains the flag forever (never canceled). The
+# monthly Founder Access cohort ($99.99/mo, cap 12,000) keeps the flag while
+# their subscription is valid — membership.canceled flips it off, resub flips
+# it back on. Cap enforcement lives in the checkout gate, not here.
+FOUNDER_PLAN_IDS = {
+    "plan_OieNCPrvkw9U4",  # Liquid Clips Founder Lifetime · $500 one-time
+    "plan_VWj1uoy2RcOsg",  # Liquid Clips Founder Access · $99.99/mo · cap 12,000
+}
 
 # v2.2.17 · one-time top-up plans that grant metered credit instead of
 # a tier upgrade. The webhook branches early when it sees these ids so
@@ -124,8 +281,18 @@ BOOST_PACK_PLAN_IDS = {
 
 
 def _verify_signature(body: bytes, headers: dict[str, str]) -> None:
+    # Env-gated fail-closed: production refuses when the secret is unset
+    # (defense-in-depth on top of main.lifespan boot guard). Non-production
+    # keeps the accept-without-verify dev bypass so local iteration and
+    # existing tests that monkeypatch ``webhooks_whop.settings`` directly
+    # continue to work. Prior behaviour was fail-open in every environment.
     if not settings.whop_webhook_secret:
-        return  # dev mode — skip
+        if settings.env == "production":
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "server misconfigured · WHOP_WEBHOOK_SECRET unset",
+            )
+        return  # dev / test bypass
     required = ("webhook-id", "webhook-timestamp", "webhook-signature")
     if any(not headers.get(name) for name in required):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "missing webhook signature headers")
@@ -198,7 +365,17 @@ async def whop_webhook(
         or data.get("id")
         or hashlib.sha256(body).hexdigest()
     )
-    if db.query(WebhookEvent).filter_by(external_id=external_id).one_or_none():
+    _add_breadcrumb(
+        category="webhook.whop",
+        message=f"received {event_type}",
+        data={"external_id": external_id, "event_type": event_type},
+    )
+    if _is_duplicate_event(db, external_id):
+        _add_breadcrumb(
+            category="webhook.whop",
+            message=f"duplicate {event_type}",
+            data={"external_id": external_id},
+        )
         return {"status": "duplicate", "event": event_type}
 
     from app.webhook_log import log_webhook
@@ -216,11 +393,15 @@ async def whop_webhook(
     _SUBMISSION_APPROVED = ("submission_approved", "submission.approved", "content_reward.submission.approved", "content_reward.approved")
     _SUBMISSION_REJECTED = ("submission_rejected", "submission.rejected", "content_reward.submission.rejected", "content_reward.rejected")
     _SUBMISSION_PAID = ("submission_paid", "submission.paid", "content_reward.payout.paid", "payout.paid")
+    # G2 · Layer 6 (2026-07-04) · Whop affiliate payment event ·
+    # credits 50% of MRR to the referring user's wallet ledger.
+    _PAYMENT_AFFILIATE = ("payment_affiliate", "payment.affiliate", "affiliate_payment", "affiliate.payment")
     recognized = event_type in (
         _MEMBERSHIP_VALID + _MEMBERSHIP_INVALID + _MEMBERSHIP_CANCELED
         + _MEMBERSHIP_CANCEL_SETTING
         + _PAYMENT + _PAYMENT_FAILED + _REFUND
         + _SUBMISSION_APPROVED + _SUBMISSION_REJECTED + _SUBMISSION_PAID
+        + _PAYMENT_AFFILIATE
     )
 
     try:
@@ -244,6 +425,8 @@ async def whop_webhook(
             _handle_submission_verdict(db, data, verdict="rejected")
         elif event_type in _SUBMISSION_PAID:
             _handle_submission_verdict(db, data, verdict="paid")
+        elif event_type in _PAYMENT_AFFILIATE:
+            _handle_payment_affiliate(db, data)
         # else: unsupported — accepted but ignored.
 
         db.add(WebhookEvent(
@@ -253,8 +436,31 @@ async def whop_webhook(
             body_hash=hashlib.sha256(body).hexdigest(),
         ))
         db.commit()
+        _add_breadcrumb(
+            category="webhook.whop",
+            message=f"handled {event_type}",
+            data={"external_id": external_id, "recognized": recognized},
+        )
     except Exception as exc:  # preserve the existing 500→Whop-retry behaviour
         db.rollback()
+        # Layer 1 · dead-letter capture. Writes in a fresh session so the
+        # rollback above doesn't take it. Best-effort — a dead-letter failure
+        # never masks the original exception (which we re-raise so Whop retries).
+        try:
+            _record_dead_letter(
+                db,
+                event_id=external_id,
+                event_type=event_type,
+                payload_json=body.decode("utf-8", errors="replace"),
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        _add_breadcrumb(
+            category="webhook.whop",
+            message=f"failed {event_type}",
+            data={"external_id": external_id, "error_type": type(exc).__name__},
+        )
         log_webhook(provider="whop", event_name=event_type, status="failed",
                     external_event_id=external_id, user_id=_user_id_for_log(db, data), error=exc)
         raise
@@ -467,8 +673,61 @@ def apply_membership_tier(
 
 
 def _handle_membership_valid(db: Session, data: dict) -> None:
+    _add_breadcrumb(category="webhook.whop.membership_valid", message="enter")
     user = _find_user_for_event(db, data)
     tier, founder = _require_known_tier(data)
+
+    # Task F · Founder Access seat-cap gate. When the incoming plan is
+    # a Founder plan AND the 12,000-seat cap is reached, refuse the
+    # tier grant + stashed pending row · we return early after a
+    # warning breadcrumb. Whop-side `seat_cap=12000` on
+    # plan_VWj1uoy2RcOsg is the parallel enforcement rail; this local
+    # gate lets us stay honest even if the Whop metadata drifts.
+    plan_block = data.get("plan") or {}
+    plan_id = (plan_block.get("id") or "").strip()
+    whop_membership_id = (
+        data.get("membership_id")
+        or data.get("id")
+        or (data.get("membership") or {}).get("id")
+        or ""
+    ).strip()
+    if plan_id in FOUNDER_PLAN_IDS:
+        from app.routes.founder import try_grant_founder_seat
+
+        if not whop_membership_id:
+            # Rare but real · Whop sent a Founder membership webhook
+            # without an id. Refuse rather than double-grant on retry.
+            _add_breadcrumb(
+                category="webhook.whop.membership_valid",
+                message="exit_founder_no_membership_id",
+                data={"plan_id": plan_id},
+            )
+            return
+        ok, reason = try_grant_founder_seat(
+            db,
+            whop_membership_id=whop_membership_id,
+            plan_id=plan_id,
+            user_id=(user.id if user is not None else None),
+            whop_user_id=(data.get("user") or {}).get("id"),
+        )
+        if not ok:
+            # TODO(cohort-0-founder-void) · fire the Whop payment-void
+            # API here so the buyer isn't charged when we refuse the
+            # tier. For Cohort 0 no real Founder payments have hit yet
+            # so the parallel Whop-side seat_cap metadata is enough.
+            _add_breadcrumb(
+                category="webhook.whop.membership_valid",
+                message="exit_cohort_full",
+                data={
+                    "plan_id": plan_id,
+                    "membership_id": whop_membership_id,
+                    "reason": reason,
+                },
+            )
+            return
+        # `granted` or `idempotent` both fall through to the normal
+        # tier-application path below.
+
     if not user:
         # No Clerk user yet — the buyer paid on Whop before signing up on the
         # website (common for affiliate-referred sales). Park the entitlement
@@ -577,6 +836,7 @@ def _handle_membership_valid(db: Session, data: dict) -> None:
                     "billing_provider": "whop",
                 },
             )
+    _add_breadcrumb(category="webhook.whop.membership_valid", message="exit", data={"tier": tier, "founder": founder})
 
 
 def _seat_count(db: Session) -> int:
@@ -605,8 +865,10 @@ def _reconcile_affiliate_commission_best_effort(
 
 
 def _handle_membership_invalid(db: Session, data: dict) -> None:
+    _add_breadcrumb(category="webhook.whop.membership_invalid", message="enter")
     user = _find_user_for_event(db, data)
     if not user:
+        _add_breadcrumb(category="webhook.whop.membership_invalid", message="exit_no_user")
         return
     # Partner Engine — decrement BEFORE mutating subscription_status so the
     # "was this user previously paid?" guard is honest. Only decrement on a
@@ -665,6 +927,7 @@ def _handle_membership_invalid(db: Session, data: dict) -> None:
             event="whop_membership_invalid",
             properties={"reason": "canceled", "tier": "free"},
         )
+    _add_breadcrumb(category="webhook.whop.membership_invalid", message="exit")
 
 
 def _handle_membership_canceled(db: Session, data: dict) -> None:
@@ -673,8 +936,10 @@ def _handle_membership_canceled(db: Session, data: dict) -> None:
     Whop later sends membership.deactivated at period end; that event performs
     the actual downgrade to Free.
     """
+    _add_breadcrumb(category="webhook.whop.membership_canceled", message="enter")
     user = _find_user_for_event(db, data)
     if not user:
+        _add_breadcrumb(category="webhook.whop.membership_canceled", message="exit_no_user")
         return
     user.subscription_status = "canceled"
     renewal_at = data.get("renewal_period_end")
@@ -699,6 +964,7 @@ def _handle_membership_canceled(db: Session, data: dict) -> None:
         priority="medium",
         external_dedup_key=f"whop-canceled-{event_id}" if event_id else None,
     )
+    _add_breadcrumb(category="webhook.whop.membership_canceled", message="exit")
 
 
 def _handle_membership_cancel_setting_changed(db: Session, data: dict) -> None:
@@ -723,8 +989,10 @@ def _handle_membership_cancel_setting_changed(db: Session, data: dict) -> None:
 
 def _handle_payment_failed(db: Session, data: dict) -> None:
     """Keep the tier during Whop's retry window and surface the billing issue."""
+    _add_breadcrumb(category="webhook.whop.payment_failed", message="enter")
     user = _find_user_for_event(db, data)
     if not user:
+        _add_breadcrumb(category="webhook.whop.payment_failed", message="exit_no_user")
         return
     user.subscription_status = "past_due"
     from app.clerk_sync import sync_clerk_metadata
@@ -745,9 +1013,11 @@ def _handle_payment_failed(db: Session, data: dict) -> None:
         priority="high",
         external_dedup_key=f"whop-payment-failed-{event_id}" if event_id else None,
     )
+    _add_breadcrumb(category="webhook.whop.payment_failed", message="exit")
 
 
 def _handle_payment_succeeded(db: Session, data: dict) -> None:
+    _add_breadcrumb(category="webhook.whop.payment_succeeded", message="enter")
     # v2.2.17 · Boost Pack top-ups fire the same payment_succeeded event
     # as subscription payments. Detect the boost plan first, grant the
     # metered credit, then short-circuit before we try to resolve a
@@ -871,6 +1141,11 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
                 "billing_provider": "whop",
             },
         )
+    _add_breadcrumb(
+        category="webhook.whop.payment_succeeded",
+        message="exit",
+        data={"tier": user.tier, "first_paid": not was_paid_before},
+    )
 
     # Affiliate lifecycle emails — fire ONLY on the buyer's first paid
     # conversion (not renewals), and ONLY when the referrer is a known Junior
@@ -1188,8 +1463,10 @@ def _handle_payment_refunded(db: Session, data: dict) -> None:
     """A refund/dispute pulls the entitlement. Critically, if the refunded plan
     was the one-time Founder unlock, clear founder_flag — otherwise a refunded
     founder keeps unlimited Autopilot forever. Drop to Free + mark 'refunded'."""
+    _add_breadcrumb(category="webhook.whop.payment_refunded", message="enter")
     user = _find_user_for_event(db, data)
     if not user:
+        _add_breadcrumb(category="webhook.whop.payment_refunded", message="exit_no_user")
         return
     resolved = _tier_from_event(data)
     if resolved is None:
@@ -1238,3 +1515,358 @@ def _handle_payment_refunded(db: Session, data: dict) -> None:
             event="whop_membership_invalid",
             properties={"reason": "refunded", "tier": "free"},
         )
+
+    # Click-wrap agreement · Set-Off · $50 admin fee against pending
+    # commissions + freeze the signature row so the nightly scheduler
+    # skips this user. Chargeback / dispute variants all land in the
+    # same handler; refund events are treated as material breach per
+    # Section 3 of `docs/legal/affiliate-agreement-v1.0.md`.
+    try:
+        _apply_agreement_setoff(db, user, event_type_hint="payment_refunded_or_disputed")
+    except Exception as e:  # noqa: BLE001 · never 500 the webhook
+        logging.getLogger("junior.webhooks_whop").exception(
+            "[affiliate_agreement.setoff] failed for user=%s: %s", user.id, e
+        )
+
+    _add_breadcrumb(category="webhook.whop.payment_refunded", message="exit")
+
+
+ADMIN_FEE_USD_CENTS = 5000  # $50.00 per Section 3.C
+
+
+def _apply_agreement_setoff(db: Session, user, *, event_type_hint: str) -> None:
+    """Right-of-set-off wiring for the Partner & Affiliate Agreement.
+
+    On a dispute/refund/chargeback event:
+      1. Debit the pending wallet balance by $50 (admin fee). Bounded
+         by the available pending balance so we never take a user's
+         balance negative — anything unrecovered is written off. Whop
+         owns the actual money movement; we adjust our internal
+         ``WalletLedger`` so the scheduler + wallet UI reflect the
+         forfeiture.
+      2. Freeze every active ``AffiliateAgreementSignature`` row for
+         this user. The nightly payout scheduler filters frozen rows
+         out of the batch, so no further commissions flow to Whop
+         until the freeze clears.
+
+    Idempotent: every debit carries a webhook-derived
+    ``whop_membership_id`` + ``period_start`` so replayed webhooks
+    dedupe on the ``uq_wallet_ledger_dedupe`` unique index. Freeze is
+    idempotent because ``freeze_signature`` no-ops on already-frozen
+    rows.
+    """
+    from app import wallet as _wallet_service
+    from app.routes.affiliate_agreement import freeze_signature
+
+    # Debit whichever is smaller — the fee or the current pending balance
+    # (never take pending negative on set-off).
+    try:
+        pending = _wallet_service.compute_pending(db, user.id)
+    except Exception:  # noqa: BLE001
+        pending = 0
+    fee = min(ADMIN_FEE_USD_CENTS, max(pending, 0))
+    if fee > 0:
+        try:
+            _wallet_service.record_debit(
+                db,
+                user_id=user.id,
+                amount_cents=fee,
+                currency="USD",
+                source="chargeback_admin_fee",
+                whop_membership_id=str(_extract_membership_id_hint(user, event_type_hint) or ""),
+                period_start=datetime.now(timezone.utc),
+            )
+        except IntegrityError:
+            db.rollback()  # replay already recorded this debit
+        except AttributeError:
+            # ``record_debit`` lands with Layer 6.5 — no-op until then.
+            pass
+        except Exception as e:  # noqa: BLE001
+            logging.getLogger("junior.webhooks_whop").warning(
+                "[affiliate_agreement.setoff] debit failed for user=%s: %s", user.id, e
+            )
+
+    freeze_signature(db, user, reason=f"whop:{event_type_hint}")
+
+
+def _extract_membership_id_hint(user, event_type_hint: str) -> str | None:
+    """Best-effort — the caller only has ``user`` in scope, so we fall
+    back to a synthetic key that still deduplicates within the same
+    day. Real membership id lives on the event data; this hint keeps
+    the ledger dedupe key populated when it isn't otherwise available."""
+    return f"setoff-{user.id}-{event_type_hint}-{datetime.now(timezone.utc).date().isoformat()}"
+
+
+# ─────────────────────────────────────────────────────────────────────
+# G2 · Layer 6 · payment.affiliate → 50% MRR wallet credit
+# ─────────────────────────────────────────────────────────────────────
+
+
+def _extract_period_start(data: dict) -> datetime:
+    """Best-effort period_start extractor. Whop's payment.affiliate
+    payload carries either ``period_start`` (unix seconds) or
+    ``current_period_start`` on the membership block. Fallback to the
+    current UTC time so we still get a dedupe key even if the wire
+    shape drifts — a missed key means we might double-credit on a
+    replay, but Layer 1 idempotency (WebhookEvent.external_id) still
+    catches the same webhook id."""
+    for key in ("period_start", "current_period_start", "started_at"):
+        v = data.get(key)
+        if v is None:
+            continue
+        try:
+            return datetime.fromtimestamp(int(v), tz=timezone.utc)
+        except (TypeError, ValueError, OSError):
+            continue
+    membership = data.get("membership") or {}
+    for key in ("period_start", "current_period_start", "started_at"):
+        v = membership.get(key)
+        if v is None:
+            continue
+        try:
+            return datetime.fromtimestamp(int(v), tz=timezone.utc)
+        except (TypeError, ValueError, OSError):
+            continue
+    return datetime.now(timezone.utc)
+
+
+def _handle_payment_affiliate(db: Session, data: dict) -> None:
+    """Whop ``payment.affiliate`` handler · G2 · Layer 6.
+
+    Whop fires this event when a paid membership renews and an
+    affiliate commission is due to the referring user. The payload
+    carries the referrer's affiliate_id + the gross paid amount + the
+    billing period boundary. We credit 50% (per §13a locked pricing)
+    to the referrer's wallet ledger.
+
+    Idempotency: :func:`app.wallet.record_credit` dedupes by
+    ``(user_id, whop_membership_id, period_start, type='credit')`` so
+    a Whop retry can't double-credit even if the outer
+    ``WebhookEvent.external_id`` guard is bypassed.
+
+    Cash amount lookup order (Whop payloads vary by product):
+      * ``amount_cents`` (some newer events)
+      * ``amount`` in dollars (older + affiliate-specific events)
+      * ``paid_amount`` / ``paid_amount_cents``
+    """
+    from app import wallet
+    from app.models import WalletLedger  # noqa: F401 · required for FK insert
+
+    _add_breadcrumb(category="webhook.whop.payment_affiliate", message="enter")
+
+    # Referring user resolution — prefer the explicit affiliate_id
+    # field, fall back to whop_affiliate_id on the User row.
+    affiliate_id = (
+        data.get("affiliate_id")
+        or data.get("referrer_affiliate_id")
+        or (data.get("referrer") or {}).get("affiliate_id")
+        or ""
+    ).strip()
+    if not affiliate_id:
+        _add_breadcrumb(category="webhook.whop.payment_affiliate", message="exit_no_affiliate_id")
+        return
+
+    referring_user: User | None = (
+        db.query(User)
+        .filter(User.whop_affiliate_id == affiliate_id)
+        .one_or_none()
+    )
+    if not referring_user:
+        referring_user = (
+            db.query(User)
+            .filter(User.affiliate_id == affiliate_id)
+            .one_or_none()
+        )
+    if not referring_user:
+        _add_breadcrumb(
+            category="webhook.whop.payment_affiliate",
+            message="exit_no_matching_user",
+            data={"affiliate_id": affiliate_id},
+        )
+        return
+
+    # Membership id — required for the dedupe key.
+    membership = data.get("membership") or {}
+    whop_membership_id = (
+        data.get("whop_membership_id")
+        or data.get("membership_id")
+        or membership.get("id")
+        or ""
+    ).strip()
+    if not whop_membership_id:
+        _add_breadcrumb(
+            category="webhook.whop.payment_affiliate",
+            message="exit_no_membership_id",
+        )
+        return
+
+    # Gross paid amount → cents. Whop's dollar-denominated fields need
+    # rounding; the cents fields are already integers.
+    paid_cents: int = 0
+    if isinstance(data.get("amount_cents"), int):
+        paid_cents = int(data["amount_cents"])
+    elif isinstance(data.get("paid_amount_cents"), int):
+        paid_cents = int(data["paid_amount_cents"])
+    elif isinstance(data.get("amount"), (int, float)):
+        paid_cents = int(round(float(data["amount"]) * 100))
+    elif isinstance(data.get("paid_amount"), (int, float)):
+        paid_cents = int(round(float(data["paid_amount"]) * 100))
+    if paid_cents <= 0:
+        _add_breadcrumb(
+            category="webhook.whop.payment_affiliate",
+            message="exit_zero_amount",
+        )
+        return
+
+    period_start = _extract_period_start(data)
+
+    wallet.credit_affiliate_share(
+        db,
+        referring_user_id=referring_user.id,
+        paid_amount_cents=paid_cents,
+        whop_membership_id=whop_membership_id,
+        period_start=period_start,
+    )
+    db.commit()
+    _add_breadcrumb(
+        category="webhook.whop.payment_affiliate",
+        message="exit",
+        data={
+            "referring_user_id": referring_user.id,
+            "whop_membership_id": whop_membership_id,
+            "paid_cents": paid_cents,
+        },
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Layer 1 · reconciliation entry point (called from cron.py)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def reconcile_whop_memberships(
+    db: Session,
+    *,
+    fetch_memberships,
+    since: datetime | None = None,
+    logger: logging.Logger | None = None,
+) -> dict:
+    """Nightly diff between Whop's live memberships list and our local User
+    entitlement mirror.
+
+    ``fetch_memberships`` is a callable that returns a list of Whop membership
+    dicts shaped ``{"user": {"id": ..., "email": ...}, "status": ...,
+    "valid_until": <unix seconds>, "plan": {"id": ...}}``. Passing it in keeps
+    the reconciler testable — the cron wrapper injects the live Whop API
+    client, tests inject a synthetic list.
+
+    Returns a dict summary suitable for structured logging:
+
+        {
+          "checked": <int>,
+          "drift_rows": [ {user_id, whop_user_id, reason, our, whop}, ... ],
+          "drift_pct": <float>,
+          "severity": "ok" | "warn" | "alert",
+        }
+
+    Severity thresholds:
+      - drift_pct == 0            → ok
+      - 0 < drift_pct <= 5.0      → warn (log per row + summary)
+      - drift_pct > 5.0           → alert (summary logged at ERROR + Sentry
+                                   captured breadcrumb).
+    """
+    log = logger or logging.getLogger("junior.webhook_reconcile")
+    since_dt = since or (datetime.now(timezone.utc) - timedelta(hours=24))
+
+    try:
+        memberships = list(fetch_memberships(since_dt)) or []
+    except Exception as exc:  # noqa: BLE001
+        log.exception("[whop-reconcile] fetch_memberships raised: %s", exc)
+        return {"checked": 0, "drift_rows": [], "drift_pct": 0.0, "severity": "alert", "error": str(exc)}
+
+    drift_rows: list[dict] = []
+    checked = 0
+
+    for m in memberships:
+        checked += 1
+        user_block = m.get("user") or {}
+        whop_user_id = user_block.get("id")
+        email = (user_block.get("email") or "").strip().lower()
+        whop_status = str(m.get("status") or "").lower()
+        whop_valid_until = m.get("valid_until") or m.get("renewal_period_end")
+
+        user: User | None = None
+        if whop_user_id:
+            user = db.query(User).filter_by(whop_user_id=whop_user_id).one_or_none()
+        if user is None and email:
+            user = db.query(User).filter(User.email.ilike(email)).one_or_none()
+        if user is None:
+            drift_rows.append({
+                "user_id": None,
+                "whop_user_id": whop_user_id,
+                "reason": "no_matching_local_user",
+                "our": None,
+                "whop": {"status": whop_status, "valid_until": whop_valid_until},
+            })
+            continue
+
+        # Compare paid_until (rounded to whole seconds, ± 60s slack for clock drift)
+        drifted = False
+        reason = None
+        if isinstance(whop_valid_until, (int, float)):
+            whop_dt = datetime.fromtimestamp(float(whop_valid_until), tz=timezone.utc)
+            our_dt = user.paid_until
+            if our_dt is None:
+                drifted = True
+                reason = "our_paid_until_null_whop_active"
+            else:
+                delta = abs((our_dt - whop_dt).total_seconds())
+                if delta > 60:
+                    drifted = True
+                    reason = "paid_until_drift"
+
+        # Compare status posture — 'active' on Whop but not 'active'/'trialing' locally = drift
+        if whop_status in ("active", "trialing", "valid"):
+            if user.subscription_status not in ("active", "trialing"):
+                drifted = True
+                reason = reason or "status_drift"
+
+        if drifted:
+            drift_rows.append({
+                "user_id": user.id,
+                "whop_user_id": whop_user_id,
+                "reason": reason,
+                "our": {"status": user.subscription_status, "paid_until": user.paid_until.isoformat() if user.paid_until else None},
+                "whop": {"status": whop_status, "valid_until": whop_valid_until},
+            })
+
+    drift_pct = (100.0 * len(drift_rows) / checked) if checked else 0.0
+    if drift_pct == 0:
+        severity = "ok"
+    elif drift_pct <= 5.0:
+        severity = "warn"
+    else:
+        severity = "alert"
+
+    summary = {
+        "checked": checked,
+        "drift_rows": drift_rows,
+        "drift_pct": round(drift_pct, 2),
+        "severity": severity,
+    }
+
+    # Log every drift row so an ops audit trail exists even if Sentry is off.
+    for row in drift_rows:
+        log.warning("[whop-reconcile] drift · %s", row)
+    if severity == "alert":
+        log.error("[whop-reconcile] drift ALERT · %s", summary)
+        _add_breadcrumb(
+            category="webhook.whop.reconcile",
+            message="alert",
+            data={"drift_pct": summary["drift_pct"], "checked": summary["checked"]},
+        )
+    else:
+        log.info("[whop-reconcile] complete · checked=%s drift=%s pct=%s severity=%s",
+                 checked, len(drift_rows), summary["drift_pct"], severity)
+
+    return summary

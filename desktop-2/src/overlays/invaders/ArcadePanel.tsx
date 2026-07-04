@@ -92,7 +92,7 @@ export function ArcadePanel({ liveScore }: ArcadePanelProps = {}) {
           <div className="arcade-kade-halo" aria-hidden="true" />
           <img
             className="arcade-kade"
-            src="/brand/splash/kade-shooter.webp"
+            src="/brand/kade/kade-shooter.webp"
             alt="Kade"
             draggable={false}
           />
