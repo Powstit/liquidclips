@@ -16,8 +16,10 @@
   --wd-line-vivid: rgba(255, 255, 255, 0.18);
   --wd-amber: #f59e0b;
   --wd-text-quiet: #5c5852;
-  --wd-grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
-  --wd-grad-paper: linear-gradient(180deg, #0b0b10 0%, #14141a 100%);
+  /* §13 brand-kit consolidation (2026-07-04) — reference brandTheme.css
+     so a future ramp shift updates every port surface together. */
+  --wd-grad-fuchsia: var(--grad-fuchsia);
+  --wd-grad-paper: var(--grad-paper);
   --wd-shadow-overlay: 0 1px 0 rgba(255, 255, 255, 0.05) inset,
     0 40px 120px rgba(0, 0, 0, 0.75);
 

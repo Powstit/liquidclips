@@ -20,8 +20,9 @@
   --iab-youtube-soft: rgba(255, 59, 48, 0.10);
   --iab-danger: #dc2626;
   --iab-danger-bright: #f87171;
-  --iab-grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
-  --iab-grad-paper: linear-gradient(180deg, #0b0b10 0%, #14141a 100%);
+  /* §13 brand-kit consolidation (2026-07-04) — reference brandTheme.css. */
+  --iab-grad-fuchsia: var(--grad-fuchsia);
+  --iab-grad-paper: var(--grad-paper);
   --iab-shadow-overlay: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 40px 120px rgba(0, 0, 0, 0.75);
 
   position: relative;

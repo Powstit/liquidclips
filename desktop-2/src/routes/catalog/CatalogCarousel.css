@@ -16,8 +16,9 @@
   --cat-cyan-soft: rgba(0, 229, 255, 0.10);
   --cat-danger: #dc2626;
   --cat-danger-bright: #f87171;
-  --cat-grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
-  --cat-grad-paper: linear-gradient(180deg, #0b0b10 0%, #14141a 100%);
+  /* §13 brand-kit consolidation (2026-07-04) — reference brandTheme.css. */
+  --cat-grad-fuchsia: var(--grad-fuchsia);
+  --cat-grad-paper: var(--grad-paper);
 
   position: relative;
   width: 100vw;
