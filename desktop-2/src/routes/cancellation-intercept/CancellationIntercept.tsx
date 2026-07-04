@@ -20,6 +20,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { DemoOverlay } from '../../components/demo-overlay';
+import { renderInline } from '../../components/safe-inline';
 import './CancellationIntercept.css';
 
 export type CancelState = 'cancel-attempt' | 'paused-then-back' | 'already-cancelled';
@@ -149,8 +150,8 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
           </div>
 
           <div className="ci-eyebrow">{cfg.eyebrow}</div>
-          <h1 className="ci-h1" dangerouslySetInnerHTML={{ __html: cfg.h1 }} />
-          <p className="ci-sub" dangerouslySetInnerHTML={{ __html: cfg.sub }} />
+          <h1 className="ci-h1">{renderInline(cfg.h1)}</h1>
+          <p className="ci-sub">{renderInline(cfg.sub)}</p>
 
           {cfg.showLossTable && (
             <div className="ci-loss-table">
@@ -181,7 +182,7 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
             </div>
             <div>
               <div className="ci-coach-eyebrow">Daniel · founder{muted ? ' · click for sound' : ' · playing'}</div>
-              <div className="ci-coach-script" dangerouslySetInnerHTML={{ __html: cfg.coach }} />
+              <div className="ci-coach-script">{renderInline(cfg.coach)}</div>
               <button type="button" className="ci-coach-audio" onClick={toggleMute}>
                 {muted ? 'Click for sound' : 'Mute'}
               </button>

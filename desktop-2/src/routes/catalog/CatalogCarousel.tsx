@@ -19,6 +19,7 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { renderInline } from '../../components/safe-inline';
 import './CatalogCarousel.css';
 
 export type CatalogState = 'empty' | 'loading' | 'partial' | 'ready' | 'error' | 'focused';
@@ -135,7 +136,7 @@ export function CatalogCarousel(props: CatalogCarouselProps) {
           </div>
           <div>
             <div className="cat-header-title">{cfg.title}</div>
-            <div className="cat-header-sub" dangerouslySetInnerHTML={{ __html: cfg.sub }} />
+            <div className="cat-header-sub">{renderInline(cfg.sub)}</div>
           </div>
           <div className="cat-mode-badge">{cfg.badge}</div>
         </div>

