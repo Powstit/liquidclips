@@ -309,6 +309,34 @@ async def lifespan(_app: FastAPI):
         "CREATE INDEX IF NOT EXISTS ix_reward_bonus_ledger_campaign ON reward_bonus_ledger (campaign_id)",
         "CREATE INDEX IF NOT EXISTS ix_reward_bonus_ledger_status ON reward_bonus_ledger (bonus_payout_status)",
         "CREATE INDEX IF NOT EXISTS ix_reward_bonus_ledger_whop_bounty ON reward_bonus_ledger (whop_bounty_id)",
+        # 2026-07-04 · G2 · Layer 6 · wallet reconciliation ledger.
+        # Append-only journal keyed by (whop_membership_id, period_start,
+        # type) so a webhook re-delivery for the same (membership,
+        # billing period) never double-credits. next_scheduled_at drives
+        # the nightly payout cron.
+        """CREATE TABLE IF NOT EXISTS wallet_ledger (
+            id varchar PRIMARY KEY,
+            user_id varchar NOT NULL,
+            type varchar NOT NULL,
+            amount_cents integer NOT NULL DEFAULT 0,
+            currency varchar NOT NULL DEFAULT 'USD',
+            source varchar NOT NULL DEFAULT '',
+            whop_membership_id varchar,
+            period_start timestamptz,
+            next_scheduled_at timestamptz,
+            whop_payout_id varchar,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            CONSTRAINT uq_wallet_ledger_dedupe UNIQUE (
+                user_id, whop_membership_id, period_start, type
+            )
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_user ON wallet_ledger (user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_type ON wallet_ledger (type)",
+        "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_whop_membership ON wallet_ledger (whop_membership_id)",
+        "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_period_start ON wallet_ledger (period_start)",
+        "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_next_scheduled ON wallet_ledger (next_scheduled_at)",
+        "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_whop_payout ON wallet_ledger (whop_payout_id)",
+        "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_created ON wallet_ledger (created_at)",
         # v0.7.55 (community architecture) — sponsored_campaigns gains 7
         # columns for channel binding + brand metadata + funnel flags.
         # All nullable / default false so existing rows survive untouched.

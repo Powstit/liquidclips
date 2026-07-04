@@ -384,11 +384,15 @@ async def whop_webhook(
     _SUBMISSION_APPROVED = ("submission_approved", "submission.approved", "content_reward.submission.approved", "content_reward.approved")
     _SUBMISSION_REJECTED = ("submission_rejected", "submission.rejected", "content_reward.submission.rejected", "content_reward.rejected")
     _SUBMISSION_PAID = ("submission_paid", "submission.paid", "content_reward.payout.paid", "payout.paid")
+    # G2 · Layer 6 (2026-07-04) · Whop affiliate payment event ·
+    # credits 50% of MRR to the referring user's wallet ledger.
+    _PAYMENT_AFFILIATE = ("payment_affiliate", "payment.affiliate", "affiliate_payment", "affiliate.payment")
     recognized = event_type in (
         _MEMBERSHIP_VALID + _MEMBERSHIP_INVALID + _MEMBERSHIP_CANCELED
         + _MEMBERSHIP_CANCEL_SETTING
         + _PAYMENT + _PAYMENT_FAILED + _REFUND
         + _SUBMISSION_APPROVED + _SUBMISSION_REJECTED + _SUBMISSION_PAID
+        + _PAYMENT_AFFILIATE
     )
 
     try:
@@ -412,6 +416,8 @@ async def whop_webhook(
             _handle_submission_verdict(db, data, verdict="rejected")
         elif event_type in _SUBMISSION_PAID:
             _handle_submission_verdict(db, data, verdict="paid")
+        elif event_type in _PAYMENT_AFFILIATE:
+            _handle_payment_affiliate(db, data)
         # else: unsupported — accepted but ignored.
 
         db.add(WebhookEvent(
@@ -1449,6 +1455,148 @@ def _handle_payment_refunded(db: Session, data: dict) -> None:
             properties={"reason": "refunded", "tier": "free"},
         )
     _add_breadcrumb(category="webhook.whop.payment_refunded", message="exit")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# G2 · Layer 6 · payment.affiliate → 50% MRR wallet credit
+# ─────────────────────────────────────────────────────────────────────
+
+
+def _extract_period_start(data: dict) -> datetime:
+    """Best-effort period_start extractor. Whop's payment.affiliate
+    payload carries either ``period_start`` (unix seconds) or
+    ``current_period_start`` on the membership block. Fallback to the
+    current UTC time so we still get a dedupe key even if the wire
+    shape drifts — a missed key means we might double-credit on a
+    replay, but Layer 1 idempotency (WebhookEvent.external_id) still
+    catches the same webhook id."""
+    for key in ("period_start", "current_period_start", "started_at"):
+        v = data.get(key)
+        if v is None:
+            continue
+        try:
+            return datetime.fromtimestamp(int(v), tz=timezone.utc)
+        except (TypeError, ValueError, OSError):
+            continue
+    membership = data.get("membership") or {}
+    for key in ("period_start", "current_period_start", "started_at"):
+        v = membership.get(key)
+        if v is None:
+            continue
+        try:
+            return datetime.fromtimestamp(int(v), tz=timezone.utc)
+        except (TypeError, ValueError, OSError):
+            continue
+    return datetime.now(timezone.utc)
+
+
+def _handle_payment_affiliate(db: Session, data: dict) -> None:
+    """Whop ``payment.affiliate`` handler · G2 · Layer 6.
+
+    Whop fires this event when a paid membership renews and an
+    affiliate commission is due to the referring user. The payload
+    carries the referrer's affiliate_id + the gross paid amount + the
+    billing period boundary. We credit 50% (per §13a locked pricing)
+    to the referrer's wallet ledger.
+
+    Idempotency: :func:`app.wallet.record_credit` dedupes by
+    ``(user_id, whop_membership_id, period_start, type='credit')`` so
+    a Whop retry can't double-credit even if the outer
+    ``WebhookEvent.external_id`` guard is bypassed.
+
+    Cash amount lookup order (Whop payloads vary by product):
+      * ``amount_cents`` (some newer events)
+      * ``amount`` in dollars (older + affiliate-specific events)
+      * ``paid_amount`` / ``paid_amount_cents``
+    """
+    from app import wallet
+    from app.models import WalletLedger  # noqa: F401 · required for FK insert
+
+    _add_breadcrumb(category="webhook.whop.payment_affiliate", message="enter")
+
+    # Referring user resolution — prefer the explicit affiliate_id
+    # field, fall back to whop_affiliate_id on the User row.
+    affiliate_id = (
+        data.get("affiliate_id")
+        or data.get("referrer_affiliate_id")
+        or (data.get("referrer") or {}).get("affiliate_id")
+        or ""
+    ).strip()
+    if not affiliate_id:
+        _add_breadcrumb(category="webhook.whop.payment_affiliate", message="exit_no_affiliate_id")
+        return
+
+    referring_user: User | None = (
+        db.query(User)
+        .filter(User.whop_affiliate_id == affiliate_id)
+        .one_or_none()
+    )
+    if not referring_user:
+        referring_user = (
+            db.query(User)
+            .filter(User.affiliate_id == affiliate_id)
+            .one_or_none()
+        )
+    if not referring_user:
+        _add_breadcrumb(
+            category="webhook.whop.payment_affiliate",
+            message="exit_no_matching_user",
+            data={"affiliate_id": affiliate_id},
+        )
+        return
+
+    # Membership id — required for the dedupe key.
+    membership = data.get("membership") or {}
+    whop_membership_id = (
+        data.get("whop_membership_id")
+        or data.get("membership_id")
+        or membership.get("id")
+        or ""
+    ).strip()
+    if not whop_membership_id:
+        _add_breadcrumb(
+            category="webhook.whop.payment_affiliate",
+            message="exit_no_membership_id",
+        )
+        return
+
+    # Gross paid amount → cents. Whop's dollar-denominated fields need
+    # rounding; the cents fields are already integers.
+    paid_cents: int = 0
+    if isinstance(data.get("amount_cents"), int):
+        paid_cents = int(data["amount_cents"])
+    elif isinstance(data.get("paid_amount_cents"), int):
+        paid_cents = int(data["paid_amount_cents"])
+    elif isinstance(data.get("amount"), (int, float)):
+        paid_cents = int(round(float(data["amount"]) * 100))
+    elif isinstance(data.get("paid_amount"), (int, float)):
+        paid_cents = int(round(float(data["paid_amount"]) * 100))
+    if paid_cents <= 0:
+        _add_breadcrumb(
+            category="webhook.whop.payment_affiliate",
+            message="exit_zero_amount",
+        )
+        return
+
+    period_start = _extract_period_start(data)
+
+    wallet.credit_affiliate_share(
+        db,
+        referring_user_id=referring_user.id,
+        paid_amount_cents=paid_cents,
+        whop_membership_id=whop_membership_id,
+        period_start=period_start,
+    )
+    db.commit()
+    _add_breadcrumb(
+        category="webhook.whop.payment_affiliate",
+        message="exit",
+        data={
+            "referring_user_id": referring_user.id,
+            "whop_membership_id": whop_membership_id,
+            "paid_cents": paid_cents,
+        },
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────
