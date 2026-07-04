@@ -638,6 +638,27 @@ class WebhookEventLog(Base):
     handled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class DeployerBroadcastTick(Base):
+    """F6 · Layer 3 · per-send audit row for the Gmail broadcast queue.
+
+    One row per broadcast attempt (sent · failed · captcha-skipped).
+    Powers the backend cross-check on the 100-sends-per-24h cap and gives
+    an operator a per-target audit trail if a user reports missing sends.
+
+    Deliberately does NOT store the email body — only the target address,
+    a status token, and the user + timestamp. Body content stays client-
+    side to keep the metadata surface minimal.
+    """
+
+    __tablename__ = "deployer_broadcast_ticks"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_email: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, index=True)   # sent | failed | skipped_captcha
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+
+
 class WebhookDeadLetter(Base):
     """Dead-letter row for a webhook that raised after signature verification.
 

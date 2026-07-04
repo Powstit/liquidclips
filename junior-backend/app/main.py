@@ -1014,6 +1014,11 @@ from app.routes import webhooks_railway as _webhooks_railway_router  # noqa: E40
 from app.routes import hq_journeys as _hq_journeys_router  # noqa: E402
 app.include_router(_webhooks_railway_router.router)
 app.include_router(_hq_journeys_router.router)
+# 2026-07-04 · Layer 3 · Gmail broadcast queue backend cross-check.
+# /deployer/broadcast-start · returns preview URLs per target
+# /deployer/broadcast-tick  · records one send + returns 24h caps
+from app.routes import deployer as _deployer_router  # noqa: E402
+app.include_router(_deployer_router.router)
 app.include_router(campaigns.router)
 app.include_router(campaign_asset_links.router)
 app.include_router(agency_campaigns.router)
