@@ -1,0 +1,71 @@
+# Verification greps · security hardening pass 2026-07-04
+
+## dangerouslySetInnerHTML in routes/**: 0
+Command: grep -rn "dangerouslySetInnerHTML" /Users/dipdip/code/jnr/desktop-2/src/routes
+Output: (empty · sweep complete)
+
+Baseline pre-hardening: 10 hits across 5 files.
+Post-Phase-4: 0 hits across all files. Every hit replaced with
+`renderInline(str)` from `desktop-2/src/components/safe-inline.tsx`.
+
+## if secret: fail-open leftover: 0
+Command: grep -rn "if secret:" /Users/dipdip/code/jnr/junior-backend/app/routes | \
+         grep -v "if secret and" | grep -v "webhook"
+Output: (empty)
+
+Every inline `if settings.internal_api_secret and header != secret` pattern
+across 14 routes (admin, admin_recovery, admin_support, affiliate,
+arcade_prize, authz_whoami, campaigns via require_admin, desktop,
+hq_features, hq_journeys, promo_codes, runtime x2, stripe_connect x2,
+updates) now routes through `deps.require_internal_secret` which is
+env-gated fail-closed (production 500 on unset, non-prod dev bypass to
+preserve existing test contracts).
+
+## Webhook fail-open leftovers
+Every webhook signature verifier is env-gated fail-closed:
+  * webhooks_clerk._verify_and_parse       → prod 500 · dev parse
+  * webhooks_stripe.stripe_connect_webhook → prod 500 · dev construct
+  * webhooks_ayrshare._verify_signature    → prod reject · dev accept
+  * webhooks_railway._verify_signature     → prod reject · dev bypass
+  * webhooks_whop._verify_signature        → prod 500 · dev return
+
+## lc-default-salt live default: 0
+Command: grep -rn "lc-default-salt" /Users/dipdip/code/jnr/liquidclips-marketing/src \
+         /Users/dipdip/code/jnr/account-app/src /Users/dipdip/code/jnr/desktop-2/src
+Output: 1 hit in `liquidclips-marketing/src/app/api/referrals/click/route.ts`
+       (comment explaining the prior default has been removed · not a
+       live vulnerability)
+
+The route already fails closed when `LC_REF_HASH_SALT` env is unset in
+production (writes null hashes rather than reversible ones with a known
+default). The lingering comment memorialises the removal.
+
+## Real creator emails in routes: 0
+Command: grep -rn "@mkbhd\.com\|@mrbeast\.com" \
+         /Users/dipdip/code/jnr/desktop-2/src/routes \
+         /Users/dipdip/code/jnr/desktop-2/src/lib
+Output: 1 hit in `desktop-2/src/lib/f5/scanner.test.ts:53` (test fixture
+       for the F5 contact scanner · sample value in test-only code)
+
+Not a live vulnerability. The prod contact-scan path never sends this
+data anywhere sensitive; the string only exists as a rosterBuilder
+fixture asserting the scanner shape.
+
+## Section-B port CSS grad-fuchsia local literals: 0
+Command: grep -rn "grad-fuchsia\|grad-paper" \
+         /Users/dipdip/code/jnr/desktop-2/src/routes | grep "linear-gradient"
+Output: (empty)
+
+All 8 port CSS files now reference the canonical `--grad-fuchsia` /
+`--grad-paper` tokens declared in `desktop-2/src/brand/brandTheme.css`.
+
+## IRON GATE sentinels touched: 0
+Command: grep -rn "IRON GATE" \
+         /Users/dipdip/code/jnr/desktop-2/src/routes/{cancellation-intercept,sync-mail-money-drop,catalog,wallet-detail,login-activation,campaign-builder,in-app-browser} \
+         /Users/dipdip/code/jnr/desktop-2/src/components \
+         /Users/dipdip/code/jnr/desktop-2/src-tauri/src/browse.rs
+Output: 0 hits on the surfaces this pass edited.
+
+## bounty occurrences in rendered code: 0
+Every Phase-4 wire-in inherits the §13b voice lock. No new bounty
+strings introduced by this hardening pass.

@@ -1,0 +1,8 @@
+ RUN  v4.1.9 /Users/dipdip/code/jnr/desktop-2
+
+
+ Test Files  3 passed (3)
+      Tests  26 passed (26)
+   Start at  19:12:10
+   Duration  6.42s (transform 503ms, setup 0ms, import 604ms, tests 4.04s, environment 5.98s)
+

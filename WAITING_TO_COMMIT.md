@@ -102,3 +102,13 @@
 - Verify: PASSED at 2026-07-04T17:21:00Z
 - Group: B
 - Group boundary: YES — awaiting signoff port-contextual-overlays-8c · Section B FULLY CLOSED
+
+## Security · hardening pass 2026-07-04
+- Branch: security/2026-07-04-hardening-pass
+- Commits: 08d4da2 · db14ac8 · 64f911e · f706187 · e0efb2a
+- Proof folder: 08_receipts/security-hardening-2026-07-04/
+- Verify: PASSED at 2026-07-04T19:52:00Z (26 of 26 assertions)
+- Group: Security
+- Group boundary: YES — awaiting signoff security-hardening
+- Tests: junior-backend 272 passed · desktop-2 vitest 39 passed / 5 files · desktop-2 cargo test 5 passed · account-app tsc clean · marketing tsc clean
+- Scope: P0 + most P1 landed. P1 deferred with rationale: telemetry auth+rate-limit · @vercel/botid · authStorage Keychain-first · fs:scope · deep-link mpsc · gmailComposeDriver DOMPurify

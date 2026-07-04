@@ -1,0 +1,73 @@
+# Test-suite results · security hardening pass 2026-07-04
+
+## junior-backend (pytest)
+BEFORE: 261 passed / 3 warnings
+AFTER:  272 passed / 3 warnings   (baseline + 11 hardening negative tests)
+
+Full command:
+  /Users/dipdip/code/jnr/junior-backend/.venv/bin/pytest \
+    --rootdir=/Users/dipdip/code/jnr/junior-backend \
+    /Users/dipdip/code/jnr/junior-backend/tests --tb=no -q
+
+Final tail:
+  ============================== warnings summary ==============================
+  ...
+  272 passed, 3 warnings in 40.86s
+
+## desktop-2 (vitest + tsc)
+tsc --noEmit: clean (0 errors)
+
+vitest run: 39 passed / 5 test files
+  BEFORE baseline: 26 passed / 3 test files
+  + Phase 4 safe-inline.test.tsx:      9 assertions (script + onerror
+    + arbitrary-class rejection · nested strong · empty input)
+  + Phase 5 gmailComposeBridge.test.ts:  4 assertions (allowlist accept
+    · arbitrary reject · whitespace tolerance · driver-entrypoint
+    prefix routing)
+
+Full command:
+  cd /Users/dipdip/code/jnr/desktop-2 && npx vitest run
+
+Final tail:
+   Test Files  5 passed (5)
+        Tests  39 passed (39)
+
+## desktop-2 (cargo test)
+cargo test --manifest-path=/Users/dipdip/code/jnr/desktop-2/src-tauri/Cargo.toml
+
+Final tail:
+  test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+    finished in 0.01s
+     Running unittests src/main.rs
+  running 0 tests
+  test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+     Doc-tests liquid_clips_shell_lib
+  running 0 tests
+  test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+
+## account-app tsc: clean (0 errors)
+Full command: cd /Users/dipdip/code/jnr/account-app && npx tsc --noEmit
+Output: (empty · no errors)
+
+## marketing tsc: clean (0 errors)
+Full command: cd /Users/dipdip/code/jnr/liquidclips-marketing && npx tsc --noEmit
+Output: (empty · no errors)
+
+## Regression summary
+Baseline (pre-hardening):
+  * junior-backend pytest: 261 passed
+  * desktop-2 vitest: 26 passed / 3 files
+  * desktop-2 cargo test: 1 passed
+  * desktop-2 tsc: clean
+  * account-app tsc: clean
+  * marketing tsc: clean
+
+Post-hardening:
+  * junior-backend pytest: 272 passed (+11 hardening negatives)
+  * desktop-2 vitest: 39 passed / 5 files (+9 safe-inline, +4 bridge)
+  * desktop-2 cargo test: 5 passed (+4 browse allowlist)
+  * desktop-2 tsc: clean
+  * account-app tsc: clean
+  * marketing tsc: clean
+
+Zero regression. Every added test corresponds to a hardening assertion.
