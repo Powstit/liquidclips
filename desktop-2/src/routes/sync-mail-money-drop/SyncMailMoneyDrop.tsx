@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DemoOverlay } from '../../components/demo-overlay';
 import { F5Scanner, type ScanState } from '../../lib/f5/scanner';
 import { loadClientIdFromEnv, type OAuthDriver } from '../../lib/f5/googleOAuth';
 import type { RosterRow } from '../../lib/f5/rosterBuilder';
@@ -506,6 +507,22 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
           </div>
         </div>
       </div>
+
+      {/* Port #8b · contextual demo overlay · shows on `hook` (default)
+          alongside the existing founder-hook coach video. Two videos
+          coexist (founder-hook in the coach bubble on the left,
+          demo overlay in the fixed bottom-right corner) · both
+          click-to-unmute independently. localStorage:
+          demo-shown-sync-mail. */}
+      {state === 'hook' && (
+        <DemoOverlay
+          mp4Src="/demos/03-money-moment.mp4"
+          kadePosterSrc="/brand/kade/kade-earn-mode.webp"
+          title="The full money moment"
+          storageKey="demo-shown-sync-mail"
+          hint={<><strong>60 sec</strong> · tap to unmute</>}
+        />
+      )}
     </div>
   );
 }
