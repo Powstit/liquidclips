@@ -1111,6 +1111,80 @@ class RewardBonusLedger(Base):
     )
 
 
+class WalletLedger(Base):
+    """G2 · Layer 6 · wallet reconciliation ledger.
+
+    Append-only journal of every credit, debit, and payout that touches a
+    user's wallet balance. Sits alongside :class:`RewardBonusLedger`
+    (which is Whop-side-of-truth for sponsored-campaign bonus payouts)
+    and complements it:
+
+      * ``credit`` — money owed to the user (e.g. 50% MRR from a Whop
+        affiliate payment via the ``payment.affiliate`` webhook)
+      * ``debit`` — money reversed / clawed back (chargebacks, refunds)
+      * ``payout`` — money we've actually sent to the user via Whop's
+        native payout API (recorded here so ``compute_balance`` +
+        ``compute_pending`` can subtract them)
+
+    Idempotency: a composite index on ``(whop_membership_id,
+    period_start, type)`` ensures a Whop webhook that fires twice for
+    the same (membership, billing period) never double-credits. The
+    ``source`` column carries a human-readable string so the wallet UI
+    can render "50% share of MRR from ``@friend``" without a JOIN
+    lookup.
+    """
+
+    __tablename__ = "wallet_ledger"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "whop_membership_id",
+            "period_start",
+            "type",
+            name="uq_wallet_ledger_dedupe",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # 'credit' | 'debit' | 'payout'. Kept as free-form string so a new
+    # verb (e.g. 'reserve') can be added without a migration.
+    type: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # ISO-4217 code. Whop bills in USD today; kept as a column so a
+    # multi-currency payout rail can land without another migration.
+    currency: Mapped[str] = mapped_column(String, nullable=False, default="USD")
+    # Short human-readable string ("whop_affiliate_mrr_50pct" ·
+    # "whop_payout" · "chargeback"). Reads straight into the wallet UI's
+    # recent-ledger row.
+    source: Mapped[str] = mapped_column(String, nullable=False, default="")
+
+    # Idempotency + reporting keys. Both nullable because manual admin
+    # adjustments (e.g. a goodwill credit) don't carry a Whop
+    # membership id or a billing period.
+    whop_membership_id: Mapped[str | None] = mapped_column(
+        String, nullable=True, index=True
+    )
+    period_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
+    # Payout-only bookkeeping. `next_scheduled_at` marks a credit as due
+    # for payout on the next scheduler run; the scheduler flips it to
+    # NULL after emitting the payout row. `whop_payout_id` is the id
+    # returned by the Whop payout API for auditability.
+    next_scheduled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    whop_payout_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+
+
 # ─── v2 · Asset Infrastructure · DORMANT FOR V1 ─────────────────────────
 #
 # Reserved for the future Drive/Dropbox/ingestion model.

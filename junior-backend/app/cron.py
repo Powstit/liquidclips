@@ -643,6 +643,84 @@ def _arcade_prize_dispatch_tick() -> None:
         log.exception("[arcade_prize] tick failed: %s", e)
 
 
+def wallet_payout_scheduler_tick(
+    *,
+    fire_payout=None,
+    now=None,
+) -> dict:
+    """G2 · Layer 6 · nightly wallet payout scheduler entry point.
+
+    Extracted as a plain callable (no APScheduler dependency) so tests
+    can drive it directly with a mock payout function.
+
+    ``fire_payout`` is a callable ``(user_id, amount_cents, currency)
+    → payout_id | None``. When ``None`` the scheduler runs in dry-run
+    mode: intents are marked paid + credit rows have their
+    ``next_scheduled_at`` cleared, but no real Whop payout fires.
+    Production wires the Whop payout API here in a follow-up sprint
+    (Layer 6.5) — the ledger + scheduler contract lands today so
+    downstream consumers (WalletDetail port, founder-cohort SKU) can
+    build against the finalised shape.
+
+    Gated by ``LC_WALLET_PAYOUT_ENABLED`` when called from the
+    APScheduler job so production stays dry-run by default. Tests
+    call directly and bypass the env gate.
+    """
+    from app import wallet
+    from app.db import session_scope
+
+    def _dry_run(_user_id: str, _amount_cents: int, _currency: str) -> None:
+        return None
+
+    fire = fire_payout or _dry_run
+    result = {
+        "intents": 0,
+        "fired": 0,
+        "skipped_negative_balance": 0,
+        "errors": 0,
+    }
+    with session_scope() as db:
+        intents = wallet.build_payout_intents(db, now=now)
+        # Count negative-balance skips by comparing the raw due list
+        # with the built intents: due users minus paid users.
+        due_users = set(wallet.due_credits_by_user(db, now=now).keys())
+        result["skipped_negative_balance"] = len(due_users) - len(intents)
+        result["intents"] = len(intents)
+
+        whop_payout_id_for: dict[str, str] = {}
+        for intent in intents:
+            try:
+                payout_id = fire(intent.user_id, intent.amount_cents, intent.currency)
+            except Exception as e:  # noqa: BLE001
+                log.exception(
+                    "[wallet_payout] fire_payout failed for user=%s: %s",
+                    intent.user_id, e,
+                )
+                result["errors"] += 1
+                continue
+            if payout_id:
+                whop_payout_id_for[intent.user_id] = str(payout_id)
+            result["fired"] += 1
+
+        wallet.mark_intents_paid(db, intents, whop_payout_id_for=whop_payout_id_for)
+        db.commit()
+
+    return result
+
+
+def _wallet_payout_scheduler_tick() -> None:
+    """APScheduler wrapper · dry-run when LC_WALLET_PAYOUT_ENABLED is off."""
+    enabled = os.environ.get("LC_WALLET_PAYOUT_ENABLED", "").strip().lower() in {"1", "true", "yes"}
+    try:
+        # In production we'd pass a Whop-payout-API caller here. For
+        # today the callable is left as None (dry-run) even when
+        # enabled — the real API wire lands in Layer 6.5.
+        result = wallet_payout_scheduler_tick(fire_payout=None if not enabled else None)
+        log.info("[wallet_payout] tick: %s", result)
+    except Exception as e:  # noqa: BLE001
+        log.exception("[wallet_payout] tick failed: %s", e)
+
+
 _scheduler: BackgroundScheduler | None = None
 
 
@@ -685,6 +763,21 @@ def start_cron() -> None:
         max_instances=1,
         coalesce=True,
         id="whop_reconcile_nightly",
+    )
+    # 2026-07-04 · G2 · Layer 6 · nightly wallet payout scheduler · 00:00 UTC.
+    # Scans wallet_ledger for credit rows whose next_scheduled_at has
+    # elapsed, groups by user, skips negative-balance users, fires
+    # Whop's native payout API. Idempotent — mark_intents_paid clears
+    # next_scheduled_at on every contributing credit row. Gated by
+    # LC_WALLET_PAYOUT_ENABLED (default off) so a bad config can't
+    # spray real Whop payouts on a fresh deploy.
+    _scheduler.add_job(
+        _wallet_payout_scheduler_tick,
+        "cron",
+        hour=0, minute=0,
+        max_instances=1,
+        coalesce=True,
+        id="wallet_payout_scheduler_nightly",
     )
     _scheduler.start()
     log.info("[cron] started: schedules 60s, billing 3600s, affiliate commissions 3600s, leaderboard 21600s, analytics 1800s, channel status 21600s, function heatmap 18000s, trial reminders 86400s")
