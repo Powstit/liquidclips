@@ -20,6 +20,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useActivation, activateWithToken, beginActivation } from '../../lib/activation';
+import { DemoOverlay } from '../../components/demo-overlay';
 import './LoginActivation.css';
 
 export type UiState =
@@ -326,6 +327,19 @@ export function LoginActivation(props: LoginActivationProps) {
           />
         </div>
       </div>
+
+      {/* Port #8b · contextual demo overlay · shows on `idle` for a
+          session with no prior activation. Once user dismisses,
+          collapses to a "?" pill (localStorage: demo-shown-login). */}
+      {uiState === 'idle' && snapshot.status === 'idle' && (
+        <DemoOverlay
+          mp4Src="/demos/02-login-activation.mp4"
+          kadePosterSrc="/brand/kade/kade-reading-brief.webp"
+          title="First-launch walkthrough"
+          storageKey="demo-shown-login"
+          hint={<><strong>60 sec</strong> · tap to unmute · ✕ to dismiss</>}
+        />
+      )}
     </div>
   );
 }
