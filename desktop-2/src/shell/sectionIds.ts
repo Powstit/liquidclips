@@ -35,6 +35,8 @@ export const SECTION_IDS = {
   SECTION_ACCOUNT: "SECTION_ACCOUNT",
   SECTION_DIAGNOSTICS: "SECTION_DIAGNOSTICS",
   SECTION_HQ_BRIDGE: "SECTION_HQ_BRIDGE",
+  // Port #8a · Section B · demo-video-placement grid view.
+  SECTION_LEARN: "SECTION_LEARN",
 
   // DEPRECATED · see comment above. Kept for legacy hidden chrome only.
   SECTION_CREATE: "SECTION_CREATE",
