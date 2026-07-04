@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DemoOverlay } from '../../components/demo-overlay';
+import { renderInline } from '../../components/safe-inline';
 import { F5Scanner, type ScanState } from '../../lib/f5/scanner';
 import { loadClientIdFromEnv, type OAuthDriver } from '../../lib/f5/googleOAuth';
 import type { RosterRow } from '../../lib/f5/rosterBuilder';
@@ -269,8 +270,8 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                     <span className="smmd-strike">$500/mo</span> · you paid {PACKAGE_PRICE_LABEL}
                   </span>
                 </div>
-                <h1 className="smmd-hook-h1" dangerouslySetInnerHTML={{ __html: cfg.h1 }} />
-                <p className="smmd-hook-sub" dangerouslySetInnerHTML={{ __html: cfg.sub }} />
+                <h1 className="smmd-hook-h1">{renderInline(cfg.h1)}</h1>
+                <p className="smmd-hook-sub">{renderInline(cfg.sub)}</p>
 
                 {(state === 'hook' || state === 'connecting-gmail') && (
                   <>
@@ -408,7 +409,7 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
                   </div>
                   <div>
                     <div className="smmd-coach-eyebrow">Daniel · founder · {muted ? 'playing muted' : 'playing'}</div>
-                    <div className="smmd-coach-script" dangerouslySetInnerHTML={{ __html: cfg.coachScript }} />
+                    <div className="smmd-coach-script">{renderInline(cfg.coachScript)}</div>
                     <button
                       type="button"
                       className="smmd-coach-audio-badge"
@@ -449,7 +450,7 @@ export function SyncMailMoneyDrop(props: SyncMailMoneyDropProps) {
               <div className="smmd-app-main-header">
                 <div>
                   <div className="smmd-app-eyebrow">Welcome back</div>
-                  <h1 className="smmd-app-h1" dangerouslySetInnerHTML={{ __html: cfg.appH1 ?? '' }} />
+                  <h1 className="smmd-app-h1">{renderInline(cfg.appH1 ?? '')}</h1>
                 </div>
                 <div className="smmd-app-wallet-chip">
                   <div className="smmd-app-wallet-chip-label">Whop wallet</div>
@@ -583,15 +584,17 @@ const TICKER_LIVE: Array<{ handle: string; amount: string; avatar: string }> = [
   { handle: '@jayxvibes',       amount: `$${(PRICE_PER_REFERRAL * 11).toLocaleString()}/mo`, avatar: '/brand/kade/kade-publishing.webp' },
 ];
 
+// P0-002 fix (2026-07-04): anonymized fictional handles · never real creator emails
+// Real names implied endorsement ($50/mo paid) — defamation risk. Fictional only.
 const DEMO_ROSTER: Array<{ email: string; displayName: string; sourceLabel: string }> = [
-  { email: 'marques@mkbhd.com',        displayName: 'Marques Brownlee', sourceLabel: 'YouTube · 19.8M subs' },
-  { email: 'casey@caseyneistat.com',   displayName: 'Casey Neistat',    sourceLabel: 'YouTube · 12.4M subs' },
-  { email: 'emma@emmachamberlain.com', displayName: 'Emma Chamberlain', sourceLabel: 'YouTube · 12M subs' },
-  { email: 'hi@colinandsamir.com',     displayName: 'Colin & Samir',    sourceLabel: 'YouTube · 1.4M subs' },
-  { email: 'ross@airrack.tv',          displayName: 'Airrack',          sourceLabel: 'YouTube · 18.2M subs' },
-  { email: 'cleo@cleoabram.com',       displayName: 'Cleo Abram',       sourceLabel: 'YouTube · 3.1M subs' },
-  { email: 'ali@aliabdaal.com',        displayName: 'Ali Abdaal',       sourceLabel: 'YouTube · 6.2M subs' },
-  { email: 'hi@simonegiertz.com',      displayName: 'Simone Giertz',    sourceLabel: 'YouTube · 3M subs' },
+  { email: 'marcus@clipperlab.demo',   displayName: '@clipper_marcus',  sourceLabel: 'YouTube · demo channel' },
+  { email: 'sam@dailycuts.demo',       displayName: '@daily_sam',       sourceLabel: 'YouTube · demo channel' },
+  { email: 'emma@editrhythm.demo',     displayName: '@emma_edits',      sourceLabel: 'YouTube · demo channel' },
+  { email: 'colin@coreclips.demo',     displayName: '@colin_clips',     sourceLabel: 'YouTube · demo channel' },
+  { email: 'ross@rushcuts.demo',       displayName: '@ross_rush',       sourceLabel: 'YouTube · demo channel' },
+  { email: 'lea@lenscrafted.demo',     displayName: '@lea_lens',        sourceLabel: 'YouTube · demo channel' },
+  { email: 'ali@aftercuts.demo',       displayName: '@ali_after',       sourceLabel: 'YouTube · demo channel' },
+  { email: 'sim@sparkedits.demo',      displayName: '@sim_spark',       sourceLabel: 'YouTube · demo channel' },
 ];
 
 const DEMO_CLIPS: Array<{ tag: string; caption: string }> = [

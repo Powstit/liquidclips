@@ -19,6 +19,7 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
+import { renderInline } from '../../components/safe-inline';
 import './InAppBrowser.css';
 
 export type BrowserState =
@@ -236,7 +237,7 @@ export function InAppBrowser(props: InAppBrowserProps) {
                 {GMAIL_ROWS.map((r, i) => (
                   <div key={i} className={`iab-gm-row ${r.unread ? 'is-unread' : ''}`}>
                     <div className="iab-gm-sender">{r.sender}</div>
-                    <div className="iab-gm-subject" dangerouslySetInnerHTML={{ __html: r.subject }} />
+                    <div className="iab-gm-subject">{renderInline(r.subject)}</div>
                     <div className="iab-gm-date">{r.date}</div>
                   </div>
                 ))}

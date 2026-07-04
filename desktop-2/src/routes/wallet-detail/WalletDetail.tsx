@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DemoOverlay } from '../../components/demo-overlay';
+import { renderInline } from '../../components/safe-inline';
 import './WalletDetail.css';
 
 export type WalletState =
@@ -58,7 +59,7 @@ interface DropRow {
 const CLIPPERS: ClipperRow[] = [
   {
     id: 'marques',
-    name: 'Marques Brownlee',
+    name: 'Marcus B.',
     initials: 'MB',
     joinedMeta: 'joined 47d ago',
     hoverHandle: 'joined May 19 · 47 days ago',
@@ -77,7 +78,7 @@ const CLIPPERS: ClipperRow[] = [
   },
   {
     id: 'casey',
-    name: 'Casey Neistat',
+    name: 'Chris N.',
     initials: 'CN',
     joinedMeta: 'joined 44d ago',
     hoverHandle: 'joined May 22 · 44 days ago',
@@ -96,7 +97,7 @@ const CLIPPERS: ClipperRow[] = [
   },
   {
     id: 'emma',
-    name: 'Emma Chamberlain',
+    name: 'Ella C.',
     initials: 'EC',
     joinedMeta: 'joined 44d ago',
     hoverHandle: 'joined May 22 · 44 days ago',
@@ -115,7 +116,7 @@ const CLIPPERS: ClipperRow[] = [
   },
   {
     id: 'airrack',
-    name: 'Airrack',
+    name: 'Alex R.',
     initials: 'AR',
     joinedMeta: 'joined 32d ago',
     hoverHandle: 'joined June 3 · 32 days ago',
@@ -134,7 +135,7 @@ const CLIPPERS: ClipperRow[] = [
   },
   {
     id: 'ali',
-    name: 'Ali Abdaal',
+    name: 'Amy A.',
     initials: 'AA',
     joinedMeta: 'joined 8d ago',
     hoverHandle: 'joined June 27 · 8 days ago',
@@ -153,7 +154,7 @@ const CLIPPERS: ClipperRow[] = [
   },
   {
     id: 'johnny',
-    name: 'Johnny Harris',
+    name: 'Jax H.',
     initials: 'JH',
     joinedMeta: 'cancelled 12d ago',
     hoverHandle: 'joined May 30 · cancelled Jun 22',
@@ -170,10 +171,10 @@ const CLIPPERS: ClipperRow[] = [
     hoverFooter: 'Balance already dropped <b>stays yours</b>',
     kadePose: 'idle',
   },
-  { id: 'cleo',   name: 'Cleo Abram',    initials: 'CA', joinedMeta: 'joined 12d ago', hoverHandle: 'joined June 23 · 12 days ago', status: 'paid', statusLabel: 'Paid', mrr: '$50/mo', tileSlug: 'paid-row-2', hoverStatusLabel: 'Paid this month', hoverStats: [{ label: 'Your MRR', value: '$50/mo', money: true }, { label: 'Lifetime paid', value: '$50', money: true }, { label: 'Next drop', value: 'Aug 23' }], hoverFooter: 'Reactivates <b>automatically</b> next billing', kadePose: 'success' },
-  { id: 'colin',  name: 'Colin & Samir', initials: 'CS', joinedMeta: 'joined 41d ago', hoverHandle: 'joined May 25 · 41 days ago', status: 'paid', statusLabel: 'Paid', mrr: '$50/mo', tileSlug: 'paid-row-3', hoverStatusLabel: 'Paid this month', hoverStats: [{ label: 'Your MRR', value: '$50/mo', money: true }, { label: 'Lifetime paid', value: '$100', money: true }, { label: 'Next drop', value: 'Aug 25' }], hoverFooter: 'Reactivates <b>automatically</b> next billing', kadePose: 'success' },
-  { id: 'simone', name: 'Simone Giertz', initials: 'SG', joinedMeta: 'joined 6d ago',  hoverHandle: 'joined June 29 · 6 days ago',  status: 'paid', statusLabel: 'Paid', mrr: '$50/mo', tileSlug: 'paid-row-4', hoverStatusLabel: 'Paid this month', hoverStats: [{ label: 'Your MRR', value: '$50/mo', money: true }, { label: 'Lifetime paid', value: '$50',  money: true }, { label: 'Next drop', value: 'Aug 29' }], hoverFooter: 'Reactivates <b>automatically</b> next billing', kadePose: 'success' },
-  { id: 'marina', name: 'Marina Mogilko', initials: 'MK', joinedMeta: 'joined 2d ago',  hoverHandle: 'joined July 2 · 2 days ago',   status: 'paid', statusLabel: 'Paid', mrr: '$50/mo', tileSlug: 'paid-row-5', hoverStatusLabel: 'Paid this month', hoverStats: [{ label: 'Your MRR', value: '$50/mo', money: true }, { label: 'Lifetime paid', value: '$50',  money: true }, { label: 'Next drop', value: 'Sep 2' }],  hoverFooter: 'Reactivates <b>automatically</b> next billing', kadePose: 'success' },
+  { id: 'cleo',   name: 'Clara A.',    initials: 'CA', joinedMeta: 'joined 12d ago', hoverHandle: 'joined June 23 · 12 days ago', status: 'paid', statusLabel: 'Paid', mrr: '$50/mo', tileSlug: 'paid-row-2', hoverStatusLabel: 'Paid this month', hoverStats: [{ label: 'Your MRR', value: '$50/mo', money: true }, { label: 'Lifetime paid', value: '$50', money: true }, { label: 'Next drop', value: 'Aug 23' }], hoverFooter: 'Reactivates <b>automatically</b> next billing', kadePose: 'success' },
+  { id: 'colin',  name: 'Cole & Sam', initials: 'CS', joinedMeta: 'joined 41d ago', hoverHandle: 'joined May 25 · 41 days ago', status: 'paid', statusLabel: 'Paid', mrr: '$50/mo', tileSlug: 'paid-row-3', hoverStatusLabel: 'Paid this month', hoverStats: [{ label: 'Your MRR', value: '$50/mo', money: true }, { label: 'Lifetime paid', value: '$100', money: true }, { label: 'Next drop', value: 'Aug 25' }], hoverFooter: 'Reactivates <b>automatically</b> next billing', kadePose: 'success' },
+  { id: 'simone', name: 'Sasha G.', initials: 'SG', joinedMeta: 'joined 6d ago',  hoverHandle: 'joined June 29 · 6 days ago',  status: 'paid', statusLabel: 'Paid', mrr: '$50/mo', tileSlug: 'paid-row-4', hoverStatusLabel: 'Paid this month', hoverStats: [{ label: 'Your MRR', value: '$50/mo', money: true }, { label: 'Lifetime paid', value: '$50',  money: true }, { label: 'Next drop', value: 'Aug 29' }], hoverFooter: 'Reactivates <b>automatically</b> next billing', kadePose: 'success' },
+  { id: 'marina', name: 'Maya K.', initials: 'MK', joinedMeta: 'joined 2d ago',  hoverHandle: 'joined July 2 · 2 days ago',   status: 'paid', statusLabel: 'Paid', mrr: '$50/mo', tileSlug: 'paid-row-5', hoverStatusLabel: 'Paid this month', hoverStats: [{ label: 'Your MRR', value: '$50/mo', money: true }, { label: 'Lifetime paid', value: '$50',  money: true }, { label: 'Next drop', value: 'Sep 2' }],  hoverFooter: 'Reactivates <b>automatically</b> next billing', kadePose: 'success' },
 ];
 
 const DROPS: DropRow[] = [
@@ -451,7 +452,7 @@ export function WalletDetail(props: WalletDetailProps) {
               </div>
             ))}
           </div>
-          <div className="wd-hover-footer" dangerouslySetInnerHTML={{ __html: activeHoverRow.hoverFooter }} />
+          <div className="wd-hover-footer">{renderInline(activeHoverRow.hoverFooter)}</div>
         </div>
       )}
 
