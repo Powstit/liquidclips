@@ -1,14 +1,15 @@
-# Port · Contextual overlays #8b · source snapshot
+# Port · Contextual overlays #8b · source snapshot (v2 · #1 unblocked)
 
 ## Shared component
 DemoOverlay.css
 DemoOverlay.tsx
 index.ts
 
-## Wire-in verification (3 of 4 · #1 blocked)
+## Wire-in verification (4 of 4 · #1 landed in CreateClips per Daniel option b)
 
-#1 BuildHero.tsx: BLOCKED · route does not exist in the tree
-  (see scope-notes.md for the BLOCKED clarification ask)
+#1 CreateClips.tsx (canonical Build tab hero):
+30:import { DemoOverlay } from "../../components/demo-overlay";
+135:        <DemoOverlay
 
 #2 LoginActivation wire-in:
 23:import { DemoOverlay } from '../../components/demo-overlay';
@@ -22,10 +23,12 @@ index.ts
 15:import { DemoOverlay } from '../../components/demo-overlay';
 463:        <DemoOverlay
 
+## Iron gates preserved
+CreateClips.tsx IRON GATE sentinels: 0 (0 expected)
+IG-005 workspace UI touched: NO · additive-only insert
+
 ## localStorage keys per route
-          collapses to a "?" pill (localStorage: demo-shown-login). */}
-          demo-shown-sync-mail. */}
-          demo-shown-wallet. */}
+          storageKey="demo-shown-build"
           storageKey="demo-shown-login"
           storageKey="demo-shown-sync-mail"
           storageKey="demo-shown-wallet"
@@ -36,11 +39,11 @@ index.ts
   03-money-moment.mp4: present
   04-wallet-payouts.mp4: present
 
-## §13g Kade posters used
-/Users/dipdip/code/jnr/desktop-2/src/routes/login-activation/LoginActivation.tsx:/brand/kade/kade-reading-brief.webp
-/Users/dipdip/code/jnr/desktop-2/src/routes/sync-mail-money-drop/SyncMailMoneyDrop.tsx:/brand/kade/kade-earn-mode.webp
-/Users/dipdip/code/jnr/desktop-2/src/routes/sync-mail-money-drop/SyncMailMoneyDrop.tsx:/brand/kade/kade-success.webp
-/Users/dipdip/code/jnr/desktop-2/src/routes/wallet-detail/WalletDetail.tsx:/brand/kade/kade-success.webp
+## §13g Kade posters used (all 4 from approved 24)
+  kade-cutting-clips  · CreateClips (Build)
+  kade-reading-brief  · LoginActivation
+  kade-earn-mode      · SyncMailMoneyDrop
+  kade-success        · WalletDetail
 
 ## claude-2 poster-fallback fixes
 poster pointer-events: none · z-index 0: 1 line(s)

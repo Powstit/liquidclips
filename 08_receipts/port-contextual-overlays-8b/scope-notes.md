@@ -1,9 +1,10 @@
-# Scope notes · Port · Contextual overlays #8b
+# Scope notes · Port · Contextual overlays #8b (v2 · #1 unblocked)
 
-## Section B port #8b · shared DemoOverlay + 3 of 4 wire-ins
+## Section B port #8b · shared DemoOverlay + 4 of 4 wire-ins
 
-Partial delivery: 3 of 4 target routes wired. #1 BuildHero is
-BLOCKED pending route location clarification.
+Full delivery. Original blocker on #1 (BuildHero) resolved per
+Daniel's 2026-07-04 unblock option (b): inserted into
+`src/design-os/routes/CreateClips.tsx` (canonical Build tab hero).
 
 ## Shared component (landed)
 
@@ -28,7 +29,23 @@ Behaviour (matches Daniel's spec + Learn tab claude-2 fixes):
   first `playing` event.
 - 360×220 fixed bottom-right by default · slide-in animation
 
-## Wire-ins landed (3 of 4)
+## Wire-ins landed (4 of 4)
+
+### #1 · CreateClips (Build tab hero · canonical) — UNBLOCKED
+
+- File: `desktop-2/src/design-os/routes/CreateClips.tsx`
+- Trigger: `session.phase === "idle"` — no active run + no
+  persisted session (useEngineSessionPersistence has already
+  reconciled at mount, so idle means truly resumable-empty)
+- MP4: `/demos/01-clipping.mp4` (511 KB, on disk)
+- Poster: `kade-cutting-clips` (§13g approved)
+- Title: "How clipping works"
+- localStorage: `demo-shown-build`
+- **Iron gate scan:** `grep IRON GATE` on CreateClips.tsx
+  returned **0** hits — no sentinels block the insert.
+- **IG-005 workspace UI:** preserved · overlay is additive only,
+  sits fixed bottom-right, does not touch UploadPortal /
+  EngineActions / SimPage layout.
 
 ### #2 · LoginActivation (route)
 - Trigger: `uiState === 'idle' && snapshot.status === 'idle'`
@@ -58,33 +75,12 @@ Behaviour (matches Daniel's spec + Learn tab claude-2 fixes):
 - Title: "Wallet & payouts tour"
 - localStorage: `demo-shown-wallet`
 
-## #1 BuildHero · BLOCKED
+## #1 BuildHero · UNBLOCKED 2026-07-04 (option b)
 
-**Status:** cannot ship. The referenced route file
-`desktop-2/src/routes/build/BuildHero.tsx` does not exist in
-the codebase. `find` returns no matches. The closest existing
-build/create surface is
-`desktop-2/src/design-os/routes/CreateClips.tsx` and
-`desktop-2/src/design-os/routes/ClippingEngine.tsx`.
-
-**What I need from Daniel to unblock:**
-
-- **(a)** Point me at the actual route file that should host the
-  01-clipping.mp4 overlay if I missed it (search for BuildHero
-  returned zero hits), OR
-- **(b)** Authorize inserting the overlay into
-  `desktop-2/src/design-os/routes/CreateClips.tsx` (the closest
-  existing build/create surface), OR
-- **(c)** Authorize creating a new minimal `BuildHero.tsx`
-  wrapper route that hosts the overlay only, OR
-- **(d)** De-scope #1 · defer until Section B Port #9 or a
-  build-tab-specific port lands.
-
-Recommendation: (b) if `CreateClips.tsx` is Daniel's canonical
-build-tab surface. Cleanest wire-in, no new route needed.
-
-The other 3 wire-ins are functional and independent of this
-decision.
+Daniel confirmed `CreateClips.tsx` IS the canonical Build tab
+hero (LearnTab.tsx:33 → `where: 'Build tab · hero'` maps here).
+`ClippingEngine.tsx` is the processing engine, not the entry
+point. Wire-in landed in CreateClips.tsx per option (b).
 
 ## Brand-kit §13 compliance
 
@@ -95,9 +91,8 @@ decision.
 - **§13e App-native viewport** — 360×220 fixed positioning fits
   bottom-right of the 1040×680 min viewport with 24px margin ·
   doesn't push route content · no horizontal scroll induced.
-- **§13g Kade posters** — 3 of 4 used (reading-brief, earn-mode,
-  success). All from approved 24. `cutting-clips` reserved for
-  the BuildHero wire-in when it unblocks.
+- **§13g Kade posters** — all 4 used (cutting-clips,
+  reading-brief, earn-mode, success). All from approved 24.
 
 ## Iron gates
 
@@ -121,10 +116,8 @@ decision.
 
 ## Status
 
-3 of 4 wire-ins delivered · #1 BuildHero remains BLOCKED
-pending Daniel's clarification.
+4 of 4 wire-ins delivered. #8b fully closed.
 
-Section B queue after this halt + unblock:
-- Port #8b · #1 BuildHero wire-in (once unblocked)
+Section B queue remaining:
 - Port #8c · contextual overlays 5-7 (cancellation-intercept,
   BrowseOverlay, campaign-builder)
