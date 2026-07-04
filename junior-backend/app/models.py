@@ -638,6 +638,34 @@ class WebhookEventLog(Base):
     handled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class WebhookDeadLetter(Base):
+    """Dead-letter row for a webhook that raised after signature verification.
+
+    Layer 1 · reliability sprint · 2026-07-04. When a Whop webhook handler
+    raises (transient DB failure, upstream 5xx from Clerk metadata sync, mailer
+    outage), we still let the outer handler re-raise so Whop retries — but we
+    also record the failed attempt here so an operator (or the retry helper)
+    can replay it manually without waiting on Whop's retry cadence.
+
+    Stores the raw payload as JSON so the retry can re-invoke the same handler
+    branch with the same shape. Deliberately does NOT dedupe on external_id at
+    this table's level — WebhookEvent's UNIQUE index handles idempotency; a
+    dead-letter row is a diagnostic + replay artefact only.
+    """
+
+    __tablename__ = "webhook_dead_letters"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    event_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    error: Mapped[str] = mapped_column(String, nullable=False)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    last_attempted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class CampaignSubmission(Base):
     """A clipper's submission to a sponsored Liquid Clips campaign
     (sprint #14c — Minecraft Story Clip Challenge being the first).
