@@ -37,6 +37,11 @@ export const SECTION_IDS = {
   SECTION_HQ_BRIDGE: "SECTION_HQ_BRIDGE",
   // Port #8a · Section B · demo-video-placement grid view.
   SECTION_LEARN: "SECTION_LEARN",
+  // Phase 8 · Mount #2 · warm-peer money-moment flow. Renders the
+  // ported SyncMailMoneyDrop as its own top-level route. Not
+  // navVisible today — surfaced via Home CTA when Daniel confirms
+  // the CTA copy. Reachable via `#/outreach` hash immediately.
+  SECTION_OUTREACH: "SECTION_OUTREACH",
 
   // DEPRECATED · see comment above. Kept for legacy hidden chrome only.
   SECTION_CREATE: "SECTION_CREATE",
