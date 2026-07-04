@@ -17,7 +17,8 @@ pending-store fallback rather than a live lookup.
 
 Contract:
   POST /onboarding/link-whop
-    body:     { "clerk_user_id": str, "email": str }
+    header:   Authorization: Bearer <license JWT>   (identifies the user)
+    body:     { "email": str }                       (Whop purchase email)
     response: { "linked": bool, "tier": str }
 
   linked=true  → a pending entitlement was found and applied; `tier` is the
@@ -39,6 +40,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import engine, get_db
+from app.deps import current_user
 from app.models import PendingWhopMembership, User, WhopClaimToken
 from app.routes.notifications import write_notification
 from app.routes.webhooks_whop import apply_membership_tier
@@ -84,7 +86,10 @@ router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 
 
 class LinkWhopRequest(BaseModel):
-    clerk_user_id: str
+    # Only the purchase email is client-supplied; the identity comes from
+    # the license JWT so an attacker who knows a victim's clerk_id + email
+    # can't claim their orphaned PendingWhopMembership. (Pre-2026-07-04
+    # this endpoint accepted `clerk_user_id` in the body.)
     email: str
 
 
@@ -96,12 +101,13 @@ class LinkWhopResponse(BaseModel):
 @router.post("/link-whop", response_model=LinkWhopResponse)
 def link_whop(
     body: LinkWhopRequest,
+    user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> LinkWhopResponse:
-    user = db.query(User).filter_by(clerk_id=body.clerk_user_id).one_or_none()
-    if not user:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found — sign up first")
-
+    # Identity is derived from the license JWT (`current_user`). Previously
+    # this took `clerk_user_id` from the request body — a caller could
+    # impersonate anyone by knowing their clerk id + purchase email and
+    # steal their pending Whop entitlement. See link_whop docstring above.
     email = (body.email or user.email or "").strip().lower()
 
     pending = (
