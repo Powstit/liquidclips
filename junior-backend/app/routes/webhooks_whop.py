@@ -676,6 +676,58 @@ def _handle_membership_valid(db: Session, data: dict) -> None:
     _add_breadcrumb(category="webhook.whop.membership_valid", message="enter")
     user = _find_user_for_event(db, data)
     tier, founder = _require_known_tier(data)
+
+    # Task F · Founder Access seat-cap gate. When the incoming plan is
+    # a Founder plan AND the 12,000-seat cap is reached, refuse the
+    # tier grant + stashed pending row · we return early after a
+    # warning breadcrumb. Whop-side `seat_cap=12000` on
+    # plan_VWj1uoy2RcOsg is the parallel enforcement rail; this local
+    # gate lets us stay honest even if the Whop metadata drifts.
+    plan_block = data.get("plan") or {}
+    plan_id = (plan_block.get("id") or "").strip()
+    whop_membership_id = (
+        data.get("membership_id")
+        or data.get("id")
+        or (data.get("membership") or {}).get("id")
+        or ""
+    ).strip()
+    if plan_id in FOUNDER_PLAN_IDS:
+        from app.routes.founder import try_grant_founder_seat
+
+        if not whop_membership_id:
+            # Rare but real · Whop sent a Founder membership webhook
+            # without an id. Refuse rather than double-grant on retry.
+            _add_breadcrumb(
+                category="webhook.whop.membership_valid",
+                message="exit_founder_no_membership_id",
+                data={"plan_id": plan_id},
+            )
+            return
+        ok, reason = try_grant_founder_seat(
+            db,
+            whop_membership_id=whop_membership_id,
+            plan_id=plan_id,
+            user_id=(user.id if user is not None else None),
+            whop_user_id=(data.get("user") or {}).get("id"),
+        )
+        if not ok:
+            # TODO(cohort-0-founder-void) · fire the Whop payment-void
+            # API here so the buyer isn't charged when we refuse the
+            # tier. For Cohort 0 no real Founder payments have hit yet
+            # so the parallel Whop-side seat_cap metadata is enough.
+            _add_breadcrumb(
+                category="webhook.whop.membership_valid",
+                message="exit_cohort_full",
+                data={
+                    "plan_id": plan_id,
+                    "membership_id": whop_membership_id,
+                    "reason": reason,
+                },
+            )
+            return
+        # `granted` or `idempotent` both fall through to the normal
+        # tier-application path below.
+
     if not user:
         # No Clerk user yet — the buyer paid on Whop before signing up on the
         # website (common for affiliate-referred sales). Park the entitlement

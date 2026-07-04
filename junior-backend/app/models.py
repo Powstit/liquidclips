@@ -1257,6 +1257,40 @@ class AffiliateAgreementSignature(Base):
     )
 
 
+class FounderSeat(Base):
+    """Task F · Founder Access seat-cap ledger (2026-07-04).
+
+    One row per Founder Access membership granted. The counter is the
+    row count; the ``whop_membership_id`` UNIQUE constraint makes the
+    grant idempotent so a webhook re-delivery for the same Whop
+    membership cannot double-count against the 12,000 cap.
+
+    Whop remains the source of truth for who bought — this table is
+    only the local mirror the seat-cap gate reads before issuing tier
+    grants. ``user_id`` is nullable because the buyer may pay on Whop
+    before signing up on the website (affiliate flow); once they
+    connect their account, ``/onboarding/link-whop`` can back-fill.
+
+    The cap constant lives in ``app/routes/founder.py`` alongside the
+    ``founder_seats_used()`` helper.
+    """
+
+    __tablename__ = "founder_seats"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    whop_membership_id: Mapped[str] = mapped_column(
+        String, nullable=False, unique=True, index=True
+    )
+    plan_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    user_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    whop_user_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+
+
 # ─── v2 · Asset Infrastructure · DORMANT FOR V1 ─────────────────────────
 #
 # Reserved for the future Drive/Dropbox/ingestion model.

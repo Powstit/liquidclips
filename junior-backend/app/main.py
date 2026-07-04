@@ -337,6 +337,22 @@ async def lifespan(_app: FastAPI):
         "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_next_scheduled ON wallet_ledger (next_scheduled_at)",
         "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_whop_payout ON wallet_ledger (whop_payout_id)",
         "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_created ON wallet_ledger (created_at)",
+        # 2026-07-04 · Task F · Founder Access seat-cap ledger.
+        # UNIQUE(whop_membership_id) makes seat grants idempotent under
+        # webhook retry. Counter = row count · read by
+        # ``app/routes/founder.py founder_seats_used()``.
+        """CREATE TABLE IF NOT EXISTS founder_seats (
+            id varchar PRIMARY KEY,
+            whop_membership_id varchar NOT NULL UNIQUE,
+            plan_id varchar NOT NULL,
+            user_id varchar,
+            whop_user_id varchar,
+            granted_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_founder_seats_plan ON founder_seats (plan_id)",
+        "CREATE INDEX IF NOT EXISTS ix_founder_seats_user ON founder_seats (user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_founder_seats_whop_user ON founder_seats (whop_user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_founder_seats_granted ON founder_seats (granted_at)",
         # v0.7.55 (community architecture) — sponsored_campaigns gains 7
         # columns for channel binding + brand metadata + funnel flags.
         # All nullable / default false so existing rows survive untouched.
@@ -1078,6 +1094,12 @@ app.include_router(_deployer_router.router)
 # scraper stub fallback when quota exhausted.
 from app import yt_worker as _yt_worker_module  # noqa: E402
 app.include_router(_yt_worker_module.router)
+# 2026-07-04 · Task F · Founder Access seat-cap runtime gate + status.
+# /founder/seat-status · public · marketing + checkout fail-safe.
+# Cap enforcement fires inside webhooks_whop._handle_membership_valid
+# via try_grant_founder_seat before any tier lands.
+from app.routes import founder as _founder_router  # noqa: E402
+app.include_router(_founder_router.router)
 app.include_router(campaigns.router)
 app.include_router(campaign_asset_links.router)
 app.include_router(agency_campaigns.router)
