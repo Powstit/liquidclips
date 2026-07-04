@@ -129,12 +129,33 @@ class WalletWithdrawBlock(BaseModel):
     destination_wallet: str | None  # first 4 + ellipsis · null when not onboarded
 
 
+# G2 · Layer 6 (2026-07-04) · wallet ledger reconciliation. Response
+# carries a summary of the append-only ledger AT THE TOP LEVEL (not
+# nested inside `withdraw`) so the WalletDetail port + founder-cohort
+# SKU + outreach reply-credit path can consume the same shape without
+# a projection layer.
+class WalletLedgerRowOut(BaseModel):
+    id: str
+    type: str  # 'credit' | 'debit' | 'payout'
+    amount_cents: int
+    currency: str
+    source: str
+    whop_membership_id: str | None
+    period_start: str | None  # ISO-8601 UTC
+    created_at: str  # ISO-8601 UTC
+
+
 class WalletSummaryResponse(BaseModel):
     pipeline: WalletPipelineBlock
     stats: WalletStatsBlock
     campaigns: list[WalletCampaignRow]
     recent_activity: list[WalletActivityRow]
     withdraw: WalletWithdrawBlock
+    # G2 · Layer 6 · additive ledger surface.
+    balance_cents: int
+    pending_cents: int
+    next_payout_at: str | None  # ISO-8601 UTC · null when no pending payout
+    recent_ledger: list[WalletLedgerRowOut]
 
 
 # ──────── Helpers ──────────────────────────────────────────────────────
@@ -388,10 +409,34 @@ def get_wallet_summary(
         destination_wallet=destination,
     )
 
+    # ─── 8. G2 · Layer 6 · ledger surface (additive · never throws)
+    # Wrapped in try/except so a schema drift or empty ledger never
+    # breaks the wallet page — the pre-Layer-6 fields still render.
+    ledger_balance = 0
+    ledger_pending = 0
+    ledger_next: str | None = None
+    ledger_rows: list[WalletLedgerRowOut] = []
+    try:
+        from app import wallet as _wallet_service
+
+        ledger_balance = _wallet_service.compute_balance(db, user.id)
+        ledger_pending = _wallet_service.compute_pending(db, user.id)
+        ledger_next = _wallet_service.next_payout_at(db, user.id)
+        ledger_rows = [
+            WalletLedgerRowOut(**row)
+            for row in _wallet_service.recent_ledger(db, user.id)
+        ]
+    except Exception as e:  # noqa: BLE001
+        _log.warning("[wallet] ledger surface failed for %s: %s", user.id, e)
+
     return WalletSummaryResponse(
         pipeline=pipeline_block,
         stats=stats_block,
         campaigns=campaign_rows,
         recent_activity=activity,
         withdraw=withdraw_block,
+        balance_cents=ledger_balance,
+        pending_cents=ledger_pending,
+        next_payout_at=ledger_next,
+        recent_ledger=ledger_rows,
     )
