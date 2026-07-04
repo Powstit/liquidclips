@@ -1,29 +1,29 @@
 {
-  "audit_at": "2026-06-09T12:24:28.020846+00:00",
+  "audit_at": "2026-07-04T17:52:14.670103+00:00",
   "installed_app": {
-    "version": "0.7.32",
+    "version": "2.2.21",
     "codesign": "valid",
-    "mtime": "2026-06-09T12:46:48"
+    "mtime": "2026-07-03T11:10:36"
   },
   "git": {
-    "branch": "main",
-    "head": "df6525f",
-    "uncommitted_files": 11,
-    "untracked_files": 57,
+    "branch": "port/contextual-overlays-8c",
+    "head": "a1b6f52",
+    "uncommitted_files": 3,
+    "untracked_files": 10,
     "recent_commits": [
-      "df6525f fix(account-app): proxy.ts use static clerkMiddleware (Clerk v7 API)",
-      "f90280c fix(account-app): add clerkMiddleware for satellite-domain handshake",
-      "01d0e51 fix(account-app): align font-display with brand kit (Inter/Geist, not Fraunces)",
-      "48367e2 feat(auth): Whop True Login \u2014 \"Continue with Whop\" in-app sign-in door",
-      "151c179 feat(v0.7.32): ch-row pattern + brand glyphs + Kimi P0-1 security"
+      "a1b6f52 chore: log port-contextual-overlays-8c in WAITING_TO_COMMIT \u00b7 Section B closed",
+      "fbea06d feat(port): contextual overlays #8c \u00b7 3 of 3 wire-ins (Section B closed)",
+      "c325d23 fix(port): #8b unblock #1 \u00b7 CreateClips is canonical Build tab hero",
+      "3e9c00e feat(port): contextual overlays #8b \u00b7 DemoOverlay + 3 of 4 wire-ins",
+      "577175f feat(port): Learn tab (#8a) \u2192 desktop-2/src/routes/learn/"
     ]
   },
   "mechanical_gates": {
-    "tsc": "FAIL(exit=2)",
+    "tsc": "PASS",
     "py_compile": "PASS",
     "check_humanError": "PASS",
-    "smoke_embed": "PASS",
-    "ship_gate": "PASS"
+    "smoke_embed": "FAIL(exit=1)",
+    "ship_gate": "FAIL(exit=3)"
   },
   "live_reachability": {
     "api_jnremployee_health": "200",
@@ -33,7 +33,7 @@
     "banner_affiliate_mp4": "200"
   },
   "sidecar_rpcs": {
-    "registered_count": 73,
+    "registered_count": 99,
     "missing_expected": ""
   },
   "kimi_mount_state": {
@@ -60,8 +60,8 @@
     "Ayrshare social publishing (channels + publish-now + webhooks)"
   ],
   "reviewer_gate": {
-    "verdict": "PASS",
-    "unaddressed_p0_p1": 0,
-    "reviewed_at": "?"
+    "verdict": "BLOCK",
+    "unaddressed_p0_p1": 7,
+    "reviewed_at": "2026-06-12T10:23:39Z"
   }
 }

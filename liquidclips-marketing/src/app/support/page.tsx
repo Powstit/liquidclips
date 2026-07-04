@@ -79,10 +79,13 @@ export default function SupportPage() {
 
             <h2>Common topics</h2>
             <div className="feature-grid">
+              {/* P1 fix 2026-07-04 · plain text render · kills the dSIH pattern
+                  so nobody copies it to a CMS-fed component and eats a stored XSS.
+                  If entities are ever needed, use inline JSX like <>&amp;</>. */}
               {topics.map((t) => (
                 <article className="tile" key={t.title}>
-                  <h3 dangerouslySetInnerHTML={{ __html: t.title }} />
-                  <p dangerouslySetInnerHTML={{ __html: t.body }} />
+                  <h3>{t.title}</h3>
+                  <p>{t.body}</p>
                 </article>
               ))}
             </div>
