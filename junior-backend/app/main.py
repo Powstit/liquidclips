@@ -1043,6 +1043,12 @@ app.include_router(_hq_journeys_router.router)
 # /deployer/broadcast-tick  · records one send + returns 24h caps
 from app.routes import deployer as _deployer_router  # noqa: E402
 app.include_router(_deployer_router.router)
+# 2026-07-04 · Layer 4 · F7 YouTube batch-lookup worker.
+# /yt/batch-lookup · resolves video_id → channel_id + channel_handle + subs
+# License-JWT gated · 24h in-memory cache · 100/min + 10k/day quota ·
+# scraper stub fallback when quota exhausted.
+from app import yt_worker as _yt_worker_module  # noqa: E402
+app.include_router(_yt_worker_module.router)
 app.include_router(campaigns.router)
 app.include_router(campaign_asset_links.router)
 app.include_router(agency_campaigns.router)
