@@ -1,0 +1,40 @@
+# Port · in-app-browser · source snapshot
+
+## 11 states covered (D2 v1.1 + 2 new)
+'add-shortcut-open'
+'default'
+'engine-consumable'
+'error'
+'gmail-inbox'
+'loading'
+'maximized'
+'other-mail-linked'
+'outreach-inbox'
+'whop-checkout'
+'youtube-auth'
+
+## Sync-mail button family (Daniel 2026-07-04)
+65:  onSyncGmail?: () => void;
+66:  onSyncOther?: () => void;
+75:  const onSyncGmail = useCallback(() => {
+76:    props.onSyncGmail?.();
+80:  const onSyncOther = useCallback(() => {
+81:    props.onSyncOther?.();
+151:              <button type="button" className="iab-sync-mail-btn" onClick={onSyncGmail} title="Link Gmail via F5 OAuth">
+152:                ✉ Sync Gmail
+154:              <button type="button" className="iab-sync-mail-btn is-quiet" onClick={onSyncOther} title="Link a non-Gmail inbox">
+
+## Kade poses per state
+'kade-community-mode'
+'kade-earn-mode'
+'kade-error'
+'kade-hover'
+'kade-idle'
+
+## browse.rs untouched (Layer 5 own it, not this port)
+
+## Banned word check
+'bounty' occurrences: 0
+
+## Pricing lock
+$99.99 references: 2
