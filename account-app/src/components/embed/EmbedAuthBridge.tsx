@@ -148,12 +148,25 @@ export function EmbedAuthBridge({
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    // 2026-07-04 hardening · trusted-parent allowlist. The desktop
+    // parent in Tauri sends messages from `tauri://localhost` on macOS;
+    // Windows/Linux use `https://tauri.localhost` and `http://tauri.localhost`.
+    // Any message from a different origin is dropped silently — the
+    // pre-hardening code accepted arbitrary origins and would honour a
+    // `lc:auth-jwt` payload from an attacker-controlled iframe host.
+    const TRUSTED_PARENT_ORIGINS = new Set<string>([
+      "tauri://localhost",
+      "https://tauri.localhost",
+      "http://tauri.localhost",
+      ...(process.env.NODE_ENV === "development"
+        ? ["http://localhost:1420", "http://localhost:3000"]
+        : []),
+    ]);
+
     function onMessage(ev: MessageEvent) {
-      // Accept messages from the desktop parent only. The parent frame's
-      // origin in Tauri is `tauri://localhost`, so we can't strictly
-      // origin-check here without bricking the embed in dev. We narrow on the
-      // payload shape instead: only the well-known message types are honored,
-      // everything else is dropped.
+      // Origin allowlist + source must be the actual parent window.
+      if (!TRUSTED_PARENT_ORIGINS.has(ev.origin)) return;
+      if (ev.source !== window.parent) return;
       const data = ev.data as Partial<EmbedAuthMessage> | undefined;
       if (!data || typeof data !== "object") return;
       if (data.type === EMBED_MSG.AUTH_JWT) {
