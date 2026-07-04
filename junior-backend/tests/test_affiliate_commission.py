@@ -131,7 +131,9 @@ def test_reconcile_creates_one_qualified_override_per_recurring_plan(db, monkeyp
 
     assert affiliate_commission.reconcile_user(db, referrer, now=now) == "activated"
     assert created == list(affiliate_commission.RECURRING_PLAN_IDS)
-    assert len(referrer.affiliate_commission_override_ids) == 3
+    assert len(referrer.affiliate_commission_override_ids) == len(
+        affiliate_commission.RECURRING_PLAN_IDS
+    )
     assert referrer.whop_commission_override_id == referrer.affiliate_commission_override_ids[0]
     assert referrer.affiliate_qualified_at is not None
 
@@ -162,7 +164,9 @@ def test_reconcile_provisions_first_payment_baseline_before_qualification(db, mo
     assert created == [
         (plan_id, False) for plan_id in affiliate_commission.RECURRING_PLAN_IDS
     ]
-    assert len(referrer.affiliate_commission_override_ids) == 3
+    assert len(referrer.affiliate_commission_override_ids) == len(
+        affiliate_commission.RECURRING_PLAN_IDS
+    )
     assert referrer.whop_commission_override_id is None
 
 

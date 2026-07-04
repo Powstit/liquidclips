@@ -677,6 +677,7 @@ def wallet_payout_scheduler_tick(
         "intents": 0,
         "fired": 0,
         "skipped_negative_balance": 0,
+        "skipped_no_signature": 0,
         "errors": 0,
     }
     with session_scope() as db:
@@ -685,7 +686,46 @@ def wallet_payout_scheduler_tick(
         # with the built intents: due users minus paid users.
         due_users = set(wallet.due_credits_by_user(db, now=now).keys())
         result["skipped_negative_balance"] = len(due_users) - len(intents)
-        result["intents"] = len(intents)
+
+        # Click-wrap agreement gate: refuse to release funds for any
+        # user without an active signature row. Frozen (post-dispute) or
+        # never-signed both drop the intent — the user's credits stay on
+        # ledger and re-enter the queue after they sign / clear the
+        # dispute. Admin emails (Daniel + team, per features.is_admin_email)
+        # bypass the gate — the scheduler releases their intents even
+        # without a signature row, matching the same override the wallet
+        # ``/claim`` endpoint applies.
+        from app.features import is_admin_email
+        from app.models import AffiliateAgreementSignature, User as _User
+        from app.routes.affiliate_agreement import ACCEPTED_VERSIONS as _AV
+
+        user_ids = [i.user_id for i in intents]
+        signed_users: set[str] = set()
+        admin_users: set[str] = set()
+        if user_ids:
+            rows = (
+                db.query(AffiliateAgreementSignature.user_id)
+                .filter(AffiliateAgreementSignature.user_id.in_(user_ids))
+                .filter(AffiliateAgreementSignature.contract_version.in_(_AV))
+                .filter(AffiliateAgreementSignature.status == "active")
+                .distinct()
+                .all()
+            )
+            signed_users = {r[0] for r in rows}
+            # Admin bypass — look up email for each intent's user and let
+            # is_admin_email decide. Skips a DB round-trip per user by
+            # loading the whole set in one query.
+            admin_rows = (
+                db.query(_User.id, _User.email)
+                .filter(_User.id.in_(user_ids))
+                .all()
+            )
+            admin_users = {uid for (uid, email) in admin_rows if is_admin_email(email)}
+        gate_open = signed_users | admin_users
+        gated_intents = [i for i in intents if i.user_id in gate_open]
+        result["skipped_no_signature"] = len(intents) - len(gated_intents)
+        result["intents"] = len(gated_intents)
+        intents = gated_intents
 
         whop_payout_id_for: dict[str, str] = {}
         for intent in intents:

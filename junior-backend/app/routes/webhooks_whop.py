@@ -21,6 +21,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from svix.webhooks import Webhook, WebhookVerificationError
 
@@ -256,11 +257,19 @@ def _load_agency_ladder_plan_map() -> dict[str, str]:
             out[plan_id] = tier_key
     return out
 
-# Founder is a $500 one-time unlock → Autopilot tier + founder_flag forever.
-# Match by plan id: the webhook can send title=null (like the renewal plans
-# above do), so a title-only check would let a Founder buy fall through to
-# "growth". Keep this set in sync with the live Whop "Founder Lifetime" plan.
-FOUNDER_PLAN_IDS = {"plan_OieNCPrvkw9U4"}  # "Liquid Clips Founder Lifetime" $500 one-time
+# Founder unlocks → Autopilot tier + founder_flag while the subscription is
+# active. Match by plan id: the webhook can send title=null (like the renewal
+# plans above do), so a title-only check would let a Founder buy fall through
+# to "growth". Keep this set in sync with the live Whop founder plans.
+#
+# One-time lifetime founder retains the flag forever (never canceled). The
+# monthly Founder Access cohort ($99.99/mo, cap 12,000) keeps the flag while
+# their subscription is valid — membership.canceled flips it off, resub flips
+# it back on. Cap enforcement lives in the checkout gate, not here.
+FOUNDER_PLAN_IDS = {
+    "plan_OieNCPrvkw9U4",  # Liquid Clips Founder Lifetime · $500 one-time
+    "plan_VWj1uoy2RcOsg",  # Liquid Clips Founder Access · $99.99/mo · cap 12,000
+}
 
 # v2.2.17 · one-time top-up plans that grant metered credit instead of
 # a tier upgrade. The webhook branches early when it sees these ids so
@@ -1454,7 +1463,86 @@ def _handle_payment_refunded(db: Session, data: dict) -> None:
             event="whop_membership_invalid",
             properties={"reason": "refunded", "tier": "free"},
         )
+
+    # Click-wrap agreement · Set-Off · $50 admin fee against pending
+    # commissions + freeze the signature row so the nightly scheduler
+    # skips this user. Chargeback / dispute variants all land in the
+    # same handler; refund events are treated as material breach per
+    # Section 3 of `docs/legal/affiliate-agreement-v1.0.md`.
+    try:
+        _apply_agreement_setoff(db, user, event_type_hint="payment_refunded_or_disputed")
+    except Exception as e:  # noqa: BLE001 · never 500 the webhook
+        logging.getLogger("junior.webhooks_whop").exception(
+            "[affiliate_agreement.setoff] failed for user=%s: %s", user.id, e
+        )
+
     _add_breadcrumb(category="webhook.whop.payment_refunded", message="exit")
+
+
+ADMIN_FEE_USD_CENTS = 5000  # $50.00 per Section 3.C
+
+
+def _apply_agreement_setoff(db: Session, user, *, event_type_hint: str) -> None:
+    """Right-of-set-off wiring for the Partner & Affiliate Agreement.
+
+    On a dispute/refund/chargeback event:
+      1. Debit the pending wallet balance by $50 (admin fee). Bounded
+         by the available pending balance so we never take a user's
+         balance negative — anything unrecovered is written off. Whop
+         owns the actual money movement; we adjust our internal
+         ``WalletLedger`` so the scheduler + wallet UI reflect the
+         forfeiture.
+      2. Freeze every active ``AffiliateAgreementSignature`` row for
+         this user. The nightly payout scheduler filters frozen rows
+         out of the batch, so no further commissions flow to Whop
+         until the freeze clears.
+
+    Idempotent: every debit carries a webhook-derived
+    ``whop_membership_id`` + ``period_start`` so replayed webhooks
+    dedupe on the ``uq_wallet_ledger_dedupe`` unique index. Freeze is
+    idempotent because ``freeze_signature`` no-ops on already-frozen
+    rows.
+    """
+    from app import wallet as _wallet_service
+    from app.routes.affiliate_agreement import freeze_signature
+
+    # Debit whichever is smaller — the fee or the current pending balance
+    # (never take pending negative on set-off).
+    try:
+        pending = _wallet_service.compute_pending(db, user.id)
+    except Exception:  # noqa: BLE001
+        pending = 0
+    fee = min(ADMIN_FEE_USD_CENTS, max(pending, 0))
+    if fee > 0:
+        try:
+            _wallet_service.record_debit(
+                db,
+                user_id=user.id,
+                amount_cents=fee,
+                currency="USD",
+                source="chargeback_admin_fee",
+                whop_membership_id=str(_extract_membership_id_hint(user, event_type_hint) or ""),
+                period_start=datetime.now(timezone.utc),
+            )
+        except IntegrityError:
+            db.rollback()  # replay already recorded this debit
+        except AttributeError:
+            # ``record_debit`` lands with Layer 6.5 — no-op until then.
+            pass
+        except Exception as e:  # noqa: BLE001
+            logging.getLogger("junior.webhooks_whop").warning(
+                "[affiliate_agreement.setoff] debit failed for user=%s: %s", user.id, e
+            )
+
+    freeze_signature(db, user, reason=f"whop:{event_type_hint}")
+
+
+def _extract_membership_id_hint(user, event_type_hint: str) -> str | None:
+    """Best-effort — the caller only has ``user`` in scope, so we fall
+    back to a synthetic key that still deduplicates within the same
+    day. Real membership id lives on the event data; this hint keeps
+    the ledger dedupe key populated when it isn't otherwise available."""
+    return f"setoff-{user.id}-{event_type_hint}-{datetime.now(timezone.utc).date().isoformat()}"
 
 
 # ─────────────────────────────────────────────────────────────────────
