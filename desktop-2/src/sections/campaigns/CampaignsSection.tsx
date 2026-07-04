@@ -6,6 +6,8 @@ import { bus } from "../../design-os/bridge";
 import { useBrowseOverlay } from "../../state/browseOverlay";
 // Phase 8 · Mount #4 · catalog block hoisted to Section B port.
 import { CatalogCarousel } from "../../routes/catalog/CatalogCarousel";
+// Phase 8 · Mount #6 · cold-email recipient preview.
+import { EmbedPreviewCard } from "../../routes/campaign-builder/EmbedPreviewCard";
 
 import { fakeCampaigns, type FakeCampaign } from "../../fixtures/fakeCampaigns";
 
@@ -136,6 +138,24 @@ export function CampaignsSection() {
           Tile shape is not FakeCampaign, and Layer 4 (F7) will pass
           real tiles once /yt/batch-lookup lands. */}
       <CatalogCarousel />
+
+      {/* Phase 8 · Mount #6 (2026-07-04) · EmbedPreviewCard nested
+          below the catalog as the campaign builder's cold-email
+          recipient preview. Shows what a target clipper sees when the
+          sender's outreach email lands + the "Claim my 10 clips" CTA
+          renders on liquidclips.app/preview/<token>. Section B's port
+          defaults `initialState` to `populated` (the money-ready
+          case). `showScrubber` is dev-only. `onCta` intentionally
+          NOT wired: the CTA click routes to
+          `handleActivationUrl`/funnel-session already at the
+          preview page — the sender-side preview is decorative until
+          the campaign builder gains a real preview-video-id field
+          (out of Phase 8 scope). */}
+      <div className="campaign-preview-slot">
+        <EmbedPreviewCard
+          showScrubber={import.meta.env.DEV}
+        />
+      </div>
 
       {createOpen && (
         <CreateCampaignModal onClose={() => setCreateOpen(false)} onCreate={createCampaign} />
