@@ -166,6 +166,140 @@ function isWalletSummaryShape(x: unknown): x is WalletSummary {
   );
 }
 
+/* ──────── Claim / withdraw · click-wrap agreement gate ──────── */
+//
+// Task D · 2026-07-04 · desktop-2 wallet Claim button wire.
+// Mirrors the ClaimResponse Pydantic model in
+// `junior-backend/app/routes/me_wallet.py`. The endpoint short-
+// circuits with `blocked=true` when the user hasn't signed the
+// Partner & Affiliate Agreement; the frontend opens
+// `blocked_reason.signature_url` inside the browse overlay, listens
+// for the `affiliate_agreement_signed` postMessage, then re-POSTs.
+
+export type ClaimBlockedCode =
+  | "signature_required"
+  | "signature_frozen"
+  // Forward-compat · unknown codes render the server-provided message.
+  | (string & { __brand?: "ClaimBlockedCode" });
+
+export interface ClaimBlockedReason {
+  code: ClaimBlockedCode;
+  message: string;
+  signature_url: string;
+}
+
+export interface ClaimResponse {
+  ok: boolean;
+  blocked: boolean;
+  blocked_reason: ClaimBlockedReason | null;
+  receipt_sha256: string | null;
+  contract_version: string | null;
+  amount_released_cents: number | null;
+  payout_id: string | null;
+}
+
+/** Copy that maps a blocked_reason code → user-facing button/toast
+ *  string. The backend already carries a full `message` string; this
+ *  map is the short heading the UI shows above it. */
+export const CLAIM_BLOCKED_HEADING: Record<string, string> = {
+  signature_required:
+    "Sign your Partner Agreement to release payouts. Takes about a minute · one-time.",
+  signature_frozen:
+    "Your agreement is frozen following a payment dispute. Contact support before further payouts.",
+};
+
+/** POST /me/wallet/claim.
+ *
+ *  Returns the server response when the fetch resolved with a 2xx +
+ *  a valid shape. Returns null on network / auth / malformed-shape
+ *  errors so the UI can render an honest "wallet briefly unreachable"
+ *  state instead of a fake success.
+ */
+export async function postWalletClaim(): Promise<ClaimResponse | null> {
+  const jwt = getJwt();
+  const headers = new Headers();
+  headers.set("content-type", "application/json");
+  if (jwt) headers.set("authorization", `Bearer ${jwt}`);
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), WALLET_TIMEOUT_MS);
+
+  try {
+    const r = await fetch(`${backendUrl()}/me/wallet/claim`, {
+      method: "POST",
+      headers,
+      signal: ctrl.signal,
+    });
+    if (!r.ok) {
+      // eslint-disable-next-line no-console
+      console.warn(`[wallet] POST /me/wallet/claim → ${r.status}`);
+      return null;
+    }
+    const body = (await r.json()) as unknown;
+    if (!isClaimResponseShape(body)) {
+      // eslint-disable-next-line no-console
+      console.warn("[wallet] /me/wallet/claim returned 200 with malformed shape · treating as null");
+      return null;
+    }
+    return body;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[wallet] claim fetch failed:", err);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function isClaimResponseShape(x: unknown): x is ClaimResponse {
+  if (!x || typeof x !== "object") return false;
+  const o = x as Record<string, unknown>;
+  if (typeof o.ok !== "boolean") return false;
+  if (typeof o.blocked !== "boolean") return false;
+  const nullOr = <T,>(v: unknown, pred: (v: unknown) => v is T): v is T | null =>
+    v === null || pred(v);
+  const isString = (v: unknown): v is string => typeof v === "string";
+  const isNumber = (v: unknown): v is number =>
+    typeof v === "number" && Number.isFinite(v);
+  if (!nullOr(o.receipt_sha256, isString)) return false;
+  if (!nullOr(o.contract_version, isString)) return false;
+  if (!nullOr(o.amount_released_cents, isNumber)) return false;
+  if (!nullOr(o.payout_id, isString)) return false;
+  if (o.blocked_reason === null) return true;
+  if (typeof o.blocked_reason !== "object") return false;
+  const br = o.blocked_reason as Record<string, unknown>;
+  return (
+    isString(br.code) &&
+    isString(br.message) &&
+    isString(br.signature_url)
+  );
+}
+
+/* ──────── Post-signature bridge · postMessage event contract ──────── */
+//
+// The account-app signature page posts this event to `window.parent`
+// when the user submits the click-wrap form. desktop-2 doesn't own
+// an iframe parent context, but the browse-panel webview forwards
+// this message up to the parent React window so WalletDetail can
+// react to it and re-POST /claim.
+
+export const AGREEMENT_SIGNED_EVENT = "affiliate_agreement_signed";
+
+export interface AgreementSignedMessage {
+  type: typeof AGREEMENT_SIGNED_EVENT;
+  receipt_sha256: string;
+}
+
+export function isAgreementSignedMessage(x: unknown): x is AgreementSignedMessage {
+  if (!x || typeof x !== "object") return false;
+  const o = x as Record<string, unknown>;
+  return (
+    o.type === AGREEMENT_SIGNED_EVENT &&
+    typeof o.receipt_sha256 === "string" &&
+    o.receipt_sha256.length > 0
+  );
+}
+
 export async function getWalletSummary(): Promise<WalletSummary | null> {
   const jwt = getJwt();
   const headers = new Headers();
