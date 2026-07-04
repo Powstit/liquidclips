@@ -74,7 +74,6 @@ const DEFAULT_SLEEP = (ms: number) => new Promise<void>((resolve) => setTimeout(
 export class GmailComposeDriver {
   private getDocument: () => ParentNode;
   private getDocumentHtml: () => string;
-  private storage: Storage;
   private rateLimit: RateLimitTracker;
   private breaker: SelectorMissCircuitBreaker;
   private now: () => number;
@@ -84,7 +83,6 @@ export class GmailComposeDriver {
   constructor(deps: DriverDeps) {
     this.getDocument = deps.getDocument;
     this.getDocumentHtml = deps.getDocumentHtml;
-    this.storage = deps.storage;
     this.rateLimit = new RateLimitTracker(deps.storage);
     this.breaker = new SelectorMissCircuitBreaker(deps.htmlDumpSink);
     this.now = deps.now ?? (() => Date.now());

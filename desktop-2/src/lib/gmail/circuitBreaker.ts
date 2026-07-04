@@ -57,7 +57,6 @@ export class SelectorMissCircuitBreaker {
     const cutoff = nowMs - this.windowMs;
     this.hits = this.hits.filter((t) => t >= cutoff);
 
-    const wasPaused = this.paused;
     let dumpedTo: string | null = null;
     if (this.hits.length >= this.threshold && !this.paused) {
       this.paused = true;

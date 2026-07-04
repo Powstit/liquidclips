@@ -14,7 +14,7 @@
  * milliseconds — no real Gmail, no real webview, no real waits.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { GmailComposeDriver } from './gmailComposeDriver';
 import { GMAIL_SELECTORS, findWithFallback } from './selectorFallback';
 import { RateLimitTracker } from './rateLimit';
@@ -63,9 +63,6 @@ function buildGmailDomMissingPrimary(role: 'compose_button' | 'to_field' | 'subj
   // Remove the primary selector's element so the secondary must fire.
   const primary = doc.querySelector(GMAIL_SELECTORS[role].selectors[0]);
   primary?.remove();
-  // Inject the secondary selector's shape so it fires.
-  const secondary = doc.createElement('div');
-  const secSel = GMAIL_SELECTORS[role].selectors[1];
   if (role === 'compose_button') {
     const el = doc.createElement('div');
     el.setAttribute('role', 'button');
@@ -241,15 +238,7 @@ describe('circuit breaker', () => {
 
   it('driver refuses to send when the breaker is open', async () => {
     const storage = new MemoryStorage();
-    const doc = buildFullGmailDom();
     const sink = new TestDumpSink();
-    const driver = new GmailComposeDriver({
-      getDocument: () => doc,
-      getDocumentHtml: () => doc.documentElement.outerHTML,
-      storage,
-      htmlDumpSink: sink,
-      sleep: async () => undefined,
-    });
     // Trip the breaker by giving it a document with NO known selectors, 3 times.
     const brokenDoc = new DOMParser().parseFromString('<html><body>nothing</body></html>', 'text/html');
     const driverBroken = new GmailComposeDriver({
