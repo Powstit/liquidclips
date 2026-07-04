@@ -13,8 +13,9 @@
   --la-fuchsia-rim: rgba(255, 26, 140, 0.32);
   --la-danger: #dc2626;
   --la-danger-bright: #f87171;
-  --la-grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
-  --la-grad-paper: linear-gradient(180deg, #0b0b10 0%, #14141a 100%);
+  /* §13 brand-kit consolidation (2026-07-04) — reference brandTheme.css. */
+  --la-grad-fuchsia: var(--grad-fuchsia);
+  --la-grad-paper: var(--grad-paper);
 
   /* Fill the Tauri app window (1280x820 default · min 1040x680). Vertical
      centering + edge-safe padding so the card feels app-native, not

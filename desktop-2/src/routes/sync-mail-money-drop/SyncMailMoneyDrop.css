@@ -19,8 +19,9 @@
   --smmd-line-vivid: rgba(255, 255, 255, 0.18);
   --smmd-shadow-overlay: 0 1px 0 rgba(255, 255, 255, 0.05) inset,
     0 40px 120px rgba(0, 0, 0, 0.75);
-  --smmd-grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
-  --smmd-grad-paper: linear-gradient(180deg, #0b0b10 0%, #14141a 100%);
+  /* §13 brand-kit consolidation (2026-07-04) — reference brandTheme.css. */
+  --smmd-grad-fuchsia: var(--grad-fuchsia);
+  --smmd-grad-paper: var(--grad-paper);
 
   position: relative;
   min-height: 100vh;

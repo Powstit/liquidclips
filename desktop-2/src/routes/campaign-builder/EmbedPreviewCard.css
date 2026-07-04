@@ -16,8 +16,9 @@
   --epc-cyan-cool: #00e5ff;
   --epc-danger: #dc2626;
   --epc-danger-bright: #f87171;
-  --epc-grad-fuchsia: linear-gradient(135deg, #ff1a8c 0%, #c70066 55%, #ff66b8 100%);
-  --epc-grad-paper: linear-gradient(180deg, #0b0b10 0%, #14141a 100%);
+  /* §13 brand-kit consolidation (2026-07-04) — reference brandTheme.css. */
+  --epc-grad-fuchsia: var(--grad-fuchsia);
+  --epc-grad-paper: var(--grad-paper);
   --epc-shadow-e3: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 28px 80px rgba(0, 0, 0, 0.65);
   --epc-glow-sm: 0 0 0 1px rgba(255, 26, 140, 0.35), 0 6px 18px rgba(255, 26, 140, 0.18);
   --epc-glow-md: 0 0 0 1px rgba(255, 26, 140, 0.45), 0 12px 36px rgba(255, 26, 140, 0.28);
