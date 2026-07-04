@@ -16,6 +16,7 @@ const NAV_BADGE_MAP: Record<string, string | null> = {
   [SECTION_IDS.SECTION_EARN]: "/brand/nav-badges/earn.png",
   [SECTION_IDS.SECTION_CAMPAIGNS]: "/brand/nav-badges/upload.png",
   [SECTION_IDS.SECTION_SETTINGS]: "/brand/nav-badges/settings.png",
+  [SECTION_IDS.SECTION_LEARN]: "/brand/nav-badges/learn.png",
 };
 
 const ATMOSPHERE_MAP: Record<string, string | null> = {
