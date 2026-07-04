@@ -1,0 +1,68 @@
+# Test-suite results · Phase 8 nav mounting 2026-07-04
+
+## junior-backend (pytest)
+BASELINE (Phase 7 close): 272 passed / 3 warnings
+POST-PHASE-8:             272 passed / 3 warnings
+
+Full command:
+  /Users/dipdip/code/jnr/junior-backend/.venv/bin/pytest \
+    --rootdir=/Users/dipdip/code/jnr/junior-backend \
+    /Users/dipdip/code/jnr/junior-backend/tests --tb=no -q
+
+Final tail:
+  272 passed, 3 warnings in 23.86s
+
+Phase 8 did not touch junior-backend — count preserved by design.
+
+## desktop-2 (vitest + tsc)
+tsc --noEmit: clean (0 errors)
+
+vitest run:
+  BASELINE (Phase 7 close):  39 passed / 5 test files
+  POST-MOUNT-1:              44 passed / 6 test files  (+5 · App.test.tsx)
+  POST-MOUNT-2:              50 passed / 7 test files  (+6 · OutreachSection.test.ts)
+  POST-MOUNT-3:              55 passed / 8 test files  (+5 · AccountSection.test.ts)
+  POST-MOUNT-4:              60 passed / 9 test files  (+5 · CampaignsSection.test.ts)
+  POST-MOUNT-5:              65 passed / 10 test files (+5 · AccountSection.mount5.test.ts)
+  POST-MOUNT-6:              70 passed / 11 test files (+5 · CampaignsSection.mount6.test.ts)
+
+Full command:
+  cd /Users/dipdip/code/jnr/desktop-2 && npx vitest run
+
+Final tail:
+   Test Files  11 passed (11)
+        Tests  70 passed (70)
+
+31 new assertions added across the 6 mounts. Every mount contributes
+5-6 source-file + registry contract checks that protect against
+silent revert.
+
+## desktop-2 (cargo test)
+cargo test --manifest-path=/Users/dipdip/code/jnr/desktop-2/src-tauri/Cargo.toml
+
+Final result:
+  test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+  (main.rs: 0 tests · doc-tests: 0 tests)
+
+Baseline (Phase 7 close) was 5 passed. Phase 8 preserved · no Rust
+files touched.
+
+## account-app tsc: clean (0 errors)
+Full command: cd /Users/dipdip/code/jnr/account-app && npx tsc --noEmit
+Output: (empty · no errors)
+
+## marketing tsc: clean (0 errors)
+Full command: cd /Users/dipdip/code/jnr/liquidclips-marketing && npx tsc --noEmit
+Output: (empty · no errors)
+
+## Regression summary (Phase 7 baseline vs Phase 8 close)
+                            Phase 7 close   Phase 8 close
+  junior-backend pytest:    272 passed      272 passed
+  desktop-2 vitest:          39 passed /  5  70 passed / 11
+  desktop-2 cargo test:       5 passed        5 passed
+  desktop-2 tsc:             clean           clean
+  account-app tsc:           clean           clean
+  marketing tsc:             clean           clean
+
+Zero regression. Every added test corresponds to a mount wire that
+guards against silent revert.
