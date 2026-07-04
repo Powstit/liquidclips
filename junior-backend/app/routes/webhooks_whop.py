@@ -27,11 +27,159 @@ from svix.webhooks import Webhook, WebhookVerificationError
 from app.config import get_settings
 from app.db import get_db
 from app.jwt_signer import issue_license_jwt
-from app.models import License, PendingWhopMembership, User, WebhookEvent
+from app.models import License, PendingWhopMembership, User, WebhookDeadLetter, WebhookEvent
 from app.routes.notifications import write_notification
 
 router = APIRouter(prefix="/webhooks/whop", tags=["webhooks"])
 settings = get_settings()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Layer 1 · reliability sprint · 2026-07-04
+#
+# Observability + dead-letter primitives. Sentry breadcrumbs attach to the
+# current scope so a subsequent captured exception carries the last N webhook
+# entry/exit events — invaluable when a handler dies mid-transaction. When
+# Sentry isn't initialised (dev, tests without DSN) the calls no-op.
+#
+# The dead-letter table is a diagnostic + replay artefact. Whop's own
+# at-least-once retry cadence is still the primary recovery path; the
+# dead-letter row lets an operator replay AHEAD of Whop's schedule and gives
+# the reconciliation cron something to compare drift against.
+# ─────────────────────────────────────────────────────────────────────
+
+
+def _add_breadcrumb(*, category: str, message: str, data: dict | None = None) -> None:
+    """Best-effort Sentry breadcrumb. No-op when sentry_sdk is missing / not
+    initialised. Never raises. Called at entry + exit of every _handle_*
+    function so a subsequent captured exception carries the sequence."""
+    try:
+        import sentry_sdk
+        sentry_sdk.add_breadcrumb(
+            category=category,
+            message=message,
+            level="info",
+            data=data or {},
+        )
+    except Exception:  # noqa: BLE001 — breadcrumbs must never break the handler
+        pass
+
+
+def _is_duplicate_event(db: Session, external_id: str) -> bool:
+    """The outer-guard idempotency check, extracted so every mutating branch
+    can be reasoned about explicitly. Returns True when a WebhookEvent row
+    already exists for this external_id, meaning the payload has already been
+    processed (or is being re-tried by Whop after a network hiccup)."""
+    return (
+        db.query(WebhookEvent).filter_by(external_id=external_id).one_or_none()
+        is not None
+    )
+
+
+def _record_dead_letter(
+    db: Session,
+    *,
+    event_id: str,
+    event_type: str,
+    payload_json: str,
+    error: str,
+) -> str:
+    """Insert a dead-letter row in a fresh, isolated session so the outer
+    handler's rollback doesn't take it with the failed transaction.
+
+    Returns the inserted row id. Best-effort — a dead-letter write failure
+    must never mask the underlying handler exception (which the caller
+    re-raises so Whop retries).
+    """
+    from app.db import SessionLocal
+    try:
+        with SessionLocal() as fresh:
+            row = WebhookDeadLetter(
+                event_id=event_id or "unknown",
+                event_type=event_type or "unknown",
+                payload_json=payload_json,
+                error=(error or "")[:2000],
+                retry_count=0,
+            )
+            fresh.add(row)
+            fresh.commit()
+            return row.id
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def retry_dead_letter(db: Session, dead_letter_id: str) -> tuple[bool, str]:
+    """Replay a dead-letter row through the appropriate _handle_* branch.
+
+    Returns (success, note). Idempotency is still preserved by the outer
+    WebhookEvent guard — a successful replay stamps resolved_at + increments
+    retry_count so the row disappears from the "pending replay" query.
+
+    NOT auto-scheduled — an operator or the future reconciliation cron
+    triggers this explicitly. Live-fires against the DB session passed in;
+    keeps sentry breadcrumbs attached to the replay operation.
+    """
+    row = db.get(WebhookDeadLetter, dead_letter_id)
+    if row is None:
+        return False, f"dead_letter_id_not_found:{dead_letter_id}"
+    if row.resolved_at is not None:
+        return True, "already_resolved"
+
+    _add_breadcrumb(
+        category="webhook.whop.retry",
+        message=f"replaying dead-letter {row.id}",
+        data={"event_type": row.event_type, "event_id": row.event_id, "attempt": row.retry_count + 1},
+    )
+
+    try:
+        payload = json.loads(row.payload_json)
+    except Exception as exc:  # noqa: BLE001
+        row.error = f"payload_parse_failed:{exc}"[:2000]
+        row.retry_count = (row.retry_count or 0) + 1
+        row.last_attempted_at = datetime.now(timezone.utc)
+        db.commit()
+        return False, "payload_parse_failed"
+
+    data = payload.get("data") or {}
+    event_type = row.event_type
+
+    try:
+        if event_type in ("membership_went_valid", "membership.went_valid", "membership_activated", "membership.activated"):
+            _handle_membership_valid(db, data)
+        elif event_type in ("membership_went_invalid", "membership.went_invalid", "membership_deactivated", "membership.deactivated"):
+            _handle_membership_invalid(db, data)
+        elif event_type in ("membership_canceled", "membership.canceled"):
+            _handle_membership_canceled(db, data)
+        elif event_type == "membership.cancel_at_period_end_changed":
+            _handle_membership_cancel_setting_changed(db, data)
+        elif event_type in ("payment_succeeded", "payment.succeeded"):
+            _handle_payment_succeeded(db, data)
+        elif event_type in ("payment_failed", "payment.failed"):
+            _handle_payment_failed(db, data)
+        elif event_type in ("payment_refunded", "payment.refunded", "refund_created", "refund.created", "dispute_created", "dispute.created"):
+            _handle_payment_refunded(db, data)
+        else:
+            row.error = f"unsupported_event_type:{event_type}"[:2000]
+            row.retry_count = (row.retry_count or 0) + 1
+            row.last_attempted_at = datetime.now(timezone.utc)
+            db.commit()
+            return False, "unsupported_event_type"
+
+        row.resolved_at = datetime.now(timezone.utc)
+        row.retry_count = (row.retry_count or 0) + 1
+        row.last_attempted_at = datetime.now(timezone.utc)
+        db.commit()
+        return True, "retry_succeeded"
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        # Re-fetch after rollback so we can persist the retry attempt.
+        row = db.get(WebhookDeadLetter, dead_letter_id)
+        if row is not None:
+            row.error = f"retry_failed:{exc}"[:2000]
+            row.retry_count = (row.retry_count or 0) + 1
+            row.last_attempted_at = datetime.now(timezone.utc)
+            db.commit()
+        return False, f"retry_failed:{exc}"
 
 
 # Map Whop plan IDs → our internal tiers.
@@ -198,7 +346,17 @@ async def whop_webhook(
         or data.get("id")
         or hashlib.sha256(body).hexdigest()
     )
-    if db.query(WebhookEvent).filter_by(external_id=external_id).one_or_none():
+    _add_breadcrumb(
+        category="webhook.whop",
+        message=f"received {event_type}",
+        data={"external_id": external_id, "event_type": event_type},
+    )
+    if _is_duplicate_event(db, external_id):
+        _add_breadcrumb(
+            category="webhook.whop",
+            message=f"duplicate {event_type}",
+            data={"external_id": external_id},
+        )
         return {"status": "duplicate", "event": event_type}
 
     from app.webhook_log import log_webhook
@@ -253,8 +411,31 @@ async def whop_webhook(
             body_hash=hashlib.sha256(body).hexdigest(),
         ))
         db.commit()
+        _add_breadcrumb(
+            category="webhook.whop",
+            message=f"handled {event_type}",
+            data={"external_id": external_id, "recognized": recognized},
+        )
     except Exception as exc:  # preserve the existing 500→Whop-retry behaviour
         db.rollback()
+        # Layer 1 · dead-letter capture. Writes in a fresh session so the
+        # rollback above doesn't take it. Best-effort — a dead-letter failure
+        # never masks the original exception (which we re-raise so Whop retries).
+        try:
+            _record_dead_letter(
+                db,
+                event_id=external_id,
+                event_type=event_type,
+                payload_json=body.decode("utf-8", errors="replace"),
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        _add_breadcrumb(
+            category="webhook.whop",
+            message=f"failed {event_type}",
+            data={"external_id": external_id, "error_type": type(exc).__name__},
+        )
         log_webhook(provider="whop", event_name=event_type, status="failed",
                     external_event_id=external_id, user_id=_user_id_for_log(db, data), error=exc)
         raise
@@ -467,6 +648,7 @@ def apply_membership_tier(
 
 
 def _handle_membership_valid(db: Session, data: dict) -> None:
+    _add_breadcrumb(category="webhook.whop.membership_valid", message="enter")
     user = _find_user_for_event(db, data)
     tier, founder = _require_known_tier(data)
     if not user:
@@ -577,6 +759,7 @@ def _handle_membership_valid(db: Session, data: dict) -> None:
                     "billing_provider": "whop",
                 },
             )
+    _add_breadcrumb(category="webhook.whop.membership_valid", message="exit", data={"tier": tier, "founder": founder})
 
 
 def _seat_count(db: Session) -> int:
@@ -605,8 +788,10 @@ def _reconcile_affiliate_commission_best_effort(
 
 
 def _handle_membership_invalid(db: Session, data: dict) -> None:
+    _add_breadcrumb(category="webhook.whop.membership_invalid", message="enter")
     user = _find_user_for_event(db, data)
     if not user:
+        _add_breadcrumb(category="webhook.whop.membership_invalid", message="exit_no_user")
         return
     # Partner Engine — decrement BEFORE mutating subscription_status so the
     # "was this user previously paid?" guard is honest. Only decrement on a
@@ -665,6 +850,7 @@ def _handle_membership_invalid(db: Session, data: dict) -> None:
             event="whop_membership_invalid",
             properties={"reason": "canceled", "tier": "free"},
         )
+    _add_breadcrumb(category="webhook.whop.membership_invalid", message="exit")
 
 
 def _handle_membership_canceled(db: Session, data: dict) -> None:
@@ -673,8 +859,10 @@ def _handle_membership_canceled(db: Session, data: dict) -> None:
     Whop later sends membership.deactivated at period end; that event performs
     the actual downgrade to Free.
     """
+    _add_breadcrumb(category="webhook.whop.membership_canceled", message="enter")
     user = _find_user_for_event(db, data)
     if not user:
+        _add_breadcrumb(category="webhook.whop.membership_canceled", message="exit_no_user")
         return
     user.subscription_status = "canceled"
     renewal_at = data.get("renewal_period_end")
@@ -699,6 +887,7 @@ def _handle_membership_canceled(db: Session, data: dict) -> None:
         priority="medium",
         external_dedup_key=f"whop-canceled-{event_id}" if event_id else None,
     )
+    _add_breadcrumb(category="webhook.whop.membership_canceled", message="exit")
 
 
 def _handle_membership_cancel_setting_changed(db: Session, data: dict) -> None:
@@ -723,8 +912,10 @@ def _handle_membership_cancel_setting_changed(db: Session, data: dict) -> None:
 
 def _handle_payment_failed(db: Session, data: dict) -> None:
     """Keep the tier during Whop's retry window and surface the billing issue."""
+    _add_breadcrumb(category="webhook.whop.payment_failed", message="enter")
     user = _find_user_for_event(db, data)
     if not user:
+        _add_breadcrumb(category="webhook.whop.payment_failed", message="exit_no_user")
         return
     user.subscription_status = "past_due"
     from app.clerk_sync import sync_clerk_metadata
@@ -745,9 +936,11 @@ def _handle_payment_failed(db: Session, data: dict) -> None:
         priority="high",
         external_dedup_key=f"whop-payment-failed-{event_id}" if event_id else None,
     )
+    _add_breadcrumb(category="webhook.whop.payment_failed", message="exit")
 
 
 def _handle_payment_succeeded(db: Session, data: dict) -> None:
+    _add_breadcrumb(category="webhook.whop.payment_succeeded", message="enter")
     # v2.2.17 · Boost Pack top-ups fire the same payment_succeeded event
     # as subscription payments. Detect the boost plan first, grant the
     # metered credit, then short-circuit before we try to resolve a
@@ -871,6 +1064,11 @@ def _handle_payment_succeeded(db: Session, data: dict) -> None:
                 "billing_provider": "whop",
             },
         )
+    _add_breadcrumb(
+        category="webhook.whop.payment_succeeded",
+        message="exit",
+        data={"tier": user.tier, "first_paid": not was_paid_before},
+    )
 
     # Affiliate lifecycle emails — fire ONLY on the buyer's first paid
     # conversion (not renewals), and ONLY when the referrer is a known Junior
@@ -1188,8 +1386,10 @@ def _handle_payment_refunded(db: Session, data: dict) -> None:
     """A refund/dispute pulls the entitlement. Critically, if the refunded plan
     was the one-time Founder unlock, clear founder_flag — otherwise a refunded
     founder keeps unlimited Autopilot forever. Drop to Free + mark 'refunded'."""
+    _add_breadcrumb(category="webhook.whop.payment_refunded", message="enter")
     user = _find_user_for_event(db, data)
     if not user:
+        _add_breadcrumb(category="webhook.whop.payment_refunded", message="exit_no_user")
         return
     resolved = _tier_from_event(data)
     if resolved is None:
@@ -1238,3 +1438,137 @@ def _handle_payment_refunded(db: Session, data: dict) -> None:
             event="whop_membership_invalid",
             properties={"reason": "refunded", "tier": "free"},
         )
+    _add_breadcrumb(category="webhook.whop.payment_refunded", message="exit")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Layer 1 · reconciliation entry point (called from cron.py)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def reconcile_whop_memberships(
+    db: Session,
+    *,
+    fetch_memberships,
+    since: datetime | None = None,
+    logger: logging.Logger | None = None,
+) -> dict:
+    """Nightly diff between Whop's live memberships list and our local User
+    entitlement mirror.
+
+    ``fetch_memberships`` is a callable that returns a list of Whop membership
+    dicts shaped ``{"user": {"id": ..., "email": ...}, "status": ...,
+    "valid_until": <unix seconds>, "plan": {"id": ...}}``. Passing it in keeps
+    the reconciler testable — the cron wrapper injects the live Whop API
+    client, tests inject a synthetic list.
+
+    Returns a dict summary suitable for structured logging:
+
+        {
+          "checked": <int>,
+          "drift_rows": [ {user_id, whop_user_id, reason, our, whop}, ... ],
+          "drift_pct": <float>,
+          "severity": "ok" | "warn" | "alert",
+        }
+
+    Severity thresholds:
+      - drift_pct == 0            → ok
+      - 0 < drift_pct <= 5.0      → warn (log per row + summary)
+      - drift_pct > 5.0           → alert (summary logged at ERROR + Sentry
+                                   captured breadcrumb).
+    """
+    log = logger or logging.getLogger("junior.webhook_reconcile")
+    since_dt = since or (datetime.now(timezone.utc) - timedelta(hours=24))
+
+    try:
+        memberships = list(fetch_memberships(since_dt)) or []
+    except Exception as exc:  # noqa: BLE001
+        log.exception("[whop-reconcile] fetch_memberships raised: %s", exc)
+        return {"checked": 0, "drift_rows": [], "drift_pct": 0.0, "severity": "alert", "error": str(exc)}
+
+    drift_rows: list[dict] = []
+    checked = 0
+
+    for m in memberships:
+        checked += 1
+        user_block = m.get("user") or {}
+        whop_user_id = user_block.get("id")
+        email = (user_block.get("email") or "").strip().lower()
+        whop_status = str(m.get("status") or "").lower()
+        whop_valid_until = m.get("valid_until") or m.get("renewal_period_end")
+
+        user: User | None = None
+        if whop_user_id:
+            user = db.query(User).filter_by(whop_user_id=whop_user_id).one_or_none()
+        if user is None and email:
+            user = db.query(User).filter(User.email.ilike(email)).one_or_none()
+        if user is None:
+            drift_rows.append({
+                "user_id": None,
+                "whop_user_id": whop_user_id,
+                "reason": "no_matching_local_user",
+                "our": None,
+                "whop": {"status": whop_status, "valid_until": whop_valid_until},
+            })
+            continue
+
+        # Compare paid_until (rounded to whole seconds, ± 60s slack for clock drift)
+        drifted = False
+        reason = None
+        if isinstance(whop_valid_until, (int, float)):
+            whop_dt = datetime.fromtimestamp(float(whop_valid_until), tz=timezone.utc)
+            our_dt = user.paid_until
+            if our_dt is None:
+                drifted = True
+                reason = "our_paid_until_null_whop_active"
+            else:
+                delta = abs((our_dt - whop_dt).total_seconds())
+                if delta > 60:
+                    drifted = True
+                    reason = "paid_until_drift"
+
+        # Compare status posture — 'active' on Whop but not 'active'/'trialing' locally = drift
+        if whop_status in ("active", "trialing", "valid"):
+            if user.subscription_status not in ("active", "trialing"):
+                drifted = True
+                reason = reason or "status_drift"
+
+        if drifted:
+            drift_rows.append({
+                "user_id": user.id,
+                "whop_user_id": whop_user_id,
+                "reason": reason,
+                "our": {"status": user.subscription_status, "paid_until": user.paid_until.isoformat() if user.paid_until else None},
+                "whop": {"status": whop_status, "valid_until": whop_valid_until},
+            })
+
+    drift_pct = (100.0 * len(drift_rows) / checked) if checked else 0.0
+    if drift_pct == 0:
+        severity = "ok"
+    elif drift_pct <= 5.0:
+        severity = "warn"
+    else:
+        severity = "alert"
+
+    summary = {
+        "checked": checked,
+        "drift_rows": drift_rows,
+        "drift_pct": round(drift_pct, 2),
+        "severity": severity,
+    }
+
+    # Log every drift row so an ops audit trail exists even if Sentry is off.
+    for row in drift_rows:
+        log.warning("[whop-reconcile] drift · %s", row)
+    if severity == "alert":
+        log.error("[whop-reconcile] drift ALERT · %s", summary)
+        _add_breadcrumb(
+            category="webhook.whop.reconcile",
+            message="alert",
+            data={"drift_pct": summary["drift_pct"], "checked": summary["checked"]},
+        )
+    else:
+        log.info("[whop-reconcile] complete · checked=%s drift=%s pct=%s severity=%s",
+                 checked, len(drift_rows), summary["drift_pct"], severity)
+
+    return summary

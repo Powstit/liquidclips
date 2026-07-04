@@ -1,0 +1,4 @@
+[2026-07-04T12:28:54Z] INFO layer1_demo · === SECTION 3 · Sentry breadcrumb capture ===
+[2026-07-04T12:28:54Z] INFO layer1_demo · breadcrumb · category=webhook.whop.payment_succeeded · message=enter · data={}
+[2026-07-04T12:28:54Z] INFO layer1_demo · breadcrumb · category=webhook.whop.payment_succeeded · message=exit · data={'tier': 'solo', 'first_paid': False}
+[2026-07-04T12:28:54Z] INFO layer1_demo · breadcrumb categories seen · ['webhook.whop.payment_succeeded']

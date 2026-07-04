@@ -558,6 +558,58 @@ def _function_heatmap_tick() -> None:
         log.exception("[function_heatmap] tick failed: %s", e)
 
 
+def _whop_reconcile_tick() -> None:
+    """Layer 1 · reliability sprint · 2026-07-04.
+
+    Nightly reconciliation between Whop's live memberships list and our local
+    User entitlement mirror. Fires once a day (04:00 UTC) so a webhook drop
+    surfaces within 24h instead of silently rotting a Whop-active user into
+    our 'free' state or vice versa.
+
+    Skipped when LC_WHOP_RECONCILE_ENABLED != 'true' so the cron ships dormant.
+    Daniel enables it after the first end-to-end run on staging confirms the
+    Whop API path returns the expected shape.
+    """
+    if os.environ.get("LC_WHOP_RECONCILE_ENABLED", "").strip().lower() != "true":
+        return
+    try:
+        from app.db import SessionLocal
+        from app.routes.webhooks_whop import reconcile_whop_memberships
+        from app import whop_payments
+
+        def _fetch_memberships(since_dt):
+            """Call the live Whop `/api/v1/memberships` endpoint for the last
+            24h. Returns [] if the API key isn't configured so the reconciler
+            can no-op safely. Pagination not required — the Whop membership
+            volume for a single-tenant Liquid Clips account fits well under
+            one page (100)."""
+            if not whop_payments.wallet_reads_live():
+                return []
+            with whop_payments._client() as client:  # noqa: SLF001
+                # Whop's `/api/v1/memberships` accepts a `valid` filter and
+                # optional `updated_after` unix-seconds query param. We ask
+                # for updated_after=since_dt so the response is bounded.
+                params = {
+                    "valid": "true",
+                    "per": 100,
+                    "updated_after": int(since_dt.timestamp()),
+                }
+                resp = client.get("/memberships", params=params, timeout=15.0)
+                resp.raise_for_status()
+                body = resp.json() or {}
+                return body.get("data") or body.get("memberships") or []
+
+        with SessionLocal() as db:
+            summary = reconcile_whop_memberships(
+                db,
+                fetch_memberships=_fetch_memberships,
+                logger=log,
+            )
+            log.info("[whop-reconcile] tick complete · %s", summary)
+    except Exception as e:  # noqa: BLE001
+        log.exception("[whop-reconcile] tick failed: %s", e)
+
+
 def _arcade_prize_dispatch_tick() -> None:
     """Dispatch last month's arcade winner via routes/arcade_prize.dispatch.
 
@@ -623,6 +675,16 @@ def start_cron() -> None:
         max_instances=1,
         coalesce=True,
         id="arcade_prize_monthly",
+    )
+    # 2026-07-04 · Layer 1 · nightly Whop reconciliation · 04:00 UTC.
+    # Skipped when LC_WHOP_RECONCILE_ENABLED != "true".
+    _scheduler.add_job(
+        _whop_reconcile_tick,
+        "cron",
+        hour=4, minute=0,
+        max_instances=1,
+        coalesce=True,
+        id="whop_reconcile_nightly",
     )
     _scheduler.start()
     log.info("[cron] started: schedules 60s, billing 3600s, affiliate commissions 3600s, leaderboard 21600s, analytics 1800s, channel status 21600s, function heatmap 18000s, trial reminders 86400s")

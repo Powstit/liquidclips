@@ -1,0 +1,4 @@
+[2026-07-04T12:28:54Z] INFO layer1_demo · === SECTION 2 · reconciliation synthetic drift ===
+[2026-07-04T12:28:54Z] WARNING layer1_demo · [whop-reconcile] drift · {'user_id': '586e5c174989412b939dff89d42be11c', 'whop_user_id': 'user_whop_drifted', 'reason': 'paid_until_drift', 'our': {'status': 'active', 'paid_until': '2026-07-04T00:00:00+00:00'}, 'whop': {'status': 'active', 'valid_until': 1790812800}}
+[2026-07-04T12:28:54Z] ERROR layer1_demo · [whop-reconcile] drift ALERT · {'checked': 2, 'drift_rows': [{'user_id': '586e5c174989412b939dff89d42be11c', 'whop_user_id': 'user_whop_drifted', 'reason': 'paid_until_drift', 'our': {'status': 'active', 'paid_until': '2026-07-04T00:00:00+00:00'}, 'whop': {'status': 'active', 'valid_until': 1790812800}}], 'drift_pct': 50.0, 'severity': 'alert'}
+[2026-07-04T12:28:54Z] INFO layer1_demo · reconciliation summary · checked=2 · drift_pct=50.0 · severity=alert
