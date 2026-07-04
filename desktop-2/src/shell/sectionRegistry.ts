@@ -26,6 +26,8 @@ import { DiagnosticsSection } from "../sections/diagnostics/DiagnosticsSection";
 import { HQBridgeSection } from "../sections/hq/HQBridgeSection";
 // Port #8a · Section B · demo-video-placement grid.
 import { LearnTab } from "../routes/learn";
+// Phase 8 · Mount #2 · warm-peer money-moment surface.
+import { OutreachSection } from "../sections/outreach/OutreachSection";
 
 export interface SectionEntry {
   id: SectionId;
@@ -139,6 +141,21 @@ export const SECTION_REGISTRY: SectionEntry[] = [
     flowIds: [FLOW_IDS.FLOW_000_APP_SHELL],
     navVisible: true,
     component: LearnTab,
+  },
+  // Phase 8 · Mount #2 · warm-peer money moment. Section B built the
+  // surface (SyncMailMoneyDrop); this entry makes it reachable at
+  // `#/outreach`. `navVisible: false` until the Home hero CTA copy is
+  // greenlit — router-only for now, so a direct hash navigate mounts it.
+  // Reuses FLOW_000_APP_SHELL rather than introducing a new FLOW_ID per
+  // Phase 8 guard rail 12 (WIRE only · no new primitives).
+  {
+    id: SECTION_IDS.SECTION_OUTREACH,
+    route: "outreach",
+    label: "Outreach",
+    description: "Warm-peer money-moment flow · SyncMailMoneyDrop wrapper.",
+    flowIds: [FLOW_IDS.FLOW_000_APP_SHELL],
+    navVisible: false,
+    component: OutreachSection,
   },
 ];
 
