@@ -19,6 +19,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
+import { DemoOverlay } from '../../components/demo-overlay';
 import './CancellationIntercept.css';
 
 export type CancelState = 'cancel-attempt' | 'paused-then-back' | 'already-cancelled';
@@ -197,6 +198,22 @@ export function CancellationIntercept(props: CancellationInterceptProps) {
           </div>
         </div>
       </div>
+
+      {/* Port #8c · #5 · contextual demo overlay · shows on the initial
+          cancel-attempt state so a confused user gets a walkthrough
+          before deciding. Dismissed once (localStorage:
+          demo-shown-cancellation) → collapses to "?" pill for later
+          re-watch. paused-then-back and already-cancelled hide the
+          overlay entirely (decision already made). */}
+      {state === 'cancel-attempt' && (
+        <DemoOverlay
+          mp4Src="/demos/05-cancellation-save.mp4"
+          kadePosterSrc="/brand/kade/kade-hover.webp"
+          title="Cancellation save walkthrough"
+          storageKey="demo-shown-cancellation"
+          hint={<><strong>60 sec</strong> · tap to unmute · ✕ to dismiss</>}
+        />
+      )}
     </div>
   );
 }

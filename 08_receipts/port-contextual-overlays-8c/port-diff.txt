@@ -1,0 +1,41 @@
+# Port · Contextual overlays #8c · source snapshot (3 of 3)
+
+## Wire-in verification (3 of 3)
+
+#5 CancellationIntercept.tsx (retention flow):
+22:import { DemoOverlay } from '../../components/demo-overlay';
+209:        <DemoOverlay
+
+#6 BrowseOverlay.tsx (in-app browser):
+14:import { DemoOverlay } from "../demo-overlay";
+830:      <DemoOverlay
+
+#7 EmbedPreviewCard.tsx (campaign builder preview):
+27:import { DemoOverlay } from '../../components/demo-overlay';
+265:        <DemoOverlay
+
+## Iron gates preserved
+Target files IRON GATE sentinels: 0 (0 expected)
+IG-005 workspace UI touched: NO · additive-only inserts
+
+## localStorage keys per surface
+          storageKey="demo-shown-cancellation"
+          storageKey="demo-shown-in-app-browser"
+          storageKey="demo-shown-campaign-builder"
+
+## Demo MP4s on disk
+  05-cancellation-save.mp4: present
+  06-in-app-browser.mp4: present
+  07-cold-email-preview.mp4: present
+
+## §13g Kade posters used (all 3 from approved 24)
+  kade-hover           · CancellationIntercept (cancel-attempt state)
+  kade-community-mode  · BrowseOverlay
+  kade-campaign-mode   · EmbedPreviewCard
+
+## Voice check (§13b)
+'bounty' occurrences in rendered code (excluding §13b docstring guardrails): 0
+
+## Regression
+tsc --noEmit: green
+vitest run: 26 passed / 3 files

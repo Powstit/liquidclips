@@ -10,6 +10,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+// Port #8c · Section B · shared contextual demo overlay.
+import { DemoOverlay } from "../demo-overlay";
 import {
   ArrowLeft,
   ArrowRight,
@@ -820,6 +822,17 @@ export function BrowseOverlay(): JSX.Element | null {
         <span data-browse-overlay="esc-hint">esc to close</span>
         <span data-browse-overlay="blocked">This site blocks embedded viewing.</span>
       </div>
+
+      {/* Port #8c · #6 · contextual demo overlay · shows on first open
+          of the browse overlay (localStorage: demo-shown-in-app-browser).
+          Sits fixed bottom-right so it doesn't obstruct the webview slot
+          or the chrome header. Dismiss → "?" pill re-openable later. */}
+      <DemoOverlay
+        mp4Src="/demos/06-in-app-browser.mp4"
+        kadePosterSrc="/brand/kade/kade-community-mode.webp"
+        title="In-app browser tour"
+        storageKey="demo-shown-in-app-browser"
+      />
     </section>
   );
 
