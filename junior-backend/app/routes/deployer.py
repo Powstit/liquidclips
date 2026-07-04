@@ -20,12 +20,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.deps import current_user
 from app.models import DeployerBroadcastTick, User
 
 router = APIRouter(prefix="/deployer", tags=["deployer"])
@@ -40,7 +41,6 @@ class BroadcastStartTarget(BaseModel):
 
 
 class BroadcastStartRequest(BaseModel):
-    user_id: str
     targets: list[BroadcastStartTarget]
 
 
@@ -57,7 +57,6 @@ class BroadcastStartResponse(BaseModel):
 
 
 class BroadcastTickRequest(BaseModel):
-    user_id: str
     target_email: str
     status: str = "sent"   # "sent" | "failed" | "skipped_captcha"
 
@@ -85,6 +84,7 @@ def _sent_last_24h(db: Session, user_id: str) -> int:
 @router.post("/broadcast-start", response_model=BroadcastStartResponse)
 def broadcast_start(
     body: BroadcastStartRequest,
+    user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> BroadcastStartResponse:
     """Register preview links for a batch of warm-peer targets.
@@ -93,11 +93,13 @@ def broadcast_start(
     F3 for that endpoint · not built yet). This shim mints deterministic
     per-target URLs so the desktop can queue while F3 catches up. Once
     F3.POST /preview/register lands, swap the URL builder here to call it.
-    """
-    user = db.query(User).filter_by(id=body.user_id).one_or_none()
-    if user is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found")
 
+    Authorisation: identity comes from the license JWT via `current_user`.
+    The previous version accepted `user_id` in the request body — an
+    unauthenticated caller could impersonate any user by knowing their id,
+    poisoning the 24h send counter and minting affiliate-attributed
+    preview URLs for anyone. Body no longer carries `user_id`.
+    """
     ref = user.affiliate_id or user.whop_affiliate_code or user.whop_affiliate_id or user.id
     out_targets: list[BroadcastStartTargetResponse] = []
     for t in body.targets:
@@ -122,6 +124,7 @@ def broadcast_start(
 @router.post("/broadcast-tick", response_model=BroadcastTickResponse)
 def broadcast_tick(
     body: BroadcastTickRequest,
+    user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> BroadcastTickResponse:
     """Record one send + return current 24h counters.
@@ -129,11 +132,10 @@ def broadcast_tick(
     Client-side counter is authoritative for real-time UX; this endpoint
     catches drift (tampered localStorage, multi-device). Over-cap responses
     include `over_cap=true` so the client can pause the queue.
-    """
-    user = db.query(User).filter_by(id=body.user_id).one_or_none()
-    if user is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found")
 
+    Authorisation: identity comes from the license JWT via `current_user`.
+    Body no longer accepts `user_id` — see broadcast_start docstring.
+    """
     sent = _sent_last_24h(db, user.id)
     over_cap = sent >= MAX_SENDS_PER_24H
     # Only record 'sent' rows against the 24h cap. Failed / captcha-skipped

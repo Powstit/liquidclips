@@ -862,6 +862,30 @@ async def lifespan(_app: FastAPI):
     # When Daniel supplies WHOP_AGENT_KEYS + flips the enable flag, 100 async
     # tasks spin up alongside the FastAPI process. Until then this is a no-op.
     await start_agent_fleet()
+
+    # Fail-closed webhook + internal-secret guard. In production the process
+    # refuses to start if any of the signature verification secrets are
+    # unset — the old `if secret: verify else pass` pattern silently accepted
+    # unverified webhooks whenever an env var was missing on Railway. Any
+    # config-drift regression that drops one of these now surfaces at boot,
+    # not at first attack. Development skips this so local dev + smoke tests
+    # keep working without a full Railway env vault.
+    if settings.env == "production":
+        _required_prod_secrets = [
+            ("CLERK_WEBHOOK_SECRET", settings.clerk_webhook_secret),
+            ("WHOP_WEBHOOK_SECRET", settings.whop_webhook_secret),
+            ("STRIPE_CONNECT_WEBHOOK_SECRET", settings.stripe_connect_webhook_secret),
+            ("AYRSHARE_WEBHOOK_SECRET", settings.ayrshare_webhook_secret),
+            ("RAILWAY_WEBHOOK_SECRET", settings.railway_webhook_secret),
+            ("INTERNAL_API_SECRET", settings.internal_api_secret),
+        ]
+        _missing = [name for name, value in _required_prod_secrets if not value]
+        if _missing:
+            raise RuntimeError(
+                "Refusing to start in production without: "
+                + ", ".join(_missing)
+                + ". Set these Railway env vars before boot."
+            )
     try:
         yield
     finally:

@@ -42,8 +42,33 @@ async def stripe_connect_webhook(
     s = get_settings()
     raw_body = await request.body()
 
-    # Verify signature when configured. Local dev / pre-prod allow un-verified.
-    if s.stripe_connect_webhook_secret and stripe_signature:
+    # Env-gated fail-closed: production refuses when the secret is unset
+    # (defense-in-depth on top of main.lifespan boot guard). Non-production
+    # keeps the dev fallback that constructs the Event from raw JSON so
+    # local wiring + CI don't need Stripe CLI in the loop. Production also
+    # requires a stripe-signature header even when the secret IS set.
+    if not s.stripe_connect_webhook_secret:
+        if s.env == "production":
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "server misconfigured · STRIPE_CONNECT_WEBHOOK_SECRET unset",
+            )
+        try:
+            event = stripe.Event.construct_from(
+                values=__import__("json").loads(raw_body.decode("utf-8")),
+                key=s.stripe_secret_key or None,
+            )
+        except (ValueError, AttributeError) as e:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"stripe webhook payload invalid: {e!s}",
+            ) from e
+    else:
+        if not stripe_signature:
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED,
+                "missing stripe-signature header",
+            )
         try:
             event = stripe.Webhook.construct_event(
                 payload=raw_body,
@@ -54,17 +79,6 @@ async def stripe_connect_webhook(
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
                 f"stripe webhook signature invalid: {e!s}",
-            ) from e
-    else:
-        try:
-            event = stripe.Event.construct_from(
-                values=__import__("json").loads(raw_body.decode("utf-8")),
-                key=s.stripe_secret_key or None,
-            )
-        except (ValueError, AttributeError) as e:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                f"stripe webhook payload invalid: {e!s}",
             ) from e
 
     event_type = event.get("type")
