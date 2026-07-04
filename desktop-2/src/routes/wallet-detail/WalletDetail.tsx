@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DemoOverlay } from '../../components/demo-overlay';
 import './WalletDetail.css';
 
 export type WalletState =
@@ -452,6 +453,20 @@ export function WalletDetail(props: WalletDetailProps) {
           </div>
           <div className="wd-hover-footer" dangerouslySetInnerHTML={{ __html: activeHoverRow.hoverFooter }} />
         </div>
+      )}
+
+      {/* Port #8b · contextual demo overlay · shows only on
+          `fresh-install` state (no real streak data yet). Once user
+          hits `populated`, overlay never re-mounts. localStorage:
+          demo-shown-wallet. */}
+      {state === 'fresh-install' && (
+        <DemoOverlay
+          mp4Src="/demos/04-wallet-payouts.mp4"
+          kadePosterSrc="/brand/kade/kade-success.webp"
+          title="Wallet & payouts tour"
+          storageKey="demo-shown-wallet"
+          hint={<><strong>60 sec</strong> · tap to unmute · ✕ to dismiss</>}
+        />
       )}
     </div>
   );

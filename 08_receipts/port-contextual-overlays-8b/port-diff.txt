@@ -1,0 +1,51 @@
+# Port · Contextual overlays #8b · source snapshot
+
+## Shared component
+DemoOverlay.css
+DemoOverlay.tsx
+index.ts
+
+## Wire-in verification (3 of 4 · #1 blocked)
+
+#1 BuildHero.tsx: BLOCKED · route does not exist in the tree
+  (see scope-notes.md for the BLOCKED clarification ask)
+
+#2 LoginActivation wire-in:
+23:import { DemoOverlay } from '../../components/demo-overlay';
+335:        <DemoOverlay
+
+#3 SyncMailMoneyDrop wire-in:
+18:import { DemoOverlay } from '../../components/demo-overlay';
+518:        <DemoOverlay
+
+#4 WalletDetail wire-in:
+15:import { DemoOverlay } from '../../components/demo-overlay';
+463:        <DemoOverlay
+
+## localStorage keys per route
+          collapses to a "?" pill (localStorage: demo-shown-login). */}
+          demo-shown-sync-mail. */}
+          demo-shown-wallet. */}
+          storageKey="demo-shown-login"
+          storageKey="demo-shown-sync-mail"
+          storageKey="demo-shown-wallet"
+
+## Demo MP4s on disk
+  01-clipping.mp4: present
+  02-login-activation.mp4: present
+  03-money-moment.mp4: present
+  04-wallet-payouts.mp4: present
+
+## §13g Kade posters used
+/Users/dipdip/code/jnr/desktop-2/src/routes/login-activation/LoginActivation.tsx:/brand/kade/kade-reading-brief.webp
+/Users/dipdip/code/jnr/desktop-2/src/routes/sync-mail-money-drop/SyncMailMoneyDrop.tsx:/brand/kade/kade-earn-mode.webp
+/Users/dipdip/code/jnr/desktop-2/src/routes/sync-mail-money-drop/SyncMailMoneyDrop.tsx:/brand/kade/kade-success.webp
+/Users/dipdip/code/jnr/desktop-2/src/routes/wallet-detail/WalletDetail.tsx:/brand/kade/kade-success.webp
+
+## claude-2 poster-fallback fixes
+poster pointer-events: none · z-index 0: 1 line(s)
+video z-index 1: 1 line(s)
+is-playing hides poster: 1 line(s)
+
+## Voice check (§13b)
+'bounty' occurrences: 0
