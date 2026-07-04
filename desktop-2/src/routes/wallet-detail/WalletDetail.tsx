@@ -14,6 +14,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DemoOverlay } from '../../components/demo-overlay';
 import { renderInline } from '../../components/safe-inline';
+// Task D · 2026-07-04 · wallet Claim button wire.
+import {
+  postWalletClaim,
+  isAgreementSignedMessage,
+  CLAIM_BLOCKED_HEADING,
+  type ClaimResponse,
+} from '../../lib/wallet';
+import { useBrowseOverlay } from '../../state/browseOverlay';
 import './WalletDetail.css';
 
 export type WalletState =
@@ -178,10 +186,10 @@ const CLIPPERS: ClipperRow[] = [
 ];
 
 const DROPS: DropRow[] = [
-  { quiet: false, name: 'Marques Brownlee · $50 drop',      meta: 'Whop split · 50% · instant', time: '2h ago',  amount: '+$50.00' },
-  { quiet: false, name: 'Casey Neistat · $50 drop',         meta: 'Whop split · 50% · instant', time: '1d ago',  amount: '+$50.00' },
+  { quiet: false, name: 'Marcus B. · $50 drop',      meta: 'Whop split · 50% · instant', time: '2h ago',  amount: '+$50.00' },
+  { quiet: false, name: 'Chris N. · $50 drop',         meta: 'Whop split · 50% · instant', time: '1d ago',  amount: '+$50.00' },
   { quiet: true,  name: 'Payout to bank · $500.00',         meta: 'ACH · standard · 2-3 days',  time: '4d ago',  amount: '-$500.00', negative: true },
-  { quiet: false, name: 'Emma Chamberlain · $50 drop',      meta: 'Whop split · 50% · instant', time: '6d ago',  amount: '+$50.00' },
+  { quiet: false, name: 'Ella C. · $50 drop',      meta: 'Whop split · 50% · instant', time: '6d ago',  amount: '+$50.00' },
   { quiet: false, name: 'Colin & Samir · $50 drop',         meta: 'Whop split · 50% · instant', time: '8d ago',  amount: '+$50.00' },
   { quiet: false, name: 'Airrack · $50 drop',               meta: 'Whop split · 50% · instant', time: '12d ago', amount: '+$50.00' },
   { quiet: false, name: 'Cleo Abram · $50 drop',            meta: 'Whop split · 50% · instant', time: '14d ago', amount: '+$50.00' },
@@ -213,6 +221,76 @@ export function WalletDetail(props: WalletDetailProps) {
   const [muted, setMuted] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
   const showScrubber = props.showScrubber ?? tryImportMetaDev();
+
+  // ── Task D · Claim wire ─────────────────────────────────────
+  // Local state machine: idle → claiming → (released | awaiting_signature | error).
+  // `awaiting_signature` triggers a browse-overlay open + a
+  // postMessage listener that auto-retries after signing.
+  const openBrowsePanel = useBrowseOverlay((s) => s.openWith);
+  const closeBrowsePanel = useBrowseOverlay((s) => s.close);
+  type ClaimUiState = 'idle' | 'claiming' | 'awaiting_signature' | 'released' | 'error';
+  const [claimState, setClaimState] = useState<ClaimUiState>('idle');
+  const [toast, setToast] = useState<{ heading: string; body?: string } | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+  const showingToast = useCallback((heading: string, body?: string) => {
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    setToast({ heading, body });
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 4200);
+  }, []);
+  const runClaim = useCallback(async () => {
+    setClaimState('claiming');
+    const res: ClaimResponse | null = await postWalletClaim();
+    if (!res) {
+      setClaimState('error');
+      showingToast(
+        'Wallet is briefly unreachable.',
+        'Check your connection · try again in a moment.',
+      );
+      return;
+    }
+    if (res.blocked && res.blocked_reason) {
+      const heading = CLAIM_BLOCKED_HEADING[res.blocked_reason.code]
+        ?? res.blocked_reason.message;
+      showingToast(heading, res.blocked_reason.message);
+      setClaimState('awaiting_signature');
+      openBrowsePanel(res.blocked_reason.signature_url, 'browse-campaign');
+      return;
+    }
+    setClaimState('released');
+    const receiptHead = (res.receipt_sha256 ?? '').slice(0, 12);
+    showingToast(
+      'Payout released.',
+      receiptHead ? `Receipt ${receiptHead}…` : undefined,
+    );
+    // Fall back to idle after a beat so the user can hit Claim again
+    // for a subsequent payout without a re-mount.
+    window.setTimeout(() => setClaimState('idle'), 4000);
+  }, [openBrowsePanel, showingToast]);
+  // postMessage bridge · listens for the affiliate_agreement_signed
+  // event the account-app signature page emits to window.parent. The
+  // browse-panel webview forwards it up so this parent React window
+  // can catch it and auto-retry the Claim call.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onMessage = (ev: MessageEvent) => {
+      if (!isAgreementSignedMessage(ev.data)) return;
+      if (claimState !== 'awaiting_signature') return;
+      // Close the overlay + re-POST /claim.
+      closeBrowsePanel();
+      void runClaim();
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [claimState, closeBrowsePanel, runClaim]);
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   const stageDataState: 'fresh-install' | 'populated' = state === 'fresh-install' ? 'fresh-install' : 'populated';
 
@@ -327,8 +405,35 @@ export function WalletDetail(props: WalletDetailProps) {
               <div className="wd-stat-card"><div className="wd-stat-label">Lifetime</div><div className="wd-stat-value">{lifetime}</div></div>
               <div className="wd-stat-card"><div className="wd-stat-label">Break-even</div><div className="wd-stat-value">{breakEven}</div></div>
             </div>
-            <button className="wd-withdraw-btn" type="button" onClick={props.onWithdraw} disabled={state === 'fresh-install'}>
-              Withdraw
+            {/* Task D · Claim button · POST /me/wallet/claim ·
+                signature-gate → browse-panel → auto-retry after
+                affiliate_agreement_signed postMessage. Preserves the
+                `onWithdraw` prop as a legacy escape hatch for QA
+                that still drives the button through injected state. */}
+            <button
+              className="wd-withdraw-btn"
+              type="button"
+              onClick={() => {
+                if (props.onWithdraw) {
+                  props.onWithdraw();
+                  return;
+                }
+                if (claimState === 'claiming' || claimState === 'awaiting_signature') return;
+                void runClaim();
+              }}
+              disabled={
+                state === 'fresh-install' ||
+                claimState === 'claiming' ||
+                claimState === 'awaiting_signature'
+              }
+              aria-busy={claimState === 'claiming' || claimState === 'awaiting_signature'}
+              data-claim-state={claimState}
+            >
+              {claimState === 'claiming'
+                ? 'Claiming…'
+                : claimState === 'awaiting_signature'
+                  ? 'Waiting for signature…'
+                  : 'Claim'}
             </button>
           </div>
 
@@ -468,6 +573,16 @@ export function WalletDetail(props: WalletDetailProps) {
           storageKey="demo-shown-wallet"
           hint={<><strong>60 sec</strong> · tap to unmute · ✕ to dismiss</>}
         />
+      )}
+
+      {/* Task D · Claim wire · signature-gate + release toast.
+          Fixed bottom-center · dismisses itself after 4.2s or on
+          any subsequent claim call. */}
+      {toast && (
+        <div className="wd-claim-toast" role="status" aria-live="polite" data-testid="wallet-claim-toast">
+          <div className="wd-claim-toast-heading">{toast.heading}</div>
+          {toast.body && <div className="wd-claim-toast-body">{toast.body}</div>}
+        </div>
       )}
     </div>
   );
