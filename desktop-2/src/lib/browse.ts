@@ -66,19 +66,47 @@ export async function openBrowsePanel(
   return outcome;
 }
 
-/** Resize / reposition the existing webview without re-navigating. */
+/**
+ * G2 · Layer 5 (2026-07-04) · the Rust side now returns explicit
+ * "panel missing" errors instead of silently succeeding when the
+ * child webview isn't there. For commands where missing == "no-op /
+ * already done" (close · update-bounds), suppress the specific
+ * error string to preserve the documented "safe to call when panel
+ * isn't open" contract. For commands where missing == "operation
+ * was meaningful, user should know" (back · forward · reload ·
+ * webview_eval), the error bubbles so callers can subscribe to the
+ * `browse:crashed` Tauri event and reset their UI.
+ */
+function isPanelMissing(err: unknown): boolean {
+  if (typeof err === "string") return err === "panel missing";
+  if (err instanceof Error) return err.message === "panel missing";
+  return false;
+}
+
+/** Resize / reposition the existing webview without re-navigating.
+ *  Silently succeeds if the panel isn't open (documented contract). */
 export async function updateBrowsePanelBounds(bounds: BrowsePanelBounds): Promise<void> {
-  await invokeOrNoop<void>("update_browse_panel_bounds", {
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
-  });
+  try {
+    await invokeOrNoop<void>("update_browse_panel_bounds", {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+    });
+  } catch (err) {
+    if (!isPanelMissing(err)) throw err;
+    // Panel missing → no-op; the Rust side already emitted
+    // `browse:crashed` for any listener that cares.
+  }
 }
 
 /** Destroy the child webview. Safe to call when panel isn't open. */
 export async function closeBrowsePanel(): Promise<void> {
-  await invokeOrNoop<void>("close_browse_panel");
+  try {
+    await invokeOrNoop<void>("close_browse_panel");
+  } catch (err) {
+    if (!isPanelMissing(err)) throw err;
+  }
 }
 
 export async function isBrowsePanelOpen(): Promise<boolean> {
@@ -96,4 +124,27 @@ export async function browseForward(): Promise<void> {
 
 export async function browseReload(): Promise<void> {
   await invokeOrNoop<void>("browse_reload");
+}
+
+/**
+ * G2 · Layer 5 (2026-07-04) · canonical crash-detection primitive.
+ *
+ * Returns:
+ *   `"responsive"`   — panel exists AND accepted a no-op eval
+ *   `"unresponsive"` — panel exists BUT the wry runtime is dead
+ *   `"missing"`      — panel handle gone entirely
+ *
+ * The Rust command emits the `browse:crashed` Tauri event on the
+ * `"unresponsive"` and `"missing"` branches, so a react component
+ * that cares about the panel's state should listen for the event
+ * AND call this method opportunistically when regaining focus.
+ */
+export type BrowseHealthStatus = "responsive" | "unresponsive" | "missing";
+
+export interface BrowseHealthReport {
+  status: BrowseHealthStatus;
+}
+
+export async function browseHealthCheck(): Promise<BrowseHealthReport | null> {
+  return invokeOrNoop<BrowseHealthReport>("browse_health_check");
 }

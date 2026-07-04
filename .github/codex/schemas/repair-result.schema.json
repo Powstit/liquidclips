@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "incident_id",
+    "status",
+    "summary",
+    "root_cause",
+    "reproduction",
+    "changed_files",
+    "tests",
+    "risk",
+    "remaining_gaps"
+  ],
+  "properties": {
+    "incident_id": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "patched",
+        "triaged_no_patch",
+        "needs_human",
+        "blocked_high_risk",
+        "not_reproduced"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 800
+    },
+    "root_cause": {
+      "type": ["string", "null"],
+      "maxLength": 1200
+    },
+    "reproduction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reproduced", "evidence"],
+      "properties": {
+        "reproduced": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      }
+    },
+    "changed_files": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "string",
+        "maxLength": 240
+      }
+    },
+    "tests": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "result"],
+        "properties": {
+          "command": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "result": {
+            "type": "string",
+            "enum": ["passed", "failed", "not_run"]
+          }
+        }
+      }
+    },
+    "risk": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "remaining_gaps": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "string",
+        "maxLength": 500
+      }
+    }
+  }
+}

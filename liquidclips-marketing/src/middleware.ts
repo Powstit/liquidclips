@@ -38,14 +38,20 @@ export default clerkMiddleware(async (_auth, req: NextRequest) => {
         maxAge: REF_COOKIE_MAX_AGE,
         sameSite: "lax",
         secure: true,
-        httpOnly: false,
+        // 2026-07-04 hardening · httpOnly:true prevents XSS from
+        // reading the ref cookie. Nothing on the frontend needs to
+        // read it directly — the DB row is the source of truth.
+        httpOnly: true,
       });
       res.cookies.set(SOURCE_COOKIE, "referral", {
         path: "/",
         maxAge: REF_COOKIE_MAX_AGE,
         sameSite: "lax",
         secure: true,
-        httpOnly: false,
+        // 2026-07-04 hardening · httpOnly:true prevents XSS from
+        // reading the ref cookie. Nothing on the frontend needs to
+        // read it directly — the DB row is the source of truth.
+        httpOnly: true,
       });
 
       // Fire-and-forget click log. We don't await — middleware must stay

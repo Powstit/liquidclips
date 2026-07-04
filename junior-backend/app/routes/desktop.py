@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
-from app.deps import current_user
+from app.deps import current_user, require_internal_secret
 from app.features import is_admin_email
 from app.jwt_signer import issue_license_jwt, public_pem
 from app.models import License, User
@@ -61,15 +61,14 @@ def connect_desktop(
     body: ConnectRequest,
     request: Request,
     db: Annotated[Session, Depends(get_db)],
+    _internal: Annotated[bool, Depends(require_internal_secret)] = True,
 ) -> ConnectResponse:
     # Server-to-server only: minting a desktop license is gated by the shared
-    # internal secret. Only account-app's /api/desktop/connect (which derives
-    # clerk_user_id from a verified Clerk session) holds it. The desktop and the
-    # browser must NEVER be able to call this directly with an arbitrary id.
-    # Empty secret = local dev (matches updates.py / admin.py convention).
-    settings = get_settings()
-    if settings.internal_api_secret and request.headers.get("x-internal-secret") != settings.internal_api_secret:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "desktop licenses are minted server-side only")
+    # internal secret via `deps.require_internal_secret` (fail-closed: missing
+    # env → 500, missing/mismatched header → 401). Only account-app's
+    # /api/desktop/connect (which derives clerk_user_id from a verified Clerk
+    # session) holds the secret. The desktop and the browser must NEVER be
+    # able to call this directly with an arbitrary id.
 
     # Normalize email up-front so we never store mixed-case duplicates or
     # whitespace, and the empty-after-strip case is rejected cleanly.

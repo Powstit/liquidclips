@@ -24,6 +24,10 @@ import { CampaignsSection } from "../sections/campaigns/CampaignsSection";
 import { AccountSection } from "../sections/account/AccountSection";
 import { DiagnosticsSection } from "../sections/diagnostics/DiagnosticsSection";
 import { HQBridgeSection } from "../sections/hq/HQBridgeSection";
+// Port #8a · Section B · demo-video-placement grid.
+import { LearnTab } from "../routes/learn";
+// Phase 8 · Mount #2 · warm-peer money-moment surface.
+import { OutreachSection } from "../sections/outreach/OutreachSection";
 
 export interface SectionEntry {
   id: SectionId;
@@ -126,6 +130,32 @@ export const SECTION_REGISTRY: SectionEntry[] = [
     flowIds: [FLOW_IDS.FLOW_013_HQ_WEBSITE_DEEP_LINK_HANDOFF],
     navVisible: false,
     component: HQBridgeSection,
+  },
+  // Port #8a · Section B · 7-demo grid view. Single-word "Learn" label
+  // per liquid_clips_nav_naming memory. Uses /brand/nav-badges/learn.png.
+  {
+    id: SECTION_IDS.SECTION_LEARN,
+    route: "learn",
+    label: "Learn",
+    description: "7 demo clips — every corner of the app in a video.",
+    flowIds: [FLOW_IDS.FLOW_000_APP_SHELL],
+    navVisible: true,
+    component: LearnTab,
+  },
+  // Phase 8 · Mount #2 · warm-peer money moment. Section B built the
+  // surface (SyncMailMoneyDrop); this entry makes it reachable at
+  // `#/outreach`. `navVisible: false` until the Home hero CTA copy is
+  // greenlit — router-only for now, so a direct hash navigate mounts it.
+  // Reuses FLOW_000_APP_SHELL rather than introducing a new FLOW_ID per
+  // Phase 8 guard rail 12 (WIRE only · no new primitives).
+  {
+    id: SECTION_IDS.SECTION_OUTREACH,
+    route: "outreach",
+    label: "Outreach",
+    description: "Warm-peer money-moment flow · SyncMailMoneyDrop wrapper.",
+    flowIds: [FLOW_IDS.FLOW_000_APP_SHELL],
+    navVisible: false,
+    component: OutreachSection,
   },
 ];
 

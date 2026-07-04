@@ -23,7 +23,7 @@ from app.cron import start_cron, stop_cron
 # block is a no-op until Daniel flips the env.
 from app.agents import start_agent_fleet, stop_agent_fleet
 from app.db import Base, SessionLocal, engine
-from app.routes import admin, admin_mutations, admin_recovery, affiliate, agency_campaigns, analytics, auth_whop, bonus_ledger, campaign_asset_links, campaigns, carrot, channels, community, connections, desktop, doctrine, leaderboard, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
+from app.routes import admin, admin_mutations, admin_recovery, affiliate, affiliate_agreement, agency_campaigns, analytics, auth_whop, bonus_ledger, campaign_asset_links, campaigns, carrot, channels, community, connections, desktop, doctrine, hq, leaderboard, me, me_lifetime_views, me_wallet, notifications, onboarding, promo, promo_codes, proxy_llm, publish, redirect, reward_clips, runtime, schedules, social, stripe_connect, submissions, sync, tiktok_verify, transcribe, troubleshoot, updates, usage, webhooks_ayrshare, webhooks_clerk, webhooks_stripe, webhooks_whop, whop
 
 settings = get_settings()
 
@@ -309,6 +309,50 @@ async def lifespan(_app: FastAPI):
         "CREATE INDEX IF NOT EXISTS ix_reward_bonus_ledger_campaign ON reward_bonus_ledger (campaign_id)",
         "CREATE INDEX IF NOT EXISTS ix_reward_bonus_ledger_status ON reward_bonus_ledger (bonus_payout_status)",
         "CREATE INDEX IF NOT EXISTS ix_reward_bonus_ledger_whop_bounty ON reward_bonus_ledger (whop_bounty_id)",
+        # 2026-07-04 · G2 · Layer 6 · wallet reconciliation ledger.
+        # Append-only journal keyed by (whop_membership_id, period_start,
+        # type) so a webhook re-delivery for the same (membership,
+        # billing period) never double-credits. next_scheduled_at drives
+        # the nightly payout cron.
+        """CREATE TABLE IF NOT EXISTS wallet_ledger (
+            id varchar PRIMARY KEY,
+            user_id varchar NOT NULL,
+            type varchar NOT NULL,
+            amount_cents integer NOT NULL DEFAULT 0,
+            currency varchar NOT NULL DEFAULT 'USD',
+            source varchar NOT NULL DEFAULT '',
+            whop_membership_id varchar,
+            period_start timestamptz,
+            next_scheduled_at timestamptz,
+            whop_payout_id varchar,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            CONSTRAINT uq_wallet_ledger_dedupe UNIQUE (
+                user_id, whop_membership_id, period_start, type
+            )
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_user ON wallet_ledger (user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_type ON wallet_ledger (type)",
+        "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_whop_membership ON wallet_ledger (whop_membership_id)",
+        "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_period_start ON wallet_ledger (period_start)",
+        "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_next_scheduled ON wallet_ledger (next_scheduled_at)",
+        "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_whop_payout ON wallet_ledger (whop_payout_id)",
+        "CREATE INDEX IF NOT EXISTS ix_wallet_ledger_created ON wallet_ledger (created_at)",
+        # 2026-07-04 · Task F · Founder Access seat-cap ledger.
+        # UNIQUE(whop_membership_id) makes seat grants idempotent under
+        # webhook retry. Counter = row count · read by
+        # ``app/routes/founder.py founder_seats_used()``.
+        """CREATE TABLE IF NOT EXISTS founder_seats (
+            id varchar PRIMARY KEY,
+            whop_membership_id varchar NOT NULL UNIQUE,
+            plan_id varchar NOT NULL,
+            user_id varchar,
+            whop_user_id varchar,
+            granted_at timestamptz NOT NULL DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_founder_seats_plan ON founder_seats (plan_id)",
+        "CREATE INDEX IF NOT EXISTS ix_founder_seats_user ON founder_seats (user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_founder_seats_whop_user ON founder_seats (whop_user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_founder_seats_granted ON founder_seats (granted_at)",
         # v0.7.55 (community architecture) — sponsored_campaigns gains 7
         # columns for channel binding + brand metadata + funnel flags.
         # All nullable / default false so existing rows survive untouched.
@@ -862,6 +906,30 @@ async def lifespan(_app: FastAPI):
     # When Daniel supplies WHOP_AGENT_KEYS + flips the enable flag, 100 async
     # tasks spin up alongside the FastAPI process. Until then this is a no-op.
     await start_agent_fleet()
+
+    # Fail-closed webhook + internal-secret guard. In production the process
+    # refuses to start if any of the signature verification secrets are
+    # unset — the old `if secret: verify else pass` pattern silently accepted
+    # unverified webhooks whenever an env var was missing on Railway. Any
+    # config-drift regression that drops one of these now surfaces at boot,
+    # not at first attack. Development skips this so local dev + smoke tests
+    # keep working without a full Railway env vault.
+    if settings.env == "production":
+        _required_prod_secrets = [
+            ("CLERK_WEBHOOK_SECRET", settings.clerk_webhook_secret),
+            ("WHOP_WEBHOOK_SECRET", settings.whop_webhook_secret),
+            ("STRIPE_CONNECT_WEBHOOK_SECRET", settings.stripe_connect_webhook_secret),
+            ("AYRSHARE_WEBHOOK_SECRET", settings.ayrshare_webhook_secret),
+            ("RAILWAY_WEBHOOK_SECRET", settings.railway_webhook_secret),
+            ("INTERNAL_API_SECRET", settings.internal_api_secret),
+        ]
+        _missing = [name for name, value in _required_prod_secrets if not value]
+        if _missing:
+            raise RuntimeError(
+                "Refusing to start in production without: "
+                + ", ".join(_missing)
+                + ". Set these Railway env vars before boot."
+            )
     try:
         yield
     finally:
@@ -960,6 +1028,8 @@ app.include_router(carrot.router)
 app.include_router(me_wallet.router)
 app.include_router(onboarding.router)
 app.include_router(affiliate.router)
+app.include_router(affiliate_agreement.router)
+app.include_router(hq.router)
 app.include_router(tiktok_verify.router)
 app.include_router(admin.router)
 # v2.2.9 · /agency/* — JWT-gated agency self-service for announcement
@@ -1014,6 +1084,23 @@ from app.routes import webhooks_railway as _webhooks_railway_router  # noqa: E40
 from app.routes import hq_journeys as _hq_journeys_router  # noqa: E402
 app.include_router(_webhooks_railway_router.router)
 app.include_router(_hq_journeys_router.router)
+# 2026-07-04 · Layer 3 · Gmail broadcast queue backend cross-check.
+# /deployer/broadcast-start · returns preview URLs per target
+# /deployer/broadcast-tick  · records one send + returns 24h caps
+from app.routes import deployer as _deployer_router  # noqa: E402
+app.include_router(_deployer_router.router)
+# 2026-07-04 · Layer 4 · F7 YouTube batch-lookup worker.
+# /yt/batch-lookup · resolves video_id → channel_id + channel_handle + subs
+# License-JWT gated · 24h in-memory cache · 100/min + 10k/day quota ·
+# scraper stub fallback when quota exhausted.
+from app import yt_worker as _yt_worker_module  # noqa: E402
+app.include_router(_yt_worker_module.router)
+# 2026-07-04 · Task F · Founder Access seat-cap runtime gate + status.
+# /founder/seat-status · public · marketing + checkout fail-safe.
+# Cap enforcement fires inside webhooks_whop._handle_membership_valid
+# via try_grant_founder_seat before any tier lands.
+from app.routes import founder as _founder_router  # noqa: E402
+app.include_router(_founder_router.router)
 app.include_router(campaigns.router)
 app.include_router(campaign_asset_links.router)
 app.include_router(agency_campaigns.router)

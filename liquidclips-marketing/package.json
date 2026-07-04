@@ -4,10 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/mirror-demos.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:migrate": "node scripts/db-migrate.mjs"
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "demos:mirror": "node scripts/mirror-demos.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "7.3.7",
