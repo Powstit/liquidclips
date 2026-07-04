@@ -1,0 +1,35 @@
+
+ RUN  v4.1.9 /Users/dipdip/code/jnr/desktop-2
+
+ ✓ src/lib/gmail/broadcastQueue.test.ts > BroadcastQueue > completes queued items when driver returns ok 9ms
+ ✓ src/lib/gmail/broadcastQueue.test.ts > BroadcastQueue > pauses on captcha and does not advance further 1ms
+ ✓ src/lib/gmail/broadcastQueue.test.ts > BroadcastQueue > pauses on rate limit and can be resumed after operator action 1ms
+ ✓ src/lib/gmail/broadcastQueue.test.ts > BroadcastQueue > persists across a synthetic restart 1ms
+ ✓ src/lib/f5/scanner.test.ts > F5 · contact fetch > merges People API + sent-box into deduped contacts with sent counts 6ms
+ ✓ src/lib/f5/scanner.test.ts > F5 · fallback roster (0 · 3 · 8 YT match branches) > 0 YT matches → roster is 100% fallback contacts, size 20 2ms
+ ✓ src/lib/f5/scanner.test.ts > F5 · fallback roster (0 · 3 · 8 YT match branches) > 3 YT matches → 3 YouTube rows + 17 fallback rows (<5 floor triggers fallback) 2ms
+ ✓ src/lib/f5/scanner.test.ts > F5 · fallback roster (0 · 3 · 8 YT match branches) > 8 YT matches → 8 YouTube rows only, NO fallback (>=5 floor NOT triggered) 1ms
+ ✓ src/lib/f5/scanner.test.ts > F5 · OAuth > user-denied path transitions to `denied` state and returns no roster 1ms
+ ✓ src/lib/f5/scanner.test.ts > F5 · OAuth > missing client_id → `misconfigured` state (TODO(daniel-provide-client-id)) 2ms
+ ✓ src/lib/f5/scanner.test.ts > F5 · OAuth > successful roundtrip carries scope + expiresAt through to scanner 5ms
+ ✓ src/lib/gmail/gmailComposeDriver.test.ts > selector fallback > primary selector hits on a fresh Gmail DOM 49ms
+ ✓ src/lib/gmail/gmailComposeDriver.test.ts > selector fallback > secondary selector fires when primary is missing 37ms
+ ✓ src/lib/gmail/gmailComposeDriver.test.ts > selector fallback > tertiary selector fires when primary + secondary missing 12ms
+ ✓ src/lib/gmail/gmailComposeDriver.test.ts > captcha detection > pauses the send flow when a captcha interstitial is present 7ms
+ ✓ src/lib/gmail/gmailComposeDriver.test.ts > rate limit > blocks the 101st send in a 24h window on the driver 4ms
+ ✓ src/lib/gmail/gmailComposeDriver.test.ts > rate limit > allows the 100th send but blocks the 101st 1ms
+ ✓ src/lib/gmail/gmailComposeDriver.test.ts > circuit breaker > opens after 3 misses in the rolling window and captures an HTML dump 2ms
+ ✓ src/lib/gmail/gmailComposeDriver.test.ts > circuit breaker > does NOT open when 3 misses land outside the 5min window 1ms
+ ✓ src/lib/gmail/gmailComposeDriver.test.ts > circuit breaker > driver refuses to send when the breaker is open 12ms
+ ✓ src/lib/gmail/gmailComposeDriver.test.ts > human timing > per-char delay lands in the 60-140ms window 19ms
+ ✓ src/lib/gmail/gmailComposeDriver.test.ts > human timing > between-sends delay lands in the 6-12s window 14ms
+ ✓ src/lib/f5/scanner.test.ts > F5 · rate limit > surfaces RATE_LIMITED after retries exhaust on 429 3188ms
+ ✓ src/lib/f5/scanner.test.ts > F5 · rate limit > recovers when a transient 500 clears on retry 398ms
+ ✓ src/lib/f5/scanner.test.ts > F5 · state machine > records the expected transition sequence for a happy-path run 3ms
+ ✓ src/lib/f5/scanner.test.ts > F5 · state machine > records the expected transition sequence for the denied path 1ms
+
+ Test Files  3 passed (3)
+      Tests  26 passed (26)
+   Start at  13:24:50
+   Duration  6.21s (transform 668ms, setup 0ms, import 782ms, tests 3.79s, environment 5.69s)
+
