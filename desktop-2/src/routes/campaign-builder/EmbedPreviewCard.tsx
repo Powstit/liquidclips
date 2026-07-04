@@ -24,6 +24,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DemoOverlay } from '../../components/demo-overlay';
 import './EmbedPreviewCard.css';
 
 export type EmbedState =
@@ -254,6 +255,21 @@ export function EmbedPreviewCard(props: EmbedPreviewCardProps) {
           <div>Link expires in · <strong>72 hours</strong></div>
         </div>
       </div>
+
+      {/* Port #8c · #7 · contextual demo overlay for the campaign-builder
+          sender preview. Shows on the dev-walk stage (parent controls
+          via `showScrubber` · production campaign-builder host route
+          can add a `forceShow`/prop-controlled render). localStorage:
+          demo-shown-campaign-builder. */}
+      {showScrubber && (
+        <DemoOverlay
+          mp4Src="/demos/07-cold-email-preview.mp4"
+          kadePosterSrc="/brand/kade/kade-campaign-mode.webp"
+          title="How the preview card works"
+          storageKey="demo-shown-campaign-builder"
+          hint={<><strong>60 sec</strong> · walk through every state</>}
+        />
+      )}
     </div>
   );
 }
