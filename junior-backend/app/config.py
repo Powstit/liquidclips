@@ -157,6 +157,12 @@ class Settings(BaseSettings):
     ayrshare_webhook_secret: str = ""
     railway_webhook_secret: str = ""
 
+    # F7 · Layer 4 · YouTube Data API v3 key. Server-to-server only —
+    # consumed by yt_worker.batch_lookup which is license-JWT-gated so
+    # a leaked key can't be burned by anonymous curl. Empty in dev
+    # disables /yt/batch-lookup with a 500 (server misconfigured).
+    youtube_api_key: str = ""
+
     # CORS — which origins can hit us. Railway sets the real list.
     # Includes the packaged Tauri webview origins: macOS serves the app from
     # tauri://localhost; Windows/Linux from http(s)://tauri.localhost. Without
