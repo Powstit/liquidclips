@@ -547,6 +547,7 @@ pub fn run() {
             browse::browse_back,
             browse::browse_forward,
             browse::browse_reload,
+            browse::browse_health_check,
             browse::webview_eval,
             auth_panel::open_auth_panel,
             auth_panel::update_auth_panel_bounds,
