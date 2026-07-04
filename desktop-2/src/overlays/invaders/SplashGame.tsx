@@ -257,7 +257,10 @@ export function SplashGame({
                 </span>
               </div>
               <div className="flex items-center gap-2 font-mono text-[12px] tabular-nums">
-                <span className="text-paper/60">{levelUpFrom.toLocaleString()}</span>
+                {/* P0 contrast fix 2026-07-04 · was text-paper/60 (near-black
+                    on near-black paper bg) · 1:1 contrast, literally invisible.
+                    Swapped to text-ink/60 (cream on paper) for readable AA. */}
+                <span className="text-ink/60">{levelUpFrom.toLocaleString()}</span>
                 <span className="text-fuchsia">→</span>
                 <span className="font-semibold text-fuchsia">{state.score.toLocaleString()}</span>
               </div>

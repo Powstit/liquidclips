@@ -16,13 +16,13 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.authz import OperatingMode, build_authorization_context
-from app.config import get_settings
 from app.db import get_db
+from app.deps import require_internal_secret
 from app.features import CAPABILITY_SCHEMA_VERSION
 from app.models import User
 
@@ -49,21 +49,17 @@ class WhoAmIResponse(BaseModel):
     effective_plan: str
 
 
-def _require_internal_secret(
-    x_internal_secret: Annotated[str | None, Header()] = None,
-) -> None:
-    """Same defense-in-depth model as ``/admin/*``. An empty configured
-    secret is a dev bypass; production must set INTERNAL_API_SECRET."""
-    secret = get_settings().internal_api_secret
-    if secret and x_internal_secret != secret:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "bad internal secret")
+# Internal-secret gate is now fail-closed via `deps.require_internal_secret`
+# (missing env → 500, missing/mismatched header → 401). Prior version
+# allowed unset-secret local-dev bypass in production if the env vault
+# ever drifted.
 
 
 @router.get("/whoami", response_model=WhoAmIResponse)
 def whoami(
     db: Annotated[Session, Depends(get_db)],
     clerk_user_id: Annotated[str, Query(min_length=1)],
-    _internal: Annotated[None, Depends(_require_internal_secret)] = None,
+    _internal: Annotated[bool, Depends(require_internal_secret)] = True,
 ) -> WhoAmIResponse:
     """Return the server-authoritative capability snapshot for a Clerk user.
 

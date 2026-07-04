@@ -33,11 +33,14 @@ GOOD_STANDING_DAYS = 7
 BASELINE_PERCENT = 30
 COMMISSION_PERCENT = 50
 
-# Recurring Liquid Clips plans. Founder is one-time and intentionally omitted.
+# Recurring Liquid Clips plans. The $500 Founder Lifetime plan is one-time
+# and intentionally omitted; the $99.99/mo Founder Access plan is monthly
+# recurring and pays 50% MRR to the referrer like the standard tiers.
 RECURRING_PLAN_IDS = (
-    "plan_qe8AFXj9J3SWi",  # Pro
-    "plan_dhssNse4FfPlI",  # Growth
+    "plan_qe8AFXj9J3SWi",  # Solo
+    "plan_dhssNse4FfPlI",  # Pro
     "plan_BvDBrtybhbxNg",  # Agency
+    "plan_VWj1uoy2RcOsg",  # Founder Access · $99.99/mo · cap 12,000
 )
 
 WHOP_API_BASE = "https://api.whop.com/api/v1"

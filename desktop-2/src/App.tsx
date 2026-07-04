@@ -35,6 +35,21 @@ const InvadersOverlay = lazy(() =>
 const LoginOnboardingRoute = lazy(() =>
   import("./design-os/routes/LoginOnboarding").then((m) => ({ default: m.LoginOnboardingRoute })),
 );
+// Phase 8 · Mount #1 · LoginOnboardingRoute is preserved lazy-imported as
+// a rollback fallback. The `void` reference below stops tsc's
+// `noUnusedLocals` from stripping the import while the surface is dead
+// code. Swap AuthGate's LoginActivation render back to LoginOnboardingRoute
+// to roll back the Mount #1 surface change.
+void LoginOnboardingRoute;
+// Phase 8 · Mount #1 (2026-07-04) · new canonical unauth boot gate.
+// Wraps the activation state machine + Whop panel + manual-paste flow
+// inside a single component. Preserves IG-004 (activation.ts is still
+// the single source of truth). LoginOnboardingRoute stays lazy-imported
+// above as a rollback fallback — dead code today but recoverable with
+// a one-liner if this mount ever needs to be pulled back out.
+const LoginActivation = lazy(() =>
+  import("./routes/login-activation/LoginActivation").then((m) => ({ default: m.LoginActivation })),
+);
 const ClaimScreen = lazy(() =>
   import("./design-os/routes/ClaimScreen").then((m) => ({ default: m.ClaimScreen })),
 );
@@ -279,14 +294,27 @@ function FunnelGate({ children }: { children: React.ReactNode }): React.ReactEle
  * Network failure / 500 paths are explicitly NOT eviction-triggers · the
  * orchestrator only sets `degraded: true` and preserves the JWT · which
  * means hasJwt() stays true · gate stays open. */
-function AuthGate({ children }: { children: React.ReactNode }): React.ReactElement {
+export function AuthGate({ children }: { children: React.ReactNode }): React.ReactElement {
   const activation = useActivation();
   const [hasLicense, setHasLicense] = useState<boolean>(() => hasJwt());
   useEffect(() => {
     setHasLicense(hasJwt());
   }, [activation.status, activation.error, activation.lastTokenSource]);
   if (!hasLicense) {
-    return <LoginOnboardingRoute />;
+    // Phase 8 · Mount #1 · LoginActivation replaces LoginOnboardingRoute
+    // as the unauth boot surface. `onContinue` is a best-effort keychain
+    // resume — the AuthGate re-checks hasJwt on every activation.status
+    // change, so a successful activation flips the gate automatically.
+    // The onContinue callback covers the edge case where a user manually
+    // navigates back from an "already_activated" or "activated_degraded"
+    // state without the activation snapshot re-firing.
+    return (
+      <LoginActivation
+        onContinue={() => {
+          void resumeJwtFromKeychainForAuthAction();
+        }}
+      />
+    );
   }
   return <>{children}</>;
 }

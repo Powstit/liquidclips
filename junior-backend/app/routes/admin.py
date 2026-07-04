@@ -15,7 +15,8 @@ state, and adds NO new tables — it reads the existing ORM models only.
 Auth (server-side, defence in depth):
   Every endpoint depends on `require_admin`, which:
     (a) requires x-internal-secret == settings.internal_api_secret
-        (empty secret = local dev → allowed, same as /affiliate/me), AND
+        (fail-closed via `deps.require_internal_secret`; missing env = 500,
+        mismatched/absent header = 401), AND
     (b) resolves the ?clerk_user_id (or body field) to a User and checks
         app.features.is_admin_email(user.email) — else 403.
   The account-app admin page ALSO gates in its server component, but this
@@ -38,6 +39,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import engine, get_db
+from app.deps import require_internal_secret
 from app.features import is_admin_email
 from app.models import (
     Announcement,
@@ -146,17 +148,15 @@ def _short_id(value: str | None, keep: int = 8) -> str | None:
 def require_admin(
     db: Annotated[Session, Depends(get_db)],
     clerk_user_id: Annotated[str, Query(min_length=1)],
-    x_internal_secret: Annotated[str | None, Header()] = None,
+    _internal: Annotated[bool, Depends(require_internal_secret)] = True,
 ) -> User:
     """Server-side admin gate for EVERY /admin/* endpoint.
 
-    (a) internal secret check (mirrors /affiliate/me _require_internal), then
+    (a) internal secret check — fail-closed via require_internal_secret
+        (missing env → 500, missing/mismatched header → 401). Every route
+        that used `require_admin` transitively inherits this fix.
     (b) resolve clerk_user_id → User and require is_admin_email(user.email).
     Returns the admin User so handlers can log/attribute if needed."""
-    secret = get_settings().internal_api_secret
-    if secret and x_internal_secret != secret:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "bad internal secret")
-
     user = db.query(User).filter_by(clerk_id=clerk_user_id).one_or_none()
     if not user or not is_admin_email(user.email):
         # Same 403 whether the user is missing or simply not an admin — don't

@@ -67,3 +67,14 @@ base64 = "0.22"
 # macros + rt-multi-thread for the spawn primitives. Iron Gate IG-002.
 anyhow = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util", "process", "sync"] }
+
+# ─── FIX P0 · 2026-07-04 · release binary hardening ────────────────────
+# Strips symbols · leaks no /Users/dipdip/ author paths · reduces attacker's
+# code-map + patch surface. `lto=true` and `codegen-units=1` also shrink the
+# binary and inline aggressively — reverse-engineering resistance.
+# `panic=abort` prevents unwind-based info disclosure via crash reports.
+[profile.release]
+strip = "symbols"
+lto = true
+codegen-units = 1
+panic = "abort"

@@ -66,9 +66,16 @@ ACCOUNT_PACK_PLAN_ID = "cplan_3EV9znSsguzmwoQoEr5kXpumkfM"
 
 
 def _verify_and_parse(request: Request, body: bytes) -> dict:
+    # Env-gated fail-closed: production refuses the delivery when the secret
+    # is unset (defense-in-depth on top of the main.lifespan boot guard,
+    # which prevents startup entirely in that state). Non-production keeps
+    # the dev fallback so local + CI paths don't need svix wiring.
     if not settings.clerk_webhook_secret:
-        # Dev mode without secret — still parse so we can iterate. Production
-        # always sets CLERK_WEBHOOK_SECRET; assert if missing in prod-ish env.
+        if settings.env == "production":
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "server misconfigured · CLERK_WEBHOOK_SECRET unset",
+            )
         return json.loads(body.decode())
     headers = {k.lower(): v for k, v in request.headers.items()}
     try:

@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.deps import current_user
 from app.features import _resolve_tier
 from app.models import SponsoredCampaign, User
 from app.routes.admin import AdminUser  # reuses the existing admin auth dependency
@@ -234,24 +235,25 @@ def _serialize(c: SponsoredCampaign, viewer_tier: str | None = None) -> dict[str
 
 @router.get("/campaigns")
 def list_campaigns(
+    user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
-    clerk_user_id: str | None = Query(default=None, description="Clerk user id to derive tier-aware your_rpm_cents from"),
 ) -> dict[str, Any]:
-    """Public list — every non-closed campaign, sorted. The desktop client
+    """Authed list — every non-closed campaign, sorted. The desktop client
     filters visibility by user tier on its side (Sprint 4 gates the
     invite-only banners with a locked variant + Upgrade CTA).
 
-    v0.7.55 (Uncle Daniel funnel) — when `clerk_user_id` is passed, each
-    campaign carries `your_rpm_cents` derived from the caller's tier:
-    free → base_rpm_cents, premium (solo/pro/agency) → premium_rpm_cents.
-    Without the param the field is null so the UI knows to render the
-    ladder ("$1 free / $5 with LC") instead of a single locked value.
+    Authorisation: license JWT via `current_user`. Previously the endpoint
+    was anonymous + accepted `clerk_user_id` as a query string to derive
+    tier — any curl could enumerate the full sponsored-campaign catalog
+    (brand · funding % · RPM) with zero credential. Viewer tier is now
+    derived from the authed user directly; the legacy `clerk_user_id`
+    query param is gone.
+
+    v0.7.55 (Uncle Daniel funnel) — `your_rpm_cents` is derived from the
+    authed caller's tier: free → base_rpm_cents, premium (solo/pro/agency)
+    → premium_rpm_cents.
     """
-    viewer_tier: str | None = None
-    if clerk_user_id:
-        user = db.query(User).filter(User.clerk_id == clerk_user_id).one_or_none()
-        if user:
-            viewer_tier = user.tier or "free"
+    viewer_tier: str = user.tier or "free"
     # 6N-G · §8 alignment · agency-created rows land as `status="draft"`
     # until publish. Public discovery must NOT show drafts (agency-only
     # visibility was always implied; legacy filter only blocked `closed`).

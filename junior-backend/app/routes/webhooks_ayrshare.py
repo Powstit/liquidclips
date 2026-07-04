@@ -80,14 +80,23 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks", "ayrshare"])
 
 
 def _verify_signature(raw_body: bytes, signature: str | None) -> bool:
-    """Returns True when the body matches AYRSHARE_WEBHOOK_SECRET, OR when
-    no secret is configured (dev / pre-config). Returns False only when a
-    secret IS configured and the signature is missing / wrong.
+    """Returns True when the body matches AYRSHARE_WEBHOOK_SECRET.
+
+    Env-gated fail-closed: production rejects when the secret is unset
+    (defense-in-depth on top of main.lifespan boot guard). Non-production
+    keeps the accept-anything dev bypass so local Ayrshare wiring iteration
+    stays unblocked. Prior behaviour was fail-open in every environment;
+    the boot guard now catches production misconfig at startup.
 
     Logs a warning on every failure path so prod can spot a misconfigured
     secret or a forged delivery without log-diving."""
+    from app.config import get_settings as _get_settings
+
     secret = os.environ.get("AYRSHARE_WEBHOOK_SECRET", "").strip()
     if not secret:
+        if _get_settings().env == "production":
+            log.warning("[ayrshare] rejecting delivery · AYRSHARE_WEBHOOK_SECRET unset (production)")
+            return False
         # Dev / pre-config — accept but record that we did.
         log.debug("[ayrshare] signature check skipped (no AYRSHARE_WEBHOOK_SECRET set)")
         return True

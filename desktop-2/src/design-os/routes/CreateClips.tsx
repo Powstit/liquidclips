@@ -26,7 +26,52 @@ import { EngineSessionProvider, useEngineSession } from "../state/useEngineSessi
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { useEvent } from "../bridge";
 import { bus } from "../bridge";
+import type { StageName, ProjectMeta } from "../engine/types";
+// Port #8b · Section B · shared contextual demo overlay.
+import { DemoOverlay } from "../../components/demo-overlay";
 import "./CreateClips.css";
+
+/**
+ * Post-ingest pipeline chain · mirrors `InlineCreatePanel.tsx:299-343`.
+ *
+ * Product-functional fix 2026-07-04 · CreateClips route was firing
+ * `sidecar.ingestUrl` / `startRun` and stopping. No downstream stages ran,
+ * so the user pasted a URL and never got clips. This helper walks the same
+ * post-ingest stages InlineCreatePanel walks: audio → transcribe → llm →
+ * cut → reframe → thumbs. Each `runStage` emits `stage_progress` events
+ * so `useEngineSession` advances in real time. Every stage completion
+ * emits an `engine:complete { kind: "bake" }` so ResultsGrid hydrates
+ * live · not only at the final stage.
+ *
+ * Iron Gate IG-002 · no RPC contract drift · uses existing runStage.
+ */
+const POST_INGEST_STAGES: ReadonlyArray<StageName> = [
+  "audio",
+  "transcribe",
+  "llm",
+  "cut",
+  "reframe",
+  "thumbs",
+];
+
+async function drivePostIngestStages(
+  slug: string,
+  onError: (err: unknown, kind: string) => void,
+): Promise<void> {
+  try {
+    for (const stage of POST_INGEST_STAGES) {
+      const { project: updated } = await sidecar.runStage(slug, stage);
+      bus.emit("engine:complete", {
+        kind: "bake",
+        slug,
+        project: updated as ProjectMeta,
+      });
+    }
+    bus.emit("engine:complete", { kind: "pick", slug });
+  } catch (e) {
+    onError(e, "pipeline");
+  }
+}
 
 function CreateClipsBody() {
   const [portalOpen, setPortalOpen] = useState(false);
@@ -44,7 +89,25 @@ function CreateClipsBody() {
     const path = p.paths[0];
     const name = path.split("/").pop() ?? "file";
     startPersistedSession(name, { url: undefined });
-    void sidecar.startRun(path);
+    // Product fix 2026-07-04 · chain post-ingest stages so drop actually
+    // produces clips. Was fire-and-forget → user got no clips.
+    sidecar.startRun(path)
+      .then(({ project }) => {
+        if (project?.slug) {
+          void drivePostIngestStages(project.slug, (err) => {
+            bus.emit("engine:error", {
+              kind: "bake",
+              error: String(err instanceof Error ? err.message : err),
+            });
+          });
+        }
+      })
+      .catch((e) => {
+        bus.emit("engine:error", {
+          kind: "ingest",
+          error: String(e instanceof Error ? e.message : e),
+        });
+      });
     bus.emit("toast", {
       kind: "info",
       title: "Source bay",
@@ -111,15 +174,70 @@ function CreateClipsBody() {
           intent="clips"
           onPasteUrl={(url) => {
             startPersistedSession(url, { url });
-            void sidecar.ingestUrl(url);
+            // Product fix 2026-07-04 · chain post-ingest stages so URL paste
+            // actually produces clips. Was firing ingest and stopping.
+            sidecar.ingestUrl(url)
+              .then(({ project }) => {
+                if (project?.slug) {
+                  void drivePostIngestStages(project.slug, (err) => {
+                    bus.emit("engine:error", {
+                      kind: "bake",
+                      error: String(err instanceof Error ? err.message : err),
+                      url,
+                    });
+                  });
+                }
+              })
+              .catch((e) => {
+                bus.emit("engine:error", {
+                  kind: "ingest",
+                  error: String(e instanceof Error ? e.message : e),
+                  url,
+                });
+              });
           }}
           onPickFile={() => {
             // Stub run (no native picker until dialog plugin lands)
             startPersistedSession("(picked-file.mp4)");
-            void sidecar.startRun("(picked-file.mp4)");
+            // Product fix 2026-07-04 · same chain as onPasteUrl above.
+            sidecar.startRun("(picked-file.mp4)")
+              .then(({ project }) => {
+                if (project?.slug) {
+                  void drivePostIngestStages(project.slug, (err) => {
+                    bus.emit("engine:error", {
+                      kind: "bake",
+                      error: String(err instanceof Error ? err.message : err),
+                    });
+                  });
+                }
+              })
+              .catch((e) => {
+                bus.emit("engine:error", {
+                  kind: "ingest",
+                  error: String(e instanceof Error ? e.message : e),
+                });
+              });
           }}
         />
       </EngineErrorBoundary>
+
+      {/* Port #8b · #1 · contextual demo overlay for the Build tab
+          (canonical route per Daniel 2026-07-04). Shows only when
+          session is idle — no active run, no persisted session, no
+          previous dismissal (localStorage: demo-shown-build).
+          useEngineSessionPersistence has already reconciled state
+          above so session.phase === 'idle' means genuinely no
+          resumable session. Overlay sits fixed bottom-right, does
+          not obstruct UploadPortal or the source-drop CTA. */}
+      {session.phase === "idle" && (
+        <DemoOverlay
+          mp4Src="/demos/01-clipping.mp4"
+          kadePosterSrc="/brand/kade/kade-cutting-clips.webp"
+          title="How clipping works"
+          storageKey="demo-shown-build"
+          hint={<><strong>60 sec</strong> · tap to unmute · ✕ to dismiss</>}
+        />
+      )}
     </>
   );
 }

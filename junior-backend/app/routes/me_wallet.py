@@ -129,12 +129,33 @@ class WalletWithdrawBlock(BaseModel):
     destination_wallet: str | None  # first 4 + ellipsis · null when not onboarded
 
 
+# G2 · Layer 6 (2026-07-04) · wallet ledger reconciliation. Response
+# carries a summary of the append-only ledger AT THE TOP LEVEL (not
+# nested inside `withdraw`) so the WalletDetail port + founder-cohort
+# SKU + outreach reply-credit path can consume the same shape without
+# a projection layer.
+class WalletLedgerRowOut(BaseModel):
+    id: str
+    type: str  # 'credit' | 'debit' | 'payout'
+    amount_cents: int
+    currency: str
+    source: str
+    whop_membership_id: str | None
+    period_start: str | None  # ISO-8601 UTC
+    created_at: str  # ISO-8601 UTC
+
+
 class WalletSummaryResponse(BaseModel):
     pipeline: WalletPipelineBlock
     stats: WalletStatsBlock
     campaigns: list[WalletCampaignRow]
     recent_activity: list[WalletActivityRow]
     withdraw: WalletWithdrawBlock
+    # G2 · Layer 6 · additive ledger surface.
+    balance_cents: int
+    pending_cents: int
+    next_payout_at: str | None  # ISO-8601 UTC · null when no pending payout
+    recent_ledger: list[WalletLedgerRowOut]
 
 
 # ──────── Helpers ──────────────────────────────────────────────────────
@@ -388,10 +409,167 @@ def get_wallet_summary(
         destination_wallet=destination,
     )
 
+    # ─── 8. G2 · Layer 6 · ledger surface (additive · never throws)
+    # Wrapped in try/except so a schema drift or empty ledger never
+    # breaks the wallet page — the pre-Layer-6 fields still render.
+    ledger_balance = 0
+    ledger_pending = 0
+    ledger_next: str | None = None
+    ledger_rows: list[WalletLedgerRowOut] = []
+    try:
+        from app import wallet as _wallet_service
+
+        ledger_balance = _wallet_service.compute_balance(db, user.id)
+        ledger_pending = _wallet_service.compute_pending(db, user.id)
+        ledger_next = _wallet_service.next_payout_at(db, user.id)
+        ledger_rows = [
+            WalletLedgerRowOut(**row)
+            for row in _wallet_service.recent_ledger(db, user.id)
+        ]
+    except Exception as e:  # noqa: BLE001
+        _log.warning("[wallet] ledger surface failed for %s: %s", user.id, e)
+
     return WalletSummaryResponse(
         pipeline=pipeline_block,
         stats=stats_block,
         campaigns=campaign_rows,
         recent_activity=activity,
         withdraw=withdraw_block,
+        balance_cents=ledger_balance,
+        pending_cents=ledger_pending,
+        next_payout_at=ledger_next,
+        recent_ledger=ledger_rows,
+    )
+
+
+# ─── Claim / Withdraw · click-wrap agreement gate ─────────────────────
+#
+# POST /me/wallet/claim
+#
+# The wallet's "Claim" button in the frontend calls this endpoint before
+# any capital moves. The endpoint short-circuits with HTTP 402 when the
+# user has not yet signed the Partner & Affiliate Agreement — the
+# response carries the target URL of the click-wrap modal so the client
+# can redirect the user there. Signing at that URL flips the gate open
+# and the next /claim call proceeds to release funds.
+#
+# The nightly payout scheduler applies the same gate (via
+# ``get_active_signature``) so a signature-less user's credits never
+# accrue to a payout batch even if they never press the button.
+
+
+class ClaimBlockedReason(BaseModel):
+    code: str  # e.g. 'signature_required' | 'signature_frozen'
+    message: str
+    signature_url: str
+
+
+class ClaimResponse(BaseModel):
+    ok: bool
+    blocked: bool
+    blocked_reason: ClaimBlockedReason | None
+    receipt_sha256: str | None
+    contract_version: str | None
+    amount_released_cents: int | None
+    payout_id: str | None
+
+
+def _signature_gate_url() -> str:
+    """The web modal URL the client redirects to when the signature is
+    missing. Configurable so a staging build can point at a preview
+    deploy of account-app; default is the production URL."""
+    return os.environ.get(
+        "AFFILIATE_AGREEMENT_URL",
+        "https://account.jnremployee.com/affiliate/agreement?signature_required=true",
+    )
+
+
+@router.post("/claim", response_model=ClaimResponse)
+def claim_wallet_payout(
+    user: Annotated["User", Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> ClaimResponse:
+    """The click-triggered withdraw entry point.
+
+    Contract:
+      * Returns 200 with ``blocked=true`` + ``blocked_reason`` when
+        the click-wrap agreement is unsigned or frozen. The frontend
+        opens the ``signature_url`` in a browser panel and re-calls
+        ``/claim`` after the user signs.
+      * Returns 200 with ``blocked=false`` + a receipt hash + payout id
+        when the release fires. The actual Whop payout call lands in
+        Layer 6.5 — for now this returns the receipt hash of the active
+        signature and defers the actual payout to the nightly scheduler.
+    """
+    from app.models import AffiliateAgreementSignature
+    from app.routes.affiliate_agreement import (
+        get_active_signature,
+        is_admin_bypass,
+    )
+
+    # Admin bypass · Daniel + team can Claim without signing the click-wrap
+    # (they're signing a contract with themselves — pointless legal noise).
+    # Matches the same admin override in ``deps.current_user`` that elevates
+    # tier + founder_flag on admin emails.
+    if is_admin_bypass(user):
+        return ClaimResponse(
+            ok=True,
+            blocked=False,
+            blocked_reason=None,
+            receipt_sha256="ADMIN_BYPASS",
+            contract_version="ADMIN_BYPASS",
+            amount_released_cents=None,
+            payout_id=None,
+        )
+
+    active = get_active_signature(db, user)
+    if active is None:
+        # Distinguish never-signed from frozen so the frontend copy
+        # can differ (a frozen user is under dispute — support flow).
+        latest = (
+            db.query(AffiliateAgreementSignature)
+            .filter(AffiliateAgreementSignature.user_id == user.id)
+            .order_by(AffiliateAgreementSignature.signed_at.desc())
+            .first()
+        )
+        if latest is not None and latest.status == "frozen":
+            reason = ClaimBlockedReason(
+                code="signature_frozen",
+                message=(
+                    "Your affiliate agreement is frozen following a payment dispute on your subscription. "
+                    "Contact support to resolve the dispute before further payouts can be issued."
+                ),
+                signature_url=_signature_gate_url(),
+            )
+        else:
+            reason = ClaimBlockedReason(
+                code="signature_required",
+                message=(
+                    "Please sign the Liquid Clips Partner & Affiliate Agreement before withdrawing. "
+                    "It takes about a minute and only needs to be signed once."
+                ),
+                signature_url=_signature_gate_url(),
+            )
+        return ClaimResponse(
+            ok=True,
+            blocked=True,
+            blocked_reason=reason,
+            receipt_sha256=None,
+            contract_version=None,
+            amount_released_cents=None,
+            payout_id=None,
+        )
+
+    # Signature valid. Actual Whop payout fires from the nightly
+    # scheduler (Layer 6 wired · Whop API glue lands in Layer 6.5).
+    # This endpoint confirms the release intent + returns the receipt
+    # hash the frontend renders as a "receipt id" in the wallet UI.
+    return ClaimResponse(
+        ok=True,
+        blocked=False,
+        blocked_reason=None,
+        receipt_sha256=active.receipt_sha256,
+        contract_version=active.contract_version,
+        amount_released_cents=None,  # populated in Layer 6.5 with the fired amount
+        payout_id=None,
     )

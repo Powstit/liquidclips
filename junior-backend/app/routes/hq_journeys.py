@@ -18,13 +18,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.db import get_db
+from app.deps import require_internal_secret
 from app.features import is_admin_email
 from app.models import (
     DesktopErrorGroup,
@@ -46,11 +46,9 @@ router = APIRouter(prefix="/admin/hq", tags=["hq-journeys"])
 def _require_admin(
     db: Annotated[Session, Depends(get_db)],
     clerk_user_id: Annotated[str, Query(min_length=1)],
-    x_internal_secret: Annotated[str | None, Header()] = None,
+    _internal: Annotated[bool, Depends(require_internal_secret)] = True,
 ) -> User:
-    secret = get_settings().internal_api_secret
-    if secret and x_internal_secret != secret:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "bad internal secret")
+    # x-internal-secret gate is now fail-closed via require_internal_secret.
     user = db.query(User).filter_by(clerk_id=clerk_user_id).one_or_none()
     if not user or not is_admin_email(user.email):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "admin access required")

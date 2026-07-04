@@ -13,6 +13,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    # Deploy environment. Railway sets JUNIOR_ENV=production; local defaults
+    # to "development". Consumed by the fail-closed webhook-secret guard in
+    # main.py lifespan — production refuses to boot if any signature secret
+    # is missing, but development stays permissive for local smoke tests.
+    env: str = "development"
+
     # Where the API runs. Railway sets PORT; we honour it.
     port: int = 8000
 
@@ -140,8 +146,22 @@ class Settings(BaseSettings):
 
     # Server-to-server shared secret for the account-app dashboard → backend
     # reads (e.g. /affiliate/me). The account-app server component sends it as
-    # x-internal-secret; never exposed to the browser. Empty = allow (local dev).
+    # x-internal-secret; never exposed to the browser. Empty = 500 (server
+    # misconfigured) in every admin route via the require_internal_secret dep
+    # in app/deps.py — silent-accept behaviour is gone.
     internal_api_secret: str = ""
+
+    # Webhook signing secrets read via os.environ elsewhere but mirrored here
+    # so app/main.py lifespan can fail-closed in production when any is unset.
+    # Handlers still reference os.environ so no behaviour change today.
+    ayrshare_webhook_secret: str = ""
+    railway_webhook_secret: str = ""
+
+    # F7 · Layer 4 · YouTube Data API v3 key. Server-to-server only —
+    # consumed by yt_worker.batch_lookup which is license-JWT-gated so
+    # a leaked key can't be burned by anonymous curl. Empty in dev
+    # disables /yt/batch-lookup with a 500 (server misconfigured).
+    youtube_api_key: str = ""
 
     # CORS — which origins can hit us. Railway sets the real list.
     # Includes the packaged Tauri webview origins: macOS serves the app from
