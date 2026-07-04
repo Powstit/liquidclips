@@ -1185,6 +1185,78 @@ class WalletLedger(Base):
     )
 
 
+class AffiliateAgreementSignature(Base):
+    """Click-wrap signature receipt for the Liquid Clips Partner &
+    Affiliate Agreement.
+
+    Rendered the moment a user first attempts to withdraw commission from
+    their wallet. Persisted before the wallet claim endpoint releases any
+    funds. Used later as chargeback-defense evidence — the SHA-256 receipt
+    is deterministic over the canonical JSON payload, so we can prove to
+    a card issuer that the click-action was signed by the KYC-verified
+    Whop identity at a specific timestamp.
+
+    Status transitions:
+      * ``active``  — normal state after click-acceptance.
+      * ``frozen``  — a Whop ``payment.disputed`` webhook has fired for
+        this participant. The nightly payout scheduler skips users whose
+        signature row is frozen. Set-off logic nets the $50 admin fee
+        against pending credit before freezing.
+      * ``revoked`` — reserved for future admin-tools use.
+
+    A user re-signs when the platform pushes a contract update with
+    ``require_resign=True`` — the new row uses a new ``contract_version``
+    string; the older row(s) remain for audit history.
+    """
+
+    __tablename__ = "affiliate_agreement_signatures"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "contract_version",
+            name="uq_affiliate_agreement_dedupe",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id: Mapped[str] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    contract_version: Mapped[str] = mapped_column(String, nullable=False, index=True)
+
+    # Whop identity captured at click-time. Kept as a snapshot even though
+    # ``users.whop_user_id`` should match, because Whop can reassign a
+    # user id in edge cases and this row is a legal receipt.
+    whop_user_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    kyc_status: Mapped[str] = mapped_column(String, nullable=False, default="VERIFIED_BY_WHOP")
+
+    # 'BUSINESS' | 'INDIVIDUAL' — captured from the radio button above the
+    # agreement checkbox. Consumer capacity triggers the extra Section 2
+    # acknowledgment paragraph.
+    signing_capacity: Mapped[str] = mapped_column(String, nullable=False, default="BUSINESS")
+
+    # Verbatim strings for the chargeback-evidence packet. Truncated
+    # server-side so a giant UA can't blow up the row.
+    ip_address: Mapped[str | None] = mapped_column(String, nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    scroll_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    signature_action: Mapped[str] = mapped_column(
+        String, nullable=False, default="EXPLICIT_CLICK_TO_ACCEPT"
+    )
+    receipt_sha256: Mapped[str] = mapped_column(String, nullable=False, index=True)
+
+    status: Mapped[str] = mapped_column(String, nullable=False, default="active", index=True)
+    frozen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    frozen_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    signed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+
+
 # ─── v2 · Asset Infrastructure · DORMANT FOR V1 ─────────────────────────
 #
 # Reserved for the future Drive/Dropbox/ingestion model.
