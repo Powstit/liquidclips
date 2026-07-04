@@ -9,7 +9,8 @@
  *   hook · connecting-gmail · roster-populating · approve-send ·
  *   back-to-app · notification-drop
  *
- * Pricing per Daniel 2026-07-04: $100/mo per referral, not $50.
+ * Pricing per Daniel 2026-07-04 (LOCKED): $99.99/mo founder access ·
+ * $50/mo per referral (50% affiliate cut · rounded).
  * Voice per feedback_voice_no_bounty_use_skill.md: no "bounty" · use
  * "skill" / "clip job" / "paid post".
  */

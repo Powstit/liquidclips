@@ -126,7 +126,7 @@ const NODES: Node[] = [
     w: 180,
     h: 60,
     probeUrl: "https://www.googleapis.com/youtube/v3",
-    hint: "Google's public YT API. Used by F7 worker for channel/video metadata + storyboard reads. Currently unused by backend — grey until F7 ships.",
+    hint: "Google's public YT API. Used by F7 worker for channel/video metadata + storyboard reads. API KEY WIRED 2026-07-04 (verified LIVE via search.list + channels.list HTTP 200). Backend worker itself is greenfield until Layer 4 (G2) ships.",
   },
   {
     id: "preview_render",
@@ -160,7 +160,7 @@ const NODES: Node[] = [
     w: 220,
     h: 60,
     probeUrl: "https://api.liquidclips.app/webhooks/whop",
-    hint: "Whop → Junior webhook handler (POST-only, expects Svix signature). Probe will 400/405 which no-cors reports as ok — good enough to verify reachability.",
+    hint: "Whop → Junior webhook handler (POST-only, expects Svix signature). SHIPPED 2026-07-04 with idempotency + reconciliation + DLQ (Layer 1 · commit 06f5a12 · 13 assertions green). Probe hits POST-endpoint, returns 400/405.",
   },
   {
     id: "connect_desktop",
@@ -204,7 +204,7 @@ const NODES: Node[] = [
     y: 560,
     w: 180,
     h: 60,
-    hint: "F5 — Google OAuth (contacts.readonly + gmail.readonly) → top 200 contacts → cross-reference YT Data API for verified channels. Not yet built. Grey.",
+    hint: "F5 — Google OAuth (contacts.readonly + gmail.readonly) → top 200 contacts → cross-reference YT Data API for verified channels. SHIPPED 2026-07-04 (Layer 2 · commit 1ae0ad2). Green.",
   },
   {
     id: "user_network",
@@ -214,7 +214,7 @@ const NODES: Node[] = [
     y: 690,
     w: 240,
     h: 60,
-    hint: "Discovered YouTube peers from user's contacts (post-scan). Feeds the F4 Deployer MRR ticker (contacts × £49.99). 10 canonical minimum before deploy unlocks. Not yet built. Grey.",
+    hint: "Discovered YouTube peers from user's contacts (post-scan). Feeds the F4 Deployer MRR ticker (contacts × $49.99 · 50% affiliate cut of $99.99 founder tier). 10 canonical minimum before deploy unlocks. Backend feed live via F5 (Layer 2 shipped). F4 UI surface still pending Layer 5.",
   },
   {
     id: "broadcast",
@@ -224,7 +224,7 @@ const NODES: Node[] = [
     y: 690,
     w: 160,
     h: 60,
-    hint: "F6 — sends warm-peer emails from user's own Gmail via BrowseOverlay DOM automation + persistent cookies. Rate-paced 6-12s. Not yet built. Grey.",
+    hint: "F6 — sends warm-peer emails from user's own Gmail via BrowseOverlay DOM automation + persistent cookies. Rate-paced 6-12s. SHIPPED 2026-07-04 (Layer 3 · commit 5a3bf05). Green. Layer 4.5 will add API-first path with DOM as fallback.",
   },
 
   // ── row 7: peer inbox + loop back ──
