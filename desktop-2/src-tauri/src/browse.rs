@@ -201,3 +201,25 @@ pub async fn browse_reload(app: AppHandle) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// F6 (Layer 3 · reliability sprint) — evaluate arbitrary JavaScript inside
+/// the persistent browse-panel webview. Fire-and-forget: `wv.eval` on Tauri
+/// v2 does not return the JS return value. Callers that need a result MUST
+/// wrap the script so it emits a Tauri event (or calls `window.__TAURI_IPC`)
+/// with the payload. The F6 Gmail-compose driver uses this pattern to poll
+/// for compose-ready + send-confirmation + captcha states.
+///
+/// Errors:
+///   - "browse panel not open"          · caller must open_browse_panel first
+///   - "webview eval failed: <detail>"  · the WebView refused the script
+///                                       (rare — usually the caller passed
+///                                       malformed JS or the webview died)
+#[tauri::command]
+pub async fn webview_eval(app: AppHandle, script: String) -> Result<(), String> {
+    let wv = app
+        .get_webview(PANEL_LABEL)
+        .ok_or_else(|| "browse panel not open".to_string())?;
+    wv.eval(&script)
+        .map_err(|e| format!("webview eval failed: {e}"))?;
+    Ok(())
+}
