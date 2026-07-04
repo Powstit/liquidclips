@@ -317,6 +317,22 @@ def test_webhook_ignores_unknown_affiliate_id(_db, _user):
 
 def test_scheduler_picks_due_credits(_db, _user, monkeypatch):
     s = _fresh_session(_db)
+    # Click-wrap gate: the scheduler skips users without an active
+    # signature. Land a receipt so the payout releases.
+    from app.models import AffiliateAgreementSignature
+    from app.routes.affiliate_agreement import CURRENT_CONTRACT_VERSION
+
+    s.add(
+        AffiliateAgreementSignature(
+            user_id=_user.id,
+            contract_version=CURRENT_CONTRACT_VERSION,
+            kyc_status="VERIFIED_BY_WHOP",
+            signing_capacity="BUSINESS",
+            signature_action="EXPLICIT_CLICK_TO_ACCEPT",
+            receipt_sha256="e" * 64,
+            status="active",
+        )
+    )
     # Land a credit whose next_scheduled_at is in the past.
     row = wallet.record_credit(
         s,
