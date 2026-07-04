@@ -26,6 +26,8 @@ import { EngineSessionProvider, useEngineSession } from "../state/useEngineSessi
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { useEvent } from "../bridge";
 import { bus } from "../bridge";
+// Port #8b · Section B · shared contextual demo overlay.
+import { DemoOverlay } from "../../components/demo-overlay";
 import "./CreateClips.css";
 
 function CreateClipsBody() {
@@ -120,6 +122,24 @@ function CreateClipsBody() {
           }}
         />
       </EngineErrorBoundary>
+
+      {/* Port #8b · #1 · contextual demo overlay for the Build tab
+          (canonical route per Daniel 2026-07-04). Shows only when
+          session is idle — no active run, no persisted session, no
+          previous dismissal (localStorage: demo-shown-build).
+          useEngineSessionPersistence has already reconciled state
+          above so session.phase === 'idle' means genuinely no
+          resumable session. Overlay sits fixed bottom-right, does
+          not obstruct UploadPortal or the source-drop CTA. */}
+      {session.phase === "idle" && (
+        <DemoOverlay
+          mp4Src="/demos/01-clipping.mp4"
+          kadePosterSrc="/brand/kade/kade-cutting-clips.webp"
+          title="How clipping works"
+          storageKey="demo-shown-build"
+          hint={<><strong>60 sec</strong> · tap to unmute · ✕ to dismiss</>}
+        />
+      )}
     </>
   );
 }
