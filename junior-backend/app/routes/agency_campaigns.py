@@ -159,6 +159,22 @@ class CampaignCreate(BaseModel):
     visibility_tiers: list[str] | None = None
 
 
+class WatermarkOverlayConfig(BaseModel):
+    """2026-07-05 · Per-campaign agency watermark overlay config.
+
+    Consumed by the desktop sidecar which renders an alpha overlay MOV
+    once per user per campaign via bundled Remotion + caches it locally.
+    See models.SponsoredCampaign.watermark_overlay_config docstring for
+    the full architecture note.
+    """
+    logo_url: str = Field(..., description="Public URL to the agency logo (PNG/SVG)")
+    position: str = Field(..., description="one of: top-left · top-right · bottom-left · bottom-right · center-top · center-bottom")
+    motion: str = Field(..., description="one of: static · fade-in-out · corner-pulse · slide-in-left · lower-third")
+    text: str | None = Field(None, description="Optional handle text · only rendered by the lower-third motion preset")
+    duration_frames: int = Field(180, ge=30, le=1800, description="Overlay MOV duration in frames · 30fps")
+    version: int = Field(1, ge=1, description="Bump when the config changes so cached MOVs invalidate")
+
+
 class CampaignPatch(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = None
@@ -168,6 +184,11 @@ class CampaignPatch(BaseModel):
     visibility_tiers: list[str] | None = None
     banner_url: str | None = None
     mission_lane: str | None = None
+    # 2026-07-05 · agency campaign watermark overlay. Optional field ·
+    # when set, replaces the default Liquid Clips watermark on every
+    # clipper's export tied to this campaign. Client-rendered per user
+    # via Remotion + cached.
+    watermark_overlay_config: WatermarkOverlayConfig | None = None
 
 
 class ConnectRewardRequest(BaseModel):
@@ -198,6 +219,10 @@ class CampaignBlock(BaseModel):
     business_unit: str | None
     required_tier: str | None
     visibility_tiers: list[str]
+    # 2026-07-05 · per-campaign agency watermark overlay. NULL = default
+    # Liquid Clips watermark. See WatermarkOverlayConfig / SponsoredCampaign
+    # docstring for the shape. Client sidecar reads this on export.
+    watermark_overlay_config: dict[str, Any] | None
     created_by: str | None
     created_at: datetime
     updated_at: datetime
@@ -259,6 +284,7 @@ def _to_block(row: SponsoredCampaign) -> CampaignBlock:
         business_unit=row.business_unit,
         required_tier=row.required_tier,
         visibility_tiers=list(row.visibility_tiers or []),
+        watermark_overlay_config=row.watermark_overlay_config,
         created_by=row.created_by,
         created_at=row.created_at,
         updated_at=row.updated_at,

@@ -1046,6 +1046,62 @@ export function _readMockExportState() {
 }
 
 /* ============================================================
+   2026-07-05 · Agency campaign watermark overlay API
+   Frontend wrappers around the sidecar's Remotion + ffmpeg
+   composite pipeline. All 3 calls fall through to no-op mocks
+   in dev / preview builds so components stay renderable when
+   the sidecar isn't running.
+   ============================================================ */
+
+/** Config shape sent to the sidecar. Mirrors the backend Pydantic
+ *  WatermarkOverlayConfig · snake_case JSON on the wire. */
+export interface CampaignWatermarkConfig {
+  logo_url: string;
+  position: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center-top" | "center-bottom";
+  motion: "static" | "corner-pulse" | "fade-in-out" | "slide-in-left" | "lower-third";
+  text: string | null;
+  duration_frames: number;
+  version: number;
+}
+
+export const campaignOverlayApi = {
+  /** Render the alpha overlay MOV for one campaign · one-time per
+   *  (campaign_id, version). Idempotent · cached at
+   *  ~/LiquidClips/campaign-overlays/<id>_v<n>.mov. */
+  async render(campaignId: string, config: CampaignWatermarkConfig, force = false): Promise<{ overlay_path: string; cached: boolean }> {
+    const real = await tryInvoke<{ overlay_path: string; cached: boolean }>("render_campaign_overlay", {
+      campaign_id: campaignId,
+      config,
+      force,
+    });
+    if (real) return real;
+    // Dev/preview fallback · pretend cached so the UI doesn't spin forever.
+    return { overlay_path: "", cached: false };
+  },
+
+  /** Cache check · returns overlay_path=null if the render hasn't happened yet. */
+  async getCached(campaignId: string, version = 1): Promise<{ overlay_path: string | null; cached: boolean }> {
+    const real = await tryInvoke<{ overlay_path: string | null; cached: boolean }>("get_campaign_overlay", {
+      campaign_id: campaignId,
+      version,
+    });
+    if (real) return real;
+    return { overlay_path: null, cached: false };
+  },
+
+  /** Composite a cached overlay MOV onto an already-exported clip MP4. */
+  async composite(sourceMp4: string, overlayMov: string, outputMp4: string): Promise<{ output_path: string }> {
+    const real = await tryInvoke<{ output_path: string }>("composite_campaign_overlay", {
+      source_mp4: sourceMp4,
+      overlay_mov: overlayMov,
+      output_mp4: outputMp4,
+    });
+    if (real) return real;
+    return { output_path: sourceMp4 };
+  },
+};
+
+/* ============================================================
    Phase 6I-A · Channels API
    Mirrors legacy desktop/src/lib/sidecar.ts + backend `/channels`
    endpoints. Real-Tauri-first / mock-fallback. Multi-account per

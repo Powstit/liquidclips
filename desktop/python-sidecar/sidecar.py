@@ -5051,6 +5051,204 @@ def method_list_export_history(_params: dict[str, Any]) -> dict[str, Any]:
     return {"jobs": _read_export_history()}
 
 
+# ═════════════════════════════════════════════════════════════════════════
+# Agency campaign watermark overlay · 2026-07-05
+# ═════════════════════════════════════════════════════════════════════════
+# Per-campaign alpha-channel overlay MOVs, rendered ONCE per user per
+# campaign via bundled Remotion + cached locally. Every clip export tied
+# to that campaign gets the overlay composited via ffmpeg. Zero server
+# work per export · zero HQ dependency · scales with user's own laptop.
+#
+# Cache layout:
+#   ~/LiquidClips/campaign-overlays/
+#   ├── camp_abc123_v1.mov
+#   ├── camp_xyz789_v2.mov  (v bumped when the config changes upstream)
+#   └── ...
+
+def _campaign_overlays_dir() -> Path:
+    root = Path.home() / "LiquidClips" / "campaign-overlays"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _campaign_overlay_path(campaign_id: str, version: int) -> Path:
+    return _campaign_overlays_dir() / f"{campaign_id}_v{version}.mov"
+
+
+def _find_remotion_project() -> Path | None:
+    """Locate the bundled Remotion project. Phase A: resolved via the
+    LC_REMOTION_PROJECT env var pointing at desktop-2/remotion/ (dev
+    mode). Phase B: bundled as a Tauri resource under the app bundle's
+    Resources/ dir · resolved from the sidecar binary's location.
+    """
+    override = os.environ.get("LC_REMOTION_PROJECT")
+    if override:
+        p = Path(override).expanduser().resolve()
+        if (p / "scripts" / "render.ts").exists():
+            return p
+    # Look up relative to the sidecar's location (dev tree layout).
+    guesses = [
+        Path(__file__).resolve().parent.parent.parent / "desktop-2" / "remotion",
+        Path(__file__).resolve().parent.parent / "desktop-2" / "remotion",
+    ]
+    for g in guesses:
+        if (g / "scripts" / "render.ts").exists():
+            return g
+    return None
+
+
+def method_render_campaign_overlay(params: dict[str, Any]) -> dict[str, Any]:
+    """Render an alpha-channel overlay MOV for one campaign.
+
+    Params:
+      campaign_id (str)        · the SponsoredCampaign row id
+      config (dict)            · WatermarkOverlayConfig JSON:
+        {logo_url, position, motion, text?, duration_frames, version}
+      force (bool, optional)   · re-render even if cached
+
+    Returns {overlay_path: str}. Caches at
+    ~/LiquidClips/campaign-overlays/<campaign_id>_v<version>.mov.
+    Idempotent · subsequent calls with the same (id, version) return
+    the cached path without re-rendering.
+    """
+    campaign_id = params.get("campaign_id")
+    config = params.get("config")
+    force = bool(params.get("force"))
+    if not isinstance(campaign_id, str) or not campaign_id.strip():
+        raise ValueError("render_campaign_overlay requires campaign_id (str)")
+    if not isinstance(config, dict):
+        raise ValueError("render_campaign_overlay requires config (dict)")
+
+    version = int(config.get("version") or 1)
+    out_path = _campaign_overlay_path(campaign_id, version)
+
+    if out_path.exists() and not force:
+        return {"overlay_path": str(out_path), "cached": True}
+
+    project = _find_remotion_project()
+    if project is None:
+        raise RuntimeError(
+            "Remotion project not found · set LC_REMOTION_PROJECT or bundle desktop-2/remotion/"
+        )
+
+    # Map backend snake_case JSON → Remotion camelCase props.
+    remotion_props = {
+        "logoUrl":          config.get("logo_url") or config.get("logoUrl"),
+        "position":         config.get("position") or "bottom-right",
+        "motion":           config.get("motion") or "corner-pulse",
+        "text":             config.get("text"),
+        "durationInFrames": int(config.get("duration_frames") or config.get("durationInFrames") or 180),
+    }
+    if not remotion_props["logoUrl"]:
+        raise ValueError("render_campaign_overlay: config.logo_url required")
+
+    # Write props to a tmp JSON so tsx/render can read it.
+    props_dir = _campaign_overlays_dir() / ".props"
+    props_dir.mkdir(parents=True, exist_ok=True)
+    props_path = props_dir / f"{campaign_id}_v{version}.json"
+    props_path.write_text(json.dumps(remotion_props), encoding="utf-8")
+
+    # Spawn: (bundled) node → npx tsx scripts/render.ts --composition=AgencyOverlay
+    #                        --format=webm-alpha <props.json> <out.mov>
+    # Phase A: assume `node` + `npx` are on PATH (dev / Daniel's Mac).
+    # Phase B: swap to bundled runtime · same command shape.
+    cmd = [
+        "npx", "tsx", "scripts/render.ts",
+        "--composition=AgencyOverlay",
+        "--format=webm-alpha",
+        str(props_path),
+        str(out_path),
+    ]
+    log(f"[campaign-overlay] render {campaign_id} v{version} → {out_path}")
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=project,
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"Remotion render timed out after 180s: {exc}") from exc
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"Remotion runtime missing (need node + npx): {exc}") from exc
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Remotion render failed (rc={result.returncode}): {result.stderr[-500:]}"
+        )
+    if not out_path.exists() or out_path.stat().st_size == 0:
+        raise RuntimeError("Remotion render produced no output file")
+
+    return {"overlay_path": str(out_path), "cached": False}
+
+
+def method_get_campaign_overlay(params: dict[str, Any]) -> dict[str, Any]:
+    """Return the cached overlay path for a campaign, or None if not
+    yet rendered. Used by the frontend to decide whether to show a
+    'render pending' spinner in the campaign wizard preview."""
+    campaign_id = params.get("campaign_id")
+    version = int(params.get("version") or 1)
+    if not isinstance(campaign_id, str) or not campaign_id.strip():
+        raise ValueError("get_campaign_overlay requires campaign_id (str)")
+    out_path = _campaign_overlay_path(campaign_id, version)
+    if out_path.exists() and out_path.stat().st_size > 0:
+        return {"overlay_path": str(out_path), "cached": True}
+    return {"overlay_path": None, "cached": False}
+
+
+def method_composite_campaign_overlay(params: dict[str, Any]) -> dict[str, Any]:
+    """Composite a cached campaign overlay MOV onto an already-exported
+    clip MP4. Used by the frontend export path when a clip belongs to
+    a campaign with a watermark_overlay_config set.
+
+    Params:
+      source_mp4 (str)     · clip export path (from method_export_clip)
+      overlay_mov (str)    · cached campaign overlay path
+      output_mp4 (str)     · destination for the composited output
+    """
+    source_mp4 = params.get("source_mp4")
+    overlay_mov = params.get("overlay_mov")
+    output_mp4 = params.get("output_mp4")
+    if not all(isinstance(x, str) and x.strip() for x in (source_mp4, overlay_mov, output_mp4)):
+        raise ValueError("composite_campaign_overlay requires source_mp4, overlay_mov, output_mp4")
+
+    if not Path(source_mp4).exists():
+        raise RuntimeError(f"source_mp4 missing: {source_mp4}")
+    if not Path(overlay_mov).exists():
+        raise RuntimeError(f"overlay_mov missing: {overlay_mov}")
+
+    ffmpeg = stages.ffmpeg_bin()
+    # Loop the overlay if the clip is longer than the overlay MOV, so
+    # the motion cycles gracefully. Trim if the clip is shorter.
+    filter_complex = (
+        "[1:v]setpts=PTS-STARTPTS[fg];"
+        "[0:v][fg]overlay=0:0:shortest=1[out]"
+    )
+    cmd = [
+        ffmpeg, "-y", "-nostdin", "-hide_banner", "-loglevel", "error",
+        "-i", source_mp4,
+        "-stream_loop", "-1", "-i", overlay_mov,
+        "-filter_complex", filter_complex,
+        "-map", "[out]", "-map", "0:a?",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+        "-c:a", "copy",
+        "-movflags", "+faststart",
+        output_mp4,
+    ]
+    log(f"[campaign-overlay] composite {source_mp4} + {overlay_mov} → {output_mp4}")
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"ffmpeg composite timed out after 300s: {exc}") from exc
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg composite failed (rc={result.returncode}): {result.stderr[-500:]}")
+    if not Path(output_mp4).exists() or Path(output_mp4).stat().st_size == 0:
+        raise RuntimeError("ffmpeg composite produced no output file")
+    return {"output_path": output_mp4}
+
+
 # ───── IRON GATE IG-002 (v0.7.13+) — see desktop/docs/IRON_GATES.md ─────
 # Sidecar RPC contract. Each entry pairs with a TS wrapper in src/lib/sidecar.ts
 # of the same snake_case name. Don't rename, don't mutate param shapes, don't
@@ -5184,6 +5382,10 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "save_copy_as": method_save_copy_as,
     "reveal_in_finder": method_reveal_in_finder,
     "list_export_history": method_list_export_history,
+    # 2026-07-05 · agency campaign watermark overlay (IG-002 bottom).
+    "render_campaign_overlay": method_render_campaign_overlay,
+    "get_campaign_overlay": method_get_campaign_overlay,
+    "composite_campaign_overlay": method_composite_campaign_overlay,
 }
 
 
