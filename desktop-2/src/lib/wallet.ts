@@ -16,6 +16,7 @@
  * caller for the actual transfers.create call.
  */
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getJwt } from "./authStorage";
 
 const WALLET_TIMEOUT_MS = 6_000;
@@ -82,12 +83,34 @@ export interface WalletWithdrawBlock {
   destination_wallet: string | null;
 }
 
+// G2 · Layer 6 · additive ledger surface. The backend returns these
+// four fields at the top level of WalletSummaryResponse. Kept optional
+// on the TS side so any pre-Layer-6 backend response (or a shape drift
+// during rollout) still parses cleanly — the wallet UI degrades to the
+// legacy campaigns/activity render when the ledger fields are absent.
+export type WalletLedgerRowType = "credit" | "debit" | "payout";
+
+export interface WalletLedgerRow {
+  id: string;
+  type: WalletLedgerRowType;
+  amount_cents: number;
+  currency: string;
+  source: string;
+  whop_membership_id: string | null;
+  period_start: string | null;
+  created_at: string;
+}
+
 export interface WalletSummary {
   pipeline: WalletPipelineBlock;
   stats: WalletStatsBlock;
   campaigns: WalletCampaignRow[];
   recent_activity: WalletActivityRow[];
   withdraw: WalletWithdrawBlock;
+  balance_cents?: number;
+  pending_cents?: number;
+  next_payout_at?: string | null;
+  recent_ledger?: WalletLedgerRow[];
 }
 
 /* ──────── Fetcher ──────── */
@@ -162,7 +185,27 @@ function isWalletSummaryShape(x: unknown): x is WalletSummary {
     isFiniteNumber(withdraw.available_usd_cents) &&
     isFiniteNumber(withdraw.pending_usd_cents) &&
     isFiniteNumber(withdraw.reserve_usd_cents) &&
-    isNullableString(withdraw.destination_wallet)
+    isNullableString(withdraw.destination_wallet) &&
+    // Ledger surface — optional. When present, each field validates.
+    (o.balance_cents === undefined || isFiniteNumber(o.balance_cents)) &&
+    (o.pending_cents === undefined || isFiniteNumber(o.pending_cents)) &&
+    (o.next_payout_at === undefined ||
+      o.next_payout_at === null ||
+      typeof o.next_payout_at === "string") &&
+    (o.recent_ledger === undefined ||
+      (Array.isArray(o.recent_ledger) &&
+        o.recent_ledger.every(
+          (row) =>
+            isRecord(row) &&
+            typeof row.id === "string" &&
+            (row.type === "credit" || row.type === "debit" || row.type === "payout") &&
+            isFiniteNumber(row.amount_cents) &&
+            typeof row.currency === "string" &&
+            typeof row.source === "string" &&
+            isNullableString(row.whop_membership_id) &&
+            isNullableString(row.period_start) &&
+            typeof row.created_at === "string",
+        )))
   );
 }
 
@@ -335,6 +378,183 @@ export async function getWalletSummary(): Promise<WalletSummary | null> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/* ──────── Tagged fetch · discriminates 401 from network / shape errors ──── */
+//
+// C1-T1 · 2026-07-05 · WalletDetail needs to render 5 explicit states
+// (loading · empty · populated · error · unauthorized). Legacy
+// `getWalletSummary()` collapses every failure into `null`, which
+// prevented WalletDetail from surfacing a Sign-in CTA on 401 vs a
+// retry CTA on network error. This tagged variant preserves the
+// distinction without breaking the callers of the null-returning fn.
+
+export type WalletFetchResult =
+  | { kind: "ok"; summary: WalletSummary }
+  | { kind: "unauthorized" }
+  | { kind: "error"; status?: number; reason: "network" | "http" | "shape" };
+
+export async function fetchWalletSummaryResult(): Promise<WalletFetchResult> {
+  const jwt = getJwt();
+  if (!jwt) return { kind: "unauthorized" };
+
+  const headers = new Headers();
+  headers.set("content-type", "application/json");
+  headers.set("authorization", `Bearer ${jwt}`);
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), WALLET_TIMEOUT_MS);
+
+  try {
+    const r = await fetch(`${backendUrl()}/me/wallet/summary`, {
+      method: "GET",
+      headers,
+      signal: ctrl.signal,
+    });
+    if (r.status === 401 || r.status === 403) {
+      return { kind: "unauthorized" };
+    }
+    if (!r.ok) {
+      // eslint-disable-next-line no-console
+      console.warn(`[wallet] GET /me/wallet/summary → ${r.status}`);
+      return { kind: "error", status: r.status, reason: "http" };
+    }
+    const body = (await r.json()) as unknown;
+    if (!isWalletSummaryShape(body)) {
+      // eslint-disable-next-line no-console
+      console.warn("[wallet] summary returned malformed shape · treating as error");
+      return { kind: "error", reason: "shape" };
+    }
+    return { kind: "ok", summary: body };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[wallet] fetch failed:", err);
+    return { kind: "error", reason: "network" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* ──────── useWalletLedger · React hook for the WalletDetail page ──── */
+//
+// Returns the same 5 states the wallet UI must render explicitly:
+//
+//   loading                       fetch in-flight (first mount or refetch)
+//   unauthorized                  no JWT · backend returned 401/403
+//   error                         network / http / shape failure
+//   empty                         200 · summary has no ledger rows and no submissions
+//   populated                     200 · summary has actual user data
+//   expired-affiliate-agreement   claim was attempted and returned signature_frozen
+//
+// The last state is not derivable from /wallet/summary alone (that
+// endpoint doesn't carry signature status). The consumer sets it via
+// `markSignatureExpired()` after a failed Claim call.
+
+export type WalletUIState =
+  | "loading"
+  | "unauthorized"
+  | "error"
+  | "empty"
+  | "populated"
+  | "expired-affiliate-agreement";
+
+export interface UseWalletLedgerReturn {
+  uiState: WalletUIState;
+  summary: WalletSummary | null;
+  errorReason: "network" | "http" | "shape" | null;
+  refetch: () => Promise<void>;
+  markSignatureExpired: () => void;
+  clearSignatureExpired: () => void;
+}
+
+function isSummaryEmpty(s: WalletSummary): boolean {
+  const balance = s.balance_cents ?? 0;
+  const pending = s.pending_cents ?? 0;
+  const ledgerLen = s.recent_ledger?.length ?? 0;
+  const activityLen = s.recent_activity.length;
+  const totalSubs = s.stats.total_submissions;
+  const lifetimePaid = s.pipeline.paid_usd_cents;
+  return (
+    balance === 0 &&
+    pending === 0 &&
+    ledgerLen === 0 &&
+    activityLen === 0 &&
+    totalSubs === 0 &&
+    lifetimePaid === 0
+  );
+}
+
+export function useWalletLedger(): UseWalletLedgerReturn {
+  const [summary, setSummary] = useState<WalletSummary | null>(null);
+  const [uiState, setUiState] = useState<WalletUIState>("loading");
+  const [errorReason, setErrorReason] = useState<
+    "network" | "http" | "shape" | null
+  >(null);
+  const [signatureExpired, setSignatureExpired] = useState(false);
+  const disposedRef = useRef(false);
+
+  const refetch = useCallback(async () => {
+    setUiState((prev) =>
+      prev === "expired-affiliate-agreement" ? prev : "loading",
+    );
+    const result = await fetchWalletSummaryResult();
+    if (disposedRef.current) return;
+    if (result.kind === "unauthorized") {
+      setSummary(null);
+      setErrorReason(null);
+      setUiState("unauthorized");
+      return;
+    }
+    if (result.kind === "error") {
+      setSummary(null);
+      setErrorReason(result.reason);
+      setUiState("error");
+      return;
+    }
+    setSummary(result.summary);
+    setErrorReason(null);
+    if (signatureExpired) {
+      setUiState("expired-affiliate-agreement");
+    } else {
+      setUiState(isSummaryEmpty(result.summary) ? "empty" : "populated");
+    }
+  }, [signatureExpired]);
+
+  const markSignatureExpired = useCallback(() => {
+    setSignatureExpired(true);
+    setUiState("expired-affiliate-agreement");
+  }, []);
+
+  const clearSignatureExpired = useCallback(() => {
+    setSignatureExpired(false);
+    // Recompute state from the last fetched summary.
+    setUiState((prev) => {
+      if (prev !== "expired-affiliate-agreement") return prev;
+      if (!summary) return "loading";
+      return isSummaryEmpty(summary) ? "empty" : "populated";
+    });
+  }, [summary]);
+
+  useEffect(() => {
+    disposedRef.current = false;
+    void refetch();
+    return () => {
+      disposedRef.current = true;
+    };
+    // Intentionally excluded `refetch` from deps · a fresh refetch
+    // fires only on mount + on external `refetch()` calls. Re-running
+    // this effect on every render would spam the endpoint.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return {
+    uiState,
+    summary,
+    errorReason,
+    refetch,
+    markSignatureExpired,
+    clearSignatureExpired,
+  };
 }
 
 /* ──────── Display helpers (small + pure · safe to share across components) ──── */

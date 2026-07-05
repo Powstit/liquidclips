@@ -1,16 +1,17 @@
 /**
- * AccountSection · Phase 8 Mount #3 wire tests
+ * AccountSection · Phase 8 Mount #3 + C1-T1 wire tests
  *
- * Verifies WalletDetail is now the AccountSection surface:
+ * Verifies WalletDetail is now the AccountSection surface AND that
+ * WalletDetail no longer contains hardcoded roster fixtures:
  *   1. AccountSection module imports WalletDetail from the ported
  *      route (source-file contract).
  *   2. AccountSection module NO LONGER imports the fakeAccount
  *      fixture (the stub HUD cards are gone).
  *   3. The section registry still resolves `#/account` to the
  *      AccountSection component (no regression on the router entry).
- *   4. WalletDetail's CLIPPERS roster stays fictional-only per
- *      guard rail 5 (Marcus B., Chris N., Ella C., Alex R., Amy A.,
- *      Jax H., Clara A., Cole & Sam, Sasha G., Maya K.).
+ *   4. WalletDetail is real-data-driven per C1-T1 (2026-07-05):
+ *      wires to useWalletLedger, no fictional roster names, no
+ *      real creator emails.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -63,10 +64,12 @@ describe('AccountSection · Phase 8 Mount #3', () => {
     expect(entry?.component).toBe(AccountSection);
   });
 
-  it('WalletDetail CLIPPERS roster stays fictional-only (guard rail 5)', () => {
-    // The audit called out real-creator emails as a P0 in Phase 7.
-    // Mount #3 must not regress that — the CLIPPERS roster lives in
-    // WalletDetail.tsx as hardcoded fixture data.
+  it('WalletDetail is wired to real ledger data (C1-T1)', () => {
+    // C1-T1 replaced the hardcoded CLIPPERS + DROPS roster with a
+    // useWalletLedger hook that fetches /me/wallet/summary. The
+    // fictional names from the port mockup must no longer appear
+    // as hardcoded strings in the source.
+    expect(WALLET_SRC).toMatch(/useWalletLedger/);
     for (const name of [
       'Marcus B.',
       'Chris N.',
@@ -79,9 +82,9 @@ describe('AccountSection · Phase 8 Mount #3', () => {
       'Sasha G.',
       'Maya K.',
     ]) {
-      expect(WALLET_SRC).toContain(name);
+      expect(WALLET_SRC).not.toContain(name);
     }
-    // Real creator emails must NOT appear.
+    // Real creator emails must NEVER appear.
     for (const forbiddenEmail of [
       'mkbhd.com',
       'caseyneistat.com',
@@ -94,5 +97,13 @@ describe('AccountSection · Phase 8 Mount #3', () => {
     ]) {
       expect(WALLET_SRC).not.toContain(forbiddenEmail);
     }
+  });
+
+  it('WalletDetail renders all 5 explicit states (C1-T1 acceptance)', () => {
+    expect(WALLET_SRC).toMatch(/data-testid="wallet-loading"/);
+    expect(WALLET_SRC).toMatch(/data-testid="wallet-unauthorized"/);
+    expect(WALLET_SRC).toMatch(/data-testid="wallet-error"/);
+    expect(WALLET_SRC).toMatch(/data-testid="wallet-drops-empty"/);
+    expect(WALLET_SRC).toMatch(/data-testid="wallet-expired-banner"/);
   });
 });
