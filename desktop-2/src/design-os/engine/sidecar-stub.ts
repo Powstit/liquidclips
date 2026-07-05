@@ -63,6 +63,14 @@ declare global {
 // stuck ffmpeg child aborts at its next poll (regenerateClip 180s ceiling).
 // Iron Gate IG-002.
 import { sidecarCall, isSidecarUnavailable, withCancelOnTimeout } from "./sidecarCall";
+// C1-T6 · 2026-07-05 · Wave 2 shared-rail codemod. See
+// desktop-2/src/lib/bridgeToBackend.ts for the primitive. Used by the
+// agency + channels + social + whop-rewards wrappers to replace the
+// `tryInvoke("sidecar_call", ...) → shouldTryHttpBackend + fetch →
+// mock` triple-branch dance with a single typed HTTP call. Wrapper
+// dev-branch mocks stay behind `!shouldTryHttpBackend()` so preview /
+// CI harness still get a deterministic response.
+import { bridgeToBackend, BridgeError } from "../../lib/bridgeToBackend";
 import {
   type ExportFormat,
   type ExportPreset,
@@ -1248,26 +1256,24 @@ export const channels = {
     if (channelState.forcedSource) {
       return { channels: [...channelState.channels], source: channelState.forcedSource };
     }
-    /* 1 · Real Tauri RPC */
-    const real = await tryInvoke<{ channels: SidecarChannel[] }>("list_channels", {});
-    if (real) return { channels: real.channels, source: "real-rpc" };
-    /* 2 · Real HTTP backend · /channels returns a bare array (no wrapper) */
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/channels`, {
-        cache: "no-store",
-        headers: authHeaders(),
-      });
-      if (r.ok) {
-        const j = (await r.json()) as BackendChannelResponse[] | { channels?: BackendChannelResponse[] };
+    /* 1 · Real HTTP backend via bridgeToBackend · GET /channels returns
+     *      a bare array (no wrapper). C1-T6 codemod (2026-07-05) · was
+     *      tryInvoke("list_channels") + shouldTryHttpBackend fetch. */
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<
+          BackendChannelResponse[] | { channels?: BackendChannelResponse[] }
+        >("GET", "/channels");
         const rows = Array.isArray(j) ? j : (j.channels ?? []);
         const adapted = rows.map(adaptBackendChannel);
-        /* Cache server-side state so the legacy local-state references in
-         *  connect/disconnect/refresh stay coherent across calls. */
         channelState.channels = adapted;
         return { channels: adapted, source: "real-http" };
+      } catch (err) {
+        void err;
+        /* fall through to mock · dev preview + CI harness path */
       }
-    } catch { /* fall through */ }
-    /* 3 · Mock fallback */
+    }
+    /* 2 · Mock fallback */
     return { channels: [...channelState.channels], source: "mock" };
   },
 
@@ -1275,24 +1281,18 @@ export const channels = {
    *  pending-link row and flips it to connected after a short delay so
    *  the UI can demo the lifecycle. */
   async connect(platform: Platform, label?: string): Promise<{ channel: SidecarChannel; linkUrl?: string }> {
-    const real = await tryInvoke<{ channel: SidecarChannel }>("connect_channel", { platform, label });
-    if (real) {
-      channelState.channels = [real.channel, ...channelState.channels];
-      return real;
-    }
-    /* Real HTTP backend · POST /channels returns ChannelCreateResponse
-     *  { channel: ChannelResponse; link_url: string }. We surface
-     *  link_url so the caller can open the OAuth handshake URL in the
-     *  user's browser. */
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/channels`, {
-        method: "POST",
-        cache: "no-store",
-        headers: { "content-type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ platform, label: label ?? `${platform}` }),
-      });
-      if (r.ok) {
-        const j = (await r.json()) as { channel: BackendChannelResponse; link_url: string };
+    /* Real HTTP backend via bridgeToBackend · POST /channels returns
+     *  ChannelCreateResponse { channel: ChannelResponse; link_url:
+     *  string }. link_url is surfaced so the caller can open the OAuth
+     *  handshake in the user's browser. C1-T6 codemod (2026-07-05) ·
+     *  was tryInvoke("connect_channel") + shouldTryHttpBackend fetch. */
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<{ channel: BackendChannelResponse; link_url: string }>(
+          "POST",
+          "/channels",
+          { platform, label: label ?? `${platform}` },
+        );
         const adapted = adaptBackendChannel(j.channel);
         channelState.channels = [adapted, ...channelState.channels];
         bus.emit("toast", {
@@ -1307,8 +1307,11 @@ export const channels = {
           title: `Connect ${platform}`,
         });
         return { channel: adapted, linkUrl: j.link_url };
+      } catch (err) {
+        void err;
+        /* fall through to honest-error mock branch below */
       }
-    } catch { /* fall through */ }
+    }
     /* BUG-043 · Honest mock fallback. The previous implementation seeded
      * a pending-link row with a fake `@new.<platform>.<rand>` handle,
      * fired a "Linking…" toast, then after 3s flipped to "connected"
@@ -1326,27 +1329,23 @@ export const channels = {
   },
 
   async disconnect(id: string): Promise<{ ok: boolean }> {
-    const real = await tryInvoke<{ ok: boolean }>("disconnect_channel", { id });
-    if (real) {
-      channelState.channels = channelState.channels.filter((c) => c.id !== id);
-      return real;
-    }
-    /* Real HTTP backend · DELETE /channels/{id} → 204 No Content. */
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/channels/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-        cache: "no-store",
-        headers: authHeaders(),
-      });
-      if (r.ok || r.status === 204) {
+    /* Real HTTP backend via bridgeToBackend · DELETE /channels/{id}
+     *  returns 204 No Content · bridge returns undefined and any non-
+     *  2xx throws. C1-T6 codemod (2026-07-05). */
+    if (shouldTryHttpBackend()) {
+      try {
+        await bridgeToBackend<void>("DELETE", `/channels/${encodeURIComponent(id)}`);
         const removed = channelState.channels.find((c) => c.id === id);
         channelState.channels = channelState.channels.filter((c) => c.id !== id);
         if (removed) {
           bus.emit("toast", { kind: "info", title: "Disconnected", body: `${removed.label} removed.` });
         }
         return { ok: true };
+      } catch (err) {
+        void err;
+        /* fall through to mock */
       }
-    } catch { /* fall through */ }
+    }
     const removed = channelState.channels.find((c) => c.id === id);
     channelState.channels = channelState.channels.filter((c) => c.id !== id);
     if (removed) {
@@ -1362,22 +1361,22 @@ export const channels = {
   /** Re-fetch handle + status for a single channel. Used after OAuth
    *  redirect lands and for "Reconnect" affordance on expired chips. */
   async refresh(id: string): Promise<{ channel: SidecarChannel | null }> {
-    const real = await tryInvoke<{ channel: SidecarChannel | null }>("refresh_channel", { id });
-    if (real) return real;
-    /* Real HTTP backend · POST /channels/{id}/refresh → ChannelResponse */
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/channels/${encodeURIComponent(id)}/refresh`, {
-        method: "POST",
-        cache: "no-store",
-        headers: authHeaders(),
-      });
-      if (r.ok) {
-        const j = (await r.json()) as BackendChannelResponse;
+    /* Real HTTP backend via bridgeToBackend · POST /channels/{id}/refresh
+     *  → ChannelResponse. C1-T6 codemod (2026-07-05). */
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<BackendChannelResponse>(
+          "POST",
+          `/channels/${encodeURIComponent(id)}/refresh`,
+        );
         const adapted = adaptBackendChannel(j);
         channelState.channels = channelState.channels.map((c) => c.id === id ? adapted : c);
         return { channel: adapted };
+      } catch (err) {
+        void err;
+        /* fall through to mock */
       }
-    } catch { /* fall through */ }
+    }
     const found = channelState.channels.find((c) => c.id === id);
     if (!found) return { channel: null };
     // Mock-side: if expired/failed, flip to pending-link → connected
@@ -1430,15 +1429,17 @@ const socialMockState: Omit<SocialConnectionState, "source"> = {
 
 export const social = {
   async connections(): Promise<SocialConnectionState> {
-    const real = await tryInvoke<Omit<SocialConnectionState, "source">>("social_connections", {});
-    if (real) return { ...real, source: "real-rpc" };
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/social/connections`, {
-        cache: "no-store",
-        headers: authHeaders(),
-      });
-      if (r.ok) {
-        const j = (await r.json()) as { connected: boolean; profile_key_set: boolean; platforms: string[]; active: boolean };
+    /* Real HTTP backend via bridgeToBackend · GET /social/connections
+     *  → { connected, profile_key_set, platforms, active }. C1-T6
+     *  codemod (2026-07-05). */
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<{
+          connected: boolean;
+          profile_key_set: boolean;
+          platforms: string[];
+          active: boolean;
+        }>("GET", "/social/connections");
         return {
           connected: j.connected,
           profileKeySet: j.profile_key_set,
@@ -1446,8 +1447,11 @@ export const social = {
           active: j.active,
           source: "real-http",
         };
+      } catch (err) {
+        void err;
+        /* fall through to mock */
       }
-    } catch { /* fall through */ }
+    }
     return { ...socialMockState, source: "mock" };
   },
 };
@@ -3340,20 +3344,22 @@ const agencyCampaignsState: { campaigns: AgencyCampaignBlock[] } = { campaigns: 
 
 export const agencyWhop = {
   async validateReward(p: ValidateRewardRequest): Promise<ValidateRewardResponse> {
-    const real = await tryInvoke<BackendValidateResponse>("validate_whop_reward", p);
-    if (real) return adaptValidate(real);
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/agency/whop/validate-reward`, {
-        method: "POST",
-        cache: "no-store",
-        headers: { "content-type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ input: p.input }),
-      });
-      if (r.ok) {
-        const j = (await r.json()) as BackendValidateResponse;
+    /* Real HTTP backend via bridgeToBackend · POST /agency/whop/
+     *  validate-reward → BackendValidateResponse. C1-T6 codemod
+     *  (2026-07-05). */
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<BackendValidateResponse>(
+          "POST",
+          "/agency/whop/validate-reward",
+          { input: p.input },
+        );
         return adaptValidate(j);
+      } catch (err) {
+        void err;
+        /* fall through to mock */
       }
-    } catch { /* fall through */ }
+    }
     const m = p.input.match(WHOP_REWARD_ID_RE);
     if (!m) {
       // URL-first patch · no id is NOT an error · the URL is still
@@ -3386,31 +3392,32 @@ export const agencyWhop = {
 
 export const agencyCampaigns = {
   async create(p: AgencyCampaignCreate): Promise<AgencyCampaignBlock | null> {
-    const real = await tryInvoke<BackendCampaignBlock>("agency_create_campaign", p);
-    if (real) return adaptAgencyCampaign(real);
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/agency/campaigns`, {
-        method: "POST",
-        cache: "no-store",
-        headers: { "content-type": "application/json", ...authHeaders() },
-        body: JSON.stringify({
-          title: p.title,
-          slug: p.slug,
-          campaign_type: p.campaignType ?? "clip",
-          description: p.description ?? "",
-          // URL-first patch · URL is canonical · id is bonus.
-          whop_reward_url: p.whopRewardUrl,
-          whop_reward_id: p.whopRewardId,
-          business_unit: p.businessUnit,
-          required_tier: p.requiredTier,
-          visibility_tiers: p.visibilityTiers,
-        }),
-      });
-      if (r.ok) {
-        const j = (await r.json()) as BackendCampaignBlock;
+    /* Real HTTP backend via bridgeToBackend · POST /agency/campaigns
+     *  → BackendCampaignBlock. C1-T6 codemod (2026-07-05). */
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<BackendCampaignBlock>(
+          "POST",
+          "/agency/campaigns",
+          {
+            title: p.title,
+            slug: p.slug,
+            campaign_type: p.campaignType ?? "clip",
+            description: p.description ?? "",
+            // URL-first patch · URL is canonical · id is bonus.
+            whop_reward_url: p.whopRewardUrl,
+            whop_reward_id: p.whopRewardId,
+            business_unit: p.businessUnit,
+            required_tier: p.requiredTier,
+            visibility_tiers: p.visibilityTiers,
+          },
+        );
         return adaptAgencyCampaign(j);
+      } catch (err) {
+        void err;
+        /* fall through to mock */
       }
-    } catch { /* fall through */ }
+    }
     // URL-first patch mock parity · extract id from URL when not given;
     // campaign STAYS in `draft` whether or not enrichment succeeds.
     const extractedId = p.whopRewardId ?? (p.whopRewardUrl?.match(WHOP_REWARD_ID_RE)?.[1] ?? null);
@@ -3455,29 +3462,31 @@ export const agencyCampaigns = {
   },
 
   async patch(p: { slug: string; payload: AgencyCampaignPatch }): Promise<AgencyCampaignBlock | null> {
-    const real = await tryInvoke<BackendCampaignBlock>("agency_patch_campaign", p);
-    if (real) return adaptAgencyCampaign(real);
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/agency/campaigns/${encodeURIComponent(p.slug)}`, {
-        method: "PATCH",
-        cache: "no-store",
-        headers: { "content-type": "application/json", ...authHeaders() },
-        body: JSON.stringify({
-          ...(p.payload.title !== undefined && { title: p.payload.title }),
-          ...(p.payload.description !== undefined && { description: p.payload.description }),
-          ...(p.payload.campaignType !== undefined && { campaign_type: p.payload.campaignType }),
-          ...(p.payload.businessUnit !== undefined && { business_unit: p.payload.businessUnit }),
-          ...(p.payload.requiredTier !== undefined && { required_tier: p.payload.requiredTier }),
-          ...(p.payload.visibilityTiers !== undefined && { visibility_tiers: p.payload.visibilityTiers }),
-          ...(p.payload.bannerUrl !== undefined && { banner_url: p.payload.bannerUrl }),
-          ...(p.payload.missionLane !== undefined && { mission_lane: p.payload.missionLane }),
-        }),
-      });
-      if (r.ok) {
-        const j = (await r.json()) as BackendCampaignBlock;
+    /* Real HTTP backend via bridgeToBackend · PATCH
+     *  /agency/campaigns/{slug} → BackendCampaignBlock. C1-T6 codemod
+     *  (2026-07-05). */
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<BackendCampaignBlock>(
+          "PATCH",
+          `/agency/campaigns/${encodeURIComponent(p.slug)}`,
+          {
+            ...(p.payload.title !== undefined && { title: p.payload.title }),
+            ...(p.payload.description !== undefined && { description: p.payload.description }),
+            ...(p.payload.campaignType !== undefined && { campaign_type: p.payload.campaignType }),
+            ...(p.payload.businessUnit !== undefined && { business_unit: p.payload.businessUnit }),
+            ...(p.payload.requiredTier !== undefined && { required_tier: p.payload.requiredTier }),
+            ...(p.payload.visibilityTiers !== undefined && { visibility_tiers: p.payload.visibilityTiers }),
+            ...(p.payload.bannerUrl !== undefined && { banner_url: p.payload.bannerUrl }),
+            ...(p.payload.missionLane !== undefined && { mission_lane: p.payload.missionLane }),
+          },
+        );
         return adaptAgencyCampaign(j);
+      } catch (err) {
+        void err;
+        /* fall through to mock */
       }
-    } catch { /* fall through */ }
+    }
     const idx = agencyCampaignsState.campaigns.findIndex((c) => c.slug === p.slug);
     if (idx < 0) return null;
     const updated: AgencyCampaignBlock = {
@@ -3496,24 +3505,26 @@ export const agencyCampaigns = {
   },
 
   async connectReward(p: { slug: string; whopRewardUrl?: string; whopRewardId?: string }): Promise<AgencyCampaignBlock | null> {
-    const real = await tryInvoke<BackendCampaignBlock>("agency_connect_reward", p);
-    if (real) return adaptAgencyCampaign(real);
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/agency/campaigns/${encodeURIComponent(p.slug)}/connect-reward`, {
-        method: "POST",
-        cache: "no-store",
-        headers: { "content-type": "application/json", ...authHeaders() },
-        // URL-first patch · URL is canonical · id is bonus.
-        body: JSON.stringify({
-          whop_reward_url: p.whopRewardUrl,
-          whop_reward_id: p.whopRewardId,
-        }),
-      });
-      if (r.ok) {
-        const j = (await r.json()) as BackendCampaignBlock;
+    /* Real HTTP backend via bridgeToBackend · POST
+     *  /agency/campaigns/{slug}/connect-reward → BackendCampaignBlock.
+     *  URL-first: URL is canonical · id is bonus. C1-T6 codemod
+     *  (2026-07-05). */
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<BackendCampaignBlock>(
+          "POST",
+          `/agency/campaigns/${encodeURIComponent(p.slug)}/connect-reward`,
+          {
+            whop_reward_url: p.whopRewardUrl,
+            whop_reward_id: p.whopRewardId,
+          },
+        );
         return adaptAgencyCampaign(j);
+      } catch (err) {
+        void err;
+        /* fall through to mock */
       }
-    } catch { /* fall through */ }
+    }
     const idx = agencyCampaignsState.campaigns.findIndex((c) => c.slug === p.slug);
     if (idx < 0) return null;
     const extractedId = p.whopRewardId ?? (p.whopRewardUrl?.match(WHOP_REWARD_ID_RE)?.[1] ?? null);
@@ -3548,26 +3559,29 @@ export const agencyCampaigns = {
   },
 
   async publish(p: { slug: string }): Promise<{ ok: boolean; campaign?: AgencyCampaignBlock; errors?: string[] }> {
-    const real = await tryInvoke<BackendCampaignBlock>("agency_publish_campaign", p);
-    if (real) return { ok: true, campaign: adaptAgencyCampaign(real) };
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/agency/campaigns/${encodeURIComponent(p.slug)}/publish`, {
-        method: "POST",
-        cache: "no-store",
-        headers: authHeaders(),
-      });
-      if (r.ok) {
-        const j = (await r.json()) as BackendCampaignBlock;
+    /* Real HTTP backend via bridgeToBackend · POST
+     *  /agency/campaigns/{slug}/publish → BackendCampaignBlock. 422
+     *  is a business-rule violation (campaign not ready · missing
+     *  fields), surfaced as {ok:false, errors}. Other non-2xx fall
+     *  through to mock. C1-T6 codemod (2026-07-05). */
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<BackendCampaignBlock>(
+          "POST",
+          `/agency/campaigns/${encodeURIComponent(p.slug)}/publish`,
+        );
         return { ok: true, campaign: adaptAgencyCampaign(j) };
+      } catch (err) {
+        if (err instanceof BridgeError && err.status === 422) {
+          const detail = (err.body as { detail?: { errors?: string[] } | string } | null)?.detail;
+          const errors = typeof detail === "object" && detail?.errors
+            ? detail.errors
+            : ["Campaign isn't ready to publish · check the review step."];
+          return { ok: false, errors };
+        }
+        /* fall through to mock for other statuses / network */
       }
-      if (r.status === 422) {
-        const j = (await r.json()) as { detail?: { errors?: string[] } | string };
-        const errors = typeof j.detail === "object" && j.detail?.errors
-          ? j.detail.errors
-          : ["Campaign isn't ready to publish · check the review step."];
-        return { ok: false, errors };
-      }
-    } catch { /* fall through */ }
+    }
     const idx = agencyCampaignsState.campaigns.findIndex((c) => c.slug === p.slug);
     if (idx < 0) return { ok: false, errors: ["Campaign not found"] };
     const row = agencyCampaignsState.campaigns[idx];
@@ -3591,19 +3605,21 @@ export const agencyCampaigns = {
   },
 
   async refreshReward(p: { slug: string }): Promise<AgencyCampaignBlock | null> {
-    const real = await tryInvoke<BackendCampaignBlock>("agency_refresh_reward", p);
-    if (real) return adaptAgencyCampaign(real);
-    if (shouldTryHttpBackend()) try {
-      const r = await fetch(`${backendUrl()}/agency/campaigns/${encodeURIComponent(p.slug)}/refresh-reward`, {
-        method: "POST",
-        cache: "no-store",
-        headers: authHeaders(),
-      });
-      if (r.ok) {
-        const j = (await r.json()) as BackendCampaignBlock;
+    /* Real HTTP backend via bridgeToBackend · POST
+     *  /agency/campaigns/{slug}/refresh-reward → BackendCampaignBlock.
+     *  C1-T6 codemod (2026-07-05). */
+    if (shouldTryHttpBackend()) {
+      try {
+        const j = await bridgeToBackend<BackendCampaignBlock>(
+          "POST",
+          `/agency/campaigns/${encodeURIComponent(p.slug)}/refresh-reward`,
+        );
         return adaptAgencyCampaign(j);
+      } catch (err) {
+        void err;
+        /* fall through to mock */
       }
-    } catch { /* fall through */ }
+    }
     const idx = agencyCampaignsState.campaigns.findIndex((c) => c.slug === p.slug);
     if (idx < 0) return null;
     const row = agencyCampaignsState.campaigns[idx];

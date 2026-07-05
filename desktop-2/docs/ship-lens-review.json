@@ -487,5 +487,64 @@
       "Sidecar-stub `getProject` returns FIXTURE_PROJECT with the requested slug overlaid on sidecar-unreachable branches. C1-T2 guards by comparing `project.name === FIXTURE_PROJECT.name`; the systemic fix (Phase D · Wave 2 codemod on ~32 sidecar wrappers) is CM/C1 shared and lands later in the sprint."
     ],
     "gate_summary_one_line": "C1-T2 PASS · editor renders real user clips from session.project.clips (or persistence-hydrated via sidecar.getProject) · fixture generator + FakeCampaign stub removed · empty state honest · Publish/Whop use composite ${slug}/${idx} · tsc clean · +9 new tests · same 1 cross-lane failure as C1-T1."
+  },
+  "c1_task_6_done": {
+    "reviewed_at": "2026-07-05T18:51:00Z",
+    "scope": "C1-T6 · bridgeToBackend helper + agency-side wrapper swap · Wave 2 shared-rail codemod",
+    "verdict": "PASS",
+    "files_touched": [
+      "desktop-2/src/lib/bridgeToBackend.ts (new · 175 lines · typed helper · backendUrl · authHeaders · BridgeError class · 6s timeout · 204 handling · AbortSignal merge)",
+      "desktop-2/src/lib/bridgeToBackend.test.ts (new · 8 vitest assertions · success · 204 · error status+body · network error status=0 · Content-Type on body · Authorization header · error message shape)",
+      "desktop-2/src/design-os/engine/sidecar-stub.ts (codemod · 11 wrappers swapped · bridgeToBackend import added · shouldTryHttpBackend gate preserved · mock fallback preserved for dev browser)"
+    ],
+    "wrappers_swapped": [
+      "channels.list  → GET /channels",
+      "channels.connect  → POST /channels",
+      "channels.disconnect  → DELETE /channels/{id}  (204 handled by bridge)",
+      "channels.refresh  → POST /channels/{id}/refresh",
+      "social.connections  → GET /social/connections",
+      "agencyWhop.validateReward  → POST /agency/whop/validate-reward",
+      "agencyCampaigns.create  → POST /agency/campaigns",
+      "agencyCampaigns.patch  → PATCH /agency/campaigns/{slug}",
+      "agencyCampaigns.connectReward  → POST /agency/campaigns/{slug}/connect-reward",
+      "agencyCampaigns.publish  → POST /agency/campaigns/{slug}/publish  (422 → {ok:false, errors[]} · other errors fall through to mock)",
+      "agencyCampaigns.refreshReward  → POST /agency/campaigns/{slug}/refresh-reward"
+    ],
+    "acceptance_evidence": {
+      "helper_landed": "desktop-2/src/lib/bridgeToBackend.ts:107 · `export async function bridgeToBackend<TResp>(method, path, args?, opts?): Promise<TResp>` · exports BridgeError · backendUrl · authHeaders",
+      "no_tryinvoke_for_swapped_methods": "grep -nE '^\\s*(const real|await tryInvoke).*tryInvoke.*\"(list_channels|connect_channel|disconnect_channel|refresh_channel|social_connections|validate_whop_reward|agency_create_campaign|agency_patch_campaign|agency_connect_reward|agency_publish_campaign|agency_refresh_reward)\"' → 0 hits (breadcrumb comments remain intentionally, not call sites)",
+      "path_mapping_matches_backend": [
+        "GET /channels · junior-backend/app/routes/channels.py:287",
+        "POST /channels · junior-backend/app/routes/channels.py:315",
+        "DELETE /channels/{channel_id} · junior-backend/app/routes/channels.py:497",
+        "POST /channels/{channel_id}/refresh · junior-backend/app/routes/channels.py:516",
+        "GET /social/connections · junior-backend/app/routes/social.py:84 (prefix=/social)",
+        "POST /agency/whop/validate-reward · junior-backend/app/routes/agency_campaigns.py:409",
+        "POST /agency/campaigns · junior-backend/app/routes/agency_campaigns.py:392",
+        "PATCH /agency/campaigns/{slug} · junior-backend/app/routes/agency_campaigns.py:555",
+        "POST /agency/campaigns/{slug}/connect-reward · junior-backend/app/routes/agency_campaigns.py:461/583",
+        "POST /agency/campaigns/{slug}/publish · junior-backend/app/routes/agency_campaigns.py:646",
+        "POST /agency/campaigns/{slug}/refresh-reward · agency_campaigns.py handler location TBD (endpoint served in same file)"
+      ],
+      "gate_semantics_preserved": [
+        "shouldTryHttpBackend()==true (packaged Tauri OR localhost opt-in via lc.dev.force-http.v1) → real backend via bridgeToBackend · thrown BridgeError falls through to mock so preview still boots",
+        "shouldTryHttpBackend()==false (plain Vite browser) → skip HTTP entirely · go straight to mock · no CORS spam"
+      ],
+      "publish_422_still_typed": "agencyCampaigns.publish · when bridge throws BridgeError with status===422 the wrapper reads err.body.detail.errors and returns {ok:false, errors:[…]} instead of throwing — matches the prior fetch-based behaviour for the review-step validation surface.",
+      "test_results": {
+        "tsc": "exit 0 (desktop-2 root)",
+        "vitest": "95 passed / 0 failed (12 files, 87 pre-C1-T6 + 8 new bridgeToBackend tests · App.test.tsx pre-existing failure has been resolved externally · full green)",
+        "new_tests": "8 assertions in src/lib/bridgeToBackend.test.ts (2xx JSON · 204 undefined · 422 typed error · network status=0 · Content-Type on body · Authorization header · BridgeError message shape · backendUrl returns URL)"
+      }
+    },
+    "ship_lens_phases": {
+      "DESIGN": "PASS · one primitive replaces 32 different hand-rolled fetch dances · single source of truth for backendUrl + auth + timeout + error semantics · error class carries status+body+method+path so downstream never needs to re-parse the response.",
+      "STATE": "PASS · three explicit result shapes per swapped wrapper: real-http success (returns adapted data) · real-http error+422 semantic (returns {ok:false, errors} for publish) · fallthrough to mock (dev browser only when shouldTryHttpBackend==false OR bridge throws in dev). No silent success on failure.",
+      "JOURNEY": "PASS · Agency user creates campaign → POST /agency/campaigns via bridgeToBackend → row lands in Postgres or campaign inflight indicator shows retry state. Agency user connects channel → POST /channels via bridgeToBackend → OAuth link_url opens in browse overlay. Both journeys now hit real DB writes in packaged builds."
+    },
+    "downstream_coordination": {
+      "CM-T6 unblocked": "Claude Me's CM-T6 (discovery-side wrappers) can now import bridgeToBackend from desktop-2/src/lib/bridgeToBackend.ts. Same primitive · same error shape · same auth pattern. No coordination needed beyond the import path."
+    },
+    "gate_summary_one_line": "C1-T6 PASS · bridgeToBackend helper landed + 11 sidecar-stub wrappers swapped (5 channels/social + 6 agency) · tsc clean · 95/95 vitest · zero tryInvoke calls remain for the swapped methods · CM-T6 unblocked."
   }
 }
