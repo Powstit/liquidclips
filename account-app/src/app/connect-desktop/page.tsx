@@ -65,22 +65,98 @@ function readWhopUrlState(): WhopUrlState {
   return "none";
 }
 
+/**
+ * 2026-07-05 · user-journey-lens + customer-journey-lens P0 · Whop
+ * checkout-first arrival.
+ *
+ * `whop_checkout_success.py:145-158` redirects the "new Whop buyer
+ * without a Clerk account" here with:
+ *   /connect-desktop?whop_checkout=1&membership_id=<mid>&email=<enc>
+ *
+ * The buyer completed Whop checkout, has a paid trial, but has never
+ * signed up on Clerk. If we required a `challenge` (as the OAuth flow
+ * does) we would dead-end them at "Missing activation code."
+ *
+ * Instead, when we see `whop_checkout=1`:
+ *   1. Not signed in → show Clerk sign-up with email prefilled.
+ *   2. Signed in → POST /api/desktop/connect-whop-checkout with the
+ *      `membership_id` (server drains PendingWhopMembership + mints
+ *      JWT + returns license_jwt). Redirect to the deep link with
+ *      `source=whop-checkout` so activation.ts skips the challenge
+ *      check via the TRUSTED_CHALLENGELESS_SOURCES allowlist.
+ */
+interface WhopCheckoutContext {
+  membershipId: string;
+  email: string | null;
+}
+
+function readWhopCheckoutContext(): WhopCheckoutContext | null {
+  if (typeof window === "undefined") return null;
+  const q = new URLSearchParams(window.location.search);
+  if (q.get("whop_checkout") !== "1") return null;
+  const mid = q.get("membership_id");
+  if (!mid) return null;
+  return { membershipId: mid, email: q.get("email") };
+}
+
 export default function ConnectDesktopPage() {
   const { isLoaded, isSignedIn } = useUser();
   const [challenge, setChallenge] = useState("");
   const [whopUrlState, setWhopUrlState] = useState<WhopUrlState>("none");
+  const [whopCheckout, setWhopCheckout] = useState<WhopCheckoutContext | null>(null);
   const [phase, setPhase] = useState<Phase>({ k: "loading" });
   const minted = useRef(false);
 
   useEffect(() => {
     setChallenge(readChallenge());
     setWhopUrlState(readWhopUrlState());
+    setWhopCheckout(readWhopCheckoutContext());
   }, []);
 
   useEffect(() => {
     if (!isLoaded) return;
     if (!isSignedIn) {
       setPhase({ k: "need_signin" });
+      return;
+    }
+    // 2026-07-05 · new Whop-checkout arrival branch. If the URL carries
+    // `whop_checkout=1&membership_id=X` we drain the pending membership
+    // instead of demanding a challenge. See helper above.
+    if (whopCheckout && !challenge) {
+      if (minted.current) return;
+      minted.current = true;
+      void (async () => {
+        setPhase({ k: "minting" });
+        try {
+          const res = await fetch("/api/desktop/connect-whop-checkout", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ membership_id: whopCheckout.membershipId }),
+          });
+          if (!res.ok) {
+            let msg = `Activation failed (HTTP ${res.status}). Please try again.`;
+            try {
+              const body = (await res.json()) as { detail?: string; error?: string };
+              const detail = body?.detail || body?.error;
+              if (typeof detail === "string" && detail.trim()) msg = detail;
+            } catch { /* keep generic */ }
+            setPhase({ k: "error", msg });
+            return;
+          }
+          const data = (await res.json()) as { license_jwt?: string };
+          if (!data.license_jwt) {
+            setPhase({ k: "error", msg: "Activation response was incomplete. Please try again." });
+            return;
+          }
+          const deepLink = `liquidclips://activate?token=${encodeURIComponent(
+            data.license_jwt,
+          )}&source=whop-checkout`;
+          setPhase({ k: "ready", deepLink });
+          window.location.href = deepLink;
+        } catch {
+          setPhase({ k: "error", msg: "Network error · retry from the desktop Sign in button." });
+        }
+      })();
       return;
     }
     if (!challenge) {

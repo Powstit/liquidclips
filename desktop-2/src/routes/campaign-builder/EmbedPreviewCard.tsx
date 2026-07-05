@@ -111,13 +111,17 @@ export function EmbedPreviewCard(props: EmbedPreviewCardProps) {
     };
   }, [state, cfg.countdown]);
 
-  useEffect(() => {
-    setCountdown(cfg.countdown);
-  }, [state, cfg.countdown]);
+  // FRAME-04 fix · 2026-07-05 · removed dead useEffect · the previous
+  // effect (lines 92-112) already sets countdown on state / cfg.countdown
+  // changes. This second effect just triggered an extra render every time.
 
+  // FRAME-05 fix · 2026-07-05 · destructure props.onCta so the useCallback
+  // doesn't re-create on every parent render (was depending on the whole
+  // `props` object which is a new reference every parent render).
+  const propsOnCta = props.onCta;
   const onCta = useCallback(() => {
-    props.onCta?.(cta.key, state);
-  }, [cta.key, state, props]);
+    propsOnCta?.(cta.key, state);
+  }, [cta.key, state, propsOnCta]);
 
   const orderedStates = useMemo<EmbedState[]>(
     () => ['loading', 'populated', 'empty_catalog', 'critical_countdown', 'already_settled', 'expired', 'offline'],

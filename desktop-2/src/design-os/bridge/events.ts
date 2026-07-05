@@ -270,7 +270,11 @@ export type LCEvents = {
    *  subscribe so their `useEffect(() => fetch(), [])` mounted-once
    *  fetch doesn't strand the page on stale "Temporarily unavailable"
    *  copy when the user activates while the route is already open. */
-  "activation:complete": { source: "clerk" | "whop" | "unknown" };
+  /* J1 STRAND 1 fix · widened to include the "whop-checkout" source
+   * emitted by junior-backend/app/routes/whop_checkout_success.py after
+   * a cold-email buyer completes checkout · the desktop consumes the
+   * challengeless deep link and forwards this source verbatim. */
+  "activation:complete": { source: "clerk" | "whop" | "whop-checkout" | "unknown" };
   /** v2.2.15 · request the one-click upgrade modal to open. Fires from
    *  the TopHud TrialStatusPill and from paywall 402 responses. The
    *  UpgradeApprovalModal listens once at AppShell mount + opens on
@@ -289,6 +293,21 @@ export type LCEvents = {
    *  pose per `MILESTONE_TO_POSE`. Keeps the "Kade never fires its own
    *  state events" rule intact (line 8 of this file). */
   "onboarding:milestone": { milestone: OnboardingMilestone; at: string };
+
+  /** 2026-07-05 · beta-walk P0 · fired by any surface that calls
+   *  clearJwt() (TopHud sign-out, Settings clear-activation) so the
+   *  AuthGate re-checks hasJwt() and swaps back to LoginActivation.
+   *  Without this the JWT is nulled locally but the app stays on the
+   *  authed shell rendering stale tier + a dead "reload the app to
+   *  sign in again" toast with no way to re-enter the sign-in flow. */
+  "auth:signed-out": Record<string, never>;
+  /** 2026-07-05 · beta-walk P0 · imperative "open the Whop OAuth
+   *  panel" request. AuthGate mounts the bridge that owns the panel
+   *  (via useAuthPanelBridge) and listens for this event so any
+   *  surface (Settings "How do I activate?" button, retention modals,
+   *  paywall CTAs) can trigger sign-in without threading the
+   *  openPanel callback through every intermediate component. */
+  "auth:open-panel": Record<string, never>;
 };
 
 /** Sprint G.3 · closed vocabulary — additive only. New keys land here

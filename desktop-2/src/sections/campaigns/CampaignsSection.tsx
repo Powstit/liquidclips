@@ -9,13 +9,19 @@ import { CatalogCarousel } from "../../routes/catalog/CatalogCarousel";
 // Phase 8 · Mount #6 · cold-email recipient preview.
 import { EmbedPreviewCard } from "../../routes/campaign-builder/EmbedPreviewCard";
 
-import { fakeCampaigns, type FakeCampaign } from "../../fixtures/fakeCampaigns";
+// 2026-07-05 · 2.2.24 · dummy-data purge. Previously seeded from
+// `fakeCampaigns` fixture · every new user saw the same 3 demo
+// campaigns regardless of state. Now starts empty · users create
+// their first campaign via CreateCampaignModal. The type stays
+// imported so createCampaign() below preserves its typed shape.
+// Backend wire (GET /campaigns) lands in a follow-up sprint.
+import type { FakeCampaign } from "../../fixtures/fakeCampaigns";
 
 export function CampaignsSection() {
   const openOverlay = useBrowseOverlay((s) => s.openWith);
-  const [campaigns, setCampaigns] = useState<FakeCampaign[]>(fakeCampaigns);
+  const [campaigns, setCampaigns] = useState<FakeCampaign[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(campaigns.find((c) => c.status === "active")?.id ?? campaigns[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [watermarkCampaign, setWatermarkCampaign] = useState<FakeCampaign | null>(null);
   const selected = campaigns.find((c) => c.id === selectedId) ?? campaigns[0];
 

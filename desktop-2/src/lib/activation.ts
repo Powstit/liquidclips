@@ -26,6 +26,7 @@
 
 import { useEffect, useState } from "react";
 import { setJwt, clearJwt } from "./authStorage";
+import { humanError } from "../design-os/engine/sidecarCall";
 
 /* ─── Public types ──────────────────────────────────────────────────── */
 
@@ -36,7 +37,33 @@ export type ActivationStatus =
   | "activated"   // JWT stored · post-sync optional
   | "failed";     // Parser rejected · challenge mismatch · timeout
 
-export type ActivationSource = "clerk" | "whop" | "unknown";
+export type ActivationSource = "clerk" | "whop" | "whop-checkout" | "unknown";
+
+/* J1 STRAND 1 fix · trusted backend sources whose deep links are minted
+ * by our own signed backend flow (Ed25519 JWT · 30-day expiry) AND
+ * cannot include a challenge because the user never touched the
+ * desktop before the mint. For these sources we skip the challenge
+ * check because:
+ *   1. Cold-email / checkout-first buyers never touched the desktop
+ *      before purchase · there is no `pendingChallenge` in storage.
+ *   2. The JWT signature + short expiry already provide the anti-replay
+ *      protection the challenge nonce was designed for.
+ *
+ * 2026-07-05 · SECURITY · bug-hunt-lens flagged that `"whop"` (the
+ * legacy OAuth callback source at auth_whop.py:427) MUST NOT be in
+ * this set. That path DOES mint a challenge (`?challenge={state}`)
+ * as anti-replay for the OAuth code exchange · adding it to the
+ * challengeless allowlist would defeat that guarantee for any URL
+ * that happened to arrive without a challenge param. Keep this set
+ * strictly limited to sources that CANNOT emit a challenge by
+ * design (i.e. the mint happens after checkout completes on Whop's
+ * side, without desktop involvement).
+ *
+ * See junior-backend/app/routes/whop_checkout_success.py for the
+ * only current emitter of a challengeless deep-link. */
+const TRUSTED_CHALLENGELESS_SOURCES: ReadonlySet<string> = new Set([
+  "whop-checkout",
+]);
 
 export interface ActivationSnapshot {
   status: ActivationStatus;
@@ -157,7 +184,13 @@ export function clearActivation(): void {
 
 export interface ParsedActivation {
   token: string;
-  challenge: string;
+  /** J1 STRAND 1 fix · null when the deep link came from a trusted
+   *  backend source (see TRUSTED_CHALLENGELESS_SOURCES) that mints the
+   *  JWT server-side after checkout · cold-email buyers have no
+   *  pending challenge in localStorage to match against. For every
+   *  other source (legacy OAuth path) this stays a non-empty string
+   *  and the caller MUST verify it against the pending nonce. */
+  challenge: string | null;
   source: ActivationSource;
 }
 
@@ -180,13 +213,22 @@ export function parseActivationUrl(rawUrl: string): ParsedActivation | { error: 
   if (!token || token.length === 0) {
     return { error: "Activation URL missing token." };
   }
-  const challenge = url.searchParams.get("challenge");
-  if (!challenge || challenge.length === 0) {
-    return { error: "Activation URL missing challenge." };
-  }
   const sourceParam = url.searchParams.get("source");
   const source: ActivationSource =
-    sourceParam === "whop" || sourceParam === "clerk" ? sourceParam : "unknown";
+    sourceParam === "whop"
+      || sourceParam === "clerk"
+      || sourceParam === "whop-checkout"
+      ? sourceParam
+      : "unknown";
+  const rawChallenge = url.searchParams.get("challenge");
+  const challenge = rawChallenge && rawChallenge.length > 0 ? rawChallenge : null;
+  // J1 STRAND 1 fix · challenge is only required when the source is NOT
+  // in the trusted-backend allowlist. Trusted sources ride on the
+  // Ed25519 signature + 30-day expiry for anti-replay; legacy sources
+  // still MUST carry a challenge that matches the pending nonce.
+  if (!challenge && !TRUSTED_CHALLENGELESS_SOURCES.has(sourceParam ?? "")) {
+    return { error: "Activation URL missing challenge." };
+  }
   return { token, challenge, source };
 }
 
@@ -330,13 +372,26 @@ export async function handleActivationUrl(rawUrl: string): Promise<void> {
     emit({ status: "failed", error: parsed.error });
     return;
   }
-  const pending = readPendingChallenge();
-  if (!pending || pending !== parsed.challenge) {
-    emit({
-      status: "failed",
-      error: "Activation challenge mismatch · re-start sign in.",
-    });
-    return;
+  // J1 STRAND 1 fix · challenge check is bypassed ONLY when parser
+  // returned a null challenge AND the source is in the trusted
+  // backend allowlist (whop-checkout · whop). This is the cold-email
+  // conversion path: buyer completes Whop checkout before ever opening
+  // the desktop, so no `pendingChallenge` was minted in localStorage.
+  // The JWT signature + 30-day expiry are the authentication in that
+  // path. For every legacy URL that DOES carry a challenge, the match
+  // check runs exactly as before.
+  const bypassChallenge =
+    parsed.challenge === null
+    && TRUSTED_CHALLENGELESS_SOURCES.has(parsed.source);
+  if (!bypassChallenge) {
+    const pending = readPendingChallenge();
+    if (!pending || pending !== parsed.challenge) {
+      emit({
+        status: "failed",
+        error: "Activation challenge mismatch · re-start sign in.",
+      });
+      return;
+    }
   }
 
   // Store JWT first · the rest of the flow is best-effort enrichment.
@@ -346,10 +401,26 @@ export async function handleActivationUrl(rawUrl: string): Promise<void> {
   try {
     setJwt(parsed.token);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    emit({ status: "failed", error: `Couldn't store license · ${msg}` });
+    // 2026-07-05 · CM-T5 · humanError sweep. Was raw e.message / String(e)
+    // which leaks Python tracebacks + "quota exceeded" storage errors
+    // straight into user-visible UI copy.
+    emit({ status: "failed", error: `Couldn't store license · ${humanError(e)}` });
     return;
   }
+  // 2026-07-05 · rpc-contract-lens P1-A · mirror the JWT into the
+  // macOS Keychain via the explicit auth-action helper. Without this
+  // the deep-link path stored ONLY in localStorage — a webview
+  // storage wipe on runtime bundle swap / quota purge would silently
+  // sign the user out on next launch even though activation "worked."
+  // Fire-and-forget · the primary emit("activated") below is
+  // localStorage-driven so a keychain-write failure never blocks the
+  // user's sign-in. See authStorage.ts:111 for the allowlist logic.
+  void import("./authStorage")
+    .then((mod) => mod.setJwtKeychainForAuthAction(parsed.token))
+    .catch((e) => {
+      // eslint-disable-next-line no-console
+      console.warn("[activation] keychain mirror failed:", e);
+    });
   writePendingChallenge(null);
   if (timeoutHandle) {
     clearTimeout(timeoutHandle);
@@ -446,110 +517,6 @@ export async function handleActivationUrl(rawUrl: string): Promise<void> {
 }
 
 /** Synchronous read of the current state · for non-React consumers. */
-/** v2.2.11 · manual activation paste path.
- *
- *  Used when the OAuth fallback page's "Copy Activation Code" button
- *  hands the user a raw JWT and they paste it into the desktop's
- *  "Enter Manual Activation Code" input. Skips the challenge-match
- *  check (the user visually confirmed by copy-paste from a page they
- *  just authenticated against), runs the same setJwt → /sync + /me
- *  enrichment chain as handleActivationUrl so the post-activation
- *  surface lands identically.
- *
- *  Validates the input is shaped like a JWT (three dot-separated
- *  base64-ish segments) before storing — rejects pastes that are
- *  obviously not a token. */
-export async function activateWithToken(rawToken: string): Promise<void> {
-  const token = rawToken.trim();
-  // JWT shape · header.payload.signature · each segment is non-empty
-  // base64url. Don't crypto-verify here · the backend /sync call below
-  // is the authoritative check (signature, expiry, user-still-exists).
-  const segments = token.split(".");
-  if (
-    segments.length !== 3
-    || segments.some((s) => s.length === 0)
-    || !/^[A-Za-z0-9_-]+$/.test(token.replace(/\./g, ""))
-  ) {
-    emit({
-      status: "failed",
-      error: "That doesn't look like an activation code · paste the token from the Whop login page.",
-    });
-    return;
-  }
-
-  emit({ status: "activating", error: null });
-
-  try {
-    setJwt(token);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    emit({ status: "failed", error: `Couldn't store license · ${msg}` });
-    return;
-  }
-  // Clear any pending nonce so a stale challenge from an earlier
-  // browser-launch attempt doesn't trip the auto-handler.
-  writePendingChallenge(null);
-  if (timeoutHandle) {
-    clearTimeout(timeoutHandle);
-    timeoutHandle = null;
-  }
-  emit({
-    status: "activated",
-    error: null,
-    lastTokenSource: "whop",
-    degraded: false,
-  });
-
-  // Authoritative validation · backend rejects bad tokens immediately.
-  // Mirror the post-mint /sync + /me orchestration from
-  // handleActivationUrl so the manual path enriches the same way.
-  const [syncResp, meResp] = await Promise.all([
-    safeGet<SyncResponse>("/sync", token),
-    safeGet<MeResponse>("/me", token),
-  ]);
-  if (syncResp.kind === "auth-fail" || meResp.kind === "auth-fail") {
-    notifyAuthFailure(
-      "Backend rejected the pasted activation code · double-check you copied the whole token.",
-    );
-    return;
-  }
-
-  let degraded = false;
-  let nextTier = snapshot.tier;
-  let nextEmail = snapshot.email;
-  if (syncResp.kind === "ok") {
-    if (syncResp.data.new_license_jwt) {
-      try { setJwt(syncResp.data.new_license_jwt); } catch { degraded = true; }
-    }
-    if (typeof syncResp.data.tier === "string") nextTier = syncResp.data.tier;
-  } else {
-    degraded = true;
-  }
-  if (meResp.kind === "ok") {
-    if (typeof meResp.data.email === "string") nextEmail = meResp.data.email;
-    if (typeof meResp.data.effective_tier === "string") nextTier = meResp.data.effective_tier;
-  } else {
-    degraded = true;
-  }
-  emit({
-    status: "activated",
-    error: null,
-    lastTokenSource: "whop",
-    degraded,
-    tier: nextTier,
-    email: nextEmail,
-  });
-
-  // Same activation:complete bus signal the URL path fires · keeps
-  // Settings / Wallet / carrot rehydrate hooks in sync regardless of
-  // which door the user came in through.
-  try {
-    const { bus } = await import("../design-os/bridge");
-    bus.emit("activation:complete", { source: "whop" });
-  } catch { /* silent */ }
-}
-
-
 export function getActivationSnapshot(): ActivationSnapshot {
   return snapshot;
 }

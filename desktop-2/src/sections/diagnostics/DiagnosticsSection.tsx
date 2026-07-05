@@ -11,8 +11,18 @@ import {
 } from "../../fixtures/fakeDiagnostics.preview";
 import { useHashRoute } from "../../shell/routes";
 
-const VERSION_PLACEHOLDER = "0.8.0-shell";
-const COMMIT_PLACEHOLDER = "(unset · shell build)";
+// P1 bug #8 fix · 2026-07-05 · read the real build values instead of
+// hardcoded shell placeholders so the diagnostics panel actually helps
+// during incident triage. `__APP_VERSION__` is injected by Vite from
+// `package.json` (see vite.config.ts:18). `VITE_GIT_SHA` is set by CI —
+// falls back to "local" for `tauri dev` where CI didn't stamp it.
+declare const __APP_VERSION__: string | undefined;
+const VERSION_PLACEHOLDER =
+  typeof __APP_VERSION__ === "string" && __APP_VERSION__.length > 0
+    ? __APP_VERSION__
+    : "unknown";
+const COMMIT_PLACEHOLDER =
+  (import.meta as { env?: { VITE_GIT_SHA?: string } }).env?.VITE_GIT_SHA ?? "local";
 
 export function DiagnosticsSection() {
   const activeSection = useHashRoute();
@@ -53,7 +63,7 @@ export function DiagnosticsSection() {
         </span>
         <h1 className="lc-section-title">Diagnostics</h1>
         <p className="lc-section-subtitle">
-          Live skeleton. Real probes wire later — see docs/lc2/PHASE_GATES.md.
+          Live flow-trace, health probes, and app state. Copy the full report to share with support.
         </p>
         <div className="lc-section-pills">
           <span className="lc-id-pill">{SECTION_IDS.SECTION_DIAGNOSTICS}</span>
@@ -65,8 +75,8 @@ export function DiagnosticsSection() {
         <Stat label="App version" value={VERSION_PLACEHOLDER} />
         <Stat label="Commit" value={COMMIT_PLACEHOLDER} />
         <Stat label="Active section" value={activeSection.replace("SECTION_", "")} />
-        <Stat label="Sidecar" value="skeleton" />
-        <Stat label="Backend" value="skeleton" />
+        <Stat label="Sidecar" value={(rows.find((r) => r.id.includes("sidecar"))?.status ?? "checking").toUpperCase()} />
+        <Stat label="Backend" value={(rows.find((r) => r.id.includes("backend"))?.status ?? "checking").toUpperCase()} />
         <Stat label="Keychain reads" value={`${fakePassiveKeychainStatus.passiveReadsAtBoot} at boot`} />
       </div>
 

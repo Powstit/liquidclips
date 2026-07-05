@@ -18,6 +18,7 @@
 import { GlassCard } from "../components";
 import { useActivationBonus } from "./useActivationBonus";
 import { bus } from "../bridge";
+import { SafeVideo } from "../../components/safe";
 import {
   SPONSORED_REWARD_AMOUNT_USD,
   SPONSORED_REWARD_VIEW_THRESHOLD,
@@ -52,7 +53,7 @@ export function SponsoredRewardCard({ viewCount = 0 }: SponsoredRewardCardProps)
       >
         {/* Banner */}
         <div className="lc-src-banner">
-          <video
+          <SafeVideo
             className="lc-src-banner-video"
             src={SPONSORED_REWARD_BANNER_MP4}
             autoPlay

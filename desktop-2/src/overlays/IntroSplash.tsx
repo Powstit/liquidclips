@@ -18,6 +18,7 @@ import { SplashHud } from "./invaders/SplashHud";
 import { SplashLeaderboard } from "./invaders/SplashLeaderboard";
 import { ArcadePanel } from "./invaders/ArcadePanel";
 import { hasSeenIntro, markIntroSeen } from "../lib/intro";
+import { SafeVideo } from "../components/safe";
 
 // Shown while the sidecar is booting (ping + secretsStatus + whisper warmup).
 // Without this the window is blank for 1-3s — looks like the app froze.
@@ -87,18 +88,28 @@ export function IntroSplash({
   }, [failed]);
 
   // Stage advance: intro → loading → game
+  //
+  // 2026-07-05 · Wave 4 polish · two changes:
+  //   1. `stage === "intro"` short-circuits to 3s when `autoplayBlocked`
+  //      is true. Prevents the 28.5s black-screen when the intro video
+  //      404s or WebKit dropped autoplay before the tap-to-play overlay
+  //      even mounts.
+  //   2. `stage === "loading"` short-circuits to 1.5s when `ready===true`.
+  //      Fast boots don't have to sit through the full 5s brand moment.
   useEffect(() => {
     if (failed) return;
     if (stage === "intro") {
-      const t = window.setTimeout(() => advanceFromIntro(), INTRO_DURATION_MS);
+      const introDelay = autoplayBlocked ? 3_000 : INTRO_DURATION_MS;
+      const t = window.setTimeout(() => advanceFromIntro(), introDelay);
       return () => window.clearTimeout(t);
     }
     if (stage === "loading") {
-      const t = window.setTimeout(() => setStage("game"), LOADING_MIN_HOLD_MS);
+      const holdMs = ready ? 1_500 : LOADING_MIN_HOLD_MS;
+      const t = window.setTimeout(() => setStage("game"), holdMs);
       return () => window.clearTimeout(t);
     }
     return undefined;
-  }, [stage, failed]);
+  }, [stage, failed, autoplayBlocked, ready]);
 
   // v0.7.8 fix E8 — kick the play() promise once the <video> mounts. WebKit's
   // autoplay rules can deny `autoPlay` even with `muted` + `playsInline` in a
@@ -307,9 +318,14 @@ export function IntroSplash({
         data-testid="intro-splash"
         data-splash-stage="intro"
       >
-        <video
+        {/* 2026-07-05 · CM-T5 · SafeVideo primitive catches the intro
+            video 404 case (asset moved / decode failure). When the
+            video errors we render the poster + let the loading-stage
+            timer advance so the user never sees a black rectangle. */}
+        <SafeVideo
           ref={introVideoRef}
           src="/brand/intro/intro.mp4"
+          poster="/brand/intro/intro-poster.png"
           data-testid="intro-splash-video"
           autoPlay
           muted
@@ -342,10 +358,10 @@ export function IntroSplash({
                 <polygon points="6 4 20 12 6 20 6 4" />
               </svg>
             </span>
-            <span className="font-display text-[20px] font-semibold tracking-[-0.01em] text-paper">
+            <span className="font-display text-[20px] font-semibold tracking-[-0.01em] text-ink">
               Tap to play
             </span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-paper/70">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/70">
               your browser blocked autoplay
             </span>
           </button>

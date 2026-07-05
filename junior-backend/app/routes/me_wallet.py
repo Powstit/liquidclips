@@ -275,8 +275,37 @@ def get_wallet_summary(
             slot["earned_cents"] += cents
         slot["views"] += int(sub.verified_views or 0)
 
-    # ─── 3. Lifetime paid from User row (Whop transfers ledger) folds into Paid
-    lifetime_paid_cents = int(getattr(user, "carrot_total_paid_usd_cents", 0) or 0)
+    # ─── 3. Lifetime paid · single source of truth from the WalletLedger
+    #
+    # 2026-07-05 · CM-T4 · integration-lens P0 fix. Was previously
+    #
+    #     lifetime_paid_cents = user.carrot_total_paid_usd_cents
+    #     pipeline["paid"] += lifetime_paid_cents
+    #
+    # which DOUBLE-COUNTED any Whop payout whose event ALSO wrote a
+    # `payout`-type row to `WalletLedger` (both writers running in
+    # parallel since the G2 Layer-6 ledger landed). The fix: prefer the
+    # ledger `sum(payout)` as canonical (append-only, idempotent per
+    # `whop_membership_id` dedupe unique index). Fall back to the User
+    # row only when the ledger is empty (unmigrated pre-Layer-6 users).
+    #
+    # Cannot be zero-count · a user who genuinely has no payouts will
+    # have both readings = 0 · the fallback branch renders honestly.
+    lifetime_paid_cents = 0
+    try:
+        from app import wallet as _wallet_svc_reconcile
+
+        ledger_paid_cents = _wallet_svc_reconcile.compute_lifetime_paid(db, user.id)
+        if ledger_paid_cents > 0:
+            lifetime_paid_cents = ledger_paid_cents
+        else:
+            lifetime_paid_cents = int(getattr(user, "carrot_total_paid_usd_cents", 0) or 0)
+    except Exception as e:  # noqa: BLE001 · degrade to legacy path, log for triage
+        _log.warning(
+            "[wallet] lifetime paid reconciliation failed for %s: %s · falling back to legacy counter",
+            user.id, e,
+        )
+        lifetime_paid_cents = int(getattr(user, "carrot_total_paid_usd_cents", 0) or 0)
     pipeline["paid"] += lifetime_paid_cents
 
     pipeline_block = WalletPipelineBlock(

@@ -17,6 +17,7 @@ import {
 } from "./HQCommandTabs";
 import { SurfacesTab } from "./SurfacesTab";
 import { SystemMapTab } from "./SystemMapTab";
+import { JourneyMapTab } from "./JourneyMapTab";
 import { PromoCodesTab } from "./PromoCodesTab";
 import { useDataSource } from "./_lib/useDataSource";
 import { LiveBadge } from "./_lib/LiveBadge";
@@ -145,6 +146,7 @@ type Timeline = { user_id: string; email_masked: string; events: TimelineEvent[]
 
 const TABS = [
   "System Map",
+  "Journey Map",
   "Surfaces",
   "Overview",
   "Revenue",
@@ -347,6 +349,7 @@ export function AdminHQ({
 
       <div className="mt-7">
         {tab === "System Map" && <SystemMapTab />}
+        {tab === "Journey Map" && <JourneyMapTab />}
         {tab === "Surfaces" && <SurfacesTab />}
         {tab === "Overview" && <OverviewTab initial={initialOverview} />}
         {tab === "Revenue" && <RevenueTab />}

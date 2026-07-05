@@ -37,13 +37,16 @@ function initials(name: string): string {
   return trimmed.slice(0, 2).toUpperCase();
 }
 
+import { SafeImg } from "../../components/safe";
+
 export function Avatar({ name, size = 28, imageSrc }: AvatarProps) {
   if (imageSrc) {
     return (
-      <img
+      <SafeImg
         className="splash-avatar splash-avatar-img"
         data-testid="splash-avatar"
         src={imageSrc}
+        fallback={<InitialsAvatar name={name} size={size} />}
         alt={name}
         aria-label={name}
         style={{
@@ -59,6 +62,10 @@ export function Avatar({ name, size = 28, imageSrc }: AvatarProps) {
       />
     );
   }
+  return <InitialsAvatar name={name} size={size} />;
+}
+
+function InitialsAvatar({ name, size }: { name: string; size: number }) {
   const bg = hueFromName(name);
   return (
     <div

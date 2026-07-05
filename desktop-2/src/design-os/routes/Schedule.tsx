@@ -135,9 +135,11 @@ function ScheduleBody() {
             >
               {sched.source === "assisted-local" ? "Assisted · this Mac" : "Automatic · provider"}
             </span>
-            <span className="lc-runtime-tag" title="Automatic posting requires an approved publishing provider.">
-              Auto-post · coming soon
-            </span>
+            {/* 2026-07-05 · Wave 4 polish · removed "Auto-post · coming soon"
+                permanent tag. Users couldn't tell it apart from real
+                Live/Offline pills. Assisted-local IS the shipping
+                behaviour; automatic-provider gets its own explicit
+                status pill when the feature actually ships. */}
             <span className="lc-schedule-tier-tag">{tier.tier.toUpperCase()}</span>
             <span className="lc-schedule-cap-tag" title="Monthly post cap usage">
               {sched.scheduledThisMonth} / {tier.caps.monthlyPosts} posts this month

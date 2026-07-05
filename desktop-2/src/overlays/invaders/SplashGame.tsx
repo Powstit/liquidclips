@@ -191,7 +191,7 @@ export function SplashGame({
   return (
     <div className="relative z-10 flex flex-col items-center gap-4">
       {/* Score / best / new-best banner */}
-      <div className="flex items-center gap-4 font-mono text-[11px] uppercase tracking-[var(--tracking-eyebrow)] text-paper">
+      <div className="flex items-center gap-4 font-mono text-[11px] uppercase tracking-[var(--tracking-eyebrow)] text-ink">
         <span className="tabular-nums">SCORE {score}</span>
         <span className="opacity-60">·</span>
         <span className="tabular-nums">BEST {best}</span>
@@ -214,12 +214,12 @@ export function SplashGame({
             on the keycap makes the prompt feel alive without being noisy. */}
         {!started && state.status === "playing" && (
           <div className="absolute inset-2 flex flex-col items-center justify-center gap-3 rounded-xl">
-            <span className="font-sans text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-paper/70">
+            <span className="font-sans text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-ink/70">
               ready
             </span>
-            <div className="flex items-center gap-2 font-sans text-[12px] uppercase tracking-[var(--tracking-eyebrow)] text-paper">
+            <div className="flex items-center gap-2 font-sans text-[12px] uppercase tracking-[var(--tracking-eyebrow)] text-ink">
               press
-              <kbd className="inline-grid h-7 min-w-[64px] place-items-center rounded-md border border-paper/40 bg-paper/10 px-3 font-mono text-[11px] font-medium text-paper animate-pulse">
+              <kbd className="inline-grid h-7 min-w-[64px] place-items-center rounded-md border border-ink/40 bg-ink/10 px-3 font-mono text-[11px] font-medium text-ink animate-pulse">
                 space
               </kbd>
               to play
@@ -257,7 +257,7 @@ export function SplashGame({
                 </span>
               </div>
               <div className="flex items-center gap-2 font-mono text-[12px] tabular-nums">
-                {/* P0 contrast fix 2026-07-04 · was text-paper/60 (near-black
+                {/* P0 contrast fix 2026-07-04 · was text-ink/60 (near-black
                     on near-black paper bg) · 1:1 contrast, literally invisible.
                     Swapped to text-ink/60 (cream on paper) for readable AA. */}
                 <span className="text-ink/60">{levelUpFrom.toLocaleString()}</span>
@@ -284,14 +284,14 @@ export function SplashGame({
             <div className="mt-1 font-display text-[14px] font-bold text-ink">
               {achievement.title}
             </div>
-            <div className="mt-1 max-w-[220px] font-sans text-[11px] text-paper/70">
+            <div className="mt-1 max-w-[220px] font-sans text-[11px] text-ink/70">
               {achievement.sub}
             </div>
           </div>
         )}
       </div>
 
-      <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-paper/60">
+      <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[var(--tracking-eyebrow)] text-ink/60">
         ← → move · space fire
       </div>
 

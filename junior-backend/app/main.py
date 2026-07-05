@@ -982,6 +982,23 @@ app.include_router(troubleshoot.router)
 # lookup used by marketing /join/[handle] redirect.
 from app.routes import handle as _handle_router  # noqa: E402
 app.include_router(_handle_router.router)
+
+# 2026-07-05 · 2.2.24 · Whop checkout success redirect handler.
+# Registered as the post-checkout success URL on Founder Access plan
+# (`plan_svbzoXoT4oj6b` current · `plan_VWj1uoy2RcOsg` grandfathered).
+# Reads membership_id from Whop, mints a license
+# JWT, deep-links back to the desktop app. Idempotent per membership_id.
+from app.routes import whop_checkout_success as _whop_checkout_success_router  # noqa: E402
+app.include_router(_whop_checkout_success_router.router)
+
+# 2026-07-05 · 2.2.24 · persistent audit endpoint. Single-call ship gate.
+# GET /audit/state aggregates backend health + integrations + journey
+# success rates + recent tick activity. POST /audit/tick receives
+# lifecycle events from every user-facing button (via useAuditableAction).
+# scripts/audit-gate.sh curls /audit/state before any deploy — non-zero
+# `blocking_findings` blocks the ship. See docs/AUDIT_SYSTEM.md.
+from app.routes import audit as _audit_router  # noqa: E402
+app.include_router(_audit_router.router)
 # v2.2.15 · one-click trial-to-paid convert · POST /me/trial/approve.
 from app.routes import trial_convert as _trial_convert_router  # noqa: E402
 app.include_router(_trial_convert_router.router)

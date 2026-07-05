@@ -39,6 +39,7 @@ import { BakeErrorStrip } from "../engine/BakeErrorStrip";
 import { useTierCaps } from "../state/useTierCaps";
 import { useRewardClips } from "../state/useRewardClips";
 import { useEarnSummary } from "../state/useEarnSummary";
+import { useCommunity } from "../state/useCommunity";
 import { EngineSessionProvider, useEngineSession } from "../state/useEngineSession";
 import { useKadeFromSession } from "../state/useKadeFromSession";
 import { ROUTE_HERO } from "../copy/copyMap";
@@ -64,6 +65,7 @@ function EarnBody() {
   const tier = useTierCaps();
   const clips = useRewardClips();
   const earn = useEarnSummary();
+  const community = useCommunity();
   useKadeFromSession("earn");
 
   const hero = ROUTE_HERO["earn"];
@@ -71,6 +73,17 @@ function EarnBody() {
   const [activeClip, setActiveClip] = useState<RewardClip | null>(null);
 
   const visible = useMemo(() => clips.byFilter[filter] ?? [], [clips.byFilter, filter]);
+
+  // 2026-07-05 · CM-T1 · pull the caller's actual paid-referral count
+  // from the leaderboard preview (fed by CM-T6's /leaderboard/earnings
+  // bridge). Previously hardcoded to 0 · which broke the sponsored
+  // reward module's affiliate math + hid real affiliates from the
+  // "progress toward 3 referrals" pill. Falls back to 0 when the
+  // community feed hasn't hydrated or the user isn't on the leaderboard.
+  const callerReferralCount = useMemo(() => {
+    const callerRow = community.leaderboardPreview.find((r) => r.isCaller);
+    return callerRow?.paidReferrals ?? 0;
+  }, [community.leaderboardPreview]);
   const honestyTag = clips.source === "mock";
 
   return (
@@ -206,9 +219,17 @@ function EarnBody() {
 
         {/* Sponsored reward follows the personal money dashboard. */}
         <EngineErrorBoundary route="earn" component="SponsoredRewardModule">
+          {/* 2026-07-05 · CM-T1 · referralCount now sourced from real
+              leaderboard data (caller row's paid_referrals) via
+              useCommunity → community.leaderboardPreview. viewCount
+              still passes totalClicks from earn.summary since the
+              sponsored payouts use "sponsored view" as their
+              denominator and no dedicated ad-view counter exists
+              backend-side yet · a future backend endpoint at
+              /me/sponsored/impressions would replace totalClicks here. */}
           <SponsoredRewardModule
             viewCount={Math.max(0, earn.summary.totalClicks ?? 0)}
-            referralCount={0}
+            referralCount={callerReferralCount}
           />
         </EngineErrorBoundary>
 

@@ -30,6 +30,21 @@
 import { useCallback, useState } from "react";
 import { WalletDetail } from "../../routes/wallet-detail/WalletDetail";
 import { CancellationIntercept } from "../../routes/cancellation-intercept/CancellationIntercept";
+import { useAuditableAction } from "../../lib/useAuditableAction";
+import { bridgeToBackend, BridgeError } from "../../lib/bridgeToBackend";
+
+interface CancelSubscriptionResponse {
+  state: "cancelled" | "already_cancelled" | "no_membership" | "unavailable";
+  access_ends_at: string | null;
+  detail: string;
+}
+
+function formatEndsAt(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+}
 
 // Corner-pinned trigger. Sized to sit above the intro-splash z-index
 // so a first-run user with the demo-shown overlay pinned to
@@ -56,20 +71,64 @@ const CANCEL_TRIGGER_STYLE: React.CSSProperties = {
 
 export function AccountSection() {
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelToast, setCancelToast] = useState<string | null>(null);
 
   const handleKeepSubscription = useCallback(() => {
     setCancelOpen(false);
   }, []);
 
-  const handleQuietCancel = useCallback(() => {
-    // TODO(phase-9) · wire the real Whop cancel-subscription RPC here.
-    // Mount #5's scope was reachability of the intercept surface only
-    // (guard rail 12 · WIRE only · no new RPC wrappers). Once the
-    // /whop/cancel-subscription endpoint lands, replace this comment
-    // with `void whopCancelSubscription()` and preserve the modal
-    // dismissal below so the UI still closes even if the RPC errors.
+  // 2026-07-05 · CM-T2 · real Whop cancel via new backend endpoint.
+  // Was toast-only fake ("Your cancellation request is queued") which
+  // lied to the user · they'd get billed next cycle. Now hits
+  // POST /me/trial/cancel which calls Whop end_membership + surfaces
+  // the actual state (cancelled with access-until date · no membership
+  // · Whop unavailable). Wrapped in useAuditableAction so the audit
+  // endpoint tracks the flow.
+  const cancelAction = useAuditableAction<CancelSubscriptionResponse>(
+    "subscription.cancel",
+    async () => {
+      const res = await bridgeToBackend<CancelSubscriptionResponse>(
+        "POST",
+        "/me/trial/cancel",
+      );
+      return res;
+    },
+    { surface: "AccountSection" },
+  );
+
+  const handleQuietCancel = useCallback(async () => {
     setCancelOpen(false);
-  }, []);
+    const result = await cancelAction.fire();
+    if (result === null && cancelAction.lastError) {
+      // BridgeError network / 5xx · surface the honest failure
+      const bridgeMsg =
+        cancelAction.lastError instanceof BridgeError
+          ? `Cancel failed · ${cancelAction.lastError.message}`
+          : "Cancel failed · check your connection and retry.";
+      setCancelToast(bridgeMsg);
+      window.setTimeout(() => setCancelToast(null), 12000);
+      return;
+    }
+    if (!result) return;
+
+    // Map the four backend states to distinct user-visible copy.
+    if (result.state === "cancelled") {
+      const endsAt = formatEndsAt(result.access_ends_at);
+      setCancelToast(
+        endsAt
+          ? `Cancelled · access until ${endsAt}.`
+          : "Cancelled · access continues until the end of the billing period.",
+      );
+    } else if (result.state === "already_cancelled") {
+      setCancelToast("Already cancelled. No further action needed.");
+    } else if (result.state === "no_membership") {
+      setCancelToast(result.detail);
+    } else {
+      // "unavailable" · Whop refused · surface the support path
+      setCancelToast(result.detail);
+    }
+    window.setTimeout(() => setCancelToast(null), 12000);
+  }, [cancelAction]);
 
   return (
     <>
@@ -78,11 +137,29 @@ export function AccountSection() {
         type="button"
         style={CANCEL_TRIGGER_STYLE}
         onClick={() => setCancelOpen(true)}
+        disabled={cancelAction.pending}
         data-testid="account-cancel-subscription"
         aria-label="Cancel subscription"
       >
-        Cancel subscription
+        {cancelAction.pending ? "Cancelling…" : "Cancel subscription"}
       </button>
+      {cancelToast ? (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            marginTop: "0.75rem",
+            padding: "0.75rem 1rem",
+            borderRadius: "0.75rem",
+            border: "1px solid var(--color-fuchsia)",
+            background: "var(--color-fuchsia-soft)",
+            color: "var(--color-fuchsia-deep)",
+            fontSize: "0.85rem",
+          }}
+        >
+          {cancelToast}
+        </div>
+      ) : null}
       {cancelOpen && (
         <CancellationIntercept
           onKeep={handleKeepSubscription}
