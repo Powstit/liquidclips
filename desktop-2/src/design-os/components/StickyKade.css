@@ -55,10 +55,17 @@
   height: clamp(140px, 14vw, 200px);
 }
 
-/* Dense tools already carry Kade in the top HUD and clip artwork. A second
-   full-size helper obscures controls, so keep the working canvas clear. */
+/* 2026-07-05 · ship-day walk fix · Daniel didn't see Kade on Workstation.
+   Full-size helper obscured controls, so instead of hiding him entirely
+   we park him at bottom-right, small · out of the way of dense tools
+   but always visible. Same treatment on earn + settings below. */
 .lc-app[data-route="workstation"] .lc-sticky-kade.is-helper-right {
-  display: none;
+  right: clamp(20px, 2vw, 32px);
+  bottom: clamp(20px, 2vh, 32px);
+  top: auto;
+  left: auto;
+  width: clamp(80px, 8vw, 108px);
+  height: clamp(80px, 8vw, 108px);
 }
 
 /* Campaign discovery benefits from a guide, but the cards remain primary. */
@@ -69,8 +76,15 @@
   height: 104px;
 }
 
-.lc-app[data-route="earn"] .lc-sticky-kade.is-helper-right {
-  display: none;
+/* 2026-07-05 · ship-day walk fix · Kade at bottom-right corner instead of hidden. */
+.lc-app[data-route="earn"] .lc-sticky-kade.is-helper-right,
+.lc-app[data-route="earn"] .lc-sticky-kade.is-center {
+  right: clamp(20px, 2vw, 32px);
+  bottom: clamp(20px, 2vh, 32px);
+  top: auto;
+  left: auto;
+  width: clamp(80px, 8vw, 108px);
+  height: clamp(80px, 8vw, 108px);
 }
 
 .lc-app[data-route="channels"] .lc-sticky-kade.is-helper-right,
@@ -81,8 +95,14 @@
   height: 104px;
 }
 
+/* 2026-07-05 · ship-day walk fix · Kade at bottom-right corner instead of hidden. */
 .lc-app[data-route="settings"] .lc-sticky-kade.is-helper-right {
-  display: none;
+  right: clamp(20px, 2vw, 32px);
+  bottom: clamp(20px, 2vh, 32px);
+  top: auto;
+  left: auto;
+  width: clamp(80px, 8vw, 108px);
+  height: clamp(80px, 8vw, 108px);
 }
 
 .lc-app[data-route="schedule"] .lc-sticky-kade.is-helper-right,

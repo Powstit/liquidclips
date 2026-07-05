@@ -26,8 +26,11 @@ const __dirname = dirname(__filename);
 const APP_SRC = readFileSync(resolve(__dirname, 'App.tsx'), 'utf-8');
 
 describe('AuthGate · 2.2.24 sign-in surface pivot', () => {
-  it('imports openWhopFounderCheckout from whopCheckout helper', () => {
-    expect(APP_SRC).toMatch(/openWhopFounderCheckout/);
+  it('imports openSignInOrSignUpBridge from whopCheckout helper', () => {
+    // 2026-07-05 · ship-day walk fix · pill routes to the account-app
+    // /connect-desktop bridge which surfaces BOTH sign-in and sign-up
+    // paths, not the raw Whop checkout URL.
+    expect(APP_SRC).toMatch(/openSignInOrSignUpBridge/);
     expect(APP_SRC).toMatch(/from\s+["']\.\/lib\/whopCheckout["']/);
   });
 
@@ -42,8 +45,10 @@ describe('AuthGate · 2.2.24 sign-in surface pivot', () => {
     expect(APP_SRC).not.toMatch(/useAuthPanelBridge/);
   });
 
-  it('bus handler for auth:open-panel opens Whop checkout', () => {
-    expect(APP_SRC).toMatch(/auth:open-panel[\s\S]*?openWhopFounderCheckout/);
+  it('bus handler for auth:open-panel opens the sign-in-or-sign-up bridge', () => {
+    // Routes to account-app /connect-desktop which lets returning
+    // users sign in (Clerk) AND new buyers sign up (WhopBanner).
+    expect(APP_SRC).toMatch(/auth:open-panel[\s\S]*?openSignInOrSignUpBridge/);
   });
 
   it('still preserves IntroSplash + FunnelGate + HardUpdateGate boot sequence', () => {
