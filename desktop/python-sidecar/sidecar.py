@@ -4636,6 +4636,421 @@ def method_thumbnail_ledger(_params: dict[str, Any]) -> dict[str, Any]:
     return {"rows": rows, "total_usd": round(total, 4), "count": len(rows)}
 
 
+# ============================================================
+# C1-T3 · 2026-07-05 · Export flow real (Path A · Python sidecar handlers).
+#
+# Wires the five exportApi methods the desktop-2 sidecar-stub.ts
+# wrappers already dispatch to:
+#
+#   export_clip          → real MP4 encode via ffmpeg + emit
+#                          export_progress + export_complete/error events.
+#   cancel_export        → signals the active export runner to stop.
+#   save_copy_as         → copy the source file to
+#                          ~/Movies/LiquidClips/saved-copies/<slug>-<idx>-<ts>.mp4.
+#                          Native "save as" dialog is a Tauri-side concern
+#                          (dialog plugin); this handler owns the file
+#                          copy semantics so the frontend can pair a
+#                          picker with a deterministic write.
+#   reveal_in_finder     → macOS `open -R <path>`. Windows / Linux
+#                          fall through with revealed=False (frontend
+#                          shell plugin covers those later).
+#   list_export_history  → read the persisted history file at
+#                          ~/LiquidClips/export_history.json.
+#
+# Progress + completion events reach the frontend through the Rust
+# pump (sidecar.rs:318 emits `sidecar:<event_name>`) and the tauri
+# adapter (tauri-adapter.ts:119/138/148) which re-emits them onto
+# the design-os bus as engine:progress / engine:complete /
+# engine:error with kind="export".
+#
+# IRON GATE IG-002 kept: adding NEW methods at the bottom of the
+# METHODS map, no existing wrapper renamed, no param shape mutated.
+# ============================================================
+
+_ACTIVE_EXPORTS: dict[tuple[str, int], threading.Event] = {}
+_EXPORT_HISTORY_LOCK = threading.Lock()
+
+
+def _export_history_path() -> Path:
+    """Persistent JSON list of past exports · surfaces via list_export_history."""
+    return CLIPS_HOME / "export_history.json"
+
+
+def _movies_root() -> Path:
+    """Canonical root for exported MP4s. `~/Movies/LiquidClips/`.
+
+    Kept separate from `~/LiquidClips/projects/` so a user cleaning
+    out cached projects doesn't accidentally wipe their finished
+    exports. Falls back to `~/LiquidClips/exports/` on non-macOS
+    hosts that don't have a `~/Movies` folder.
+    """
+    movies = Path.home() / "Movies" / "LiquidClips"
+    if movies.parent.exists() or _platform.system() == "Darwin":
+        return movies
+    return CLIPS_HOME / "exports"
+
+
+def _saved_copies_root() -> Path:
+    return _movies_root() / "saved-copies"
+
+
+def _read_export_history() -> list[dict[str, Any]]:
+    path = _export_history_path()
+    if not path.exists():
+        return []
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    if not raw.strip():
+        return []
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if isinstance(data, list):
+        return [row for row in data if isinstance(row, dict)]
+    return []
+
+
+def _write_export_history(rows: list[dict[str, Any]]) -> None:
+    """Trim to the most recent 200 rows then write atomically."""
+    with _EXPORT_HISTORY_LOCK:
+        rows = rows[:200]
+        path = _export_history_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(rows, separators=(",", ":")), encoding="utf-8")
+            tmp.replace(path)
+        except OSError as exc:
+            log(f"[export] history write failed: {exc}")
+
+
+def _emit_export_progress(slug: str, idx: int, percent: float | None, note: str | None = None) -> None:
+    from events import emit_event
+    payload: dict[str, Any] = {"stage": "export", "slug": slug, "idx": idx}
+    if percent is not None:
+        payload["percent"] = round(float(max(0.0, min(1.0, percent))), 4)
+    if note is not None:
+        payload["note"] = note
+    emit_event("export_progress", payload)
+
+
+def _emit_export_complete(slug: str, idx: int, output_path: str, job_id: str) -> None:
+    from events import emit_event
+    emit_event(
+        "export_complete",
+        {"slug": slug, "idx": idx, "outputPath": output_path, "jobId": job_id},
+    )
+
+
+def _emit_export_error(slug: str, idx: int, message: str, human: str | None = None) -> None:
+    from events import emit_event
+    emit_event(
+        "export_error",
+        {"slug": slug, "idx": idx, "error": message, "human": human or message},
+    )
+
+
+def _resolve_source_clip_path(clip: dict[str, Any], desired_format: str) -> str:
+    """Pick the best-fit rendered clip path for the requested export format.
+
+    Preference order:
+      - format "9:16"     → vertical_path → cut_path → portrait_path
+      - format "1:1"      → square_path → vertical_path → cut_path
+      - format "16:9"     → cut_path → vertical_path
+      - format "original" → cut_path (source cut, no reframe) → vertical_path
+    """
+    lookup = {
+        "9:16":     ("vertical_path", "portrait_path", "cut_path", "square_path"),
+        "1:1":      ("square_path", "vertical_path", "cut_path", "portrait_path"),
+        "16:9":     ("cut_path", "vertical_path", "portrait_path", "square_path"),
+        "original": ("cut_path", "vertical_path", "square_path", "portrait_path"),
+    }
+    keys = lookup.get(desired_format, lookup["original"])
+    for k in keys:
+        val = clip.get(k)
+        if isinstance(val, str) and val and Path(val).is_file():
+            return val
+    raise FileNotFoundError(
+        f"no rendered clip file available for idx={clip.get('idx')} format={desired_format}"
+    )
+
+
+def _scale_filter_for_format(desired_format: str) -> str | None:
+    """ffmpeg scale filter for the target aspect. Returns None when the
+    caller wants the source aspect preserved."""
+    if desired_format == "9:16":
+        return "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black"
+    if desired_format == "1:1":
+        return "scale=1080:1080:force_original_aspect_ratio=decrease,pad=1080:1080:(ow-iw)/2:(oh-ih)/2:color=black"
+    if desired_format == "16:9":
+        return "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black"
+    return None
+
+
+def _watermark_export_filter() -> str:
+    """Simple bottom-left text watermark for Free-tier exports. Keeps the
+    encoder self-contained (no external overlay PNG needed). Frontend
+    already promises `Liquid Clips` in the toggle copy.
+    """
+    return (
+        "drawtext=text='Liquid Clips':fontcolor=white@0.72"
+        ":fontsize=h/28:box=1:boxcolor=black@0.45:boxborderw=8"
+        ":x=24:y=h-th-24"
+    )
+
+
+def method_export_clip(params: dict[str, Any]) -> dict[str, Any]:
+    """Real MP4 export for the selected clip.
+
+    Blocks the RPC channel while ffmpeg runs. Emits progress via
+    export_progress events (mapped to engine:progress by
+    tauri-adapter). On success, appends to
+    ~/LiquidClips/export_history.json and returns {jobId, outputPath}.
+    """
+    slug = params.get("slug")
+    idx = params.get("idx")
+    fmt = params.get("format") or "original"
+    preset = params.get("preset") or "custom"
+    watermark = bool(params.get("watermark"))
+    target_account_ids = params.get("targetAccountIds") or []
+    if not isinstance(slug, str) or not slug.strip():
+        raise ValueError("export_clip requires slug (str)")
+    if not isinstance(idx, int):
+        raise ValueError("export_clip requires idx (int)")
+    if fmt not in ("9:16", "1:1", "16:9", "original"):
+        raise ValueError(f"export_clip: unknown format {fmt!r}")
+
+    project = Project.load(slug)
+    if idx < 0 or idx >= len(project.clips):
+        raise ValueError(f"clip idx {idx} out of range (0..{len(project.clips) - 1})")
+    clip = project.clips[idx]
+    clip_title = clip.get("title") or clip.get("slug") or f"Clip #{idx + 1}"
+
+    source_path = _resolve_source_clip_path(clip, fmt)
+
+    out_root = _movies_root() / slug
+    out_root.mkdir(parents=True, exist_ok=True)
+    output_path = out_root / f"{idx:02d}-{fmt.replace(':', 'x')}-{preset}.mp4"
+
+    # ffmpeg cmd
+    ffmpeg = stages.ffmpeg_bin()
+    filter_parts: list[str] = []
+    scale = _scale_filter_for_format(fmt)
+    if scale is not None:
+        filter_parts.append(scale)
+    if watermark:
+        filter_parts.append(_watermark_export_filter())
+    vf = ",".join(filter_parts) if filter_parts else None
+
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-i", source_path,
+    ]
+    if vf:
+        cmd.extend(["-vf", vf])
+    cmd.extend([
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-crf", "20",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
+        "-b:a", "160k",
+        "-movflags", "+faststart",
+        "-progress", "pipe:2",
+        str(output_path),
+    ])
+
+    key = (slug, idx)
+    if key in _ACTIVE_EXPORTS:
+        raise RuntimeError(f"Export already in progress for {slug} clip {idx}")
+    cancel_event = threading.Event()
+    _ACTIVE_EXPORTS[key] = cancel_event
+
+    _emit_export_progress(slug, idx, 0.02, "Starting encode")
+
+    duration_us = 0
+    try:
+        duration_s = float(clip.get("end", 0) or 0) - float(clip.get("start", 0) or 0)
+        duration_us = int(max(0.0, duration_s) * 1_000_000)
+    except (TypeError, ValueError):
+        duration_us = 0
+
+    job_id = f"ex-{int(datetime.now(tz=timezone.utc).timestamp() * 1000)}-{idx:02d}"
+    log(f"[export] {slug}#{idx} → {output_path} (fmt={fmt} preset={preset} watermark={watermark})")
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+    except FileNotFoundError as exc:
+        _ACTIVE_EXPORTS.pop(key, None)
+        _emit_export_error(slug, idx, str(exc), "ffmpeg binary missing")
+        raise RuntimeError(f"ffmpeg not found: {exc}") from exc
+
+    last_emit = 0.0
+    try:
+        assert proc.stderr is not None
+        for line in proc.stderr:
+            if cancel_event.is_set():
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                _ACTIVE_EXPORTS.pop(key, None)
+                _emit_export_error(slug, idx, "canceled", "Export canceled")
+                raise RuntimeError("export canceled")
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("out_time_us=") and duration_us > 0:
+                try:
+                    cur_us = int(line.split("=", 1)[1])
+                except ValueError:
+                    continue
+                pct = min(0.98, cur_us / duration_us)
+                # Throttle to 5%-step emits so we don't flood the RPC channel.
+                if pct - last_emit >= 0.05 or pct >= 0.95:
+                    last_emit = pct
+                    _emit_export_progress(slug, idx, pct, "Encoding")
+            elif line.startswith("progress=end"):
+                _emit_export_progress(slug, idx, 0.99, "Finalising")
+        rc = proc.wait()
+    finally:
+        _ACTIVE_EXPORTS.pop(key, None)
+
+    if rc != 0:
+        _emit_export_error(
+            slug, idx, f"ffmpeg exited {rc}", "Encoder failed · check ffmpeg install"
+        )
+        raise RuntimeError(f"ffmpeg exited with code {rc}")
+
+    # Persist to history.
+    row: dict[str, Any] = {
+        "id": job_id,
+        "clipIdx": idx,
+        "clipTitle": clip_title,
+        "format": fmt,
+        "preset": preset,
+        "watermark": watermark,
+        "createdAt": datetime.now(tz=timezone.utc).isoformat(),
+        "status": "complete",
+        "outputPath": str(output_path),
+    }
+    if isinstance(target_account_ids, list) and target_account_ids:
+        row["targetAccountId"] = str(target_account_ids[0])
+    try:
+        dur = float(clip.get("end", 0) or 0) - float(clip.get("start", 0) or 0)
+        if dur > 0:
+            row["durationS"] = round(dur, 2)
+    except (TypeError, ValueError):
+        pass
+    history = _read_export_history()
+    history.insert(0, row)
+    _write_export_history(history)
+
+    _emit_export_progress(slug, idx, 1.0, "Complete")
+    _emit_export_complete(slug, idx, str(output_path), job_id)
+    return {"jobId": job_id, "outputPath": str(output_path)}
+
+
+def method_cancel_export(params: dict[str, Any]) -> dict[str, Any]:
+    """Signal the active export runner(s) to stop.
+
+    Optional params:
+      slug (str) + idx (int) → cancel that specific pair.
+      No params              → cancel every in-flight export.
+    """
+    slug = params.get("slug")
+    idx = params.get("idx")
+    canceled_any = False
+    if isinstance(slug, str) and isinstance(idx, int):
+        ev = _ACTIVE_EXPORTS.get((slug, idx))
+        if ev is not None:
+            ev.set()
+            canceled_any = True
+    else:
+        for ev in list(_ACTIVE_EXPORTS.values()):
+            ev.set()
+            canceled_any = True
+    return {"canceled": canceled_any}
+
+
+def method_save_copy_as(params: dict[str, Any]) -> dict[str, Any]:
+    """Copy an already-exported MP4 to the shared saved-copies folder.
+
+    Params:
+      source (str)  · required · path to the source MP4.
+      dest   (str)  · optional · absolute destination path. When omitted,
+                                  a timestamped file lands in
+                                  ~/Movies/LiquidClips/saved-copies/.
+    """
+    src = params.get("source")
+    dest = params.get("dest")
+    if not isinstance(src, str) or not src.strip():
+        raise ValueError("save_copy_as requires source (str)")
+    src_path = Path(src)
+    if not src_path.is_file():
+        return {"dest": None, "error": "source_not_found"}
+    if isinstance(dest, str) and dest.strip():
+        dest_path = Path(dest)
+    else:
+        _saved_copies_root().mkdir(parents=True, exist_ok=True)
+        ts = int(datetime.now(tz=timezone.utc).timestamp())
+        dest_path = _saved_copies_root() / f"{src_path.stem}-{ts}{src_path.suffix or '.mp4'}"
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.copy2(src_path, dest_path)
+    except OSError as exc:
+        return {"dest": None, "error": f"copy_failed: {exc}"}
+    return {"dest": str(dest_path)}
+
+
+def method_reveal_in_finder(params: dict[str, Any]) -> dict[str, Any]:
+    """Open Finder / Explorer / Files at the given path.
+
+    macOS uses `open -R <path>` which reveals the file selected in
+    its containing folder. Windows / Linux paths fall through with
+    revealed=False so the frontend shell plugin can cover them.
+    """
+    path = params.get("path")
+    if not isinstance(path, str) or not path.strip():
+        raise ValueError("reveal_in_finder requires path (str)")
+    p = Path(path)
+    if not p.exists():
+        return {"revealed": False, "error": "path_not_found"}
+    system = _platform.system()
+    try:
+        if system == "Darwin":
+            subprocess.run(["open", "-R", str(p)], check=False)
+            return {"revealed": True}
+        if system == "Windows":
+            subprocess.run(["explorer", "/select,", str(p)], check=False)
+            return {"revealed": True}
+        # Linux — best-effort via xdg-open on the parent directory.
+        subprocess.run(["xdg-open", str(p.parent)], check=False)
+        return {"revealed": True}
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"revealed": False, "error": str(exc)}
+
+
+def method_list_export_history(_params: dict[str, Any]) -> dict[str, Any]:
+    """Read the persisted export history JSON. Empty list on first run."""
+    return {"jobs": _read_export_history()}
+
+
 # ───── IRON GATE IG-002 (v0.7.13+) — see desktop/docs/IRON_GATES.md ─────
 # Sidecar RPC contract. Each entry pairs with a TS wrapper in src/lib/sidecar.ts
 # of the same snake_case name. Don't rename, don't mutate param shapes, don't
@@ -4760,6 +5175,15 @@ METHODS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     # after spawn, BEFORE the splash advances. Returns structured envelope
     # the recovery UI renders verbatim. See method_health_check docstring.
     "health_check": method_health_check,
+    # C1-T3 · 2026-07-05 · Export flow real. Real MP4 encode via ffmpeg +
+    # progress events + persistent history + reveal-in-finder. Wraps the
+    # five exportApi wrappers in desktop-2/src/design-os/engine/sidecar-stub.ts.
+    # See the block-comment above `_ACTIVE_EXPORTS` for the full contract.
+    "export_clip": method_export_clip,
+    "cancel_export": method_cancel_export,
+    "save_copy_as": method_save_copy_as,
+    "reveal_in_finder": method_reveal_in_finder,
+    "list_export_history": method_list_export_history,
 }
 
 
