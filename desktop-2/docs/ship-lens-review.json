@@ -440,5 +440,52 @@
     },
     "known_leftover_dead_css": "The old .wd-scrubber · .wd-clipper-row · .wd-hover-card class blocks remain in WalletDetail.css but have no matching DOM emitters. Non-blocking (extra 300 lines · no runtime cost). Follow-up sprint can strip.",
     "gate_summary_one_line": "C1-T1 PASS · wallet page renders real data · 5 states explicit · Claim wire preserved · tsc clean · +2 new tests · 1 cross-lane test failure logged as pre-existing App.tsx drift."
+  },
+  "c1_task_2_done": {
+    "reviewed_at": "2026-07-05T18:41:00Z",
+    "scope": "C1-T2 · Editor real clips · MASTER_AUDIT_2026-07-05 P0 finding #1",
+    "verdict": "PASS",
+    "files_touched": [
+      "desktop-2/src/sections/editor/EditorSection.tsx (REWRITTEN · deleted generateClips/resetClipSequence/regenerateClip imports · deleted getCampaignById stub · deleted FakeCampaign type import · wrapped in EngineSessionProvider · wires clips from session.project.clips or persistence-hydrated sidecar.getProject · adapter toUiClip maps real Clip → UI Clip shape · empty state with nav back to Workstation · Publish/Whop modals use composite ${slug}/${idx} clipId)",
+      "desktop-2/src/sections/editor/EditorSection.test.ts (new · 9 source-file assertions locking the contract)"
+    ],
+    "acceptance_evidence": {
+      "fixture_source_severed": "grep 'generateClips\\|resetClipSequence' desktop-2/src/sections/editor/EditorSection.tsx → 0 hits",
+      "stub_deleted": "grep 'function getCampaignById\\|import type { FakeCampaign' desktop-2/src/sections/editor/EditorSection.tsx → 0 hits",
+      "real_source_wired": [
+        "EditorSection.tsx:106-108 · EditorSection() returns <EngineSessionProvider resetOnRouteEnter={false}><EditorBody/></EngineSessionProvider>",
+        "EditorSection.tsx:113 · const session = useEngineSession()",
+        "EditorSection.tsx:122-135 · persistence-driven hydration effect · readPersistedSession → sidecar.getProject(slug)",
+        "EditorSection.tsx:143 · const realProject = session.project ?? hydratedProject",
+        "EditorSection.tsx:144 · const realClips = useMemo(() => realProject?.clips ?? [], [realProject])",
+        "EditorSection.tsx:146-148 · const uiClipsFromSession = realClips.map((c,i) => toUiClip(c, ...))"
+      ],
+      "fixture_fallback_guard": "EditorSection.tsx:133 · `if (project.name === FIXTURE_PROJECT.name) return` — refuses to hydrate from the sidecar-stub's fixture fallback (Vite dev / CI harness / sidecar unreachable). Real user projects will never collide with `Uncle Daniel — Wednesday drop`.",
+      "empty_state_explicit": "EditorSection.tsx:301-341 · data-testid='editor-empty-state' + `No clips yet.` copy + `Bake a source in the Workstation…` copy + `Open Workstation` CTA that emits nav:click{route:'workstation'}",
+      "publish_whop_real_slugs": {
+        "helper": "EditorSection.tsx:97-99 · realClipHandoffId(slug, idx) → `${slug}/${idx}` when a project is hydrated, `clip_${idx}` otherwise",
+        "publish_modal": "EditorSection.tsx:485 · clipId={selectedHandoffId ?? 'clip_unselected'}",
+        "whop_modal": "EditorSection.tsx:497 · clipId={selectedHandoffId}"
+      },
+      "regenerate_generate_honest": "EditorSection.tsx:195-201 · handleGenerate / handleGenerateMore / handleRegenerate all fire the same nudge toast — `Bake more clips in the Workstation first.` No silent no-ops (bug-hunt-lens pattern).",
+      "test_results": {
+        "tsc": "exit 0 (desktop-2 root)",
+        "vitest": "86 passed / 1 failed (pre-existing App.test.tsx claude-2 lane drift · SAME failure as C1-T1 · not caused by C1-T2)",
+        "new_tests": "9 assertions in src/sections/editor/EditorSection.test.ts (import purge · stub delete · session wire · empty state · composite clipId · fixture guard · nudge toast)"
+      }
+    },
+    "ship_lens_phases": {
+      "DESIGN": "PASS · dead affordances collapsed · Generate / Generate more / Regenerate no longer pretend to work on real clips · every rendered element (source chip, campaign chip, quota bar, empty state) earns its place · CTA differentiates empty from populated.",
+      "STATE": "PASS · 2 explicit states (empty · populated) · no silent empty render · session.project null → empty CTA + Workstation nav; session.project.clips.length > 0 → real clip grid + timeline + right rail; sidecar-fixture guard prevents fake data from leaking through the persistence-hydration path.",
+      "JOURNEY": "PASS · user bakes in Workstation → engine:complete fires hydrate_project into shared bus → EditorSection's own EngineSessionProvider observes it (or reads persistence + refetches via sidecar.getProject on route entry) → real clips render · Publish/Whop hand off with project-scoped composite id so backend routing keeps the campaign context · empty user sees Workstation nudge, not fake demo six."
+    },
+    "known_leftover_dead_ui": [
+      "EngineRightRail / EngineEditorOverlay / EngineTimeline still consume the fake Clip shape · adapter keeps them working but a v3 refactor should have them consume real Clip directly (dropping the adapter cost). Non-blocking for launch.",
+      "Split / Add b-roll buttons still fire simulator toasts (`(simulator)` suffix) · non-blocking dev-language P1 · CM lane copy-sweep target."
+    ],
+    "cross_lane_findings_added": [
+      "Sidecar-stub `getProject` returns FIXTURE_PROJECT with the requested slug overlaid on sidecar-unreachable branches. C1-T2 guards by comparing `project.name === FIXTURE_PROJECT.name`; the systemic fix (Phase D · Wave 2 codemod on ~32 sidecar wrappers) is CM/C1 shared and lands later in the sprint."
+    ],
+    "gate_summary_one_line": "C1-T2 PASS · editor renders real user clips from session.project.clips (or persistence-hydrated via sidecar.getProject) · fixture generator + FakeCampaign stub removed · empty state honest · Publish/Whop use composite ${slug}/${idx} · tsc clean · +9 new tests · same 1 cross-lane failure as C1-T1."
   }
 }
