@@ -10,7 +10,7 @@
  * so workstation defaults can adapt in UI-2.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { bus, useEvent, type AppMode } from "../bridge";
 import { getJwt, clearJwt } from "../../lib/authStorage";
 import { clearActivation } from "../../lib/activation";
@@ -18,7 +18,6 @@ import { unreadCount } from "../../inbox";
 import { InboxSheet } from "../../shell/InboxSheet";
 import { TrialStatusPill } from "./TrialStatusPill";
 import { useTierCaps } from "../state/useTierCaps";
-import { useAuditableAction } from "../../lib/useAuditableAction";
 import "./TopHud.css";
 
 declare const __APP_VERSION__: string | undefined;
@@ -165,13 +164,23 @@ export function TopHud({
   const [hasJwt, setHasJwt] = useState<boolean>(() => !!getJwt());
   const menuRootRef = useRef<HTMLDivElement>(null);
 
-  // 2.2.24 · auth.sign-in tick emission for /audit/state · see useAuditableAction
-  const signInAction = useAuditableAction("auth.sign-in", async () => {
-    // Fire the bus event — the actual sign-in completion is tracked
-    // when activation.ts finishes handleActivationUrl.
+  // 2026-07-05 · ship-day walk fix · sign-in click was gated on the
+  // audit tick round-trip which made the button feel "clunky and
+  // slow" per Daniel. Bus emit is synchronous · the browser open
+  // fires < 1ms after click · the audit tick was the source of the
+  // pending-state latency. Now: click fires the bus event immediately
+  // and the audit tick runs fire-and-forget on the same tick without
+  // gating the button.
+  const signInClick = useCallback(() => {
     bus.emit("auth:open-panel", {});
-    return "opened";
-  }, { surface: "TopHud" });
+    // Fire-and-forget audit tick so telemetry lands without blocking
+    // the click. `void` is intentional; failures are silent.
+    void fetch(`${(import.meta as unknown as { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL ?? "https://api.liquidclips.app"}/audit/tick`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action_id: "auth.sign-in", surface: "TopHud" }),
+    }).catch(() => { /* silent · sign-in doesn't wait on telemetry */ });
+  }, []);
 
   /* FEATURE-001 · subscribe to inbox bus events so the badge updates
    * even when the InboxSheet is closed. Without this, the badge would
@@ -367,30 +376,37 @@ export function TopHud({
             the Free tier; clicking this fires the `auth:open-panel`
             bus event which the AuthGate listens for → opens the Whop
             OAuth panel over the app. */}
-        {!hasJwt && (
-          <button
-            type="button"
-            className="lc-pill lc-pill-user-btn"
-            data-testid="hud-sign-in"
-            onClick={() => signInAction.fire()}
-            disabled={signInAction.pending}
-            style={{
-              marginRight: 6,
-              padding: "6px 14px",
-              fontSize: 12,
-              fontFamily: "var(--font-mono)",
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: "var(--color-paper)",
-              background: "var(--color-fuchsia)",
-              border: "1px solid var(--color-fuchsia)",
-              borderRadius: 9999,
-              cursor: "pointer",
-            }}
-          >
-            Sign in
-          </button>
-        )}
+        {/* 2026-07-05 · ship-day walk fix · sign-in pill uses visibility
+            instead of conditional mount so the pill's slot in the flex
+            row is reserved. Prevents the "jump" Daniel saw when the
+            pill unmounted after activation:complete flipped hasJwt.
+            aria-hidden + pointer-events-none when authed so screen
+            readers + click targets stay honest. */}
+        <button
+          type="button"
+          className="lc-pill lc-pill-user-btn"
+          data-testid="hud-sign-in"
+          onClick={signInClick}
+          aria-hidden={hasJwt}
+          tabIndex={hasJwt ? -1 : 0}
+          style={{
+            marginRight: 6,
+            padding: "6px 14px",
+            fontSize: 12,
+            fontFamily: "var(--font-mono)",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "var(--color-paper)",
+            background: "var(--color-fuchsia)",
+            border: "1px solid var(--color-fuchsia)",
+            borderRadius: 9999,
+            cursor: hasJwt ? "default" : "pointer",
+            visibility: hasJwt ? "hidden" : "visible",
+            pointerEvents: hasJwt ? "none" : "auto",
+          }}
+        >
+          Sign in
+        </button>
         <button
           type="button"
           className="lc-pill lc-pill-user lc-pill-user-btn"

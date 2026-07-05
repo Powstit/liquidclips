@@ -134,7 +134,7 @@ def send_welcome(email: str, *, first_name: str | None = None) -> None:
 
 def send_subscription_activated(email: str, *, tier: str, first_name: str | None = None, trial: bool = False) -> None:
     """Sent when Whop webhook confirms a membership. trial=True for the starter
-    pass (30-day Solo trial, 100 free exports); trial=False for a confirmed paid plan."""
+    pass (30-day Solo trial, 10 free exports); trial=False for a confirmed paid plan."""
     ctx = MailContext.build()
     subject, html, text = render_subscription_activated(email=email, tier=tier, first_name=first_name, ctx=ctx, trial=trial)
     _async(_send, to=email, subject=subject, html=html, text=text, tag="subscription_activated")
@@ -899,13 +899,13 @@ def _btn(label: str, url: str) -> str:
 def render_welcome(*, email: str, first_name: str | None, ctx: MailContext) -> tuple[str, str, str]:
     subject = "Welcome to Liquid Clips."
     body = f"""
-<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">welcome · 100 free exports unlocked</p>
+<p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">welcome · 10 free exports unlocked</p>
 <h1 style="font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 12px;color:{INK};">
   Welcome to Liquid Clips.
 </h1>
 <p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
-  Liquid Clips turns long videos into ready-to-post shorts — local-first, your files never leave your machine unless you publish them. You're set up with <strong style="color:{INK};">100 free clip exports</strong> to start. Cancel any time.
+  Liquid Clips turns long videos into ready-to-post shorts — local-first, your files never leave your machine unless you publish them. You're set up with <strong style="color:{INK};">10 free clip exports</strong> to start. Cancel any time.
 </p>
 
 <!-- Keep us out of spam (Gmail Primary nudge) -->
@@ -962,14 +962,14 @@ def render_welcome(*, email: str, first_name: str | None, ctx: MailContext) -> t
 </p>
 
 <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
-  100 free clip exports · cancel anytime · your files stay on your machine
+  10 free clip exports · cancel anytime · your files stay on your machine
 </p>
 """
     text = (
         f"Welcome to Liquid Clips.\n\n{_greeting(first_name)}\n\n"
         "Liquid Clips turns long videos into ready-to-post shorts — local-first, "
         "your files never leave your machine unless you publish them. "
-        "You're set up with 100 free clip exports to start.\n\n"
+        "You're set up with 10 free clip exports to start.\n\n"
         "KEEP US OUT OF SPAM\n"
         "Add hello@liquidclips.app to your contacts, and drag this email to your\n"
         "Primary tab in Gmail. That way receipts, payout alerts, and login codes\n"
@@ -1004,18 +1004,18 @@ def render_subscription_activated(*, email: str, tier: str, first_name: str | No
     if trial:
         # Affiliate / Whop-trial starter pass — NOT yet a paid Solo. Liquid Clips caps
         # at 100 successful exports; Whop bills $29.99 after the 30-day trial.
-        subject = "Your 100 free clip exports are ready."
+        subject = "Your 10 free clip exports are ready."
         body = f"""
 <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:{FUCHSIA};margin:0 0 8px;">trial active · $0 today</p>
 <h1 style="font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;letter-spacing:-0.025em;line-height:1.1;margin:0 0 14px;color:{INK};">
-  Your 100 free clip exports are ready.
+  Your 10 free clip exports are ready.
 </h1>
 <p style="font-size:15px;line-height:1.55;color:{INK};margin:0 0 16px;">{_greeting(first_name)}</p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
   You're in — <strong style="color:{INK};">$0 today</strong>. Your Solo plan starts after 30 days, unless you cancel.
 </p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
-  Use your <strong style="color:{INK};">100 free clip exports</strong> however you like. If you use all 100 free exports first, Liquid Clips will ask you to continue on Solo before exporting more.
+  Use your <strong style="color:{INK};">10 free clip exports</strong> however you like. If you use all 10 free exports first, Liquid Clips will ask you to continue on Solo before exporting more.
 </p>
 <p style="font-size:15px;line-height:1.6;color:{TEXT_SECONDARY};margin:0 0 22px;">
   Download Liquid Clips after signing into your account, then drop in a video and start exporting.
@@ -1026,9 +1026,9 @@ def render_subscription_activated(*, email: str, tier: str, first_name: str | No
 </p>
 """
         text = (
-            f"Your 100 free clip exports are ready.\n\n{_greeting(first_name)}\n\n"
+            f"Your 10 free clip exports are ready.\n\n{_greeting(first_name)}\n\n"
             "You're in — $0 today. Your Solo plan starts after 30 days, unless you cancel.\n\n"
-            "Use your 100 free clip exports however you like. If you use all 100 free exports "
+            "Use your 10 free clip exports however you like. If you use all 10 free exports "
             "first, Liquid Clips will ask you to continue on Solo before exporting more.\n\n"
             f"Download Liquid Clips after signing into your account: {ctx.download_url}\n\n"
             "Reply to this email to reach us directly.\n— Liquid Clips"
@@ -1812,7 +1812,7 @@ def send_mc_leaderboard_placement(email: str, *, handle: str, rank: int, earning
 # Triggered by the desktop inbox when a user tries to use a paid feature.
 # The in-app notification (NotificationSheet) shows the same content; this
 # email is the second-touch nudge so the user gets an upgrade prompt in
-# their inbox too. 100 free clip exports stay free; everything else paywalls.
+# their inbox too. 10 free clip exports stay free; everything else paywalls.
 
 def send_paywall_hit(
     email: str,
@@ -1874,13 +1874,13 @@ def render_paywall_hit(
 </p>
 <p style="margin:0 0 16px;">{_btn(upgrade_label, cta_url)}</p>
 <p style="font-family:'Geist Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;color:{TEXT_TERTIARY};margin:18px 0 0;">
-  100 free clip exports stay free · cancel anytime · stays on this Mac
+  10 free clip exports stay free · cancel anytime · stays on this Mac
 </p>
 """
     text = (
         f"You tried to use {feature_label}.\n\n{_greeting(first_name)}\n\n"
         f"{feature_label} is a {pretty_tier} feature. Upgrade and pick up where you left off — your project, clips, and settings all stay put.\n\n"
         f"Upgrade: {cta_url}\n\n"
-        "100 free clip exports stay free. Cancel anytime.\n— Liquid Clips"
+        "10 free clip exports stay free. Cancel anytime.\n— Liquid Clips"
     )
     return subject, _shell(subject, body, ctx=ctx), text

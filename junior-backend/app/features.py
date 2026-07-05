@@ -44,7 +44,7 @@ class Feature(TypedDict):
 FEATURES_BY_TIER: dict[str, dict[str, Feature]] = {
     "free": {
         "video_quota_monthly":      {"value": None,  "built": True,  "sprint": None},  # gated by clips_per_ip starter pass
-        "clips_per_ip":             {"value": 100,   "built": True,  "sprint": None},  # IP-summed quota, anti-farming
+        "clips_per_ip":             {"value": 10,    "built": True,  "sprint": None},  # IP-summed starter pass · 10 free · clip 11 opens Whop paywall (2026-07-05 ship-day walk fix per Daniel)
         "accounts_included":        {"value": 1,     "built": True,  "sprint": None},
         "multi_ratio_export":       {"value": True,  "built": True,  "sprint": None},
         "broll_overlay":            {"value": True,  "built": True,  "sprint": None},

@@ -972,5 +972,46 @@
       "loc_diff": "+1838 / -3436 net -1598"
     },
     "gate_summary_one_line": "Both lanes standing down \u00b7 85% journey coverage \u00b7 0 Cohort 0 code blockers \u00b7 3 Daniel-actions remain \u00b7 nothing pushed nothing deployed \u00b7 ready when Daniel greenlights build."
+  },
+  "ship_day_2026_07_05": {
+    "reviewed_at": "2026-07-05T22:15:00Z",
+    "scope": "Ship day \u00b7 Daniel called ship \u00b7 executed commit + push + railway backend deploy + vercel account-app deploy + tauri build 2.2.25",
+    "verdict": "PASS",
+    "version_bump": "2.2.24 \u2192 2.2.25 \u00b7 package.json + src-tauri/tauri.conf.json + src-tauri/Cargo.toml + src-tauri/Cargo.lock",
+    "shipped_artifacts": {
+      "commit": "50f7d19 feat(2.2.25): CM lane sprint \u00b7 Cohort 0 readiness",
+      "push_range": "4a50a82..50f7d19 main -> main \u00b7 88 commits pushed to origin/main",
+      "diff_stats": "88 files \u00b7 +4044 / -3436 \u00b7 net +608",
+      "railway_backend": {
+        "service": "junior-backend",
+        "exit_code": 0,
+        "healthcheck_https_api_liquidclips_app": "HTTP 200",
+        "healthcheck_https_api_jnremployee_com": "HTTP 200 (alias)"
+      },
+      "vercel_account_app": {
+        "team_scope": "liquidclips",
+        "deployment_id": "dpl_2rDxZeETTVHuB51B59TSzem2RDh5",
+        "deployment_url": "https://account-690l4zv0f-liquidclips.vercel.app",
+        "readyState": "READY",
+        "target": "production",
+        "alias_https_account_liquidclips_app": "HTTP 200",
+        "alias_admin_page": "HTTP 200"
+      },
+      "tauri_build": "IN_FLIGHT at ship-lens write time \u00b7 rustc actively compiling liquid_clips_shell_lib crate \u00b7 output pipe buffered via tail -30 \u00b7 notification will fire on complete"
+    },
+    "guard_rails_held": [
+      "Version bumped BEFORE build per feedback_version_bump",
+      "tsc EXIT=0 on both desktop-2 and account-app before commit",
+      "vitest 141/141 held before commit",
+      "IG-002 sentinel preserved (verified by prior C1-T3 signoff)",
+      "No history rewrite \u00b7 no rebase \u00b7 standard fast-forward push",
+      "railway deploy authorized per railway_deploys_authorized \u00b7 not re-asked",
+      "Daniel explicitly said 'ship' \u2014 the build-gate trigger word per feedback_build_gate"
+    ],
+    "waiting_on_daniel": [
+      "Hide canary plan_m5VlS0xghUdJW on Whop dashboard (30-sec click \u00b7 API PATCH/DELETE both 401 \u00b7 scope-limited)",
+      "Post-tauri-build install verification (open the built .dmg, walk publish flow, confirm F5 mailto opens Mail.app)"
+    ],
+    "gate_summary_one_line": "Ship called \u00b7 code + backend + account-app all live \u00b7 tauri build in flight \u00b7 2 items remain (Whop dashboard hide + install-day walk)."
   }
 }
