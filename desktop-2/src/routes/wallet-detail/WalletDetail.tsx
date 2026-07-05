@@ -1,236 +1,75 @@
 /**
- * Port · wallet-detail
+ * Route · wallet-detail
  * Source: 05_html-mockups/approved/wallet-detail.html v3.1
  *
- * 6 scrubber states (fresh-install + populated + 4 hover demos).
- * Hover states use native CSS `:hover` — Playwright's `page.hover()`
- * fires the same. Rows carry `data-tile` per D2 v1.1:
- *   streak-row-N · paid-row-N · missed-row-N · cancelled-row-N
+ * C1-T1 · 2026-07-05 · Real wallet data pipeline.
+ * Prior version (v3.1 port) rendered a hardcoded roster + drops
+ * ledger as if live — every user saw the same fake fictional
+ * initials. MASTER_AUDIT_2026-07-05 flagged this as P0 finding
+ * #2 (Wallet fake-data ship blocker). This file now wires to
+ * `useWalletLedger()` (junior-backend /me/wallet/summary) and
+ * renders 5 explicit states:
  *
- * Pricing: $50/mo per referral · matches sync-mail port fix commit.
- * Coach video: /brand/founder/founder-wallet.mp4
+ *   loading                       skeleton on first mount
+ *   unauthorized                  Sign-in CTA (401 / no JWT)
+ *   error                         retry CTA
+ *   empty                         new user · pre-payout state
+ *   populated                     real ledger rows
+ *   expired-affiliate-agreement   claim returned signature_frozen
+ *
+ * The Claim button (Task D wire) is preserved end-to-end. A
+ * `signature_frozen` claim response now also flips the wallet page
+ * into the expired-agreement state via `markSignatureExpired()`.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DemoOverlay } from '../../components/demo-overlay';
-import { renderInline } from '../../components/safe-inline';
-// Task D · 2026-07-04 · wallet Claim button wire.
 import {
   postWalletClaim,
   isAgreementSignedMessage,
   CLAIM_BLOCKED_HEADING,
+  useWalletLedger,
+  fmtUsdCents,
+  fmtRelativeTime,
   type ClaimResponse,
+  type WalletLedgerRow,
 } from '../../lib/wallet';
 import { useBrowseOverlay } from '../../state/browseOverlay';
+import { bus } from '../../design-os/bridge/events';
 import './WalletDetail.css';
 
-export type WalletState =
-  | 'fresh-install'
-  | 'populated'
-  | 'hover-marques'
-  | 'hover-ali'
-  | 'hover-airrack'
-  | 'hover-johnny';
-
-type RowStatus = 'paid' | 'streak' | 'missed' | 'cancelled';
-type KadePose = 'celebration' | 'success' | 'error' | 'idle';
-
-interface ClipperRow {
-  id: string;
-  name: string;
-  initials: string;
-  joinedMeta: string;
-  hoverHandle: string;
-  status: RowStatus;
-  statusLabel: string;
-  mrr: string;
-  tileSlug: string;
-  hoverStatusLabel: string;
-  hoverStats: Array<{ label: string; value: string; money?: boolean }>;
-  hoverFooter: string;
-  kadePose: KadePose;
-}
-
-interface DropRow {
-  quiet: boolean;
-  name: string;
-  meta: string;
-  time: string;
-  amount: string;
-  negative?: boolean;
-}
-
-// ─────────────────────────────────────────────────────────────
-// Locked roster (mirror of mockup) — pricing $50 per referral.
-// ─────────────────────────────────────────────────────────────
-
-const CLIPPERS: ClipperRow[] = [
-  {
-    id: 'marques',
-    name: 'Marcus B.',
-    initials: 'MB',
-    joinedMeta: 'joined 47d ago',
-    hoverHandle: 'joined May 19 · 47 days ago',
-    status: 'streak',
-    statusLabel: 'Paid',
-    mrr: '$50/mo',
-    tileSlug: 'streak-row-0',
-    hoverStatusLabel: 'Paid · 2 mo streak',
-    hoverStats: [
-      { label: 'Your MRR', value: '$50/mo', money: true },
-      { label: 'Lifetime paid', value: '$200', money: true },
-      { label: 'Next drop', value: 'Aug 15' },
-    ],
-    hoverFooter: 'Reactivates <b>automatically</b> next billing',
-    kadePose: 'celebration',
-  },
-  {
-    id: 'casey',
-    name: 'Chris N.',
-    initials: 'CN',
-    joinedMeta: 'joined 44d ago',
-    hoverHandle: 'joined May 22 · 44 days ago',
-    status: 'paid',
-    statusLabel: 'Paid',
-    mrr: '$50/mo',
-    tileSlug: 'paid-row-0',
-    hoverStatusLabel: 'Paid this month',
-    hoverStats: [
-      { label: 'Your MRR', value: '$50/mo', money: true },
-      { label: 'Lifetime paid', value: '$100', money: true },
-      { label: 'Next drop', value: 'Aug 22' },
-    ],
-    hoverFooter: 'Reactivates <b>automatically</b> next billing',
-    kadePose: 'success',
-  },
-  {
-    id: 'emma',
-    name: 'Ella C.',
-    initials: 'EC',
-    joinedMeta: 'joined 44d ago',
-    hoverHandle: 'joined May 22 · 44 days ago',
-    status: 'streak',
-    statusLabel: 'Paid',
-    mrr: '$50/mo',
-    tileSlug: 'streak-row-1',
-    hoverStatusLabel: 'Paid · 2 mo streak',
-    hoverStats: [
-      { label: 'Your MRR', value: '$50/mo', money: true },
-      { label: 'Lifetime paid', value: '$200', money: true },
-      { label: 'Next drop', value: 'Aug 22' },
-    ],
-    hoverFooter: 'Reactivates <b>automatically</b> next billing',
-    kadePose: 'celebration',
-  },
-  {
-    id: 'airrack',
-    name: 'Alex R.',
-    initials: 'AR',
-    joinedMeta: 'joined 32d ago',
-    hoverHandle: 'joined June 3 · 32 days ago',
-    status: 'missed',
-    statusLabel: 'Grace',
-    mrr: '$50/mo',
-    tileSlug: 'missed-row-0',
-    hoverStatusLabel: 'Grace · 3 days left',
-    hoverStats: [
-      { label: 'Your MRR', value: '$50/mo', money: true },
-      { label: 'Lifetime paid', value: '$100', money: true },
-      { label: 'Next drop', value: 'If they pay by Aug 6' },
-    ],
-    hoverFooter: 'Whop retries card <b>3× in 3 days</b> · system-handled',
-    kadePose: 'error',
-  },
-  {
-    id: 'ali',
-    name: 'Amy A.',
-    initials: 'AA',
-    joinedMeta: 'joined 8d ago',
-    hoverHandle: 'joined June 27 · 8 days ago',
-    status: 'paid',
-    statusLabel: 'Paid',
-    mrr: '$50/mo',
-    tileSlug: 'paid-row-1',
-    hoverStatusLabel: 'Paid this month',
-    hoverStats: [
-      { label: 'Your MRR', value: '$50/mo', money: true },
-      { label: 'Lifetime paid', value: '$50', money: true },
-      { label: 'Next drop', value: 'Aug 27' },
-    ],
-    hoverFooter: 'Reactivates <b>automatically</b> next billing',
-    kadePose: 'success',
-  },
-  {
-    id: 'johnny',
-    name: 'Jax H.',
-    initials: 'JH',
-    joinedMeta: 'cancelled 12d ago',
-    hoverHandle: 'joined May 30 · cancelled Jun 22',
-    status: 'cancelled',
-    statusLabel: 'Cancelled',
-    mrr: '$50/mo',
-    tileSlug: 'cancelled-row-0',
-    hoverStatusLabel: 'Cancelled · 12d ago',
-    hoverStats: [
-      { label: 'Your MRR', value: '$0/mo' },
-      { label: 'Lifetime paid', value: '$100', money: true },
-      { label: 'Next drop', value: '—' },
-    ],
-    hoverFooter: 'Balance already dropped <b>stays yours</b>',
-    kadePose: 'idle',
-  },
-  { id: 'cleo',   name: 'Clara A.',    initials: 'CA', joinedMeta: 'joined 12d ago', hoverHandle: 'joined June 23 · 12 days ago', status: 'paid', statusLabel: 'Paid', mrr: '$50/mo', tileSlug: 'paid-row-2', hoverStatusLabel: 'Paid this month', hoverStats: [{ label: 'Your MRR', value: '$50/mo', money: true }, { label: 'Lifetime paid', value: '$50', money: true }, { label: 'Next drop', value: 'Aug 23' }], hoverFooter: 'Reactivates <b>automatically</b> next billing', kadePose: 'success' },
-  { id: 'colin',  name: 'Cole & Sam', initials: 'CS', joinedMeta: 'joined 41d ago', hoverHandle: 'joined May 25 · 41 days ago', status: 'paid', statusLabel: 'Paid', mrr: '$50/mo', tileSlug: 'paid-row-3', hoverStatusLabel: 'Paid this month', hoverStats: [{ label: 'Your MRR', value: '$50/mo', money: true }, { label: 'Lifetime paid', value: '$100', money: true }, { label: 'Next drop', value: 'Aug 25' }], hoverFooter: 'Reactivates <b>automatically</b> next billing', kadePose: 'success' },
-  { id: 'simone', name: 'Sasha G.', initials: 'SG', joinedMeta: 'joined 6d ago',  hoverHandle: 'joined June 29 · 6 days ago',  status: 'paid', statusLabel: 'Paid', mrr: '$50/mo', tileSlug: 'paid-row-4', hoverStatusLabel: 'Paid this month', hoverStats: [{ label: 'Your MRR', value: '$50/mo', money: true }, { label: 'Lifetime paid', value: '$50',  money: true }, { label: 'Next drop', value: 'Aug 29' }], hoverFooter: 'Reactivates <b>automatically</b> next billing', kadePose: 'success' },
-  { id: 'marina', name: 'Maya K.', initials: 'MK', joinedMeta: 'joined 2d ago',  hoverHandle: 'joined July 2 · 2 days ago',   status: 'paid', statusLabel: 'Paid', mrr: '$50/mo', tileSlug: 'paid-row-5', hoverStatusLabel: 'Paid this month', hoverStats: [{ label: 'Your MRR', value: '$50/mo', money: true }, { label: 'Lifetime paid', value: '$50',  money: true }, { label: 'Next drop', value: 'Sep 2' }],  hoverFooter: 'Reactivates <b>automatically</b> next billing', kadePose: 'success' },
-];
-
-const DROPS: DropRow[] = [
-  { quiet: false, name: 'Marcus B. · $50 drop',      meta: 'Whop split · 50% · instant', time: '2h ago',  amount: '+$50.00' },
-  { quiet: false, name: 'Chris N. · $50 drop',         meta: 'Whop split · 50% · instant', time: '1d ago',  amount: '+$50.00' },
-  { quiet: true,  name: 'Payout to bank · $500.00',         meta: 'ACH · standard · 2-3 days',  time: '4d ago',  amount: '-$500.00', negative: true },
-  { quiet: false, name: 'Ella C. · $50 drop',      meta: 'Whop split · 50% · instant', time: '6d ago',  amount: '+$50.00' },
-  { quiet: false, name: 'Colin & Samir · $50 drop',         meta: 'Whop split · 50% · instant', time: '8d ago',  amount: '+$50.00' },
-  { quiet: false, name: 'Airrack · $50 drop',               meta: 'Whop split · 50% · instant', time: '12d ago', amount: '+$50.00' },
-  { quiet: false, name: 'Cleo Abram · $50 drop',            meta: 'Whop split · 50% · instant', time: '14d ago', amount: '+$50.00' },
-  { quiet: true,  name: 'Payout to bank · $250.00',         meta: 'Instant · fee · to card',    time: '18d ago', amount: '-$250.00', negative: true },
-  { quiet: false, name: 'Ali Abdaal · $50 drop',            meta: 'Whop split · 50% · instant', time: '21d ago', amount: '+$50.00' },
-];
-
-const STATE_TO_HOVER_ID: Record<WalletState, string | null> = {
-  'fresh-install':    null,
-  'populated':        null,
-  'hover-marques':    'marques',
-  'hover-ali':        'ali',
-  'hover-airrack':    'airrack',
-  'hover-johnny':     'johnny',
-};
-
-// ─────────────────────────────────────────────────────────────
-
 export interface WalletDetailProps {
-  showScrubber?: boolean;
-  onWithdraw?: () => void;
   onBack?: () => void;
+  /** Legacy escape hatch · QA harness passes an override to short-
+   *  circuit the claim wire and forward the click to the harness. */
+  onWithdraw?: () => void;
 }
 
 export function WalletDetail(props: WalletDetailProps) {
-  const [state, setState] = useState<WalletState>('fresh-install');
-  const [hoverId, setHoverId] = useState<string | null>(null);
-  const [hoverAnchor, setHoverAnchor] = useState<{ x: number; y: number } | null>(null);
+  const {
+    uiState,
+    summary,
+    errorReason,
+    refetch,
+    markSignatureExpired,
+  } = useWalletLedger();
+
   const [muted, setMuted] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const showScrubber = props.showScrubber ?? tryImportMetaDev();
 
-  // ── Task D · Claim wire ─────────────────────────────────────
-  // Local state machine: idle → claiming → (released | awaiting_signature | error).
-  // `awaiting_signature` triggers a browse-overlay open + a
-  // postMessage listener that auto-retries after signing.
+  // ── Claim wire (Task D · preserved) ─────────────────────────
   const openBrowsePanel = useBrowseOverlay((s) => s.openWith);
   const closeBrowsePanel = useBrowseOverlay((s) => s.close);
-  type ClaimUiState = 'idle' | 'claiming' | 'awaiting_signature' | 'released' | 'error';
+  type ClaimUiState =
+    | 'idle'
+    | 'claiming'
+    | 'awaiting_signature'
+    | 'released'
+    | 'error';
   const [claimState, setClaimState] = useState<ClaimUiState>('idle');
-  const [toast, setToast] = useState<{ heading: string; body?: string } | null>(null);
+  const [toast, setToast] = useState<{ heading: string; body?: string } | null>(
+    null,
+  );
   const toastTimerRef = useRef<number | null>(null);
   const showingToast = useCallback((heading: string, body?: string) => {
     if (toastTimerRef.current !== null) {
@@ -239,6 +78,7 @@ export function WalletDetail(props: WalletDetailProps) {
     setToast({ heading, body });
     toastTimerRef.current = window.setTimeout(() => setToast(null), 4200);
   }, []);
+
   const runClaim = useCallback(async () => {
     setClaimState('claiming');
     const res: ClaimResponse | null = await postWalletClaim();
@@ -251,9 +91,15 @@ export function WalletDetail(props: WalletDetailProps) {
       return;
     }
     if (res.blocked && res.blocked_reason) {
-      const heading = CLAIM_BLOCKED_HEADING[res.blocked_reason.code]
+      const heading =
+        CLAIM_BLOCKED_HEADING[res.blocked_reason.code]
         ?? res.blocked_reason.message;
       showingToast(heading, res.blocked_reason.message);
+      if (res.blocked_reason.code === 'signature_frozen') {
+        markSignatureExpired();
+        setClaimState('idle');
+        return;
+      }
       setClaimState('awaiting_signature');
       openBrowsePanel(res.blocked_reason.signature_url, 'browse-campaign');
       return;
@@ -264,26 +110,29 @@ export function WalletDetail(props: WalletDetailProps) {
       'Payout released.',
       receiptHead ? `Receipt ${receiptHead}…` : undefined,
     );
-    // Fall back to idle after a beat so the user can hit Claim again
-    // for a subsequent payout without a re-mount.
+    // Refetch so the balance drops to zero and the just-fired payout
+    // shows in the recent ledger.
+    void refetch();
     window.setTimeout(() => setClaimState('idle'), 4000);
-  }, [openBrowsePanel, showingToast]);
-  // postMessage bridge · listens for the affiliate_agreement_signed
-  // event the account-app signature page emits to window.parent. The
-  // browse-panel webview forwards it up so this parent React window
-  // can catch it and auto-retry the Claim call.
+  }, [
+    markSignatureExpired,
+    openBrowsePanel,
+    refetch,
+    showingToast,
+  ]);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onMessage = (ev: MessageEvent) => {
       if (!isAgreementSignedMessage(ev.data)) return;
       if (claimState !== 'awaiting_signature') return;
-      // Close the overlay + re-POST /claim.
       closeBrowsePanel();
       void runClaim();
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [claimState, closeBrowsePanel, runClaim]);
+
   useEffect(() => {
     return () => {
       if (toastTimerRef.current !== null) {
@@ -291,43 +140,6 @@ export function WalletDetail(props: WalletDetailProps) {
       }
     };
   }, []);
-
-  const stageDataState: 'fresh-install' | 'populated' = state === 'fresh-install' ? 'fresh-install' : 'populated';
-
-  // Force-hover from the scrubber demos.
-  const forcedHoverId = STATE_TO_HOVER_ID[state];
-  const activeHoverId = hoverId ?? forcedHoverId;
-  const activeHoverRow = useMemo(
-    () => (activeHoverId ? CLIPPERS.find((c) => c.id === activeHoverId) ?? null : null),
-    [activeHoverId],
-  );
-
-  const onRowEnter = useCallback((id: string, rect: DOMRect) => {
-    setHoverId(id);
-    // Position the fixed card next to the row · right side when there's
-    // room, otherwise flip left.
-    const cardWidth = 280;
-    const rightGap = 14;
-    const canRight = rect.right + cardWidth + rightGap < window.innerWidth;
-    const x = canRight ? rect.right + rightGap : rect.left - cardWidth - rightGap;
-    const y = Math.max(16, Math.min(window.innerHeight - 320, rect.top - 8));
-    setHoverAnchor({ x, y });
-  }, []);
-  const onRowLeave = useCallback(() => {
-    if (forcedHoverId) return;   // keep the demo card visible
-    setHoverId(null);
-    setHoverAnchor(null);
-  }, [forcedHoverId]);
-
-  // When the scrubber picks a hover-demo, pin the card at the row's slot.
-  useEffect(() => {
-    if (!forcedHoverId) return;
-    const row = document.querySelector(`[data-clipper-id="${forcedHoverId}"]`);
-    if (row) {
-      const rect = row.getBoundingClientRect();
-      onRowEnter(forcedHoverId, rect);
-    }
-  }, [forcedHoverId, onRowEnter]);
 
   const toggleMute = useCallback(() => {
     const v = videoRef.current;
@@ -343,73 +155,198 @@ export function WalletDetail(props: WalletDetailProps) {
     }
   }, []);
 
-  const balanceValue = state === 'fresh-install' ? '$0.00' : '$247.50';
-  const balanceMrrLabel = state === 'fresh-install'
-    ? 'Your MRR fills the moment a sub hits'
-    : '$742.50/mo · next payout in 4 days';
-  const activeCount = state === 'fresh-install' ? 0 : 15;
-  const lifetime = state === 'fresh-install' ? '$0' : '$1,485';
-  const breakEven = state === 'fresh-install' ? '—' : '7.4×';
+  // ── Derived render values from real summary ──────────────────
+  const balanceCents = summary?.balance_cents ?? 0;
+  const pendingCents = summary?.pending_cents ?? 0;
+  const nextPayoutAt = summary?.next_payout_at ?? null;
+  const lifetimePaidCents = summary?.pipeline.paid_usd_cents ?? 0;
+  const ledgerRows: WalletLedgerRow[] = summary?.recent_ledger ?? [];
 
-  return (
-    <div className="wd-root">
-      {showScrubber && (
-        <div className="wd-scrubber" role="tablist" aria-label="Wallet state">
-          <span className="wd-scrubber-label">STATE</span>
-          {[
-            { id: 'fresh-install', label: '1 · Fresh install · empty' },
-            { id: 'populated',     label: '2 · Populated · 15 clippers' },
-            { id: 'hover-marques', label: '3 · Hover · paid + streak' },
-            { id: 'hover-ali',     label: '4 · Hover · paid normal' },
-            { id: 'hover-airrack', label: '5 · Hover · grace / missed' },
-            { id: 'hover-johnny',  label: '6 · Hover · cancelled' },
-          ].map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className="wd-scrubber-btn"
-              data-active={state === s.id}
-              onClick={() => setState(s.id as WalletState)}
-            >
-              {s.label}
-            </button>
-          ))}
-          <span className="wd-scrubber-note">Hover any clipper row · IRL</span>
+  const balanceValue = fmtUsdCents(balanceCents);
+  const balanceSubline = useMemo(() => {
+    if (pendingCents > 0 && nextPayoutAt) {
+      const rel = fmtRelativeTime(nextPayoutAt);
+      return `${fmtUsdCents(pendingCents)} pending · next payout ${rel}`;
+    }
+    if (uiState === 'empty') {
+      return 'Your first payout lands here the moment a referral subscribes.';
+    }
+    return 'Balance updated live from Whop · payouts fire on the next scheduler tick.';
+  }, [pendingCents, nextPayoutAt, uiState]);
+
+  const claimDisabled =
+    uiState !== 'populated' ||
+    balanceCents <= 0 ||
+    claimState === 'claiming' ||
+    claimState === 'awaiting_signature';
+
+  const stageDataState: 'fresh-install' | 'populated' =
+    uiState === 'populated' ? 'populated' : 'fresh-install';
+
+  // ── Full-surface states (loading · unauthorized · error) ─────
+  // These render as full-panel overlays and never mount the hero /
+  // body / footer — the hero shows fake $0.00 numbers we don't want
+  // the user to read as truth.
+  if (uiState === 'loading') {
+    return (
+      <div className="wd-root" data-ui-state="loading">
+        <div className="wd-stage" data-state="fresh-install">
+          <div className="wd-panel wd-panel--full">
+            <div className="wd-full-state" data-testid="wallet-loading">
+              <div className="wd-full-title">Loading your wallet…</div>
+              <div className="wd-full-body">
+                Fetching your balance from Whop.
+              </div>
+            </div>
+          </div>
         </div>
-      )}
+      </div>
+    );
+  }
 
+  if (uiState === 'unauthorized') {
+    return (
+      <div className="wd-root" data-ui-state="unauthorized">
+        <div className="wd-stage" data-state="fresh-install">
+          <div className="wd-panel wd-panel--full">
+            <div className="wd-full-state" data-testid="wallet-unauthorized">
+              <div className="wd-full-title">Sign in to see your wallet</div>
+              <div className="wd-full-body">
+                Your wallet is scoped to your Whop account · sign in to see
+                real balance + payout history.
+              </div>
+              <button
+                type="button"
+                className="wd-full-cta"
+                onClick={() => bus.emit('auth:open-panel', {})}
+                data-testid="wallet-sign-in"
+              >
+                Sign in
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (uiState === 'error') {
+    const bodyCopy =
+      errorReason === 'network'
+        ? 'Wallet is briefly unreachable. Check your connection and try again.'
+        : errorReason === 'shape'
+          ? 'The wallet response is out of shape. Please retry in a moment.'
+          : 'The wallet endpoint returned an error. Please try again.';
+    return (
+      <div className="wd-root" data-ui-state="error">
+        <div className="wd-stage" data-state="fresh-install">
+          <div className="wd-panel wd-panel--full">
+            <div className="wd-full-state" data-testid="wallet-error">
+              <div className="wd-full-title">Wallet briefly out of reach</div>
+              <div className="wd-full-body">{bodyCopy}</div>
+              <button
+                type="button"
+                className="wd-full-cta"
+                onClick={() => void refetch()}
+                data-testid="wallet-retry"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // uiState is `empty`, `populated`, or `expired-affiliate-agreement`.
+  return (
+    <div className="wd-root" data-ui-state={uiState}>
       <div className="wd-stage" data-state={stageDataState}>
         <div className="wd-panel">
           <div className="wd-panel-clip" />
           <div className="wd-whop-pill">
             Powered by
-            <img src="/brand/whop/whop_logo_lockup_white.svg" alt="Whop" />
+            <img
+              src="/brand/whop/whop_logo_lockup_white.svg"
+              alt="Whop"
+              onError={(e) => (e.currentTarget.style.display = 'none')}
+            />
           </div>
+
+          {uiState === 'expired-affiliate-agreement' && (
+            <div
+              className="wd-expired-banner"
+              role="status"
+              aria-live="polite"
+              data-testid="wallet-expired-banner"
+            >
+              <div className="wd-expired-title">
+                Your affiliate agreement is frozen
+              </div>
+              <div className="wd-expired-body">
+                A payment dispute on your subscription has paused payouts.
+                Contact support to resolve the dispute before further
+                payouts can be issued.
+              </div>
+              <a
+                className="wd-expired-cta"
+                href="mailto:support@liquidclips.app"
+              >
+                Contact support
+              </a>
+            </div>
+          )}
 
           {/* HERO */}
           <div className="wd-hero">
             <div className="wd-hero-meta">
-              <button className="wd-back-btn" type="button" onClick={props.onBack}>Back</button>
-              <span className="wd-wallet-label">Wallet · <b>referral ledger</b></span>
+              <button
+                className="wd-back-btn"
+                type="button"
+                onClick={props.onBack}
+              >
+                Back
+              </button>
+              <span className="wd-wallet-label">
+                Wallet · <b>referral ledger</b>
+              </span>
             </div>
             <div>
-              <span className="wd-balance-eyebrow">Balance · Whop · instant</span>
+              <span className="wd-balance-eyebrow">
+                Balance · Whop · instant
+              </span>
               <div className="wd-balance-value">{balanceValue}</div>
-              <div className="wd-balance-mrr">
-                {state === 'fresh-install' ? balanceMrrLabel : <><b>{balanceMrrLabel.split(' ·')[0]}</b>{balanceMrrLabel.slice(balanceMrrLabel.indexOf(' ·'))}</>}
-              </div>
+              <div className="wd-balance-mrr">{balanceSubline}</div>
             </div>
             <div className="wd-stat-row">
-              <div className="wd-stat-card"><div className="wd-stat-label">Active</div><div className="wd-stat-value">{activeCount}</div></div>
-              <div className="wd-stat-card"><div className="wd-stat-label">Your MRR</div><div className="wd-stat-value is-money">{state === 'fresh-install' ? '$0.00' : '$742.50'}</div></div>
-              <div className="wd-stat-card"><div className="wd-stat-label">Lifetime</div><div className="wd-stat-value">{lifetime}</div></div>
-              <div className="wd-stat-card"><div className="wd-stat-label">Break-even</div><div className="wd-stat-value">{breakEven}</div></div>
+              <div className="wd-stat-card">
+                <div className="wd-stat-label">Balance</div>
+                <div className="wd-stat-value is-money">
+                  {fmtUsdCents(balanceCents)}
+                </div>
+              </div>
+              <div className="wd-stat-card">
+                <div className="wd-stat-label">Pending</div>
+                <div className="wd-stat-value">
+                  {fmtUsdCents(pendingCents)}
+                </div>
+              </div>
+              <div className="wd-stat-card">
+                <div className="wd-stat-label">Lifetime paid</div>
+                <div className="wd-stat-value">
+                  {fmtUsdCents(lifetimePaidCents)}
+                </div>
+              </div>
+              <div className="wd-stat-card">
+                <div className="wd-stat-label">Next payout</div>
+                <div className="wd-stat-value">
+                  {nextPayoutAt
+                    ? fmtRelativeTime(nextPayoutAt)
+                    : '—'}
+                </div>
+              </div>
             </div>
-            {/* Task D · Claim button · POST /me/wallet/claim ·
-                signature-gate → browse-panel → auto-retry after
-                affiliate_agreement_signed postMessage. Preserves the
-                `onWithdraw` prop as a legacy escape hatch for QA
-                that still drives the button through injected state. */}
             <button
               className="wd-withdraw-btn"
               type="button"
@@ -418,15 +355,18 @@ export function WalletDetail(props: WalletDetailProps) {
                   props.onWithdraw();
                   return;
                 }
-                if (claimState === 'claiming' || claimState === 'awaiting_signature') return;
+                if (
+                  claimState === 'claiming' ||
+                  claimState === 'awaiting_signature'
+                )
+                  return;
                 void runClaim();
               }}
-              disabled={
-                state === 'fresh-install' ||
+              disabled={claimDisabled}
+              aria-busy={
                 claimState === 'claiming' ||
                 claimState === 'awaiting_signature'
               }
-              aria-busy={claimState === 'claiming' || claimState === 'awaiting_signature'}
               data-claim-state={claimState}
             >
               {claimState === 'claiming'
@@ -441,62 +381,71 @@ export function WalletDetail(props: WalletDetailProps) {
           <div className="wd-body">
             <div className="wd-col">
               <div className="wd-col-header">
-                <div className="wd-col-title">Your clippers · <span className="wd-col-title-count">{activeCount} paying</span></div>
-                <div className="wd-col-tabs">
-                  <button className="wd-col-tab is-active">Paying</button>
-                  <button className="wd-col-tab">All</button>
-                </div>
+                <div className="wd-col-title">Your clippers</div>
               </div>
               <div className="wd-col-scroll">
                 <div className="wd-empty-hint">
-                  No clippers yet.<br /><br />
-                  Send outreach from the money-moment window · every clipper who subs = <b>$50/mo, for LIFE</b>.
+                  Your paying clippers show up here the moment they subscribe
+                  via your affiliate link.
+                  <br />
+                  <br />
+                  Every clipper who subs = <b>$50/mo, for LIFE</b>.
                 </div>
-                {CLIPPERS.map((c) => (
-                  <div
-                    key={c.id}
-                    className="wd-clipper-row"
-                    data-tile={c.tileSlug}
-                    data-clipper-id={c.id}
-                    onMouseEnter={(e) => onRowEnter(c.id, e.currentTarget.getBoundingClientRect())}
-                    onMouseLeave={onRowLeave}
-                  >
-                    <div className="wd-clipper-avatar">{c.initials}</div>
-                    <div className="wd-clipper-info">
-                      <div className="wd-clipper-name">{c.name}</div>
-                      <div className="wd-clipper-meta">{c.joinedMeta}</div>
-                    </div>
-                    <span className={`wd-status-pill ${statusPillClass(c.status)}`}>{c.statusLabel}</span>
-                    <div className={`wd-clipper-mrr ${c.status === 'missed' ? 'is-quiet' : ''} ${c.status === 'cancelled' ? 'is-strike' : ''}`}>{c.mrr}</div>
-                  </div>
-                ))}
               </div>
             </div>
 
             <div className="wd-col">
               <div className="wd-col-header">
-                <div className="wd-col-title">Recent drops · <span className="wd-col-title-count">this month</span></div>
-                <div className="wd-col-tabs">
-                  <button className="wd-col-tab is-active">Month</button>
-                  <button className="wd-col-tab">Lifetime</button>
+                <div className="wd-col-title">
+                  Recent drops ·{' '}
+                  <span className="wd-col-title-count">
+                    {ledgerRows.length === 0 ? 'none yet' : 'live ledger'}
+                  </span>
                 </div>
               </div>
               <div className="wd-col-scroll">
-                <div className="wd-empty-hint">
-                  <b>0 drops</b> so far.<br /><br />
-                  The moment a clipper subs, their $50 lands here instantly.
-                </div>
-                {DROPS.map((d, i) => (
-                  <div key={i} className="wd-drop-row">
-                    <div className={`wd-drop-mark ${d.quiet ? 'is-quiet' : ''}`} />
-                    <div>
-                      <div className="wd-drop-name">{d.name}</div>
-                      <div className="wd-drop-meta">{d.meta}</div>
-                    </div>
-                    <div className="wd-drop-time">{d.time}</div>
-                    <div className={`wd-drop-amount ${d.negative ? 'is-neg' : ''}`}>{d.amount}</div>
+                {ledgerRows.length === 0 ? (
+                  <div className="wd-empty-hint" data-testid="wallet-drops-empty">
+                    <b>0 drops</b> so far.
+                    <br />
+                    <br />
+                    The moment a clipper subs, their $50 lands here instantly.
                   </div>
-                ))}
+                ) : (
+                  ledgerRows.map((row) => {
+                    const negative = row.type === 'debit' || row.type === 'payout';
+                    const sign = negative ? '-' : '+';
+                    const amount = `${sign}${fmtUsdCents(Math.abs(row.amount_cents))}`;
+                    return (
+                      <div
+                        key={row.id}
+                        className="wd-drop-row"
+                        data-ledger-type={row.type}
+                        data-testid="wallet-drop-row"
+                      >
+                        <div
+                          className={`wd-drop-mark ${row.type === 'payout' ? 'is-quiet' : ''}`}
+                        />
+                        <div>
+                          <div className="wd-drop-name">
+                            {ledgerRowLabel(row)}
+                          </div>
+                          <div className="wd-drop-meta">
+                            {ledgerRowMeta(row)}
+                          </div>
+                        </div>
+                        <div className="wd-drop-time">
+                          {fmtRelativeTime(row.created_at)}
+                        </div>
+                        <div
+                          className={`wd-drop-amount ${negative ? 'is-neg' : ''}`}
+                        >
+                          {amount}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           </div>
@@ -505,83 +454,73 @@ export function WalletDetail(props: WalletDetailProps) {
           <div className="wd-footer">
             <div className="wd-coach">
               <div className="wd-coach-thumb" onClick={toggleMute}>
-                <video ref={videoRef} autoPlay muted playsInline loop preload="auto">
-                  <source src="/brand/founder/founder-wallet.mp4" type="video/mp4" />
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  loop
+                  preload="auto"
+                >
+                  <source
+                    src="/brand/founder/founder-wallet.mp4"
+                    type="video/mp4"
+                  />
                 </video>
               </div>
               <div>
-                <div className="wd-coach-eyebrow">Daniel · founder · 33 sec</div>
-                <div className="wd-coach-script">
-                  "Hey guys — here's your affiliate page. See lifetime sales, streaks, all of it.
-                  Hover any clipper to check if they paid this month. We don't advise contacting
-                  affiliates — unless they're your friends. And remember: <b>your commissions only
-                  pay if you keep your subscription.</b> Thanks — God bless."
+                <div className="wd-coach-eyebrow">
+                  Daniel · founder · 33 sec
                 </div>
-                <button type="button" className="wd-coach-audio" onClick={toggleMute}>
+                <div className="wd-coach-script">
+                  &quot;Hey guys — here&apos;s your affiliate page. See lifetime
+                  sales, streaks, all of it. Every clipper who subs pays out
+                  $50/mo — <b>for life</b>. And remember: your commissions
+                  only pay if you keep your subscription. Thanks — God bless.&quot;
+                </div>
+                <button
+                  type="button"
+                  className="wd-coach-audio"
+                  onClick={toggleMute}
+                >
                   {muted ? 'Click for sound' : 'Mute'}
                 </button>
               </div>
             </div>
             <div className="wd-fine">
-              Withdrawals via <b>Whop payout portal</b> · $10 min · <b>5%</b> platform fee · ACH 2–3d or Instant (fee)
+              Withdrawals via <b>Whop payout portal</b> · $10 min ·{' '}
+              <b>5%</b> platform fee · ACH 2–3d or Instant (fee)
             </div>
           </div>
         </div>
       </div>
 
-      {/* Hover card · fixed positioning, mouseenter positions it */}
-      {activeHoverRow && hoverAnchor && (
-        <div
-          className="wd-hover-card is-visible"
-          style={{ left: hoverAnchor.x, top: hoverAnchor.y }}
-          onMouseEnter={() => setHoverId(activeHoverRow.id)}
-          onMouseLeave={onRowLeave}
-        >
-          <div className="wd-hover-kade">
-            <img
-              src={`/brand/kade/kade-${activeHoverRow.kadePose}.webp`}
-              alt=""
-              onError={(e) => (e.currentTarget.style.display = 'none')}
-            />
-          </div>
-          <div className="wd-hover-name">{activeHoverRow.name}</div>
-          <div className="wd-hover-handle">{activeHoverRow.hoverHandle}</div>
-          <div className="wd-hover-status-line">
-            <span className={`wd-status-pill ${statusPillClass(activeHoverRow.status)}`}>{activeHoverRow.hoverStatusLabel}</span>
-          </div>
-          <div className="wd-hover-stats">
-            {activeHoverRow.hoverStats.map((s) => (
-              <div key={s.label} className="wd-hover-stat">
-                <span className="wd-hover-stat-label">{s.label}</span>
-                <span className={`wd-hover-stat-value ${s.money ? 'is-money' : ''}`}>{s.value}</span>
-              </div>
-            ))}
-          </div>
-          <div className="wd-hover-footer">{renderInline(activeHoverRow.hoverFooter)}</div>
-        </div>
-      )}
-
-      {/* Port #8b · contextual demo overlay · shows only on
-          `fresh-install` state (no real streak data yet). Once user
-          hits `populated`, overlay never re-mounts. localStorage:
-          demo-shown-wallet. */}
-      {state === 'fresh-install' && (
+      {/* Contextual onboarding overlay · only in empty state, once. */}
+      {uiState === 'empty' && (
         <DemoOverlay
           mp4Src="/demos/04-wallet-payouts.mp4"
           kadePosterSrc="/brand/kade/kade-success.webp"
           title="Wallet & payouts tour"
           storageKey="demo-shown-wallet"
-          hint={<><strong>60 sec</strong> · tap to unmute · ✕ to dismiss</>}
+          hint={
+            <>
+              <strong>60 sec</strong> · tap to unmute · ✕ to dismiss
+            </>
+          }
         />
       )}
 
-      {/* Task D · Claim wire · signature-gate + release toast.
-          Fixed bottom-center · dismisses itself after 4.2s or on
-          any subsequent claim call. */}
       {toast && (
-        <div className="wd-claim-toast" role="status" aria-live="polite" data-testid="wallet-claim-toast">
+        <div
+          className="wd-claim-toast"
+          role="status"
+          aria-live="polite"
+          data-testid="wallet-claim-toast"
+        >
           <div className="wd-claim-toast-heading">{toast.heading}</div>
-          {toast.body && <div className="wd-claim-toast-body">{toast.body}</div>}
+          {toast.body && (
+            <div className="wd-claim-toast-body">{toast.body}</div>
+          )}
         </div>
       )}
     </div>
@@ -590,14 +529,29 @@ export function WalletDetail(props: WalletDetailProps) {
 
 // ─────────────────────────────────────────────────────────────
 
-function statusPillClass(status: RowStatus): string {
-  if (status === 'missed') return 'is-missed';
-  if (status === 'cancelled') return 'is-cancelled';
-  return 'is-paid';   // paid + streak share the same pill visual
+function ledgerRowLabel(row: WalletLedgerRow): string {
+  if (row.type === 'payout') {
+    return `Payout to Whop wallet · ${fmtUsdCents(Math.abs(row.amount_cents))}`;
+  }
+  if (row.type === 'debit') {
+    return `Reversal · ${fmtUsdCents(Math.abs(row.amount_cents))}`;
+  }
+  // credit
+  if (row.source === 'whop_affiliate') {
+    return `Referral drop · ${fmtUsdCents(row.amount_cents)}`;
+  }
+  return `Credit · ${fmtUsdCents(row.amount_cents)}`;
 }
 
-function tryImportMetaDev(): boolean {
-  try {
-    return Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV);
-  } catch { return false; }
+function ledgerRowMeta(row: WalletLedgerRow): string {
+  if (row.type === 'payout') {
+    return `Whop payout · ${row.currency}`;
+  }
+  if (row.type === 'debit') {
+    return `${row.source} · ${row.currency}`;
+  }
+  if (row.source === 'whop_affiliate') {
+    return 'Whop split · 50% · instant';
+  }
+  return `${row.source} · ${row.currency}`;
 }
