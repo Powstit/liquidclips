@@ -133,9 +133,14 @@ export function App() {
     };
   }, []);
 
-  // Simulate sidecar readiness after the brand-moment hold.
+  // 2026-07-05 · ship-day walk fix · sidecar-readiness hold reduced
+  // from 6000ms → 1500ms so cold-open lands the Continue button while
+  // the brand moment is still on screen. Anything longer feels like a
+  // forced pause. Users who want the full cinematic still see it via
+  // the "Skip intro" button remaining latent; users who just installed
+  // from a cold-email link don't lose 5 seconds.
   useEffect(() => {
-    const t = window.setTimeout(() => setSplashReady(true), 6_000);
+    const t = window.setTimeout(() => setSplashReady(true), 1_500);
     return () => window.clearTimeout(t);
   }, []);
 

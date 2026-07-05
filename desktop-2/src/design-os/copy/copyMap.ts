@@ -435,7 +435,7 @@ export const FLYWHEEL = {
 } as const;
 
 export const UPGRADE = {
-  freeCap:          "Free caps at 100 clips/week. Reset Sunday 00:00 UTC.",
+  freeCap:          "Free tier caps at 10 clips. Whop unlock opens at clip 11 · $99.99/mo locked for life for the first 12,000 clippers.",
   // Daniel's 2026-06-23 monetisation pass: ladder is Free / Pro $29 /
   // Growth $79 / Agency $500. Pitches re-cast accordingly. `soloPitch`
   // retained as alias for back-compat consumers; reads as Pro now.
